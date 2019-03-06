@@ -1,0 +1,3 @@
+[submodule "benchmarks/seastar_baseline/K2Build/DFV_K2_BuildDeps"]
+	path = benchmarks/seastar_baseline/K2Build/DFV_K2_BuildDeps
+	url = git@rnd-github-usa-g.huawei.com:SeattleCloudBU/DFV_K2_BuildDeps.git
