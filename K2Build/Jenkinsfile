@@ -1,0 +1,28 @@
+pipeline {
+    agent any
+    stages {
+        stage('Checkout') {
+            agent {label "builder"}
+            steps {
+                echo "\u2600 Getting source"
+                // Get code
+                checkout([$class: 'GitSCM',
+                          branches: [[name: '*/master']],
+                          doGenerateSubmoduleConfigurations: false,
+                          extensions: [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', trackingSubmodules: false]],
+                          submoduleCfg: [],
+                          userRemoteConfigs: [[credentialsId: 'fb82a473-e4f4-4f14-b0d5-0f28af79d0ca', url: 'git@rnd-github-usa-g.huawei.com:SeattleCloudBU/DFV_K2_Platform.git']]
+                        ])
+            }
+        }
+        stage('Build Builder Image') {
+            options { skipDefaultCheckout() }
+            agent {label "builder"}
+            steps {
+                echo "\u2600 Building Docker Builder Image"
+                sh "make -C K2Build builder_img_build"
+                sh "make -C K2Build builder_img_push"
+            }
+        }
+    }
+}
