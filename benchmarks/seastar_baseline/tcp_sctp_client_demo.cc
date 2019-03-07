@@ -25,6 +25,8 @@
 #include <seastar/core/distributed.hh>
 #include <seastar/core/print.hh>
 
+#include "rdtsc.h"
+
 using namespace seastar;
 using namespace net;
 using namespace std::chrono_literals;
@@ -34,6 +36,8 @@ static int tx_msg_total_size = 100 * 1024 * 1024;
 static int tx_msg_size = 4 * 1024;
 static int tx_msg_nr = tx_msg_total_size / tx_msg_size;
 static std::string str_txbuf(tx_msg_size, 'X');
+
+double cyclesPerSec;
 
 class client;
 distributed<client> clients;
@@ -47,8 +51,8 @@ private:
     unsigned _concurrent_connections;
     ipv4_addr _server_addr;
     std::string _test;
-    lowres_clock::time_point _earliest_started;
-    lowres_clock::time_point _latest_finished;
+    uint64_t _earliest_started;
+    uint64_t _latest_finished;
     size_t _processed_bytes;
     unsigned _num_reported;
 public:
@@ -134,37 +138,38 @@ public:
     };
 
     future<> ping_test(connection *conn) {
-        auto started = lowres_clock::now();
+        auto started = myRDTSC();
         return conn->ping(_pings_per_connection).then([started] {
-            auto finished = lowres_clock::now();
+            auto finished = myRDTSC();
             clients.invoke_on(0, &client::ping_report, started, finished);
         });
     }
 
     future<> rxrx_test(connection *conn) {
-        auto started = lowres_clock::now();
+        auto started = myRDTSC();
         return conn->rxrx().then([started] (size_t bytes) {
-            auto finished = lowres_clock::now();
+            auto finished = myRDTSC();
             clients.invoke_on(0, &client::rxtx_report, started, finished, bytes);
         });
     }
 
     future<> txtx_test(connection *conn) {
-        auto started = lowres_clock::now();
+        auto started = myRDTSC();
         return conn->txtx().then([started] (size_t bytes) {
-            auto finished = lowres_clock::now();
+            auto finished = myRDTSC();
             clients.invoke_on(0, &client::rxtx_report, started, finished, bytes);
         });
     }
 
-    void ping_report(lowres_clock::time_point started, lowres_clock::time_point finished) {
-        if (_earliest_started > started)
+    void ping_report(uint64_t started, uint64_t finished) {
+        if (_earliest_started > started || _earliest_started == 0)
             _earliest_started = started;
         if (_latest_finished < finished)
             _latest_finished = finished;
         if (++_num_reported == _concurrent_connections) {
             auto elapsed = _latest_finished - _earliest_started;
-            auto usecs = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+            uint64_t usecs = toMicroseconds(elapsed, cyclesPerSec);
+            fprint(std::cout, "started %lu finished %lu\n", _earliest_started, _latest_finished);
             auto secs = static_cast<double>(usecs) / static_cast<double>(1000 * 1000);
             fprint(std::cout, "========== ping ============\n");
             fprint(std::cout, "Server: %s\n", _server_addr);
@@ -179,15 +184,16 @@ public:
         }
     }
 
-    void rxtx_report(lowres_clock::time_point started, lowres_clock::time_point finished, size_t bytes) {
-        if (_earliest_started > started)
+    void rxtx_report(uint64_t started, uint64_t finished, size_t bytes) {
+        if (_earliest_started > started || _earliest_started == 0)
             _earliest_started = started;
         if (_latest_finished < finished)
             _latest_finished = finished;
         _processed_bytes += bytes;
         if (++_num_reported == _concurrent_connections) {
             auto elapsed = _latest_finished - _earliest_started;
-            auto usecs = std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
+            uint64_t usecs = toMicroseconds(elapsed, cyclesPerSec);
+            fprint(std::cout, "usecs %lu\n", usecs);
             auto secs = static_cast<double>(usecs) / static_cast<double>(1000 * 1000);
             fprint(std::cout, "========== %s ============\n", _test);
             fprint(std::cout, "Server: %s\n", _server_addr);
@@ -241,6 +247,7 @@ int main(int ac, char ** av) {
         ("test", bpo::value<std::string>()->default_value("ping"), "test type(ping | rxrx | txtx)")
         ("conn", bpo::value<unsigned>()->default_value(16), "nr connections per cpu")
         ("proto", bpo::value<std::string>()->default_value("tcp"), "transport protocol tcp|sctp")
+        ("cyclesPerSec", bpo::value<double>()->default_value(3493470000), "Cycles per second, get from dmesg and TSC")
         ;
 
     return app.run_deprecated(ac, av, [&app] {
@@ -249,6 +256,7 @@ int main(int ac, char ** av) {
         auto test = config["test"].as<std::string>();
         auto ncon = config["conn"].as<unsigned>();
         auto proto = config["proto"].as<std::string>();
+        cyclesPerSec = config["cyclesPerSec"].as<double>();
 
         if (proto == "tcp") {
             protocol = transport::TCP;

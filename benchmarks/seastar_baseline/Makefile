@@ -19,10 +19,16 @@ LIBS += -lseastar -lboost_program_options -lboost_system -lboost_thread -lfmt -l
 LIBS += $(shell pkg-config seastar --libs-only-l --static)
 CXXFLAGS += -I/usr/local/include/dpdk/
 
-all: tcp_client
+all: tcp_client tcp_server
 
 tcp_client.o: tcp_sctp_client_demo.cc Makefile
 	$(CXX) $(CXXFLAGS) -o $@ -c tcp_sctp_client_demo.cc
 
+tcp_server.o: tcp_sctp_server_demo.cc Makefile
+	$(CXX) $(CXXFLAGS) -o $@ -c tcp_sctp_server_demo.cc
+
 tcp_client: tcp_client.o
+	$(CXX) -o $@ $^ $(LDFLAGS) $(LIBS)
+
+tcp_server: tcp_server.o
 	$(CXX) -o $@ $^ $(LDFLAGS) $(LIBS)
