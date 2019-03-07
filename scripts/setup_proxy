@@ -1,0 +1,6 @@
+#!/bin/bash
+
+export http_proxy="http://k2-bvu-10001.huawei.com:18080/"
+export https_proxy="http://k2-bvu-10001.huawei.com:18080/"
+export no_proxy=locahost,rnd-github-usa-g.huawei.com
+
