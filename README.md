@@ -12,9 +12,13 @@ Requirements:
  * make
  * gcc
 
-Compile and install:
+### Compile and install:
 
-```make
+```
+mkdir $my_app_dir/build
+cd $my_app_dir/build
+cmake -DCMAKE_PREFIX_PATH="$seastar_dir/build/release;$seastar_dir/build/release/_cooking/installed" -DCMAKE_MODULE_PATH=$seastar_dir/cmake $my_app_dir
+make 
 ```
 
 ## Contact
