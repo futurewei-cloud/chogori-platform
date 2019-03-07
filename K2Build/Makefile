@@ -9,9 +9,12 @@ APP_DIR=${PWD}/../
 BUILD_DIR=build
 build:
 	@echo ">>> Building"
-	@echo ${SEASTAR_DIR}
-	@cd ${PWD}/../${BUILD_DIR}/ && cmake -DCMAKE_PREFIX_PATH="${SEASTAR_DIR}/build/release;${SEASTAR_DIR}/build/release/_cooking/installed" -DCMAKE_MODULE_PATH=${SEASTAR_DIR}/cmake ${APP_DIR}
-	@cd ${PWD}/../${BUILD_DIR}/ && $(MAKE)
+	@cd ../ && mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR} && cmake ..
+	@cd ../${BUILD_DIR}/ && $(MAKE)
+
+clean:
+	@echo ">>> Cleaning"
+	@cd ../ && rm -rf $(BUILD_DIR)
 
 builder_img_build:
 	@$(MAKE) -C Builder
