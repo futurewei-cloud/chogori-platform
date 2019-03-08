@@ -4,8 +4,6 @@ package_version=$(shell git describe --tags `git rev-list --tags --max-count=1`)
 
 all: build
 # replace with module
-SEASTAR_DIR=${PWD}/../../DFV_K2_SeaStar
-APP_DIR=${PWD}/../
 BUILD_DIR=build
 build:
 	@echo ">>> Building"
