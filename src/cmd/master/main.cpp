@@ -8,7 +8,7 @@
 #include "common/scheduler/roundrobin_scheduler.hh"
 
 /**
- * Service entry point. 
+ * Service entry point.
  */
 int main(int argc, char** argv) {
     try {
@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
             // start the event loop
             return seastar::do_with(RoundRobinScheduler(), false, [] (auto& scheduler, bool& stop) {
                 using namespace std::chrono_literals;
-                
+
                 // stop the scheduler after 10s
                 seastar::sleep(std::chrono::seconds(10)).then([&stop] {
                     stop = true;
