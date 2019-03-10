@@ -28,8 +28,16 @@ pipeline {
             options { skipDefaultCheckout() }
             agent {label "builder"}
             steps {
-                echo "\u2600 Building"
+                echo "\u2600 Build"
                 sh "./K2Build/k2build make -C K2Build"
+            }
+        }
+        stage('Install') {
+            options { skipDefaultCheckout() }
+            agent {label "builder"}
+            steps {
+                echo "\u2600 Install"
+                sh "./K2Build/k2build make -C K2Build install"
             }
         }
         stage('Package') {
