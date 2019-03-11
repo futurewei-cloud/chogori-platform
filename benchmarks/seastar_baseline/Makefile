@@ -1,4 +1,10 @@
-CXXFLAGS=-O2 -march=native -std=gnu++17 -Wno-register -Wno-conversion -U_FORTIFY_SOURCE -fconcepts -DSEASTAR_HAVE_GCC6_CONCEPTS -DSEASTAR_HAVE_DPDK -pthread -I/usr/local/include -I/usr/include/p11-kit-1
+# build the image
+include ../../K2Build/DFV_K2_BuildDeps/DockerMake.base
+IMG_NAME=seastar_net_test
+DEP_IMAGES=$(DOCKER_REGISTRY)/k2platform_builder:latest
+
+
+CXXFLAGS=-O2 -mtune=skylake-avx512 -mavx -maes -mbmi -mxsave -mpopcnt -std=gnu++17 -Wno-register -Wno-conversion -U_FORTIFY_SOURCE -fconcepts -DSEASTAR_HAVE_GCC6_CONCEPTS -DSEASTAR_HAVE_DPDK -pthread -I/usr/local/include -I/usr/include/p11-kit-1
 DPDK_LIB_DIR = /usr/local/lib
 # Even though we set rpath, there are recursive lib dependencies which do
 # not use the rpath for some reason, so LD_LIBRARY_PATH will still be
