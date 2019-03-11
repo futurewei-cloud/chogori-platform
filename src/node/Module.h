@@ -28,12 +28,49 @@ struct SharedState
 
 
 //
+//  IOOperation type
+//
+enum class IOOperationType
+{
+    Persist,
+    Message
+};
+
+
+//
+//  Describe request for IO operation
+//
+class IOOperation
+{
+protected:
+    IOOperationType type;
+    String address;
+    Binary payload;
+public:
+    IOOperationType getType()
+    {
+        return type;
+    }
+
+    String getAddress()
+    {
+        return address;
+    }
+
+    const Binary& getPayload()
+    {
+        return payload;
+    }
+};
+
+
+//
 //  Class represent sink for IO operations
 //
 class IOOperations
 {
 public:
-    virtual void registerIO(const char* sinkType, seastar::temporary_buffer<uint8_t> buffer) = 0;
+    virtual void registerIO(IOOperation&& operation) = 0;
 };
 
 
@@ -121,7 +158,7 @@ public:
     //
     //  Called when Module requests some maintainence jobs (e.g. snapshoting).
     //
-    virtual ModuleRespone OnMaintanence(MaintainenceTask& task) { return ModuleRespone::Ok; }
+    virtual ModuleRespone OnMaintainence(MaintainenceTask& task) { return ModuleRespone::Ok; }
 
     //
     //  Destructor. Called when Pool is terminated

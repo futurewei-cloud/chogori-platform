@@ -6,6 +6,7 @@
 #include <seastar/core/sstring.hh>
 
 #include "Constants.h"
+#include "Status.h"
 
 namespace k2
 {
@@ -38,6 +39,27 @@ struct PartitionAssignmentId
     const PartitionVersion version;
 
     PartitionAssignmentId(PartitionId id, PartitionVersion version) : id(id), version(version) { }
+};
+
+//
+//  Binary represents owned (not referenced) binary data
+//
+typedef seastar::temporary_buffer<uint8_t> Binary;
+
+//
+//  Slice represents referenced (not owned) binary data
+//
+typedef seastar::temporary_buffer<uint8_t> Slice;
+
+//
+//  Check whether some time interval is exceeded
+//
+class TimeTracker
+{
+public:    
+    TimeTracker(std::chrono::nanoseconds timeToTrackInNS) {}   //  TODO: implement
+    bool exceeded() { return false; };
+    std::chrono::nanoseconds remaining() { return std::chrono::nanoseconds(0); }
 };
 
 //
