@@ -1,0 +1,9 @@
+#!/bin/bash
+#   Script set K2 proxy
+K2_DEV_PROXY="http://k2-bvu-10001.huawei.com:18080/"
+
+export http_proxy=$K2_DEV_PROXY
+export https_proxy=$K2_DEV_PROXY
+export no_proxy=locahost,rnd-github-usa-g.huawei.com
+
+echo "Proxy set to $K2_DEV_PROXY"

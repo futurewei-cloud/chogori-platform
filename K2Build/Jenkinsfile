@@ -24,5 +24,38 @@ pipeline {
                 sh "make -C K2Build builder_img_push"
             }
         }
+        stage('Build') {
+            options { skipDefaultCheckout() }
+            agent {label "builder"}
+            steps {
+                echo "\u2600 Build"
+                sh "./K2Build/k2build make -C K2Build"
+            }
+        }
+        stage('Install') {
+            options { skipDefaultCheckout() }
+            agent {label "builder"}
+            steps {
+                echo "\u2600 Install"
+                sh "./K2Build/k2build make -C K2Build install"
+            }
+        }
+        stage('Package') {
+            options { skipDefaultCheckout() }
+            agent {label "builder"}
+            steps {
+                echo "\u2600 Package"
+                sh "./K2Build/k2build make -C K2Build package"
+            }
+        }
+        stage('Upload artifacts') {
+            options { skipDefaultCheckout() }
+            agent {label "builder"}
+            steps {
+                echo "\u2600 Uploading artifacts"
+                sh "curl http://k2-bvu-10001.huawei.com:10080/incoming/ --upload-file k2platform_*.deb"
+                sh "curl http://k2-bvu-10001.huawei.com:10080/incoming/ --upload-file k2platform_*.changes"
+            }
+        }
     }
 }
