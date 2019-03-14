@@ -9,7 +9,7 @@ all: build
 build:
 	@echo ">>> Building"
 	@mkdir -p ../$(BUILD_DIR)
-	@cmake -B../$(BUILD_DIR) -H../ -DCMAKE_INSTALL_PREFIX=../$(INSTALL_DIR)/$(INSTALL_PFX)
+	@LDFLAGS="-Wl,--no-as-needed -lrte_ethdev -lrte_net -lrte_mbuf -lrte_mempool -lrte_ring -lrte_mempool_ring -lrte_kvargs -lrte_eal -lrte_pci -lrte_bus_pci -Wl,--as-needed" cmake -B../$(BUILD_DIR) -H../ -DCMAKE_INSTALL_PREFIX=../$(INSTALL_DIR)/$(INSTALL_PFX)
 	@$(MAKE) -C../$(BUILD_DIR)
 
 install: build
@@ -22,7 +22,7 @@ clean:
 
 package: install
 	@echo ">>> Packaging"
-	@cd ../ && fpm --depends libseastar-k2 -s dir -t deb --deb-generate-changes -n k2platform -f -m k2 -a amd64 -v $(package_version) --deb-dist stable --description "K2 Platform Applications http://rnd-github-usa-g.huawei.com/SeattleCloudBU/DFV_K2_Platform/" -C $(INSTALL_DIR)
+	@cd ../ && fpm --depends "libseastar-k2 = 1.0.1" -s dir -t deb --deb-generate-changes -n k2platform -f -m k2 -a amd64 -v $(package_version) --deb-dist stable --description "K2 Platform Applications http://rnd-github-usa-g.huawei.com/SeattleCloudBU/DFV_K2_Platform/" -C $(INSTALL_DIR)
 
 builder_img_build:
 	@$(MAKE) -C Builder
