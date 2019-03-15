@@ -30,13 +30,9 @@
 using namespace seastar;
 using namespace net;
 
-static int rx_msg_size = 4 * 1024;
-static int tx_msg_total_size = 100 * 1024 * 1024;
-static int tx_msg_size = 4 * 1024;
-static int tx_msg_nr = tx_msg_total_size / tx_msg_size;
-static std::string str_txbuf(tx_msg_size, 'X');
-
-double cyclesPerSec;
+static int msg_size;
+static std::string str_txbuf;
+static double cyclesPerSec;
 
 class client;
 distributed<client> clients;
@@ -45,7 +41,8 @@ transport protocol = transport::TCP;
 
 class client {
 private:
-    static constexpr unsigned _pings_per_connection = 10000;
+    static constexpr unsigned _pings_per_connection = 50000;
+    static constexpr unsigned tx_msg_nr = 90000000;
     unsigned _total_pings;
     unsigned _concurrent_connections;
     ipv4_addr _server_addr;
@@ -68,7 +65,7 @@ public:
             , _write_buf(_fd.output()) {}
 
         future<> do_read() {
-            return _read_buf.read_exactly(rx_msg_size).then([this] (temporary_buffer<char> buf) {
+            return _read_buf.read_exactly(msg_size).then([this] (temporary_buffer<char> buf) {
                 _bytes_read += buf.size();
                 if (buf.size() == 0) {
                     return make_ready_future();
@@ -83,7 +80,7 @@ public:
                 return make_ready_future();
             }
             return _write_buf.write(str_txbuf).then([this] {
-                _bytes_write += tx_msg_size;
+                _bytes_write += msg_size;
                 return _write_buf.flush();
             }).then([this, end] {
                 return do_write(end - 1);
@@ -91,16 +88,16 @@ public:
         }
 
         future<> ping(int times) {
-            return _write_buf.write("ping").then([this] {
+            return _write_buf.write(str_txbuf).then([this] {
                 return _write_buf.flush();
             }).then([this, times] {
-                return _read_buf.read_exactly(4).then([this, times] (temporary_buffer<char> buf) {
-                    if (buf.size() != 4) {
+                return _read_buf.read_exactly(msg_size).then([this, times] (temporary_buffer<char> buf) {
+                    if (buf.size() != msg_size) {
                         fprint(std::cerr, "illegal packet received: %d\n", buf.size());
                         return make_ready_future();
                     }
                     auto str = std::string(buf.get(), buf.size());
-                    if (str != "pong") {
+                    if (str != str_txbuf) {
                         fprint(std::cerr, "illegal packet received: %d\n", buf.size());
                         return make_ready_future();
                     }
@@ -114,26 +111,13 @@ public:
         }
 
         future<size_t> rxrx() {
-            return _write_buf.write("rxrx").then([this] {
-                return _write_buf.flush();
-            }).then([this] {
-                return do_write(tx_msg_nr).then([this] {
-                    return _write_buf.close();
-                }).then([this] {
-                    return make_ready_future<size_t>(_bytes_write);
-                });
-            });
+             return do_write(tx_msg_nr).then([this] {
+                 return _write_buf.close();
+             }).then([this] {
+                 return make_ready_future<size_t>(_bytes_write);
+             });
         }
 
-        future<size_t> txtx() {
-            return _write_buf.write("txtx").then([this] {
-                return _write_buf.flush();
-            }).then([this] {
-                return do_read().then([this] {
-                    return make_ready_future<size_t>(_bytes_read);
-                });
-            });
-        }
     };
 
     future<> ping_test(connection *conn) {
@@ -147,14 +131,6 @@ public:
     future<> rxrx_test(connection *conn) {
         auto started = myRDTSC();
         return conn->rxrx().then([started] (size_t bytes) {
-            auto finished = myRDTSC();
-            clients.invoke_on(0, &client::rxtx_report, started, finished, bytes);
-        });
-    }
-
-    future<> txtx_test(connection *conn) {
-        auto started = myRDTSC();
-        return conn->txtx().then([started] (size_t bytes) {
             auto finished = myRDTSC();
             clients.invoke_on(0, &client::rxtx_report, started, finished, bytes);
         });
@@ -243,10 +219,11 @@ int main(int ac, char ** av) {
     app_template app;
     app.add_options()
         ("server", bpo::value<std::string>()->required(), "Server address")
-        ("test", bpo::value<std::string>()->default_value("ping"), "test type(ping | rxrx | txtx)")
+        ("test", bpo::value<std::string>()->default_value("ping"), "test type(ping | rxrx)")
         ("conn", bpo::value<unsigned>()->default_value(16), "nr connections per cpu")
         ("proto", bpo::value<std::string>()->default_value("tcp"), "transport protocol tcp|sctp")
         ("cyclesPerSec", bpo::value<double>()->default_value(3493470000), "Cycles per second, get from dmesg and TSC")
+        ("msg_size", bpo::value<int>()->default_value(64), "Size in bytes of each message")
         ;
 
     return app.run_deprecated(ac, av, [&app] {
@@ -256,6 +233,9 @@ int main(int ac, char ** av) {
         auto ncon = config["conn"].as<unsigned>();
         auto proto = config["proto"].as<std::string>();
         cyclesPerSec = config["cyclesPerSec"].as<double>();
+        msg_size = config["msg_size"].as<int>();
+
+        str_txbuf = std::string(msg_size, 'X');
 
         if (proto == "tcp") {
             protocol = transport::TCP;
@@ -267,7 +247,7 @@ int main(int ac, char ** av) {
         }
 
         if (!client::tests.count(test)) {
-            fprint(std::cerr, "Error: -test=ping | rxrx | txtx\n");
+            fprint(std::cerr, "Error: -test=ping | rxrx\n");
             return engine().exit(1);
         }
 
@@ -280,6 +260,5 @@ int main(int ac, char ** av) {
 const std::map<std::string, client::test_fn> client::tests = {
         {"ping", &client::ping_test},
         {"rxrx", &client::rxrx_test},
-        {"txtx", &client::txtx_test},
 };
 

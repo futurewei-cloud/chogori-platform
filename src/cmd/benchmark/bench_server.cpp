@@ -29,18 +29,12 @@
 
 using namespace seastar;
 
-static std::string str_ping{"ping"};
-static std::string str_txtx{"txtx"};
-static std::string str_rxrx{"rxrx"};
-static std::string str_pong{"pong"};
-static std::string str_unknow{"unknow cmd"};
-static int tx_msg_total_size = 100 * 1024 * 1024;
-static int tx_msg_size = 4 * 1024;
-static int tx_msg_nr = tx_msg_total_size / tx_msg_size;
-static int rx_msg_size = 4 * 1024;
-static std::string str_txbuf(tx_msg_size, 'X');
+static int msg_size;
+static int tx_msg_nr = 90000000;
+static std::string str_txbuf;
 static bool enable_tcp = false;
 static bool enable_sctp = false;
+static std::string test;
 
 class tcp_server {
     std::vector<server_socket> _tcp_listeners;
@@ -107,35 +101,26 @@ public:
             if (_read_buf.eof()) {
                 return make_ready_future();
             }
-            // Expect 4 bytes cmd from client
-            size_t n = 4;
-            return _read_buf.read_exactly(n).then([this] (temporary_buffer<char> buf) {
-                if (buf.size() == 0) {
-                    return make_ready_future();
-                }
-                auto cmd = std::string(buf.get(), buf.size());
-                // pingpong test
-                if (cmd == str_ping) {
-                    return _write_buf.write(str_pong).then([this] {
+
+             // pingpong test
+             if (test == "ping") {
+                 return _read_buf.read_exactly(msg_size).then([this] (temporary_buffer<char> buf) {
+                    auto str_rxbuf = std::string(buf.get(), buf.size());
+                    // Need to trick compiler?
+                    if (str_rxbuf == "EXIT") {
+                        return make_ready_future();
+                    }
+
+                    return _write_buf.write(str_txbuf).then([this] {
                         return _write_buf.flush();
                     }).then([this] {
                         return this->read();
                     });
-                // server tx test
-                } else if (cmd == str_txtx) {
-                    return tx_test();
-                // server tx test
-                } else if (cmd == str_rxrx) {
-                    return rx_test();
-                // unknow test
-                } else {
-                    return _write_buf.write(str_unknow).then([this] {
-                        return _write_buf.flush();
-                    }).then([] {
-                        return make_ready_future();
-                    });
-                }
-            });
+                 });
+             }
+
+             // server tx test
+             return rx_test();
         }
         future<> do_write(int end) {
             if (end == 0) {
@@ -147,15 +132,9 @@ public:
                 return do_write(end - 1);
             });
         }
-        future<> tx_test() {
-            return do_write(tx_msg_nr).then([this] {
-                return _write_buf.close();
-            }).then([] {
-                return make_ready_future<>();
-            });
-        }
+
         future<> do_read() {
-            return _read_buf.read_exactly(rx_msg_size).then([this] (temporary_buffer<char> buf) {
+            return _read_buf.read_exactly(msg_size).then([this] (temporary_buffer<char> buf) {
                 if (buf.size() == 0) {
                     return make_ready_future();
                 } else {
@@ -163,6 +142,7 @@ public:
                 }
             });
         }
+
         future<> rx_test() {
             return do_read().then([] {
                 return make_ready_future<>();
@@ -178,12 +158,20 @@ int main(int ac, char** av) {
     app.add_options()
         ("port", bpo::value<uint16_t>()->default_value(10000), "TCP server port")
         ("tcp", bpo::value<std::string>()->default_value("yes"), "tcp listen")
+        ("test", bpo::value<std::string>()->default_value("ping"), "test type(ping | rxrx)")
+        ("msg_size", bpo::value<int>()->default_value(64), "Size in bytes of each message")
         ("sctp", bpo::value<std::string>()->default_value("no"), "sctp listen") ;
+
     return app.run_deprecated(ac, av, [&] {
         auto&& config = app.configuration();
         uint16_t port = config["port"].as<uint16_t>();
         enable_tcp = config["tcp"].as<std::string>() == "yes";
         enable_sctp = config["sctp"].as<std::string>() == "yes";
+        test = config["test"].as<std::string>();
+        msg_size = config["msg_size"].as<int>();
+        str_txbuf = std::string(msg_size, 'X');
+
+
         if (!enable_tcp && !enable_sctp) {
             fprint(std::cerr, "Error: no protocols enabled. Use \"--tcp yes\" and/or \"--sctp yes\" to enable\n");
             return engine().exit(1);
