@@ -9,7 +9,7 @@ all: build
 build:
 	@echo ">>> Building"
 	@mkdir -p ../$(BUILD_DIR)
-	@LDFLAGS="-Wl,--no-as-needed -lrte_ethdev -lrte_net -lrte_mbuf -lrte_mempool -lrte_ring -lrte_mempool_ring -lrte_kvargs -lrte_eal -lrte_pci -lrte_bus_pci -Wl,--as-needed" cmake -B../$(BUILD_DIR) -H../ -DCMAKE_INSTALL_PREFIX=../$(INSTALL_DIR)/$(INSTALL_PFX)
+	@cmake -B../$(BUILD_DIR) -H../ -DCMAKE_INSTALL_PREFIX=../$(INSTALL_DIR)/$(INSTALL_PFX)
 	@$(MAKE) -C../$(BUILD_DIR)
 
 install: build

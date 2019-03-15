@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../common/Common.h"
+#include "common/Common.h"
 
 namespace k2
 {
@@ -29,7 +29,7 @@ public:
         virtual Record current();
         virtual bool eof();
 
-        virtual ~IIterator() {}    
+        virtual ~IIterator() {}
     };
 
     std::unique_ptr<IIterator> scan();

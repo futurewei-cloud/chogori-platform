@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/Message.h"
+#include "common/Message.h"
 #include "Partition.h"
 #include <boost/intrusive/list.hpp>
 #include "../common/MemoryArena.h"

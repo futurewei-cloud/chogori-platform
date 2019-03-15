@@ -19,10 +19,26 @@ Requirements:
  * make
  * gcc
 
-### Compile and install:
+### Build code
 
 ```
-make 
+./K2Build/k2build make -C K2Build
+```
+### Create a .deb package
+
+```
+./K2Build/k2build make -C K2Build package
+
+```
+### Run a built binary
+
+```
+./K2Build/k2build ./build/benchmark
+```
+### Get a shell in the build environment
+
+```
+./K2Build/k2build
 ```
 
 ## Contact

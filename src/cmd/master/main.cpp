@@ -4,8 +4,8 @@
 #include <seastar/core/app-template.hh>
 #include <seastar/core/reactor.hh>
 // k2
-#include "common/scheduler/seastar_scheduler.hh"
-#include "common/scheduler/roundrobin_scheduler.hh"
+#include "common/scheduler/SeastarScheduler.h"
+#include "common/scheduler/RoundrobinScheduler.h"
 
 /**
  * Service entry point.

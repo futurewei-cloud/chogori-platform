@@ -7,7 +7,7 @@
 #include <seastar/core/reactor.hh>
 #include <seastar/core/sleep.hh>
 // k2
-#include "scheduler.hh"
+#include "Scheduler.h"
 
 /**
  * Seastar wrapper class which invokes a scheduler implementation.

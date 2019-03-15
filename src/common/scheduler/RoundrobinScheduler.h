@@ -1,7 +1,7 @@
 #pragma once
 
 // k2
-#include "scheduler.hh"
+#include "Scheduler.h"
 
 /**
  * Simple round roubin scheduler implemetation.

@@ -2,7 +2,7 @@
 
 #include "TaskRequest.h"
 #include "NodeConfig.h"
-#include "../common/Status.h"
+#include "common/Status.h"
 
 
 namespace k2
@@ -38,7 +38,7 @@ protected:
                 return true;
         }
 
-        return false;        
+        return false;
     }
 
     Status processPartitionAssignmentMessage(std::unique_ptr<ReceivedMessage> message)
@@ -51,7 +51,7 @@ protected:
 
         AssignMessage assignMessage;
         if(!assignMessage.parse(message->getPayload()))  //  TODO: allocate under partition memory arena
-            return errorResponse(message, Status::MessageParsingError);           
+            return errorResponse(message, Status::MessageParsingError);
 
         return Status::Ok;
     }
@@ -82,7 +82,7 @@ public:
                 processPartitionOffloadMessage(std::move(message));
                 break;
             }
-            
+
             case MessageType::ClientRequest:
             {
                 processClientRequestMessage(std::move(message));
@@ -96,7 +96,7 @@ public:
         if(partitionCount == 0)
             return;
 
-        std::chrono::nanoseconds maxIterationTime = NodeConfig::getTaskProcessingIterationMaxExecutionTime();                
+        std::chrono::nanoseconds maxIterationTime = NodeConfig::getTaskProcessingIterationMaxExecutionTime();
         TimeTracker iterationTracker(maxIterationTime);
 
         std::chrono::nanoseconds remainingTime;
@@ -104,7 +104,7 @@ public:
         {
             std::chrono::nanoseconds maxPartitionTime = remainingTime/partitionCount;
             for(int i = 0; i < partitionCount; i++)
-            {                
+            {
                 TimeTracker partitionTracker(maxPartitionTime);
 
                 for(TaskRequest& task : partitionTasks[i])
@@ -126,7 +126,7 @@ public:
                         //
                         default:
                             TERMINATE("Unexpected task type");
-                            break;                        
+                            break;
                     }
                 }
             }

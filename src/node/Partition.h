@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../common/PartitionMetadata.h"
+#include "common/PartitionMetadata.h"
 #include "Collection.h"
 #include "persistence/IPersistentLog.h"
 
