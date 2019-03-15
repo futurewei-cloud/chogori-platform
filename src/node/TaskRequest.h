@@ -3,11 +3,10 @@
 #include "../common/Message.h"
 #include "Partition.h"
 #include <boost/intrusive/list.hpp>
+#include "../common/MemoryArena.h"
 
 namespace k2
 {
-
-class MemoryArena {};    // TODO: integrate Facebook Folly memory arena
 
 class AssignmentManager;
 
@@ -48,11 +47,16 @@ protected:
     Partition& partition;
     MemoryArena arena;  //  Task local memory
 
+    TimeTracker timeTracker;
+
     boost::intrusive::list_member_hook<> linkedListHook;
 
     TaskRequest(Partition& partition) : partition(partition) {}
 
-    void setAllowedExecutionTime(std::chrono::nanoseconds maxExecutionTime) {}  //  TODO
+    void setAllowedExecutionTime(std::chrono::nanoseconds maxExecutionTime)
+    {
+        timeTracker = TimeTracker(maxExecutionTime);
+    }  //  TODO
 
 public:
     //
@@ -69,12 +73,12 @@ public:
     //  Check whether module is allowed to proceed with job execution or need to postpone the task
     //  because it's time quota is expired
     //
-    bool canContinue() { return true; } //  TODO: use start time and quota to calculate    
+    bool canContinue() { return !timeTracker.exceeded(); }
 
     //
     //  Task has it's own associated memory arena. TODO: use Folly Memory Arena
     //
-    void* taskScopeMalloc(size_t size) { return std::malloc(size); } //  TODO: use arena to prevent memory leak
+    void* taskScopeMalloc(size_t size) { return arena.alloc(size); }
 
     //
     //  Allocate new object in a task scope (memory will be released when task finishes)
@@ -82,7 +86,7 @@ public:
     template<typename T, typename... ArgT>
     TaskScopeArenaUniquePtr<T> taskScopeNew(ArgT&&... arg)
     {
-        return TaskScopeArenaUniquePtr<T>(new(taskScopeMalloc(sizeof(T))) T(std::forward<ArgT>(arg)...));
+        return TaskScopeArenaUniquePtr<T>(arena.newObject(std::forward<ArgT>(arg)...));
     }
 
     //
@@ -90,6 +94,10 @@ public:
     //
     virtual ~TaskRequest() {}
 
+    //
+    //  Module specific data
+    //
+    void* moduleData;
 };  //  class WorkRequest
 
 

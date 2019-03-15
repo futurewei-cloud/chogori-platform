@@ -14,6 +14,8 @@ namespace k2
     STATUS(MessageParsingError, "Failed to parse a message")                                                            \
     STATUS(PartitionAlreadyAssigned, "Attempt to assign partition which is already assigned")                           \
     STATUS(TooManyPartitionsAlready, "Partition cannot be assigned to the shard due exceeding the limit of partitions") \
+    STATUS(IOOperationCanceled, "IO operation was canceled")                                                            \
+    STATUS(IOOperationHasNotBeenFinished, "IO result is not available since it's still running")                        \
 
 #define K2_STATUS_ENUM_APPLY(StatusName, StatusString)  StatusName,
 

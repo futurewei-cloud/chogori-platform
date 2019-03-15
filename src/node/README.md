@@ -6,8 +6,8 @@ K2 Application Service is responsible for execution of application specific logi
 Application Service logic is executed in a Linux processes called Node Pools. Each Node Pool hosts several processing shards called Nodes.
 
 # Structure
-*indexer: code related to in-memory indexing data structures, like HOT and ART.
-*persistence:  transaction log streams
+* indexer: code related to in-memory indexing data structures, like HOT and ART.
+* persistence:  transaction log streams
 
 ## Contact
 

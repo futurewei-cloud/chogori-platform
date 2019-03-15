@@ -98,27 +98,26 @@ public:
 
         std::chrono::nanoseconds maxIterationTime = NodeConfig::getTaskProcessingIterationMaxExecutionTime();                
         TimeTracker iterationTracker(maxIterationTime);
-/*
+
         std::chrono::nanoseconds remainingTime;
-        while((remainingTime = iterationTracker.remaining()) > 0)
+        while((remainingTime = iterationTracker.remaining()) > std::chrono::nanoseconds::zero())
         {
             std::chrono::nanoseconds maxPartitionTime = remainingTime/partitionCount;
             for(int i = 0; i < partitionCount; i++)
             {                
                 TimeTracker partitionTracker(maxPartitionTime);
 
-                for(auto it : partitionTasks)
+                for(TaskRequest& task : partitionTasks[i])
                 {
-                    TaskRequest* task = &*it;
-                    if((remainingTime = partitionTracker.remaining()) > 0)
+                    if((remainingTime = partitionTracker.remaining()) > std::chrono::nanoseconds::zero())
                         break;
 
-                    task->setAllowedExecutionTime(remainingTime);
-                    switch(task->getType())
+                    task.setAllowedExecutionTime(remainingTime);
+                    switch(task.getType())
                     {
                         case TaskType::Maintainence:
                         {
-                            NodeConfig::getModule()->OnMaintainence(*(MaintainenceTask*)task);
+                            NodeConfig::getModule()->OnMaintainence(*(MaintainenceTask*)&task);
                             break;
                         }
 
@@ -131,7 +130,7 @@ public:
                     }
                 }
             }
-        }*/
+        }
     }
 };
 

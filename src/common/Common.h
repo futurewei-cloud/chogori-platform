@@ -56,10 +56,35 @@ typedef seastar::temporary_buffer<uint8_t> Slice;
 //
 class TimeTracker
 {
-public:    
-    TimeTracker(std::chrono::nanoseconds timeToTrackInNS) {}   //  TODO: implement
-    bool exceeded() { return false; };
-    std::chrono::nanoseconds remaining() { return std::chrono::nanoseconds(0); }
+    typedef std::chrono::steady_clock ClockT;
+    typedef std::chrono::time_point<ClockT> TimePointT;
+
+    TimePointT startTime;
+    std::chrono::nanoseconds timeToTrack;
+
+    static TimePointT now() { return ClockT::now(); }    
+public:
+    TimeTracker() : startTime(std::chrono::nanoseconds::zero()), timeToTrack(std::chrono::nanoseconds::zero())  {}
+    TimeTracker(std::chrono::nanoseconds timeToTrackNS) : startTime(now()), timeToTrack(timeToTrackNS)  {}
+    TimeTracker(const TimeTracker& other) = default;
+
+    bool exceeded() { return elapsed() > timeToTrack; };
+
+    std::chrono::nanoseconds remaining()
+    {
+        TimePointT currentTime = now();
+        auto elapsedTime = currentTime - startTime;
+
+        if(elapsedTime > timeToTrack)
+            return std::chrono::nanoseconds::zero();
+
+        return timeToTrack - elapsedTime;
+    }
+
+    std::chrono::nanoseconds elapsed()
+    {
+        return now() - startTime;
+    }
 };
 
 //
