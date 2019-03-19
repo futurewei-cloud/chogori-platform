@@ -81,7 +81,8 @@ struct ModuleRespone
 {
     enum ResponseType : uint8_t
     {
-        Ok = 0,   //  Can move to next state
+        Ok = 0,     //  Can move to next state
+        ReturnToClient, //  Return status to client immediately
         Error,      //  Some error occurred 
         Postpone,   //  Task need to continue later
         RescheduleAfterIOCompletion,     //  Continue when all IO operations are finished
