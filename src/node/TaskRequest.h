@@ -125,14 +125,24 @@ public:
 class ClientTask : public MessageInitiatedTaskRequest
 {
 protected:
-    Binary payload;
+    Payload requestPayload;
+    Payload responsePayload;
+    PayloadWriter responseWriter;
 public:
-    ClientTask(Partition& partition, std::unique_ptr<ClientConnection> client, Binary payload) :
-        MessageInitiatedTaskRequest(partition, std::move(client)), payload(std::move(payload)) {}
+    ClientTask(Partition& partition, std::unique_ptr<ClientConnection> client, Payload&& requestPayload) :
+        MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)),
+        responseWriter(responsePayload, 0) {}
 
     TaskType getType() const override { return TaskType::ClientRequest; }
 
-    const Binary& getPayload() const { return payload; }
+    const Payload& getRequestPayload() const { return requestPayload; }
+
+    PayloadWriter& getResponseWriter() { return responseWriter; }
+
+    void releaseRequestPayload()
+    {
+        requestPayload.clear();
+    }
 };  //  class ClientTask
 
 
