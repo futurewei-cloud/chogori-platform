@@ -10,13 +10,4 @@ include_directories(src)
 
 find_package (Seastar REQUIRED)
 
-
-add_executable (master src/cmd/master/main.cpp src/common/scheduler/RoundrobinScheduler.cpp src/common/scheduler/SeastarScheduler.cpp)
-add_executable (bench_client src/cmd/benchmark/bench_client.cpp)
-add_executable (bench_server src/cmd/benchmark/bench_server.cpp)
-
-target_link_libraries (master PRIVATE Seastar::seastar)
-target_link_libraries (bench_client PRIVATE Seastar::seastar)
-target_link_libraries (bench_server PRIVATE Seastar::seastar)
-
-install (TARGETS master bench_client bench_server DESTINATION bin)
+add_subdirectory (src)
