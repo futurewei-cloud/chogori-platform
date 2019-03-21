@@ -1,5 +1,5 @@
-#TODO: make common/scheduler a library
+link_directories (${CMAKE_BINARY_DIR}/src/common/scheduler/)
 
-add_executable (master main.cpp ../../common/scheduler/RoundrobinScheduler.cpp ../../common/scheduler/SeastarScheduler.cpp)
+add_executable (master main.cpp)
 
-target_link_libraries (master PRIVATE Seastar::seastar)
+target_link_libraries (master PRIVATE scheduler Seastar::seastar)
