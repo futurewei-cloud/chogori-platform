@@ -6,18 +6,12 @@ K2 Project is a platform for building low-latency (μs) in-memory distributed pe
 
 This repository contains implementations for K2 core services (Application Server, Partition Server, Monitor, Client) and subsystems (transport, persistence, etc.).
 
-# Structure
-* src/common: Shared functionality
-* src/node: Application service related code: Node Pool, Node, etc.
-* src/manager: Partition manager
-* src/client: K2 client
-
 ## Build
 
 Requirements:
  * docker
- * make
- * gcc
+ * git
+ * shell
 
 ### Build code
 
