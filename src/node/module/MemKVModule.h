@@ -6,6 +6,7 @@ namespace k2
 {
 
 //  Simple in-memory KV-store module
+template <typename MemTableType>
 class MemKVModule : public IModule
 {
     struct Node
@@ -17,12 +18,10 @@ class MemKVModule : public IModule
 
     static const uint32_t defaultKeepVersionCount = 0;
 
-    typedef std::map<String, std::unique_ptr<Node>> MemTable;
-
     class PartitionContext
     {
     public:
-        MemTable memTable;
+        MemTableType memTable;
         uint64_t currentVersion = 0;
         uint64_t keepVersionCount = 1;
 
@@ -37,7 +36,7 @@ class MemKVModule : public IModule
         return (PartitionContext*)task.getPartition().moduleData;
     };
 
-    MemTable& getMemtable(TaskRequest& task)
+    MemTableType& getMemtable(TaskRequest& task)
     {
         return getPartitionContext(task)->memTable;
     }
@@ -97,7 +96,7 @@ public:
         uint8_t requestType;
         MemKVModule_PARSE_RIF(reader.read(requestType));
 
-        MemTable& memTable = context->memTable;
+        MemTableType& memTable = context->memTable;
 
         switch(requestType)
         {
