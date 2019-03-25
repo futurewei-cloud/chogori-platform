@@ -1,6 +1,8 @@
 #pragma once
 
 #include <map>
+#include "ModuleId.h"
+#include "Serialization.h"
 
 namespace k2
 {
@@ -20,12 +22,22 @@ public:
     typedef std::map<String, String> Properties;
 protected:
     CollectionId collectionId;
-    Properties properties;    //  Application defined properties
+    ModuleId moduleId;
+    Properties properties;    //  Application defined properties    
 public:
-    CollectionMetadata(CollectionId collectionId, Properties properties) : collectionId(collectionId), properties(std::move(properties)) { }
+    CollectionMetadata() : collectionId(0), moduleId(ModuleId::None) { }
+    CollectionMetadata(CollectionId collectionId, ModuleId moduleId, Properties properties) :
+        collectionId(collectionId), properties(std::move(properties)), moduleId(moduleId) { }
+    CollectionMetadata(CollectionMetadata&& metadata) = default;
+    CollectionMetadata& operator=(CollectionMetadata&& other) = default;
 
-    const CollectionId& getId() { return collectionId; }
-    const Properties& getProperties();    
+
+    CollectionId getId() const { return collectionId; }
+    const Properties& getProperties() const { return properties; }
+
+    ModuleId getModuleId() const { return moduleId; }
+
+    K2_PAYLOAD_FIELDS(collectionId, moduleId, properties);
 };
 
 

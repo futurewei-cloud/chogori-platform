@@ -6,6 +6,15 @@
 namespace k2
 {
 
+class Collection;
+class AssignmentTask;
+class OffloadTask;
+class ClientTask;
+class MaintainenceTask;
+
+//
+//  Value of the shared state of distributed transaction
+//
 typedef seastar::temporary_buffer<uint8_t> ShareStateValue;
 
 //
@@ -70,14 +79,14 @@ public:
 class IOOperations
 {
 public:
-    virtual void registerIO(IOOperation&& operation) = 0;
+    virtual void registerIO(IOOperation&& operation) { }
 };
 
 
 //
 //  Value returned from IModule API
 //
-struct ModuleRespone
+struct ModuleResponse
 {
     enum ResponseType : uint8_t
     {
@@ -95,8 +104,8 @@ struct ModuleRespone
         uint32_t potponeDelayUs;        //  If type == Postpone: contains time in microseconds for which task needs to be delayed
     };
     
-    ModuleRespone(ResponseType type, uint32_t value) : type(type), resultCode(value) { }
-    ModuleRespone(ResponseType type) : type(type), resultCode(0) { }
+    ModuleResponse(ResponseType type, uint32_t value) : type(type), resultCode(value) { }
+    ModuleResponse(ResponseType type) : type(type), resultCode(0) { }
     constexpr bool isOk() { return type != Error; }
 };
 
@@ -110,28 +119,28 @@ public:
     //
     //  Called when Node pool is loaded
     //
-    virtual ModuleRespone OnInit() { return ModuleRespone::Ok; }
+    virtual ModuleResponse onInit() { return ModuleResponse::Ok; }
 
     //
     //  Called before Node pool get destroyed.
     //
-    virtual ModuleRespone OnRelease() { return ModuleRespone::Ok; }
+    virtual ModuleResponse onRelease() { return ModuleResponse::Ok; }
 
     //
     //  Called when Pool observe partition for collection it didn't see before.
     //  Can be called from any Node.
     //
-    virtual ModuleRespone OnNewCollection(CollectionMetadata& collectionMetadata) { return ModuleRespone::Ok; }
+    virtual ModuleResponse onNewCollection(Collection& collection) { return ModuleResponse::Ok; }
 
     //
     //  Called when partition get assigned
     //
-    virtual ModuleRespone OnAssign(AssignmentTask& assignment) { return ModuleRespone::Ok; }
+    virtual ModuleResponse onAssign(AssignmentTask& assignment) { return ModuleResponse::Ok; }
 
     //
     //  Called when partition get offloaded
     //
-    virtual ModuleRespone OnOffload(OffloadTask& offload) { return ModuleRespone::Ok; }
+    virtual ModuleResponse onOffload(OffloadTask& offload) { return ModuleResponse::Ok; }
 
     //
     //  Called when client request is received. In this function Module can check whether operation can be completed,
@@ -142,24 +151,24 @@ public:
     //      Postpone: To reschedule the task for some later time
     //      RescheduleAfterIOCompletion: To wait while all IOs are done and schedule task again
     //
-    virtual ModuleRespone OnPrepare(ClientTask& task, IOOperations& ioOperations) = 0;
+    virtual ModuleResponse onPrepare(ClientTask& task, IOOperations& ioOperations) = 0;
 
     //
     //  Called either for for distributed transactions after responses from all participants have been received. Module
     //  can aggregate shared state and make a decision on whether to proceed with transaction.
     //
-    virtual ModuleRespone OnCoordinate(ClientTask& task, SharedState& remoteSharedState, IOOperations& ioOperations) = 0;
+    virtual ModuleResponse onCoordinate(ClientTask& task, SharedState& remoteSharedState, IOOperations& ioOperations) = 0;
 
     //
     //  Called after OnPrepare stage is done (Module returned Ok and all IOs are finished). On this stage Module can
     //  apply it's transaction to update in memory representation or release locks.
     //
-    virtual ModuleRespone OnApply(ClientTask& task) = 0;
+    virtual ModuleResponse onApply(ClientTask& task) = 0;
 
     //
     //  Called when Module requests some maintainence jobs (e.g. snapshoting).
     //
-    virtual ModuleRespone OnMaintainence(MaintainenceTask& task) { return ModuleRespone::Ok; }
+    virtual ModuleResponse onMaintainence(MaintainenceTask& task) { return ModuleResponse::Ok; }
 
     //
     //  Destructor. Called when Pool is terminated

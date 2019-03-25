@@ -8,6 +8,7 @@ namespace k2
 //  Simple in-memory KV-store module
 class MemKVModule : public IModule
 {
+protected:
     struct Node
     {                
         uint64_t version;
@@ -50,34 +51,88 @@ class MemKVModule : public IModule
         NoSuchKey
     };
 
+public:
+
     enum RequestType : uint8_t
     {
         Get = 0,
         Set
     };
 
-public:
+    class GetRequest
+    {
+    public:
+        static constexpr RequestType getType() { return RequestType::Get; }
+
+        String key;
+        uint64_t snapshotId;
+
+        K2_PAYLOAD_FIELDS(key, snapshotId);
+    };
+
+    class GetResponse
+    {
+    public:
+        String value;
+        uint64_t version;
+
+        K2_PAYLOAD_FIELDS(value, version);
+    };
+
+    class SetRequest
+    {
+    public:
+        static constexpr RequestType getType() { return RequestType::Set; }
+
+        String key;
+        String value;
+
+        K2_PAYLOAD_FIELDS(key, value);
+    };
+
+    class SetResponse
+    {
+    public:
+        uint64_t version;
+
+        K2_PAYLOAD_FIELDS(version);
+    };
+
+    template<typename T>
+    static bool writeRequest(PayloadWriter& writer, const T& request) { return writer.write(T::getType()) && writer.write(request); }
+
+    template<typename T>
+    static std::unique_ptr<PartitionMessage> createMessage(const T& request, PartitionAssignmentId partitionId)
+    {
+        Payload payload;
+        PayloadWriter writer = payload.getWriter();
+        if(!writeRequest(writer, request))
+            return nullptr;
+
+        return std::make_unique<PartitionMessage>(MessageType::ClientRequest, partitionId, Endpoint(""), std::move(payload));
+    }
+
     //
     //  Called when partition get assigned
     //
-    ModuleRespone OnAssign(AssignmentTask& task) override
+    ModuleResponse onAssign(AssignmentTask& task) override
     {
         assert(task.getPartition().moduleData == nullptr);
         task.getPartition().moduleData = new PartitionContext();
-        return ModuleRespone::Ok;
+        return ModuleResponse::Ok;
     }
 
     //
     //  Called when partition get offloaded
     //
-    ModuleRespone OnOffload(OffloadTask& task) override
+    ModuleResponse onOffload(OffloadTask& task) override
     {
         delete getPartitionContext(task);
         task.getPartition().moduleData = nullptr;
-        return ModuleRespone::Ok;
+        return ModuleResponse::Ok;
     }
 
-#define MemKVModule_PARSE_RIF(res) { if(!res) return ModuleRespone(ModuleRespone::Error, ErrorCode::ParingError); }
+#define MemKVModule_PARSE_RIF(res) { if(!res) return ModuleResponse(ModuleResponse::Error, ErrorCode::ParingError); }
 
     //
     //  Called when client request is received. In this function Module can check whether operation can be completed,
@@ -88,13 +143,13 @@ public:
     //      Postpone: To reschedule the task for some later time
     //      RescheduleAfterIOCompletion: To wait while all IOs are done and schedule task again
     //
-    ModuleRespone OnPrepare(ClientTask& task, IOOperations& ioOperations) override
+    ModuleResponse onPrepare(ClientTask& task, IOOperations& ioOperations) override
     {
         const Payload& payload = task.getRequestPayload();
         PayloadReader reader = payload.getReader();
         PartitionContext* context = getPartitionContext(task);
 
-        uint8_t requestType;
+        RequestType requestType;
         MemKVModule_PARSE_RIF(reader.read(requestType));
 
         MemTable& memTable = context->memTable;
@@ -103,59 +158,52 @@ public:
         {
             case RequestType::Get:
             {
-                String key;
-                MemKVModule_PARSE_RIF(reader.read(key));
+                GetRequest request;
+                MemKVModule_PARSE_RIF(reader.read(request));
+                task.releaseRequestPayload();                
 
-                auto it = memTable.find(key);
+                auto it = memTable.find(request.key);
                 if(it == memTable.end())
-                    return ModuleRespone(ModuleRespone::ReturnToClient, ErrorCode::NoSuchKey);
-
-                uint64_t snapshotId;
-                MemKVModule_PARSE_RIF(reader.read(snapshotId));
-
-                task.releaseRequestPayload();
+                    return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::NoSuchKey);
 
                 Node* node = it->second.get();
-                while(node && node->version < snapshotId)
+                while(node && node->version > request.snapshotId)
                     node = node->next.get();
 
                 if(node == nullptr)
-                    return ModuleRespone(ModuleRespone::ReturnToClient, ErrorCode::NoSuchKey);
+                    return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::NoSuchKey);
 
-                task.getResponseWriter().write(node->version);
-                task.getResponseWriter().write(node->value);
+                GetResponse response { node->value, node->version };
+                task.getResponseWriter().write(response);
 
-                return ModuleRespone(ModuleRespone::ReturnToClient, ErrorCode::None);
+                return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
             }
 
             case RequestType::Set:
             {
-                String key;
-                MemKVModule_PARSE_RIF(reader.read(key));
-
-                String value;
-                MemKVModule_PARSE_RIF(reader.read(value));
-
-                task.releaseRequestPayload();
+                SetRequest request;
+                MemKVModule_PARSE_RIF(reader.read(request));
+                task.releaseRequestPayload();                
 
                 std::unique_ptr<Node> newNode(new Node);
-                newNode->value = std::move(value);
-                newNode->version = getPartitionContext(task)->getNewVersion();
+                newNode->value = std::move(request.value);
+                uint64_t version = getPartitionContext(task)->getNewVersion();
+                newNode->version = version;
 
-                auto emplaceResult = memTable.try_emplace(std::move(key), std::move(newNode));
+                auto emplaceResult = memTable.try_emplace(std::move(request.key), std::move(newNode));
                 if(!emplaceResult.second)    //  Value already exists
                 {
                     newNode->next = std::move(emplaceResult.first->second);
                     emplaceResult.first->second = std::move(newNode);
                 }
 
-                task.getResponseWriter().write(newNode->version);
+                task.getResponseWriter().write(version);
 
-                return ModuleRespone(ModuleRespone::ReturnToClient, ErrorCode::None);
+                return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
             }
 
             default:
-                return ModuleRespone(ModuleRespone::ReturnToClient, ErrorCode::RequestUnknown);
+                return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::RequestUnknown);
         }
     }
 
@@ -163,26 +211,26 @@ public:
     //  Called either for for distributed transactions after responses from all participants have been received. Module
     //  can aggregate shared state and make a decision on whether to proceed with transaction.
     //
-    ModuleRespone OnCoordinate(ClientTask& task, SharedState& remoteSharedState, IOOperations& ioOperations) override
+    ModuleResponse onCoordinate(ClientTask& task, SharedState& remoteSharedState, IOOperations& ioOperations) override
     {
-        return ModuleRespone(ModuleRespone::Ok);
+        return ModuleResponse(ModuleResponse::Ok);
     }
 
     //
     //  Called after OnPrepare stage is done (Module returned Ok and all IOs are finished). On this stage Module can
     //  apply it's transaction to update in memory representation or release locks.
     //
-    ModuleRespone OnApply(ClientTask& task) override
+    ModuleResponse onApply(ClientTask& task) override
     {
-        return ModuleRespone(ModuleRespone::Ok);
+        return ModuleResponse(ModuleResponse::Ok);
     }
 
     //
     //  Called when Module requests some maintainence jobs (e.g. snapshoting).
     //
-    ModuleRespone OnMaintainence(MaintainenceTask& task) override
+    ModuleResponse onMaintainence(MaintainenceTask& task) override
     {
-        return ModuleRespone::Ok;
+        return ModuleResponse::Ok;
     }
 };
 

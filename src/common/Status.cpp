@@ -1,5 +1,3 @@
-#pragma once
-
 #include "Status.h"
 
 namespace k2
@@ -7,7 +5,7 @@ namespace k2
 
 #define K2_STATUS_TEXT_APPLY(StatusName, StatusString)  #StatusString,
 
-const char* const statusText[Status::StatusCount]
+const char* const statusText[(int)Status::StatusCount]
 {
     K2_STATUS_DEFINITION(K2_STATUS_TEXT_APPLY)
 };

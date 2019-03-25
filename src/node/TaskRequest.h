@@ -1,14 +1,27 @@
 #pragma once
 
 #include "common/Message.h"
-#include "Partition.h"
-#include <boost/intrusive/list.hpp>
+#include "../common/IntrusiveLinkedList.h"
 #include "../common/MemoryArena.h"
 
 namespace k2
 {
 
 class AssignmentManager;
+class Partition;
+
+//
+//  
+//
+enum class TaskListType
+{
+    None = 0,
+    Active,
+    Sleeping,
+
+    NonExistingTaskList,
+    TaskListCount = NonExistingTaskList-1
+};
 
 //
 //  List of know task types
@@ -43,20 +56,37 @@ using TaskScopeArenaUniquePtr = std::unique_ptr<T, TaskScopeArenaDeleter<T>>;
 class TaskRequest
 {
     friend class AssignmentManager;
+    friend class Partition;
 protected:
     Partition& partition;
     MemoryArena arena;  //  Task local memory
 
     TimeTracker timeTracker;
 
-    boost::intrusive::list_member_hook<> linkedListHook;
+    K2_LINKED_LIST_NODE;
+
+    TaskListType ownerTaskList; //  Task list in which this task resides  
 
     TaskRequest(Partition& partition) : partition(partition) {}
 
-    void setAllowedExecutionTime(std::chrono::nanoseconds maxExecutionTime)
+    enum class ProcessResult
+    {
+        Done = 0,
+        Sleep,
+        Delay,
+        DropPartition
+    };
+
+    ProcessResult process(std::chrono::nanoseconds maxExecutionTime)
     {
         timeTracker = TimeTracker(maxExecutionTime);
-    }  //  TODO
+        return process();
+    }
+
+    virtual ProcessResult process() = 0;
+    virtual void cancel() {}
+
+    std::ostream& logger() { return std::cerr; }  //  Change to something more appropriate    
 
 public:
     //
@@ -99,92 +129,5 @@ public:
     //
     void* moduleData;
 };  //  class WorkRequest
-
-
-//
-//  Task request caused by some message obtained from Transport
-//
-class MessageInitiatedTaskRequest : public TaskRequest
-{
-protected:
-    std::unique_ptr<ClientConnection> client;
-public:
-    MessageInitiatedTaskRequest(Partition& partition, std::unique_ptr<ClientConnection> client) :
-        TaskRequest(partition),  client(std::move(client))
-    {
-        assert(client);
-    }
-
-    ClientConnection& getClient() { return *client.get(); }
-};
-
-
-//
-//  Task created as a response to request from client
-//
-class ClientTask : public MessageInitiatedTaskRequest
-{
-protected:
-    Payload requestPayload;
-    Payload responsePayload;
-    PayloadWriter responseWriter;
-public:
-    ClientTask(Partition& partition, std::unique_ptr<ClientConnection> client, Payload&& requestPayload) :
-        MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)),
-        responseWriter(responsePayload, 0) {}
-
-    TaskType getType() const override { return TaskType::ClientRequest; }
-
-    const Payload& getRequestPayload() const { return requestPayload; }
-
-    PayloadWriter& getResponseWriter() { return responseWriter; }
-
-    void releaseRequestPayload()
-    {
-        requestPayload.clear();
-    }
-};  //  class ClientTask
-
-
-//
-//  Task created as a response to Partition Manager Partition Assign command
-//
-class AssignmentTask : public MessageInitiatedTaskRequest
-{
-protected:
-    std::unique_ptr<PartitionMetadata> partitionMetadata;
-public:
-    AssignmentTask(Partition& partition, std::unique_ptr<ClientConnection> client, std::unique_ptr<PartitionMetadata> partitionMetadata) :
-        MessageInitiatedTaskRequest(partition, std::move(client)), partitionMetadata(std::move(partitionMetadata)) {}
-
-    PartitionMetadata& getPartitionMetadata() { return *partitionMetadata; }
-    static std::unique_ptr<AssignmentTask> parse(Partition& partition, const Binary payload) { return nullptr; }    //  TODO: return status, implement parsing
-
-    TaskType getType() const override { return TaskType::PartitionAssign; }
-};
-
-
-//
-//  Task created as a response to Partition Manager Partition Offload command
-//
-class OffloadTask : public MessageInitiatedTaskRequest
-{
-    OffloadTask(Partition& partition, std::unique_ptr<ClientConnection> client) :
-        MessageInitiatedTaskRequest(partition, std::move(client)) {}
-public:
-    TaskType getType() const override { return TaskType::PartitionOffload; }
-};
-
-
-//
-//  Task created as a response to request from client
-//
-class MaintainenceTask : public TaskRequest
-{
-public:
-    MaintainenceTask(Partition& partition) : TaskRequest(partition) {}
-
-    TaskType getType() const override { return TaskType::Maintainence; }
-};  //  class ClientTask
 
 }   //  namespace k2

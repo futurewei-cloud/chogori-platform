@@ -22,26 +22,6 @@ typedef seastar::sstring String;
 typedef uint64_t PartitionId;
 
 //
-//  Version of partition assignment
-//
-struct PartitionVersion
-{
-    uint16_t range;     //  Change with the change of partition range
-    uint16_t assign;    //  Change with new partition assignment
-};
-
-//
-//  Value of this type uniquely identifies K2 assignment of a partition
-//
-struct PartitionAssignmentId
-{
-    const PartitionId id;
-    const PartitionVersion version;
-
-    PartitionAssignmentId(PartitionId id, PartitionVersion version) : id(id), version(version) { }
-};
-
-//
 //  Binary represents owned (not referenced) binary data
 //
 typedef seastar::temporary_buffer<uint8_t> Binary;
@@ -50,6 +30,33 @@ typedef seastar::temporary_buffer<uint8_t> Binary;
 //  Slice represents referenced (not owned) binary data
 //
 typedef seastar::temporary_buffer<uint8_t> Slice;
+
+//
+//  Endpoint identifies address of the Node or client. TODO: change to something more appropriate than 'String'.
+//
+typedef String Endpoint;
+
+//
+//  Hold the reference to buffer containing class
+//
+template<typename T>
+class Holder
+{
+protected:
+    Binary data;
+public:
+    Holder(Binary&& binary)
+    {
+        assert(data.size() >= sizeof(T));
+        data = std::move(binary);
+    }
+
+    Holder(Holder&& binary) = default;
+    Holder& operator=(Holder&& other) = default;
+
+    T& operator*() { return *(T*)data.get_write(); }
+    T* operator->() { return (T*)data.get_write(); }
+};
 
 //
 //  Check whether some time interval is exceeded
@@ -85,25 +92,6 @@ public:
     {
         return now() - startTime;
     }
-};
-
-//
-//  Key space range which defines partition
-//
-class PartitionRange
-{
-protected:
-    String lowKey;
-    String highKey;
-
-public:
-    PartitionRange() {}
-    PartitionRange(String lowKey, String highKey) : lowKey(std::move(lowKey)), highKey(std::move(highKey)) { }
-    PartitionRange(const PartitionRange& range) = default;
-    PartitionRange(PartitionRange&& range) : lowKey(std::move(range.lowKey)), highKey(std::move(range.highKey)) { }
-
-    const String& getLowKey() { return lowKey; }
-    const String& getHighKey() { return highKey; }
 };
 
 }   //  namespace k2
