@@ -1,27 +1,20 @@
 #pragma once
 
 #include "../Module.h"
+#include "../MemtableInterface.h"
 
 namespace k2
 {
-
 //  Simple in-memory KV-store module
-template <typename MemTableType>
+template <typename DerivedMemtable>
 class MemKVModule : public IModule
 {
-    struct Node
-    {                
-        uint64_t version;
-        String value;
-        std::unique_ptr<Node> next;
-    };
-
     static const uint32_t defaultKeepVersionCount = 0;
 
     class PartitionContext
     {
     public:
-        MemTableType memTable;
+        MemtableInterface<DerivedMemtable> memTable;
         uint64_t currentVersion = 0;
         uint64_t keepVersionCount = 1;
 
@@ -36,7 +29,7 @@ class MemKVModule : public IModule
         return (PartitionContext*)task.getPartition().moduleData;
     };
 
-    MemTableType& getMemtable(TaskRequest& task)
+    MemtableInterface<DerivedMemtable>& getMemtable(TaskRequest& task)
     {
         return getPartitionContext(task)->memTable;
     }
@@ -96,7 +89,7 @@ public:
         uint8_t requestType;
         MemKVModule_PARSE_RIF(reader.read(requestType));
 
-        MemTableType& memTable = context->memTable;
+        MemtableInterface<DerivedMemtable>& memTable = context->memTable;
 
         switch(requestType)
         {
@@ -105,8 +98,8 @@ public:
                 String key;
                 MemKVModule_PARSE_RIF(reader.read(key));
 
-                auto it = memTable.find(key);
-                if(it == memTable.end())
+                Node* node = memTable.find(key);
+                if(node == nullptr)
                     return ModuleRespone(ModuleRespone::ReturnToClient, ErrorCode::NoSuchKey);
 
                 uint64_t snapshotId;
@@ -114,12 +107,8 @@ public:
 
                 task.releaseRequestPayload();
 
-                Node* node = it->second.get();
                 while(node && node->version < snapshotId)
                     node = node->next.get();
-
-                if(node == nullptr)
-                    return ModuleRespone(ModuleRespone::ReturnToClient, ErrorCode::NoSuchKey);
 
                 task.getResponseWriter().write(node->version);
                 task.getResponseWriter().write(node->value);
@@ -137,16 +126,7 @@ public:
 
                 task.releaseRequestPayload();
 
-                std::unique_ptr<Node> newNode(new Node);
-                newNode->value = std::move(value);
-                newNode->version = getPartitionContext(task)->getNewVersion();
-
-                auto emplaceResult = memTable.try_emplace(std::move(key), std::move(newNode));
-                if(!emplaceResult.second)    //  Value already exists
-                {
-                    newNode->next = std::move(emplaceResult.first->second);
-                    emplaceResult.first->second = std::move(newNode);
-                }
+                std::unique_ptr<Node> newNode = memTable.insert(key, value, getPartitionContext(task)->getNewVersion());
 
                 task.getResponseWriter().write(newNode->version);
 
