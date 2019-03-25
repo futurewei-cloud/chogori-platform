@@ -27,7 +27,7 @@ struct KeyValuePairExtractor {
 };
 
 class HOTMemtable : public MemtableInterface<HOTMemtable> {
-    using KeyValuePairTrieType = hot::singlethreaded::HOTSingleThreaded<const KeyValuePair*, idx::contenthelpers::KeyValuePairExtractor>;
+    using KeyValuePairTrieType = hot::singlethreaded::HOTSingleThreaded<const std::unique_ptr<KeyValuePair>, idx::contenthelpers::KeyValuePairExtractor>;
     KeyValuePairTrieType m_keyValuePairTrie;
 public:
     std::unique_ptr<Node> insert(const String& key, const String& value, uint64_t version) {
@@ -35,14 +35,15 @@ public:
         newNode->value = std::move(value);
         newNode->version = version;
 
-        // BUGBUG
-        KeyValuePair keyValuePair = { key, newNode };
+        std::unique_ptr<KeyValuePair> keyValuePair = new KeyValuePair();
+        keyValuePair->key = std::move(key);
+        keyValuePair->value = std::move(newNode);
 
-        auto inserted = m_keyValuePairTrie.insert(&keyValuePair);
+        auto inserted = m_keyValuePairTrie.insert(std::move(keyValuePair));
         if(!inserted.second)    //  Value already exists
         {
-            newNode->next = std::move(inserted.first.value);
-            inserted.first.value = std::move(newNode);
+            newNode->next = std::move(inserted.first->value);
+            inserted.first->value = std::move(newNode);
         }
 
         return newNode;
