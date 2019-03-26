@@ -6,8 +6,7 @@
 
 namespace k2
 {
-//  Forward declaration
-class IModule;
+
 //
 //  Store collection related data
 //
