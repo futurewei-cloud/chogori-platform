@@ -17,7 +17,7 @@ namespace k2
         return reader.readMany(__VA_ARGS__);                                   \
     }
 
-#define K2_PAYLOAD_COPYABLE                                                    \
+#define K2_PAYLOAD_COPYABLE(...)                                               \
     struct __K2PayloadCopyableTraitTag__ {                                     \
     };
 

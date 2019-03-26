@@ -14,7 +14,7 @@ struct PartitionVersion {
     uint16_t range;  //  Change with the change of partition range
     uint16_t assign; //  Change with new partition assignment
 
-    K2_PAYLOAD_COPYABLE
+    K2_PAYLOAD_COPYABLE();
 
     bool operator==(const PartitionVersion &other) const
     {
@@ -33,7 +33,7 @@ struct PartitionAssignmentId {
     const PartitionId id;
     const PartitionVersion version;
 
-    K2_PAYLOAD_COPYABLE
+    K2_PAYLOAD_COPYABLE();
 
     PartitionAssignmentId(PartitionId id, PartitionVersion version)
         : id(id), version(version)
