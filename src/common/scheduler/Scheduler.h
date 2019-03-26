@@ -3,7 +3,8 @@
 /**
  * Scheduler interface.
  */
-class Scheduler {
+class Scheduler
+{
 public:
     virtual ~Scheduler() {}
     virtual void run() = 0;

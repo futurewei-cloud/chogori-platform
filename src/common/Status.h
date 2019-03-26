@@ -5,49 +5,78 @@
 namespace k2
 {
 
-#define TERMINATE(text)     { std::cerr << text << std::endl << std::flush; std::abort(); }
-#define ASSERT(condition)   {   if(!(condition)) TERMINATE(#condition);    }
+#define TERMINATE(text)                                                        \
+    {                                                                          \
+        std::cerr << text << std::endl << std::flush;                          \
+        std::abort();                                                          \
+    }
+#define ASSERT(condition)                                                      \
+    {                                                                          \
+        if (!(condition))                                                      \
+            TERMINATE(#condition);                                             \
+    }
 
-#define K2_STATUS_DEFINITION(STATUS)                                                                                    \
-    STATUS(Ok, "Ok")                                                                                                    \
-    STATUS(UnkownError, "Unkown error")                                                                                 \
-    STATUS(MessageParsingError, "Failed to parse a message")                                                            \
-    STATUS(PartitionAlreadyAssigned, "Attempt to assign partition which is already assigned")                           \
-    STATUS(TooManyPartitionsAlready, "Partition cannot be assigned to the shard due exceeding the limit of partitions") \
-    STATUS(IOOperationCanceled, "IO operation was canceled")                                                            \
-    STATUS(IOOperationHasNotBeenFinished, "IO result is not available since it's still running")                        \
-    STATUS(ModuleIsNotRegistered, "Request to assign partition to node which doesn't have requested module registered") \
-    STATUS(ModuleRejectedCollection, "Module responded with failure on initializing collection")                        \
-    STATUS(NodeNotServicePartition, "Request for partition that is not served by current Node")                         \
-    STATUS(PartitionVersionMismatch, "Partition version in request doesn't match served partition version")             \
-    STATUS(UnkownMessageType, "Unkown message type")                                                                    \
-    STATUS(AssignOperationIsBrokenByOffload, "Offload command received during assign process")                                      \
-    STATUS(ModuleWithSuchIdAlreadyRegistered, "Offload command received during assign process")                                      \
+#define K2_STATUS_DEFINITION(STATUS)                                           \
+    STATUS(Ok, "Ok")                                                           \
+    STATUS(UnkownError, "Unkown error")                                        \
+    STATUS(MessageParsingError, "Failed to parse a message")                   \
+    STATUS(PartitionAlreadyAssigned,                                           \
+           "Attempt to assign partition which is already assigned")            \
+    STATUS(TooManyPartitionsAlready,                                           \
+           "Partition cannot be assigned to the shard due exceeding the "      \
+           "limit of partitions")                                              \
+    STATUS(IOOperationCanceled, "IO operation was canceled")                   \
+    STATUS(IOOperationHasNotBeenFinished,                                      \
+           "IO result is not available since it's still running")              \
+    STATUS(ModuleIsNotRegistered, "Request to assign partition to node which " \
+                                  "doesn't have requested module registered")  \
+    STATUS(ModuleRejectedCollection,                                           \
+           "Module responded with failure on initializing collection")         \
+    STATUS(NodeNotServicePartition,                                            \
+           "Request for partition that is not served by current Node")         \
+    STATUS(                                                                    \
+        PartitionVersionMismatch,                                              \
+        "Partition version in request doesn't match served partition version") \
+    STATUS(UnkownMessageType, "Unkown message type")                           \
+    STATUS(AssignOperationIsBrokenByOffload,                                   \
+           "Offload command received during assign process")                   \
+    STATUS(ModuleWithSuchIdAlreadyRegistered,                                  \
+           "Offload command received during assign process")
 
-#define K2_STATUS_ENUM_APPLY(StatusName, StatusString)  StatusName,
+#define K2_STATUS_ENUM_APPLY(StatusName, StatusString) StatusName,
 
-enum class Status : uint32_t
-{
-    K2_STATUS_DEFINITION(K2_STATUS_ENUM_APPLY)
-    StatusCount //  Count of statuses
+enum class Status : uint32_t {
+    K2_STATUS_DEFINITION(K2_STATUS_ENUM_APPLY) StatusCount //  Count of statuses
 };
 
-extern const char* const statusText[(int)Status::StatusCount];
+extern const char *const statusText[(int)Status::StatusCount];
 
-inline const char* getStatusText(Status status)
+inline const char *getStatusText(Status status)
 {
     ASSERT(status < Status::StatusCount);
     return statusText[(int)status];
 }
 
-inline Status logError(Status status, const char* fileName, int line, const char* function)
+inline Status logError(Status status, const char *fileName, int line,
+                       const char *function)
 {
-    std::cerr << "Error at " << fileName << ":" << line << "(" << function << ") " << getStatusText(status);
-    return status; 
+    std::cerr << "Error at " << fileName << ":" << line << "(" << function
+              << ") " << getStatusText(status);
+    return status;
 }
 
 #define LOG_ERROR(status) logError((status), __FILE__, __LINE__, __FUNCTION__)
-#define RIF(status) { Status ____status____ = (status); if(____status____ != Status::Ok) return ____status____; }
-#define RET(status) { Status ____status____ = (status); return (____status____ != Status::Ok) ? LOG_ERROR(status) : Status::Ok; }
+#define RIF(status)                                                            \
+    {                                                                          \
+        Status ____status____ = (status);                                      \
+        if (____status____ != Status::Ok)                                      \
+            return ____status____;                                             \
+    }
+#define RET(status)                                                            \
+    {                                                                          \
+        Status ____status____ = (status);                                      \
+        return (____status____ != Status::Ok) ? LOG_ERROR(status)              \
+                                              : Status::Ok;                    \
+    }
 
-};  //  namespace k2
+}; //  namespace k2

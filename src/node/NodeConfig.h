@@ -11,9 +11,12 @@ namespace k2
 class NodeConfig
 {
 public:
-    static std::chrono::nanoseconds getTaskProcessingIterationMaxExecutionTime() { return std::chrono::nanoseconds(10000); }  // return std::chrono::nanoseconds::max();
+    static std::chrono::nanoseconds getTaskProcessingIterationMaxExecutionTime()
+    {
+        return std::chrono::nanoseconds(10000);
+    } // return std::chrono::nanoseconds::max();
 
-    static IModule* getModule() { return nullptr; }
+    static IModule *getModule() { return nullptr; }
 };
 
-}   //  namespace k2
+} //  namespace k2

@@ -9,8 +9,7 @@ namespace k2
 
 typedef plog_id_t PlogId;
 
-struct PlogInfo
-{
+struct PlogInfo {
     uint64_t size;
     bool sealed;
 };
@@ -19,122 +18,113 @@ class RefCountable
 {
 protected:
     mutable uint64_t refCount = 0;
+
 public:
     void AddRef() const { refCount++; }
 
     bool Release() const
     {
-        if(--refCount)
+        if (--refCount)
             return true;
 
-        delete this;    //  TODO: support arenas. Create virtual Destroy function.
+        delete this; //  TODO: support arenas. Create virtual Destroy function.
         return false;
     }
 
     virtual ~RefCountable() {}
 };
 
-template<class RefCountableT>
-class SharedPtr
+template <class RefCountableT> class SharedPtr
 {
-    RefCountableT* ptr = nullptr;
+    RefCountableT *ptr = nullptr;
+
 public:
-    SharedPtr(const RefCountableT* ptr) : ptr(ptr)
+    SharedPtr(const RefCountableT *ptr) : ptr(ptr)
     {
-        if(ptr)
+        if (ptr)
             ptr->AddRef();
     }
 
-    SharedPtr(const SharedPtr& sharedPtr) : SharedPtr(sharedPtr.ptr) { }
-    SharedPtr(SharedPtr&& sharedPtr) : ptr(sharedPtr.ptr) { sharedPtr.ptr = nullptr; }
-    SharedPtr& operator=(const SharedPtr& other)
+    SharedPtr(const SharedPtr &sharedPtr) : SharedPtr(sharedPtr.ptr) {}
+    SharedPtr(SharedPtr &&sharedPtr) : ptr(sharedPtr.ptr)
     {
-        if(ptr)
+        sharedPtr.ptr = nullptr;
+    }
+    SharedPtr &operator=(const SharedPtr &other)
+    {
+        if (ptr)
             ptr->Release();
 
         ptr = other.ptr;
-        if(ptr)
+        if (ptr)
             ptr->AddRef();
         return *this;
     }
 
-    SharedPtr& operator=(SharedPtr&& other)
+    SharedPtr &operator=(SharedPtr &&other)
     {
-        if(ptr)
+        if (ptr)
             ptr->Release();
-            
+
         ptr = other.ptr;
         return *this;
     }
 
-    RefCountableT& operator*() const noexcept { return *ptr; }
+    RefCountableT &operator*() const noexcept { return *ptr; }
 
-    RefCountableT* operator->() const noexcept { return ptr; }
+    RefCountableT *operator->() const noexcept { return ptr; }
 
     ~SharedPtr()
     {
-        if(ptr)
+        if (ptr)
             ptr->Release();
     }
 };
 
-template<class IOResultT>
-class IOResultBase : public RefCountable
+template <class IOResultT> class IOResultBase : public RefCountable
 {
 public:
     typedef SharedPtr<IOResultT> Ptr;
-    typedef std::function<void(const Ptr&)> CallbackT;
+    typedef std::function<void(const Ptr &)> CallbackT;
+
 protected:
     Status _status = Status::IOOperationHasNotBeenFinished;
     bool _finished = false;
     CallbackT _callback;
 
-    void setResult(Status error)    //  TODO: what if already set?
+    void setResult(Status error) //  TODO: what if already set?
     {
         _finished = true;
         _status = error;
-        
-        if(_callback)
-        {
-            _callback(Ptr((IOResultT*)this));
+
+        if (_callback) {
+            _callback(Ptr((IOResultT *)this));
             _callback = nullptr;
         }
     }
 
 public:
-    void cancel()
-    {
-        setResult(Status::IOOperationCanceled);
-    }
+    void cancel() { setResult(Status::IOOperationCanceled); }
 
-    Status getStatus()
-    {
-        return _status;
-    }
+    Status getStatus() { return _status; }
 
-    bool done()
-    {
-        return _finished;
-    }
+    bool done() { return _finished; }
 
     void then(CallbackT callback)
     {
-        if(_finished)
-        {
-            callback(Ptr((IOResultT*)this));
+        if (_finished) {
+            callback(Ptr((IOResultT *)this));
             return;
         }
-        
-        if(_callback)
-        {
-            _callback = [oldCallback = std::move(_callback), newCallback = std::move(_callback)](const Ptr& self)
-            {
+
+        if (_callback) {
+            _callback = [oldCallback = std::move(_callback),
+                         newCallback = std::move(_callback)](const Ptr &self) {
                 oldCallback(self);
                 newCallback(self);
             };
-        }
-        else
-            _callback = std::move(callback);        
+        } else
+            _callback = std::move(callback);
     }
 };
 
@@ -147,11 +137,11 @@ public:
 };
 */
 
-template<class ResultT>
-using IOResult = seastar::future<ResultT>;
+template <class ResultT> using IOResult = seastar::future<ResultT>;
 
 //
-//  IPlog in simplified Plog interface, containing only essential for K2 function and arguments.
+//  IPlog in simplified Plog interface, containing only essential for K2
+//  function and arguments.
 //
 class IPlog
 {
@@ -164,23 +154,30 @@ public:
         Binary buffer;
 
     public:
-        ReadRegion(uint32_t offset, uint32_t size) : offset(offset), size(size) { }
-        ReadRegion(uint32_t offset, uint32_t size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
+        ReadRegion(uint32_t offset, uint32_t size) : offset(offset), size(size)
+        {
+        }
+        ReadRegion(uint32_t offset, uint32_t size, Binary buffer)
+            : offset(offset), size(size), buffer(std::move(buffer))
+        {
+        }
     };
 
     typedef std::vector<ReadRegion> ReadRegions;
 
     virtual IOResult<std::vector<PlogId>> create() = 0;
 
-    virtual IOResult<PlogInfo> getInfo(const PlogId& plogId) = 0;
-  
-    virtual IOResult<uint64_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
- 
-    virtual IOResult<ReadRegions> read(const PlogId& plogId, ReadRegions plogDataToReadList) = 0;
- 
-    virtual IOResult<void> seal(const PlogId plogId) = 0;
- 
-    virtual IOResult<void> drop(const PlogId plogId) = 0;
-};  //  class IPlog
+    virtual IOResult<PlogInfo> getInfo(const PlogId &plogId) = 0;
 
-}   //  namespace k2
+    virtual IOResult<uint64_t> append(const PlogId &plogId,
+                                      std::vector<Binary> bufferList) = 0;
+
+    virtual IOResult<ReadRegions> read(const PlogId &plogId,
+                                       ReadRegions plogDataToReadList) = 0;
+
+    virtual IOResult<void> seal(const PlogId plogId) = 0;
+
+    virtual IOResult<void> drop(const PlogId plogId) = 0;
+}; //  class IPlog
+
+} //  namespace k2

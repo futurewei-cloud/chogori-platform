@@ -5,7 +5,7 @@
 namespace k2
 {
 
-typedef uint64_t LSN;   //  Log sequence number
+typedef uint64_t LSN; //  Log sequence number
 
 //
 //  Represent a file containing set of log records
@@ -16,8 +16,7 @@ public:
     virtual LSN getMaxLSN() = 0;
     virtual LSN getMinLSN() = 0;
 
-    struct Record
-    {
+    struct Record {
         LSN lsn;
         Binary data;
     };
@@ -37,4 +36,4 @@ public:
     virtual ~IPersistentLog() {}
 };
 
-}   //  namespace k2
+} //  namespace k2
