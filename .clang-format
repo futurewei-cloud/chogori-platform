@@ -1,0 +1,11 @@
+﻿---
+BasedOnStyle: LLVM
+IndentWidth: 4
+---
+Language: Cpp
+AccessModifierOffset: -4
+IndentCaseLabels: true
+TabWidth: '4'
+UseTab: Never
+BreakBeforeBraces: Linux
+...
