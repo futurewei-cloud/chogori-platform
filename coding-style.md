@@ -96,10 +96,11 @@ public:
 
 ## Braced blocks
 
-- All nested scopes are braced, even when the language allows omitting the braces (such as an if-statement), this makes patches simpler and is more consistent.
-- The opening brace is merged with the line that opens the scope (class definition, function definition, if statement, etc.) and the body is indented.
+- [Preferred] All nested scopes are braced, even when the language allows omitting the braces (such as an if-statement), this makes patches simpler and is more consistent.
+- [Preferred] Class and function brace should start with new line. Within the function, brace location is flexible. Body is indented.
     ```c++
-    void Function() {
+    void Function() 
+    {
         if (some condition) {
             stmt;
         } else {
@@ -111,7 +112,7 @@ public:
 
 ## Function parameters
 
-- Avoid output parameters; use return values instead.  In/out parameters are tricky, but in some cases they are relatively standard, such as serialization/deserialization.
+- [Preferred] Avoid output parameters; use return values instead.  In/out parameters are tricky, but in some cases they are relatively standard, such as serialization/deserialization.
 - If a function accepts a lambda or an `std::function`, make it the last argument, so that it can be easily provided inline:
     ```c++
     template <typename Func>
@@ -125,7 +126,7 @@ public:
     ```
 
 ## Complex return types
-- If a function returns a complicated return type, put its return type on a separate line, otherwise it becomes hard to see where the return type ends and where the function name begins:
+- [Preferred] If a function returns a complicated return type, put its return type on a separate line, otherwise it becomes hard to see where the return type ends and where the function name begins:
 
     ```c++
     template <typename T1, T2>
@@ -147,7 +148,7 @@ public:
 
 ## Long lines
 
-If a line becomes excessively long (>120 characters?), or is just complicated, break it into two or more lines.  The second (and succeeding lines) are _continuation lines_, and have a double indent:
+If a line becomes excessively long (>160 characters), or is just complicated, break it into two or more lines.  The second (and succeeding lines) are _continuation lines_, and have a double indent:
 
     ```c++
         if ((some_condition && some_other_condition)
@@ -158,3 +159,9 @@ If a line becomes excessively long (>120 characters?), or is just complicated, b
     ```
 
 Of course, long lines or complex conditions may indicate that refactoring is in order.
+
+## Line Ending Character
+Use \n(lf)
+
+
+
