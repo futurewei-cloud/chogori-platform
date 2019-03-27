@@ -12,18 +12,17 @@
 /**
  * Seastar wrapper class which invokes a scheduler implementation.
  */
-class SeastarScheduler
-{
+class SeastarScheduler {
 public:
-    SeastarScheduler(){
-        // left empty
-    };
-    ~SeastarScheduler(){
-        // left empty
-    };
+     SeastarScheduler() {
+          // left empty
+     };
+     ~SeastarScheduler() {
+          // left empty
+     };
 
-    /**
-     * Executes the provided scheduler until the stop flag is set.
-     */
-    static seastar::future<> run(Scheduler &scheduler, bool &stop);
+     /**
+      * Executes the provided scheduler until the stop flag is set.
+      */
+     static seastar::future<> run(Scheduler& scheduler, bool& stop);
 };

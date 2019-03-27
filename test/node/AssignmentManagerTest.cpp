@@ -1,29 +1,29 @@
-#include <iostream>
 #include <type_traits>
+#include <iostream>
 
 #include <node/AssignmentManager.h>
-#include <node/NodePool.h>
 #include <node/module/MemKVModule.h>
+#include <node/NodePool.h>
 
-using namespace k2;
+using namespace k2; 
 
 class FakeTransport
 {
 protected:
-    AssignmentManager &assignmentManager;
+    AssignmentManager& assignmentManager;
 
-    struct FakeConnectionState {
+    struct FakeConnectionState
+    {
         bool responded = false;
-        std::unique_ptr<ResponseMessage> message =
-            std::make_unique<ResponseMessage>();
+        std::unique_ptr<ResponseMessage> message = std::make_unique<ResponseMessage>();
     };
 
     class FakeClientConnection : public ClientConnection
     {
     public:
-        FakeConnectionState &state;
+        FakeConnectionState& state;
 
-        FakeClientConnection(FakeConnectionState &state) : state(state) {}
+        FakeClientConnection(FakeConnectionState& state) : state(state) { }
 
         PayloadWriter getResponseWriter() override
         {
@@ -39,24 +39,19 @@ protected:
     };
 
 public:
-    FakeTransport(AssignmentManager &assignmentManager)
-        : assignmentManager(assignmentManager)
-    {
-    }
+    FakeTransport(AssignmentManager& assignmentManager) : assignmentManager(assignmentManager) { }
 
-    std::unique_ptr<ResponseMessage>
-    send(std::unique_ptr<PartitionMessage> &&message)
+    std::unique_ptr<ResponseMessage> send(std::unique_ptr<PartitionMessage>&& message)
     {
         FakeConnectionState connectionState;
 
-        PartitionRequest request{
-            std::move(message),
-            std::make_unique<FakeClientConnection>(connectionState)};
+        PartitionRequest request { std::move(message), std::make_unique<FakeClientConnection>(connectionState) };
         assignmentManager.processMessage(request);
 
-        for (int i = 0; i < 1000; i++) {
+        for(int i = 0; i < 1000; i++)
+        {
             assignmentManager.processTasks();
-            if (connectionState.responded)
+            if(connectionState.responded)
                 return std::move(connectionState.message);
         }
 
@@ -66,16 +61,14 @@ public:
 
 class MemKVClient
 {
-    FakeTransport &transport;
-
+    FakeTransport& transport;
 public:
-    MemKVClient(FakeTransport &transport) : transport(transport) {}
+    MemKVClient(FakeTransport& transport) : transport(transport) { }
 
     uint64_t set(PartitionAssignmentId partitionId, String key, String value)
     {
-        MemKVModule::SetRequest setRequest{std::move(key), std::move(value)};
-        auto result =
-            transport.send(MemKVModule::createMessage(setRequest, partitionId));
+        MemKVModule::SetRequest setRequest { std::move(key), std::move(value) };
+        auto result = transport.send(MemKVModule::createMessage(setRequest, partitionId)); 
         assert(result->getStatus() == Status::Ok);
 
         MemKVModule::SetResponse setResponse;
@@ -85,10 +78,8 @@ public:
 
     String get(PartitionAssignmentId partitionId, String key)
     {
-        MemKVModule::GetRequest getRequest{
-            std::move(key), std::numeric_limits<uint64_t>::max()};
-        auto result =
-            transport.send(MemKVModule::createMessage(getRequest, partitionId));
+        MemKVModule::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
+        auto result = transport.send(MemKVModule::createMessage(getRequest, partitionId)); 
         assert(result->getStatus() == Status::Ok);
 
         MemKVModule::GetResponse getResponse;
@@ -105,21 +96,19 @@ void mainManagerTest()
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
 
+
     //
     //  Test partition assignment
     //
     const CollectionId collectionId = 3;
     const PartitionId partitionId = 10;
-    const PartitionVersion partitionVersion = {101, 313};
+    const PartitionVersion partitionVersion = { 101, 313 };
 
     AssignmentMessage assignmentMessage;
-    assignmentMessage.collectionMetadata =
-        CollectionMetadata(collectionId, ModuleId::Default, {});
-    assignmentMessage.partitionMetadata =
-        PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
+    assignmentMessage.collectionMetadata = CollectionMetadata(collectionId, ModuleId::Default, {});
+    assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
-    assert(transport.send(assignmentMessage.createMessage(Endpoint("1")))
-               ->getStatus() == Status::Ok);
+    assert(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus() == Status::Ok);
 
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Partition.h"
 #include <boost/intrusive/list.hpp>
+#include "Partition.h"
 
 namespace k2
 {
@@ -20,11 +20,12 @@ protected:
     }
 
     ProcessResult moduleResponseToProcessResult(ModuleResponse response)
-    {
-        switch (response.type) {
+    {        
+        switch (response.type)
+        {
             case ModuleResponse::Ok:
                 return ProcessResult::Done;
-
+        
             case ModuleResponse::RescheduleAfterIOCompletion:
                 return ProcessResult::Sleep;
 
@@ -37,19 +38,18 @@ protected:
         }
     }
 
-    IModule &getModule() { return partition.getModule(); }
+    IModule& getModule() { return partition.getModule(); }
 
-    ClientConnection &getClient() { return *client.get(); }
+    ClientConnection& getClient() { return *client.get(); }
 
 public:
-    MessageInitiatedTaskRequest(
-        Partition &partition,
-        std::unique_ptr<ClientConnection> &&connectionClient)
-        : TaskRequest(partition), client(std::move(connectionClient))
+    MessageInitiatedTaskRequest(Partition& partition, std::unique_ptr<ClientConnection>&& connectionClient) :
+        TaskRequest(partition),  client(std::move(connectionClient))
     {
         assert(client);
     }
 };
+
 
 //
 //  Task created as a response to request from client
@@ -60,30 +60,37 @@ protected:
     Payload requestPayload;
     PayloadWriter responseWriter;
 
-    enum class State { Prepare = 0, Coordinate, Apply };
+    enum class State
+    {
+        Prepare = 0,
+        Coordinate,
+        Apply
+    };
 
     State state;
 
     void respondToSender(Status status, uint32_t moduleCode = 0)
     {
-        if (status != Status::Ok)
+        if(status != Status::Ok)
             getClient().getResponseWriter().truncateToCurrent();
         client->sendResponse(status, moduleCode);
     }
-
+    
     ProcessResult onPrepare()
     {
         IOOperations ioOperations;
 
         ModuleResponse response = getModule().onPrepare(*this, ioOperations);
-        switch (response.type) {
+        switch(response.type)
+        {
             case ModuleResponse::Ok: //  Can move to the next stage
             {
                 state = State::Apply;
                 return canContinue() ? onApply() : ProcessResult::Delay;
             }
 
-            case ModuleResponse::ReturnToClient: {
+            case ModuleResponse::ReturnToClient:
+            {
                 respondToSender(Status::Ok, response.resultCode);
                 return ProcessResult::Done;
             }
@@ -95,34 +102,31 @@ protected:
 
     ProcessResult onCoordinate()
     {
-        assert(false); //  TODO: implement
+        assert(false);  //  TODO: implement
         return ProcessResult::Done;
     }
 
     ProcessResult onApply()
     {
-        assert(false); //  TODO: implement
+        assert(false);  //  TODO: implement
         return ProcessResult::Done;
     }
 
 public:
-    ClientTask(Partition &partition, std::unique_ptr<ClientConnection> &&client,
-               Payload &&requestPayload)
-        : MessageInitiatedTaskRequest(partition, std::move(client)),
-          requestPayload(std::move(requestPayload)),
-          responseWriter(getClient().getResponseWriter()), state(State::Prepare)
-    {
-    }
+    ClientTask(Partition& partition, std::unique_ptr<ClientConnection>&& client, Payload&& requestPayload) :
+        MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)),
+        responseWriter(getClient().getResponseWriter()), state(State::Prepare) {}
 
     TaskType getType() const override { return TaskType::ClientRequest; }
 
-    const Payload &getRequestPayload() const { return requestPayload; }
+    const Payload& getRequestPayload() const { return requestPayload; }
 
-    PayloadWriter &getResponseWriter() { return responseWriter; }
+    PayloadWriter& getResponseWriter() { return responseWriter; }
 
     ProcessResult process() override
     {
-        switch (state) {
+        switch (state)
+        {
             case State::Prepare:
                 return onPrepare();
 
@@ -131,15 +135,19 @@ public:
 
             case State::Apply:
                 return onApply();
-
+        
             default:
                 assert(false);
                 return ProcessResult::Done;
-        }
+        }        
     }
 
-    void releaseRequestPayload() { requestPayload.clear(); }
-}; //  class ClientTask
+    void releaseRequestPayload()
+    {
+        requestPayload.clear();
+    }
+};  //  class ClientTask
+
 
 //
 //  Task created as a response to Partition Manager Partition Assign command
@@ -147,23 +155,22 @@ public:
 class AssignmentTask : public MessageInitiatedTaskRequest
 {
 public:
-    AssignmentTask(Partition &partition,
-                   std::unique_ptr<ClientConnection> client)
-        : MessageInitiatedTaskRequest(partition, std::move(client))
-    {
-    }
+    AssignmentTask(Partition& partition, std::unique_ptr<ClientConnection> client) :
+        MessageInitiatedTaskRequest(partition, std::move(client)) {}
 
     TaskType getType() const override { return TaskType::PartitionAssign; }
 
     ProcessResult process() override
     {
-        if (partition.state == Partition::State::Offloading) {
+        if(partition.state == Partition::State::Offloading)
+        {
             respondToSender(Status::AssignOperationIsBrokenByOffload);
             return ProcessResult::Done;
         }
 
         ModuleResponse response = getModule().onAssign(*this);
-        if (response.type == ModuleResponse::Ok) {
+        if(response.type == ModuleResponse::Ok)
+        {
             partition.state = Partition::State::Running;
             respondToSender(Status::Ok);
             return ProcessResult::Done;
@@ -173,23 +180,23 @@ public:
     }
 };
 
+
 //
 //  Task created as a response to Partition Manager Partition Offload command
 //
 class OffloadTask : public MessageInitiatedTaskRequest
 {
 public:
-    OffloadTask(Partition &partition, std::unique_ptr<ClientConnection> client)
-        : MessageInitiatedTaskRequest(partition, std::move(client))
-    {
-    }
+    OffloadTask(Partition& partition, std::unique_ptr<ClientConnection> client) :
+        MessageInitiatedTaskRequest(partition, std::move(client)) {}
 
     TaskType getType() const override { return TaskType::PartitionOffload; }
 
     ProcessResult process() override
     {
         ModuleResponse response = getModule().onOffload(*this);
-        if (response.type == ModuleResponse::Ok) {
+        if(response.type == ModuleResponse::Ok)
+        {
             partition.state = Partition::State::Offloaded;
             respondToSender(Status::Ok);
             return ProcessResult::DropPartition;
@@ -199,15 +206,16 @@ public:
     }
 };
 
+
 //
 //  Task created as a response to request from client
 //
 class MaintainenceTask : public TaskRequest
 {
 public:
-    MaintainenceTask(Partition &partition) : TaskRequest(partition) {}
+    MaintainenceTask(Partition& partition) : TaskRequest(partition) {}
 
     TaskType getType() const override { return TaskType::Maintainence; }
-}; //  class ClientTask
+};  //  class ClientTask
 
-} //  namespace k2
+}   //  namespace k2

@@ -12,4 +12,4 @@ public:
     static constexpr uint8_t MaxCountCountOfNodesPerPool = 64;
 };
 
-} //  namespace k2
+}   //  namespace k2

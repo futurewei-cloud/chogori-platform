@@ -6,16 +6,15 @@
 /**
  * Simple round roubin scheduler implemetation.
  */
-class RoundRobinScheduler : public Scheduler
-{
+class RoundRobinScheduler : public Scheduler {
 public:
-    RoundRobinScheduler(){
-        // empty
-    };
-    virtual ~RoundRobinScheduler(){
-        // empty
-    };
+     RoundRobinScheduler() {
+          // empty
+     };
+     virtual ~RoundRobinScheduler() {
+          // empty
+     };
 
-    // run the scheduler for one iteration
-    virtual void run();
+     // run the scheduler for one iteration
+     virtual void run();
 };

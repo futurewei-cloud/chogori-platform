@@ -13,7 +13,8 @@ class Node
 public:
     AssignmentManager assignmentManager;
 
-    static Node *getInstance() { return nullptr; }
+
+    static Node* getInstance() { return nullptr; }
 };
 
-} //  namespace k2
+}   //  namespace k2

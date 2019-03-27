@@ -1,17 +1,18 @@
 #pragma once
 
+
 namespace k2
 {
 
 #define K2_LINKED_LIST_NODE_VARIABLE ___K2_IntrusiveLinkedList_Node__
 
+
 class IntrusiveLinkedListNode
 {
-    template <typename ALL> friend class IntrusiveLinkedList;
-
+    template<typename ALL> friend class IntrusiveLinkedList;
 protected:
-    void *prev = nullptr;
-    void *next = nullptr;
+    void* prev = nullptr;
+    void* next = nullptr;
 
     bool isEmpty() { return prev == nullptr && next == nullptr; }
     void clear()
@@ -22,23 +23,21 @@ protected:
 };
 
 //
-//  Boost is known for making simple things complicated to extent of complete
-//  useless. boost::intrusive::list is one of such examples. I used it before
-//  got tired of Googling about how to do basic operations. I created mine
-//  bicycle, but at least i understand everything about what's doing and code is
-//  small enough to find an answers. Additional feature: iteration here supports
-//  deletion of iterated element.
+//  Boost is known for making simple things complicated to extent of complete useless.
+//  boost::intrusive::list is one of such examples. I used it before got tired of Googling about how to do basic operations.
+//  I created mine bicycle, but at least i understand everything about what's doing and code is small enough to find an answers.
+//  Additional feature: iteration here supports deletion of iterated element.
 //
-template <typename T> class IntrusiveLinkedList
+template<typename T>
+class IntrusiveLinkedList
 {
 public:
     class Node
     {
-        template <typename ALL> friend class IntrusiveLinkedList;
-
+        template<typename ALL> friend class IntrusiveLinkedList;
     protected:
-        void *prev = nullptr;
-        void *next = nullptr;
+        void* prev = nullptr;
+        void* next = nullptr;
 
         bool isEmpty() { return prev == nullptr && next == nullptr; }
         void clear()
@@ -49,47 +48,39 @@ public:
     };
 
 protected:
-    T *head = nullptr;
-    T *tail = nullptr;
+    T* head = nullptr;
+    T* tail = nullptr;
     size_t count = 0;
 
-    static IntrusiveLinkedListNode &getNode(T &element)
-    {
-        return element.K2_LINKED_LIST_NODE_VARIABLE;
-    }
-    static T *&prev(T &element)
-    {
-        return (T *&)element.K2_LINKED_LIST_NODE_VARIABLE.prev;
-    }
-    static T *&next(T &element)
-    {
-        return (T *&)element.K2_LINKED_LIST_NODE_VARIABLE.next;
-    }
+    static IntrusiveLinkedListNode& getNode(T& element) { return element.K2_LINKED_LIST_NODE_VARIABLE; }
+    static T*& prev(T& element) { return (T*&)element.K2_LINKED_LIST_NODE_VARIABLE.prev; }
+    static T*& next(T& element) { return (T*&)element.K2_LINKED_LIST_NODE_VARIABLE.next; }
 
-    static T *&prev(T *element) { return prev(*element); }
-    static T *&next(T *element) { return next(*element); }
+    static T*& prev(T* element) { return prev(*element); }
+    static T*& next(T* element) { return next(*element); }
 
-    static bool notLinked(T &element) { return getNode(element).isEmpty(); }
+    static bool notLinked(T& element) { return getNode(element).isEmpty(); }
 
 public:
+
     size_t size() { return count; }
 
-    void remove(T &element)
+    void remove(T& element)
     {
-        if (prev(element))
+        if(prev(element))
             next(prev(element)) = next(element);
         else
             head = next(element);
 
-        if (next(element))
+        if(next(element))
             prev(next(element)) = prev(element);
         else
             tail = prev(element);
 
-        count--;
+        count--;    
     }
 
-    void addAfter(T &position, T &element)
+    void addAfter(T& position, T& element)
     {
         assert(notLinked(element));
 
@@ -98,13 +89,13 @@ public:
 
         next(position) = &element;
 
-        if (tail == &position)
+        if(tail == &position)
             tail = &element;
 
         count++;
     }
 
-    void addBefore(T &position, T &element)
+    void addBefore(T& position, T& element)
     {
         assert(notLinked(element));
 
@@ -113,17 +104,18 @@ public:
 
         prev(position) = &element;
 
-        if (head == &position)
+        if(head == &position)
             head = &element;
 
         count++;
     }
 
-    void pushBack(T &element)
+    void pushBack(T& element)
     {
-        if (tail)
+        if(tail)
             addAfter(*tail, element);
-        else {
+        else
+        {
             assert(notLinked(element));
             assert(head == nullptr);
             head = tail = &element;
@@ -131,11 +123,12 @@ public:
         }
     }
 
-    void pushFront(T &element)
+    void pushFront(T& element)
     {
-        if (head)
+        if(head)
             addBefore(*head, element);
-        else {
+        else
+        {
             assert(notLinked(element));
             assert(tail == nullptr);
             head = tail = &element;
@@ -146,46 +139,40 @@ public:
     class Iterator
     {
     protected:
-        T *current;
-        T *next;
+        T* current;
+        T* next;
 
-        void setCurrent(T *node)
+        void setCurrent(T* node)
         {
             current = node;
             next = current ? IntrusiveLinkedList::next(current) : nullptr;
         }
 
     public:
-        Iterator(const Iterator &) = default;
-        Iterator &operator=(const Iterator &) = default;
-        Iterator(T *start) { setCurrent(start); }
+        Iterator(const Iterator&) = default;        
+        Iterator& operator=(const Iterator&) = default;
+        Iterator(T* start) { setCurrent(start); }
 
-        Iterator &operator++()
-        {
-            setCurrent(next);
-            return *this;
-        }
+        Iterator& operator++() { setCurrent(next); return *this; }
 
-        T &operator*() { return *current; }
-        T *operator->() { return current; }
+        T& operator*() { return *current; }        
+        T* operator->() { return current; }
 
-        bool operator==(const Iterator &other) const
-        {
-            return current == other.current;
-        }
-        bool operator!=(const Iterator &other) const
-        {
-            return current != other.current;
-        }
+        bool operator==(const Iterator& other) const { return current == other.current; }
+        bool operator!=(const Iterator& other) const { return current != other.current; }
     };
 
-    Iterator begin() { return Iterator(head); }
+    Iterator begin()
+    {
+        return Iterator(head);
+    }
 
-    Iterator end() { return Iterator(nullptr); }
+    Iterator end()
+    {
+        return Iterator(nullptr);
+    }
 };
 
-#define K2_LINKED_LIST_NODE                                                    \
-    template <typename T> friend class IntrusiveLinkedList;                    \
-    IntrusiveLinkedListNode K2_LINKED_LIST_NODE_VARIABLE;
+#define K2_LINKED_LIST_NODE template<typename T> friend class IntrusiveLinkedList; IntrusiveLinkedListNode K2_LINKED_LIST_NODE_VARIABLE;
 
-}; //  namespace k2
+};  //  namespace k2
