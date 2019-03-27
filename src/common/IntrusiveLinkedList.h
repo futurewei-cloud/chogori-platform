@@ -1,5 +1,5 @@
 #pragma once
-
+#include <assert.h>
 
 namespace k2
 {
