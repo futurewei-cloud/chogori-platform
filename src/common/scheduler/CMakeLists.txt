@@ -11,4 +11,3 @@ set_target_properties(scheduler PROPERTIES
 )
 
 install(TARGETS scheduler DESTINATION lib)
-install(FILES Scheduler.h SeastarScheduler.h RoundrobinScheduler.h DESTINATION include)

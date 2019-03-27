@@ -32,6 +32,14 @@ pipeline {
                 sh "./K2Build/k2build make -C K2Build"
             }
         }
+        stage('Test') {
+            options { skipDefaultCheckout() }
+            agent {label "test"}
+            steps {
+                echo "\u2600 Run K2 Platform Integration Test"
+                sh "./K2Build/k2build make -C K2Build test"
+            }
+        }
         stage('Install') {
             options { skipDefaultCheckout() }
             agent {label "builder"}

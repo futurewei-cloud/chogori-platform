@@ -12,6 +12,10 @@ build:
 	@cmake -B../$(BUILD_DIR) -H../ -DCMAKE_INSTALL_PREFIX=../$(INSTALL_DIR)/$(INSTALL_PFX)
 	@$(MAKE) -C../$(BUILD_DIR)
 
+test: build
+	@echo ">>> Testing"
+	@/build/build/test/node/node_test && testReturnCode=$? && exit $(testReturnCode)
+
 install: build
 	@echo ">>> Installing"
 	@$(MAKE) -C../$(BUILD_DIR) install

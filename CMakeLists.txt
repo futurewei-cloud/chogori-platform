@@ -13,3 +13,4 @@ include_directories(src/include)
 find_package (Seastar REQUIRED)
 
 add_subdirectory (src)
+add_subdirectory (test)
