@@ -11,6 +11,7 @@ namespace k2
 #define K2_STATUS_DEFINITION(STATUS)                                                                                    \
     STATUS(Ok, "Ok")                                                                                                    \
     STATUS(UnkownError, "Unkown error")                                                                                 \
+    STATUS(SchedulerPlatformStartingFailure, "Some error during scheduler start")                                       \
     STATUS(MessageParsingError, "Failed to parse a message")                                                            \
     STATUS(PartitionAlreadyAssigned, "Attempt to assign partition which is already assigned")                           \
     STATUS(TooManyPartitionsAlready, "Partition cannot be assigned to the shard due exceeding the limit of partitions") \
@@ -49,5 +50,6 @@ inline Status logError(Status status, const char* fileName, int line, const char
 #define LOG_ERROR(status) logError((status), __FILE__, __LINE__, __FUNCTION__)
 #define RIF(status) { Status ____status____ = (status); if(____status____ != Status::Ok) return ____status____; }
 #define RET(status) { Status ____status____ = (status); return (____status____ != Status::Ok) ? LOG_ERROR(status) : Status::Ok; }
+#define TIF(status) { Status ____status____ = (status); if(____status____ != Status::Ok) { LOG_ERROR(status); throw ____status____; } }
 
 };  //  namespace k2

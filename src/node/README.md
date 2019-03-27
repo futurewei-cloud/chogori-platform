@@ -7,7 +7,9 @@ Application Service logic is executed in a Linux processes called Node Pools. Ea
 
 # Structure
 * indexer: code related to in-memory indexing data structures, like HOT and ART.
+* module: implementations of the modules
 * persistence:  transaction log streams
+* seastar:  code related to Seastar-based scheduling platform
 
 ## Contact
 
