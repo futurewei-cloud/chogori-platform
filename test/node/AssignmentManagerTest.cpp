@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include <node/AssignmentManager.h>
+#include <node/MapMemtable.h>
 #include <node/module/MemKVModule.h>
 #include <node/NodePool.h>
 
@@ -69,22 +70,22 @@ public:
 
     uint64_t set(PartitionAssignmentId partitionId, String key, String value)
     {
-        MemKVModule::SetRequest setRequest { std::move(key), std::move(value) };
-        auto result = transport.send(MemKVModule::createMessage(setRequest, partitionId)); 
+        MemKVModule<MapMemtable>::SetRequest setRequest { std::move(key), std::move(value) };
+        auto result = transport.send(MemKVModule<MapMemtable>::createMessage(setRequest, partitionId));
         assert(result->getStatus() == Status::Ok);
 
-        MemKVModule::SetResponse setResponse;
+        MemKVModule<MapMemtable>::SetResponse setResponse;
         result->payload.getReader().read(setResponse);
         return setResponse.version;
     }
 
     String get(PartitionAssignmentId partitionId, String key)
     {
-        MemKVModule::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
-        auto result = transport.send(MemKVModule::createMessage(getRequest, partitionId)); 
+        MemKVModule<MapMemtable>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
+        auto result = transport.send(MemKVModule<MapMemtable>::createMessage(getRequest, partitionId));
         assert(result->getStatus() == Status::Ok);
 
-        MemKVModule::GetResponse getResponse;
+        MemKVModule<MapMemtable>::GetResponse getResponse;
         result->payload.getReader().read(getResponse);
         return getResponse.value;
     }
@@ -93,7 +94,7 @@ public:
 TEST_CASE("Assignment Message", "[Assignment]")
 {
     NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule>());
+    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<MapMemtable>>());
 
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
