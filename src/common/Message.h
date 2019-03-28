@@ -53,13 +53,50 @@ public:
     {
         payload.clear();
     }
+
+    struct Header
+    {        
+        MessageType messageType;
+        PartitionAssignmentId partition;
+        size_t messageSize;
+
+        K2_PAYLOAD_COPYABLE;
+    };
+
+    class PayloadBuilder
+    {
+    protected:
+        Payload payload;
+        Header* header;
+    public:
+        PayloadBuilder(MessageType messageType, PartitionAssignmentId partition)
+        {
+            assert(payload.getWriter().getContiguousStructure(header));
+            header->messageType = messageType;
+            header->partition = partition;
+        }
+
+        PayloadWriter getWriter()
+        {
+            assert(header);
+            return payload.getWriter(sizeof(Header));
+        }
+
+        Payload&& done()
+        {
+            assert(header);
+            header->messageSize = payload.getSize()-sizeof(Header);
+            header = nullptr;
+            return std::move(payload);
+        }
+    };
 };
 
 
 //
 //  Represent message sink to respond back to client
 //
-class ClientConnection
+class IClientConnection
 {
 protected:
     Endpoint sender;
@@ -82,7 +119,7 @@ public:
     //
     //  Destructor
     //
-    virtual ~ClientConnection() {}
+    virtual ~IClientConnection() {}
 };
 
 
@@ -93,7 +130,12 @@ class PartitionRequest
 {
 public:
     std::unique_ptr<PartitionMessage> message;
-    std::unique_ptr<ClientConnection> client;
+    std::unique_ptr<IClientConnection> client;
+
+    PartitionRequest(std::unique_ptr<PartitionMessage>&& message, std::unique_ptr<IClientConnection>&& client)
+        : message(std::move(message)), client(std::move(client)) {}
+
+    PartitionRequest() {}
 
     PartitionRequest(PartitionRequest&& other) = default;
     PartitionRequest& operator=(PartitionRequest&& other) = default;
@@ -110,6 +152,13 @@ public:
     uint32_t moduleCode;
 
     Status getStatus() const { return status; }
+
+    struct Header
+    {        
+        Status status;
+        uint32_t moduleCode;
+        size_t messageSize;
+    };
 };
 
 

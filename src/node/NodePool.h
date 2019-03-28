@@ -1,22 +1,60 @@
 #pragma once
 
+#include <common/Status.h>
 #include "Module.h"
-#include "../common/ModuleId.h"
+#include <common/ModuleId.h>
 #include <memory>
 
 namespace k2
 {
 
 //
+//  Address configuration for endpoint
+//
+struct NodeEndpointConfig
+{
+    enum EndpointType
+    {
+        Ethernet,    //  MAC address specified
+        IPv4,   //  IPv4 and port
+        IPv6,   //  IPv6 and port
+    };
+
+    struct EthernetEndpoint
+    {
+        unsigned __int128 address;
+    };
+
+    struct IPv4Endpoint
+    {
+        uint32_t address;
+        uint16_t port;
+    };
+
+    struct IPv6Endpoint
+    {
+        unsigned __int128 address;
+        uint16_t port;
+    };
+
+    EndpointType type;
+
+    union
+    {
+        EthernetEndpoint ethernet;
+        IPv4Endpoint ipv4;
+        IPv6Endpoint ipv6;
+    };
+};
+
+//
 //  Represents a class containing state of K2 Node Pool.
 //
 class NodePool
 {
-protected:
-    std::unordered_map<CollectionId, CollectionPtr> collections;
-    std::unordered_map<ModuleId, std::unique_ptr<IModule>> modules;
-    std::atomic_bool collectionLock { false };
+public:
 
+protected:
     class LockScope
     {
         std::atomic_bool& lock;
@@ -29,6 +67,12 @@ protected:
 
         ~LockScope() { lock = false; }
     };
+
+protected:
+    std::vector<NodeEndpointConfig> endpoints;
+    std::unordered_map<CollectionId, CollectionPtr> collections;
+    std::unordered_map<ModuleId, std::unique_ptr<IModule>> modules;
+    std::atomic_bool collectionLock { false };
 
     Status _internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
     {
@@ -71,6 +115,20 @@ public:
     {
         auto emplaceResult = modules.try_emplace(moduleId, std::move(module));
         return emplaceResult.second ? Status::Ok : LOG_ERROR(Status::ModuleWithSuchIdAlreadyRegistered);
+    }
+
+    Status registerNode(NodeEndpointConfig nodeConfig)
+    {
+        endpoints.push_back(nodeConfig);
+        return Status::Ok;
+    }
+
+    size_t getNodesCount() const { return endpoints.size(); }
+
+    const NodeEndpointConfig& getEndpoint(size_t endpointId) const
+    {
+        assert(endpointId < getNodesCount());
+        return endpoints[endpointId];
     }
 };
 

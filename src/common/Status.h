@@ -23,7 +23,7 @@ namespace k2
     STATUS(PartitionVersionMismatch, "Partition version in request doesn't match served partition version")             \
     STATUS(UnkownMessageType, "Unkown message type")                                                                    \
     STATUS(AssignOperationIsBrokenByOffload, "Offload command received during assign process")                                      \
-    STATUS(ModuleWithSuchIdAlreadyRegistered, "Offload command received during assign process")                                      \
+    STATUS(ModuleWithSuchIdAlreadyRegistered, "Attempt to register the module with duplicated id")                                      \
 
 #define K2_STATUS_ENUM_APPLY(StatusName, StatusString)  StatusName,
 
@@ -43,13 +43,13 @@ inline const char* getStatusText(Status status)
 
 inline Status logError(Status status, const char* fileName, int line, const char* function)
 {
-    std::cerr << "Error at " << fileName << ":" << line << "(" << function << ") " << getStatusText(status);
+    std::cerr << "Error at " << fileName << ":" << line << "(" << function << ") " << getStatusText(status) << std::endl << std::flush;
     return status; 
 }
 
-#define LOG_ERROR(status) logError((status), __FILE__, __LINE__, __FUNCTION__)
-#define RIF(status) { Status ____status____ = (status); if(____status____ != Status::Ok) return ____status____; }
-#define RET(status) { Status ____status____ = (status); return (____status____ != Status::Ok) ? LOG_ERROR(status) : Status::Ok; }
-#define TIF(status) { Status ____status____ = (status); if(____status____ != Status::Ok) { LOG_ERROR(status); throw ____status____; } }
+#define LOG_ERROR(status) k2::logError((status), __FILE__, __LINE__, __FUNCTION__)
+#define RIF(status) { k2::Status ____status____ = (status); if(____status____ != k2::Status::Ok) return ____status____; }
+#define RET(status) { k2::Status ____status____ = (status); return (____status____ != k2::Status::Ok) ? LOG_ERROR(____status____) : k2::Status::Ok; }
+#define TIF(status) { k2::Status ____status____ = (status); if(____status____ != k2::Status::Ok) { LOG_ERROR(____status____); throw ____status____; } }
 
 };  //  namespace k2

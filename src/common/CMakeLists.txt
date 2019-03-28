@@ -1,4 +1,4 @@
-add_subdirectory(scheduler)
+cmake_minimum_required (VERSION 3.12)
 
 project (common VERSION 1.0.0 DESCRIPTION "common library for k2 platform")
 

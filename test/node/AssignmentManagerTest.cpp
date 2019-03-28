@@ -18,7 +18,7 @@ protected:
         std::unique_ptr<ResponseMessage> message = std::make_unique<ResponseMessage>();
     };
 
-    class FakeClientConnection : public ClientConnection
+    class FakeClientConnection : public IClientConnection
     {
     public:
         FakeConnectionState& state;

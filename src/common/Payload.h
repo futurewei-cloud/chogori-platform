@@ -2,6 +2,7 @@
 
 #include <cassert>
 #include "Common.h"
+#include <seastar/net/packet.hh>
 
 namespace k2
 {
@@ -119,6 +120,17 @@ public:
     {
         buffers.clear();
         size = 0;
+    }
+
+    static seastar::net::packet toPacket(Payload&& payload)
+    {
+        seastar::net::packet result;
+        for(Binary& data : payload.buffers)
+            result = seastar::net::packet(std::move(result), moveCharTempBuffer(data));
+
+        payload.clear();
+
+        return result;
     }
 };
 
@@ -404,6 +416,37 @@ public:
     Position getCurrent() const
     {
         return Position { position, offset };
+    }
+
+    template<typename StructT>
+    bool getContiguousStructure(StructT*& structure)
+    {
+        return getContiguousBuffer(sizeof(StructT), *(void**)&structure);
+    }
+
+    bool getContiguousBuffer(size_t size, void*& data)
+    {
+        if(!allocateBufferIfNeeded())
+            return false;
+
+        Binary& buffer = const_cast<Binary&>(payload.buffers[position.buffer]);
+
+        size_t currentBufferRemaining = buffer.size()-position.offset;
+        if(currentBufferRemaining < size)
+            return false;
+
+        data = payload.buffers[position.buffer].get_write() + position.offset;
+        if(currentBufferRemaining == size)
+        {
+            position.buffer++;
+            position.offset = 0;
+        }
+        else
+            position.offset += size;
+
+        increaseGlobalOffset(size);
+
+        return true;
     }
 
     bool skip(size_t size)

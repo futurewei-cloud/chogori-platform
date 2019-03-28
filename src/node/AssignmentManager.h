@@ -155,6 +155,8 @@ public:
             }
         }
     }
+
+    const NodePool& getNodePool() { return pool; }
 };
 
 }   //  namespace k2

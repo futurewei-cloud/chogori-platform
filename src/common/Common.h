@@ -94,4 +94,27 @@ public:
     }
 };
 
+//  Seastar likes to use char for their buffers. Let make conversion easy.
+template<typename T>
+std::enable_if_t<std::is_arithmetic<T>::value && sizeof(T) == 1, Binary&> toBinary(seastar::temporary_buffer<T>& buffer)
+{
+    return *(Binary*)&buffer;
+}
+
+template<typename T>
+Binary&& moveBinary(seastar::temporary_buffer<T>& buffer)
+{
+    return std::move(toBinary(buffer));
+}
+
+seastar::temporary_buffer<char>& toCharTempBuffer(Binary& buffer)
+{
+    return *(seastar::temporary_buffer<char>*)&buffer;
+}
+
+seastar::temporary_buffer<char>&& moveCharTempBuffer(Binary& buffer)
+{
+    return std::move(toCharTempBuffer(buffer));
+}
+
 }   //  namespace k2

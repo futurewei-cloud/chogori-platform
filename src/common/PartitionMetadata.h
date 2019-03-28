@@ -26,12 +26,14 @@ struct PartitionVersion
 //
 struct PartitionAssignmentId
 {
-    const PartitionId id;
-    const PartitionVersion version;
+    PartitionId id;
+    PartitionVersion version;
 
-    K2_PAYLOAD_COPYABLE
+    K2_PAYLOAD_COPYABLE;
 
     PartitionAssignmentId(PartitionId id, PartitionVersion version) : id(id), version(version) { }
+    PartitionAssignmentId(const PartitionAssignmentId&) = default;
+    PartitionAssignmentId& operator=(PartitionAssignmentId& other) = default;
 };
 
 //

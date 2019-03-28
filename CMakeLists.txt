@@ -1,6 +1,6 @@
-cmake_minimum_required (VERSION 3.13)
+cmake_minimum_required (VERSION 3.12)
 
-project (K2 CXX)
+project (k2_platform VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 
 set (DPDK_SHLIBS "-lrte_ethdev -lrte_net -lrte_mbuf -lrte_mempool -lrte_ring -lrte_mempool_ring -lrte_kvargs -lrte_eal -lrte_pci -lrte_bus_pci")

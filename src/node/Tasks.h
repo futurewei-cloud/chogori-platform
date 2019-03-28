@@ -12,7 +12,7 @@ namespace k2
 class MessageInitiatedTaskRequest : public TaskRequest
 {
 protected:
-    std::unique_ptr<ClientConnection> client;
+    std::unique_ptr<IClientConnection> client;
 
     void respondToSender(Status status, uint32_t moduleCode = 0)
     {
@@ -40,10 +40,10 @@ protected:
 
     IModule& getModule() { return partition.getModule(); }
 
-    ClientConnection& getClient() { return *client.get(); }
+    IClientConnection& getClient() { return *client.get(); }
 
 public:
-    MessageInitiatedTaskRequest(Partition& partition, std::unique_ptr<ClientConnection>&& connectionClient) :
+    MessageInitiatedTaskRequest(Partition& partition, std::unique_ptr<IClientConnection>&& connectionClient) :
         TaskRequest(partition),  client(std::move(connectionClient))
     {
         assert(client);
@@ -113,7 +113,7 @@ protected:
     }
 
 public:
-    ClientTask(Partition& partition, std::unique_ptr<ClientConnection>&& client, Payload&& requestPayload) :
+    ClientTask(Partition& partition, std::unique_ptr<IClientConnection>&& client, Payload&& requestPayload) :
         MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)),
         responseWriter(getClient().getResponseWriter()), state(State::Prepare) {}
 
@@ -155,7 +155,7 @@ public:
 class AssignmentTask : public MessageInitiatedTaskRequest
 {
 public:
-    AssignmentTask(Partition& partition, std::unique_ptr<ClientConnection> client) :
+    AssignmentTask(Partition& partition, std::unique_ptr<IClientConnection> client) :
         MessageInitiatedTaskRequest(partition, std::move(client)) {}
 
     TaskType getType() const override { return TaskType::PartitionAssign; }
@@ -187,7 +187,7 @@ public:
 class OffloadTask : public MessageInitiatedTaskRequest
 {
 public:
-    OffloadTask(Partition& partition, std::unique_ptr<ClientConnection> client) :
+    OffloadTask(Partition& partition, std::unique_ptr<IClientConnection> client) :
         MessageInitiatedTaskRequest(partition, std::move(client)) {}
 
     TaskType getType() const override { return TaskType::PartitionOffload; }

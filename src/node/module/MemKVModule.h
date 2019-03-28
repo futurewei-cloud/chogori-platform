@@ -1,6 +1,7 @@
 #pragma once
 
-#include "../Module.h"
+#include <node/Module.h>
+#include <node/Tasks.h>
 
 namespace k2
 {
@@ -106,6 +107,8 @@ public:
     {
         Payload payload;
         PayloadWriter writer = payload.getWriter();
+        //PartitionMessage::Header header;
+        //if(!writer.getContiguousStructure())
         if(!writeRequest(writer, request))
             return nullptr;
 
