@@ -44,7 +44,7 @@ inline const char* getStatusText(Status status)
 inline Status logError(Status status, const char* fileName, int line, const char* function)
 {
     std::cerr << "Error at " << fileName << ":" << line << "(" << function << ") " << getStatusText(status) << std::endl << std::flush;
-    return status; 
+    return status;
 }
 
 #define LOG_ERROR(status) k2::logError((status), __FILE__, __LINE__, __FUNCTION__)
@@ -52,4 +52,4 @@ inline Status logError(Status status, const char* fileName, int line, const char
 #define RET(status) { k2::Status ____status____ = (status); return (____status____ != k2::Status::Ok) ? LOG_ERROR(____status____) : k2::Status::Ok; }
 #define TIF(status) { k2::Status ____status____ = (status); if(____status____ != k2::Status::Ok) { LOG_ERROR(____status____); throw ____status____; } }
 
-};  //  namespace k2
+}  //  namespace k2

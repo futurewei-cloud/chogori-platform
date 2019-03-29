@@ -1,8 +1,7 @@
-cmake_minimum_required (VERSION 3.12)
-
+add_subdirectory(scheduler)
 project (common VERSION 1.0.0 DESCRIPTION "common library for k2 platform")
 
-add_library (common STATIC 
+add_library (common STATIC
 	Status.cpp
 )
 

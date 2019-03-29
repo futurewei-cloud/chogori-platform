@@ -26,7 +26,7 @@ class MemoryArena
     {
         size_t actualSize = size + sizeof(void*);
         size_t chunkSize = 0;
-        for(int i = 0; i < sizeof(chunkSizes)/sizeof(chunkSizes[0]); i++)
+        for(size_t i = 0; i < sizeof(chunkSizes)/sizeof(chunkSizes[0]); i++)
         {
             if(chunkSizes[i] >= actualSize)
             {
@@ -41,7 +41,7 @@ class MemoryArena
         totalAllocated += chunkSize;
         *((char**)newChunk) = currentChunk.data;
         currentChunk.size = chunkSize;
-        currentChunk.used += sizeof(void*);        
+        currentChunk.used += sizeof(void*);
     }
 
     static void align8(size_t& size)

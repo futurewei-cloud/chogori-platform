@@ -30,7 +30,6 @@
 using namespace seastar;
 
 static int msg_size;
-static int tx_msg_nr = 90000000;
 static std::string str_txbuf;
 static bool enable_tcp = false;
 static bool enable_sctp = false;
@@ -90,7 +89,7 @@ public:
         input_stream<char> _read_buf;
         output_stream<char> _write_buf;
     public:
-        connection(tcp_server& server, connected_socket&& fd, socket_address addr)
+        connection(tcp_server&, connected_socket&& fd, socket_address)
             : _fd(std::move(fd))
             , _read_buf(_fd.input())
             , _write_buf(_fd.output()) {}

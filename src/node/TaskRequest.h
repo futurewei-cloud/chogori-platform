@@ -1,8 +1,8 @@
 #pragma once
 
 #include "common/Message.h"
-#include "../common/IntrusiveLinkedList.h"
-#include "../common/MemoryArena.h"
+#include "common/IntrusiveLinkedList.h"
+#include "common/MemoryArena.h"
 
 namespace k2
 {
@@ -11,7 +11,7 @@ class AssignmentManager;
 class Partition;
 
 //
-//  
+//
 //
 enum class TaskListType
 {
@@ -65,7 +65,7 @@ protected:
 
     K2_LINKED_LIST_NODE;
 
-    TaskListType ownerTaskList; //  Task list in which this task resides  
+    TaskListType ownerTaskList; //  Task list in which this task resides
 
     TaskRequest(Partition& partition) : partition(partition) {}
 
@@ -86,7 +86,7 @@ protected:
     virtual ProcessResult process() = 0;
     virtual void cancel() {}
 
-    std::ostream& logger() { return std::cerr; }  //  Change to something more appropriate    
+    std::ostream& logger() { return std::cerr; }  //  Change to something more appropriate
 
 public:
     //

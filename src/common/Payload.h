@@ -13,7 +13,7 @@ class PayloadWriter;
 //
 //  Serialization traits
 //
-template<class T, class R = void>  
+template<class T, class R = void>
 struct enable_if_type { typedef R type; };
 
 template<typename T, typename = void>
@@ -56,8 +56,8 @@ protected:
     };
 
     Position navigate(size_t offset) const
-    {        
-        assert(offset >= 0 && offset <= size);
+    {
+        assert(offset <= size);
         if(offset == 0)
             return Position { 0, 0 };
         size_t bufferOffset = 0;
@@ -76,9 +76,9 @@ protected:
     {
         buffers.push_back(std::move(Binary(8096))); //  TODO: in DPDK case allocate from NIC buffer pool
         return true;
-    }   
+    }
 
-public:    
+public:
     Payload() : size(0) { }
     Payload(std::vector<Binary> buffers, size_t size) : buffers(std::move(buffers)), size(size) { }
     Payload(const Payload&) = delete;
@@ -86,7 +86,7 @@ public:
     Payload(Payload&&) = default;
     Payload& operator=(Payload&& other) = default;
 
-    size_t getSize() { return size; } const
+    size_t getSize() const { return size; }
 
     size_t getAllocationSize() const
     {
@@ -97,7 +97,7 @@ public:
     }
 
     uint8_t getByte(size_t offset) const
-    {        
+    {
         Position position = navigate(offset);
         return buffers[position.buffer][position.offset];
     }
@@ -150,7 +150,7 @@ protected:
 
 public:
     bool isEnd() const
-    {        
+    {
         return position.buffer == payload.buffers.size();
     }
 
@@ -164,7 +164,7 @@ public:
             const Binary& buffer = payload.buffers[position.buffer];
             size_t currentBufferRemaining = buffer.size()-position.offset;
             size_t needToCopySize = std::min(size, currentBufferRemaining);
-            
+
             std::memcpy(data, buffer.get()+position.offset, needToCopySize);
             if(size >= currentBufferRemaining)
             {
@@ -187,7 +187,7 @@ public:
     {
         if(isEnd())
             return false;
-        
+
         Binary& buffer = const_cast<Binary&>(payload.buffers[position.buffer]);
         size_t currentBufferRemaining = buffer.size()-position.offset;
         if(currentBufferRemaining >= size)  //  Can reference buffer
@@ -206,7 +206,7 @@ public:
         return read(binary.get_write(), size);
     }
 
-    bool read(uint8_t b)
+    bool read(uint8_t& b)
     {
         if(isEnd())
             return false;
@@ -220,7 +220,7 @@ public:
         }
         else
             position.offset++;
-        
+
         return true;
     }
 
@@ -278,7 +278,7 @@ public:
 
         if(!readMany(args...))
             return false;
-        
+
         return true;
     }
 };
@@ -301,7 +301,7 @@ protected:
     {
         return payload.allocateBuffer();
     }
-    
+
     bool allocateBufferIfNeeded()
     {
         return isAllocationNeeded() ? allocateBuffer() : true;
@@ -336,7 +336,7 @@ public:
     //  Define writer position just in case we want to have some special data for writer
     //
     class Position
-    {        
+    {
         friend class PayloadWriter;
     protected:
         Payload::Position position;
@@ -361,10 +361,10 @@ public:
         position.offset++;
 
         increaseGlobalOffset(1);
-        
+
         return true;
     }
-    
+
     bool write(const void* data, size_t size)
     {
         //  TODO: refactor to use iteration lambda
@@ -372,12 +372,12 @@ public:
             return false;
 
         while(size > 0)
-        {   
+        {
             Binary& buffer = const_cast<Binary&>(payload.buffers[position.buffer]);
 
             size_t currentBufferRemaining = buffer.size()-position.offset;
             size_t needToCopySize = std::min(size, currentBufferRemaining);
-            
+
             std::memcpy(buffer.get_write()+position.offset, data, needToCopySize);
 
             increaseGlobalOffset(needToCopySize);
@@ -393,7 +393,7 @@ public:
                 {
                     if(!allocateBuffer())
                         return false;
-                }                
+                }
             }
             else
             {
@@ -401,7 +401,7 @@ public:
                 break;
             }
         }
-        
+
         return true;
     }
 
@@ -462,7 +462,7 @@ public:
             size_t needToCopySize = std::min(size, currentBufferRemaining);
 
             increaseGlobalOffset(needToCopySize);
-        
+
             if(size >= currentBufferRemaining)
             {
                 position.buffer++;
@@ -472,7 +472,7 @@ public:
                 {
                     if(!allocateBuffer())
                         return false;
-                }                    
+                }
             }
             else
             {
@@ -480,7 +480,7 @@ public:
                 break;
             }
         }
-        
+
         return true;
     }
 
@@ -531,7 +531,7 @@ public:
 
         if(!writeMany(args...))
             return false;
-        
+
         return true;
     }
 };
@@ -549,4 +549,4 @@ inline PayloadWriter Payload::getWriter(size_t offset)
     return PayloadWriter(*this, offset);
 }
 
-};  //  namespace k2
+} //  namespace k2

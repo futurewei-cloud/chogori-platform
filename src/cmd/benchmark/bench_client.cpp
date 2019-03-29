@@ -30,7 +30,7 @@
 using namespace seastar;
 using namespace net;
 
-static int msg_size;
+static size_t msg_size;
 static std::string str_txbuf;
 static double cyclesPerSec;
 
@@ -190,7 +190,7 @@ public:
         _test = test;
 
         for (unsigned i = 0; i < ncon; i++) {
-            socket_address local = socket_address(::sockaddr_in{AF_INET, INADDR_ANY, {0}});
+            socket_address local = socket_address(::sockaddr_in{AF_INET, INADDR_ANY, {0}, 0});
             engine().net().connect(make_ipv4_address(server_addr), local, protocol).then([this, test] (connected_socket fd) {
                 auto conn = new connection(std::move(fd));
                 (this->*tests.at(test))(conn).then_wrapped([conn] (auto&& f) {

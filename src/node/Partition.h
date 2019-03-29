@@ -4,7 +4,7 @@
 #include "Collection.h"
 #include "persistence/IPersistentLog.h"
 #include "TaskRequest.h"
-#include "../common/IntrusiveLinkedList.h"
+#include "common/IntrusiveLinkedList.h"
 
 namespace k2
 {
@@ -29,7 +29,7 @@ protected:
     friend class AssignmentManager;
 
     typedef IntrusiveLinkedList<TaskRequest> TaskList;
-    
+
     std::array<TaskList, (size_t)TaskListType::TaskListCount> taskLists;  //  Partition tasks
 
     PartitionMetadata metadata;
@@ -139,8 +139,8 @@ protected:
 
 public:
     Partition(PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
-        metadata(std::move(metadata)), collection(collection), moduleData(nullptr),
-        state(State::Assigning), version(version) {}    
+        state(State::Assigning), metadata(std::move(metadata)),
+        collection(collection), version(version), moduleData(nullptr) {}
 
     ~Partition() { release(); }
 

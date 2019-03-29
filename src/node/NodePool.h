@@ -1,8 +1,8 @@
 #pragma once
 
-#include <common/Status.h>
+#include "common/Status.h"
 #include "Module.h"
-#include <common/ModuleId.h>
+#include "common/ModuleId.h"
 #include <memory>
 
 namespace k2
@@ -22,7 +22,7 @@ struct NodeEndpointConfig
 
     struct EthernetEndpoint
     {
-        unsigned __int128 address;
+        __extension__ unsigned __int128 address;
     };
 
     struct IPv4Endpoint
@@ -33,7 +33,7 @@ struct NodeEndpointConfig
 
     struct IPv6Endpoint
     {
-        unsigned __int128 address;
+        __extension__ unsigned __int128 address;
         uint16_t port;
     };
 
@@ -101,7 +101,7 @@ protected:
 
         ptr = newCollection.get();
         collections[newCollection.get()->getId()] = std::move(newCollection);
-        
+
         return Status::Ok;
     }
 

@@ -22,8 +22,8 @@ public:
     typedef std::map<String, String> Properties;
 protected:
     CollectionId collectionId;
+    Properties properties;    //  Application defined properties
     ModuleId moduleId;
-    Properties properties;    //  Application defined properties    
 public:
     CollectionMetadata() : collectionId(0), moduleId(ModuleId::None) { }
     CollectionMetadata(CollectionId collectionId, ModuleId moduleId, Properties properties) :

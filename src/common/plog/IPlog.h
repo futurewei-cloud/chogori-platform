@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Common.h"
+#include "common/Common.h"
 #include "plog_client.h"
 #include <seastar/core/sharded.hh>
 
@@ -62,7 +62,7 @@ public:
     {
         if(ptr)
             ptr->Release();
-            
+
         ptr = other.ptr;
         return *this;
     }
@@ -93,7 +93,7 @@ protected:
     {
         _finished = true;
         _status = error;
-        
+
         if(_callback)
         {
             _callback(Ptr((IOResultT*)this));
@@ -124,7 +124,7 @@ public:
             callback(Ptr((IOResultT*)this));
             return;
         }
-        
+
         if(_callback)
         {
             _callback = [oldCallback = std::move(_callback), newCallback = std::move(_callback)](const Ptr& self)
@@ -134,7 +134,7 @@ public:
             };
         }
         else
-            _callback = std::move(callback);        
+            _callback = std::move(callback);
     }
 };
 
@@ -173,13 +173,13 @@ public:
     virtual IOResult<std::vector<PlogId>> create() = 0;
 
     virtual IOResult<PlogInfo> getInfo(const PlogId& plogId) = 0;
-  
+
     virtual IOResult<uint64_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
- 
+
     virtual IOResult<ReadRegions> read(const PlogId& plogId, ReadRegions plogDataToReadList) = 0;
- 
+
     virtual IOResult<void> seal(const PlogId plogId) = 0;
- 
+
     virtual IOResult<void> drop(const PlogId plogId) = 0;
 };  //  class IPlog
 

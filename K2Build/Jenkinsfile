@@ -29,7 +29,7 @@ pipeline {
             agent {label "builder"}
             steps {
                 echo "\u2600 Build"
-                sh "./K2Build/k2build make -C K2Build"
+                sh "./K2Build/k2build make -j -C K2Build"
             }
         }
         stage('Test') {
@@ -37,7 +37,7 @@ pipeline {
             agent {label "test"}
             steps {
                 echo "\u2600 Run K2 Platform Integration Test"
-                sh "./K2Build/k2build make -C K2Build test"
+                sh "./K2Build/k2build make -j -C K2Build test"
             }
         }
         stage('Install') {
@@ -45,7 +45,7 @@ pipeline {
             agent {label "builder"}
             steps {
                 echo "\u2600 Install"
-                sh "./K2Build/k2build make -C K2Build install"
+                sh "./K2Build/k2build make -j -C K2Build install"
             }
         }
         stage('Package') {

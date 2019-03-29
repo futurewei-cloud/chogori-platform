@@ -79,7 +79,7 @@ public:
 class IOOperations
 {
 public:
-    virtual void registerIO(IOOperation&& operation) { }
+    virtual void registerIO(IOOperation&&) { }
 };
 
 
@@ -92,7 +92,7 @@ struct ModuleResponse
     {
         Ok = 0,     //  Can move to next state
         ReturnToClient, //  Return status to client immediately
-        Error,      //  Some error occurred 
+        Error,      //  Some error occurred
         Postpone,   //  Task need to continue later
         RescheduleAfterIOCompletion,     //  Continue when all IO operations are finished
     };
@@ -103,7 +103,7 @@ struct ModuleResponse
         uint32_t resultCode;            //  If type == Error: contains Module specific result code
         uint32_t potponeDelayUs;        //  If type == Postpone: contains time in microseconds for which task needs to be delayed
     };
-    
+
     ModuleResponse(ResponseType type, uint32_t value) : type(type), resultCode(value) { }
     ModuleResponse(ResponseType type) : type(type), resultCode(0) { }
     constexpr bool isOk() { return type != Error; }
@@ -130,17 +130,17 @@ public:
     //  Called when Pool observe partition for collection it didn't see before.
     //  Can be called from any Node.
     //
-    virtual ModuleResponse onNewCollection(Collection& collection) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onNewCollection(Collection&) { return ModuleResponse::Ok; }
 
     //
     //  Called when partition get assigned
     //
-    virtual ModuleResponse onAssign(AssignmentTask& assignment) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onAssign(AssignmentTask&) { return ModuleResponse::Ok; }
 
     //
     //  Called when partition get offloaded
     //
-    virtual ModuleResponse onOffload(OffloadTask& offload) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onOffload(OffloadTask&) { return ModuleResponse::Ok; }
 
     //
     //  Called when client request is received. In this function Module can check whether operation can be completed,
@@ -168,7 +168,7 @@ public:
     //
     //  Called when Module requests some maintainence jobs (e.g. snapshoting).
     //
-    virtual ModuleResponse onMaintainence(MaintainenceTask& task) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onMaintainence(MaintainenceTask&) { return ModuleResponse::Ok; }
 
     //
     //  Destructor. Called when Pool is terminated

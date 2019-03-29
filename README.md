@@ -1,6 +1,7 @@
 <!--
-    (C)opyright Huawei Technologies USA, 2019
+    (C)opyright Futurewei Technologies Inc, 2019
 -->
+
 # DFV_K2_Platform
 K2 Project is a platform for building low-latency (μs) in-memory distributed persistent OLTP databases.
 

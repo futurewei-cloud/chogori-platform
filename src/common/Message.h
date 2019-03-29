@@ -44,7 +44,7 @@ public:
     PartitionMessage(MessageType messageType, PartitionAssignmentId partition, Endpoint&& sender, Payload&& payload) :
         Message(std::move(sender), std::move(payload)), messageType(messageType), partition(partition) { }
 
-    const MessageType getMessageType() { return messageType; }
+    const MessageType& getMessageType() { return messageType; }
     const PartitionAssignmentId& getPartition() { return partition; }
     const Endpoint& getSender() { return sender; }
     Payload& getPayload() { return payload; }
@@ -176,7 +176,7 @@ public:
 
     K2_PAYLOAD_FIELDS(partitionMetadata, collectionMetadata, partitionVersion);
 
-    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver)
+    std::unique_ptr<PartitionMessage> createMessage(Endpoint&&)
     {
         Payload payload;
         payload.getWriter().write(*this);
@@ -186,4 +186,4 @@ public:
     }
 };
 
-};  //  namespace k2
+}  //  namespace k2

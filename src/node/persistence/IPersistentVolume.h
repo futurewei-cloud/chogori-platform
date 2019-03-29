@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../common/Common.h"
-#include "../../common/plog/IPlog.h"
+#include "common/Common.h"
+#include "common/plog/IPlog.h"
 
 namespace k2
 {

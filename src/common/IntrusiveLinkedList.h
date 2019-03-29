@@ -77,7 +77,7 @@ public:
         else
             tail = prev(element);
 
-        count--;    
+        count--;
     }
 
     void addAfter(T& position, T& element)
@@ -149,13 +149,13 @@ public:
         }
 
     public:
-        Iterator(const Iterator&) = default;        
+        Iterator(const Iterator&) = default;
         Iterator& operator=(const Iterator&) = default;
         Iterator(T* start) { setCurrent(start); }
 
         Iterator& operator++() { setCurrent(next); return *this; }
 
-        T& operator*() { return *current; }        
+        T& operator*() { return *current; }
         T* operator->() { return current; }
 
         bool operator==(const Iterator& other) const { return current == other.current; }
@@ -173,6 +173,6 @@ public:
     }
 };
 
-#define K2_LINKED_LIST_NODE template<typename T> friend class IntrusiveLinkedList; IntrusiveLinkedListNode K2_LINKED_LIST_NODE_VARIABLE;
+#define K2_LINKED_LIST_NODE template<typename T> friend class IntrusiveLinkedList; IntrusiveLinkedListNode K2_LINKED_LIST_NODE_VARIABLE
 
-};  //  namespace k2
+}  //  namespace k2

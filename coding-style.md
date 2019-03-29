@@ -1,3 +1,6 @@
+<!--
+    (C)opyright Futurewei Technologies Inc, 2019
+-->
 
 # K2 Coding Style
 ## Short demo of the concepts below

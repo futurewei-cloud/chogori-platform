@@ -2,10 +2,7 @@
 
 #include "Payload.h"
 
-namespace k2
-{
-
-#define K2_PAYLOAD_FIELDS(...)                      \
+#define K2_PAYLOAD_FIELDS(...)                       \
         struct __K2PayloadSerializableTraitTag__ {};\
         bool writeFields(PayloadWriter& writer) const \
         {                                           \
@@ -17,6 +14,4 @@ namespace k2
         }                                           \
 
 
-#define K2_PAYLOAD_COPYABLE struct __K2PayloadCopyableTraitTag__ {};
-
-};  //  namespace k2
+#define K2_PAYLOAD_COPYABLE struct __K2PayloadCopyableTraitTag__ {}

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <node/Module.h>
-#include <node/Tasks.h>
+#include "node/Tasks.h"
+#include "node/Module.h"
 
 namespace k2
 {
@@ -11,7 +11,7 @@ class MemKVModule : public IModule
 {
 protected:
     struct Node
-    {                
+    {
         uint64_t version;
         String value;
         std::unique_ptr<Node> next;
@@ -146,7 +146,7 @@ public:
     //      Postpone: To reschedule the task for some later time
     //      RescheduleAfterIOCompletion: To wait while all IOs are done and schedule task again
     //
-    ModuleResponse onPrepare(ClientTask& task, IOOperations& ioOperations) override
+    ModuleResponse onPrepare(ClientTask& task, IOOperations&) override
     {
         const Payload& payload = task.getRequestPayload();
         PayloadReader reader = payload.getReader();
@@ -163,7 +163,7 @@ public:
             {
                 GetRequest request;
                 MemKVModule_PARSE_RIF(reader.read(request));
-                task.releaseRequestPayload();                
+                task.releaseRequestPayload();
 
                 auto it = memTable.find(request.key);
                 if(it == memTable.end())
@@ -186,7 +186,7 @@ public:
             {
                 SetRequest request;
                 MemKVModule_PARSE_RIF(reader.read(request));
-                task.releaseRequestPayload();                
+                task.releaseRequestPayload();
 
                 std::unique_ptr<Node> newNode(new Node);
                 newNode->value = std::move(request.value);
@@ -214,7 +214,7 @@ public:
     //  Called either for for distributed transactions after responses from all participants have been received. Module
     //  can aggregate shared state and make a decision on whether to proceed with transaction.
     //
-    ModuleResponse onCoordinate(ClientTask& task, SharedState& remoteSharedState, IOOperations& ioOperations) override
+    ModuleResponse onCoordinate(ClientTask&, SharedState&, IOOperations&) override
     {
         return ModuleResponse(ModuleResponse::Ok);
     }
@@ -223,7 +223,7 @@ public:
     //  Called after OnPrepare stage is done (Module returned Ok and all IOs are finished). On this stage Module can
     //  apply it's transaction to update in memory representation or release locks.
     //
-    ModuleResponse onApply(ClientTask& task) override
+    ModuleResponse onApply(ClientTask&) override
     {
         return ModuleResponse(ModuleResponse::Ok);
     }
@@ -231,7 +231,7 @@ public:
     //
     //  Called when Module requests some maintainence jobs (e.g. snapshoting).
     //
-    ModuleResponse onMaintainence(MaintainenceTask& task) override
+    ModuleResponse onMaintainence(MaintainenceTask&) override
     {
         return ModuleResponse::Ok;
     }
