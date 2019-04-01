@@ -5,7 +5,6 @@
 #include <idx/contenthelpers/OptionalValue.hpp>
 
 #include "../common/Common.h"
-#include "Node.h"
 
 using namespace std;
 
@@ -27,7 +26,7 @@ struct KeyValuePairExtractor {
 };
 
 class HOTMemtable : public MemtableInterface<HOTMemtable> {
-    using KeyValuePairTrieType = hot::singlethreaded::HOTSingleThreaded<const std::unique_ptr<KeyValuePair>, idx::contenthelpers::KeyValuePairExtractor>;
+    using KeyValuePairTrieType = hot::singlethreaded::HOTSingleThreaded<KeyValuePair*, KeyValuePairExtractor>;
     KeyValuePairTrieType m_keyValuePairTrie;
 public:
     void insert(String key, String value, uint64_t version) {
@@ -35,26 +34,27 @@ public:
         newNode->value = std::move(value);
         newNode->version = version;
 
-        std::unique_ptr<KeyValuePair> keyValuePair = new KeyValuePair();
+        KeyValuePair* keyValuePair = new KeyValuePair();
         keyValuePair->key = std::move(key);
         keyValuePair->value = std::move(newNode);
 
-        auto inserted = m_keyValuePairTrie.insert(std::move(keyValuePair));
-        if(!inserted.second)    //  Value already exists
+        auto inserted = m_keyValuePairTrie.insert(keyValuePair);
+        if(!inserted) //  Value already exists
         {
-            newNode->next = std::move(inserted.first->value);
-            inserted.first->value = std::move(newNode);
+            auto exist = m_keyValuePairTrie.lookup(keyValuePair->key.c_str());
+            newNode->next = std::move(exist.mValue->value);
+            exist.mValue->value = std::move(newNode);
         }
     }
 
     Node* find(const String& key) {
-        auto t = m_keyValuePairTrie.lookup(key.c_str());
-        if (!t.mIsValid) {
+        auto tuple = m_keyValuePairTrie.lookup(key.c_str());
+        if (!tuple.mIsValid) {
             return nullptr;
         }
-        return t.mValue.value.get();
+        return tuple.mValue->value.get();
     }
 
-}
+};
 
 }

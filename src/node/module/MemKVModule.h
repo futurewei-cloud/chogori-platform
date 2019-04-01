@@ -19,7 +19,7 @@ protected:
     class PartitionContext
     {
     public:
-        MemtableInterface<DerivedMemtable> memTable;
+        DerivedMemtable memTable;
         uint64_t currentVersion = 0;
         uint64_t keepVersionCount = 1;
 
@@ -34,7 +34,7 @@ protected:
         return (PartitionContext*)task.getPartition().moduleData;
     };
 
-    MemtableInterface<DerivedMemtable>& getMemtable(TaskRequest& task)
+    DerivedMemtable& getMemtable(TaskRequest& task)
     {
         return getPartitionContext(task)->memTable;
     }
@@ -151,7 +151,7 @@ public:
         RequestType requestType;
         MemKVModule_PARSE_RIF(reader.read(requestType));
 
-        MemtableInterface<DerivedMemtable>& memTable = context->memTable;
+        DerivedMemtable& memTable = context->memTable;
 
         switch(requestType)
         {

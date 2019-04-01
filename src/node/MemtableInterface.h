@@ -20,5 +20,7 @@ public:
     Node* find(const String& key) {
         return static_cast<DerivedClass*>(this)->find(key);
     }
+
+    // TODO: add the remove interface
 };
 }
