@@ -1,15 +1,22 @@
 // std
 #include <iostream>
+#include <string>
 // seastar
 #include <seastar/core/app-template.hh>
 #include <seastar/core/reactor.hh>
+#include <seastar/core/gate.hh>
 // k2
-#include "common/scheduler/SeastarScheduler.h"
-#include "common/scheduler/RoundrobinScheduler.h"
+#include "common/scheduler/RootScheduler.h"
+#include "common/scheduler/LoopScheduler.h"
+#include "common/scheduler/TcpService.h"
 
-/**
- * Service entry point.
- */
+using namespace k2;
+
+seastar::shared_ptr<RootScheduler> rootScheduler;
+
+//
+// Node entry point.
+//
 int main(int argc, char** argv) {
     try {
         // create seastar application
@@ -17,17 +24,30 @@ int main(int argc, char** argv) {
 
         // start the application
         app.run(argc, argv, [] {
-            // start the event loop
-            return seastar::do_with(RoundRobinScheduler(), false, [] (auto& scheduler, bool& stop) {
-                using namespace std::chrono_literals;
+            std::cout << "Starting service..." << std::endl;
+            rootScheduler = seastar::make_shared<RootScheduler>();
 
-                // stop the scheduler after 10s
-                seastar::sleep(std::chrono::seconds(10)).then([&stop] {
-                    stop = true;
-                });
+            // at exit, terminate the root scheduler.
+            seastar::engine().at_exit([] {
+                std::cout << "Stopping service..." << std::endl;
+                
+                return rootScheduler->close();
+            });
 
-                // run the scheduler
-                return SeastarScheduler::run(scheduler, stop);
+            // TODO: Remove this code once we have a way to send a signal to terminate the service.
+            seastar::sleep(std::chrono::seconds(10)).then([] {
+                rootScheduler->stop();
+
+                return seastar::make_ready_future<>(); 
+            });
+
+            return seastar::async([] {
+                // create schedulers
+                rootScheduler->createSchedulingGroup("default", 1000).get();
+                seastar::shared_ptr<LoopScheduler> loopScheduler = seastar::make_shared<LoopScheduler>(seastar::make_shared<TcpService>());
+                rootScheduler->registerScheduler(loopScheduler);
+                // start schedulers
+                rootScheduler->start().get();
             });
         });
     } catch (...) {
