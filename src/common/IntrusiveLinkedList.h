@@ -173,6 +173,6 @@ public:
     }
 };
 
-#define K2_LINKED_LIST_NODE template<typename T> friend class IntrusiveLinkedList; IntrusiveLinkedListNode K2_LINKED_LIST_NODE_VARIABLE
+#define K2_LINKED_LIST_NODE template<typename T> friend class IntrusiveLinkedList; IntrusiveLinkedListNode K2_LINKED_LIST_NODE_VARIABLE;
 
 }  //  namespace k2

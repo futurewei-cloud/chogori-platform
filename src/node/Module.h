@@ -79,7 +79,9 @@ public:
 class IOOperations
 {
 public:
-    virtual void registerIO(IOOperation&&) { }
+    virtual void registerIO(IOOperation&& operation) {
+        (void) operation; // TODO use me
+     }
 };
 
 
@@ -130,17 +132,26 @@ public:
     //  Called when Pool observe partition for collection it didn't see before.
     //  Can be called from any Node.
     //
-    virtual ModuleResponse onNewCollection(Collection&) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onNewCollection(Collection& collection) {
+        (void) collection; // TODO use me
+        return ModuleResponse::Ok;
+    }
 
     //
     //  Called when partition get assigned
     //
-    virtual ModuleResponse onAssign(AssignmentTask&) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onAssign(AssignmentTask& assignment) {
+        (void) assignment; // TODO use me
+        return ModuleResponse::Ok;
+    }
 
     //
     //  Called when partition get offloaded
     //
-    virtual ModuleResponse onOffload(OffloadTask&) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onOffload(OffloadTask& offload) {
+        (void) offload; // TODO use me
+        return ModuleResponse::Ok;
+    }
 
     //
     //  Called when client request is received. In this function Module can check whether operation can be completed,
@@ -168,7 +179,10 @@ public:
     //
     //  Called when Module requests some maintainence jobs (e.g. snapshoting).
     //
-    virtual ModuleResponse onMaintainence(MaintainenceTask&) { return ModuleResponse::Ok; }
+    virtual ModuleResponse onMaintainence(MaintainenceTask& task) {
+        (void) task; // TODO use me
+        return ModuleResponse::Ok;
+    }
 
     //
     //  Destructor. Called when Pool is terminated

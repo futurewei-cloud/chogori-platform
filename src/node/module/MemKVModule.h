@@ -146,8 +146,9 @@ public:
     //      Postpone: To reschedule the task for some later time
     //      RescheduleAfterIOCompletion: To wait while all IOs are done and schedule task again
     //
-    ModuleResponse onPrepare(ClientTask& task, IOOperations&) override
+    ModuleResponse onPrepare(ClientTask& task, IOOperations& ioOperations) override
     {
+        (void) ioOperations; // TODO use me
         const Payload& payload = task.getRequestPayload();
         PayloadReader reader = payload.getReader();
         PartitionContext* context = getPartitionContext(task);
@@ -214,8 +215,11 @@ public:
     //  Called either for for distributed transactions after responses from all participants have been received. Module
     //  can aggregate shared state and make a decision on whether to proceed with transaction.
     //
-    ModuleResponse onCoordinate(ClientTask&, SharedState&, IOOperations&) override
+    ModuleResponse onCoordinate(ClientTask& task, SharedState& remoteSharedState, IOOperations& ioOperations) override
     {
+        (void) task; // TODO  use me
+        (void) remoteSharedState; // TODO use me
+        (void) ioOperations; // TODO use me
         return ModuleResponse(ModuleResponse::Ok);
     }
 
@@ -223,16 +227,18 @@ public:
     //  Called after OnPrepare stage is done (Module returned Ok and all IOs are finished). On this stage Module can
     //  apply it's transaction to update in memory representation or release locks.
     //
-    ModuleResponse onApply(ClientTask&) override
+    ModuleResponse onApply(ClientTask& task) override
     {
+        (void) task; // TODO  use me
         return ModuleResponse(ModuleResponse::Ok);
     }
 
     //
     //  Called when Module requests some maintainence jobs (e.g. snapshoting).
     //
-    ModuleResponse onMaintainence(MaintainenceTask&) override
+    ModuleResponse onMaintainence(MaintainenceTask& task) override
     {
+        (void) task; // TODO  use me
         return ModuleResponse::Ok;
     }
 };

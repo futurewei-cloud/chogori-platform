@@ -44,7 +44,7 @@ public:
     PartitionMessage(MessageType messageType, PartitionAssignmentId partition, Endpoint&& sender, Payload&& payload) :
         Message(std::move(sender), std::move(payload)), messageType(messageType), partition(partition) { }
 
-    const MessageType& getMessageType() { return messageType; }
+    MessageType getMessageType() { return messageType; }
     const PartitionAssignmentId& getPartition() { return partition; }
     const Endpoint& getSender() { return sender; }
     Payload& getPayload() { return payload; }
@@ -55,12 +55,12 @@ public:
     }
 
     struct Header
-    {        
+    {
         MessageType messageType;
         PartitionAssignmentId partition;
         size_t messageSize;
 
-        K2_PAYLOAD_COPYABLE;
+        K2_PAYLOAD_COPYABLE
     };
 
     class PayloadBuilder
@@ -154,7 +154,7 @@ public:
     Status getStatus() const { return status; }
 
     struct Header
-    {        
+    {
         Status status;
         uint32_t moduleCode;
         size_t messageSize;
@@ -176,8 +176,9 @@ public:
 
     K2_PAYLOAD_FIELDS(partitionMetadata, collectionMetadata, partitionVersion);
 
-    std::unique_ptr<PartitionMessage> createMessage(Endpoint&&)
+    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver)
     {
+        (void) receiver; // TODO use me
         Payload payload;
         payload.getWriter().write(*this);
 

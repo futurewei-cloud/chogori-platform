@@ -8,12 +8,12 @@ namespace k2tx
 
 Listener::Listener(VirtualFunction::Dist_t& vfs):
     _vfs(vfs) {
-    K2LOG("");
+    K2DEBUG("");
 }
 
 Listener::~Listener()
 {
-    K2LOG("");
+    K2DEBUG("");
 }
 
 } // namespace k2tx

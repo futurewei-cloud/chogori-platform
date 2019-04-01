@@ -9,20 +9,20 @@
 namespace k2tx
 {
 ListenerFactory::ListenerFactory(BuilderFunc_t builder): _builder(builder) {
-    K2LOG("");
+    K2DEBUG("");
 }
 
 ListenerFactory::~ListenerFactory() {
-    K2LOG("");
+    K2DEBUG("");
 }
 
 void ListenerFactory::Start() {
-    K2LOG("");
+    K2DEBUG("");
     _instance = _builder();
 }
 
 seastar::future<> ListenerFactory::stop() {
-    K2LOG("");
+    K2DEBUG("");
     if (_instance.get()) {
         return _instance->stop();
     }

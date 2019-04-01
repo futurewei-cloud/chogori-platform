@@ -89,10 +89,13 @@ public:
         input_stream<char> _read_buf;
         output_stream<char> _write_buf;
     public:
-        connection(tcp_server&, connected_socket&& fd, socket_address)
+        connection(tcp_server& server, connected_socket&& fd, socket_address addr)
             : _fd(std::move(fd))
             , _read_buf(_fd.input())
-            , _write_buf(_fd.output()) {}
+            , _write_buf(_fd.output()) {
+                (void) server; // TODO use me
+                (void) addr; // TODO use me
+            }
         future<> process() {
              return read();
         }
