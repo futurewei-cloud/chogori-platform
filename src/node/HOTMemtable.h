@@ -17,7 +17,7 @@ struct KeyValuePair {
 };
 
 template<typename ValueType>
-struct KeyValuePairExtractor {
+struct KeyValuePairKeyExtractor {
     typedef const char* KeyType;
 
     inline KeyType operator()(ValueType const &value) const {
@@ -26,7 +26,7 @@ struct KeyValuePairExtractor {
 };
 
 class HOTMemtable : public MemtableInterface<HOTMemtable> {
-    using KeyValuePairTrieType = hot::singlethreaded::HOTSingleThreaded<KeyValuePair*, KeyValuePairExtractor>;
+    using KeyValuePairTrieType = hot::singlethreaded::HOTSingleThreaded<KeyValuePair*, KeyValuePairKeyExtractor>;
     KeyValuePairTrieType m_keyValuePairTrie;
 public:
     void insert(String key, String value, uint64_t version) {
