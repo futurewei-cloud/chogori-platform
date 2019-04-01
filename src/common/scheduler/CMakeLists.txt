@@ -1,8 +1,7 @@
 project(scheduler VERSION 1.0.0 DESCRIPTION "scheduler library")
 
 add_library(scheduler STATIC
-	RoundrobinScheduler.cpp 
-	SeastarScheduler.cpp
+    TcpService.cpp
 )
 
 set_target_properties(scheduler PROPERTIES 
