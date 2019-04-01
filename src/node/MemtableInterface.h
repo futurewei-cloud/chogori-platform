@@ -4,12 +4,18 @@
 
 namespace k2 
 {
+//
+//  K2 internal MVCC representation
+//
 struct Node {                
     uint64_t version;
     String value;
     std::unique_ptr<Node> next;
 };
 
+//
+//  K2 internal indexing data structures interface
+//
 template <typename DerivedClass>
 class MemtableInterface {
 public:
