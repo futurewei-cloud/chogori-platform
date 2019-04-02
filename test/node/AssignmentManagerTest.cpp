@@ -2,9 +2,9 @@
 #include <iostream>
 
 #include <node/AssignmentManager.h>
-#include <node/MapMemtable.h>
-#include <node/UnorderedMapMemtable.h>
-#include <node/HOTMemtable.h>
+#include <node/MapIndexer.h>
+#include <node/UnorderedMapIndexer.h>
+#include <node/HOTIndexer.h>
 #include <node/module/MemKVModule.h>
 #include <node/NodePool.h>
 
@@ -64,7 +64,7 @@ public:
     }
 };
 
-template <typename DerivedMemtable>
+template <typename DerivedIndexer>
 class MemKVClient
 {
     FakeTransport& transport;
@@ -73,22 +73,22 @@ public:
 
     uint64_t set(PartitionAssignmentId partitionId, String key, String value)
     {
-        typename MemKVModule<DerivedMemtable>::SetRequest setRequest { std::move(key), std::move(value) };
-        auto result = transport.send(MemKVModule<DerivedMemtable>::createMessage(setRequest, partitionId));
+        typename MemKVModule<DerivedIndexer>::SetRequest setRequest { std::move(key), std::move(value) };
+        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(setRequest, partitionId));
         assert(result->getStatus() == Status::Ok);
 
-        typename MemKVModule<DerivedMemtable>::SetResponse setResponse;
+        typename MemKVModule<DerivedIndexer>::SetResponse setResponse;
         result->payload.getReader().read(setResponse);
         return setResponse.version;
     }
 
     String get(PartitionAssignmentId partitionId, String key)
     {
-        typename MemKVModule<DerivedMemtable>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
-        auto result = transport.send(MemKVModule<DerivedMemtable>::createMessage(getRequest, partitionId));
+        typename MemKVModule<DerivedIndexer>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
+        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(getRequest, partitionId));
         assert(result->getStatus() == Status::Ok);
 
-        typename MemKVModule<DerivedMemtable>::GetResponse getResponse;
+        typename MemKVModule<DerivedIndexer>::GetResponse getResponse;
         result->payload.getReader().read(getResponse);
         return getResponse.value;
     }
@@ -97,7 +97,7 @@ public:
 TEST_CASE("Ordered Map Based Indexer Module Assignment Manager", "[OrderedMapBasedIndexerModuleAssignment]")
 {
     NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<MapMemtable>>());
+    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<MapIndexer>>());
 
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
@@ -116,7 +116,7 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment Manager", "[OrderedMapBas
     SECTION("Module client KV set and get")
     {
         PartitionAssignmentId assignmentId(partitionId, partitionVersion);
-        MemKVClient client(transport);
+        MemKVClient<MapIndexer> client(transport);
         client.set(assignmentId, "Arjan", "Xeka");
         client.set(assignmentId, "Ivan", "Avramov");
 
@@ -128,7 +128,7 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment Manager", "[OrderedMapBas
 TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBasedIndexerModuleAssignment]")
 {
     NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<UnorderedMapMemtable>>());
+    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<UnorderedMapIndexer>>());
 
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
@@ -147,7 +147,7 @@ TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBased
 
     SECTION("Module client KV set and get")
     {
-        MemKVClient<UnorderedMapMemtable> client(transport);
+        MemKVClient<UnorderedMapIndexer> client(transport);
         client.set(assignmentId, "Hao", "Feng");
         client.set(assignmentId, "Valentin", "Kuznetsov");
 
@@ -159,7 +159,7 @@ TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBased
 TEST_CASE("HOT Based Indexer Module Assignment Manager", "[HOTBasedIndexerModuleAssignment]")
 {
     NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<HOTMemtable>>());
+    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<HOTIndexer>>());
 
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
@@ -179,7 +179,7 @@ TEST_CASE("HOT Based Indexer Module Assignment Manager", "[HOTBasedIndexerModule
 
     SECTION("Module client KV set and get")
     {
-        MemKVClient<HOTMemtable> client(transport);
+        MemKVClient<HOTIndexer> client(transport);
         client.set(assignmentId, "Xiangjun", "Shi");
         client.set(assignmentId, "Quan", "Zhang");
 

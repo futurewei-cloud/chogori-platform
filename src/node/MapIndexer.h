@@ -1,12 +1,12 @@
 #pragma once
 
-#include "MemtableInterface.h"
+#include "IndexerInterface.h"
 
 namespace k2 
 {
-class UnorderedMapMemtable : public MemtableInterface<UnorderedMapMemtable> {
+class MapIndexer : public IndexerInterface<MapIndexer> {
 private:
-    std::unordered_map<String, std::unique_ptr<Node>> m_map;
+    std::map<String, std::unique_ptr<Node>> m_map;
 public:
     void insert(String key, String value, uint64_t version) {
         std::unique_ptr<Node> newNode(new Node);

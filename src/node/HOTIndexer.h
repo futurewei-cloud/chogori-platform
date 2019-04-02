@@ -25,7 +25,7 @@ struct KeyValuePairKeyExtractor {
     }
 };
 
-class HOTMemtable : public MemtableInterface<HOTMemtable> {
+class HOTIndexer : public IndexerInterface<HOTIndexer> {
     using KeyValuePairTrieType = hot::singlethreaded::HOTSingleThreaded<KeyValuePair*, KeyValuePairKeyExtractor>;
     KeyValuePairTrieType m_keyValuePairTrie;
 public:

@@ -2,13 +2,13 @@
 
 #include "node/Tasks.h"
 #include "node/Module.h"
-#include "node/MemtableInterface.h"
+#include "node/IndexerInterface.h"
 
 namespace k2
 {
 
 //  Simple in-memory KV-store module
-template <typename DerivedMemtable>
+template <typename DerivedIndexer>
 class MemKVModule : public IModule
 {
 protected:
@@ -19,7 +19,7 @@ protected:
     class PartitionContext
     {
     public:
-        DerivedMemtable memTable;
+        DerivedIndexer memTable;
         uint64_t currentVersion = 0;
         uint64_t keepVersionCount = 1;
 
@@ -34,7 +34,7 @@ protected:
         return (PartitionContext*)task.getPartition().moduleData;
     };
 
-    DerivedMemtable& getMemtable(TaskRequest& task)
+    DerivedIndexer& getIndexer(TaskRequest& task)
     {
         return getPartitionContext(task)->memTable;
     }
@@ -151,7 +151,7 @@ public:
         RequestType requestType;
         MemKVModule_PARSE_RIF(reader.read(requestType));
 
-        DerivedMemtable& memTable = context->memTable;
+        DerivedIndexer& memTable = context->memTable;
 
         switch(requestType)
         {

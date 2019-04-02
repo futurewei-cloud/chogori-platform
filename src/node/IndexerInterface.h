@@ -17,7 +17,7 @@ struct Node {
 //  K2 internal indexing data structures interface
 //
 template <typename DerivedClass>
-class MemtableInterface {
+class IndexerInterface {
 public:
     void insert(String key, String value, uint64_t version) {
         static_cast<DerivedClass*>(this)->insert(std::move(key), std::move(value), version);
