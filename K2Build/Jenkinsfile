@@ -34,7 +34,7 @@ pipeline {
         }
         stage('Test') {
             options { skipDefaultCheckout() }
-            agent {label "test"}
+            agent {label "builder"}
             steps {
                 echo "\u2600 Run K2 Platform Integration Test"
                 sh "./K2Build/k2build make -j -C K2Build test"
