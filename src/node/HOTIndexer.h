@@ -18,9 +18,7 @@ struct KeyValuePair {
 
 template<typename ValueType>
 struct KeyValuePairKeyExtractor {
-    typedef const char* KeyType;
-
-    inline KeyType operator()(ValueType const &value) const {
+    inline const char* operator()(ValueType const &value) const {
         return value->key.c_str();
     }
 };
