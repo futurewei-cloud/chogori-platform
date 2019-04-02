@@ -14,6 +14,7 @@ set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${DPDK_LINK_FLAGS}")
 
 include_directories(src)
 include_directories(src/include)
+include_directories(test/include)
 
 find_package (Seastar REQUIRED)
 

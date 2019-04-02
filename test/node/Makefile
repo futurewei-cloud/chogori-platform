@@ -1,16 +1,26 @@
-CC=g++
-CFLAGS := $(shell pkg-config --libs --cflags --static seastar) -g -O0
-LDFLAGS=
-SOURCES=*.cpp ../../src/common/Status.cpp
-INC=-I../../src
-#-I../../../seastar/include
-#HEADERS=../*.h
+RM = rm -f
+CC = g++
+CFLAGS = $(shell pkg-config --cflags seastar) -g -O0
+LDFLAGS = $(shell pkg-config --libs --static seastar) 
+
+SOURCES = ../../src/common/Status.cpp Main.cpp  AssignmentManagerTest.cpp
+
+INC = -I../../src -I../include
+
 OBJECTS=$(SOURCES:.cpp=.o)
 EXECUTABLE=node_test
 
-all: $(SOURCES) $(EXECUTABLE)
+all: $(EXECUTABLE)
 
-$(EXECUTABLE): $(SOURCES)
-	$(CC) $(SOURCES) $(CFLAGS) $(INC) -o $@
-#	clear && printf "\n\n\n\n\n\n\n" && $(CC) -std=c++17 -fmax-errors=1 $(SOURCES) $(INC) -o $@
-#	clear && printf "\n\n\n\n\n\n\n" && $(CC) -std=c++17 $(SOURCES) $(INC) -o $@
+$(EXECUTABLE): $(OBJECTS)
+	$(CC) $(OBJECTS) $(LDFLAGS)  -o $(EXECUTABLE)
+
+%.o : %.cpp
+	$(CC) $(CFLAGS) $(INC) -c $< -o $@
+
+clean:
+	-$(RM) $(OBJECTS)
+	-$(RM) $(EXECUTABLE)
+
+.PHONY: all clean dependents
+.SECONDARY:

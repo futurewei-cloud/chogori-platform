@@ -5,6 +5,8 @@
 #include <node/module/MemKVModule.h>
 #include <node/NodePool.h>
 
+#include "catch2/catch.hpp" 
+
 using namespace k2; 
 
 class FakeTransport
@@ -88,7 +90,7 @@ public:
     }
 };
 
-void mainManagerTest()
+TEST_CASE("Assignment Message", "[Assignment]")
 {
     NodePool pool;
     pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule>());
@@ -96,29 +98,25 @@ void mainManagerTest()
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
 
-
-    //
-    //  Test partition assignment
-    //
     const CollectionId collectionId = 3;
     const PartitionId partitionId = 10;
-    const PartitionVersion partitionVersion = { 101, 313 };
+    const PartitionVersion partitionVersion = {101, 313};
 
     AssignmentMessage assignmentMessage;
     assignmentMessage.collectionMetadata = CollectionMetadata(collectionId, ModuleId::Default, {});
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
-    assert(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus() == Status::Ok);
 
-    PartitionAssignmentId assignmentId(partitionId, partitionVersion);
+    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus() == Status::Ok);
 
-    //
-    //  Test Module
-    //
-    MemKVClient client(transport);
-    client.set(assignmentId, "Arjan", "Xeka");
-    client.set(assignmentId, "Ivan", "Avramov");
+    SECTION("Module client KV set and get")
+    {
+        PartitionAssignmentId assignmentId(partitionId, partitionVersion);
+        MemKVClient client(transport);
+        client.set(assignmentId, "Arjan", "Xeka");
+        client.set(assignmentId, "Ivan", "Avramov");
 
-    assert(client.get(assignmentId, "Arjan") == "Xeka");
-    assert(client.get(assignmentId, "Ivan") == "Avramov");
+        REQUIRE(client.get(assignmentId, "Arjan") == "Xeka");
+        REQUIRE(client.get(assignmentId, "Ivan") == "Avramov");
+    }
 }
