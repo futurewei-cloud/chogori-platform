@@ -11,7 +11,7 @@ class AssignmentManager;
 class Partition;
 
 //
-//
+//  List in which current task resides
 //
 enum class TaskListType
 {
@@ -60,14 +60,12 @@ class TaskRequest
 protected:
     Partition& partition;
     MemoryArena arena;  //  Task local memory
-
     TimeTracker timeTracker;
 
-    K2_LINKED_LIST_NODE
-
+    K2_LINKED_LIST_NODE;
     TaskListType ownerTaskList; //  Task list in which this task resides
 
-    TaskRequest(Partition& partition) : partition(partition) {}
+    TaskRequest(Partition& partition) : partition(partition), ownerTaskList(TaskListType::None) {}
 
     enum class ProcessResult
     {

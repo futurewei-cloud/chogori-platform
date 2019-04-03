@@ -29,11 +29,21 @@ struct PartitionAssignmentId
     PartitionId id;
     PartitionVersion version;
 
-    K2_PAYLOAD_COPYABLE
+    K2_PAYLOAD_COPYABLE;
 
+    PartitionAssignmentId() : id(0), version {0} { }
     PartitionAssignmentId(PartitionId id, PartitionVersion version) : id(id), version(version) { }
     PartitionAssignmentId(const PartitionAssignmentId&) = default;
     PartitionAssignmentId& operator=(PartitionAssignmentId& other) = default;
+
+    bool parse(const char* str)
+    {
+        if(!str || !*str)
+            return false;
+
+        static_assert(sizeof(id) == sizeof(uint64_t) && sizeof(version.range) == sizeof(uint16_t) && sizeof(version.assign) == sizeof(uint16_t));
+        return sscanf(str, "%lu,%hu,%hu", &id, &version.range, &version.assign) == 3;
+    }
 };
 
 //

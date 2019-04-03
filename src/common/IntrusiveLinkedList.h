@@ -52,14 +52,14 @@ protected:
     T* tail = nullptr;
     size_t count = 0;
 
-    static IntrusiveLinkedListNode& getNode(T& element) { return element.K2_LINKED_LIST_NODE_VARIABLE; }
-    static T*& prev(T& element) { return (T*&)element.K2_LINKED_LIST_NODE_VARIABLE.prev; }
-    static T*& next(T& element) { return (T*&)element.K2_LINKED_LIST_NODE_VARIABLE.next; }
+    static IntrusiveLinkedListNode& node(T& element) { return element.K2_LINKED_LIST_NODE_VARIABLE; }
+    static T*& prev(T& element) { return (T*&)node(element).prev; }
+    static T*& next(T& element) { return (T*&)node(element).next; }
 
     static T*& prev(T* element) { return prev(*element); }
     static T*& next(T* element) { return next(*element); }
 
-    static bool notLinked(T& element) { return getNode(element).isEmpty(); }
+    static bool notLinked(T& element) { return node(element).isEmpty(); }
 
 public:
 
@@ -77,6 +77,7 @@ public:
         else
             tail = prev(element);
 
+        node(element).clear();
         count--;
     }
 
