@@ -2,21 +2,16 @@
 
 #include "node/Tasks.h"
 #include "node/Module.h"
+#include "node/IndexerInterface.h"
 
 namespace k2
 {
 
 //  Simple in-memory KV-store module
+template <typename DerivedIndexer>
 class MemKVModule : public IModule
 {
 protected:
-    struct Node
-    {
-        uint64_t version;
-        String value;
-        std::unique_ptr<Node> next;
-    };
-
     static const uint32_t defaultKeepVersionCount = 0;
 
     typedef std::map<String, std::unique_ptr<Node>> MemTable;
@@ -24,7 +19,7 @@ protected:
     class PartitionContext
     {
     public:
-        MemTable memTable;
+        DerivedIndexer memTable;
         uint64_t currentVersion = 0;
         uint64_t keepVersionCount = 1;
 
@@ -39,7 +34,7 @@ protected:
         return (PartitionContext*)task.getPartition().moduleData;
     };
 
-    MemTable& getMemtable(TaskRequest& task)
+    DerivedIndexer& getIndexer(TaskRequest& task)
     {
         return getPartitionContext(task)->memTable;
     }
@@ -156,7 +151,7 @@ public:
         RequestType requestType;
         MemKVModule_PARSE_RIF(reader.read(requestType));
 
-        MemTable& memTable = context->memTable;
+        DerivedIndexer& memTable = context->memTable;
 
         switch(requestType)
         {
@@ -166,11 +161,10 @@ public:
                 MemKVModule_PARSE_RIF(reader.read(request));
                 task.releaseRequestPayload();
 
-                auto it = memTable.find(request.key);
-                if(it == memTable.end())
+                Node* node = memTable.find(request.key);
+                if(node == nullptr)
                     return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::NoSuchKey);
 
-                Node* node = it->second.get();
                 while(node && node->version > request.snapshotId)
                     node = node->next.get();
 
@@ -189,18 +183,8 @@ public:
                 MemKVModule_PARSE_RIF(reader.read(request));
                 task.releaseRequestPayload();
 
-                std::unique_ptr<Node> newNode(new Node);
-                newNode->value = std::move(request.value);
                 uint64_t version = getPartitionContext(task)->getNewVersion();
-                newNode->version = version;
-
-                auto emplaceResult = memTable.try_emplace(std::move(request.key), std::move(newNode));
-                if(!emplaceResult.second)    //  Value already exists
-                {
-                    newNode->next = std::move(emplaceResult.first->second);
-                    emplaceResult.first->second = std::move(newNode);
-                }
-
+                memTable.insert(std::move(request.key), std::move(request.value), version);
                 task.getResponseWriter().write(version);
 
                 return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
