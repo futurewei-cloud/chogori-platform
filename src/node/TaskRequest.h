@@ -62,7 +62,7 @@ protected:
     MemoryArena arena;  //  Task local memory
     TimeTracker timeTracker;
 
-    K2_LINKED_LIST_NODE;
+    K2_LINKED_LIST_NODE
     TaskListType ownerTaskList; //  Task list in which this task resides
 
     TaskRequest(Partition& partition) : partition(partition), ownerTaskList(TaskListType::None) {}
