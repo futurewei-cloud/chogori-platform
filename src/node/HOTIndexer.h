@@ -37,8 +37,8 @@ public:
         keyValuePair->value = std::move(newNode);
 
         auto inserted = m_keyValuePairTrie.insert(keyValuePair);
-        if(!inserted) //  Value already exists
-        {
+        //  Value already exists
+        if (!inserted) {
             auto exist = m_keyValuePairTrie.lookup(keyValuePair->key.c_str());
             newNode->next = std::move(exist.mValue->value);
             exist.mValue->value = std::move(newNode);
@@ -47,15 +47,41 @@ public:
 
     Node* find(const String& key, uint64_t version) {
         auto it = m_keyValuePairTrie.find(key.c_str());
-        if(it == m_keyValuePairTrie.end()) {
+        if (it == m_keyValuePairTrie.end()) {
             return nullptr;
         }
 
         Node* node = (*it)->value.get();
-        while(node && node->version > version) {
+        while (node && node->version > version) {
             node = node->next.get();
         }
         return node;
+    }
+
+    void trim(const String& key, uint64_t version) {
+        if (version == std::numeric_limits<uint64_t>::max()) {
+            auto it = m_keyValuePairTrie.find(key.c_str());
+            if (it == m_keyValuePairTrie.end()) {
+                return;
+            }
+            m_keyValuePairTrie.remove(key.c_str());
+            delete (*it);
+            return;
+        }
+
+        auto it = m_keyValuePairTrie.find(key.c_str());
+        if (it == m_keyValuePairTrie.end()) {
+            return;
+        }
+
+        Node* node = (*it)->value.get();
+        if (node) {
+            node = node->next.get();
+        }
+        while (node && node->version >= version) {
+            node = node->next.get();
+        }
+        node->next = nullptr;
     }
 
 };
