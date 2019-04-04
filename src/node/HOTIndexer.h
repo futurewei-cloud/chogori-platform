@@ -52,8 +52,9 @@ public:
         }
 
         Node* node = (*it)->value.get();
-        while(node && node->version > version)
+        while(node && node->version > version) {
             node = node->next.get();
+        }
         return node;
     }
 

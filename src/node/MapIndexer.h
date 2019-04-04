@@ -28,8 +28,9 @@ public:
         }
 
         Node* node = it->second.get();
-        while(node && node->version > version)
+        while(node && node->version > version) {
             node = node->next.get();
+        }
         return node;
     }
 };
