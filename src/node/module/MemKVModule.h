@@ -161,12 +161,7 @@ public:
                 MemKVModule_PARSE_RIF(reader.read(request));
                 task.releaseRequestPayload();
 
-                Node* node = memTable.find(request.key);
-                if(node == nullptr)
-                    return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::NoSuchKey);
-
-                while(node && node->version > request.snapshotId)
-                    node = node->next.get();
+                Node* node = memTable.find(request.key, request.snapshotId);
 
                 if(node == nullptr)
                     return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::NoSuchKey);

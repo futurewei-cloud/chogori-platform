@@ -23,8 +23,8 @@ public:
         static_cast<DerivedClass*>(this)->insert(std::move(key), std::move(value), version);
     }
 
-    Node* find(const String& key) {
-        return static_cast<DerivedClass*>(this)->find(key);
+    Node* find(const String& key, uint64_t version) {
+        return static_cast<DerivedClass*>(this)->find(key, version);
     }
 
     // TODO: add the remove interface
