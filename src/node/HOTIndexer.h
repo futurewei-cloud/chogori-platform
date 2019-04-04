@@ -45,12 +45,17 @@ public:
         }
     }
 
-    Node* find(const String& key) {
-        auto tuple = m_keyValuePairTrie.lookup(key.c_str());
-        if (!tuple.mIsValid) {
+    Node* find(const String& key, uint64_t version) {
+        auto it = m_keyValuePairTrie.find(key.c_str());
+        if(it == m_keyValuePairTrie.end()) {
             return nullptr;
         }
-        return tuple.mValue->value.get();
+
+        Node* node = (*it)->value.get();
+        while(node && node->version > version) {
+            node = node->next.get();
+        }
+        return node;
     }
 
 };

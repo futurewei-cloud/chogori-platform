@@ -21,12 +21,17 @@ public:
         }
     }
 
-    Node* find(const String& key) {
+    Node* find(const String& key, uint64_t version) {
         auto it = m_map.find(key);
         if(it == m_map.end()) {
             return nullptr;
         }
-        return it->second.get();
+
+        Node* node = it->second.get();
+        while(node && node->version > version) {
+            node = node->next.get();
+        }
+        return node;
     }
 };
 }
