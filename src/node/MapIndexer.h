@@ -14,8 +14,8 @@ public:
         newNode->version = version;
 
         auto emplaceResult = m_map.try_emplace(std::move(key), std::move(newNode));
-        if(!emplaceResult.second)    //  Value already exists
-        {
+        //  Value already exists
+        if (!emplaceResult.second) {
             newNode->next = std::move(emplaceResult.first->second);
             emplaceResult.first->second = std::move(newNode);
         }
@@ -23,15 +23,36 @@ public:
 
     Node* find(const String& key, uint64_t version) {
         auto it = m_map.find(key);
-        if(it == m_map.end()) {
+        if (it == m_map.end()) {
             return nullptr;
         }
 
         Node* node = it->second.get();
-        while(node && node->version > version) {
+        while (node && node->version > version) {
             node = node->next.get();
         }
         return node;
+    }
+
+    void trim(const String& key, uint64_t version) {
+        if (version == std::numeric_limits<uint64_t>::max()) {
+            m_map.erase(key);
+            return;
+        }
+
+        auto it = m_map.find(key);
+        if (it == m_map.end()) {
+            return;
+        }
+
+        Node* node = it->second.get();
+        if (node) {
+            node = node->next.get();
+        }
+        while (node && node->version >= version) {
+            node = node->next.get();
+        }
+        node->next = nullptr;
     }
 };
 }
