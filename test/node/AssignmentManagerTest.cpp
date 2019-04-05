@@ -53,6 +53,7 @@ public:
         PartitionRequest request { std::move(message), std::make_unique<FakeClientConnection>(connectionState) };
         assignmentManager.processMessage(request);
 
+        // TODO: Use count tracker instead in the processTasks to avoid flaky test
         for(int i = 0; i < 100000; i++)
         {
             assignmentManager.processTasks();
