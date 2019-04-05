@@ -176,13 +176,13 @@ public:
 
     K2_PAYLOAD_FIELDS(partitionMetadata, collectionMetadata, partitionVersion);
 
-    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver)
+    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver, MessageType messageType)
     {
         (void) receiver; // TODO use me
         Payload payload;
         payload.getWriter().write(*this);
 
-        return std::make_unique<PartitionMessage>(MessageType::PartitionAssign, PartitionAssignmentId(partitionMetadata.getId(), partitionVersion),
+        return std::make_unique<PartitionMessage>(messageType, PartitionAssignmentId(partitionMetadata.getId(), partitionVersion),
             Endpoint(""), std::move(payload));
     }
 };
