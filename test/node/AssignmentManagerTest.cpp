@@ -106,11 +106,11 @@ public:
         return { result->getStatus(), getResponse.value};
     }
 
-    void remove(PartitionAssignmentId partitionId, String key)
+    std::pair<Status, String> remove(PartitionAssignmentId partitionId, String key)
     {
         typename MemKVModule<DerivedIndexer>::DeleteRequest deleteRequest { std::move(key) };
         auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(deleteRequest, partitionId));
-        assert(result->getStatus() == Status::Ok);
+        return {result->getStatus(), {}};
     }
 };
 
@@ -144,8 +144,9 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[Order
 
         REQUIRE_VALUE(client.get(assignmentId, "Arjan"), "Xeka");
         REQUIRE_VALUE(client.get(assignmentId, "Ivan"), "Avramov");
-        client.remove(assignmentId, "Arjan");
-        client.remove(assignmentId, "Ivan");
+
+        REQUIRE_OK(client.remove(assignmentId, "Arjan"));
+        REQUIRE_OK(client.remove(assignmentId, "Ivan"));
    }
 
     REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1"), MessageType::PartitionOffload))->getStatus() == Status::Ok);
@@ -189,8 +190,8 @@ TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBased
         REQUIRE_VALUE(client.get(assignmentId, "Hao"), "Feng");
         REQUIRE_VALUE(client.get(assignmentId, "Valentin"), "Kuznetsov");
 
-        client.remove(assignmentId, "Hao");
-        client.remove(assignmentId, "Valentin");
+        REQUIRE_OK(client.remove(assignmentId, "Hao"));
+        REQUIRE_OK(client.remove(assignmentId, "Valentin"));
     }
 }
 
@@ -223,6 +224,9 @@ TEST_CASE("HOT Based Indexer Module Assignment Manager", "[HOTBasedIndexerModule
 
         REQUIRE_VALUE(client.get(assignmentId, "Xiangjun"), "Shi");
         REQUIRE_VALUE(client.get(assignmentId, "Quan"), "Zhang");
+
+        REQUIRE_OK(client.remove(assignmentId, "Xiangjun"));
+        REQUIRE_OK(client.remove(assignmentId, "Quan"));
     }
 }
 
