@@ -8,19 +8,24 @@
 #include <node/module/MemKVModule.h>
 #include <node/NodePool.h>
 
-#include "catch2/catch.hpp" 
+#include "catch2/catch.hpp"
 
 #define REQUIRE_OK(status_pair) REQUIRE(checkStatus(status_pair,Status::Ok))
 #define REQUIRE_NODENOTSERVICEPARTITION(status_pair) REQUIRE(checkStatus(status_pair, Status::NodeNotServicePartition))
 
 #define REQUIRE_VALUE(status_pair, value) REQUIRE(checkValue(status_pair,value))
 
-using namespace k2; 
+using namespace k2;
+using namespace std;
+
 
 template<typename V>
 bool checkStatus(const std::pair<Status, V>& st, Status status) { return st.first == status; }
 
+bool checkStatus(Status actual, Status expected) { return actual == expected; }
+
 bool checkValue(const std::pair<Status, String>& st, String str) { return st.first == Status::Ok && st.second == str; }
+
 
 class FakeTransport
 {
@@ -114,8 +119,6 @@ public:
     }
 };
 
-
-
 TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[OrderedMapBasedIndexerModule_Assignment/Offload]")
 {
     NodePool pool;
@@ -133,10 +136,10 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[Order
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
 
-    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1"), MessageType::PartitionAssign))->getStatus() == Status::Ok);
+    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus() == Status::Ok);
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
     MemKVClient<MapIndexer> client(transport);
-    
+
     SECTION("Partition Assign: client KV set and get")
     {
         REQUIRE_OK(client.set(assignmentId, "Arjan", "Xeka"));
@@ -147,15 +150,15 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[Order
 
         REQUIRE_OK(client.remove(assignmentId, "Arjan"));
         REQUIRE_OK(client.remove(assignmentId, "Ivan"));
-   }
+    }
 
-    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1"), MessageType::PartitionOffload))->getStatus() == Status::Ok);
-    
+    REQUIRE_OK(transport.send(OffloadMessage::createMessage(Endpoint("1"), assignmentMessage.getPartitionAssignmentId()))->getStatus());
+
     SECTION("Partition Offload: client KV get and set")
     {
         REQUIRE_NODENOTSERVICEPARTITION(client.get(assignmentId, "Arjan"));
         REQUIRE_NODENOTSERVICEPARTITION(client.get(assignmentId, "Ivan"));
- 
+
         REQUIRE_NODENOTSERVICEPARTITION(client.set(assignmentId, "Arjan", "Xeka"));
         REQUIRE_NODENOTSERVICEPARTITION(client.set(assignmentId, "Ivan", "Avramov"));
     }
@@ -177,7 +180,7 @@ TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBased
     assignmentMessage.collectionMetadata = CollectionMetadata(collectionId, ModuleId::Default, {});
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
-    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1"), MessageType::PartitionAssign))->getStatus() == Status::Ok);
+    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus() == Status::Ok);
 
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
 
@@ -211,8 +214,8 @@ TEST_CASE("HOT Based Indexer Module Assignment Manager", "[HOTBasedIndexerModule
     assignmentMessage.collectionMetadata = CollectionMetadata(collectionId, ModuleId::Default, {});
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
-    
-    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1"), MessageType::PartitionAssign))->getStatus() == Status::Ok);
+
+    REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus());
 
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
 
@@ -262,13 +265,13 @@ TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignm
     vector<int> ids(num, 0);
     for(int i=0; i<num; i++)
         ids[i] = i;
- 
+
     auto rng = std::default_random_engine {};
     std::shuffle(std::begin(ids), std::end(ids), rng);
 
     for(int i=0; i<num; i++)
     {
-        REQUIRE(transport.send(assignmentMessages[ids[i]].createMessage(Endpoint("1"), MessageType::PartitionAssign))->getStatus() == Status::Ok);
+        REQUIRE_OK(transport.send(assignmentMessages[ids[i]].createMessage(Endpoint("1")))->getStatus());
     }
 
     MemKVClient<MapIndexer> client(transport);
@@ -283,12 +286,12 @@ TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignm
             REQUIRE_VALUE(client.get(assignmentIds[i], key), value);
         }
     }
-    
+
     SECTION("Partition Offload: client KV get and set")
     {
         for(int i=0; i<num; i++)
-        { 
-            REQUIRE(transport.send(assignmentMessages[i].createMessage(Endpoint("1"), MessageType::PartitionOffload))->getStatus() == Status::Ok);
+        {
+            REQUIRE_OK(transport.send(OffloadMessage::createMessage(Endpoint("1"), assignmentMessages[i].getPartitionAssignmentId()))->getStatus());
             for(int j=0; j<=i; j++)
             {
                 String section{"Partition Offload:"+to_string(i)+to_string(j)};

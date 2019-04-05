@@ -15,10 +15,10 @@ struct PartitionVersion
     uint16_t range;     //  Change with the change of partition range
     uint16_t assign;    //  Change with new partition assignment
 
-    K2_PAYLOAD_COPYABLE
-
     bool operator==(const PartitionVersion& other) const { return range == other.range && assign == other.assign; }
     bool operator!=(const PartitionVersion& other) const { return !(*this == other); }
+
+    K2_PAYLOAD_COPYABLE;
 };
 
 //
@@ -29,8 +29,7 @@ struct PartitionAssignmentId
     PartitionId id;
     PartitionVersion version;
 
-    K2_PAYLOAD_COPYABLE
-
+    PartitionAssignmentId() : id(0), version {0} { }
     PartitionAssignmentId(PartitionId id, PartitionVersion version) : id(id), version(version) { }
     PartitionAssignmentId(const PartitionAssignmentId&) = default;
     PartitionAssignmentId& operator=(PartitionAssignmentId& other) = default;
@@ -41,8 +40,10 @@ struct PartitionAssignmentId
             return false;
 
         static_assert(sizeof(id) == sizeof(uint64_t) && sizeof(version.range) == sizeof(uint16_t) && sizeof(version.assign) == sizeof(uint16_t));
-        return sscanf(str, "%lu,%hu,%hu", &id, &version.range, &version.assign) == 3;
+        return sscanf(str, "%lu.%hu.%hu", &id, &version.range, &version.assign) == 3;
     }
+
+    K2_PAYLOAD_COPYABLE;
 };
 
 //
@@ -85,11 +86,11 @@ public:
     PartitionMetadata(PartitionMetadata&& other) = default;
     PartitionMetadata& operator=(PartitionMetadata&& other) = default;
 
-    K2_PAYLOAD_FIELDS(partitionId, range, collectionId);
-
     PartitionId getId() const { return partitionId; }
     const PartitionRange& getPartitionRange() const { return range; }
     CollectionId getCollectionId() const { return collectionId; }
+
+    K2_PAYLOAD_FIELDS(partitionId, range, collectionId);
 };
 
 }   //  namespace k2

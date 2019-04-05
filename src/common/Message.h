@@ -5,7 +5,6 @@
 
 namespace k2
 {
-
 //
 //  Describe the type of K2 message
 //
@@ -34,6 +33,9 @@ public:
 
 //
 //  Class represents message obtained from transport
+//  TODO: need to refactore class because currently is not quite clear whether payload contains message header (it doesn't,
+//  but builder will generate Payload with header. Thus this payload cannot be used from PartitionMessage).
+//  This is something that needs to be more explicitly presented in class hierarchy.
 //
 class PartitionMessage : public Message
 {
@@ -60,7 +62,7 @@ public:
         PartitionAssignmentId partition;
         size_t messageSize;
 
-        K2_PAYLOAD_COPYABLE
+        K2_PAYLOAD_COPYABLE;
     };
 
     class PayloadBuilder
@@ -90,6 +92,14 @@ public:
             return std::move(payload);
         }
     };
+
+    template<class MessageT>
+    static Payload serializeMessage(MessageType messageType, PartitionAssignmentId partition, const MessageT& messageContent)
+    {
+        PayloadBuilder builder(messageType, partition);
+        builder.getWriter().write(messageContent);
+        return std::move(builder.done());
+    }
 };
 
 
@@ -148,22 +158,25 @@ public:
 class ResponseMessage : public Message
 {
 public:
-    Status status;
-    uint32_t moduleCode;
-
-    Status getStatus() const { return status; }
-
     struct Header
     {
         Status status;
         uint32_t moduleCode;
         size_t messageSize;
     };
+
+    Status status;
+    uint32_t moduleCode;
+
+    ResponseMessage() {}
+    ResponseMessage(const Header& header) : status(header.status), moduleCode(header.moduleCode) {}
+
+    Status getStatus() const { return status; }
 };
 
 
 //
-//  OffloadMessage
+//  Message sent with partition assignment command
 //
 class AssignmentMessage
 {
@@ -172,18 +185,36 @@ public:
     CollectionMetadata collectionMetadata;
     PartitionVersion partitionVersion;
 
+    PartitionAssignmentId getPartitionAssignmentId() const
+    {
+        return PartitionAssignmentId(partitionMetadata.getId(), partitionVersion);
+    }
+
     AssignmentMessage() {}
 
-    K2_PAYLOAD_FIELDS(partitionMetadata, collectionMetadata, partitionVersion);
-
-    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver, MessageType messageType)
+    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver)
     {
-        (void) receiver; // TODO use me
         Payload payload;
         payload.getWriter().write(*this);
 
-        return std::make_unique<PartitionMessage>(messageType, PartitionAssignmentId(partitionMetadata.getId(), partitionVersion),
-            Endpoint(""), std::move(payload));
+        return std::make_unique<PartitionMessage>(MessageType::PartitionAssign, getPartitionAssignmentId(),
+            std::move(receiver), std::move(payload));
+    }
+
+    K2_PAYLOAD_FIELDS(partitionMetadata, collectionMetadata, partitionVersion);
+};
+
+//
+//  Offload message
+//
+class OffloadMessage
+{
+public:
+    OffloadMessage() {}
+
+    static std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver, const PartitionAssignmentId& partitionId)
+    {
+        return std::make_unique<PartitionMessage>(MessageType::PartitionOffload, partitionId, std::move(receiver), Payload());
     }
 };
 

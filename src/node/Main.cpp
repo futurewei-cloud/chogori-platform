@@ -8,10 +8,10 @@ int main(int argc, char** argv)
 {
     try
     {
-        k2::NodePool pool;  //  Configure pool based on argc and argv        
-        TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule>()));
+        k2::NodePool pool;  //  Configure pool based on argc and argv
+        TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
 
-        //  TODO: configure from files 
+        //  TODO: configure from files
         NodeEndpointConfig nodeConfig;
         nodeConfig.type = NodeEndpointConfig::IPv4;
         nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("127.0.0.1"));
@@ -40,7 +40,7 @@ int main(int argc, char** argv)
     {
         std::cerr << "Unknown exception is thrown." << std::endl;
         return 1;
-    }    
+    }
 
     return 0;
 }

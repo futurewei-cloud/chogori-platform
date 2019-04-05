@@ -35,7 +35,7 @@ protected:
             seastar::socket_address _addr;
             seastar::input_stream<CharType> _in;
             seastar::output_stream<CharType> _out;
-            Binary _headerBuffer;            
+            Binary _headerBuffer;
             seastar::promise<> _endRoundPromise;
             PartitionMessage::Header& getHeader() { return *(PartitionMessage::Header*)_headerBuffer.get_write(); }
 
@@ -61,9 +61,9 @@ protected:
 
         class MessageExchangeRound : public IClientConnection
         {
-        public:            
+        public:
             seastar::lw_shared_ptr<Connection> _connection;
-            bool _responded = false;            
+            bool _responded = false;
             Payload _outPayload;
             ResponseMessage::Header* _header;
 
@@ -131,8 +131,8 @@ protected:
             _listener = seastar::engine().listen(make_ipv4_address(nodeConfig.ipv4.address, nodeConfig.ipv4.port), lo);
 
             std::cout << "Start transport for shard #" << engine().cpu_id() << " on endpoint {ipv4:"
-                << (((nodeConfig.ipv4.address)>>24)&0xFF) << "." << (((nodeConfig.ipv4.address)>>16)&0xFF)  
-                << "." << (((nodeConfig.ipv4.address)>>8)&0xFF) << "." << ((nodeConfig.ipv4.address)&0xFF) 
+                << (((nodeConfig.ipv4.address)>>24)&0xFF) << "." << (((nodeConfig.ipv4.address)>>16)&0xFF)
+                << "." << (((nodeConfig.ipv4.address)>>8)&0xFF) << "." << ((nodeConfig.ipv4.address)&0xFF)
                 << " port:" << nodeConfig.ipv4.port << "}" << std::endl << std::flush;
 
             seastar::keep_doing([this]
@@ -143,13 +143,20 @@ protected:
                     {
                         TRACE();
                         seastar::lw_shared_ptr<Connection> connection = seastar::make_lw_shared<Connection>(std::move(fd), addr);
-                        seastar::do_until(
-                            [connection] { return connection->_in.eof(); }, //  Until condition
-                            [connection, this]
-                            {
-                                return processMessage(connection).then([connection] { return connection->finishRound(); });
-                            }
-                        ).finally([connection] { TRACE(); return connection->_out.close().finally([connection]{}); });
+                        return processMessage(connection).then([connection] { return connection->finishRound(); })
+
+                        //
+                        //  Repeated read currently somehow end up with returning garbage, even when client close the connection
+                        //  immediately after response. I'll let transport team to figure it out later, may be some flush is required.
+                        //
+                        //seastar::do_until(
+                        //    [connection] { return connection->_in.eof(); }, //  Until condition
+                        //    [connection, this]
+                        //    {
+                        //        return processMessage(connection).then([connection] { return connection->finishRound(); });
+                        //    }
+                        //)
+                        .finally([connection] { TRACE(); return connection->_out.close().finally([connection]{}); });
                     })
                     .handle_exception([] (std::exception_ptr ep)
                     {

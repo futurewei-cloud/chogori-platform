@@ -3,18 +3,17 @@
 #include "node/Tasks.h"
 #include "node/Module.h"
 #include "node/IndexerInterface.h"
+#include "node/MapIndexer.h"
 
 namespace k2
 {
 
 //  Simple in-memory KV-store module
-template <typename DerivedIndexer>
+template <typename DerivedIndexer = MapIndexer>
 class MemKVModule : public IModule
 {
 protected:
     static const uint32_t defaultKeepVersionCount = 0;
-
-    typedef std::map<String, std::unique_ptr<Node>> MemTable;
 
     class PartitionContext
     {
@@ -54,6 +53,18 @@ public:
         Get = 0,
         Set,
         Delete
+    };
+
+    template<typename RequestT>
+    class RequestWithType
+    {
+    public:
+        RequestType type;
+        RequestT& request;
+
+        RequestWithType(RequestT& request) : type(RequestT::getType()), request(request) {}
+
+        K2_PAYLOAD_FIELDS(type, request);
     };
 
     class GetRequest
@@ -113,8 +124,6 @@ public:
     {
         Payload payload;
         PayloadWriter writer = payload.getWriter();
-        //PartitionMessage::Header header;
-        //if(!writer.getContiguousStructure())
         if(!writeRequest(writer, request))
             return nullptr;
 

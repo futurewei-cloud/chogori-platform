@@ -69,7 +69,7 @@ class TimeTracker
     TimePointT startTime;
     std::chrono::nanoseconds timeToTrack;
 
-    static TimePointT now() { return ClockT::now(); }    
+    static TimePointT now() { return ClockT::now(); }
 public:
     TimeTracker() : startTime(std::chrono::nanoseconds::zero()), timeToTrack(std::chrono::nanoseconds::zero())  {}
     TimeTracker(std::chrono::nanoseconds timeToTrackNS) : startTime(now()), timeToTrack(timeToTrackNS)  {}
@@ -107,12 +107,12 @@ Binary&& moveBinary(seastar::temporary_buffer<T>& buffer)
     return std::move(toBinary(buffer));
 }
 
-seastar::temporary_buffer<char>& toCharTempBuffer(Binary& buffer)
+inline seastar::temporary_buffer<char>& toCharTempBuffer(Binary& buffer)
 {
     return *(seastar::temporary_buffer<char>*)&buffer;
 }
 
-seastar::temporary_buffer<char>&& moveCharTempBuffer(Binary& buffer)
+inline seastar::temporary_buffer<char>&& moveCharTempBuffer(Binary& buffer)
 {
     return std::move(toCharTempBuffer(buffer));
 }

@@ -3,6 +3,7 @@
 #include <cassert>
 #include "Common.h"
 #include <seastar/net/packet.hh>
+#include <boost/asio/buffer.hpp>
 
 namespace k2
 {
@@ -120,6 +121,15 @@ public:
     {
         buffers.clear();
         size = 0;
+    }
+
+    std::vector<boost::asio::const_buffer> toBoostBuffers() const
+    {
+        std::vector<boost::asio::const_buffer> result(buffers.size());
+        for(auto& buffer : buffers)
+            result.emplace_back(buffer.get(), buffer.size());
+
+        return result;
     }
 
     static seastar::net::packet toPacket(Payload&& payload)
