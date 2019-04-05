@@ -52,7 +52,8 @@ public:
     enum RequestType : uint8_t
     {
         Get = 0,
-        Set
+        Set,
+        Delete
     };
 
     class GetRequest
@@ -92,6 +93,16 @@ public:
         uint64_t version;
 
         K2_PAYLOAD_FIELDS(version);
+    };
+
+    class DeleteRequest
+    {
+    public:
+        static constexpr RequestType getType() { return RequestType::Delete; }
+
+        String key;
+
+        K2_PAYLOAD_FIELDS(key);
     };
 
     template<typename T>
@@ -181,6 +192,17 @@ public:
                 uint64_t version = getPartitionContext(task)->getNewVersion();
                 memTable.insert(std::move(request.key), std::move(request.value), version);
                 task.getResponseWriter().write(version);
+
+                return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
+            }
+
+            case RequestType::Delete:
+            {
+                DeleteRequest request;
+                MemKVModule_PARSE_RIF(reader.read(request));
+                task.releaseRequestPayload();
+
+                memTable.trim(request.key, std::numeric_limits<uint64_t>::max());
 
                 return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
             }
