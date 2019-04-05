@@ -63,7 +63,8 @@ public:
         PartitionRequest request { std::move(message), std::make_unique<FakeClientConnection>(connectionState) };
         assignmentManager.processMessage(request);
 
-        for(int i = 0; i < 1000; i++)
+        // TODO: Use count tracker instead in the processTasks to avoid flaky test
+        for(int i = 0; i < 100000; i++)
         {
             assignmentManager.processTasks();
             if(connectionState.responded)
@@ -104,6 +105,13 @@ public:
         result->payload.getReader().read(getResponse);
         return { result->getStatus(), getResponse.value};
     }
+
+    void remove(PartitionAssignmentId partitionId, String key)
+    {
+        typename MemKVModule<DerivedIndexer>::DeleteRequest deleteRequest { std::move(key) };
+        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(deleteRequest, partitionId));
+        assert(result->getStatus() == Status::Ok);
+    }
 };
 
 
@@ -136,7 +144,9 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[Order
 
         REQUIRE_VALUE(client.get(assignmentId, "Arjan"), "Xeka");
         REQUIRE_VALUE(client.get(assignmentId, "Ivan"), "Avramov");
-    }
+        client.remove(assignmentId, "Arjan");
+        client.remove(assignmentId, "Ivan");
+   }
 
     REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1"), MessageType::PartitionOffload))->getStatus() == Status::Ok);
     
@@ -178,6 +188,9 @@ TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBased
 
         REQUIRE_VALUE(client.get(assignmentId, "Hao"), "Feng");
         REQUIRE_VALUE(client.get(assignmentId, "Valentin"), "Kuznetsov");
+
+        client.remove(assignmentId, "Hao");
+        client.remove(assignmentId, "Valentin");
     }
 }
 
