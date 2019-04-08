@@ -136,7 +136,7 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[Order
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
 
-    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus() == Status::Ok);
+    REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus());
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
     MemKVClient<MapIndexer> client(transport);
 
@@ -180,7 +180,7 @@ TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBased
     assignmentMessage.collectionMetadata = CollectionMetadata(collectionId, ModuleId::Default, {});
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
-    REQUIRE(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus() == Status::Ok);
+    REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus());
 
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
 
@@ -245,9 +245,8 @@ TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignm
     const vector<PartitionId> partitionIds{10, 20, 30, 40, 50} ;
     const vector<PartitionVersion> partitionVersions{ {101, 313},{201, 313},{301, 313},{401, 313},{501, 313} };
 
-    const int maxNum = 4;
     int num = partitionIds.size();
-    if(num > maxNum) num=maxNum;
+    if(num > Constants::MaxCountOfPartitionsPerNode) num=Constants::MaxCountOfPartitionsPerNode;
 
     vector<AssignmentMessage> assignmentMessages;
     vector<PartitionAssignmentId> assignmentIds;
