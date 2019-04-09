@@ -208,10 +208,10 @@ public:
         std::string nodesCountArg = std::string("-c") + std::to_string(pool.getNodesCount());
 
         const char* argv[] = { "NodePool", nodesCountArg.c_str(), nullptr };
-        int argc = sizeof(argv)/sizeof(*argv)-1;
+        int argc = sizeof(argv) / sizeof(*argv) - 1;
 
         int ret = app.run_deprecated(
-            sizeof(argv)/sizeof(*argv)-1,   // argc
+            argc,   // argc
             (char**)argv,                   // argv
             [&]
             {

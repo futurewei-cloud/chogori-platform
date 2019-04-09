@@ -6,6 +6,8 @@ using namespace k2;
 
 int main(int argc, char** argv)
 {
+    (void)argc; // TODO use me
+    (void)argv; // TODO use me
     try
     {
         k2::NodePool pool;  //  Configure pool based on argc and argv
