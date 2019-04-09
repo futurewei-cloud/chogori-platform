@@ -14,4 +14,4 @@
         }                                             \
 
 
-#define K2_PAYLOAD_COPYABLE struct __K2PayloadCopyableTraitTag__ {};
+#define K2_PAYLOAD_COPYABLE struct __K2PayloadCopyableTraitTag__ {}; void foo() {}
