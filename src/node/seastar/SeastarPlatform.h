@@ -143,8 +143,7 @@ protected:
                     {
                         TRACE();
                         seastar::lw_shared_ptr<Connection> connection = seastar::make_lw_shared<Connection>(std::move(fd), addr);
-                        return processMessage(connection).then([connection] { return connection->finishRound(); })
-
+                        processMessage(connection).then([connection] { return connection->finishRound(); })
                         //
                         //  Repeated read currently somehow end up with returning garbage, even when client close the connection
                         //  immediately after response. I'll let transport team to figure it out later, may be some flush is required.
