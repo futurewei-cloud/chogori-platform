@@ -62,7 +62,7 @@ public:
         PartitionAssignmentId partition;
         size_t messageSize;
 
-        K2_PAYLOAD_COPYABLE;
+        K2_PAYLOAD_COPYABLE
     };
 
     class PayloadBuilder

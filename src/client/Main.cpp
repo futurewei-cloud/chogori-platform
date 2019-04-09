@@ -17,6 +17,8 @@ namespace k2
 
 std::unique_ptr<ResponseMessage> sendMessage(const char* ipAndPort, const Payload& message)
 {
+    (void) ipAndPort; // TODO use me
+
     boost::asio::io_service ios;
     //boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string(host), port);
     boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 11311);
@@ -76,6 +78,8 @@ void assignPartition(k2::PartitionAssignmentId partitionId, const char* ipAndPor
 
 void offloadPartition(k2::PartitionAssignmentId partitionId, const char* ipAndPort)
 {
+    (void) partitionId; // TODO use me
+    (void) ipAndPort; // TODO use me
 }
 
 void moduleSet(k2::PartitionAssignmentId partitionId, const char* ipAndPort, std::string&& key, std::string&& value)
@@ -100,7 +104,7 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ipAndPort, std
     std::cout << "Gotten: value: " << getResponse.value << " version: " << getResponse.version << std::endl << std::flush;
 }
 
-};  //  namespace k2
+}  //  namespace k2
 
 void printHelp(bpo::options_description& desc, std::string& appName)
 {

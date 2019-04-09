@@ -18,7 +18,7 @@ struct PartitionVersion
     bool operator==(const PartitionVersion& other) const { return range == other.range && assign == other.assign; }
     bool operator!=(const PartitionVersion& other) const { return !(*this == other); }
 
-    K2_PAYLOAD_COPYABLE;
+    K2_PAYLOAD_COPYABLE
 };
 
 //
@@ -29,7 +29,7 @@ struct PartitionAssignmentId
     PartitionId id;
     PartitionVersion version;
 
-    PartitionAssignmentId() : id(0), version {0} { }
+    PartitionAssignmentId() : id(0), version {0, 0} { }
     PartitionAssignmentId(PartitionId id, PartitionVersion version) : id(id), version(version) { }
     PartitionAssignmentId(const PartitionAssignmentId&) = default;
     PartitionAssignmentId& operator=(PartitionAssignmentId& other) = default;
@@ -43,7 +43,7 @@ struct PartitionAssignmentId
         return sscanf(str, "%lu.%hu.%hu", &id, &version.range, &version.assign) == 3;
     }
 
-    K2_PAYLOAD_COPYABLE;
+    K2_PAYLOAD_COPYABLE
 };
 
 //
