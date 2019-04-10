@@ -40,7 +40,7 @@ pipeline {
                 sh "./K2Build/k2build make -j -C K2Build test"
                 sh "./K2Build/k2build /build/build/src/node/node_pool"
                 sh "./K2Build/k2build ./test/node_test"
-                sh "docker kill $(docker ps -q)"
+                sh "docker ps -q|xargs docker kill"
             }
         }
         stage('Install') {
