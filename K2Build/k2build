@@ -13,4 +13,8 @@ if [ -t 1 ] ; then IT=-it; else IT=; fi
 echo ">>> Pulling latest builder image: ${FULL_IMG_NAME}"
 docker pull ${FULL_IMG_NAME}
 echo ">>> Executing command \"$*\" in the build container"
-docker run --privileged --init --rm ${IT} -v "${PWD}:/build" --net=host ${FULL_IMG_NAME} $*
+if [ $1 == "/build/build/src/node/node_pool" ] ; then
+	docker run --privileged --init --rm ${IT} -v "${PWD}:/build" --net=host -d ${FULL_IMG_NAME} $*;
+else
+	docker run --privileged --init --rm ${IT} -v "${PWD}:/build" --net=host ${FULL_IMG_NAME} $*;
+fi
