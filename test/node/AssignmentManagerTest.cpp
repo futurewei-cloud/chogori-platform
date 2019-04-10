@@ -105,6 +105,8 @@ public:
         auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(getRequest, partitionId));
         if(result->getStatus() != Status::Ok)
             return { result->getStatus(), {} };
+        if(result->getModuleCode() != ErrorCode::None)
+            return { Status::UnkownError, {} };
 
         typename MemKVModule<DerivedIndexer>::GetResponse getResponse;
         result->payload.getReader().read(getResponse);
@@ -233,7 +235,7 @@ TEST_CASE("HOT Based Indexer Module Assignment Manager", "[HOTBasedIndexerModule
     }
 }
 
-TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignment/Offload]")
+TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignment/Offload]", MapIndexer, UnorderedMapIndexer)
 {
     NodePool pool;
     pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<MapIndexer>>());
@@ -302,7 +304,7 @@ TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignm
                     REQUIRE_NODENOTSERVICEPARTITION(client.get(assignmentIds[j], key));
                 }
             }
-            for(int j=i+1; i<num; i++)
+            for(int j=i+1; j<num; j++)
             {
                 String section{"Partition Assign:"+to_string(i)+to_string(j)};
                 DYNAMIC_SECTION( section )

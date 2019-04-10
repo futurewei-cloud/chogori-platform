@@ -172,6 +172,7 @@ public:
     ResponseMessage(const Header& header) : status(header.status), moduleCode(header.moduleCode) {}
 
     Status getStatus() const { return status; }
+    uint32_t getModuleCode() const { return moduleCode;}
 };
 
 

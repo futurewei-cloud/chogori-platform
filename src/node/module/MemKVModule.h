@@ -7,6 +7,13 @@
 
 namespace k2
 {
+    enum ErrorCode
+    {
+        None = 0,
+        ParingError,
+        RequestUnknown,
+        NoSuchKey
+    };
 
 //  Simple in-memory KV-store module
 template <typename DerivedIndexer = MapIndexer>
@@ -37,14 +44,6 @@ protected:
     {
         return getPartitionContext(task)->memTable;
     }
-
-    enum ErrorCode
-    {
-        None = 0,
-        ParingError,
-        RequestUnknown,
-        NoSuchKey
-    };
 
 public:
 
