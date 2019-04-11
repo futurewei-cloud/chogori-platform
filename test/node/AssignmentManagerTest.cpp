@@ -238,7 +238,7 @@ TEST_CASE("HOT Based Indexer Module Assignment Manager", "[HOTBasedIndexerModule
 TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignment/Offload]", MapIndexer, UnorderedMapIndexer)
 {
     NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<MapIndexer>>());
+    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<TestType>>());
 
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
@@ -275,7 +275,7 @@ TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartition
         REQUIRE_OK(transport.send(assignmentMessages[ids[i]].createMessage(Endpoint("1")))->getStatus());
     }
 
-    MemKVClient<MapIndexer> client(transport);
+    MemKVClient<TestType> client(transport);
 
     SECTION("Partition Assign: client KV set and get")
     {
