@@ -4,9 +4,9 @@
 project(transport VERSION 1.0.0 DESCRIPTION "transport library")
 
 file(GLOB HEADERS "*.h")
-file(GLOB IMPL "*.cpp")
+file(GLOB SOURCES "*.cpp")
 
-add_library(transport STATIC ${HEADERS} ${IMPL})
+add_library(transport STATIC ${HEADERS} ${SOURCES})
 
 if(DEFINED ENV{K2TX_DEBUG})
 	set(K2TX_DEBUG $ENV{K2TX_DEBUG})
@@ -22,4 +22,4 @@ set_target_properties(transport PROPERTIES
 )
 
 install(TARGETS transport DESTINATION lib)
-install(FILES ${HEADERS} DESTINATION include)
+install(FILES ${HEADERS} DESTINATION include/transport)

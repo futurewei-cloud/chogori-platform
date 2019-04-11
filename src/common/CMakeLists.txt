@@ -10,4 +10,7 @@ set_target_properties (common PROPERTIES
 	SOVERSION 1
 )
 
+file(GLOB HEADERS "*.h")
+
 install (TARGETS common DESTINATION lib)
+install(FILES ${HEADERS} DESTINATION include/common)
