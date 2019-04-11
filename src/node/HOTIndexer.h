@@ -46,12 +46,22 @@ public:
     }
 
     Node* find(const String& key, uint64_t version) {
-        auto it = m_keyValuePairTrie.find(key.c_str());
-        if (it == m_keyValuePairTrie.end()) {
+        // 
+        // Bug: sometimes find() cannot find existing key
+        //
+        // auto it = m_keyValuePairTrie.find(key.c_str());
+        // if (it == m_keyValuePairTrie.end()) {
+        //     return nullptr;
+        // }
+
+        // Node* node = (*it)->value.get();
+
+        auto it = m_keyValuePairTrie.lookup(key.c_str());
+        if (!it.mIsValid) {
             return nullptr;
         }
 
-        Node* node = (*it)->value.get();
+        Node* node = it.mValue->value.get();
         while (node && node->version > version) {
             node = node->next.get();
         }

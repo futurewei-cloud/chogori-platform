@@ -121,10 +121,10 @@ public:
     }
 };
 
-TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[OrderedMapBasedIndexerModule_Assignment/Offload]")
+TEMPLATE_TEST_CASE("Single Partitions Assignment/Offload", "[SinglePartitions_Assignment/Offload]", HOTIndexer, MapIndexer, UnorderedMapIndexer)
 {
     NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<MapIndexer>>());
+    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<TestType>>());
 
     AssignmentManager assignmentManager(pool);
     FakeTransport transport(assignmentManager);
@@ -140,7 +140,7 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[Order
 
     REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus());
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
-    MemKVClient<MapIndexer> client(transport);
+    MemKVClient<TestType> client(transport);
 
     SECTION("Partition Assign: client KV set and get")
     {
@@ -166,76 +166,8 @@ TEST_CASE("Ordered Map Based Indexer Module Assignment/Offload Manager", "[Order
     }
 }
 
-TEST_CASE("Hash Table Based Indexer Module Assignment Manager", "[HashTableBasedIndexerModuleAssignment]")
-{
-    NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<UnorderedMapIndexer>>());
 
-    AssignmentManager assignmentManager(pool);
-    FakeTransport transport(assignmentManager);
-
-    const CollectionId collectionId = 4;
-    const PartitionId partitionId = 10;
-    const PartitionVersion partitionVersion = { 101, 313 };
-
-    AssignmentMessage assignmentMessage;
-    assignmentMessage.collectionMetadata = CollectionMetadata(collectionId, ModuleId::Default, {});
-    assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
-    assignmentMessage.partitionVersion = partitionVersion;
-    REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus());
-
-    PartitionAssignmentId assignmentId(partitionId, partitionVersion);
-
-    SECTION("Module client KV set and get")
-    {
-        MemKVClient<UnorderedMapIndexer> client(transport);
-        REQUIRE_OK(client.set(assignmentId, "Hao", "Feng"));
-        REQUIRE_OK(client.set(assignmentId, "Valentin", "Kuznetsov"));
-
-        REQUIRE_VALUE(client.get(assignmentId, "Hao"), "Feng");
-        REQUIRE_VALUE(client.get(assignmentId, "Valentin"), "Kuznetsov");
-
-        REQUIRE_OK(client.remove(assignmentId, "Hao"));
-        REQUIRE_OK(client.remove(assignmentId, "Valentin"));
-    }
-}
-
-TEST_CASE("HOT Based Indexer Module Assignment Manager", "[HOTBasedIndexerModuleAssignment]")
-{
-    NodePool pool;
-    pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<HOTIndexer>>());
-
-    AssignmentManager assignmentManager(pool);
-    FakeTransport transport(assignmentManager);
-
-    const CollectionId collectionId = 5;
-    const PartitionId partitionId = 10;
-    const PartitionVersion partitionVersion = { 101, 313 };
-
-    AssignmentMessage assignmentMessage;
-    assignmentMessage.collectionMetadata = CollectionMetadata(collectionId, ModuleId::Default, {});
-    assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
-    assignmentMessage.partitionVersion = partitionVersion;
-
-    REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus());
-
-    PartitionAssignmentId assignmentId(partitionId, partitionVersion);
-
-    SECTION("Module client KV set and get")
-    {
-        MemKVClient<HOTIndexer> client(transport);
-        REQUIRE_OK(client.set(assignmentId, "Xiangjun", "Shi"));
-        REQUIRE_OK(client.set(assignmentId, "Quan", "Zhang"));
-
-        REQUIRE_VALUE(client.get(assignmentId, "Xiangjun"), "Shi");
-        REQUIRE_VALUE(client.get(assignmentId, "Quan"), "Zhang");
-
-        REQUIRE_OK(client.remove(assignmentId, "Xiangjun"));
-        REQUIRE_OK(client.remove(assignmentId, "Quan"));
-    }
-}
-
-TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignment/Offload]", MapIndexer, UnorderedMapIndexer)
+TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignment/Offload]", HOTIndexer, MapIndexer, UnorderedMapIndexer)
 {
     NodePool pool;
     pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<TestType>>());
