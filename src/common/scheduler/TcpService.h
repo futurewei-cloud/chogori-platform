@@ -10,9 +10,9 @@
 namespace k2
 {
 
-// 
+//
 // Simple TCP Service implementation.
-// 
+//
 class TcpService: public ISchedulable {
 public:
     TcpService() {
@@ -23,10 +23,10 @@ public:
         // left empty
     }
 
-    virtual seastar::future<> run() { 
+    virtual seastar::future<> run() {
         // TODO: Implement socker listening logic.
         return seastar::sleep(std::chrono::milliseconds(500)).then([] {
-            return seastar::make_ready_future<>(); 
+            return seastar::make_ready_future<>();
         });
     };
 

@@ -17,6 +17,7 @@ include_directories(src/include)
 include_directories(test/include)
 
 find_package (Seastar REQUIRED)
+find_package (yaml-cpp REQUIRED) # required for configuration file parsing
 
 add_subdirectory (src)
 add_subdirectory (test)

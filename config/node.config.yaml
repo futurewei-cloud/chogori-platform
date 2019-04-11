@@ -1,0 +1,13 @@
+---
+nodes:
+  - name: "1" 
+    endpoint:
+      type: IPv4
+      ip: 127.0.0.1
+      port: 11311
+  - name: "2"
+    endpoint:
+      type: IPv4
+      ip: 127.0.0.1
+      port: 12345
+...

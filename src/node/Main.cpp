@@ -1,8 +1,26 @@
 #include "NodePool.h"
 #include "module/MemKVModule.h"
 #include <node/seastar/SeastarPlatform.h>
+#include <yaml-cpp/yaml.h>
 
 using namespace k2;
+
+// TODO: Move the configuration logic into a separate file.
+void loadConfig(NodePool& pool, const std::string& configFile)
+{
+    YAML::Node config = YAML::LoadFile(configFile);
+
+    for(YAML::Node node : config["nodes"])
+    {
+        NodeEndpointConfig nodeConfig;
+        // TODO: map the endpoint type; fixing it to IPv4 for the moment
+        nodeConfig.type = NodeEndpointConfig::IPv4;
+        nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(node["endpoint"]["ip"].as<std::string>().c_str()));
+        nodeConfig.ipv4.port = node["endpoint"]["port"].as<uint16_t>();
+
+        TIF(pool.registerNode(nodeConfig));
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -10,15 +28,34 @@ int main(int argc, char** argv)
     (void)argv; // TODO use me
     try
     {
-        k2::NodePool pool;  //  Configure pool based on argc and argv
-        TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
+        namespace bpo = boost::program_options; 
+        bpo::options_description k2Options("K2 Options");
 
-        //  TODO: configure from files
-        NodeEndpointConfig nodeConfig;
-        nodeConfig.type = NodeEndpointConfig::IPv4;
-        nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("127.0.0.1"));
-        nodeConfig.ipv4.port = 11311;
-        TIF(pool.registerNode(nodeConfig));
+        // get the k2 config from the command line
+        k2Options.add_options()
+            ("k2config", bpo::value<std::string>(), "k2 configuration file")
+            ;
+
+        // parse the command line options
+        bpo::variables_map variablesMap;
+        bpo::store(bpo::parse_command_line(argc, argv, k2Options), variablesMap);
+
+        k2::NodePool pool;
+        TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
+        if(variablesMap.count("k2config"))
+        {
+            // Configure pool based on the configuration file
+            loadConfig(pool, variablesMap["k2config"].as<std::string>());
+        }
+        else
+        {
+            // create default configuration
+            NodeEndpointConfig nodeConfig;
+            nodeConfig.type = NodeEndpointConfig::IPv4;
+            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("127.0.0.1"));
+            nodeConfig.ipv4.port = 11311;
+            TIF(pool.registerNode(nodeConfig));
+        }
 
         SeastarPlatform platform;
         TIF(platform.run(pool));
