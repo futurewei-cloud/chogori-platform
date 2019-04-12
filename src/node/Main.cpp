@@ -58,6 +58,7 @@ int main(int argc, char** argv)
         }
 
         SeastarPlatform platform;
+        pool.setScheduingPlatform(&platform);
         TIF(platform.run(pool));
     }
     catch(const Status& status)

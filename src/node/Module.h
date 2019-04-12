@@ -103,7 +103,7 @@ struct ModuleResponse
     union
     {
         uint32_t resultCode;            //  If type == Error: contains Module specific result code
-        uint32_t potponeDelayUs;        //  If type == Postpone: contains time in microseconds for which task needs to be delayed
+        uint32_t postponeDelayUs;        //  If type == Postpone: contains time in microseconds for which task needs to be delayed
     };
 
     ModuleResponse(ResponseType type, uint32_t value) : type(type), resultCode(value) { }

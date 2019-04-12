@@ -4,6 +4,7 @@
 #include "Module.h"
 #include "common/ModuleId.h"
 #include <memory>
+#include "ISchedulingPlatform.h"
 
 namespace k2
 {
@@ -48,12 +49,10 @@ struct NodeEndpointConfig
 };
 
 //
-//  Represents a class containing state of K2 Node Pool.
+//  Describe current node pool API accessible for tasks
 //
-class NodePool
+class INodePool
 {
-public:
-
 protected:
     class LockScope
     {
@@ -105,12 +104,31 @@ protected:
         return Status::Ok;
     }
 
+    ISchedulingPlatform* schedulingPlatform = nullptr;
+
 public:
     Status internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
     {
         RET(_internalizeCollection(std::move(metadata), ptr));
     }
 
+    size_t getNodesCount() const { return endpoints.size(); }
+
+    const NodeEndpointConfig& getEndpoint(size_t endpointId) const
+    {
+        assert(endpointId < getNodesCount());
+        return endpoints[endpointId];
+    }
+
+    ISchedulingPlatform& getScheduingPlatform() { return *schedulingPlatform; }
+};
+
+//
+//  Represents a class containing state of K2 Node Pool.
+//
+class NodePool : public INodePool
+{
+public:
     Status registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module)
     {
         auto emplaceResult = modules.try_emplace(moduleId, std::move(module));
@@ -123,12 +141,11 @@ public:
         return Status::Ok;
     }
 
-    size_t getNodesCount() const { return endpoints.size(); }
-
-    const NodeEndpointConfig& getEndpoint(size_t endpointId) const
+    void setScheduingPlatform(ISchedulingPlatform* platform)
     {
-        assert(endpointId < getNodesCount());
-        return endpoints[endpointId];
+        assert(!schedulingPlatform);
+        assert(platform);
+        schedulingPlatform = platform;
     }
 };
 

@@ -2,6 +2,7 @@
 
 #include <boost/intrusive/list.hpp>
 #include "Partition.h"
+#include <node/NodePool.h>
 
 namespace k2
 {
@@ -14,23 +15,40 @@ class MessageInitiatedTaskRequest : public TaskRequest
 protected:
     std::unique_ptr<IClientConnection> client;
 
+    INodePool& getNodePool()
+    {
+        return getPartition().getNodePool();
+    }
+
     void respondToSender(Status status, uint32_t moduleCode = 0)
     {
         client->sendResponse(status, moduleCode);
     }
 
     ProcessResult moduleResponseToProcessResult(ModuleResponse response)
-    {        
+    {
         switch (response.type)
         {
             case ModuleResponse::Ok:
                 return ProcessResult::Done;
-        
+
             case ModuleResponse::RescheduleAfterIOCompletion:
                 return ProcessResult::Sleep;
 
             case ModuleResponse::Postpone:
-                return ProcessResult::Delay;
+            {
+                if(response.postponeDelayUs)    //  If delay time if specified, let sleep for that time
+                {
+                    getNodePool().getScheduingPlatform().delay(std::chrono::microseconds(response.postponeDelayUs), [&]
+                    {
+                        //  TODO: fix case when task got cancelled before timer fired
+                        awake();
+                    });
+                    return ProcessResult::Sleep;
+                }
+
+                return ProcessResult::Delay;    //  Just reschedule the task after all current tasks in the queue
+            }
 
             default:
                 assert(false);
@@ -42,6 +60,7 @@ protected:
 
     IClientConnection& getClient() { return *client.get(); }
 
+    void awake() { partition.awakeTask(*this); }
 public:
     MessageInitiatedTaskRequest(Partition& partition, std::unique_ptr<IClientConnection>&& connectionClient) :
         TaskRequest(partition),  client(std::move(connectionClient))
@@ -75,7 +94,7 @@ protected:
             getClient().getResponseWriter().truncateToCurrent();
         client->sendResponse(status, moduleCode);
     }
-    
+
     ProcessResult onPrepare()
     {
         IOOperations ioOperations;
@@ -135,11 +154,11 @@ public:
 
             case State::Apply:
                 return onApply();
-        
+
             default:
                 assert(false);
                 return ProcessResult::Done;
-        }        
+        }
     }
 
     void releaseRequestPayload()

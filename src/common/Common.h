@@ -117,4 +117,18 @@ inline seastar::temporary_buffer<char>&& moveCharTempBuffer(Binary& buffer)
     return std::move(toCharTempBuffer(buffer));
 }
 
+//  Binary which just reference some data. Owner of the data needs to make sure that when it delete the data
+//  nobody has the reference to it
+inline Binary binaryReference(void* data, size_t size)
+{
+    return Binary((uint8_t*)data, size, seastar::deleter());
+}
+
+template<typename CharT>
+inline Binary binaryReference(seastar::temporary_buffer<CharT>& buffer, size_t offset, size_t size)
+{
+    assert(offset + size <= buffer.size());
+    return binaryReference(buffer.get_write()+offset, size);
+}
+
 }   //  namespace k2

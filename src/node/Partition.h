@@ -8,6 +8,7 @@
 
 namespace k2
 {
+class INodePool;
 
 //
 //  K2 Partition
@@ -31,10 +32,10 @@ protected:
     typedef IntrusiveLinkedList<TaskRequest> TaskList;
 
     std::array<TaskList, (size_t)TaskListType::TaskListCount> taskLists;  //  Partition tasks
-
     PartitionMetadata metadata;
     Collection& collection;
     PartitionVersion version;
+    INodePool& nodePool;
 
     static void removeFromList(TaskList& list, TaskRequest& task)
     {
@@ -138,8 +139,8 @@ protected:
     }
 
 public:
-    Partition(PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
-        state(State::Assigning), metadata(std::move(metadata)),
+    Partition(INodePool& pool, PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
+        nodePool(pool), state(State::Assigning), metadata(std::move(metadata)),
         collection(collection), version(version), moduleData(nullptr) {}
 
     ~Partition() { release(); }
@@ -156,6 +157,14 @@ public:
     PartitionId getId() const { return metadata.getId(); }
 
     IModule& getModule() { return collection.getModule(); }
+
+    INodePool& getNodePool() { return nodePool; }
+
+    void awakeTask(TaskRequest& task)   //  TODO: hide from module somehow
+    {
+        assert(task.ownerTaskList == TaskListType::Sleeping);
+        activateTask(task);
+    }
 };  //  class Partition
 
 }   //  namespace k2

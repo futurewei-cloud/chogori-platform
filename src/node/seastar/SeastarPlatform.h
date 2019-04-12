@@ -3,11 +3,15 @@
 #include <common/ModuleId.h>
 #include <node/Module.h>
 #include <memory>
-#include <seastar/core/distributed.hh>
+
 #include <seastar/net/api.hh>
+#include <seastar/core/sleep.hh>
 #include <seastar/core/future.hh>
+#include <seastar/core/distributed.hh>
 #include <seastar/core/app-template.hh>
+
 #include <node/AssignmentManager.h>
+#include <node/ISchedulingPlatform.h>
 
 
 using namespace seastar;
@@ -18,7 +22,7 @@ using namespace seastar::net;
 namespace k2
 {
 
-class SeastarPlatform
+class SeastarPlatform : public ISchedulingPlatform
 {
 protected:
     class TCPServer
@@ -220,6 +224,16 @@ public:
             });
 
         return ret == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;
+    }
+
+    uint64_t getCurrentNodeId() override
+    {
+        return engine().cpu_id();
+    }
+
+    void delay(std::chrono::microseconds delayTimeUs, std::function<void()>&& callback) override
+    {
+        seastar::sleep(delayTimeUs).then([cb = std::move(callback)] { cb(); });
     }
 };
 

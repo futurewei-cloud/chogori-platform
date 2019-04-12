@@ -14,7 +14,7 @@ namespace k2
 class AssignmentManager
 {
 protected:
-    NodePool& pool;
+    INodePool& pool;
 
     std::array<std::pair<PartitionId, std::unique_ptr<Partition>>, Constants::MaxCountOfPartitionsPerNode> partitions;  //  List of currently assigned partitions
     int partitionCount = 0; //  Count of currently assigned partitions
@@ -53,7 +53,7 @@ protected:
 
         partitions[partitionCount++] = std::make_pair(
             request.message->getPartition().id,
-            std::make_unique<Partition>(std::move(assignMessage.partitionMetadata), *collection, assignMessage.partitionVersion));
+            std::make_unique<Partition>(pool, std::move(assignMessage.partitionMetadata), *collection, assignMessage.partitionVersion));
         Partition& partition = *partitions[partitionCount-1].second;
 
         partition.createAndActivateTask<AssignmentTask>(std::move(request.client));
@@ -114,7 +114,7 @@ protected:
 
 public:
 
-    AssignmentManager(NodePool& pool) : pool(pool) {}
+    AssignmentManager(INodePool& pool) : pool(pool) {}
 
     void processMessage(PartitionRequest& request)
     {
@@ -156,7 +156,7 @@ public:
         }
     }
 
-    const NodePool& getNodePool() { return pool; }
+    const INodePool& getNodePool() { return pool; }
 };
 
 }   //  namespace k2
