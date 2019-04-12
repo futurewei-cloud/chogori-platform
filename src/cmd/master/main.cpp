@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
             // at exit, terminate the root scheduler.
             seastar::engine().at_exit([] {
                 std::cout << "Stopping service..." << std::endl;
-                
+
                 return rootScheduler->close();
             });
 
