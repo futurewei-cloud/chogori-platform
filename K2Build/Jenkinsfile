@@ -65,8 +65,9 @@ pipeline {
             steps {
                 echo "\u2600 Uploading artifacts"
                 sh "curl http://k2-bvu-10001.huawei.com:10080/incoming/ --upload-file k2platform_*.deb"
-                sh "curl http://k2-bvu-10001.huawei.com:10080/incoming/ --upload-file k2platform-*.rpm"
                 sh "curl http://k2-bvu-10001.huawei.com:10080/incoming/ --upload-file k2platform_*.changes"
+                sh "curl http://k2-bvu-10001.huawei.com:10070/ --upload-file k2platform-*.rpm"
+                sh "curl http://k2-bvu-10001.huawei.com:10070/commit"
             }
         }
     }
