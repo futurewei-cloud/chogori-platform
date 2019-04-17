@@ -181,7 +181,7 @@ public:
 
     ProcessResult process() override
     {
-        if(partition.state == Partition::State::Offloading)
+        if(partition.getState() == Partition::State::Offloading)
         {
             respondToSender(Status::AssignOperationIsBrokenByOffload);
             return ProcessResult::Done;
@@ -190,7 +190,7 @@ public:
         ModuleResponse response = getModule().onAssign(*this);
         if(response.type == ModuleResponse::Ok)
         {
-            partition.state = Partition::State::Running;
+            partition.transitionToRunningState();
             respondToSender(Status::Ok);
             return ProcessResult::Done;
         }
@@ -216,7 +216,6 @@ public:
         ModuleResponse response = getModule().onOffload(*this);
         if(response.type == ModuleResponse::Ok)
         {
-            partition.state = Partition::State::Offloaded;
             respondToSender(Status::Ok);
             return ProcessResult::DropPartition;
         }

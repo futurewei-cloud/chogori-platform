@@ -24,18 +24,17 @@ public:
         Offloaded
     };
 
-    State state;
-
 protected:
     friend class AssignmentManager;
 
     typedef IntrusiveLinkedList<TaskRequest> TaskList;
 
+    PartitionVersion version;
+    State state = State::Assigning;
+    INodePool& nodePool;
     std::array<TaskList, (size_t)TaskListType::TaskListCount> taskLists;  //  Partition tasks
     PartitionMetadata metadata;
     Collection& collection;
-    PartitionVersion version;
-    INodePool& nodePool;
 
     static void removeFromList(TaskList& list, TaskRequest& task)
     {
@@ -92,6 +91,7 @@ protected:
 
     void release()
     {
+        state = State::Offloaded;   //  To mark it in memory
         for(TaskList& list : taskLists)
         {
             for(TaskRequest& task : list)
@@ -140,15 +140,14 @@ protected:
 
 public:
     Partition(INodePool& pool, PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
-        nodePool(pool), state(State::Assigning), metadata(std::move(metadata)),
-        collection(collection), version(version), moduleData(nullptr) {}
+        version(version), nodePool(pool), metadata(std::move(metadata)), collection(collection) {}
 
     ~Partition() { release(); }
 
     IPersistentLog& getLog(uint32_t logId);
     uint32_t getLogCount();
 
-    void* moduleData;   //  Module specific data, originally null
+    void* moduleData = nullptr;   //  Module specific data, originally null
 
     const PartitionMetadata& getMetadata() const { return metadata; }
     const CollectionMetadata& getCollection() const { return collection.getMetadata(); }
@@ -160,10 +159,21 @@ public:
 
     INodePool& getNodePool() { return nodePool; }
 
-    void awakeTask(TaskRequest& task)   //  TODO: hide from module somehow
+    State getState() const { return state; }
+
+    //
+    //  TODO: hide below function from module somehow
+    //
+    void awakeTask(TaskRequest& task)
     {
         assert(task.ownerTaskList == TaskListType::Sleeping);
         activateTask(task);
+    }
+
+    void transitionToRunningState()
+    {
+        assert(state == State::Assigning);
+        state = State::Running;
     }
 };  //  class Partition
 
