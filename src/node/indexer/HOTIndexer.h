@@ -4,11 +4,11 @@
 #include <idx/contenthelpers/IdentityKeyExtractor.hpp>
 #include <idx/contenthelpers/OptionalValue.hpp>
 
-#include "../common/Common.h"
+#include <common/Common.h>
 
 using namespace std;
 
-namespace k2 
+namespace k2
 {
 
 struct KeyValuePair {
@@ -46,7 +46,7 @@ public:
     }
 
     Node* find(const String& key, uint64_t version) {
-        // 
+        //
         // Bug: sometimes find() cannot find existing key
         //
         // auto it = m_keyValuePairTrie.find(key.c_str());

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Module.h"
+#include <node/Module.h>
 
-namespace k2 
+namespace k2
 {
 //
 //  K2 internal MVCC representation
 //
-struct Node {                
+struct Node {
     uint64_t version;
     String value;
     std::unique_ptr<Node> next;

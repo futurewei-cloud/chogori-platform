@@ -2,8 +2,8 @@
 
 #include "node/Tasks.h"
 #include "node/Module.h"
-#include "node/IndexerInterface.h"
-#include "node/MapIndexer.h"
+#include "node/indexer/IndexerInterface.h"
+#include "node/indexer/MapIndexer.h"
 
 namespace k2
 {
