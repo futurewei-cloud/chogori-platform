@@ -2,9 +2,9 @@
 #include <iostream>
 
 #include <node/AssignmentManager.h>
-#include <node/MapIndexer.h>
-#include <node/UnorderedMapIndexer.h>
-#include <node/HOTIndexer.h>
+#include <node/indexer/MapIndexer.h>
+#include <node/indexer/UnorderedMapIndexer.h>
+#include <node/indexer/HOTIndexer.h>
 #include <node/module/MemKVModule.h>
 #include <node/NodePool.h>
 
