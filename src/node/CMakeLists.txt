@@ -6,6 +6,6 @@ add_executable (node_pool Main.cpp)
 
 include_directories(..)
 
-target_link_libraries (node_pool PRIVATE common Seastar::seastar)
+target_link_libraries (node_pool PRIVATE k2common Seastar::seastar)
 install (TARGETS node_pool DESTINATION bin)
 install(FILES module/MemKVModule.h DESTINATION include/node/module)

@@ -10,4 +10,4 @@ endif()
 add_compile_definitions(K2TX_DEBUG=${K2TX_DEBUG})
 add_executable (service service.cpp)
 
-target_link_libraries (service PRIVATE transport Seastar::seastar )
+target_link_libraries (service PRIVATE k2transport Seastar::seastar )

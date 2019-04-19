@@ -1,12 +1,12 @@
 #<!--
 #    (C)opyright Futurewei Technologies Inc, 2019
 #-->
-project(transport VERSION 1.0.0 DESCRIPTION "transport library")
+project(k2transport VERSION 1.0.0 DESCRIPTION "transport library for k2 platform")
 
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(transport STATIC ${HEADERS} ${SOURCES})
+add_library(k2transport STATIC ${HEADERS} ${SOURCES})
 
 if(DEFINED ENV{K2TX_DEBUG})
 	set(K2TX_DEBUG $ENV{K2TX_DEBUG})
@@ -16,10 +16,10 @@ endif()
 
 add_compile_definitions(K2TX_DEBUG=${K2TX_DEBUG})
 
-set_target_properties(transport PROPERTIES
+set_target_properties(k2transport PROPERTIES
 	VERSION ${PROJECT_VERSION}
 	SOVERSION 1
 )
 
-install(TARGETS transport DESTINATION lib)
+install(TARGETS k2transport DESTINATION lib)
 install(FILES ${HEADERS} DESTINATION include/transport)

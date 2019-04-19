@@ -6,5 +6,5 @@ add_executable (client Main.cpp)
 
 include_directories(..)
 
-target_link_libraries (client PRIVATE common _client Seastar::seastar)
+target_link_libraries (client PRIVATE k2common k2client Seastar::seastar)
 install (TARGETS client DESTINATION bin)
