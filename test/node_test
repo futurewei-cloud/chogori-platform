@@ -1,11 +1,11 @@
 #!/bin/bash
 
-./build/src/client/client assign -p 1.1.1
-./build/src/client/client set -p 1.1.1 -k 1 -v One
+./build/src/client/main/client assign -p 1.1.1
+./build/src/client/main/client set -p 1.1.1 -k 1 -v One
 
-./build/src/client/client assign -p 2.1.1
-./build/src/client/client set -p 2.1.1 -k 2 -v Two
+./build/src/client/main/client assign -p 2.1.1
+./build/src/client/main/client set -p 2.1.1 -k 2 -v Two
 
-./build/src/client/client get -p 1.1.1 -k 1
-./build/src/client/client get -p 2.1.1 -k 2
+./build/src/client/main/client get -p 1.1.1 -k 1
+./build/src/client/main/client get -p 2.1.1 -k 2
 
