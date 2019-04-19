@@ -1,0 +1,15 @@
+#!/bin/bash
+#
+#   Script to build K2
+#
+
+echo "Build all in K2"
+BUILD_START=$(date +%s)
+SCRIPT_PATH="$(cd $(dirname $0);pwd)"
+
+${SCRIPT_PATH}/../K2Build/k2build make -C K2Build
+
+BUILD_END=$(date +%s)
+BUILD_TIME=$((BUILD_END-BUILD_START))
+
+printf 'Build finished. Time elapsed:  %dh:%dm:%ds\n' $(($BUILD_TIME/3600)) $(($BUILD_TIME%3600/60)) $(($BUILD_TIME%60))
