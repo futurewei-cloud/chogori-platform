@@ -1,2 +1,3 @@
 add_subdirectory(lib)
-add_subdirectory(main)
+add_subdirectory(controlPlaneClient)
+add_subdirectory(dataPlaneClient)

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common/CollectionMetadata.h"
-#include <seastar/core/sharded.hh>
 
 namespace k2
 {

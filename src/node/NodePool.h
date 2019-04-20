@@ -5,6 +5,7 @@
 #include "common/ModuleId.h"
 #include <memory>
 #include "ISchedulingPlatform.h"
+#include <seastar/core/sharded.hh>
 
 namespace k2
 {

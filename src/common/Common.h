@@ -3,7 +3,14 @@
 #include <string>
 #include <string_view>
 #include <memory>
+#include <chrono>
+
+#include <seastar/core/temporary_buffer.hh>
+
+#ifndef PARTITION_MANAGER_USE_OBS_INDEX
+#include <string_view>
 #include <seastar/core/sstring.hh>
+#endif
 
 #include "Constants.h"
 #include "Status.h"
@@ -14,7 +21,11 @@ namespace k2
 //
 //  K2 general string type
 //
+#ifdef PARTITION_MANAGER_USE_OBS_INDEX
+typedef std::string String;
+#else
 typedef seastar::sstring String;
+#endif
 
 //
 //  Value of this type uniquely identifies K2 partition

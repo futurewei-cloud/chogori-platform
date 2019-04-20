@@ -5,8 +5,6 @@
 
 #include <common/PartitionMetadata.h>
 
-#include <node/module/MemKVModule.h>
-
 #include <lib/Client.h>
 
 namespace k2
@@ -30,28 +28,6 @@ void offloadPartition(k2::PartitionAssignmentId partitionId, const char* ipAndPo
 {
     (void) partitionId; // TODO use me
     (void) ipAndPort; // TODO use me
-}
-
-void moduleSet(k2::PartitionAssignmentId partitionId, const char* ipAndPort, std::string&& key, std::string&& value)
-{
-    MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
-    std::unique_ptr<ResponseMessage> response = sendMessage(ipAndPort,
-        PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest)));
-    if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        std::cerr << "Set failed: " << (int)response->getStatus() << std::endl << std::flush;
-}
-
-void moduleGet(k2::PartitionAssignmentId partitionId, const char* ipAndPort, std::string&& key)
-{
-    MemKVModule<>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
-    std::unique_ptr<ResponseMessage> response = sendMessage(ipAndPort,
-        PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest)));
-    if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        std::cerr << "Get failed" << (int)response->getStatus() << std::endl << std::flush;
-
-    MemKVModule<>::GetResponse getResponse;
-    response->payload.getReader().read(getResponse);
-    std::cout << "Gotten: value: " << getResponse.value << " version: " << getResponse.version << std::endl << std::flush;
 }
 
 }
@@ -117,10 +93,6 @@ int main(int argc, char** argv)
             k2::assignPartition(partitionId, node.c_str());
         else if(command == "offload")
             k2::offloadPartition(partitionId, node.c_str());
-        else if(command == "set")
-            k2::moduleSet(partitionId, node.c_str(), std::move(key), std::move(value));
-        else if(command == "get")
-            k2::moduleGet(partitionId, node.c_str(), std::move(key));
         else
         {
             std::cerr << "Unknown command: " << command << std::endl;
