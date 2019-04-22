@@ -12,19 +12,19 @@
 namespace k2
 {
 
-void moduleSet(k2::PartitionAssignmentId partitionId, const char* ipAndPort, std::string&& key, std::string&& value)
+void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port, std::string&& key, std::string&& value)
 {
     MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
-    std::unique_ptr<ResponseMessage> response = sendMessage(ipAndPort,
+    std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
         PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest)));
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
         std::cerr << "Set failed: " << (int)response->getStatus() << std::endl << std::flush;
 }
 
-void moduleGet(k2::PartitionAssignmentId partitionId, const char* ipAndPort, std::string&& key)
+void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port, std::string&& key)
 {
     MemKVModule<>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
-    std::unique_ptr<ResponseMessage> response = sendMessage(ipAndPort,
+    std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
         PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest)));
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
         std::cerr << "Get failed" << (int)response->getStatus() << std::endl << std::flush;
@@ -46,14 +46,16 @@ void printHelp(bpo::options_description& desc, std::string& appName)
 
 int main(int argc, char** argv)
 {
-    std::string partition, node, command, key, value;
+    std::string partition, nodeIP, command, key, value;
+    uint16_t nodePort;
     std::string appName = boost::filesystem::basename(argv[0]);
 
     bpo::options_description desc("Options");
     desc.add_options()
         ("help,h", "Print help messages")
         ("partition,p", bpo::value<std::string>(&partition)->required(), "Partition assignment id to send message to. Format PartitionId,RangeVersion,AssignmentVersion. E.g. '1.2.3'.")
-        ("node,n", bpo::value<std::string>(&node)->default_value("127.0.0.1:11311"), "Node to which partition belongs. 127.0.0.1:11311 by default")
+        ("nodeIP,N", bpo::value<std::string>(&nodeIP)->default_value("127.0.0.1"), "IP address of Node to which partition belongs. 127.0.0.1 by default")
+        ("nodePort,P", bpo::value<uint16_t>(&nodePort)->default_value(11311), "Port of Node to which partition belongs. 11311 by default")
         ("key,k", bpo::value<std::string>(&key), "Key for set and get commands")
         ("value,v", bpo::value<std::string>(&value), "Value for set command")
         ("command", bpo::value<std::string>(&command), "Command to execute: assign|offload|get|set");
@@ -76,7 +78,7 @@ int main(int argc, char** argv)
 
         bpo::notify(arguments); // Throws exception if there are any problems
 
-        std::cout << "Executing command " << command << " for Node:" << node << " Partition:" << partition << std::endl << std::flush;
+        std::cout << "Executing command " << command << " for Node:" << nodeIP << ":" << nodePort << " Partition:" << partition << std::endl << std::flush;
 
         if(!partitionId.parse(partition.c_str()))
         {
@@ -94,9 +96,9 @@ int main(int argc, char** argv)
     try
     {
         if(command == "set")
-            k2::moduleSet(partitionId, node.c_str(), std::move(key), std::move(value));
+            k2::moduleSet(partitionId, nodeIP.c_str(), nodePort, std::move(key), std::move(value));
         else if(command == "get")
-            k2::moduleGet(partitionId, node.c_str(), std::move(key));
+            k2::moduleGet(partitionId, nodeIP.c_str(), nodePort, std::move(key));
         else
         {
             std::cerr << "Unknown command: " << command << std::endl;

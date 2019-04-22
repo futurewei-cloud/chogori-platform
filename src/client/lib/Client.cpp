@@ -11,13 +11,11 @@
 namespace k2
 {
 
-std::unique_ptr<ResponseMessage> sendMessage(const char* ipAndPort, const Payload& message)
+std::unique_ptr<ResponseMessage> sendMessage(const char* ip, uint16_t port, const Payload& message)
 {
-    (void) ipAndPort; // TODO use me
-
     boost::asio::io_service ios;
     //boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string(host), port);
-    boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string("127.0.0.1"), 11311);
+    boost::asio::ip::tcp::endpoint endpoint(boost::asio::ip::address::from_string(ip), port);
     boost::asio::ip::tcp::socket socket(ios);
     socket.connect(endpoint);
 

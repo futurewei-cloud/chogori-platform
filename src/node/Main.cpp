@@ -52,7 +52,7 @@ int main(int argc, char** argv)
             // create default configuration
             NodeEndpointConfig nodeConfig;
             nodeConfig.type = NodeEndpointConfig::IPv4;
-            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("127.0.0.1"));
+            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("0.0.0.0"));
             nodeConfig.ipv4.port = 11311;
             TIF(pool.registerNode(nodeConfig));
         }

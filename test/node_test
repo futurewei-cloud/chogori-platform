@@ -1,11 +1,11 @@
 #!/bin/bash
 
-./build/src/client/controlPlaneClient/controlPlaneClient assign -p 1.1.1
-./build/src/client/dataPlaneClient/dataPlaneClient set -p 1.1.1 -k 1 -v One
+./build/src/client/controlPlaneClient/controlPlaneClient assign -p 1.1.1 -N 192.168.7.7
+./build/src/client/dataPlaneClient/dataPlaneClient set -p 1.1.1 -k 1 -v One -N 192.168.7.7
 
-./build/src/client/controlPlaneClient/controlPlaneClient assign -p 2.1.1
-./build/src/client/dataPlaneClient/dataPlaneClient set -p 2.1.1 -k 2 -v Two
+./build/src/client/controlPlaneClient/controlPlaneClient assign -p 2.1.1 -N 192.168.7.7
+./build/src/client/dataPlaneClient/dataPlaneClient set -p 2.1.1 -k 2 -v Two -N 192.168.7.7
 
-./build/src/client/dataPlaneClient/dataPlaneClient get -p 1.1.1 -k 1
-./build/src/client/dataPlaneClient/dataPlaneClient get -p 2.1.1 -k 2
+./build/src/client/dataPlaneClient/dataPlaneClient get -p 1.1.1 -k 1 -N 192.168.7.7
+./build/src/client/dataPlaneClient/dataPlaneClient get -p 2.1.1 -k 2 -N 192.168.7.7
 
