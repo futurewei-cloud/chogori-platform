@@ -5,6 +5,8 @@
 // stl
 #include <exception>
 #include <chrono>
+#include <cctype> // for is_print
+#include <string>
 using namespace std::chrono_literals; // so that we can type "1ms"
 
 // third-party
@@ -42,7 +44,8 @@ public:  // application lifespan
         _dispatcher(dispatcher),
         _updateTimer([this]{
             this->SendHeartbeat();
-        }) {
+        }),
+        _heartbeatCount(0) {
         // Constructors should not do much more than just remembering the passed state because
         // not all dependencies may have been created yet.
         // The initialization should happen in Start() since at that point all deps should have been created
@@ -86,8 +89,9 @@ public:  // application lifespan
 
         disp.RegisterMessageObserver(MsgVerbs::ACK,
             [this](k2tx::Request request) mutable {
+                auto received = GetPayloadString(request.payload.get());
                 K2INFO("Received ACK from " << request.endpoint.GetURL() <<
-                      ", and payload: " << GetPayloadString(request.payload.get()));
+                      ", and payload: " << received);
             });
 
         disp.RegisterLowTransportMemoryObserver([](const k2tx::String& ttype, size_t requiredReleaseBytes) {
@@ -101,11 +105,13 @@ public:  // application lifespan
 
 public: // Work generators
     void SendHeartbeat() {
-        K2INFO("Sending heartbeat");
+        K2INFO("Sending heartbeat: "<< _heartbeatCount);
         auto& disp = _dispatcher.local();
         // send a GET
         {
             k2tx::String msg("Requesting GET");
+            msg += std::to_string(_heartbeatCount++);
+
             std::unique_ptr<k2tx::Payload> request = _heartbeatEndpoint->NewPayload();
             request->Append(msg.c_str(), msg.size()+1);
             // straight Send sends requests without any form of retry. Underlying transport may or may not
@@ -121,6 +127,7 @@ public: // Work generators
             retryStrategy.Do([this, &disp](size_t retriesLeft, k2tx::Duration timeout) {
                 K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout=" << timeout.count());
                 k2tx::String msgData = "Requesting POST";
+                msgData += std::to_string(_heartbeatCount++);
                 // In this example, we must create a new payload each time we want to retry.
                 // The reason is that once we attempt a send over a transport, we move ownership of payload
                 // to the transport and may not be able to get the original packets back.
@@ -130,7 +137,8 @@ public: // Work generators
                 // send a request with expected reply. Since we expect a reply, we must specify a timeout
                 return disp.SendRequest(POST, std::move(msg), *_heartbeatEndpoint.get(), timeout)
                 .then([this](std::unique_ptr<k2tx::Payload> payload) {
-                    K2INFO("Received reply for message: " << GetPayloadString(payload.get()));
+                    auto received = GetPayloadString(payload.get());
+                    K2INFO("Received reply for message: " << received);
                     // if the application wants to retry again (in case of some retryable server error)
                     // ServiceMessage msg(payload);
                     // if (msg.Status != msg.StatusOK) {
@@ -146,9 +154,12 @@ public: // Work generators
 public:
     // Message handlers
     void handlePOST(k2tx::Request request) {
+        auto received = GetPayloadString(request.payload.get());
         K2INFO("Received POST message from endpoint: " << request.endpoint.GetURL()
-              << ", with payload: " << GetPayloadString(request.payload.get()) );
+              << ", with payload: " << received);
         k2tx::String msgData("POST Message received");
+        msgData += std::to_string(_heartbeatCount++);
+
         std::unique_ptr<k2tx::Payload> msg = request.endpoint.NewPayload();
         msg->Append(msgData.c_str(), msgData.size()+1);
 
@@ -157,9 +168,12 @@ public:
     }
 
     void handleGET(k2tx::Request request) {
+        auto received = GetPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.GetURL()
-              << ", with payload: " << GetPayloadString(request.payload.get()) );
+              << ", with payload: " << received);
         k2tx::String msgData("GET Message received");
+        msgData += std::to_string(_heartbeatCount++);
+
         std::unique_ptr<k2tx::Payload> msg = request.endpoint.NewPayload();
         msg->Append(msgData.c_str(), msgData.size()+1);
 
@@ -168,13 +182,22 @@ public:
     }
 
 private:
-    static k2tx::String GetPayloadString(k2tx::Payload* payload) {
+    static std::string GetPayloadString(k2tx::Payload* payload) {
         if (!payload) {
             return "NO_PAYLOAD_RECEIVED";
         }
-        k2tx::String result;
+        std::string result;
         for (auto& fragment: payload->Fragments()) {
-            result += k2tx::String(fragment.get(), fragment.size());
+            K2DEBUG("Processing received fragment of size=" << fragment.size());
+            auto datap = fragment.get();
+            for (size_t i = 0; i < fragment.size(); ++i) {
+                if (std::isprint(static_cast<unsigned char>(datap[i]))) {
+                    result.append(1, datap[i]);
+                }
+                else {
+                    result.append(1, '.');
+                }
+            }
         }
         return result;
     }
@@ -182,6 +205,7 @@ private:
     k2tx::RPCDispatcher::Dist_t& _dispatcher;
     seastar::timer<> _updateTimer;
     std::unique_ptr<k2tx::Endpoint> _heartbeatEndpoint;
+    uint64_t _heartbeatCount;
 
 }; // class Service
 

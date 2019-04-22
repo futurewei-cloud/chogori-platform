@@ -90,13 +90,13 @@ void RPCParser::Feed(Fragment fragment) {
 void RPCParser::DispatchSome() {
     K2DEBUG("dispatch some: " << _shouldParse);
     while(_shouldParse) {
+        // parse and dispatch the next message
+        _parseAndDispatchOne();
+
         if (seastar::need_preempt()) {
             K2DEBUG("we hogged the event loop enough");
             break;
         }
-
-        // parse and dispatch the next message
-        _parseAndDispatchOne();
     }
 }
 
@@ -222,22 +222,21 @@ void RPCParser::_stWAIT_FOR_VARIABLE_HEADER() {
 
     // how many bytes we need off the wire
     size_t needBytes = _metadata.WireByteCount();
+    size_t haveBytes = _currentFragment.size();
 
-    K2DEBUG("wait_for_var_header: need=" << needBytes);
+    K2DEBUG("wait_for_var_header: need=" << needBytes << ", have=" << haveBytes);
     // we come in this state only when we should try to get a variable header from the current fragment
-    if (needBytes> 0 ) {
-        if (_currentFragment.size() == 0) {
-            K2DEBUG("wait_for_var_header: no bytes in current segment. continuing");
-            return; // nothing to do - no new data, so remain in this state waiting for new data
-        }
-        else {
-            K2DEBUG("wait_for_var_header: need data but not enough present");
-            // we have some new data, but not enough to parse the variable header. move it to the partial segment
-            // and state change to IN_PARTIAL_VARIABLE_HEADER
-            _partialFragment = std::move(_currentFragment);
-            _pState = ParseState::IN_PARTIAL_VARIABLE_HEADER;
-            return;
-        }
+    if (needBytes > 0 && haveBytes == 0) {
+        K2DEBUG("wait_for_var_header: no bytes in current segment. continuing");
+        return; // nothing to do - no new data, so remain in this state waiting for new data
+    }
+    else if (needBytes > haveBytes) {
+        K2DEBUG("wait_for_var_header: need data but not enough present");
+        // we have some new data, but not enough to parse the variable header. move it to the partial segment
+        // and state change to IN_PARTIAL_VARIABLE_HEADER
+        _partialFragment = std::move(_currentFragment);
+        _pState = ParseState::IN_PARTIAL_VARIABLE_HEADER;
+        return;
     }
     // if we came here, we either don't need any bytes, or we have all the bytes we need in _currentFragment
 
@@ -343,13 +342,7 @@ void RPCParser::_stWAIT_FOR_PAYLOAD() {
     }
 
     // process the case where we have some data which is exactly what we need, or not enough
-    if (needed == available) {
-        K2DEBUG("wait_for_payload: got exactly the data we need");
-        _payload->AppendFragment(std::move(_currentFragment));
-        _pState = ParseState::READY_TO_DISPATCH; // ready to dispatch
-        return;
-    }
-    else if (needed > available) {
+    if (needed > available) {
         K2DEBUG("wait_for_payload: consumed available but need more");
         _payload->AppendFragment(std::move(_currentFragment));
         return;
@@ -371,7 +364,7 @@ void RPCParser::_stREADY_TO_DISPATCH() {
     _pState = RPCParser::ParseState::WAIT_FOR_FIXED_HEADER;
 
     // only try to parse more if we have any data left in current fragment
-    _shouldParse = (_currentFragment.size() == 0);
+    _shouldParse = (_currentFragment.size() != 0);
 }
 
 void RPCParser::_stFAILED_STREAM() {

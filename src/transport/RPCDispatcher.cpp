@@ -89,6 +89,7 @@ void RPCDispatcher::_handleNewMessage(Request request) {
     K2DEBUG("handling request for verb="<< request.verb <<", from ep="<< request.endpoint.GetURL());
     auto iter = _observers.find(request.verb);
     if (iter != _observers.end()) {
+        K2DEBUG("Dispatching request for verb="<< request.verb <<", from ep="<< request.endpoint.GetURL());
         iter->second(std::move(request));
     }
     else {
@@ -109,7 +110,9 @@ void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, Endpoint&
 
 void RPCDispatcher::Send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint) {
     K2DEBUG("Plain send");
-    _send(verb, std::move(payload), endpoint, {});
+    MessageMetadata metadata;
+    metadata.SetPayloadSize(payload->Size());
+    _send(verb, std::move(payload), endpoint, std::move(metadata));
 }
 
 void RPCDispatcher::SendReply(std::unique_ptr<Payload> payload, Request forRequest) {

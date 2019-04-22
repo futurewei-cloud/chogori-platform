@@ -10,6 +10,7 @@
 #include "Log.h"
 
 #define CDEBUG(msg) K2DEBUG("{conn="<< (void*)this << ", addr=" << this->_endpoint.GetURL() << "} " << msg)
+#define CHDEBUG(msg) K2DEBUG("{conn="<< (void*)(chan.get()) << ", addr=" << chan->_endpoint.GetURL() << "} " << msg)
 #define CWARN(msg) K2WARN("{conn="<< (void*)this << ", addr=" << this->_endpoint.GetURL() << "} " << msg)
 
 namespace k2tx {
@@ -42,30 +43,37 @@ TCPRPCChannel::TCPRPCChannel(seastar::future<seastar::connected_socket> futureSo
 }
 
 TCPRPCChannel::~TCPRPCChannel(){
+    CDEBUG("dtor");
 }
 
 void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata, bool flush) {
+    CDEBUG("send: verb=" << verb << ", payloadSize="<< payload->Size() << ", flush=" << flush);
     if (!_fdIsSet) {
         // we don't have a connected socket yet. Queue up the request
+        CDEBUG("send: not connected yet. Buffering the write...");
         _pendingWrites.emplace_back(_BufferedWrite{verb, std::move(payload), std::move(metadata)});
         return;
     }
     // Messages are written in two parts: the header and the payload.
     // ask the serializer to write out its header to a fragment
+    CDEBUG("writing header: verb=" << verb << ", payloadSize="<< payload->Size() << ", flush=" << flush);
     _out.write(RPCParser::SerializeHeader(_endpoint.NewFragment(), verb, std::move(metadata)));
 
     // payload is optional
     if (payload->Size() > 0) {
+        CDEBUG("writing payload: verb=" << verb << ", payloadSize="<< payload->Size() << ", flush=" << flush);
         // we have some payload to write
         auto& fragments = payload->Fragments();
 
         // write all but last fragment as-is
         for (size_t i = 0; i < fragments.size() - 1; ++i) {
+            CDEBUG("write intermediate fragment of size=" << fragments[i].size());
             _out.write(std::move(fragments[i]));
         }
         if (payload->LastFragmentSize() > 0) {
             // we only write LastFragmentSize bytes from the last fragment
             fragments.back().trim(payload->LastFragmentSize());
+            CDEBUG("write last fragment of size=" << fragments.back().size());
             _out.write(std::move(fragments.back()));
         }
     }
@@ -73,6 +81,7 @@ void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
     // so no need to do anything with that vector
     // RIP payload...
     if (flush) {
+        CDEBUG("write with flush...");
         _out.flush();
     }
 }
@@ -101,29 +110,45 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
 
     // setup read loop
     seastar::do_until(
-        [this] { return this->_in.eof(); }, // end condition for loop
-        [this] { // body of loop
-            if (this->_rpcParser.CanDispatch()) {
-                CDEBUG("RPC parser can dispatch more messages as-is. not reading from socket this round")
-                this->_rpcParser.DispatchSome();
+        [chan=weak_from_this()] { return !chan || chan->_in.eof(); }, // end condition for loop
+        [chan=weak_from_this()] { // body of loop
+            if (chan) {
+                if (chan->_rpcParser.CanDispatch()) {
+                    CHDEBUG("RPC parser can dispatch more messages as-is. not reading from socket this round");
+                    chan->_rpcParser.DispatchSome();
+                    return seastar::make_ready_future<>();
+                }
+                return chan->_in.read().then(
+                    [chan=chan->weak_from_this()](seastar::temporary_buffer<char> packet) {
+                        if (chan) {
+                            if (packet.empty()) {
+                                CHDEBUG("remote end closed connection in conn for " << chan->_endpoint.GetURL());
+                                return; // just say we're done so the loop can evaluate the end condition
+                            }
+                            CHDEBUG("Read "<< packet.size());
+                            chan->_rpcParser.Feed(std::move(packet));
+                            // process some messages from the packet
+                            chan->_rpcParser.DispatchSome();
+                        }
+                    });
+            }
+            else{
                 return seastar::make_ready_future<>();
             }
-            return this->_in.read().then(
-                [this](seastar::temporary_buffer<char> packet) {
-                    if (packet.empty()) {
-                        CDEBUG("remote end closed connection in conn for " << _endpoint.GetURL());
-                        return; // just say we're done so the loop can evaluate the end condition
-                    }
-                    CDEBUG("Read "<< packet.size());
-                    this->_rpcParser.Feed(std::move(packet));
-                    // process some messages from the packet
-                    this->_rpcParser.DispatchSome();
-                });
         }
     )
-    .finally([this] {
-        CDEBUG("closing channel...");
-        return this->_out.close();
+    .finally([chan=weak_from_this()] {
+        if (chan) {
+            CHDEBUG("closing channel...");
+            return chan->_out.flush().then([chan=chan->weak_from_this()] () {
+                if (chan) {
+                    chan->_out.close();
+                }
+            });
+        }
+        else {
+            return seastar::make_ready_future<>();
+        }
     }); // finally
 }
 
