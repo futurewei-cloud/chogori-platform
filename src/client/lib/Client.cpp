@@ -21,7 +21,7 @@ std::unique_ptr<ResponseMessage> sendMessage(const char* ipAndPort, const Payloa
     boost::asio::ip::tcp::socket socket(ios);
     socket.connect(endpoint);
 
-    boost::asio::socket_base::message_flags flags;
+    boost::asio::socket_base::message_flags flags{};
     boost::system::error_code error;
     socket.send(message.toBoostBuffers(), flags, error);
     if(error)

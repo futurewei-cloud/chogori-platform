@@ -1,0 +1,86 @@
+//<!--
+//    (C)opyright Futurewei Technologies Inc, 2019
+//-->
+#pragma once
+
+// third-party
+#include <seastar/core/distributed.hh> // distributed<> stuff
+#include <seastar/net/api.hh> // socket/network stuff
+#include <seastar/core/future.hh> // future stuff
+
+// k2tx
+#include "Fragment.h"
+
+namespace k2tx {
+
+// This class allows access to the proper VirtualNetworkStack(SR-IOV virtualized NIC) on a given core
+// This class should be used as a distributed<> container
+// TODO This class should allow for registering providers for different functions. For example
+// creating a tcp server socket may be done via the dpdk+tcp stack, while creating a udp channel
+// is satisfied by a posix stack.
+// For now, this is a forward interface which is coded to work with seastar's global network stack
+class VirtualNetworkStack{
+
+public: // types
+    // Distributed version of the class
+    typedef seastar::distributed<VirtualNetworkStack> Dist_t;
+
+    // the type of a function we can call to notify that we're low on memory. Function is called with required
+    // number of bytes to release
+    typedef std::function<void(size_t requiredNumberOfBytes)> LowMemoryObserver_t;
+
+public: // lifecycle
+    // Constructor.
+    VirtualNetworkStack();
+
+    // Destructor
+    ~VirtualNetworkStack();
+
+public: // TCP API
+    // Create a server(listening) TCP socket on the local VF. The socket is constructed on the
+    // given address/port with the given listen_options(e.g. reuse port)
+    // It is up to caller to call abort_listen if the socket should be closed.
+    seastar::server_socket ListenTCP(seastar::socket_address sa, seastar::listen_options opt);
+
+    // Create a socket to connect to a given remote address. Optionally, it binds locally to the given sourceAddress
+    // It is up to caller to shutdown the input/output when the socket should be closed
+    seastar::future<seastar::connected_socket> ConnectTCP(seastar::socket_address remoteAddress, seastar::socket_address sourceAddress={});
+
+    // Create a payload from the TCP provider
+    Allocator_t GetTCPAllocator();
+
+    // RegisterLowTCPMemoryObserver allows the user to register a observer which will be called when
+    // the TCP stack becomes low on memory and requires the application to release some buffers back.
+    // The call is level triggered at the end of every polling cycle when the TCP transport detected that
+    // its memory is running low. The user is called with is required total number of bytes that should be released.
+    //
+    // The intended use case here is for applications which hold on to Payloads for long periods of time.
+    // These applications should register themselves here, and when called should release enough Payloads to satisfy
+    // the requiredNumberOfBytes parameter in their callback.
+    void RegisterLowTCPMemoryObserver(LowMemoryObserver_t observer);
+
+public: // UDP API
+    // TODO add UDP support
+
+public: // RDMA API
+    // TODO add RDMA support
+
+public: // distributed<> interface
+    // Should be called by user when all distributed objects have been created
+    void Start();
+
+    // called by seastar's distributed mechanism when stop() is invoked on the distributed container.
+    seastar::future<> stop();
+
+private: // fields
+    LowMemoryObserver_t _lowTCPMemObserver;
+
+private: // Not needed
+    VirtualNetworkStack(const VirtualNetworkStack& o) = delete;
+    VirtualNetworkStack(VirtualNetworkStack&& o) = delete;
+    VirtualNetworkStack& operator=(const VirtualNetworkStack& o) = delete;
+    VirtualNetworkStack& operator=(VirtualNetworkStack&& o) = delete;
+
+}; // class VirtualNetworkStack
+
+}// namespace

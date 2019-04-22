@@ -3,11 +3,20 @@
 //-->
 
 #pragma once
-#include <vector>
 
+// stl
+#include <functional>
+
+// third-party
 #include <seastar/core/temporary_buffer.hh>
 
 namespace k2tx {
+// the binary type to use
+typedef char Binary_t;
+
 // Use the seastar temporary_buffer directly for now.
-typedef seastar::temporary_buffer<char> Fragment;
+typedef seastar::temporary_buffer<Binary_t> Fragment;
+
+// The type for a function which can allocate fragments
+typedef std::function<Fragment()> Allocator_t;
 } // k2tx
