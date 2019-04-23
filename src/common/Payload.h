@@ -2,7 +2,9 @@
 
 #include <cassert>
 #include "Common.h"
+#ifndef PARTITION_MANAGER_USE_OBS_INDEX
 #include <seastar/net/packet.hh>
+#endif
 #include <boost/asio/buffer.hpp>
 
 namespace k2
@@ -132,6 +134,7 @@ public:
         return result;
     }
 
+#ifndef PARTITION_MANAGER_USE_OBS_INDEX
     static seastar::net::packet toPacket(Payload&& payload)
     {
         seastar::net::packet result;
@@ -142,6 +145,7 @@ public:
 
         return result;
     }
+#endif
 };
 
 
@@ -154,7 +158,7 @@ class PayloadReader
 protected:
     const Payload& payload;
     Payload::Position position;
-    PayloadReader(const Payload& payload, Payload::Position position) : payload(payload), position(position) { }
+    constexpr PayloadReader(const Payload& payload, Payload::Position position) : payload(payload), position(position) { }
 
     constexpr bool readMany() { return true; }
 

@@ -39,7 +39,7 @@ struct PartitionAssignmentId
         if(!str || !*str)
             return false;
 
-        static_assert(sizeof(id) == sizeof(uint64_t) && sizeof(version.range) == sizeof(uint16_t) && sizeof(version.assign) == sizeof(uint16_t));
+        static_assert(sizeof(id) == sizeof(uint64_t) && sizeof(version.range) == sizeof(uint16_t) && sizeof(version.assign) == sizeof(uint16_t), "Incorrect PartitionAssignmentId structure");
         return sscanf(str, "%lu.%hu.%hu", &id, &version.range, &version.assign) == 3;
     }
 
