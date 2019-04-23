@@ -285,7 +285,6 @@ public:
     }
 
     template<typename T, typename... ArgsT>
-    constexpr
     bool readMany(T& value, ArgsT&... args)
     {
         if(!read(value))
