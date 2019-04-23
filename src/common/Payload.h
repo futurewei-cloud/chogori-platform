@@ -158,7 +158,7 @@ class PayloadReader
 protected:
     const Payload& payload;
     Payload::Position position;
-    PayloadReader(const Payload& payload, Payload::Position position) : payload(payload), position(position) { }
+    constexpr PayloadReader(const Payload& payload, Payload::Position position) : payload(payload), position(position) { }
 
     constexpr bool readMany() { return true; }
 
@@ -285,6 +285,7 @@ public:
     }
 
     template<typename T, typename... ArgsT>
+    constexpr
     bool readMany(T& value, ArgsT&... args)
     {
         if(!read(value))
