@@ -13,4 +13,9 @@ if [ -t 1 ] ; then IT=-it; else IT=; fi
 echo ">>> Pulling latest builder image: ${FULL_IMG_NAME}"
 docker pull ${FULL_IMG_NAME}
 echo ">>> Executing command \"$*\" in the build container"
-docker run --init --rm ${IT} -v "${PWD}:/build" ${FULL_IMG_NAME} $*;
+# TODO: use swarm to setup the integrate test env
+if [ $1 == "/build/build/src/node/node_pool" ] ; then
+	docker run --privileged --init --rm ${IT} -v "${PWD}:/build" -d --ip="192.168.7.7" --net k2 --cidfile /tmp/node_pool_container_id ${FULL_IMG_NAME} $*;
+else
+	docker run --privileged --init --rm ${IT} -v "${PWD}:/build" --net k2 ${FULL_IMG_NAME} $*;
+fi

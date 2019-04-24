@@ -29,7 +29,6 @@ pipeline {
             agent {label "builder"}
             steps {
                 echo "\u2600 Build"
-                sh "docker network create --subnet=192.168.7.0/16 k2 || true"
                 sh "./K2Build/k2build make -j -C K2Build"
             }
         }
@@ -39,8 +38,9 @@ pipeline {
             steps {
                 echo "\u2600 Run K2 Platform Integration Test"
                 sh "./K2Build/k2build make -j -C K2Build test"
-                sh "./K2Build/k2build /build/build/src/node/node_pool"
-                sh "./K2Build/k2build ./test/node_test"
+                sh "docker network create --subnet=192.168.7.0/16 k2 || true"
+                sh "./K2Build/k2integrate /build/build/src/node/node_pool"
+                sh "./K2Build/k2integrate ./test/node_test"
                 sh "cat /tmp/node_pool_container_id | xargs docker kill && rm /tmp/node_pool_container_id"
             }
         }
