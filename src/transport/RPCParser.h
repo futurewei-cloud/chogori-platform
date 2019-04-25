@@ -98,7 +98,9 @@ private: // fields
     // this holds the exception which indicates the parser failure type
     std::exception _parserFailureException;
 
-    // a flag we use to determine if we should try to parse for new messages
+    // needed in our state machine to keep the parsing going.
+    // Usually we stop parsing once we dispatch a whole message,
+    // or if we need more data to be fed to assemble a whole message
     bool _shouldParse;
 
     // the parser state

@@ -78,18 +78,17 @@ void RPCParser::RegisterParserFailureObserver(ParserFailureObserver_t parserFail
 
 void RPCParser::Feed(Fragment fragment) {
     K2DEBUG("feed bytes" << fragment.size());
-    assert(!_shouldParse);
+    assert(_currentFragment.empty());
 
     // always move the incoming packet into the current fragment. If there was any partial data left from
     // previous parsing round, it would be in the _partialFragment fragment.
     _currentFragment = std::move(fragment);
-    // we got some new data. We should be parsing it
-    _shouldParse = true;
+    _shouldParse = true; // signal the parser that we should continue/start parsing data
 }
 
 void RPCParser::DispatchSome() {
-    K2DEBUG("dispatch some: " << _shouldParse);
-    while(_shouldParse) {
+    K2DEBUG("dispatch some: " << CanDispatch());
+    while(CanDispatch()) {
         // parse and dispatch the next message
         _parseAndDispatchOne();
 
@@ -130,7 +129,7 @@ void RPCParser::_parseAndDispatchOne() {
             }
             case ParseState::READY_TO_DISPATCH: {
                 _stREADY_TO_DISPATCH();
-                dispatched = true; // we should stop now
+                dispatched = true;
                 break;
             }
             case ParseState::FAILED_STREAM: {
@@ -148,17 +147,21 @@ void RPCParser::_parseAndDispatchOne() {
 void RPCParser::_stWAIT_FOR_FIXED_HEADER() {
     // we come to this state when we think we have enough data to parse a new message from
     // the current fragment.
+    _payload.reset(); // get rid of any previous payload
+
     K2DEBUG("wait_for_fixed_header");
     if (_currentFragment.size() == 0) {
         K2DEBUG("wait_for_fixed_header: empty fragment");
+        _shouldParse = false; // stop trying to parse
         return; // nothing to do - no new data, so remain in this state waiting for new data
     }
 
     if (_currentFragment.size() < sizeof(_fixedHeader)) {
         K2DEBUG("wait_for_fixed_header: not enough data");
         // we have some new data, but not enough to parse the fixed header. move it to the partial segment
-        // and state change to IN_PARTIAL_FIXED_HEADER
+        // and setup for state change to IN_PARTIAL_FIXED_HEADER
         _partialFragment = std::move(_currentFragment);
+        _shouldParse = false; // stop trying to parse
         _pState = ParseState::IN_PARTIAL_FIXED_HEADER;
         return;
     }
@@ -182,6 +185,7 @@ void RPCParser::_stIN_PARTIAL_FIXED_HEADER() {
     // in this state, we come only after
     // 1. we had some data but not enough to parse the fixed header
     if (_currentFragment.size() == 0) {
+        _shouldParse = false; // stop trying to parse
         K2DEBUG("partial_fixed_header: no new data yet");
         return; // no new data yet
     }
@@ -196,13 +200,13 @@ void RPCParser::_stIN_PARTIAL_FIXED_HEADER() {
     // 1. copy whatever was left in the partial fragment
     std::memcpy((Binary_t*)&_fixedHeader, _partialFragment.get_write(), partSize);
     // done with the partial fragment.
-    _partialFragment.release();
+    std::move(_partialFragment).prefix(0);
 
     // check to make sure we have enough data in the incoming fragment
     if (curSize < totalNeed - partSize) {
         K2WARN("Received continuation segment which doesn't have enough data: " << curSize
                << ", total: " << totalNeed <<", have: " << partSize);
-        _pState = ParseState::FAILED_STREAM;
+        _pState = ParseState::FAILED_STREAM; // state machine will continue parsing and end up in failed state
         _parserFailureException = NonContinuationSegmentException();
         return;
     }
@@ -222,20 +226,22 @@ void RPCParser::_stWAIT_FOR_VARIABLE_HEADER() {
 
     // how many bytes we need off the wire
     size_t needBytes = _metadata.WireByteCount();
-    size_t haveBytes = _currentFragment.size();
+    size_t haveBytes = _currentFragment.size(); // NB we can only come in this method with no partial data
 
     K2DEBUG("wait_for_var_header: need=" << needBytes << ", have=" << haveBytes);
     // we come in this state only when we should try to get a variable header from the current fragment
     if (needBytes > 0 && haveBytes == 0) {
         K2DEBUG("wait_for_var_header: no bytes in current segment. continuing");
+        _shouldParse = false; // stop trying to parse
         return; // nothing to do - no new data, so remain in this state waiting for new data
     }
     else if (needBytes > haveBytes) {
         K2DEBUG("wait_for_var_header: need data but not enough present");
         // we have some new data, but not enough to parse the variable header. move it to the partial segment
-        // and state change to IN_PARTIAL_VARIABLE_HEADER
+        // and setup for state change to IN_PARTIAL_VARIABLE_HEADER
         _partialFragment = std::move(_currentFragment);
         _pState = ParseState::IN_PARTIAL_VARIABLE_HEADER;
+        _shouldParse = false; // stop trying to parse
         return;
     }
     // if we came here, we either don't need any bytes, or we have all the bytes we need in _currentFragment
@@ -267,6 +273,7 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
     // 2. there were not enough bytes in previous fragment
     if (_currentFragment.size() == 0) {
         K2DEBUG("partial_var_header: no new data yet");
+        _shouldParse = false; // stop trying to parse
         return; // no new data yet
     }
     // how many bytes we need off the wire
@@ -278,7 +285,7 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
     if (totalNeed > partSize + curSize) {
         K2WARN("Received partial variable header continuation segment which doesn't have enough data: " << curSize
                << ", total: " << totalNeed <<", have: " << partSize);
-        _pState = ParseState::FAILED_STREAM;
+        _pState = ParseState::FAILED_STREAM; // state machine will keep going and end up in Failed state
         _parserFailureException = NonContinuationSegmentException();
         return;
     }
@@ -289,7 +296,7 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
 
     std::memcpy(data, _partialFragment.get_write(), partSize);
     // done with the partial fragment.
-    _partialFragment.release();
+    std::move(_partialFragment).prefix(0);
 
     std::memcpy(data, _currentFragment.get_write(), totalNeed - partSize);
     // rewind the current fragment
@@ -321,11 +328,11 @@ void RPCParser::_stWAIT_FOR_PAYLOAD() {
     // check to see if we're expecting payload
     if (!_metadata.IsPayloadSizeSet() ) {
         K2DEBUG("wait_for_payload: no payload expected");
-        _pState = ParseState::READY_TO_DISPATCH; // ready to dispatch
+        _pState = ParseState::READY_TO_DISPATCH; // ready to dispatch. State machine sill keep going and dispatch
         return;
     }
     if (!_payload) {
-        // this payload doesn't support dynamic expansion (null allocator)
+        // make a new payload to deliver. this payload won't support dynamic expansion (null allocator)
         _payload = std::make_unique<Payload>(nullptr, "");
     }
     auto available = _currentFragment.size();
@@ -335,41 +342,42 @@ void RPCParser::_stWAIT_FOR_PAYLOAD() {
             << ", needed=" << needed <<", available=" << available);
 
     // check to see if we're already set
-    if (_metadata.payloadSize == have) {
+    if (needed == 0) {
         K2DEBUG("wait_for_payload: we have the expected payload");
-        _pState = ParseState::READY_TO_DISPATCH; // ready to dispatch
+        _pState = ParseState::READY_TO_DISPATCH; // ready to dispatch. State machine will keep going and dispatch
+        return;
+    }
+    if (available == 0) {
+        _shouldParse = false; // got nothing left to parse. wait in this state for more data
         return;
     }
 
-    // process the case where we have some data which is exactly what we need, or not enough
-    if (needed > available) {
-        K2DEBUG("wait_for_payload: consumed available but need more");
-        _payload->AppendFragment(std::move(_currentFragment));
-        return;
-    }
-
+    // get whatever we can from the current fragment. Let the state machine run again in this state
+    // to determine if we had enough, or we need more
+    auto bytesThisRound = std::min(needed, available);
     // last case, we have more data than we need. Extract a slice from the fragment
-    _payload->AppendFragment(_currentFragment.share(0, needed));
+    _payload->AppendFragment(_currentFragment.share(0, bytesThisRound));
     // rewind the fragment
-    _currentFragment.trim_front(needed);
-    _pState = ParseState::READY_TO_DISPATCH; // ready to dispatch
-    K2DEBUG("wait_for_payload: got payload from existing fragment. remaining bytes: " << _currentFragment.size());
+    _currentFragment.trim_front(bytesThisRound);
+    K2DEBUG("wait_for_payload: got payload from existing fragment of size= " << bytesThisRound <<". remaining bytes=" << _currentFragment.size());
 }
 
 void RPCParser::_stREADY_TO_DISPATCH() {
     K2DEBUG("ready_to_dispatch: cursize=" << _currentFragment.size());
+
     _messageObserver(_fixedHeader.verb, std::move(_metadata), std::move(_payload));
 
     // only now we're ready to process the next message
     _pState = RPCParser::ParseState::WAIT_FOR_FIXED_HEADER;
-
-    // only try to parse more if we have any data left in current fragment
-    _shouldParse = (_currentFragment.size() != 0);
 }
 
 void RPCParser::_stFAILED_STREAM() {
     K2WARN("Parsing of stream not possible");
-    _shouldParse = false; // no more parsing is possible
+    std::move(_partialFragment).prefix(0);
+    std::move(_currentFragment).prefix(0);
+
+    // release any partial data we have
+    _shouldParse = false; // stop trying to parse
     _parserFailureObserver(std::make_exception_ptr(_parserFailureException));
 }
 

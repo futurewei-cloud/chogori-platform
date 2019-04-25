@@ -9,6 +9,11 @@
 
 // k2tx
 #include "Log.h"
+// determine the packet size we should allocate: mtu - tcp_header_size - ip_header_size - ethernet_header_size
+const uint16_t tcpsegsize = seastar::net::hw_features().mtu
+                            - seastar::net::tcp_hdr_len_min
+                            - seastar::net::ipv4_hdr_len_min
+                            - seastar::net::eth_hdr_len;
 
 namespace k2tx {
 
@@ -44,9 +49,10 @@ Allocator_t VirtualNetworkStack::GetTCPAllocator() {
         //NB at some point, we'll have to capture the underlying network stack here in order
         // to pass on allocations. This should be done with weakly_referencable and weak_from_this()
 
-        // determine the packet size we should allocate: mtu - tcp_header_size - ip_header_size - ethernet_header_size
         // TODO: it seems only ipv4 is supported via the seastar's network_stack, so just use ipv6 header size here
-        static const uint16_t tcpsegsize = seastar::net::hw_features().mtu - seastar::net::tcp_hdr_len_min - seastar::net::ipv4_hdr_len_min - seastar::net::eth_hdr_len;
+
+        // NB, there is no performance benefit of allocating smaller chunks. Chunks up to 16384 are allocated from
+        // seastar pool allocator and overhead is the same regardless of size(~10ns per allocation)
         K2DEBUG("allocating fragment with size=" << tcpsegsize);
         return Fragment(tcpsegsize);
     };

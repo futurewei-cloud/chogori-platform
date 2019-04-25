@@ -45,7 +45,7 @@ public:  // application lifespan
         _updateTimer([this]{
             this->SendHeartbeat();
         }),
-        _heartbeatCount(0) {
+        _msgCount(0) {
         // Constructors should not do much more than just remembering the passed state because
         // not all dependencies may have been created yet.
         // The initialization should happen in Start() since at that point all deps should have been created
@@ -100,17 +100,17 @@ public:  // application lifespan
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
         // also start the heartbeat timer
-        _updateTimer.arm_periodic(1s);
+        _updateTimer.arm(_updateTimerInterval);
     }
 
 public: // Work generators
     void SendHeartbeat() {
-        K2INFO("Sending heartbeat: "<< _heartbeatCount);
+        K2INFO("Sending reqid="<< _msgCount);
         auto& disp = _dispatcher.local();
         // send a GET
         {
-            k2tx::String msg("Requesting GET");
-            msg += std::to_string(_heartbeatCount++);
+            k2tx::String msg("Requesting GET reqid=");
+            msg += std::to_string(_msgCount++);
 
             std::unique_ptr<k2tx::Payload> request = _heartbeatEndpoint->NewPayload();
             request->Append(msg.c_str(), msg.size()+1);
@@ -121,32 +121,47 @@ public: // Work generators
 
         // send a POST where we expect to receive a reply
         {
-            // retry at 1ms, 5ms(=1ms*5), and 25ms(=5ms*5)
-            k2tx::ExponentialBackoffStrategy retryStrategy;
-            retryStrategy.WithRetries(3).WithStartTimeout(1ms).WithRate(5);
-            retryStrategy.Do([this, &disp](size_t retriesLeft, k2tx::Duration timeout) {
-                K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout=" << timeout.count());
-                k2tx::String msgData = "Requesting POST";
-                msgData += std::to_string(_heartbeatCount++);
+            // retry at 10ms, 50ms(=10ms*5), and 250ms(=50ms*5)
+            _msgCount++;
+            auto retryStrategy = seastar::make_lw_shared<k2tx::ExponentialBackoffStrategy>();
+            retryStrategy->WithRetries(3).WithStartTimeout(10ms).WithRate(5);
+            retryStrategy->Do([self=this, &disp, hbeat=_msgCount](size_t retriesLeft, k2tx::Duration timeout) {
+                K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
+                       << timeout.count() << ", in reqid="<< hbeat);
+                k2tx::String msgData = "Requesting POST reqid=";
+                msgData += std::to_string(hbeat);
                 // In this example, we must create a new payload each time we want to retry.
                 // The reason is that once we attempt a send over a transport, we move ownership of payload
                 // to the transport and may not be able to get the original packets back.
-                std::unique_ptr<k2tx::Payload> msg = _heartbeatEndpoint->NewPayload();
+                // e.g. one we place the packets into the DPDK mem queue, we might not be able to obtain the
+                // exact same packets back unless we do some cooperative refcounting with the dpdk internals
+                std::unique_ptr<k2tx::Payload> msg = self->_heartbeatEndpoint->NewPayload();
                 msg->Append(msgData.c_str(), msgData.size()+1);
 
                 // send a request with expected reply. Since we expect a reply, we must specify a timeout
-                return disp.SendRequest(POST, std::move(msg), *_heartbeatEndpoint.get(), timeout)
-                .then([this](std::unique_ptr<k2tx::Payload> payload) {
+                return disp.SendRequest(POST, std::move(msg), *self->_heartbeatEndpoint.get(), timeout)
+                .then([hbeat=hbeat](std::unique_ptr<k2tx::Payload> payload) {
+                    // happy case is chained right onto the dispatcher Send call
                     auto received = GetPayloadString(payload.get());
-                    K2INFO("Received reply for message: " << received);
+                    K2INFO("Received reply for reqid=" << hbeat << " : " << received);
                     // if the application wants to retry again (in case of some retryable server error)
                     // ServiceMessage msg(payload);
                     // if (msg.Status != msg.StatusOK) {
                     //    return make_exception_future<>(std::exception(msg.Status));
                     // }
                 });
-            }).handle_exception([](auto exc){
-                K2ERROR("Failed to get response for message: " << exc);
+                // Note that you could've chained a then_wrapped here instead, if you want to short-cut exceptional retries
+                // for example, if an endpoint is invalid
+            }) // Do returns an empty future here for the response either successful if any of the tries succeeded, or an exception.
+            .handle_exception([hbeat=_msgCount](auto exc){
+                // here we handle the exception case (e.g. timeout, unable to connect, invalid endpoint, etc)
+                // this is the handler which handles the exception AFTER the retry strategy is exhausted
+                K2ERROR("Failed to get response for message reqid=" << hbeat << " : " << exc);
+            }).finally([this, retryStrategy, hbeat=_msgCount](){
+                // to keep the retry strategy around while we're working on it, use a shared ptr and capture it
+                // here by copy so that it is only released after Do completes.
+                K2DEBUG("done with retry strategy for reqid=" << hbeat);
+                this->_updateTimer.arm(_updateTimerInterval);
             });
         }
     }
@@ -157,8 +172,8 @@ public:
         auto received = GetPayloadString(request.payload.get());
         K2INFO("Received POST message from endpoint: " << request.endpoint.GetURL()
               << ", with payload: " << received);
-        k2tx::String msgData("POST Message received");
-        msgData += std::to_string(_heartbeatCount++);
+        k2tx::String msgData("POST Message received reqid=");
+        msgData += std::to_string(_msgCount++);
 
         std::unique_ptr<k2tx::Payload> msg = request.endpoint.NewPayload();
         msg->Append(msgData.c_str(), msgData.size()+1);
@@ -171,8 +186,8 @@ public:
         auto received = GetPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.GetURL()
               << ", with payload: " << received);
-        k2tx::String msgData("GET Message received");
-        msgData += std::to_string(_heartbeatCount++);
+        k2tx::String msgData("GET Message received reqid=");
+        msgData += std::to_string(_msgCount++);
 
         std::unique_ptr<k2tx::Payload> msg = request.endpoint.NewPayload();
         msg->Append(msgData.c_str(), msgData.size()+1);
@@ -204,8 +219,10 @@ private:
 
     k2tx::RPCDispatcher::Dist_t& _dispatcher;
     seastar::timer<> _updateTimer;
+    static constexpr auto _updateTimerInterval = 1s;
     std::unique_ptr<k2tx::Endpoint> _heartbeatEndpoint;
-    uint64_t _heartbeatCount;
+    // send around our message count
+    uint64_t _msgCount;
 
 }; // class Service
 

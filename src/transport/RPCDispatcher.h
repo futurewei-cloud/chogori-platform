@@ -130,9 +130,15 @@ private: // fields
     // the message observers
     std::unordered_map<Verb, MessageObserver_t> _observers;
 
-    // request-reply promises
-    using PayloadPromise= seastar::promise<std::unique_ptr<Payload>>;
-    std::unordered_map<uint64_t, seastar::lw_shared_ptr<PayloadPromise>> _rrPromises;
+    // to track the request-reply promises and timeouts
+    typedef seastar::promise<std::unique_ptr<Payload>> PayloadPromise;
+    struct ResponseTracker {
+        PayloadPromise promise;
+        seastar::timer<> timer;
+    };
+
+    // map of all pending request-reply
+    std::unordered_map<uint64_t, ResponseTracker> _rrPromises;
 
     // our observer for low memory events
     LowTransportMemoryObserver_t _lowMemObserver;

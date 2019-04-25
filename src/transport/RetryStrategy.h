@@ -64,7 +64,8 @@ public: // lifecycle
     }
 
 public: // API
-    // Execute the given function until it either succeeds or we exhaust the retries.
+    // Execute the given function until it either succeeds or we exhaust the retries. If the retries are
+    // exhausted, then we return the exception tossed from the last run.
     // Note that we do not setup any timeout timers here. We just provide the correct value to use
     template<typename Func>
     seastar::future<> Do(Func&& func) {
@@ -73,20 +74,27 @@ public: // API
             K2WARN("This strategy has already been used");
             return seastar::make_exception_future<>(DuplicateExecutionException());
         }
-        _used = true;
+        auto resultPtr = seastar::make_lw_shared<>(seastar::make_ready_future<>());
         return seastar::do_until(
-            [this] { return _success || this->_try < this->_retries; },
-            [this, func=std::move(func)] {
+            [this] { return _success || this->_try >= this->_retries; },
+            [this, func=std::move(func), resultPtr] {
                 this->_try++;
                 this->_currentTimeout*=this->_try;
                 K2DEBUG("running try " << this->_try << ", with timeout " << this->_currentTimeout.count());
-                return func(this->_retries - this->_try, this->_currentTimeout).then_wrapped([this](auto&& fut) {
-                    // the func future is done.
-                    // if we exited with success, then we shouldn't run anymore
-                    _success = !fut.failed();
-                    K2DEBUG("round ended with success=" << _success);
-                    return std::move(fut);
-                });
+                return func(this->_retries - this->_try, this->_currentTimeout).
+                    then_wrapped([this, resultPtr](auto&& fut) {
+                        // the func future is done.
+                        // if we exited with success, then we shouldn't run anymore
+                        _success = !fut.failed();
+                        resultPtr->ignore_ready_future(); // ignore previous result stored in the result
+                        (*resultPtr.get()) = std::move(fut);
+                        K2DEBUG("round ended with success=" << _success);
+                        return seastar::make_ready_future<>();
+                    });
+        }).then_wrapped([this, resultPtr](auto&& fut){
+            // this is the future returned by the do_until loop. we don't needed so just ignore it.
+            fut.ignore_ready_future();
+            return std::move(*resultPtr.get());
         });
     }
 

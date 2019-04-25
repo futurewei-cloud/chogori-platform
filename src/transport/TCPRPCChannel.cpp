@@ -25,7 +25,8 @@ TCPRPCChannel::TCPRPCChannel(seastar::connected_socket fd, Endpoint endpoint):
 }
 
 TCPRPCChannel::TCPRPCChannel(seastar::future<seastar::connected_socket> futureSocket, Endpoint endpoint):
-    _endpoint(std::move(endpoint)) {
+    _endpoint(std::move(endpoint)),
+    _fdIsSet(false) {
     CDEBUG("new future channel");
     RegisterMessageObserver(nullptr);
     RegisterFailureObserver(nullptr);
@@ -50,7 +51,7 @@ void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
     CDEBUG("send: verb=" << verb << ", payloadSize="<< payload->Size() << ", flush=" << flush);
     if (!_fdIsSet) {
         // we don't have a connected socket yet. Queue up the request
-        CDEBUG("send: not connected yet. Buffering the write...");
+        CDEBUG("send: not connected yet. Buffering the write, have buffered already " << _pendingWrites.size());
         _pendingWrites.emplace_back(_BufferedWrite{verb, std::move(payload), std::move(metadata)});
         return;
     }

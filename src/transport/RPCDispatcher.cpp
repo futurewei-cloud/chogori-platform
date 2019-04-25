@@ -78,7 +78,7 @@ seastar::future<> RPCDispatcher::stop() {
 
     // complete all promises
     for(auto&& promise: _rrPromises) {
-        promise.second->set_exception(DispatcherShutdown());
+        promise.second.promise.set_exception(DispatcherShutdown());
     }
     _rrPromises.clear();
     return seastar::make_ready_future<>();
@@ -87,13 +87,27 @@ seastar::future<> RPCDispatcher::stop() {
 // Process new messages received from protocols
 void RPCDispatcher::_handleNewMessage(Request request) {
     K2DEBUG("handling request for verb="<< request.verb <<", from ep="<< request.endpoint.GetURL());
+    // see if this is a response
+    if (request.metadata.IsResponseIDSet()) {
+        // process as a response
+        auto nodei = _rrPromises.find(request.metadata.responseID);
+        if (nodei == _rrPromises.end()) {
+            K2DEBUG("no handler for response for msgid: " << request.metadata.responseID )
+            return;
+        }
+        // we have a response
+        nodei->second.timer.cancel();
+        nodei->second.promise.set_value(std::move(request.payload));
+        _rrPromises.erase(nodei);
+        return;
+    }
     auto iter = _observers.find(request.verb);
     if (iter != _observers.end()) {
         K2DEBUG("Dispatching request for verb="<< request.verb <<", from ep="<< request.endpoint.GetURL());
         iter->second(std::move(request));
     }
     else {
-        K2WARN("no observer for verb " << request.verb << ", from " << request.endpoint.GetURL());
+        K2DEBUG("no observer for verb " << request.verb << ", from " << request.endpoint.GetURL());
     }
 }
 
@@ -130,38 +144,28 @@ RPCDispatcher::SendRequest(Verb verb, std::unique_ptr<Payload> payload, Endpoint
     K2DEBUG("Request send with msgid=" << msgid);
 
     // the promise gets fulfilled when prom for this msgid comes back.
-    auto prom = seastar::make_lw_shared<PayloadPromise>();
-    auto result = prom->get_future();
+    PayloadPromise prom;
     // record the promise so that we can fulfil it if we get a response
-    _rrPromises.insert({msgid, prom});
     MessageMetadata metadata;
     metadata.SetRequestID(msgid);
     metadata.SetPayloadSize(payload->Size());
 
     _send(verb, std::move(payload), endpoint, std::move(metadata));
 
-    seastar::timer<> timer([&pr = *prom.get()] {
-        // Capture the promise by pointer copy. This is made safe by the fact that
-        // we either reach timeout (this code), or we have success in which case the code below calls cancel on
-        // the timer so this code never runs
-
-        // raise an exception after timeout
-        K2DEBUG("send request timed out");
-        pr.set_exception(RequestTimeoutException());
+    seastar::timer<> timer([this, msgid] {
+        // raise an exception in the promise for this request.
+        K2DEBUG("send request timed out for msgid=" << msgid);
+        auto iter = this->_rrPromises.find(msgid);
+        assert(iter != this->_rrPromises.end());
+        iter->second.promise.set_exception(RequestTimeoutException());
+        this->_rrPromises.erase(iter);
     });
     timer.arm(timeout);
 
-    // we need to keep this timer around so that if we do satisfy the promise, we can cancel it
-    return result.then_wrapped([pr = std::move(prom), timer = std::move(timer)] (auto&& fut) mutable {
-        K2DEBUG("send request completed");
-        // first thing, cancel the timeout timer
-        timer.cancel();
+    auto fut = prom.get_future();
+    _rrPromises.emplace(msgid, ResponseTracker{std::move(prom), std::move(timer)});
 
-        // we got called here either because timeout expired above (so result resolved with exception)
-        // or we got a response on the msgid and the promise got resolved with a value. Either way, just return
-        // whatever future we got here
-        return std::move(fut);
-    });
+    return fut;
 }
 
 void RPCDispatcher::RegisterLowTransportMemoryObserver(LowTransportMemoryObserver_t observer) {
