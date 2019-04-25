@@ -73,7 +73,8 @@ public:
     public:
         PayloadBuilder(MessageType messageType, PartitionAssignmentId partition)
         {
-            assert(payload.getWriter().getContiguousStructure(header));
+            bool ret = payload.getWriter().getContiguousStructure(header);
+            assert(ret);
             header->messageType = messageType;
             header->partition = partition;
         }
