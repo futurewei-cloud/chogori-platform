@@ -23,7 +23,7 @@
     mins -= (hours*60); \
     auto days = (hours/24); \
     hours -= (days*24); \
-    std::snprintf(buffer, sizeof(buffer), "%02ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec); \
+    std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec); \
     std::cerr << "[" << buffer << "] " << "(" << seastar::engine().cpu_id() <<") [" \
     << __FILE__ << ":" <<__LINE__ << " @" << __FUNCTION__ <<"]"  << msg << std::endl; }
 

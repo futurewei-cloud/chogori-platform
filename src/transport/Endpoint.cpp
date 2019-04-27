@@ -63,7 +63,8 @@ Endpoint::~Endpoint() {
 
 Endpoint::Endpoint():
     _port(0),
-    _hash(0) {
+    _hash(0),
+    _allocator(nullptr) {
     K2DEBUG("ctor");
 }
 
@@ -97,15 +98,16 @@ Endpoint::Endpoint(Endpoint&& o) {
         K2DEBUG("move ctor on self");
         return;
     }
+    K2DEBUG("");
     _protocol = std::move(o._protocol);
     _ip = std::move(o._ip);
-    _port = o._port;
-    o._port = 0;
+    _port = o._port; o._port = 0;
     _url = std::move(o._url);
-    _hash = o._hash;
-    o._hash = 0;
+    _hash = o._hash; o._hash = 0;
     _allocator = std::move(o._allocator);
     o._allocator = nullptr;
+
+    K2DEBUG("move ctor done");
 }
 
 }

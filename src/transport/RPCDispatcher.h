@@ -32,7 +32,7 @@ public: // types
     // TODO See if we can use something faster than std::function.
     // Benchmark indicates 20ns penalty per runtime call
     // See https://www.boost.org/doc/libs/1_69_0/doc/html/function/faq.html
-    typedef std::function<void(Request request)> MessageObserver_t;
+    typedef std::function<void(Request& request)> MessageObserver_t;
 
     // the type of a low memory observer. This function will be called when a transport requires a release of
     // some memory
@@ -114,11 +114,11 @@ public: // API
 
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
-    void SendReply(std::unique_ptr<Payload> payload, Request forRequest);
+    void SendReply(std::unique_ptr<Payload> payload, Request& forRequest);
 
 private: // methods
     // Process new messages received from protocols
-    void _handleNewMessage(Request request);
+    void _handleNewMessage(Request& request);
 
     // Helper method useds to send messages
     void _send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint, MessageMetadata meta);

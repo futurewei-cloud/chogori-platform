@@ -11,6 +11,7 @@
 // k2tx
 #include "BaseTypes.h"
 #include "Log.h"
+#include "RPCDispatcher.h"
 
 namespace k2tx {
 // This file defines a few retry strategies that can be used in communication
@@ -82,6 +83,10 @@ public: // API
                 this->_currentTimeout*=this->_try;
                 K2DEBUG("running try " << this->_try << ", with timeout " << this->_currentTimeout.count());
                 return func(this->_retries - this->_try, this->_currentTimeout).
+                    handle_exception_type([](RPCDispatcher::DispatcherShutdown&) {
+                        K2DEBUG("Dispatcher has shut down. Stopping retry");
+                        return seastar::make_ready_future<>();
+                    }).
                     then_wrapped([this, resultPtr](auto&& fut) {
                         // the func future is done.
                         // if we exited with success, then we shouldn't run anymore
@@ -92,7 +97,7 @@ public: // API
                         return seastar::make_ready_future<>();
                     });
         }).then_wrapped([this, resultPtr](auto&& fut){
-            // this is the future returned by the do_until loop. we don't needed so just ignore it.
+            // this is the future returned by the do_until loop. we don't need it so just ignore it.
             fut.ignore_ready_future();
             return std::move(*resultPtr.get());
         });

@@ -11,11 +11,11 @@ Request::Request(Verb verb, Endpoint& endpoint, MessageMetadata metadata, std::u
     endpoint(endpoint),
     metadata(std::move(metadata)),
     payload(std::move(payload)) {
-    K2DEBUG("ctor Request " << verb << ", from " << endpoint.GetURL());
+    K2DEBUG("ctor Request @" << ((void*)this)<< ", " << verb << ", from " << endpoint.GetURL());
 }
 
 Request::~Request() {
-    K2DEBUG("dtor Request " << verb << ", from " << endpoint.GetURL());
+    K2DEBUG("dtor Request @" << ((void*)this));
 }
 
 Request::Request(Request&& o):
@@ -24,7 +24,7 @@ Request::Request(Request&& o):
     metadata(std::move(o.metadata)),
     payload(std::move(o.payload)) {
     o.verb = ZEROVERB;
-    K2DEBUG("move Request " << verb << ", from " << endpoint.GetURL());
+    K2DEBUG("move Request @" << ((void*)this)<< ", " << verb << ", from " << endpoint.GetURL());
 }
 
 } // k2tx

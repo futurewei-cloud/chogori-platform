@@ -11,6 +11,7 @@ using namespace std::chrono_literals; // so that we can type "1ms"
 
 // third-party
 #include <seastar/core/distributed.hh> // for distributed<>
+#include <seastar/core/weak_ptr.hh> // for weak_ptr<>
 #include <seastar/core/app-template.hh> // for app_template
 #include <seastar/util/reference_wrapper.hh> // for app_template
 #include <seastar/core/future.hh> // for future stuff
@@ -27,7 +28,7 @@ using namespace std::chrono_literals; // so that we can type "1ms"
 
 
 // implements an example RPC Service which can send/receive messages
-class Service {
+class Service : public seastar::weakly_referencable<Service> {
 public: // public types
     // The message verbs supported by this service
     enum MsgVerbs: uint8_t {
@@ -45,7 +46,8 @@ public:  // application lifespan
         _updateTimer([this]{
             this->SendHeartbeat();
         }),
-        _msgCount(0) {
+        _msgCount(0),
+        _stopped(true) {
         // Constructors should not do much more than just remembering the passed state because
         // not all dependencies may have been created yet.
         // The initialization should happen in Start() since at that point all deps should have been created
@@ -60,11 +62,18 @@ public:  // application lifespan
     seastar::future<> stop() {
         K2INFO("stop");
         _updateTimer.cancel();
+        _stopped = true;
+        // unregistar all observers
+        _dispatcher.local().RegisterMessageObserver(MsgVerbs::POST, nullptr);
+        _dispatcher.local().RegisterMessageObserver(MsgVerbs::GET, nullptr);
+        _dispatcher.local().RegisterMessageObserver(MsgVerbs::ACK, nullptr);
+        _dispatcher.local().RegisterLowTransportMemoryObserver(nullptr);
         return seastar::make_ready_future<>();
     }
 
     // called after construction
     void Start() {
+        assert(_stopped);
         // This method is executed on each object which distributed<> created for each core.
         // We want pull our thread-local dispatcher, and register ourselves to handle messages
         auto& disp = _dispatcher.local();
@@ -78,17 +87,17 @@ public:  // application lifespan
         K2INFO("Registering message handlers");
 
         disp.RegisterMessageObserver(MsgVerbs::POST,
-            [this](k2tx::Request request) mutable {
-                this->handlePOST(std::move(request));
+            [this](k2tx::Request& request) mutable {
+                this->handlePOST(request);
             });
 
         disp.RegisterMessageObserver(MsgVerbs::GET,
-            [this](k2tx::Request request) mutable {
-                this->handleGET(std::move(request));
+            [this](k2tx::Request& request) mutable {
+                this->handleGET(request);
             });
 
         disp.RegisterMessageObserver(MsgVerbs::ACK,
-            [this](k2tx::Request request) mutable {
+            [this](k2tx::Request& request) mutable {
                 auto received = GetPayloadString(request.payload.get());
                 K2INFO("Received ACK from " << request.endpoint.GetURL() <<
                       ", and payload: " << received);
@@ -101,12 +110,12 @@ public:  // application lifespan
         });
         // also start the heartbeat timer
         _updateTimer.arm(_updateTimerInterval);
+        _stopped = false;
     }
 
 public: // Work generators
     void SendHeartbeat() {
         K2INFO("Sending reqid="<< _msgCount);
-        auto& disp = _dispatcher.local();
         // send a GET
         {
             k2tx::String msg("Requesting GET reqid=");
@@ -116,20 +125,30 @@ public: // Work generators
             request->Append(msg.c_str(), msg.size()+1);
             // straight Send sends requests without any form of retry. Underlying transport may or may not
             // attempt redelivery (e.g. TCP packet reliability)
-            disp.Send(GET, std::move(request), *_heartbeatEndpoint.get());
+            _dispatcher.local().Send(GET, std::move(request), *_heartbeatEndpoint);
         }
 
         // send a POST where we expect to receive a reply
         {
-            // retry at 10ms, 50ms(=10ms*5), and 250ms(=50ms*5)
             _msgCount++;
+            auto msground = _msgCount;
+
+            // retry at 10ms, 50ms(=10ms*5), and 250ms(=50ms*5)
             auto retryStrategy = seastar::make_lw_shared<k2tx::ExponentialBackoffStrategy>();
             retryStrategy->WithRetries(3).WithStartTimeout(10ms).WithRate(5);
-            retryStrategy->Do([self=this, &disp, hbeat=_msgCount](size_t retriesLeft, k2tx::Duration timeout) {
+
+            // NB: since seastar future continuations may be scheduled to run at later points,
+            // it may be possible that the Service instance goes away in a middle of a retry.
+            // To avoid a segmentation fault, either use copies, or as in this example - weak reference
+            retryStrategy->Do([self=weak_from_this(), msground](size_t retriesLeft, k2tx::Duration timeout) {
                 K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
-                       << timeout.count() << ", in reqid="<< hbeat);
+                       << timeout.count() << ", in reqid="<< msground);
+                if (!self) {
+                    K2INFO("Stopping retry since dispatcher has exited");
+                    return seastar::make_ready_future<>();
+                }
                 k2tx::String msgData = "Requesting POST reqid=";
-                msgData += std::to_string(hbeat);
+                msgData += std::to_string(msground);
                 // In this example, we must create a new payload each time we want to retry.
                 // The reason is that once we attempt a send over a transport, we move ownership of payload
                 // to the transport and may not be able to get the original packets back.
@@ -139,36 +158,38 @@ public: // Work generators
                 msg->Append(msgData.c_str(), msgData.size()+1);
 
                 // send a request with expected reply. Since we expect a reply, we must specify a timeout
-                return disp.SendRequest(POST, std::move(msg), *self->_heartbeatEndpoint.get(), timeout)
-                .then([hbeat=hbeat](std::unique_ptr<k2tx::Payload> payload) {
+                return self->_dispatcher.local().SendRequest(POST, std::move(msg), *self->_heartbeatEndpoint, timeout)
+                .then([msground](std::unique_ptr<k2tx::Payload> payload) {
                     // happy case is chained right onto the dispatcher Send call
                     auto received = GetPayloadString(payload.get());
-                    K2INFO("Received reply for reqid=" << hbeat << " : " << received);
+                    K2INFO("Received reply for reqid=" << msground << " : " << received);
                     // if the application wants to retry again (in case of some retryable server error)
                     // ServiceMessage msg(payload);
                     // if (msg.Status != msg.StatusOK) {
                     //    return make_exception_future<>(std::exception(msg.Status));
                     // }
                 });
-                // Note that you could've chained a then_wrapped here instead, if you want to short-cut exceptional retries
-                // for example, if an endpoint is invalid
+
             }) // Do returns an empty future here for the response either successful if any of the tries succeeded, or an exception.
-            .handle_exception([hbeat=_msgCount](auto exc){
+            .handle_exception([msground](auto exc){
                 // here we handle the exception case (e.g. timeout, unable to connect, invalid endpoint, etc)
                 // this is the handler which handles the exception AFTER the retry strategy is exhausted
-                K2ERROR("Failed to get response for message reqid=" << hbeat << " : " << exc);
-            }).finally([this, retryStrategy, hbeat=_msgCount](){
+                K2ERROR("Failed to get response for message reqid=" << msground << " : " << exc);
+            }).finally([self=weak_from_this(), retryStrategy, msground](){
                 // to keep the retry strategy around while we're working on it, use a shared ptr and capture it
                 // here by copy so that it is only released after Do completes.
-                K2DEBUG("done with retry strategy for reqid=" << hbeat);
-                this->_updateTimer.arm(_updateTimerInterval);
+                K2DEBUG("done with retry strategy for reqid=" << msground);
+                if (self) {
+                    // reschedule again since we're still alive
+                    self->_updateTimer.arm(_updateTimerInterval);
+                }
             });
         }
     }
 
 public:
     // Message handlers
-    void handlePOST(k2tx::Request request) {
+    void handlePOST(k2tx::Request& request) {
         auto received = GetPayloadString(request.payload.get());
         K2INFO("Received POST message from endpoint: " << request.endpoint.GetURL()
               << ", with payload: " << received);
@@ -179,10 +200,10 @@ public:
         msg->Append(msgData.c_str(), msgData.size()+1);
 
         // respond to the client's request
-        _dispatcher.local().SendReply(std::move(msg), std::move(request));
+        _dispatcher.local().SendReply(std::move(msg), request);
     }
 
-    void handleGET(k2tx::Request request) {
+    void handleGET(k2tx::Request& request) {
         auto received = GetPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.GetURL()
               << ", with payload: " << received);
@@ -224,6 +245,9 @@ private:
     // send around our message count
     uint64_t _msgCount;
 
+    // flag we need to tell if we've been stopped
+    bool _stopped;
+
 }; // class Service
 
 int main(int argc, char** argv) {
@@ -252,22 +276,21 @@ int main(int argc, char** argv) {
 
         // call the stop() method on each object when we're about to exit. This also deletes the objects
         seastar::engine().at_exit([&] {
-            K2INFO("service stop");
-            return service.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("dispatcher stop");
-            return dispatcher.stop();
+            K2INFO("vnet stop");
+            return vnet.stop();
         });
         seastar::engine().at_exit([&] {
             K2INFO("tcpproto stop");
             return tcpproto.stop();
         });
         seastar::engine().at_exit([&] {
-            K2INFO("vnet stop");
-            return vnet.stop();
+            K2INFO("dispatcher stop");
+            return dispatcher.stop();
         });
-
+        seastar::engine().at_exit([&] {
+            K2INFO("service stop");
+            return service.stop();
+        });
         uint32_t tcp_port = config["tcp_port"].as<uint32_t>();
 
         return
@@ -314,4 +337,5 @@ int main(int argc, char** argv) {
                     return service.invoke_on_all(&Service::Start);
                 });
     });
+    K2INFO("Shutdown was successful!");
 }

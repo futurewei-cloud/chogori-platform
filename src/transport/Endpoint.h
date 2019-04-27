@@ -60,13 +60,21 @@ public: // API
         if (_allocator) {
             return std::make_unique<Payload>(_allocator, _protocol);
         }
-        return nullptr;
+        throw Payload::NonAllocatingPayloadException();
     }
 
     // This method can be used to create a new fragment in a manner consistent
     // with the transport for the protocol of this endpoint
     Fragment NewFragment() {
-        return _allocator();
+        if (_allocator) {
+            return _allocator();
+        }
+        throw Payload::NonAllocatingPayloadException();
+    }
+
+    // Use to determine if this endpoint can allocate
+    bool CanAllocate() const {
+        return _allocator != nullptr;
     }
 
 private: // fields

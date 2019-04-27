@@ -24,7 +24,7 @@ class TCPRPCChannel: public seastar::weakly_referencable<TCPRPCChannel> {
 public: // types
 
     // The type for Message observers
-    typedef std::function<void(Request request)> MessageObserver_t;
+    typedef std::function<void(Request& request)> MessageObserver_t;
 
     // The type for observers of channel failures
     typedef std::function<void(Endpoint& endpoint, std::exception_ptr exc)> FailureObserver_t;
@@ -85,6 +85,11 @@ private: // fields
 
     // flag we use to tell if the _fd is set
     bool _fdIsSet;
+
+    // flag to tell if the channel is closing
+    bool _closingInProgress;
+
+    seastar::future<> _closerFuture = seastar::make_ready_future<>();
 
     // the input stream from our socket
     seastar::input_stream<Binary_t> _in;

@@ -20,7 +20,7 @@ namespace k2tx {
 class IRPCProtocol {
 public: // types
     // A message observer is a function which receives a request
-    typedef std::function<void(Request)> MessageObserver_t;
+    typedef std::function<void(Request&)> MessageObserver_t;
 
     // The type of observer for low memory events. The caller is provided with the transport protocol that requires
     // release, and the required number of bytes to release

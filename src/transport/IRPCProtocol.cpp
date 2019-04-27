@@ -22,7 +22,7 @@ void IRPCProtocol::SetMessageObserver(MessageObserver_t observer) {
     K2DEBUG("set message observer");
     if (observer == nullptr) {
         K2DEBUG("Setting default message observer");
-        _messageObserver = [](Request request) {
+        _messageObserver = [](Request& request) {
             K2WARN("Message: " << request.verb << " from " << request.endpoint.GetURL()
                << " ignored since there is no message observer registered...");
         };

@@ -41,6 +41,7 @@ void TCPRPCProtocol::Start() {
                 auto&& chan = seastar::make_lw_shared<TCPRPCChannel>
                                     (std::move(fd), _endpointFromAddress(std::move(addr)));
                 _handleNewChannel(chan);
+                return seastar::make_ready_future();
             }
         )
         .handle_exception([this] (auto exc) {
@@ -48,6 +49,7 @@ void TCPRPCProtocol::Start() {
                 K2WARN("Accept received exception(ignoring): " << exc);
             }
             else {
+                // let the loop keep going. The _stopped flag above will cause it to break
                 K2DEBUG("Server is exiting...");
             }
             return seastar::make_ready_future();
@@ -82,6 +84,10 @@ seastar::future<> TCPRPCProtocol::stop() {
     for (auto chan: channels) {
         // schedule a graceful close. Note the empty continuation which captures the shared pointer to the channel
         // by copy so that the channel isn't going to get destroyed mid-sentence
+        // we're about to kill this so unregister observers
+        chan->RegisterFailureObserver(nullptr);
+        chan->RegisterMessageObserver(nullptr);
+
         futs.push_back(chan->GracefulClose().then([chan](){}));
     }
 
@@ -93,6 +99,10 @@ seastar::future<> TCPRPCProtocol::stop() {
 }
 
 std::unique_ptr<Endpoint> TCPRPCProtocol::GetEndpoint(String url) {
+    if (_stopped) {
+        K2WARN("Unable to create endpoint since we're stopped for url " << url);
+        return nullptr;
+    }
     K2DEBUG("Get endpoint for " << url);
     auto ep = Endpoint::FromURL(url, _vnet.local().GetTCPAllocator());
     if (!ep || ep->GetProtocol() != proto) {
@@ -150,23 +160,23 @@ void TCPRPCProtocol::_handleNewChannel(seastar::lw_shared_ptr<TCPRPCChannel> cha
     K2DEBUG("processing channel: "<< chan->GetEndpoint().GetURL());
 
     chan->RegisterMessageObserver(
-    [shptr=seastar::make_lw_shared<>(weak_from_this())] (Request request) {
+    [shptr=seastar::make_lw_shared<>(weak_from_this())] (Request& request) {
         K2DEBUG("Message " << request.verb << " received from " << request.endpoint.GetURL());
-        auto weakP = shptr.get(); // the weak_ptr inside the lw_shared_ptr
-        if (weakP->get() && !weakP->get()->_stopped) {
-            weakP->get()->_messageObserver(std::move(request));
+        seastar::weak_ptr<TCPRPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
+        if (weakP && !weakP->_stopped) {
+            weakP->_messageObserver(request);
         }
     });
 
     chan->RegisterFailureObserver(
     [shptr=seastar::make_lw_shared<>(weak_from_this())] (Endpoint& endpoint, auto exc) {
-        K2WARN("Channel " << endpoint.GetURL() << ", failed due to " << exc);
-        auto weakP = shptr.get(); // the weak_ptr inside the lw_shared_ptr
-        if (weakP->get() && !weakP->get()->_stopped) {
-            weakP->get()->_channels.erase(endpoint);
+        seastar::weak_ptr<TCPRPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
+        if (weakP && !weakP->_stopped) {
+            K2WARN("Channel " << endpoint.GetURL() << ", failed due to " << exc);
+            weakP->_channels.erase(endpoint);
         }
     });
-
+    assert(chan->GetEndpoint().CanAllocate());
     _channels.emplace(chan->GetEndpoint(), chan);
 }
 

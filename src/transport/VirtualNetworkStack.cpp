@@ -23,6 +23,7 @@ VirtualNetworkStack::VirtualNetworkStack() {
 }
 
 VirtualNetworkStack::~VirtualNetworkStack() {
+    _lowTCPMemObserver = nullptr;
     K2DEBUG("dtor");
 }
 
