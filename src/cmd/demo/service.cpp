@@ -240,7 +240,7 @@ private:
 
     k2tx::RPCDispatcher::Dist_t& _dispatcher;
     seastar::timer<> _updateTimer;
-    static constexpr auto _updateTimerInterval = 1s;
+    static constexpr auto _updateTimerInterval = 1ms;
     std::unique_ptr<k2tx::Endpoint> _heartbeatEndpoint;
     // send around our message count
     uint64_t _msgCount;
@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
         ("tcp_port", bpo::value<uint32_t>()->default_value(14000), "TCP port to listen on");
 
     // we are now ready to assemble the running application
-    return app.run_deprecated(argc, argv, [&] {
+    auto result = app.run_deprecated(argc, argv, [&] {
         auto&& config = app.configuration();
 
         // call the stop() method on each object when we're about to exit. This also deletes the objects
@@ -338,4 +338,5 @@ int main(int argc, char** argv) {
                 });
     });
     K2INFO("Shutdown was successful!");
+    return result;
 }
