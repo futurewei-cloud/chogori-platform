@@ -106,7 +106,7 @@ public:
         if(result->getStatus() != Status::Ok)
             return { result->getStatus(), {} };
         if(result->getModuleCode() != ErrorCode::None)
-            return { Status::UnkownError, {} };
+            return { Status::UnknownError, {} };
 
         typename MemKVModule<DerivedIndexer>::GetResponse getResponse;
         result->payload.getReader().read(getResponse);

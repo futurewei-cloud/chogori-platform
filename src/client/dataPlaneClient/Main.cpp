@@ -8,6 +8,7 @@
 #include <node/module/MemKVModule.h>
 
 #include <lib/Client.h>
+#include "Executor.h"
 
 namespace k2
 {
