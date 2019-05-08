@@ -2,7 +2,7 @@
 //    (C)opyright Futurewei Technologies Inc, 2019
 //-->
 #include "RPCParser.h"
-#include "Log.h"
+#include "common/Log.h"
 
 namespace k2tx {
 RPCParser::RPCParser():
@@ -17,7 +17,7 @@ RPCParser::~RPCParser(){
     K2DEBUG("dtor");
 }
 
-Fragment RPCParser::SerializeHeader(Fragment fragment, Verb verb, MessageMetadata meta) {
+void RPCParser::SerializeHeader(Fragment& fragment, Verb verb, MessageMetadata meta) {
     K2DEBUG("serialize header");
     // take care of the fixed header first
     size_t writtenSoFar = 0;
@@ -45,7 +45,6 @@ Fragment RPCParser::SerializeHeader(Fragment fragment, Verb verb, MessageMetadat
     // all done. Truncate end of fragment
     K2DEBUG("wrote total bytes: " << writtenSoFar);
     fragment.trim(writtenSoFar);
-    return std::move(fragment);
 }
 
 void RPCParser::RegisterMessageObserver(MessageObserver_t messageObserver) {
@@ -336,7 +335,7 @@ void RPCParser::_stWAIT_FOR_PAYLOAD() {
         _payload = std::make_unique<Payload>(nullptr, "");
     }
     auto available = _currentFragment.size();
-    auto have = _payload->Size();
+    auto have = _payload->getSize();
     auto needed = _metadata.payloadSize - have;
     K2DEBUG("wait_for_payload: total=" << _metadata.payloadSize << ", have=" << have
             << ", needed=" << needed <<", available=" << available);
@@ -356,7 +355,7 @@ void RPCParser::_stWAIT_FOR_PAYLOAD() {
     // to determine if we had enough, or we need more
     auto bytesThisRound = std::min(needed, available);
     // last case, we have more data than we need. Extract a slice from the fragment
-    _payload->AppendFragment(_currentFragment.share(0, bytesThisRound));
+    _payload->appendBinary(_currentFragment.share(0, bytesThisRound));
     // rewind the fragment
     _currentFragment.trim_front(bytesThisRound);
     K2DEBUG("wait_for_payload: got payload from existing fragment of size= " << bytesThisRound <<". remaining bytes=" << _currentFragment.size());

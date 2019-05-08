@@ -2,7 +2,7 @@
 #include <seastar/net/tcp.hh>
 #include <seastar/core/app-template.hh>
 #include <seastar/core/distributed.hh>
-#include "transport/Log.h"
+#include "common/Log.h"
 #include "transport/BaseTypes.h"
 #define CLOG(msg) {K2LOG("{conn="<< (void*)this << ", addr=" << this->_addr << "} " << msg)}
 class connection {

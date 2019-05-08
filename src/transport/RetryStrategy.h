@@ -10,7 +10,7 @@
 
 // k2tx
 #include "BaseTypes.h"
-#include "Log.h"
+#include "common/Log.h"
 #include "RPCDispatcher.h"
 
 namespace k2tx {

@@ -8,7 +8,7 @@
 #include <seastar/net/net.hh>
 
 // k2tx
-#include "Log.h"
+#include "common/Log.h"
 // determine the packet size we should allocate: mtu - tcp_header_size - ip_header_size - ethernet_header_size
 const uint16_t tcpsegsize = seastar::net::hw_features().mtu
                             - seastar::net::tcp_hdr_len_min

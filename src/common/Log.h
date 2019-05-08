@@ -7,7 +7,7 @@
 #include <ctime>
 #include <seastar/core/reactor.hh>
 
-// This file contains some utility macros for logging and tracing, used in the transport
+// This file contains some utility macros for logging and tracing,
 // TODO hook this up into proper logging
 #define K2LOG(msg) { \
     char buffer[100]; \
@@ -27,7 +27,7 @@
     std::cerr << "[" << buffer << "] " << "(" << seastar::engine().cpu_id() <<") [" \
     << __FILE__ << ":" <<__LINE__ << " @" << __FUNCTION__ <<"]"  << msg << std::endl; }
 
-#if K2TX_DEBUG == 1
+#if K2_DEBUG_LOGGING == 1
 #define K2DEBUG(msg) K2LOG("[DEBUG] " << msg)
 #else
 #define K2DEBUG(msg)

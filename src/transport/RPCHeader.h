@@ -8,8 +8,8 @@
 #include <cstdint> // for int types
 #include <cstring> // for size_t types
 
-// k2tx
-#include "Log.h"
+// k2
+#include "common/Log.h"
 
 namespace k2tx {
 static const uint8_t K2RPCMAGIC = uint8_t('K') ^ uint8_t('2');

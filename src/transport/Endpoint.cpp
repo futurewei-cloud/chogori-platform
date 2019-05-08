@@ -4,7 +4,7 @@
 
 // k2tx
 #include "Endpoint.h"
-#include "Log.h"
+#include "common/Log.h"
 
 namespace k2tx {
 
@@ -94,7 +94,7 @@ Endpoint::Endpoint(const Endpoint& o) {
 
 Endpoint::Endpoint(Endpoint&& o) {
     K2DEBUG("move ctor");
-    if (o == *this) {
+    if (&o == this) {
         K2DEBUG("move ctor on self");
         return;
     }

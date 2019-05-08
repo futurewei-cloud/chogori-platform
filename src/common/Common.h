@@ -44,6 +44,11 @@ typedef seastar::temporary_buffer<uint8_t> Binary;
 typedef seastar::temporary_buffer<uint8_t> Slice;
 
 //
+// The type for a function which can allocate Binary
+//
+typedef std::function<Binary()> BinaryAllocatorFunctor;
+
+//
 //  Endpoint identifies address of the Node or client. TODO: change to something more appropriate than 'String'.
 //
 typedef String Endpoint;

@@ -4,7 +4,7 @@
 #include <seastar/core/future.hh>
 
 #include "RPCProtocolFactory.h"
-#include "Log.h"
+#include "common/Log.h"
 
 namespace k2tx
 {

@@ -8,18 +8,12 @@ file(GLOB SOURCES "*.cpp")
 
 add_library(k2transport STATIC ${HEADERS} ${SOURCES})
 
-if(DEFINED ENV{K2TX_DEBUG})
-	set(K2TX_DEBUG $ENV{K2TX_DEBUG})
-else()
-    set(K2TX_DEBUG 0)
-endif()
-
-add_compile_definitions(K2TX_DEBUG=${K2TX_DEBUG})
-
 set_target_properties(k2transport PROPERTIES
 	VERSION ${PROJECT_VERSION}
 	SOVERSION 1
 )
+
+target_link_libraries (k2transport PRIVATE k2common Seastar::seastar )
 
 install(TARGETS k2transport DESTINATION lib)
 install(FILES ${HEADERS} DESTINATION include/transport)

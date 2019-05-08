@@ -17,7 +17,7 @@
 
 // k2tx
 #include "RPCProtocolFactory.h"
-#include "Payload.h"
+#include "BaseTypes.h"
 #include "Request.h"
 
 namespace k2tx {

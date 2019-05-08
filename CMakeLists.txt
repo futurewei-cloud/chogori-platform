@@ -12,6 +12,14 @@ set (DPDK_SHLIBS "-lrte_ethdev -lrte_net -lrte_mbuf -lrte_mempool -lrte_ring -lr
 set (DPDK_LINK_FLAGS "-Wl,--no-as-needed ${DPDK_SHLIBS} -Wl,--as-needed")
 set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${DPDK_LINK_FLAGS}")
 
+if(DEFINED ENV{K2_DEBUG_LOGGING})
+	set(K2_DEBUG_LOGGING $ENV{K2_DEBUG_LOGGING})
+else()
+    set(K2_DEBUG_LOGGING 0)
+endif()
+
+add_compile_definitions(K2_DEBUG_LOGGING=${K2_DEBUG_LOGGING})
+
 include_directories(src)
 include_directories(src/include)
 include_directories(test/include)

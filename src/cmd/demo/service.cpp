@@ -20,7 +20,7 @@ using namespace std::chrono_literals; // so that we can type "1ms"
 // k2 transport
 #include "transport/RPCDispatcher.h"
 #include "transport/TCPRPCProtocol.h"
-#include "transport/Log.h"
+#include "common/Log.h"
 #include "transport/BaseTypes.h"
 #include "transport/RPCProtocolFactory.h"
 #include "transport/VirtualNetworkStack.h"
@@ -122,7 +122,7 @@ public: // Work generators
             msg += std::to_string(_msgCount++);
 
             std::unique_ptr<k2tx::Payload> request = _heartbeatEndpoint->NewPayload();
-            request->Append(msg.c_str(), msg.size()+1);
+            request->getWriter().write(msg.c_str(), msg.size()+1);
             // straight Send sends requests without any form of retry. Underlying transport may or may not
             // attempt redelivery (e.g. TCP packet reliability)
             _dispatcher.local().Send(GET, std::move(request), *_heartbeatEndpoint);
@@ -155,7 +155,7 @@ public: // Work generators
                 // e.g. one we place the packets into the DPDK mem queue, we might not be able to obtain the
                 // exact same packets back unless we do some cooperative refcounting with the dpdk internals
                 std::unique_ptr<k2tx::Payload> msg = self->_heartbeatEndpoint->NewPayload();
-                msg->Append(msgData.c_str(), msgData.size()+1);
+                msg->getWriter().write(msgData.c_str(), msgData.size()+1);
 
                 // send a request with expected reply. Since we expect a reply, we must specify a timeout
                 return self->_dispatcher.local().SendRequest(POST, std::move(msg), *self->_heartbeatEndpoint, timeout)
@@ -197,8 +197,7 @@ public:
         msgData += std::to_string(_msgCount++);
 
         std::unique_ptr<k2tx::Payload> msg = request.endpoint.NewPayload();
-        msg->Append(msgData.c_str(), msgData.size()+1);
-
+        msg->getWriter().write(msgData.c_str(), msgData.size()+1);
         // respond to the client's request
         _dispatcher.local().SendReply(std::move(msg), request);
     }
@@ -211,7 +210,7 @@ public:
         msgData += std::to_string(_msgCount++);
 
         std::unique_ptr<k2tx::Payload> msg = request.endpoint.NewPayload();
-        msg->Append(msgData.c_str(), msgData.size()+1);
+        msg->getWriter().write(msgData.c_str(), msgData.size()+1);
 
         // Here we just forward the message using a straight Send and we don't expect any responses to our forward
         _dispatcher.local().Send(ACK, std::move(msg), request.endpoint);
@@ -223,7 +222,7 @@ private:
             return "NO_PAYLOAD_RECEIVED";
         }
         std::string result;
-        for (auto& fragment: payload->Fragments()) {
+        for (auto& fragment: payload->release()) {
             K2DEBUG("Processing received fragment of size=" << fragment.size());
             auto datap = fragment.get();
             for (size_t i = 0; i < fragment.size(); ++i) {
@@ -240,7 +239,7 @@ private:
 
     k2tx::RPCDispatcher::Dist_t& _dispatcher;
     seastar::timer<> _updateTimer;
-    static constexpr auto _updateTimerInterval = 1ms;
+    static constexpr auto _updateTimerInterval = 1s;
     std::unique_ptr<k2tx::Endpoint> _heartbeatEndpoint;
     // send around our message count
     uint64_t _msgCount;

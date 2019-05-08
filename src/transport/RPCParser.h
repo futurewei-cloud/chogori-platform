@@ -9,8 +9,8 @@
 #include "RPCTypes.h"
 #include "Fragment.h"
 #include "RPCHeader.h"
-#include "Payload.h"
-#include "Log.h"
+#include "BaseTypes.h"
+#include "common/Log.h"
 
 namespace k2tx {
 
@@ -38,7 +38,8 @@ public:
     ~RPCParser();
 
     // Utility method used to create a header for an outgoing message
-    static Fragment SerializeHeader(Fragment fragment, Verb verb, MessageMetadata metadata);
+    // the incoming fragment is populated and shrunk down to fit the header
+    static void SerializeHeader(Fragment& fragment, Verb verb, MessageMetadata metadata);
 
     // This method should be called with the fragment in a stream of messages.
     // we handle messages which can span multiple fragments in this class.

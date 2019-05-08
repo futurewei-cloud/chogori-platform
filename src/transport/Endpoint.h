@@ -4,7 +4,6 @@
 #pragma once
 
 #include "BaseTypes.h"
-#include "Payload.h"
 #include "Fragment.h"
 
 namespace k2tx {

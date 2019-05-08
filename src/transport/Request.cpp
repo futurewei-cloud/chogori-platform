@@ -2,7 +2,7 @@
 //    (C)opyright Futurewei Technologies Inc, 2019
 //-->
 #include "Request.h"
-#include "Log.h"
+#include "common/Log.h"
 
 namespace k2tx {
 

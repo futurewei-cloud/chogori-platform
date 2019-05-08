@@ -92,10 +92,10 @@ private: // fields
     seastar::future<> _closerFuture = seastar::make_ready_future<>();
 
     // the input stream from our socket
-    seastar::input_stream<Binary_t> _in;
+    seastar::input_stream<char> _in;
 
     // the output stream from our socket
-    seastar::output_stream<Binary_t> _out;
+    seastar::output_stream<char> _out;
 
     // a place to store pending writes while we're connecting
     struct _BufferedWrite {

@@ -1,6 +1,9 @@
 #pragma once
 
+#include <map>
 #include <cassert>
+#include <limits>
+
 #include "Common.h"
 #ifndef PARTITION_MANAGER_USE_OBS_INDEX
 #include <seastar/net/packet.hh>
@@ -48,14 +51,21 @@ class Payload
 {
     friend class PayloadReader;
     friend class PayloadWriter;
+public:
+    class NonAllocatingPayloadException : public std::exception {};
 protected:
+    static auto constexpr DefaultAllocator = [](){ return Binary(8096); };
     std::vector<Binary> buffers;
     size_t size;
+    BinaryAllocatorFunctor allocator;
+    String creatorID;
 
     struct Position
     {
-        uint32_t buffer;
-        uint32_t offset;
+        typedef uint32_t BufferIndex;
+        typedef uint32_t BufferOffset;
+        BufferIndex buffer;
+        BufferOffset offset;
     };
 
     Position navigate(size_t offset) const
@@ -77,13 +87,26 @@ protected:
 
     bool allocateBuffer()
     {
-        buffers.push_back(std::move(Binary(8096))); //  TODO: in DPDK case allocate from NIC buffer pool
+        if (allocator == nullptr) { throw NonAllocatingPayloadException();}
+        Binary buf = allocator();
+        if (!buf) {
+            return false;
+        }
+        assert(buf.size() <= std::numeric_limits<Position::BufferOffset>::max());
+        // we're about to add one more in. Make sure we have room to add it
+        assert(buffers.size() < std::numeric_limits<Position::BufferIndex>::max());
+        buffers.push_back(std::move(buf));
         return true;
     }
 
 public:
-    Payload() : size(0) { }
-    Payload(std::vector<Binary> buffers, size_t size) : buffers(std::move(buffers)), size(size) { }
+    Payload(BinaryAllocatorFunctor allocator=DefaultAllocator, String creatorID={}) : size(0), allocator(allocator), creatorID(creatorID) { }
+    Payload(std::vector<Binary> externallyAllocatedBuffers, size_t containedDataSize) :
+        buffers(std::move(externallyAllocatedBuffers)),
+        size(containedDataSize),
+        allocator(nullptr),
+        creatorID("") {
+    }
     Payload(const Payload&) = delete;
     Payload& operator=(const Payload&) = delete;
     Payload(Payload&&) = default;
@@ -91,12 +114,21 @@ public:
 
     size_t getSize() const { return size; }
 
-    size_t getAllocationSize() const
-    {
-        size_t totalSize = 0;
-        for(const Binary& buffer : buffers)
-            totalSize += buffer.size();
-        return totalSize;
+    std::vector<Binary> release() {
+        std::vector<Binary> result(std::move(buffers));
+        clear();
+        return result;
+    }
+
+    const String& getCreatorID() {
+        return creatorID;
+    }
+
+    void appendBinary(Binary&& binary) {
+        // we can only append into a non-self-allocating payload
+        assert(allocator == nullptr);
+        size += binary.size();
+        buffers.push_back(std::forward<Binary>(binary));
     }
 
     uint8_t getByte(size_t offset) const
@@ -121,7 +153,7 @@ public:
 
     void clear()
     {
-        buffers.clear();
+        buffers.resize(0);
         size = 0;
     }
 
@@ -138,10 +170,15 @@ public:
     static seastar::net::packet toPacket(Payload&& payload)
     {
         seastar::net::packet result;
-        for(Binary& data : payload.buffers)
-            result = seastar::net::packet(std::move(result), moveCharTempBuffer(data));
 
-        payload.clear();
+        auto bytesToWrite = payload.getSize();
+        for (auto& buf: payload.release()) {
+            if (buf.size() > bytesToWrite) {
+                buf.trim(bytesToWrite);
+            }
+            result = seastar::net::packet(std::move(result), moveCharTempBuffer(buf));
+            bytesToWrite -= buf.size();
+        }
 
         return result;
     }
@@ -423,7 +460,6 @@ public:
     {
         if(position.buffer < payload.buffers.size()-1)
             payload.buffers.erase(payload.buffers.begin() + position.buffer + 1, payload.buffers.end());
-
         payload.size = offset;
     }
 

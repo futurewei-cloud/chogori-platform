@@ -7,7 +7,7 @@
 #include <seastar/net/inet_address.hh>
 
 // k2tx
-#include "Log.h"
+#include "common/Log.h"
 
 #define CDEBUG(msg) K2DEBUG("{conn="<< (void*)this << ", addr=" << this->_endpoint.GetURL() << "} " << msg)
 #define CHDEBUG(msg) { \
@@ -65,7 +65,7 @@ TCPRPCChannel::~TCPRPCChannel(){
 }
 
 void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata, bool flush) {
-    CDEBUG("send: verb=" << verb << ", payloadSize="<< payload->Size() << ", flush=" << flush);
+    CDEBUG("send: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
     if (_closingInProgress) {
         K2WARN("channel is going down. ignoring send");
         return;
@@ -78,25 +78,26 @@ void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
     }
     // Messages are written in two parts: the header and the payload.
     // ask the serializer to write out its header to a fragment
-    CDEBUG("writing header: verb=" << verb << ", payloadSize="<< payload->Size() << ", flush=" << flush);
-    _out.write(RPCParser::SerializeHeader(_endpoint.NewFragment(), verb, std::move(metadata)));
+    CDEBUG("writing header: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
+    auto header = _endpoint.NewFragment();
+    RPCParser::SerializeHeader(header, verb, std::move(metadata));
+
+    // cast to seastar-compatible type
+    _out.write(std::move(k2::toCharTempBuffer(header)));
 
     // payload is optional
-    if (payload->Size() > 0) {
-        CDEBUG("writing payload: verb=" << verb << ", payloadSize="<< payload->Size() << ", flush=" << flush);
+    if (payload->getSize() > 0) {
+        CDEBUG("writing payload: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
         // we have some payload to write
-        auto& fragments = payload->Fragments();
+        auto bytesToWrite = payload->getSize();
+        CDEBUG("Payload size is now: " << bytesToWrite);
 
-        // write all but last fragment as-is
-        for (size_t i = 0; i < fragments.size() - 1; ++i) {
-            CDEBUG("write intermediate fragment of size=" << fragments[i].size());
-            _out.write(std::move(fragments[i]));
-        }
-        if (payload->LastFragmentSize() > 0) {
-            // we only write LastFragmentSize bytes from the last fragment
-            fragments.back().trim(payload->LastFragmentSize());
-            CDEBUG("write last fragment of size=" << fragments.back().size());
-            _out.write(std::move(fragments.back()));
+        for (auto& buf: payload->release()) {
+            if (buf.size() > bytesToWrite) {
+                buf.trim(bytesToWrite);
+            }
+            _out.write(std::move(k2::toCharTempBuffer(buf)));
+            bytesToWrite -= buf.size();
         }
     }
     // at this point payload.Fragments() still has the same elements but they are empty. However we're done with payload,
@@ -150,7 +151,7 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
                             return; // just say we're done so the loop can evaluate the end condition
                         }
                         CHDEBUG("Read "<< packet.size());
-                        chan->_rpcParser.Feed(std::move(packet));
+                        chan->_rpcParser.Feed(std::move(k2::toBinary(packet)));
                         // process some messages from the packet
                         chan->_rpcParser.DispatchSome();
                     }
@@ -227,7 +228,7 @@ seastar::future<> TCPRPCChannel::GracefulClose(Duration timeout) {
     // 1. close input sink (to break any potential read promises)
     return _in.close()
     .then_wrapped([chan=weak_from_this()](auto&& fut) {
-        CHDEBUG("close completed");
+        CHDEBUG("input close completed");
         // ignore any flushing issues
         fut.ignore_ready_future();
         // 2. tell poller to stop polling for input
@@ -243,7 +244,7 @@ seastar::future<> TCPRPCChannel::GracefulClose(Duration timeout) {
         }
     })
     .then_wrapped([chan=weak_from_this()](auto&& fut){
-        CHDEBUG("close completed");
+        CHDEBUG("output close completed");
         // ignore any closing issues
         fut.ignore_ready_future();
         if (chan) {

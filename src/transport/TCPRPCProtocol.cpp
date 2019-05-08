@@ -9,7 +9,7 @@
 #include <seastar/net/inet_address.hh> // for inet_address
 
 //k2tx
-#include "Log.h"
+#include "common/Log.h"
 
 namespace k2tx {
 const String TCPRPCProtocol::proto("tcp+k2rpc");
@@ -173,7 +173,12 @@ void TCPRPCProtocol::_handleNewChannel(seastar::lw_shared_ptr<TCPRPCChannel> cha
         seastar::weak_ptr<TCPRPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
         if (weakP && !weakP->_stopped) {
             K2WARN("Channel " << endpoint.GetURL() << ", failed due to " << exc);
-            weakP->_channels.erase(endpoint);
+            auto chanIter = weakP->_channels.find(endpoint);
+            if (chanIter != weakP->_channels.end()) {
+                auto chan = chanIter->second;
+                weakP->_channels.erase(chanIter);
+                chan->GracefulClose().then([chan] {});
+            }
         }
     });
     assert(chan->GetEndpoint().CanAllocate());

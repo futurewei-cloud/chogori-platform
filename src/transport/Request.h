@@ -7,7 +7,7 @@
 #include "RPCTypes.h"
 #include "RPCHeader.h"
 #include "Endpoint.h"
-#include "Payload.h"
+#include "BaseTypes.h"
 
 namespace k2tx {
 

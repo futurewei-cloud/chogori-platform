@@ -5,7 +5,7 @@
 
 #include "RPCDispatcher.h"
 #include "Endpoint.h"
-#include "Log.h"
+#include "common/Log.h"
 
 namespace k2tx{
 
@@ -60,7 +60,6 @@ void RPCDispatcher::RegisterMessageObserver(Verb verb, MessageObserver_t observe
         K2DEBUG("Removing message observer for verb: " << verb);
         return;
     }
-    K2DEBUG("Registering message observer for verb: " << verb);
     // we don't allow replacing verb observers. Raise an exception if there is an observer already
     auto emplace_pair = _observers.try_emplace(verb, observer);
     if (!emplace_pair.second) {
@@ -130,7 +129,7 @@ void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, Endpoint&
 void RPCDispatcher::Send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint) {
     K2DEBUG("Plain send");
     MessageMetadata metadata;
-    metadata.SetPayloadSize(payload->Size());
+    metadata.SetPayloadSize(payload->getSize());
     _send(verb, std::move(payload), endpoint, std::move(metadata));
 }
 
@@ -138,7 +137,7 @@ void RPCDispatcher::SendReply(std::unique_ptr<Payload> payload, Request& forRequ
     K2DEBUG("Reply send for request: " << forRequest.metadata.requestID);
     MessageMetadata metadata;
     metadata.SetResponseID(forRequest.metadata.requestID);
-    metadata.SetPayloadSize(payload->Size());
+    metadata.SetPayloadSize(payload->getSize());
 
     _send(ZEROVERB, std::move(payload), forRequest.endpoint, std::move(metadata));
 }
@@ -153,7 +152,7 @@ RPCDispatcher::SendRequest(Verb verb, std::unique_ptr<Payload> payload, Endpoint
     // record the promise so that we can fulfil it if we get a response
     MessageMetadata metadata;
     metadata.SetRequestID(msgid);
-    metadata.SetPayloadSize(payload->Size());
+    metadata.SetPayloadSize(payload->getSize());
 
     _send(verb, std::move(payload), endpoint, std::move(metadata));
 

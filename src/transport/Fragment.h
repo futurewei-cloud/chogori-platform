@@ -12,7 +12,7 @@
 
 namespace k2tx {
 // the binary type to use
-typedef char Binary_t;
+typedef uint8_t Binary_t;
 
 // Use the seastar temporary_buffer directly for now.
 typedef seastar::temporary_buffer<Binary_t> Fragment;
