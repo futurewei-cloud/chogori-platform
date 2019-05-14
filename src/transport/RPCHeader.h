@@ -11,7 +11,7 @@
 // k2
 #include "common/Log.h"
 
-namespace k2tx {
+namespace k2 {
 static const uint8_t K2RPCMAGIC = uint8_t('K') ^ uint8_t('2');
 
 // Header format (RPC Version = 0x1)
@@ -29,8 +29,8 @@ static const uint8_t K2RPCMAGIC = uint8_t('K') ^ uint8_t('2');
 // | 4          | RequestID       | The request message ID - short-term unique number
 // | 4          | ResponseID      | The response message ID - repeat from a previous msg.RequestID
 //
-// Note that since the message is likely to be fragmented, the payload will be stored and presented as
-// a Payload, which is basically an iovec which exposes the fragments for the payload.
+// Note that since the message is likely to be binaried, the payload will be stored and presented as
+// a Payload, which is basically an iovec which exposes the binaries for the payload.
 
 // The fixed message header
 class FixedHeader {
@@ -96,4 +96,4 @@ public: // fields
     // MAYBE TODO CRC, crypto, sender endpoint
 };
 
-} // k2tx
+} // k2

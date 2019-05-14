@@ -6,7 +6,7 @@ The K2 Transport deals with transport(e.g. TCP/eRPC/UDP) and message serializati
 
 
 # Structure
-The code in the transport module is namespaced in the `k2tx` namespace. See the `src/cmd/demo/service.cpp` demo app for example on how to use the module
+See the `src/cmd/demo/service.cpp` demo app for example on how to use the module
 
 # Contact
 

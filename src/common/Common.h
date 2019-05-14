@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <functional>
 #include <memory>
 #include <chrono>
 
@@ -52,6 +53,11 @@ typedef std::function<Binary()> BinaryAllocatorFunctor;
 //  Endpoint identifies address of the Node or client. TODO: change to something more appropriate than 'String'.
 //
 typedef String Endpoint;
+
+//
+// duration used in a few places to specify timeouts and such
+//
+typedef std::chrono::steady_clock::duration Duration;
 
 //
 //  Hold the reference to buffer containing class

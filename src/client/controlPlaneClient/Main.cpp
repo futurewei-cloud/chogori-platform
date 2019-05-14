@@ -1,11 +1,11 @@
 #include <iostream>
 
-#include "boost/program_options.hpp"
-#include "boost/filesystem.hpp"
+#include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
 
-#include <common/PartitionMetadata.h>
+#include "common/PartitionMetadata.h"
 
-#include <lib/Client.h>
+#include "client/boost/Client.h"
 
 namespace k2
 {
@@ -19,9 +19,12 @@ void assignPartition(k2::PartitionAssignmentId partitionId, const char* ip, uint
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId.id, PartitionRange("A", "B"), collectionId);   //  TODO: change range
     assignmentMessage.partitionVersion = partitionId.version;
 
-    std::unique_ptr<ResponseMessage> response = sendMessage(ip, port, PartitionMessage::serializeMessage(k2::MessageType::PartitionAssign, partitionId, assignmentMessage));
+    std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
+        PartitionMessage::serializeMessage(k2::MessageType::PartitionAssign, partitionId, assignmentMessage));
+
+    assert(response);
     if(response->getStatus() != Status::Ok)
-        std::cerr << "Assignment failed: " << (int)response->getStatus() << std::endl << std::flush;
+        std::cerr << "Assignment failed: " << getStatusText(response->getStatus()) << std::endl << std::flush;
 }
 
 void offloadPartition(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port)

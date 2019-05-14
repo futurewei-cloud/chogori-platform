@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 
-find_package (Seastar REQUIRED)
-
 add_executable (dataPlaneClient Main.cpp)
+add_definitions(-DPARTITION_MANAGER_USE_OBS_INDEX)
 
-include_directories(..)
-
-target_link_libraries (dataPlaneClient PRIVATE k2common k2client Seastar::seastar)
+target_link_libraries (dataPlaneClient PRIVATE k2common k2boostclient k2node boost_system boost_program_options boost_filesystem)
 install (TARGETS dataPlaneClient DESTINATION bin)

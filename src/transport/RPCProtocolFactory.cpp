@@ -6,8 +6,7 @@
 #include "RPCProtocolFactory.h"
 #include "common/Log.h"
 
-namespace k2tx
-{
+namespace k2 {
 RPCProtocolFactory::RPCProtocolFactory(BuilderFunc_t builder): _builder(builder) {
     K2DEBUG("ctor");
 }
@@ -36,4 +35,4 @@ seastar::future<> RPCProtocolFactory::stop() {
     return seastar::make_ready_future<>();
 }
 
-} // k2tx
+} // k2

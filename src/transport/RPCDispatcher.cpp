@@ -4,10 +4,10 @@
 #include <cstdlib>
 
 #include "RPCDispatcher.h"
-#include "Endpoint.h"
+#include "TXEndpoint.h"
 #include "common/Log.h"
 
-namespace k2tx{
+namespace k2{
 
 RPCDispatcher::RPCDispatcher():
     _msgSequenceID(uint32_t(std::rand())) {
@@ -59,6 +59,10 @@ void RPCDispatcher::RegisterMessageObserver(Verb verb, MessageObserver_t observe
         _observers.erase(verb);
         K2DEBUG("Removing message observer for verb: " << verb);
         return;
+    }
+    if (verb == ZEROVERB) {
+        // can't allow registration of the ZEROVERB
+        throw DuplicateRegistrationException();
     }
     // we don't allow replacing verb observers. Raise an exception if there is an observer already
     auto emplace_pair = _observers.try_emplace(verb, observer);
@@ -115,7 +119,7 @@ void RPCDispatcher::_handleNewMessage(Request& request) {
     }
 }
 
-void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint, MessageMetadata meta) {
+void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
     K2DEBUG("Sending message for verb: " << verb << ", to endpoint=" << endpoint.GetURL());
 
     auto protoi = _protocols.find(endpoint.GetProtocol());
@@ -126,7 +130,7 @@ void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, Endpoint&
     protoi->second->Send(verb, std::move(payload), endpoint, std::move(meta));
 }
 
-void RPCDispatcher::Send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint) {
+void RPCDispatcher::Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint) {
     K2DEBUG("Plain send");
     MessageMetadata metadata;
     metadata.SetPayloadSize(payload->getSize());
@@ -143,7 +147,7 @@ void RPCDispatcher::SendReply(std::unique_ptr<Payload> payload, Request& forRequ
 }
 
 seastar::future<std::unique_ptr<Payload>>
-RPCDispatcher::SendRequest(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint, Duration timeout) {
+RPCDispatcher::SendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout) {
     uint64_t msgid = _msgSequenceID++;
     K2DEBUG("Request send with msgid=" << msgid);
 
@@ -185,17 +189,17 @@ void RPCDispatcher::RegisterLowTransportMemoryObserver(LowTransportMemoryObserve
     }
 }
 
-std::unique_ptr<Endpoint> RPCDispatcher::GetEndpoint(String url) {
+std::unique_ptr<TXEndpoint> RPCDispatcher::GetTXEndpoint(String url) {
     K2DEBUG("Get endpoint for " << url)
     // temporary endpoint just so that we can see what the protocol is supposed to be
-    auto ep = Endpoint::FromURL(url, nullptr);
+    auto ep = TXEndpoint::FromURL(url, nullptr);
 
     auto protoi = _protocols.find(ep->GetProtocol());
     if (protoi == _protocols.end()) {
         K2WARN("Unsupported protocol: "<< ep->GetProtocol());
         return nullptr;
     }
-    return protoi->second->GetEndpoint(std::move(url));
+    return protoi->second->GetTXEndpoint(std::move(url));
 }
 
-}// namespace k2tx
+}// namespace k2

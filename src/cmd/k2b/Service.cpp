@@ -27,10 +27,10 @@ using namespace std::chrono_literals;
 class Service : public seastar::weakly_referencable<Service>
 {
 private:
-    k2tx::RPCDispatcher::Dist_t& _dispatcher;
+    k2::RPCDispatcher::Dist_t& _dispatcher;
 public:
     typedef seastar::distributed<Service> Dist_t;
-    std::unique_ptr<k2tx::Endpoint> _myEndpoint;
+    std::unique_ptr<k2::TXEndpoint> _myEndpoint;
     const uint32_t _tcpPort;
 
     // The message verbs supported by this service
@@ -41,7 +41,7 @@ public:
         ACK = 102
     };
 
-    Service(k2tx::RPCDispatcher::Dist_t& dispatcher, uint32_t tcpPort)
+    Service(k2::RPCDispatcher::Dist_t& dispatcher, uint32_t tcpPort)
     : _dispatcher(dispatcher)
     , _tcpPort(tcpPort)
     {
@@ -56,12 +56,12 @@ public:
     void start()
     {
         _dispatcher.local().RegisterMessageObserver(MsgVerbs::GET,
-            [this](k2tx::Request& request) mutable {
+            [this](k2::Request& request) mutable {
                 this->handleGET(request);
             });
 
         // You can store the endpoint for more efficient communication
-        _myEndpoint = _dispatcher.local().GetEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
+        _myEndpoint = _dispatcher.local().GetTXEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
         if (!_myEndpoint) {
             throw std::runtime_error("unable to get an endpoint for url");
         }
@@ -72,15 +72,15 @@ public:
         return seastar::make_ready_future<>();
     }
 
-    void handleGET(k2tx::Request& request)
+    void handleGET(k2::Request& request)
     {
         auto received = GetPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.GetURL()
               << ", with payload: " << received);
-        k2tx::String msgData("GET Message received reqid=");
+        k2::String msgData("GET Message received reqid=");
         msgData += std::to_string(2);
 
-        std::unique_ptr<k2tx::Payload> msg = request.endpoint.NewPayload();
+        std::unique_ptr<k2::Payload> msg = request.endpoint.NewPayload();
         msg->getWriter().write(msgData.c_str(), msgData.size()+1);
 
         // Here we just forward the message using a straight Send and we don't expect any responses to our forward
@@ -88,7 +88,7 @@ public:
     }
 
 private:
-  static std::string GetPayloadString(k2tx::Payload* payload) {
+  static std::string GetPayloadString(k2::Payload* payload) {
         if (!payload) {
             return "NO_PAYLOAD_RECEIVED";
         }
@@ -122,9 +122,9 @@ int main(int argc, char** argv)
     namespace bpo = boost::program_options;
     uint32_t tcpPort = 14000;
 
-    k2tx::VirtualNetworkStack::Dist_t virtualNetwork;
-    k2tx::RPCProtocolFactory::Dist_t protocolFactory;
-    k2tx::RPCDispatcher::Dist_t dispatcher;
+    k2::VirtualNetworkStack::Dist_t virtualNetwork;
+    k2::RPCProtocolFactory::Dist_t protocolFactory;
+    k2::RPCDispatcher::Dist_t dispatcher;
     k2::benchmarker::Service::Dist_t service;
 
     seastar::app_template app;
@@ -151,7 +151,7 @@ int main(int argc, char** argv)
         return virtualNetwork.start()
             .then([&] {
 
-                return protocolFactory.start(k2tx::TCPRPCProtocol::Builder(std::ref(virtualNetwork), tcpPort));
+                return protocolFactory.start(k2::TCPRPCProtocol::Builder(std::ref(virtualNetwork), tcpPort));
             })
             .then([&] {
                 return dispatcher.start();
@@ -160,16 +160,16 @@ int main(int argc, char** argv)
                 return service.start(std::ref(dispatcher), tcpPort);
             })
             .then([&] {
-                return virtualNetwork.invoke_on_all(&k2tx::VirtualNetworkStack::Start);
+                return virtualNetwork.invoke_on_all(&k2::VirtualNetworkStack::Start);
             })
             .then([&] {
-                return protocolFactory.invoke_on_all(&k2tx::RPCProtocolFactory::Start);
+                return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::Start);
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2tx::RPCDispatcher::RegisterProtocol, seastar::ref(protocolFactory));
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::RegisterProtocol, seastar::ref(protocolFactory));
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2tx::RPCDispatcher::Start);
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::Start);
             })
             .then([&] {
                 return service.invoke_on_all(&k2::benchmarker::Service::start);

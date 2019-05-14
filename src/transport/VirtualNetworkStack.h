@@ -8,10 +8,11 @@
 #include <seastar/net/api.hh> // socket/network stuff
 #include <seastar/core/future.hh> // future stuff
 
-// k2tx
-#include "Fragment.h"
+// k2
+#include "BaseTypes.h"
+#include "common/Common.h"
 
-namespace k2tx {
+namespace k2 {
 
 // This class allows access to the proper VirtualNetworkStack(SR-IOV virtualized NIC) on a given core
 // This class should be used as a distributed<> container
@@ -40,14 +41,14 @@ public: // TCP API
     // Create a server(listening) TCP socket on the local VF. The socket is constructed on the
     // given address/port with the given listen_options(e.g. reuse port)
     // It is up to caller to call abort_listen if the socket should be closed.
-    seastar::server_socket ListenTCP(seastar::socket_address sa, seastar::listen_options opt);
+    seastar::server_socket ListenTCP(SocketAddress sa, seastar::listen_options opt);
 
     // Create a socket to connect to a given remote address. Optionally, it binds locally to the given sourceAddress
     // It is up to caller to shutdown the input/output when the socket should be closed
-    seastar::future<seastar::connected_socket> ConnectTCP(seastar::socket_address remoteAddress, seastar::socket_address sourceAddress={});
+    seastar::future<seastar::connected_socket> ConnectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress={});
 
     // Create a payload from the TCP provider
-    Allocator_t GetTCPAllocator();
+    BinaryAllocatorFunctor GetTCPAllocator();
 
     // RegisterLowTCPMemoryObserver allows the user to register a observer which will be called when
     // the TCP stack becomes low on memory and requires the application to release some buffers back.
@@ -83,4 +84,4 @@ private: // Not needed
 
 }; // class VirtualNetworkStack
 
-}// namespace
+}// k2 namespace

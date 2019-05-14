@@ -7,7 +7,7 @@
 #include <seastar/core/reactor.hh>
 #include <seastar/net/net.hh>
 
-// k2tx
+// k2
 #include "common/Log.h"
 // determine the packet size we should allocate: mtu - tcp_header_size - ip_header_size - ethernet_header_size
 const uint16_t tcpsegsize = seastar::net::hw_features().mtu
@@ -15,7 +15,7 @@ const uint16_t tcpsegsize = seastar::net::hw_features().mtu
                             - seastar::net::ipv4_hdr_len_min
                             - seastar::net::eth_hdr_len;
 
-namespace k2tx {
+namespace k2 {
 
 VirtualNetworkStack::VirtualNetworkStack() {
     K2DEBUG("ctor");
@@ -27,14 +27,14 @@ VirtualNetworkStack::~VirtualNetworkStack() {
     K2DEBUG("dtor");
 }
 
-seastar::server_socket VirtualNetworkStack::ListenTCP(seastar::socket_address sa, seastar::listen_options opt) {
+seastar::server_socket VirtualNetworkStack::ListenTCP(SocketAddress sa, seastar::listen_options opt) {
     K2DEBUG("listen tcp" << sa);
     // TODO For now, just use the engine's global network
     return seastar::engine().net().listen(std::move(sa), std::move(opt));
 }
 
 seastar::future<seastar::connected_socket>
-VirtualNetworkStack::ConnectTCP(seastar::socket_address remoteAddress, seastar::socket_address sourceAddress) {
+VirtualNetworkStack::ConnectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress) {
     // TODO For now, just use the engine's global network
     return seastar::engine().net().connect(std::move(remoteAddress), std::move(sourceAddress));
 }
@@ -43,9 +43,9 @@ void VirtualNetworkStack::Start(){
     K2DEBUG("start");
 }
 
-Allocator_t VirtualNetworkStack::GetTCPAllocator() {
+BinaryAllocatorFunctor VirtualNetworkStack::GetTCPAllocator() {
     // The seastar stacks don't expose allocation mechanism so we just allocate
-    // the fragments in user space
+    // the binaries in user space
     return []() {
         //NB at some point, we'll have to capture the underlying network stack here in order
         // to pass on allocations. This should be done with weakly_referencable and weak_from_this()
@@ -54,8 +54,8 @@ Allocator_t VirtualNetworkStack::GetTCPAllocator() {
 
         // NB, there is no performance benefit of allocating smaller chunks. Chunks up to 16384 are allocated from
         // seastar pool allocator and overhead is the same regardless of size(~10ns per allocation)
-        K2DEBUG("allocating fragment with size=" << tcpsegsize);
-        return Fragment(tcpsegsize);
+        K2DEBUG("allocating binary with size=" << tcpsegsize);
+        return Binary(tcpsegsize);
     };
 }
 
@@ -76,4 +76,4 @@ seastar::future<> VirtualNetworkStack::stop() {
     return seastar::make_ready_future<>();
 }
 
-} // namespace
+} // k2 namespace

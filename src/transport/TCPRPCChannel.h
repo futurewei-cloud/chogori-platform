@@ -7,15 +7,15 @@
 #include <seastar/net/api.hh> // seastar's network stuff
 #include <seastar/core/weak_ptr.hh> // weak ptr
 
-// k2tx
-#include "BaseTypes.h"
+// k2
+#include "common/Common.h"
 #include "RPCParser.h"
-#include "Endpoint.h"
+#include "TXEndpoint.h"
 #include "Request.h"
 #include "RPCHeader.h"
 
 
-namespace k2tx {
+namespace k2 {
 
 // A TCP channel wraps a seastar connected_socket with an RPCParser to enable sending and receiving
 // RPC messages over a TCP connection
@@ -27,14 +27,14 @@ public: // types
     typedef std::function<void(Request& request)> MessageObserver_t;
 
     // The type for observers of channel failures
-    typedef std::function<void(Endpoint& endpoint, std::exception_ptr exc)> FailureObserver_t;
+    typedef std::function<void(TXEndpoint& endpoint, std::exception_ptr exc)> FailureObserver_t;
 
 public: // lifecycle
     // Construct a new channel, wrapping an existing connected socket to a client at the given address
-    TCPRPCChannel(seastar::connected_socket fd, Endpoint endpoint);
+    TCPRPCChannel(seastar::connected_socket fd, TXEndpoint endpoint);
 
     // Construct a new channel, wrapping a future connected socket to a client at the given address
-    TCPRPCChannel(seastar::future<seastar::connected_socket> futureSocket, Endpoint endpoint);
+    TCPRPCChannel(seastar::future<seastar::connected_socket> futureSocket, TXEndpoint endpoint);
 
     // destructor
     ~TCPRPCChannel();
@@ -57,7 +57,7 @@ public: // API
     void RegisterFailureObserver(FailureObserver_t observer);
 
     // Obtain the endpoint for this channel
-    Endpoint& GetEndpoint() { return _endpoint;}
+    TXEndpoint& GetTXEndpoint() { return _endpoint;}
 
 private: // methods
     // we call this method when we successfully connect to a remote end.
@@ -78,7 +78,7 @@ private: // fields
     FailureObserver_t _failureObserver;
 
     // the endpoint for the channel
-    Endpoint _endpoint;
+    TXEndpoint _endpoint;
 
     // this holds the underlying socket
     seastar::connected_socket _fd;
@@ -112,4 +112,4 @@ private: // Not needed
     TCPRPCChannel& operator=(TCPRPCChannel&& o) = delete;
 
 }; // TCPRPCChannel
-} //k2tx
+} //k2

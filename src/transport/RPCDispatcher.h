@@ -15,12 +15,12 @@
 #include <seastar/core/weak_ptr.hh>
 #include <seastar/util/reference_wrapper.hh> // for seastar::ref
 
-// k2tx
+// k2
 #include "RPCProtocolFactory.h"
-#include "BaseTypes.h"
+#include "common/Common.h"
 #include "Request.h"
 
-namespace k2tx {
+namespace k2 {
 
 // An RPC dispatcher is the interaction point between a service application and underlying transport.
 // It dispatches incoming RPC messages to message observers, and provides RPC channels for sending
@@ -96,12 +96,12 @@ public: // API
     // 1. obtain protocol-specific payloads
     // 2. send messages.
     // returns blank pointer if we failed to parse the url or if the protocol is not supported
-    std::unique_ptr<Endpoint> GetEndpoint(String url);
+    std::unique_ptr<TXEndpoint> GetTXEndpoint(String url);
 
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
     // This is a lower-level API which is useful for sending messages that do not expect replies.
-    void Send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint);
+    void Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint);
 
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload.
@@ -110,7 +110,7 @@ public: // API
     // The future will complete with exception if the given timeout is reached before we receive a response.
     // if we receive a response after the timeout is reached, we will ignore it internally.
     seastar::future<std::unique_ptr<Payload>>
-    SendRequest(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint, Duration timeout);
+    SendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout);
 
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
@@ -121,7 +121,7 @@ private: // methods
     void _handleNewMessage(Request& request);
 
     // Helper method useds to send messages
-    void _send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint, MessageMetadata meta);
+    void _send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta);
 
 private: // fields
     // the protocols this dispatcher will be able to support
@@ -154,4 +154,4 @@ private: // don't need
     RPCDispatcher& operator=(RPCDispatcher&& o) = delete;
 };
 
-} // namespace k2tx
+} // namespace k2

@@ -3,12 +3,12 @@
 //-->
 
 // k2tx
-#include "Endpoint.h"
+#include "TXEndpoint.h"
 #include "common/Log.h"
 
-namespace k2tx {
+namespace k2 {
 
-std::unique_ptr<Endpoint> Endpoint::FromURL(String url, Allocator_t allocator) {
+std::unique_ptr<TXEndpoint> TXEndpoint::FromURL(String url, BinaryAllocatorFunctor allocator) {
     K2DEBUG("Parsing url " << url);
     String protocol;
     String ip;
@@ -54,21 +54,21 @@ std::unique_ptr<Endpoint> Endpoint::FromURL(String url, Allocator_t allocator) {
     }
 
     K2DEBUG("Parsed url " << url << ", into: " << protocol << "://" << ip << ":" << port);
-    return std::make_unique<Endpoint>(protocol, ip, port, std::move(allocator));
+    return std::make_unique<TXEndpoint>(protocol, ip, port, std::move(allocator));
 }
 
-Endpoint::~Endpoint() {
+TXEndpoint::~TXEndpoint() {
     K2DEBUG("dtor");
 }
 
-Endpoint::Endpoint():
+TXEndpoint::TXEndpoint():
     _port(0),
     _hash(0),
     _allocator(nullptr) {
     K2DEBUG("ctor");
 }
 
-Endpoint::Endpoint(String protocol, String ip, uint32_t port, Allocator_t allocator):
+TXEndpoint::TXEndpoint(String protocol, String ip, uint32_t port, BinaryAllocatorFunctor allocator):
     _protocol(std::move(protocol)),
     _ip(std::move(ip)),
     _port(port),
@@ -82,7 +82,7 @@ Endpoint::Endpoint(String protocol, String ip, uint32_t port, Allocator_t alloca
     K2DEBUG("Created endpoint " << _url);
 }
 
-Endpoint::Endpoint(const Endpoint& o) {
+TXEndpoint::TXEndpoint(const TXEndpoint& o) {
     _protocol = o._protocol;
     _ip = o._ip;
     _port = o._port;
@@ -92,7 +92,7 @@ Endpoint::Endpoint(const Endpoint& o) {
     K2DEBUG("Copy endpoint " << _url);
 }
 
-Endpoint::Endpoint(Endpoint&& o) {
+TXEndpoint::TXEndpoint(TXEndpoint&& o) {
     K2DEBUG("move ctor");
     if (&o == this) {
         K2DEBUG("move ctor on self");

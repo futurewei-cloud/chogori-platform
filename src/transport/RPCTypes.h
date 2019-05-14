@@ -8,7 +8,7 @@
 #include <iostream>
 #include <string>
 
-namespace k2tx {
+namespace k2 {
 // This file contains definitions for RPC types
 // The type for verbs in the RPC system
 typedef uint8_t Verb;
@@ -22,4 +22,4 @@ inline std::ostream& operator<<(std::ostream & os, Verb& verb) {
 // whenever we need a zero-value for verbs
 const static Verb ZEROVERB = 0;
 
-} // k2tx
+} // k2

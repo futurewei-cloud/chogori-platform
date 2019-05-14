@@ -27,8 +27,8 @@ namespace benchmarker
 class Client : public seastar::weakly_referencable<Client>
 {
 private:
-    k2tx::RPCDispatcher::Dist_t& _dispatcher;
-    std::unique_ptr<k2tx::Endpoint> _serviceEndpoint;
+    k2::RPCDispatcher::Dist_t& _dispatcher;
+    std::unique_ptr<k2::TXEndpoint> _serviceEndpoint;
     const uint32_t _tcpPort;
 public:
     typedef seastar::distributed<Client> Dist_t;
@@ -41,7 +41,7 @@ public:
         ACK = 102
     };
 
-    Client(k2tx::RPCDispatcher::Dist_t& dispatcher, uint32_t tcpPort)
+    Client(k2::RPCDispatcher::Dist_t& dispatcher, uint32_t tcpPort)
     : _dispatcher(dispatcher)
     , _tcpPort(tcpPort)
     {
@@ -55,7 +55,7 @@ public:
 
     void start()
     {
-        _serviceEndpoint = _dispatcher.local().GetEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
+        _serviceEndpoint = _dispatcher.local().GetTXEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
         if (!_serviceEndpoint) {
             throw std::runtime_error("unable to get an endpoint for url");
         }
@@ -69,14 +69,14 @@ public:
     }
 
     void getHeartbeat() {
-        k2tx::String msg("Requesting GET reqid=");
+        k2::String msg("Requesting GET reqid=");
         msg += std::to_string(1);
 
-        std::unique_ptr<k2tx::Payload> request = _serviceEndpoint->NewPayload();
+        std::unique_ptr<k2::Payload> request = _serviceEndpoint->NewPayload();
         request->getWriter().write(msg.c_str(), msg.size()+1);
 
         _dispatcher.local().SendRequest(GET, std::move(request), *_serviceEndpoint, 20s)
-        .then([&](std::unique_ptr<k2tx::Payload> payload) {
+        .then([&](std::unique_ptr<k2::Payload> payload) {
             auto received = GetPayloadString(payload.get());
             K2INFO("Received GET message from endpoint: " << _serviceEndpoint->GetURL() << ", with payload: " << received);
         })
@@ -88,7 +88,7 @@ public:
         });
     }
 
-    static std::string GetPayloadString(k2tx::Payload* payload) {
+    static std::string GetPayloadString(k2::Payload* payload) {
         if (!payload) {
             return "NO_PAYLOAD_RECEIVED";
         }
@@ -123,9 +123,9 @@ int main(int argc, char** argv)
     namespace bpo = boost::program_options;
     uint32_t tcpPort = 14000;
 
-    k2tx::VirtualNetworkStack::Dist_t virtualNetwork;
-    k2tx::RPCProtocolFactory::Dist_t protocolFactory;
-    k2tx::RPCDispatcher::Dist_t dispatcher;
+    k2::VirtualNetworkStack::Dist_t virtualNetwork;
+    k2::RPCProtocolFactory::Dist_t protocolFactory;
+    k2::RPCDispatcher::Dist_t dispatcher;
     k2::benchmarker::Client::Dist_t client;
 
     seastar::app_template app;
@@ -151,7 +151,7 @@ int main(int argc, char** argv)
 
         return virtualNetwork.start()
             .then([&] {
-                return protocolFactory.start(k2tx::TCPRPCProtocol::Builder(std::ref(virtualNetwork), 2021));
+                return protocolFactory.start(k2::TCPRPCProtocol::Builder(std::ref(virtualNetwork), 2021));
             })
             .then([&] {
                 return dispatcher.start();
@@ -160,16 +160,16 @@ int main(int argc, char** argv)
                 return client.start(std::ref(dispatcher), tcpPort);
             })
             .then([&] {
-                return virtualNetwork.invoke_on_all(&k2tx::VirtualNetworkStack::Start);
+                return virtualNetwork.invoke_on_all(&k2::VirtualNetworkStack::Start);
             })
             .then([&] {
-                return protocolFactory.invoke_on_all(&k2tx::RPCProtocolFactory::Start);
+                return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::Start);
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2tx::RPCDispatcher::RegisterProtocol, seastar::ref(protocolFactory));
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::RegisterProtocol, seastar::ref(protocolFactory));
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2tx::RPCDispatcher::Start);
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::Start);
             })
             .then([&] {
                 return client.invoke_on_all(&k2::benchmarker::Client::start);

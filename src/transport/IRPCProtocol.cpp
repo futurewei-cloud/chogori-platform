@@ -4,7 +4,7 @@
 #include "IRPCProtocol.h"
 #include "common/Log.h"
 
-namespace k2tx {
+namespace k2 {
 
 IRPCProtocol::IRPCProtocol(VirtualNetworkStack::Dist_t& vnet, const String& supportedProtocol):
     _vnet(vnet),
@@ -45,4 +45,4 @@ void IRPCProtocol::SetLowTransportMemoryObserver(LowTransportMemoryObserver_t ob
     }
 }
 
-} // namespace k2tx
+} // namespace k2

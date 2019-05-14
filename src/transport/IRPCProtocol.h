@@ -4,13 +4,25 @@
 #pragma once
 
 #include <seastar/core/distributed.hh>
+#include <seastar/net/socket_defs.hh>
 
 #include "VirtualNetworkStack.h"
-#include "Endpoint.h"
+#include "TXEndpoint.h"
 #include "Request.h"
-#include "BaseTypes.h"
+#include "common/Common.h"
 
-namespace k2tx {
+namespace k2 {
+
+// This is an interface for an Address Provider. It can be used by protocol builders to bind
+// different addresses to different cores.
+class IAddressProvider {
+public:
+    IAddressProvider(){}
+    virtual ~IAddressProvider(){}
+
+    // this should be implemented by concrete classes. It should return the address for a given coreID
+    virtual SocketAddress GetAddress(int coreID) = 0;
+};
 
 // This is an interface for RPCProtocols
 // RPCProtocols are objects which allow the application to send and receive RPC messages
@@ -57,12 +69,12 @@ public: // API
     // 1. obtain protocol-specific payloads
     // 2. send messages.
     // returns blank pointer if we failed to parse the url or if the protocol is not supported
-    virtual std::unique_ptr<Endpoint> GetEndpoint(String url) = 0;
+    virtual std::unique_ptr<TXEndpoint> GetTXEndpoint(String url) = 0;
 
     // Invokes the remote rpc for the given verb with the given payload at the location based on the given endpoint.
     // The message metadata is used to set message features (such as response/request).
     // This is an asyncronous API. No guarantees are made on the delivery of the payload after the call returns.
-    virtual void Send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint, MessageMetadata metadata) = 0;
+    virtual void Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) = 0;
 
 public: // distributed<> interface.
     // called by seastar's distributed mechanism when stop() is invoked on the distributed container.
@@ -92,4 +104,4 @@ private: // Not needed
     IRPCProtocol& operator=(IRPCProtocol&& o) = delete;
 };
 
-} // namespace k2tx
+} // namespace k2

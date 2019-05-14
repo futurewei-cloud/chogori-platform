@@ -3,34 +3,34 @@
 //-->
 #pragma once
 
-#include "BaseTypes.h"
-#include "Fragment.h"
+#include "common/Common.h"
+#include "common/Payload.h"
 
-namespace k2tx {
+namespace k2 {
 // an endpoint has: three components: protocol, IP, and port. It can be represented in a string form (url) as
 // <protocol>://<ip>:<port>
 // NB. we only support case-sensitive URLs
-class Endpoint {
+class TXEndpoint {
 
 public: // lifecycle
     // construct an endpoint from a url with the given allocator
     // Returns nullptr if there was a problem parsing the url
-    static std::unique_ptr<Endpoint> FromURL(String url, Allocator_t allocator);
+    static std::unique_ptr<TXEndpoint> FromURL(String url, BinaryAllocatorFunctor allocator);
 
     // default constructor
-    Endpoint();
+    TXEndpoint();
 
     // construct an endpoint from the tuple (protocol, ip, port) with the given allocator and protocol
-    Endpoint(String protocol, String ip, uint32_t port, Allocator_t allocator);
+    TXEndpoint(String protocol, String ip, uint32_t port, BinaryAllocatorFunctor allocator);
 
     // copy constructor
-    Endpoint(const Endpoint& o);
+    TXEndpoint(const TXEndpoint& o);
 
     // move constructor
-    Endpoint(Endpoint&& o);
-
+    TXEndpoint(TXEndpoint&& o);
+\
     // destructor
-    ~Endpoint();
+    ~TXEndpoint();
 
 public: // API
     // Get the URL for this endpoint
@@ -46,7 +46,7 @@ public: // API
     uint32_t GetPort() const { return _port;}
 
     // Comparison. Two endpoints are the same if their hashes are the same
-    bool operator==(const Endpoint &other) const {
+    bool operator==(const TXEndpoint &other) const {
         return _hash == other._hash;
     }
 
@@ -62,9 +62,9 @@ public: // API
         throw Payload::NonAllocatingPayloadException();
     }
 
-    // This method can be used to create a new fragment in a manner consistent
+    // This method can be used to create a new binary in a manner consistent
     // with the transport for the protocol of this endpoint
-    Fragment NewFragment() {
+    Binary NewBinary() {
         if (_allocator) {
             return _allocator();
         }
@@ -82,23 +82,23 @@ private: // fields
     String _ip;
     uint32_t _port;
     size_t _hash;
-    Allocator_t _allocator;
+    BinaryAllocatorFunctor _allocator;
 
 private: // Not needed
-    Endpoint& operator=(const Endpoint& o) = delete;
-    Endpoint& operator=(Endpoint&& o) = delete;
+    TXEndpoint& operator=(const TXEndpoint& o) = delete;
+    TXEndpoint& operator=(TXEndpoint&& o) = delete;
 
-}; // class Endpoint
+}; // class TXEndpoint
 
-} // k2tx
+} // namespace k2
 
-// Implement std::hash for Endpoint so that we can use it as key in containers
+// Implement std::hash for TXEndpoint so that we can use it as key in containers
 namespace std {
 
 template <>
-struct hash<k2tx::Endpoint> {
+struct hash<k2::TXEndpoint> {
 
-size_t operator()(const k2tx::Endpoint& endpoint) const {
+size_t operator()(const k2::TXEndpoint& endpoint) const {
     return endpoint.Hash();
 }
 

@@ -1,6 +1,6 @@
-#include "NodePool.h"
-#include "module/MemKVModule.h"
-#include <node/seastar/SeastarPlatform.h>
+#include "node/NodePool.h"
+#include "node/module/MemKVModule.h"
+#include "K2TXPlatform.h"
 #include <yaml-cpp/yaml.h>
 
 using namespace k2;
@@ -28,7 +28,7 @@ int main(int argc, char** argv)
     (void)argv; // TODO use me
     try
     {
-        namespace bpo = boost::program_options; 
+        namespace bpo = boost::program_options;
         bpo::options_description k2Options("K2 Options");
 
         // get the k2 config from the command line
@@ -57,7 +57,7 @@ int main(int argc, char** argv)
             TIF(pool.registerNode(nodeConfig));
         }
 
-        SeastarPlatform platform;
+        K2TXPlatform platform;
         pool.setScheduingPlatform(&platform);
         TIF(platform.run(pool));
     }

@@ -5,27 +5,59 @@
 #include <iostream>
 #include <chrono>
 #include <ctime>
-#include <seastar/core/reactor.hh>
+#include <sstream>
+#include <pthread.h>
 
+namespace k2{
+namespace log {
+class LogEntry {
+public:
+    std::ostringstream out;
+    LogEntry()=default;
+    LogEntry(LogEntry&&)=default;
+    ~LogEntry() {
+        std::cerr << out.rdbuf()->str() << std::endl;
+    }
+    template<typename T>
+    std::ostringstream& operator<<(const T& val) {
+        out << val;
+        return out;
+    }
+private:
+    LogEntry(const LogEntry&) = delete;
+    LogEntry& operator=(const LogEntry&) = delete;
+};
+
+inline LogEntry StartLogStream() {
+    // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
+    static thread_local char buffer[100];
+    auto now = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch());
+    auto microsec = now.count();
+    auto millis = microsec/1000;
+    microsec -= millis*1000;
+    auto secs = millis/1000;
+    millis -= secs*1000;
+    auto mins = (secs/60);
+    secs -= (mins*60);
+    auto hours = (mins/60);
+    mins -= (hours*60);
+    auto days = (hours/24);
+    hours -= (days*24);
+
+    std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
+    LogEntry entry;
+    entry.out << "[" << buffer << "]" << "(" << pthread_self() <<") ";
+    return entry;
+}
+
+} // namespace log
+} // namepace k2
 // This file contains some utility macros for logging and tracing,
 // TODO hook this up into proper logging
+
 #define K2LOG(msg) { \
-    char buffer[100]; \
-    auto now = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()); \
-    auto microsec = now.count(); \
-    auto millis = microsec/1000; \
-    microsec -= millis*1000; \
-    auto secs = millis/1000; \
-    millis -= secs*1000; \
-    auto mins = (secs/60); \
-    secs -= (mins*60); \
-    auto hours = (mins/60); \
-    mins -= (hours*60); \
-    auto days = (hours/24); \
-    hours -= (days*24); \
-    std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec); \
-    std::cerr << "[" << buffer << "] " << "(" << seastar::engine().cpu_id() <<") [" \
-    << __FILE__ << ":" <<__LINE__ << " @" << __FUNCTION__ <<"]"  << msg << std::endl; }
+    k2::log::StartLogStream() << "[" << __FILE__ << ":" << __LINE__ << " @" << __FUNCTION__ << "]" << msg; \
+    }
 
 #if K2_DEBUG_LOGGING == 1
 #define K2DEBUG(msg) K2LOG("[DEBUG] " << msg)

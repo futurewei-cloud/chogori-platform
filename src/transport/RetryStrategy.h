@@ -8,12 +8,12 @@
 #include <seastar/core/future.hh>
 #include <seastar/core/future-util.hh>
 
-// k2tx
-#include "BaseTypes.h"
+// k2
+#include "common/Common.h"
 #include "common/Log.h"
 #include "RPCDispatcher.h"
 
-namespace k2tx {
+namespace k2 {
 // This file defines a few retry strategies that can be used in communication
 
 // an Exponential backoff strategy, with parameters retries, rate, and startTimeout.
@@ -125,4 +125,4 @@ private: // don't need
 
 }; // ExponentialBackoffStrategy
 
-} // k2tx
+} // k2

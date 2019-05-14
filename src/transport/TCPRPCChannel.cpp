@@ -6,7 +6,7 @@
 // third-party
 #include <seastar/net/inet_address.hh>
 
-// k2tx
+// k2
 #include "common/Log.h"
 
 #define CDEBUG(msg) K2DEBUG("{conn="<< (void*)this << ", addr=" << this->_endpoint.GetURL() << "} " << msg)
@@ -21,9 +21,10 @@
 
 #define CWARN(msg) K2WARN("{conn="<< (void*)this << ", addr=" << this->_endpoint.GetURL() << "} " << msg)
 
-namespace k2tx {
+namespace k2 {
 
-TCPRPCChannel::TCPRPCChannel(seastar::connected_socket fd, Endpoint endpoint):
+TCPRPCChannel::TCPRPCChannel(seastar::connected_socket fd, TXEndpoint endpoint):
+    _rpcParser([]{return seastar::need_preempt();}),
     _endpoint(std::move(endpoint)),
     _fdIsSet(false),
     _closingInProgress(false) {
@@ -33,7 +34,8 @@ TCPRPCChannel::TCPRPCChannel(seastar::connected_socket fd, Endpoint endpoint):
     _setConnectedSocket(std::move(fd));
 }
 
-TCPRPCChannel::TCPRPCChannel(seastar::future<seastar::connected_socket> futureSocket, Endpoint endpoint):
+TCPRPCChannel::TCPRPCChannel(seastar::future<seastar::connected_socket> futureSocket, TXEndpoint endpoint):
+    _rpcParser([]{return seastar::need_preempt();}),
     _endpoint(std::move(endpoint)),
     _fdIsSet(false),
     _closingInProgress(false) {
@@ -51,7 +53,7 @@ TCPRPCChannel::TCPRPCChannel(seastar::future<seastar::connected_socket> futureSo
         }
     }).handle_exception([chan=weak_from_this()](auto exc) {
         if (chan) {
-            K2WARN("future channel for " << chan->_endpoint.GetURL() << " failed connecting: " << exc);
+            K2WARN("future channel for " << chan->_endpoint.GetURL() << " failed connecting");
             chan->_failureObserver(chan->_endpoint, exc);
         }
     });
@@ -77,9 +79,9 @@ void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
         return;
     }
     // Messages are written in two parts: the header and the payload.
-    // ask the serializer to write out its header to a fragment
+    // ask the serializer to write out its header to a binary
     CDEBUG("writing header: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
-    auto header = _endpoint.NewFragment();
+    auto header = _endpoint.NewBinary();
     RPCParser::SerializeHeader(header, verb, std::move(metadata));
 
     // cast to seastar-compatible type
@@ -100,8 +102,6 @@ void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
             bytesToWrite -= buf.size();
         }
     }
-    // at this point payload.Fragments() still has the same elements but they are empty. However we're done with payload,
-    // so no need to do anything with that vector
     // RIP payload...
     if (flush) {
         CDEBUG("write with flush...");
@@ -190,9 +190,9 @@ void TCPRPCChannel::RegisterFailureObserver(FailureObserver_t observer) {
     CDEBUG("register failure observer");
     if (observer == nullptr) {
         CDEBUG("Setting default failure observer");
-        _failureObserver = [this](Endpoint& endpoint, std::exception_ptr exc) {
+        _failureObserver = [this](TXEndpoint& endpoint, std::exception_ptr) {
             if (!this->_closingInProgress) {
-                CWARN("Ignoring failure: (" << exc << "), from " << endpoint.GetURL()
+                CWARN("Ignoring failure, from " << endpoint.GetURL()
                     << ", since there is no failure observer registered...");
             }
         };
@@ -261,4 +261,4 @@ seastar::future<> TCPRPCChannel::GracefulClose(Duration timeout) {
     });
 }
 
-} // k2tx
+} // k2

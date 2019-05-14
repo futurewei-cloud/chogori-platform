@@ -1,14 +1,13 @@
 #include <iostream>
 
-#include "boost/program_options.hpp"
-#include "boost/filesystem.hpp"
+#include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
 
-#include <common/PartitionMetadata.h>
+#include "common/PartitionMetadata.h"
 
-#include <node/module/MemKVModule.h>
+#include "node/module/MemKVModule.h"
 
-#include <lib/Client.h>
-#include "Executor.h"
+#include "client/boost/Client.h"
 
 namespace k2
 {
@@ -16,19 +15,25 @@ namespace k2
 void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port, std::string&& key, std::string&& value)
 {
     MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
+
     std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
         PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest)));
+
+    assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        std::cerr << "Set failed: " << (int)response->getStatus() << std::endl << std::flush;
+        std::cerr << "Set failed: " << getStatusText(response->getStatus()) << std::endl << std::flush;
 }
 
 void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port, std::string&& key)
 {
     MemKVModule<>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
+
     std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
         PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest)));
+
+    assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        std::cerr << "Get failed" << (int)response->getStatus() << std::endl << std::flush;
+        std::cerr << "Get failed" << getStatusText(response->getStatus()) << std::endl << std::flush;
 
     MemKVModule<>::GetResponse getResponse;
     response->payload.getReader().read(getResponse);

@@ -8,15 +8,15 @@
 #include <arpa/inet.h> // for inet_ntop
 #include <seastar/net/inet_address.hh> // for inet_address
 
-//k2tx
+//k2
 #include "common/Log.h"
 
-namespace k2tx {
+namespace k2 {
 const String TCPRPCProtocol::proto("tcp+k2rpc");
 
-TCPRPCProtocol::TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet, uint16_t port):
+TCPRPCProtocol::TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet, SocketAddress addr):
     IRPCProtocol(vnet, proto),
-    _port(port),
+    _addr(addr),
     _stopped(true) {
     K2DEBUG("ctor");
 }
@@ -29,14 +29,14 @@ void TCPRPCProtocol::Start() {
     K2DEBUG("start");
     seastar::listen_options lo;
     lo.reuse_address = true;
-    _listen_socket = _vnet.local().ListenTCP(seastar::make_ipv4_address({_port}), lo);
+    _listen_socket = _vnet.local().ListenTCP(_addr, lo);
     _stopped = false;
 
     seastar::do_until(
         [this] { return _stopped;},
         [this] {
         return _listen_socket->accept().then(
-            [this] (seastar::connected_socket fd, seastar::socket_address addr) mutable {
+            [this] (seastar::connected_socket fd, SocketAddress addr) mutable {
                 K2DEBUG("Accepted connection from " << addr);
                 auto&& chan = seastar::make_lw_shared<TCPRPCChannel>
                                     (std::move(fd), _endpointFromAddress(std::move(addr)));
@@ -63,6 +63,17 @@ RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::Builder(VirtualNetworkStack::D
         K2DEBUG("builder running");
         return seastar::static_pointer_cast<IRPCProtocol>(
             seastar::make_shared<TCPRPCProtocol>(vnet, port));
+    };
+}
+
+RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::Builder(VirtualNetworkStack::Dist_t& vnet, IAddressProvider& addrProvider) {
+    K2DEBUG("builder creating");
+    return [&vnet, &addrProvider]() mutable -> seastar::shared_ptr<IRPCProtocol> {
+        auto myID = seastar::engine().cpu_id() % seastar::smp::count;
+        K2DEBUG("builder created");
+
+        return seastar::static_pointer_cast<IRPCProtocol>(
+            seastar::make_shared<TCPRPCProtocol>(vnet, addrProvider.GetAddress(myID)));
     };
 }
 
@@ -98,13 +109,13 @@ seastar::future<> TCPRPCProtocol::stop() {
         });
 }
 
-std::unique_ptr<Endpoint> TCPRPCProtocol::GetEndpoint(String url) {
+std::unique_ptr<TXEndpoint> TCPRPCProtocol::GetTXEndpoint(String url) {
     if (_stopped) {
         K2WARN("Unable to create endpoint since we're stopped for url " << url);
         return nullptr;
     }
     K2DEBUG("Get endpoint for " << url);
-    auto ep = Endpoint::FromURL(url, _vnet.local().GetTCPAllocator());
+    auto ep = TXEndpoint::FromURL(url, _vnet.local().GetTCPAllocator());
     if (!ep || ep->GetProtocol() != proto) {
         K2WARN("Cannot construct non-`" << proto << "` endpoint");
         return nullptr;
@@ -112,7 +123,7 @@ std::unique_ptr<Endpoint> TCPRPCProtocol::GetEndpoint(String url) {
     return std::move(ep);
 }
 
-void TCPRPCProtocol::Send(Verb verb, std::unique_ptr<Payload> payload, Endpoint& endpoint, MessageMetadata metadata) {
+void TCPRPCProtocol::Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) {
     if (_stopped) {
         K2WARN("Dropping message since we're stopped: verb=" << verb << ", url=" << endpoint.GetURL());
         return;
@@ -126,7 +137,7 @@ void TCPRPCProtocol::Send(Verb verb, std::unique_ptr<Payload> payload, Endpoint&
     chan->Send(verb, std::move(payload), std::move(metadata));
 }
 
-seastar::lw_shared_ptr<TCPRPCChannel> TCPRPCProtocol::_getOrMakeChannel(Endpoint& endpoint) {
+seastar::lw_shared_ptr<TCPRPCChannel> TCPRPCProtocol::_getOrMakeChannel(TXEndpoint& endpoint) {
     // look for an existing channel
     K2DEBUG("get or make channel: " << endpoint.GetURL());
     auto iter = _channels.find(endpoint);
@@ -157,7 +168,7 @@ void TCPRPCProtocol::_handleNewChannel(seastar::lw_shared_ptr<TCPRPCChannel> cha
         K2WARN("skipping processing of an empty channel");
         return;
     }
-    K2DEBUG("processing channel: "<< chan->GetEndpoint().GetURL());
+    K2DEBUG("processing channel: "<< chan->GetTXEndpoint().GetURL());
 
     chan->RegisterMessageObserver(
     [shptr=seastar::make_lw_shared<>(weak_from_this())] (Request& request) {
@@ -169,10 +180,12 @@ void TCPRPCProtocol::_handleNewChannel(seastar::lw_shared_ptr<TCPRPCChannel> cha
     });
 
     chan->RegisterFailureObserver(
-    [shptr=seastar::make_lw_shared<>(weak_from_this())] (Endpoint& endpoint, auto exc) {
+    [shptr=seastar::make_lw_shared<>(weak_from_this())] (TXEndpoint& endpoint, auto exc) {
         seastar::weak_ptr<TCPRPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
         if (weakP && !weakP->_stopped) {
-            K2WARN("Channel " << endpoint.GetURL() << ", failed due to " << exc);
+            if (exc) {
+                K2WARN("Channel " << endpoint.GetURL() << ", failed due to " << exc);
+            }
             auto chanIter = weakP->_channels.find(endpoint);
             if (chanIter != weakP->_channels.end()) {
                 auto chan = chanIter->second;
@@ -181,16 +194,16 @@ void TCPRPCProtocol::_handleNewChannel(seastar::lw_shared_ptr<TCPRPCChannel> cha
             }
         }
     });
-    assert(chan->GetEndpoint().CanAllocate());
-    _channels.emplace(chan->GetEndpoint(), chan);
+    assert(chan->GetTXEndpoint().CanAllocate());
+    _channels.emplace(chan->GetTXEndpoint(), chan);
 }
 
-Endpoint TCPRPCProtocol::_endpointFromAddress(seastar::socket_address addr) {
+TXEndpoint TCPRPCProtocol::_endpointFromAddress(SocketAddress addr) {
     const size_t bufsize = 64;
     char buffer[bufsize];
     auto inetaddr=addr.addr();
     String ip(::inet_ntop(int(inetaddr.in_family()), inetaddr.data(), buffer, bufsize));
-    return Endpoint(proto, std::move(ip), addr.port(), _vnet.local().GetTCPAllocator());
+    return TXEndpoint(proto, std::move(ip), addr.port(), _vnet.local().GetTCPAllocator());
 }
 
-} // namespace k2tx
+} // namespace k2

@@ -9,10 +9,10 @@
 #include <seastar/core/shared_ptr.hh> // seastar's pointers
 #include <seastar/core/distributed.hh> // seastar's distributed/sharded stuff
 
-// k2tx
+// k2
 #include "IRPCProtocol.h"
 
-namespace k2tx {
+namespace k2 {
 
 // This is a helper class used to construct concrete protocols of a given type on demand in the process
 // of building a distributed<> object.
@@ -53,4 +53,4 @@ private:
     seastar::shared_ptr<IRPCProtocol> _instance;
 }; // RPCProtocolFactory
 
-} // k2tx
+} // k2

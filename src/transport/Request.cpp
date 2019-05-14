@@ -4,9 +4,9 @@
 #include "Request.h"
 #include "common/Log.h"
 
-namespace k2tx {
+namespace k2 {
 
-Request::Request(Verb verb, Endpoint& endpoint, MessageMetadata metadata, std::unique_ptr<Payload> payload):
+Request::Request(Verb verb, TXEndpoint& endpoint, MessageMetadata metadata, std::unique_ptr<Payload> payload):
     verb(verb),
     endpoint(endpoint),
     metadata(std::move(metadata)),

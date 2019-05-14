@@ -42,7 +42,7 @@ public:
                             assert(this->_in.eof()); // at this point _in.eof() should be true
                             return; // just say we're done so the loop can evaluate the end condition
                         }
-                        K2LOG("Read "<< packet.size() << " bytes: " << k2tx::String(packet.get(), packet.size()));
+                        K2LOG("Read "<< packet.size() << " bytes: " << k2::String(packet.get(), packet.size()));
                         this->send(std::move(packet));
                     });
             }
