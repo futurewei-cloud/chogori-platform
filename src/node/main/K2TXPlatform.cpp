@@ -46,7 +46,7 @@ public:
 
         _header->status = status;
         _header->moduleCode = code;
-        _header->messageSize = _outPayload->getSize()-sizeof(ResponseMessage::Header);
+        _header->messageSize = _outPayload->getSize() - txconstants::MAX_HEADER_SIZE - sizeof(ResponseMessage::Header);
         _responded = true;
 
         _disp.sendReply(std::move(_outPayload), _request);

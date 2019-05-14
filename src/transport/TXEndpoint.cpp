@@ -61,13 +61,6 @@ TXEndpoint::~TXEndpoint() {
     K2DEBUG("dtor");
 }
 
-TXEndpoint::TXEndpoint():
-    _port(0),
-    _hash(0),
-    _allocator(nullptr) {
-    K2DEBUG("ctor");
-}
-
 TXEndpoint::TXEndpoint(String protocol, String ip, uint32_t port, BinaryAllocatorFunctor allocator):
     _protocol(std::move(protocol)),
     _ip(std::move(ip)),

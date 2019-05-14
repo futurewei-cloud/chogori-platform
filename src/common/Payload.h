@@ -149,7 +149,7 @@ public:
 
     PayloadReader getReader(size_t offset = 0) const;
 
-    PayloadWriter getWriter(size_t offset = 0);
+    PayloadWriter getWriter();
 
     void clear()
     {
@@ -159,10 +159,15 @@ public:
 
     std::vector<boost::asio::const_buffer> toBoostBuffers() const
     {
-        std::vector<boost::asio::const_buffer> result(buffers.size());
-        for(auto& buffer : buffers)
-            result.emplace_back(buffer.get(), buffer.size());
+        auto bytesToWrite = getSize();
 
+        std::vector<boost::asio::const_buffer> result(buffers.size());
+        for(size_t i = 0; i < buffers.size() && bytesToWrite > 0; ++i) {
+            auto& buffer = buffers[i];
+            auto toshare = std::min(buffer.size(), bytesToWrite);
+            result.emplace_back(buffer.get(), toshare);
+            bytesToWrite -= toshare;
+        }
         return result;
     }
 
@@ -591,12 +596,12 @@ inline PayloadReader Payload::getReader(size_t offset) const
     return PayloadReader(*this, navigate(offset));
 }
 
-inline PayloadWriter Payload::getWriter(size_t offset)
+inline PayloadWriter Payload::getWriter()
 {
     if(buffers.size() == 0)
         allocateBuffer();
 
-    return PayloadWriter(*this, offset);
+    return PayloadWriter(*this, size);
 }
 
 } //  namespace k2

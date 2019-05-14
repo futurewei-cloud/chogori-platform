@@ -38,15 +38,16 @@ public:
     inline ~RPCParser();
 
     // Utility method used to create a header for an outgoing message
-    // the incoming binary is populated and shrunk down to fit the header
-    inline static void serializeHeader(Binary& binary, Verb verb, MessageMetadata metadata);
+    // the incoming binary must have exactly txconstants::MAX_HEADER_SIZE bytes
+    // reserved in the beginning.
+    // the incoming binary is is populated with the header and trimmed from the front to the first
+    // byte of the header
+    // returns the number of bytes written as header
+    inline static size_t serializeHeader(Binary& binary, Verb verb, MessageMetadata metadata);
 
     // Utility method used to serialize the given user message into a transport message, expressed as a Payload.
     // The user can also provide features via the metadata field
     inline static std::unique_ptr<Payload> serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata);
-    // Same as above, but this version also accepts a frament which we should use to serialize header
-    inline static std::unique_ptr<Payload> serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata, Binary header);
-
 
     // This method should be called with the binary in a stream of messages.
     // we handle messages which can span multiple binarys in this class.
@@ -154,34 +155,42 @@ RPCParser::~RPCParser(){
 }
 
 inline
-void RPCParser::serializeHeader(Binary& binary, Verb verb, MessageMetadata meta) {
-    K2DEBUG("serialize header");
+size_t RPCParser::serializeHeader(Binary& binary, Verb verb, MessageMetadata meta) {
+    // we need to write a header of this many bytes:
+    auto headerSize = sizeof(FixedHeader) + meta.wireByteCount();
+    assert(txconstants::MAX_HEADER_SIZE >= headerSize); // make sure our headers haven't gotten too big
+    assert(binary.size() >= txconstants::MAX_HEADER_SIZE); // make sure we have the room
+
+    K2DEBUG("serialize header. Need bytes: " << headerSize);
+    // trim the header binary so that it starts at the first header byte
+    binary.trim_front(txconstants::MAX_HEADER_SIZE - headerSize);
+    size_t writeOffset = 0;
+
     // take care of the fixed header first
-    size_t writtenSoFar = 0;
     FixedHeader fHeader{.features=meta.features, .verb=verb};
-    std::memcpy(binary.get_write() + writtenSoFar, (uint8_t*)&fHeader, sizeof(fHeader));
-    writtenSoFar += sizeof(fHeader);
+    std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&fHeader, sizeof(fHeader));
+    writeOffset += sizeof(fHeader);
 
     // now for variable stuff
     if (meta.isPayloadSizeSet()) {
         K2DEBUG("have payload");
-        std::memcpy(binary.get_write() + writtenSoFar, (uint8_t*)&meta.payloadSize, sizeof(meta.payloadSize));
-        writtenSoFar += sizeof(meta.payloadSize);
+        std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&meta.payloadSize, sizeof(meta.payloadSize));
+        writeOffset += sizeof(meta.payloadSize);
     }
     if (meta.isRequestIDSet()) {
         K2DEBUG("have request id" << meta.requestID);
-        std::memcpy(binary.get_write() + writtenSoFar, (uint8_t*)&meta.requestID, sizeof(meta.requestID));
-        writtenSoFar += sizeof(meta.requestID);
+        std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&meta.requestID, sizeof(meta.requestID));
+        writeOffset += sizeof(meta.requestID);
     }
     if (meta.isResponseIDSet()) {
         K2DEBUG("have response id" << meta.responseID);
-        std::memcpy(binary.get_write() + writtenSoFar, (uint8_t*)&meta.responseID, sizeof(meta.responseID));
-        writtenSoFar += sizeof(meta.responseID);
+        std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&meta.responseID, sizeof(meta.responseID));
+        writeOffset += sizeof(meta.responseID);
     }
 
-    // all done. Truncate end of binary
-    K2DEBUG("wrote total bytes: " << writtenSoFar);
-    binary.trim(writtenSoFar);
+    // all done.
+    K2DEBUG("Write offset after writing header: " << writeOffset);
+    return headerSize;
 }
 
 inline
@@ -312,8 +321,8 @@ void RPCParser::_stWAIT_FOR_FIXED_HEADER() {
     _currentBinary.trim_front(sizeof(_fixedHeader)); // rewind the current binary
 
     // check if message is valid
-    if (_fixedHeader.magic != K2RPCMAGIC) {
-        K2WARN("Received message with magic bit mismatch: " << _fixedHeader.magic << ", vs: " << K2RPCMAGIC);
+    if (_fixedHeader.magic != txconstants::K2RPCMAGIC) {
+        K2WARN("Received message with magic bit mismatch: " << _fixedHeader.magic << ", vs: " << txconstants::K2RPCMAGIC);
         _pState = ParseState::FAILED_STREAM;
         _parserFailureException = MagicMismatchException();
     }
@@ -532,37 +541,20 @@ void RPCParser::_stFAILED_STREAM() {
 inline
 std::unique_ptr<Payload>
 RPCParser::serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata) {
-    K2DEBUG("serializing message with convenience header fragment");
-    Binary header(sizeof(FixedHeader) + sizeof(MessageMetadata));
-    return RPCParser::serializeMessage(std::move(message), verb, std::move(metadata), std::move(header));
-}
+    K2DEBUG("serializing message");
+    auto userMessageSize = message.getSize();
+    auto&& buffers = message.release();
+    auto metaPayloadSize = metadata.isPayloadSizeSet() ? metadata.payloadSize : 0;
 
-inline
-std::unique_ptr<Payload>
-RPCParser::serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata, Binary header) {
-    K2DEBUG("serializing message with provided header fragment");
-    if (message.getSize() > 0) {
-        metadata.setPayloadSize(message.getSize());
+    if (userMessageSize == metaPayloadSize) {
+        // the incoming message doesn't have room for a header
+        buffers.insert(buffers.begin(), Binary(txconstants::MAX_HEADER_SIZE));
+        userMessageSize += txconstants::MAX_HEADER_SIZE;
     }
-    RPCParser::serializeHeader(header, verb, std::move(metadata));
-    std::vector<Binary> buffers;
-    auto totalDataSize = header.size();
-    buffers.push_back(std::move(header));
 
-    if (message.getSize() > 0 ) {
-        auto messageDataSize = message.getSize();
-        totalDataSize += messageDataSize;
-
-        for (auto& buf: message.release()) {
-            if (buf.size() > messageDataSize) {
-                buf.trim(messageDataSize);
-            }
-            buffers.push_back(std::move(buf));
-            messageDataSize -= buf.size();
-        }
-    }
-    std::unique_ptr<Payload> result= std::make_unique<Payload>(std::move(buffers), totalDataSize);
-    return result;
+    assert(userMessageSize == metaPayloadSize  + txconstants::MAX_HEADER_SIZE);
+    auto headerSize = RPCParser::serializeHeader(buffers[0], verb, std::move(metadata));
+    return std::make_unique<Payload>(std::move(buffers), headerSize + metaPayloadSize);
 }
 
 } // namespace k2

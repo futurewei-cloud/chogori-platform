@@ -5,6 +5,7 @@
 
 #include "common/Common.h"
 #include "common/Payload.h"
+#include "RPCHeader.h"
 
 namespace k2 {
 // an endpoint has: three components: protocol, IP, and port. It can be represented in a string form (url) as
@@ -16,9 +17,6 @@ public: // lifecycle
     // construct an endpoint from a url with the given allocator
     // Returns nullptr if there was a problem parsing the url
     static std::unique_ptr<TXEndpoint> fromURL(String url, BinaryAllocatorFunctor allocator);
-
-    // default constructor
-    TXEndpoint();
 
     // construct an endpoint from the tuple (protocol, ip, port) with the given allocator and protocol
     TXEndpoint(String protocol, String ip, uint32_t port, BinaryAllocatorFunctor allocator);
@@ -56,19 +54,13 @@ public: // API
     // This method should be used to create new payloads. The payloads are allocated in a manner consistent
     // with the transport for the protocol of this endpoint
     std::unique_ptr<Payload> newPayload() {
-        if (_allocator) {
-            return std::make_unique<Payload>(_allocator, _protocol);
+        if (!_allocator) {
+            throw Payload::NonAllocatingPayloadException();
         }
-        throw Payload::NonAllocatingPayloadException();
-    }
-
-    // This method can be used to create a new binary in a manner consistent
-    // with the transport for the protocol of this endpoint
-    Binary newBinary() {
-        if (_allocator) {
-            return _allocator();
-        }
-        throw Payload::NonAllocatingPayloadException();
+        auto result = std::make_unique<Payload>(_allocator, _protocol);
+        // rewind enough bytes to write out a header when we're sending
+        result->getWriter().skip(txconstants::MAX_HEADER_SIZE);
+        return result;
     }
 
     // Use to determine if this endpoint can allocate
@@ -85,6 +77,7 @@ private: // fields
     BinaryAllocatorFunctor _allocator;
 
 private: // Not needed
+    TXEndpoint() = delete;
     TXEndpoint& operator=(const TXEndpoint& o) = delete;
     TXEndpoint& operator=(TXEndpoint&& o) = delete;
 

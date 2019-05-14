@@ -82,7 +82,7 @@ public:
         PayloadWriter getWriter()
         {
             assert(header);
-            return payload.getWriter(sizeof(Header));
+            return payload.getWriter();
         }
 
         Payload&& done()

@@ -67,7 +67,13 @@ TCPRPCChannel::~TCPRPCChannel(){
 }
 
 void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata, bool flush) {
-    CDEBUG("send: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
+    assert(payload->getSize() >= txconstants::MAX_HEADER_SIZE);
+    auto dataSize = payload->getSize() - txconstants::MAX_HEADER_SIZE;
+    if (dataSize > 0) {
+        metadata.setPayloadSize(dataSize);
+    }
+    CDEBUG("send: verb=" << verb << ", payloadSize="<< dataSize << ", flush=" << flush);
+
     if (_closingInProgress) {
         K2WARN("channel is going down. ignoring send");
         return;
@@ -78,30 +84,21 @@ void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
         _pendingWrites.emplace_back(_BufferedWrite{verb, std::move(payload), std::move(metadata)});
         return;
     }
-    // Messages are written in two parts: the header and the payload.
-    // ask the serializer to write out its header to a binary
-    CDEBUG("writing header: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
-    auto header = _endpoint.newBinary();
-    RPCParser::serializeHeader(header, verb, std::move(metadata));
-
-    // cast to seastar-compatible type
-    _out.write(std::move(k2::toCharTempBuffer(header)));
-
-    // payload is optional
-    if (payload->getSize() > 0) {
-        CDEBUG("writing payload: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
-        // we have some payload to write
-        auto bytesToWrite = payload->getSize();
-        CDEBUG("Payload size is now: " << bytesToWrite);
-
-        for (auto& buf: payload->release()) {
-            if (buf.size() > bytesToWrite) {
-                buf.trim(bytesToWrite);
-            }
-            _out.write(std::move(k2::toCharTempBuffer(buf)));
-            bytesToWrite -= buf.size();
+    // disassemble the payload so that we can write the header in the first binary
+    auto&& buffers = payload->release();
+    // write the header into the headroom of the first binary and remember to send the extra bytes
+    dataSize += RPCParser::serializeHeader(buffers[0], verb, std::move(metadata));
+    // write out the header and data
+    CDEBUG("writing message: verb=" << verb << ", messageSize="<< dataSize << ", flush=" << flush);
+    for (size_t i = 0; i < buffers.size() && dataSize > 0; ++i) {
+        auto& buf = buffers[i];
+        if (buf.size() > dataSize) {
+            buf.trim(dataSize);
         }
+        _out.write(std::move(k2::toCharTempBuffer(buf)));
+        dataSize -= buf.size();
     }
+
     // RIP payload...
     if (flush) {
         CDEBUG("write with flush...");

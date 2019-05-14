@@ -48,9 +48,11 @@ std::unique_ptr<Payload> __recvMessage(boost::asio::ip::tcp::socket& socket) {
 }
 
 std::unique_ptr<Payload> __createTransportPayload(Payload&& userData) {
-    K2DEBUG("creating transport payload from data size=" << (userdata?userData->getSize():0));
+    K2DEBUG("creating transport payload from data size=" << userData.getSize());
     k2::MessageMetadata metadata;
     metadata.setRequestID(uint64_t(std::rand()));
+    metadata.setPayloadSize(userData.getSize());
+
     return k2::RPCParser::serializeMessage(
         std::move(userData), (k2::Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE, std::move(metadata));
 }
