@@ -4,7 +4,7 @@
 #include <seastar/core/distributed.hh>
 #include "common/Log.h"
 #include "transport/BaseTypes.h"
-#define CLOG(msg) {K2LOG("{conn="<< (void*)this << ", addr=" << this->_addr << "} " << msg)}
+#define CLOG(msg) {K2INFO("{conn="<< (void*)this << ", addr=" << this->_addr << "} " << msg)}
 class connection {
     seastar::connected_socket _tcp_conn;
     seastar::socket_address _addr;
@@ -38,11 +38,11 @@ public:
                 return this->_in.read().then(
                     [this](seastar::temporary_buffer<char> packet) {
                         if (packet.empty()) {
-                            K2LOG("remote end closed connection");
+                            K2INFO("remote end closed connection");
                             assert(this->_in.eof()); // at this point _in.eof() should be true
                             return; // just say we're done so the loop can evaluate the end condition
                         }
-                        K2LOG("Read "<< packet.size() << " bytes: " << k2::String(packet.get(), packet.size()));
+                        K2INFO("Read "<< packet.size() << " bytes: " << k2::String(packet.get(), packet.size()));
                         this->send(std::move(packet));
                     });
             }
@@ -66,7 +66,7 @@ class Server {
     bool _stopped;
 public:
     Server() {
-        K2LOG("Server ctor");
+        K2INFO("Server ctor");
         seastar::listen_options lopts;
         lopts.reuse_address = true;
         _listen_socket = seastar::engine().listen(seastar::make_ipv4_address({10000}), lopts);
@@ -74,20 +74,20 @@ public:
     }
 
     void run() {
-        K2LOG("Running Server");
+        K2INFO("Running Server");
         seastar::do_until(
             [this] { return _stopped;},
             [this] {
             return _listen_socket->accept().then([this] (seastar::connected_socket fd, seastar::socket_address addr) mutable {
-                K2LOG("Accepted connection from " << addr);
+                K2INFO("Accepted connection from " << addr);
                 ( new connection(std::move(fd), std::move(addr)) )->run();
             })
             .handle_exception([this] (auto exc) {
                 if (!_stopped) {
-                    K2LOG("Accept received exception(ignoring): " << exc);
+                    K2INFO("Accept received exception(ignoring): " << exc);
                 }
                 else {
-                    K2LOG("Server is exiting...");
+                    K2INFO("Server is exiting...");
                 }
                 return seastar::make_ready_future();
             });
@@ -95,7 +95,7 @@ public:
     }
 
     seastar::future<> stop() {
-        K2LOG("Server stop");
+        K2INFO("Server stop");
         _stopped = true;
         _listen_socket->abort_accept();
         return seastar::make_ready_future();
@@ -107,13 +107,13 @@ int main(int argc, char** argv) {
     seastar::app_template app;
     return app.run_deprecated(argc, argv, [&] {
         seastar::engine().at_exit([&] {
-            K2LOG("Engine exit");
+            K2INFO("Engine exit");
             return server.stop();
         });
         server.start().then([&]() {
-            K2LOG("Service started...");
+            K2INFO("Service started...");
             server.invoke_on_all(&Server::run);
         });
     });
-    K2LOG("main exit");
+    K2INFO("main exit");
 }

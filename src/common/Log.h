@@ -16,7 +16,9 @@ public:
     LogEntry()=default;
     LogEntry(LogEntry&&)=default;
     ~LogEntry() {
-        std::cerr << out.rdbuf()->str() << std::endl;
+        // this line should output just the str from the stream since all chained "<<" may cause a thread switch
+        // and thus garbled log output
+        std::cerr << out.rdbuf()->str();
     }
     template<typename T>
     std::ostringstream& operator<<(const T& val) {
@@ -55,17 +57,17 @@ inline LogEntry StartLogStream() {
 // This file contains some utility macros for logging and tracing,
 // TODO hook this up into proper logging
 
-#define K2LOG(msg) { \
-    k2::log::StartLogStream() << "[" << __FILE__ << ":" << __LINE__ << " @" << __FUNCTION__ << "]" << msg; \
+#define K2LOG(level, msg) { \
+    k2::log::StartLogStream() << "[" << level << "] [" << __FILE__ << ":" << __LINE__ << " @" << __FUNCTION__ << "]" << msg << std::endl; \
     }
 
 #if K2_DEBUG_LOGGING == 1
-#define K2DEBUG(msg) K2LOG("[DEBUG] " << msg)
+#define K2DEBUG(msg) K2LOG("DEBUG", msg)
 #else
 #define K2DEBUG(msg)
 #endif
 
 // TODO warnings and errors must also emit metrics
-#define K2INFO(msg) K2LOG("[INFO] " << msg)
-#define K2WARN(msg) K2LOG("[WARN] " << msg)
-#define K2ERROR(msg) K2LOG("[ERROR] " << msg)
+#define K2INFO(msg) K2LOG("INFO", msg)
+#define K2WARN(msg) K2LOG("WARN", msg)
+#define K2ERROR(msg) K2LOG("ERROR", msg)

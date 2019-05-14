@@ -122,7 +122,7 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
     );
     _rpcParser.registerParserFailureObserver(
         [this](std::exception_ptr exc) {
-            CDEBUG("Received parser exception " << exc);
+            CDEBUG("Received parser exception");
             this->_failureObserver(this->_endpoint, exc);
         }
     );
