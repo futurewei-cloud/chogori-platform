@@ -24,10 +24,10 @@ namespace k2 {
 class TCPRPCProtocol: public IRPCProtocol, public seastar::weakly_referencable<TCPRPCProtocol> {
 public: // types
     // Convenience builder which opens a listener on the same port across all cores
-    static RPCProtocolFactory::BuilderFunc_t Builder(VirtualNetworkStack::Dist_t& vnet, uint16_t port);
+    static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet, uint16_t port);
 
     // Allow building of protocols with an address provider.
-    static RPCProtocolFactory::BuilderFunc_t Builder(VirtualNetworkStack::Dist_t& vnet, IAddressProvider& addrProvider);
+    static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet, IAddressProvider& addrProvider);
 
     // The official protocol name supported for communications over TCPRPC channels
     static const String proto;
@@ -45,13 +45,13 @@ public: // API
     // 1. obtain protocol-specific payloads
     // 2. send messages.
     // returns blank pointer if we failed to parse the url or if the protocol is not supported
-    std::unique_ptr<TXEndpoint> GetTXEndpoint(String url) override;
+    std::unique_ptr<TXEndpoint> getTXEndpoint(String url) override;
 
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
     // This is a lower-level API which is useful for sending messages that do not expect replies.
     // The RPC message is configured with the given metadata
-    void Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) override;
+    void send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) override;
 
 public: // distributed<> interface
     // iface: called by seastar's distributed mechanism when stop() is invoked on the distributed container.
@@ -59,7 +59,7 @@ public: // distributed<> interface
     seastar::future<> stop() override;
 
     // Should be called by user when all distributed objects have been created
-    void Start() override;
+    void start() override;
 
 private: // methods
     // utility method which ew use to obtain a connection(either existing or new) for the given endpoint

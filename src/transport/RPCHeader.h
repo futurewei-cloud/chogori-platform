@@ -48,44 +48,44 @@ public:
 class MessageMetadata {
 public: // API
     // RequestID at position 0
-    void SetRequestID(uint32_t requestID) {
+    void setRequestID(uint32_t requestID) {
         K2DEBUG("Set request id=" << requestID);
         this->requestID = requestID;
         this->features |= (1<<0); // bit0
     }
-    bool IsRequestIDSet() {
+    bool isRequestIDSet() {
         K2DEBUG("is request id set=" << (this->features & (1<<0)) );
         return this->features & (1<<0); // bit0
     }
 
     // ResponseID at position 1
-    void SetResponseID(uint32_t responseID) {
+    void setResponseID(uint32_t responseID) {
         K2DEBUG("Set response id=" << responseID);
         this->responseID = responseID;
         this->features |= (1<<1); // bit1
     }
-    bool IsResponseIDSet() {
+    bool isResponseIDSet() {
         K2DEBUG("is response id set=" << (this->features & (1<<1)) );
         return this->features & (1<<1); // bit1
     }
 
     // PayloadSize at position 2
-    void SetPayloadSize(uint32_t payloadSize) {
+    void setPayloadSize(uint32_t payloadSize) {
         if (payloadSize > 0) {
             this->payloadSize = payloadSize;
             this->features |= (1<<2); // bit2
         }
     }
-    bool IsPayloadSizeSet() {
+    bool isPayloadSizeSet() {
         K2DEBUG("is payloadSize set=" << (this->features & (1<<2)) );
         return this->features & (1<<2); // bit2
     }
 
     // this method is used to determine how many wire bytes are needed given the set features
-    size_t WireByteCount() {
-        return IsPayloadSizeSet()*sizeof(payloadSize) +
-               IsRequestIDSet()*sizeof(requestID) +
-               IsResponseIDSet()*sizeof(responseID);
+    size_t wireByteCount() {
+        return isPayloadSizeSet()*sizeof(payloadSize) +
+               isRequestIDSet()*sizeof(requestID) +
+               isResponseIDSet()*sizeof(responseID);
     }
 
 public: // fields

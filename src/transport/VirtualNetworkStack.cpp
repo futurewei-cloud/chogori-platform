@@ -19,7 +19,7 @@ namespace k2 {
 
 VirtualNetworkStack::VirtualNetworkStack() {
     K2DEBUG("ctor");
-    RegisterLowTCPMemoryObserver(nullptr); // install default observer
+    registerLowTCPMemoryObserver(nullptr); // install default observer
 }
 
 VirtualNetworkStack::~VirtualNetworkStack() {
@@ -27,23 +27,23 @@ VirtualNetworkStack::~VirtualNetworkStack() {
     K2DEBUG("dtor");
 }
 
-seastar::server_socket VirtualNetworkStack::ListenTCP(SocketAddress sa, seastar::listen_options opt) {
+seastar::server_socket VirtualNetworkStack::listenTCP(SocketAddress sa, seastar::listen_options opt) {
     K2DEBUG("listen tcp" << sa);
     // TODO For now, just use the engine's global network
     return seastar::engine().net().listen(std::move(sa), std::move(opt));
 }
 
 seastar::future<seastar::connected_socket>
-VirtualNetworkStack::ConnectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress) {
+VirtualNetworkStack::connectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress) {
     // TODO For now, just use the engine's global network
     return seastar::engine().net().connect(std::move(remoteAddress), std::move(sourceAddress));
 }
 
-void VirtualNetworkStack::Start(){
+void VirtualNetworkStack::start(){
     K2DEBUG("start");
 }
 
-BinaryAllocatorFunctor VirtualNetworkStack::GetTCPAllocator() {
+BinaryAllocatorFunctor VirtualNetworkStack::getTCPAllocator() {
     // The seastar stacks don't expose allocation mechanism so we just allocate
     // the binaries in user space
     return []() {
@@ -59,7 +59,7 @@ BinaryAllocatorFunctor VirtualNetworkStack::GetTCPAllocator() {
     };
 }
 
-void VirtualNetworkStack::RegisterLowTCPMemoryObserver(LowMemoryObserver_t observer) {
+void VirtualNetworkStack::registerLowTCPMemoryObserver(LowMemoryObserver_t observer) {
     if (observer == nullptr) {
         _lowTCPMemObserver = [](size_t requiredReleaseBytes){
             K2WARN("TCP transport needs memory: "<< requiredReleaseBytes << ", but there is no observer registered");

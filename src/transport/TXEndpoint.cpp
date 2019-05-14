@@ -8,7 +8,7 @@
 
 namespace k2 {
 
-std::unique_ptr<TXEndpoint> TXEndpoint::FromURL(String url, BinaryAllocatorFunctor allocator) {
+std::unique_ptr<TXEndpoint> TXEndpoint::fromURL(String url, BinaryAllocatorFunctor allocator) {
     K2DEBUG("Parsing url " << url);
     String protocol;
     String ip;

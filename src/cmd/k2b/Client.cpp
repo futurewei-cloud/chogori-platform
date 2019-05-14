@@ -55,7 +55,7 @@ public:
 
     void start()
     {
-        _serviceEndpoint = _dispatcher.local().GetTXEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
+        _serviceEndpoint = _dispatcher.local().getTXEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
         if (!_serviceEndpoint) {
             throw std::runtime_error("unable to get an endpoint for url");
         }
@@ -72,13 +72,13 @@ public:
         k2::String msg("Requesting GET reqid=");
         msg += std::to_string(1);
 
-        std::unique_ptr<k2::Payload> request = _serviceEndpoint->NewPayload();
+        std::unique_ptr<k2::Payload> request = _serviceEndpoint->newPayload();
         request->getWriter().write(msg.c_str(), msg.size()+1);
 
-        _dispatcher.local().SendRequest(GET, std::move(request), *_serviceEndpoint, 20s)
+        _dispatcher.local().sendRequest(GET, std::move(request), *_serviceEndpoint, 20s)
         .then([&](std::unique_ptr<k2::Payload> payload) {
-            auto received = GetPayloadString(payload.get());
-            K2INFO("Received GET message from endpoint: " << _serviceEndpoint->GetURL() << ", with payload: " << received);
+            auto received = getPayloadString(payload.get());
+            K2INFO("Received GET message from endpoint: " << _serviceEndpoint->getURL() << ", with payload: " << received);
         })
         .handle_exception([this](auto ex){
             K2INFO("Exception: ex" << ex);
@@ -88,7 +88,7 @@ public:
         });
     }
 
-    static std::string GetPayloadString(k2::Payload* payload) {
+    static std::string getPayloadString(k2::Payload* payload) {
         if (!payload) {
             return "NO_PAYLOAD_RECEIVED";
         }
@@ -151,7 +151,7 @@ int main(int argc, char** argv)
 
         return virtualNetwork.start()
             .then([&] {
-                return protocolFactory.start(k2::TCPRPCProtocol::Builder(std::ref(virtualNetwork), 2021));
+                return protocolFactory.start(k2::TCPRPCProtocol::builder(std::ref(virtualNetwork), 2021));
             })
             .then([&] {
                 return dispatcher.start();
@@ -160,16 +160,16 @@ int main(int argc, char** argv)
                 return client.start(std::ref(dispatcher), tcpPort);
             })
             .then([&] {
-                return virtualNetwork.invoke_on_all(&k2::VirtualNetworkStack::Start);
+                return virtualNetwork.invoke_on_all(&k2::VirtualNetworkStack::start);
             })
             .then([&] {
-                return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::Start);
+                return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::start);
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::RegisterProtocol, seastar::ref(protocolFactory));
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(protocolFactory));
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::Start);
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
             })
             .then([&] {
                 return client.invoke_on_all(&k2::benchmarker::Client::start);

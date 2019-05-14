@@ -19,11 +19,11 @@ std::unique_ptr<Payload> __recvMessage(boost::asio::ip::tcp::socket& socket) {
     k2::RPCParser parser([]{return false;});
     std::unique_ptr<Payload> result;
     bool completed = false;
-    parser.RegisterMessageObserver([&result, &completed](k2::Verb, k2::MessageMetadata, std::unique_ptr<Payload> payload) {
+    parser.registerMessageObserver([&result, &completed](k2::Verb, k2::MessageMetadata, std::unique_ptr<Payload> payload) {
         result = std::move(payload);
         completed = true;
     });
-    parser.RegisterParserFailureObserver([&completed](std::exception_ptr) {
+    parser.registerParserFailureObserver([&completed](std::exception_ptr) {
         K2ERROR("Failed to receive message");
         completed = true;
     });
@@ -40,8 +40,8 @@ std::unique_ptr<Payload> __recvMessage(boost::asio::ip::tcp::socket& socket) {
         assert(readBytes > 0);
 
         k2::Binary buf(boostBuf.data(), readBytes);
-        parser.Feed(std::move(buf));
-        parser.DispatchSome();
+        parser.feed(std::move(buf));
+        parser.dispatchSome();
     }
     K2DEBUG("Received message of size: "<< (result?result->getSize():0));
     return result;
@@ -50,8 +50,8 @@ std::unique_ptr<Payload> __recvMessage(boost::asio::ip::tcp::socket& socket) {
 std::unique_ptr<Payload> __createTransportPayload(Payload&& userData) {
     K2DEBUG("creating transport payload from data size=" << (userdata?userData->getSize():0));
     k2::MessageMetadata metadata;
-    metadata.SetRequestID(uint64_t(std::rand()));
-    return k2::RPCParser::SerializeMessage(
+    metadata.setRequestID(uint64_t(std::rand()));
+    return k2::RPCParser::serializeMessage(
         std::move(userData), (k2::Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE, std::move(metadata));
 }
 

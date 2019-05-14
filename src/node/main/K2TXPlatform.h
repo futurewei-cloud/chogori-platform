@@ -35,7 +35,7 @@ public: // distributed<> interface
     seastar::future<> stop();
 
     // called after construction
-    void Start();
+    void start();
 
 private: // helpers
     seastar::future<> startTaskProcessor();

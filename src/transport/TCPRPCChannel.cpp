@@ -9,17 +9,17 @@
 // k2
 #include "common/Log.h"
 
-#define CDEBUG(msg) K2DEBUG("{conn="<< (void*)this << ", addr=" << this->_endpoint.GetURL() << "} " << msg)
+#define CDEBUG(msg) K2DEBUG("{conn="<< (void*)this << ", addr=" << this->_endpoint.getURL() << "} " << msg)
 #define CHDEBUG(msg) { \
     if (chan) { \
-        K2DEBUG("{conn="<< (void*)(chan.get()) << ", addr=" << chan->_endpoint.GetURL() << "} " << msg); \
+        K2DEBUG("{conn="<< (void*)(chan.get()) << ", addr=" << chan->_endpoint.getURL() << "} " << msg); \
     } \
     else { \
         K2DEBUG("{channel has been destroyed} " << msg); \
     } \
 }
 
-#define CWARN(msg) K2WARN("{conn="<< (void*)this << ", addr=" << this->_endpoint.GetURL() << "} " << msg)
+#define CWARN(msg) K2WARN("{conn="<< (void*)this << ", addr=" << this->_endpoint.getURL() << "} " << msg)
 
 namespace k2 {
 
@@ -29,8 +29,8 @@ TCPRPCChannel::TCPRPCChannel(seastar::connected_socket fd, TXEndpoint endpoint):
     _fdIsSet(false),
     _closingInProgress(false) {
     CDEBUG("new channel");
-    RegisterMessageObserver(nullptr);
-    RegisterFailureObserver(nullptr);
+    registerMessageObserver(nullptr);
+    registerFailureObserver(nullptr);
     _setConnectedSocket(std::move(fd));
 }
 
@@ -40,20 +40,20 @@ TCPRPCChannel::TCPRPCChannel(seastar::future<seastar::connected_socket> futureSo
     _fdIsSet(false),
     _closingInProgress(false) {
     CDEBUG("new future channel");
-    RegisterMessageObserver(nullptr);
-    RegisterFailureObserver(nullptr);
+    registerMessageObserver(nullptr);
+    registerFailureObserver(nullptr);
     futureSocket.then([chan=weak_from_this()](seastar::connected_socket fd) {
         if (chan) {
-            K2DEBUG("future channel for " << chan->_endpoint.GetURL() << " connected successfully");
+            K2DEBUG("future channel for " << chan->_endpoint.getURL() << " connected successfully");
             if (chan->_closingInProgress) {
-                K2WARN("channel is going down. ignoring completed connect for " << chan->_endpoint.GetURL());
+                K2WARN("channel is going down. ignoring completed connect for " << chan->_endpoint.getURL());
                 return;
             }
             chan->_setConnectedSocket(std::move(fd));
         }
     }).handle_exception([chan=weak_from_this()](auto exc) {
         if (chan) {
-            K2WARN("future channel for " << chan->_endpoint.GetURL() << " failed connecting");
+            K2WARN("future channel for " << chan->_endpoint.getURL() << " failed connecting");
             chan->_failureObserver(chan->_endpoint, exc);
         }
     });
@@ -66,7 +66,7 @@ TCPRPCChannel::~TCPRPCChannel(){
     }
 }
 
-void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata, bool flush) {
+void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata, bool flush) {
     CDEBUG("send: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
     if (_closingInProgress) {
         K2WARN("channel is going down. ignoring send");
@@ -81,8 +81,8 @@ void TCPRPCChannel::Send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
     // Messages are written in two parts: the header and the payload.
     // ask the serializer to write out its header to a binary
     CDEBUG("writing header: verb=" << verb << ", payloadSize="<< payload->getSize() << ", flush=" << flush);
-    auto header = _endpoint.NewBinary();
-    RPCParser::SerializeHeader(header, verb, std::move(metadata));
+    auto header = _endpoint.newBinary();
+    RPCParser::serializeHeader(header, verb, std::move(metadata));
 
     // cast to seastar-compatible type
     _out.write(std::move(k2::toCharTempBuffer(header)));
@@ -116,14 +116,14 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
     _fd = std::move(sock);
     _in = _fd.input();
     _out = _fd.output();
-    _rpcParser.RegisterMessageObserver(
+    _rpcParser.registerMessageObserver(
         [this](Verb verb, MessageMetadata metadata, std::unique_ptr<Payload> payload) {
             CDEBUG("Received message with verb: " << verb);
             Request req(verb, _endpoint, std::move(metadata), std::move(payload));
             this->_messageObserver(req);
         }
     );
-    _rpcParser.RegisterParserFailureObserver(
+    _rpcParser.registerParserFailureObserver(
         [this](std::exception_ptr exc) {
             CDEBUG("Received parser exception " << exc);
             this->_failureObserver(this->_endpoint, exc);
@@ -138,22 +138,22 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
             if (!chan) {
                 return seastar::make_ready_future<>();
             }
-            if (chan->_rpcParser.CanDispatch()) {
+            if (chan->_rpcParser.canDispatch()) {
                 CHDEBUG("RPC parser can dispatch more messages as-is. not reading from socket this round");
-                chan->_rpcParser.DispatchSome();
+                chan->_rpcParser.dispatchSome();
                 return seastar::make_ready_future<>();
             }
             return chan->_in.read().
                 then([chan=chan->weak_from_this()](seastar::temporary_buffer<char> packet) {
                     if (chan) {
                         if (packet.empty()) {
-                            CHDEBUG("remote end closed connection in conn for " << chan->_endpoint.GetURL());
+                            CHDEBUG("remote end closed connection in conn for " << chan->_endpoint.getURL());
                             return; // just say we're done so the loop can evaluate the end condition
                         }
                         CHDEBUG("Read "<< packet.size());
-                        chan->_rpcParser.Feed(std::move(k2::toBinary(packet)));
+                        chan->_rpcParser.feed(std::move(k2::toBinary(packet)));
                         // process some messages from the packet
-                        chan->_rpcParser.DispatchSome();
+                        chan->_rpcParser.dispatchSome();
                     }
                 }).
                 handle_exception([chan=chan->weak_from_this()] (auto) {
@@ -164,13 +164,13 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
     .finally([chan=weak_from_this()] {
         CHDEBUG("do_until is done");
         if (chan) {
-            chan->_closerFuture = chan->GracefulClose();
+            chan->_closerFuture = chan->gracefulClose();
         }
         return seastar::make_ready_future<>();
     }); // finally
 }
 
-void TCPRPCChannel::RegisterMessageObserver(MessageObserver_t observer) {
+void TCPRPCChannel::registerMessageObserver(MessageObserver_t observer) {
     CDEBUG("register msg observer");
     if (observer == nullptr) {
         CDEBUG("Setting default message observer");
@@ -186,13 +186,13 @@ void TCPRPCChannel::RegisterMessageObserver(MessageObserver_t observer) {
     }
 }
 
-void TCPRPCChannel::RegisterFailureObserver(FailureObserver_t observer) {
+void TCPRPCChannel::registerFailureObserver(FailureObserver_t observer) {
     CDEBUG("register failure observer");
     if (observer == nullptr) {
         CDEBUG("Setting default failure observer");
         _failureObserver = [this](TXEndpoint& endpoint, std::exception_ptr) {
             if (!this->_closingInProgress) {
-                CWARN("Ignoring failure, from " << endpoint.GetURL()
+                CWARN("Ignoring failure, from " << endpoint.getURL()
                     << ", since there is no failure observer registered...");
             }
         };
@@ -205,12 +205,12 @@ void TCPRPCChannel::RegisterFailureObserver(FailureObserver_t observer) {
 void TCPRPCChannel::_processQueuedWrites() {
     CDEBUG("pending writes: " << _pendingWrites.size());
     for(auto& write: _pendingWrites) {
-        Send(write.verb, std::move(write.payload), std::move(write.meta));
+        send(write.verb, std::move(write.payload), std::move(write.meta));
     }
     _pendingWrites.resize(0); // reclaim any memory used by the vector
 }
 
-seastar::future<> TCPRPCChannel::GracefulClose(Duration timeout) {
+seastar::future<> TCPRPCChannel::gracefulClose(Duration timeout) {
     // TODO, setup a timer for shutting down
     (void) timeout;
     CDEBUG("graceful close")

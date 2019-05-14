@@ -41,16 +41,16 @@ public: // TCP API
     // Create a server(listening) TCP socket on the local VF. The socket is constructed on the
     // given address/port with the given listen_options(e.g. reuse port)
     // It is up to caller to call abort_listen if the socket should be closed.
-    seastar::server_socket ListenTCP(SocketAddress sa, seastar::listen_options opt);
+    seastar::server_socket listenTCP(SocketAddress sa, seastar::listen_options opt);
 
     // Create a socket to connect to a given remote address. Optionally, it binds locally to the given sourceAddress
     // It is up to caller to shutdown the input/output when the socket should be closed
-    seastar::future<seastar::connected_socket> ConnectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress={});
+    seastar::future<seastar::connected_socket> connectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress={});
 
     // Create a payload from the TCP provider
-    BinaryAllocatorFunctor GetTCPAllocator();
+    BinaryAllocatorFunctor getTCPAllocator();
 
-    // RegisterLowTCPMemoryObserver allows the user to register a observer which will be called when
+    // registerLowTCPMemoryObserver allows the user to register a observer which will be called when
     // the TCP stack becomes low on memory and requires the application to release some buffers back.
     // The call is level triggered at the end of every polling cycle when the TCP transport detected that
     // its memory is running low. The user is called with is required total number of bytes that should be released.
@@ -58,7 +58,7 @@ public: // TCP API
     // The intended use case here is for applications which hold on to Payloads for long periods of time.
     // These applications should register themselves here, and when called should release enough Payloads to satisfy
     // the requiredNumberOfBytes parameter in their callback.
-    void RegisterLowTCPMemoryObserver(LowMemoryObserver_t observer);
+    void registerLowTCPMemoryObserver(LowMemoryObserver_t observer);
 
 public: // UDP API
     // TODO add UDP support
@@ -68,7 +68,7 @@ public: // RDMA API
 
 public: // distributed<> interface
     // Should be called by user when all distributed objects have been created
-    void Start();
+    void start();
 
     // called by seastar's distributed mechanism when stop() is invoked on the distributed container.
     seastar::future<> stop();

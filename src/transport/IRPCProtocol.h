@@ -21,7 +21,7 @@ public:
     virtual ~IAddressProvider(){}
 
     // this should be implemented by concrete classes. It should return the address for a given coreID
-    virtual SocketAddress GetAddress(int coreID) = 0;
+    virtual SocketAddress getAddress(int coreID) = 0;
 };
 
 // This is an interface for RPCProtocols
@@ -47,12 +47,12 @@ public: // lifecycle
 
 public: // API
     // Use this method to set the observer for messages from this protocol
-    void SetMessageObserver(MessageObserver_t observer);
+    void setMessageObserver(MessageObserver_t observer);
 
     // This method returns the protocol supported by the implementation
-    const String& SupportedProtocol() { return _protocol;}
+    const String& supportedProtocol() { return _protocol;}
 
-    // SetLowTransportMemoryObserver allows the user to register a observer which will be called when
+    // setLowTransportMemoryObserver allows the user to register a observer which will be called when
     // a transport becomes low on memory.
     // The call is triggered every time a transport has to perform allocation of its buffers, and
     // advises the user which transport type requires release of buffers, and what is the required total number
@@ -63,25 +63,25 @@ public: // API
     // the requiredNumberOfBytes parameter in their callback.
     // Since we're dealing with multiple transports, the callback also indicates which transport protocol
     // required release. The user can then release Payloads whose transport protocol matches.
-    void SetLowTransportMemoryObserver(LowTransportMemoryObserver_t observer);
+    void setLowTransportMemoryObserver(LowTransportMemoryObserver_t observer);
 
     // This method creates an endpoint for a given URL. The endpoint is needed in order to
     // 1. obtain protocol-specific payloads
     // 2. send messages.
     // returns blank pointer if we failed to parse the url or if the protocol is not supported
-    virtual std::unique_ptr<TXEndpoint> GetTXEndpoint(String url) = 0;
+    virtual std::unique_ptr<TXEndpoint> getTXEndpoint(String url) = 0;
 
     // Invokes the remote rpc for the given verb with the given payload at the location based on the given endpoint.
     // The message metadata is used to set message features (such as response/request).
     // This is an asyncronous API. No guarantees are made on the delivery of the payload after the call returns.
-    virtual void Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) = 0;
+    virtual void send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) = 0;
 
 public: // distributed<> interface.
     // called by seastar's distributed mechanism when stop() is invoked on the distributed container.
     virtual seastar::future<> stop() = 0;
 
     // Should be called by user when all distributed objects have been created
-    virtual void Start() = 0;
+    virtual void start() = 0;
 
 protected: // fields
     // our virtual functions

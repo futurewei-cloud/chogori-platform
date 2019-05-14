@@ -43,7 +43,7 @@ public: // distributed<> interface
     seastar::future<> stop();
 
     // Should be called by user when all distributed objects have been created
-    void Start();
+    void start();
 
 private:
     // the factory for building a protocol

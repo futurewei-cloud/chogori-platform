@@ -39,13 +39,13 @@ public:
 
     // Utility method used to create a header for an outgoing message
     // the incoming binary is populated and shrunk down to fit the header
-    inline static void SerializeHeader(Binary& binary, Verb verb, MessageMetadata metadata);
+    inline static void serializeHeader(Binary& binary, Verb verb, MessageMetadata metadata);
 
     // Utility method used to serialize the given user message into a transport message, expressed as a Payload.
     // The user can also provide features via the metadata field
-    inline static std::unique_ptr<Payload> SerializeMessage(Payload&& message, Verb verb, MessageMetadata metadata);
+    inline static std::unique_ptr<Payload> serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata);
     // Same as above, but this version also accepts a frament which we should use to serialize header
-    inline static std::unique_ptr<Payload> SerializeMessage(Payload&& message, Verb verb, MessageMetadata metadata, Binary header);
+    inline static std::unique_ptr<Payload> serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata, Binary header);
 
 
     // This method should be called with the binary in a stream of messages.
@@ -54,23 +54,23 @@ public:
     // For performance reasons, you should only feed more data once all current data has been processed
     // this method will assert that it is not being called when CanDispatch() is true
     // see usage in TCPRPCChannel.cpp for example on how to setup a processing loop
-    inline void Feed(Binary binary);
+    inline void feed(Binary binary);
 
     // Use to determine if this parser could potentially dispatch some messages. It is possible that
     // in some cases no messages will be dispatched if DispatchSome() is called
-    inline bool CanDispatch() { return _shouldParse;}
+    inline bool canDispatch() { return _shouldParse;}
 
     // Ask the parser to process data in the incoming binarys and dispatch some messages. This method
     // dispatches 0 or more messages.
     // Under the covers, we consult the preemptor function to stop dispatching even if we have more messages
     // so the user should keep calling DispatchSome until CanDispatch returns false
-    inline void DispatchSome();
+    inline void dispatchSome();
 
     // Call this method with a callback to observe incoming RPC messages
-    inline void RegisterMessageObserver(MessageObserver_t messageObserver);
+    inline void registerMessageObserver(MessageObserver_t messageObserver);
 
     // Call this method with a callback to observe parsing failure
-    inline void RegisterParserFailureObserver(ParserFailureObserver_t parserFailureObserver);
+    inline void registerParserFailureObserver(ParserFailureObserver_t parserFailureObserver);
 
 private: // types
     enum ParseState: uint8_t {
@@ -144,8 +144,8 @@ RPCParser::RPCParser(std::function<bool()> preemptor):
     _pState(ParseState::WAIT_FOR_FIXED_HEADER),
     _preemptor(preemptor) {
     K2DEBUG("ctor");
-    RegisterMessageObserver(nullptr);
-    RegisterParserFailureObserver(nullptr);
+    registerMessageObserver(nullptr);
+    registerParserFailureObserver(nullptr);
 }
 
 inline
@@ -154,7 +154,7 @@ RPCParser::~RPCParser(){
 }
 
 inline
-void RPCParser::SerializeHeader(Binary& binary, Verb verb, MessageMetadata meta) {
+void RPCParser::serializeHeader(Binary& binary, Verb verb, MessageMetadata meta) {
     K2DEBUG("serialize header");
     // take care of the fixed header first
     size_t writtenSoFar = 0;
@@ -163,17 +163,17 @@ void RPCParser::SerializeHeader(Binary& binary, Verb verb, MessageMetadata meta)
     writtenSoFar += sizeof(fHeader);
 
     // now for variable stuff
-    if (meta.IsPayloadSizeSet()) {
+    if (meta.isPayloadSizeSet()) {
         K2DEBUG("have payload");
         std::memcpy(binary.get_write() + writtenSoFar, (uint8_t*)&meta.payloadSize, sizeof(meta.payloadSize));
         writtenSoFar += sizeof(meta.payloadSize);
     }
-    if (meta.IsRequestIDSet()) {
+    if (meta.isRequestIDSet()) {
         K2DEBUG("have request id" << meta.requestID);
         std::memcpy(binary.get_write() + writtenSoFar, (uint8_t*)&meta.requestID, sizeof(meta.requestID));
         writtenSoFar += sizeof(meta.requestID);
     }
-    if (meta.IsResponseIDSet()) {
+    if (meta.isResponseIDSet()) {
         K2DEBUG("have response id" << meta.responseID);
         std::memcpy(binary.get_write() + writtenSoFar, (uint8_t*)&meta.responseID, sizeof(meta.responseID));
         writtenSoFar += sizeof(meta.responseID);
@@ -185,7 +185,7 @@ void RPCParser::SerializeHeader(Binary& binary, Verb verb, MessageMetadata meta)
 }
 
 inline
-void RPCParser::RegisterMessageObserver(MessageObserver_t messageObserver) {
+void RPCParser::registerMessageObserver(MessageObserver_t messageObserver) {
     K2DEBUG("register message observer");
     if (messageObserver == nullptr) {
         K2DEBUG("registering default observer");
@@ -200,7 +200,7 @@ void RPCParser::RegisterMessageObserver(MessageObserver_t messageObserver) {
 }
 
 inline
-void RPCParser::RegisterParserFailureObserver(ParserFailureObserver_t parserFailureObserver) {
+void RPCParser::registerParserFailureObserver(ParserFailureObserver_t parserFailureObserver) {
     K2DEBUG("register parser failure observer");
     if (parserFailureObserver == nullptr) {
         K2DEBUG("registering default parser failure observer");
@@ -215,7 +215,7 @@ void RPCParser::RegisterParserFailureObserver(ParserFailureObserver_t parserFail
 }
 
 inline
-void RPCParser::Feed(Binary binary) {
+void RPCParser::feed(Binary binary) {
     K2DEBUG("feed bytes" << binary.size());
     assert(_currentBinary.empty());
 
@@ -226,9 +226,9 @@ void RPCParser::Feed(Binary binary) {
 }
 
 inline
-void RPCParser::DispatchSome() {
-    K2DEBUG("dispatch some: " << CanDispatch());
-    while(CanDispatch()) {
+void RPCParser::dispatchSome() {
+    K2DEBUG("dispatch some: " << canDispatch());
+    while(canDispatch()) {
         // parse and dispatch the next message
         _parseAndDispatchOne();
 
@@ -369,7 +369,7 @@ void RPCParser::_stWAIT_FOR_VARIABLE_HEADER() {
     _metadata.features = _fixedHeader.features;
 
     // how many bytes we need off the wire
-    size_t needBytes = _metadata.WireByteCount();
+    size_t needBytes = _metadata.wireByteCount();
     size_t haveBytes = _currentBinary.size(); // NB we can only come in this method with no partial data
 
     K2DEBUG("wait_for_var_header: need=" << needBytes << ", have=" << haveBytes);
@@ -391,17 +391,17 @@ void RPCParser::_stWAIT_FOR_VARIABLE_HEADER() {
     // if we came here, we either don't need any bytes, or we have all the bytes we need in _currentBinary
 
     // now for variable stuff
-    if (_metadata.IsPayloadSizeSet()) {
+    if (_metadata.isPayloadSizeSet()) {
         std::memcpy((uint8_t*)&_metadata.payloadSize, _currentBinary.get_write(), sizeof(_metadata.payloadSize));
         K2DEBUG("wait_for_var_header: have payload size: " << _metadata.payloadSize);
         _currentBinary.trim_front(sizeof(_metadata.payloadSize));
     }
-    if (_metadata.IsRequestIDSet()) {
+    if (_metadata.isRequestIDSet()) {
         std::memcpy((uint8_t*)&_metadata.requestID, _currentBinary.get_write(), sizeof(_metadata.requestID));
         K2DEBUG("wait_for_var_header: have request id: "<< _metadata.requestID);
         _currentBinary.trim_front(sizeof(_metadata.requestID));
     }
-    if (_metadata.IsResponseIDSet()) {
+    if (_metadata.isResponseIDSet()) {
         std::memcpy((uint8_t*)&_metadata.responseID, _currentBinary.get_write(), sizeof(_metadata.responseID));
         K2DEBUG("wait_for_var_header: have response id: " << _metadata.responseID);
         _currentBinary.trim_front(sizeof(_metadata.responseID));
@@ -424,7 +424,7 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
     // how many bytes we need off the wire
     auto partSize = _partialBinary.size();
     auto curSize = _currentBinary.size();
-    auto totalNeed = _metadata.WireByteCount();
+    auto totalNeed = _metadata.wireByteCount();
     K2DEBUG("partial_var_header: need=" << totalNeed <<", partsize=" << partSize << ", curSize=" << curSize);
 
     if (totalNeed > partSize + curSize) {
@@ -448,17 +448,17 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
     _currentBinary.trim_front(totalNeed - partSize);
 
     // now set the variable fields
-    if (_metadata.IsPayloadSizeSet()) {
+    if (_metadata.isPayloadSizeSet()) {
         std::memcpy((uint8_t*)&_metadata.payloadSize, data, sizeof(_metadata.payloadSize));
         K2DEBUG("partial_var_header: have payload size: " << _metadata.payloadSize);
         data += sizeof(_metadata.payloadSize);
     }
-    if (_metadata.IsRequestIDSet()) {
+    if (_metadata.isRequestIDSet()) {
         std::memcpy((uint8_t*)&_metadata.requestID, data, sizeof(_metadata.requestID));
         K2DEBUG("partial_var_header: have request id: "<< _metadata.requestID);
         data += sizeof(_metadata.requestID);
     }
-    if (_metadata.IsResponseIDSet()) {
+    if (_metadata.isResponseIDSet()) {
         std::memcpy((uint8_t*)&_metadata.responseID, data, sizeof(_metadata.responseID));
         K2DEBUG("partial_var_header: have response id: " << _metadata.responseID);
         data += sizeof(_metadata.responseID);
@@ -472,7 +472,7 @@ inline
 void RPCParser::_stWAIT_FOR_PAYLOAD() {
     K2DEBUG("wait_for_payload");
     // check to see if we're expecting payload
-    if (!_metadata.IsPayloadSizeSet() ) {
+    if (!_metadata.isPayloadSizeSet() ) {
         K2DEBUG("wait_for_payload: no payload expected");
         _pState = ParseState::READY_TO_DISPATCH; // ready to dispatch. State machine sill keep going and dispatch
         return;
@@ -531,20 +531,20 @@ void RPCParser::_stFAILED_STREAM() {
 
 inline
 std::unique_ptr<Payload>
-RPCParser::SerializeMessage(Payload&& message, Verb verb, MessageMetadata metadata) {
+RPCParser::serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata) {
     K2DEBUG("serializing message with convenience header fragment");
     Binary header(sizeof(FixedHeader) + sizeof(MessageMetadata));
-    return RPCParser::SerializeMessage(std::move(message), verb, std::move(metadata), std::move(header));
+    return RPCParser::serializeMessage(std::move(message), verb, std::move(metadata), std::move(header));
 }
 
 inline
 std::unique_ptr<Payload>
-RPCParser::SerializeMessage(Payload&& message, Verb verb, MessageMetadata metadata, Binary header) {
+RPCParser::serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata, Binary header) {
     K2DEBUG("serializing message with provided header fragment");
     if (message.getSize() > 0) {
-        metadata.SetPayloadSize(message.getSize());
+        metadata.setPayloadSize(message.getSize());
     }
-    RPCParser::SerializeHeader(header, verb, std::move(metadata));
+    RPCParser::serializeHeader(header, verb, std::move(metadata));
     std::vector<Binary> buffers;
     auto totalDataSize = header.size();
     buffers.push_back(std::move(header));

@@ -20,7 +20,7 @@ public:
     // construct a "connection" to allow a response to be sent to the given request
     AMClientConnection(k2::Request request, k2::RPCDispatcher& disp):
     _responded(false),
-    _outPayload(request.endpoint.NewPayload()),
+    _outPayload(request.endpoint.newPayload()),
     _header(0),
     _request(std::move(request)),
     _disp(disp) {
@@ -49,7 +49,7 @@ public:
         _header->messageSize = _outPayload->getSize()-sizeof(ResponseMessage::Header);
         _responded = true;
 
-        _disp.SendReply(std::move(_outPayload), _request);
+        _disp.sendReply(std::move(_outPayload), _request);
     }
 
 private:
@@ -104,8 +104,8 @@ seastar::future<> NodePoolService::stop() {
     K2INFO("NodePoolService stopping");
     _stopped = true;
     // unregistar all observers
-    _dispatcher.local().RegisterMessageObserver((Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE, nullptr);
-    _dispatcher.local().RegisterLowTransportMemoryObserver(nullptr);
+    _dispatcher.local().registerMessageObserver((Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE, nullptr);
+    _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
     return when_all(std::move(_taskProcessorLoop))
         .then_wrapped([](auto&& fut) {
             fut.ignore_ready_future();
@@ -113,20 +113,20 @@ seastar::future<> NodePoolService::stop() {
         });
 }
 
-void NodePoolService::Start() {
+void NodePoolService::start() {
     K2INFO("NodePoolService starting");
     _stopped = false;
-    _dispatcher.local().RegisterMessageObserver((Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE,
+    _dispatcher.local().registerMessageObserver((Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE,
             [this](k2::Request& request) mutable {
                 K2DEBUG("Dispatching message to AssignmentManager");
                 PartitionRequest partitionRequest;
-                partitionRequest.message = createPartitionMessage(std::move(request.payload), request.endpoint.GetURL());
+                partitionRequest.message = createPartitionMessage(std::move(request.payload), request.endpoint.getURL());
                 partitionRequest.client = std::make_unique<AMClientConnection>(std::move(request), _dispatcher.local());
                 _assignmentManager.processMessage(partitionRequest);
             });
 
     // TODO need to pass this on to the assignment manager as it may be holding messages around
-    _dispatcher.local().RegisterLowTransportMemoryObserver(nullptr);
+    _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
     _taskProcessorLoop = startTaskProcessor();
 }
 
@@ -155,7 +155,7 @@ class NodePoolAddressProvider: public k2::IAddressProvider {
 public:
     NodePoolAddressProvider(NodePool& pool): _pool(pool){}
     ~NodePoolAddressProvider(){}
-    seastar::socket_address GetAddress(int coreID) override {
+    seastar::socket_address getAddress(int coreID) override {
         NodeEndpointConfig nodeConfig = _pool.getEndpoint(coreID);
         return seastar::make_ipv4_address(nodeConfig.ipv4.address, nodeConfig.ipv4.port);
     }
@@ -219,7 +219,7 @@ Status K2TXPlatform::run(NodePool& pool) {
             vnet.start()
             .then([&vnet, &tcpproto, &addrProvider]() {
                 K2INFO("start tcpproto");
-                return tcpproto.start(k2::TCPRPCProtocol::Builder(std::ref(vnet), std::ref(addrProvider)));
+                return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(vnet), std::ref(addrProvider)));
             })
             .then([&]() {
                 K2INFO("start dispatcher");
@@ -233,24 +233,24 @@ Status K2TXPlatform::run(NodePool& pool) {
             // all perform their startup logic
             .then([&]() {
                 K2INFO("Start VNS");
-                return vnet.invoke_on_all(&k2::VirtualNetworkStack::Start);
+                return vnet.invoke_on_all(&k2::VirtualNetworkStack::start);
             })
             .then([&]() {
                 K2INFO("Start tcpproto");
-                return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::Start);
+                return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::start);
             })
             .then([&]() {
                 K2INFO("RegisterProtocol dispatcher");
                 // Could register more protocols here via separate invoke_on_all calls
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::RegisterProtocol, seastar::ref(tcpproto));
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
             })
             .then([&]() {
                 K2INFO("Start dispatcher");
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::Start);
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
             })
             .then([&]() {
                 K2INFO("Start service");
-                return service.invoke_on_all(&NodePoolService::Start);
+                return service.invoke_on_all(&NodePoolService::start);
         });
     });
     K2INFO("Shutdown was successful!");

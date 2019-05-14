@@ -50,7 +50,7 @@ public: // types
     // we use this exception to signal that a protocol isn't supported (e.g. when attempting to send)
     class UnsupportedProtocolException : public std::exception {};
 
-    // we use this to resolve promises for replies in the SendRequest call
+    // we use this to resolve promises for replies in the sendRequest call
     class RequestTimeoutException : public std::exception {};
 
 public:
@@ -65,21 +65,21 @@ public: // distributed<> interface
     seastar::future<> stop();
 
     // Should be called by user when all distributed objects have been created
-    void Start();
+    void start();
 
 public: // API
     // This method is used to register protocols with the dispatcher.
     // we don't allow replacing providers for protocols. If a provider already exists, a
     // DuplicateRegistrationException exception will be raised
     // this method is normally called via distributed<>::invoke_on_all
-    seastar::future<> RegisterProtocol(seastar::reference_wrapper<RPCProtocolFactory::Dist_t> protocol);
+    seastar::future<> registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::Dist_t> protocol);
 
-    // RegisterMessageObserver allows you to register an observer function for a given RPC verb.
+    // registerMessageObserver allows you to register an observer function for a given RPC verb.
     // You can have at most one observer per verb. a DuplicateRegistrationException will be
     // thrown if there is an observer already installed for this verb
-    void RegisterMessageObserver(Verb verb, MessageObserver_t observer);
+    void registerMessageObserver(Verb verb, MessageObserver_t observer);
 
-    // RegisterLowTransportMemoryObserver allows the user to register an observer which will be called when
+    // registerLowTransportMemoryObserver allows the user to register an observer which will be called when
     // a transport becomes low on memory.
     // The call is triggered every time a transport has to perform allocation of its buffers, and
     // advises the user which transport type requires release of buffers, and what is the required total number
@@ -90,31 +90,31 @@ public: // API
     // the requiredNumberOfBytes parameter in their callback.
     // Since we're dealing with multiple transports, the callback also indicates which transport protocol
     // required release. The user can then release Payloads whose transport protocol matches.
-    void RegisterLowTransportMemoryObserver(LowTransportMemoryObserver_t observer);
+    void registerLowTransportMemoryObserver(LowTransportMemoryObserver_t observer);
 
     // This method creates an endpoint for a given URL. The endpoint is needed in order to
     // 1. obtain protocol-specific payloads
     // 2. send messages.
     // returns blank pointer if we failed to parse the url or if the protocol is not supported
-    std::unique_ptr<TXEndpoint> GetTXEndpoint(String url);
+    std::unique_ptr<TXEndpoint> getTXEndpoint(String url);
 
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
     // This is a lower-level API which is useful for sending messages that do not expect replies.
-    void Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint);
+    void send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint);
 
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload.
-    // This API is provided to allow users to send requests which expect replies (as opposed to Send() above).
+    // This API is provided to allow users to send requests which expect replies (as opposed to send() above).
     // The method provides a future<> based callback support via the return value.
     // The future will complete with exception if the given timeout is reached before we receive a response.
     // if we receive a response after the timeout is reached, we will ignore it internally.
     seastar::future<std::unique_ptr<Payload>>
-    SendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout);
+    sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout);
 
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
-    void SendReply(std::unique_ptr<Payload> payload, Request& forRequest);
+    void sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
 
 private: // methods
     // Process new messages received from protocols

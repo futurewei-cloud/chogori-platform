@@ -12,7 +12,7 @@ namespace k2{
 RPCDispatcher::RPCDispatcher():
     _msgSequenceID(uint32_t(std::rand())) {
     K2DEBUG("ctor");
-    RegisterLowTransportMemoryObserver(nullptr);
+    registerLowTransportMemoryObserver(nullptr);
 }
 
 RPCDispatcher::~RPCDispatcher() {
@@ -20,20 +20,20 @@ RPCDispatcher::~RPCDispatcher() {
 }
 
 seastar::future<>
-RPCDispatcher::RegisterProtocol(seastar::reference_wrapper<RPCProtocolFactory::Dist_t> dprotocol) {
+RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::Dist_t> dprotocol) {
     // we don't allow replacing providers for protocols. Raise an exception if there is a provider already
     auto proto = dprotocol.get().local().instance();
-    K2DEBUG("registering protocol: " << proto->SupportedProtocol());
-    auto emplace_pair = _protocols.try_emplace(proto->SupportedProtocol(), proto);
+    K2DEBUG("registering protocol: " << proto->supportedProtocol());
+    auto emplace_pair = _protocols.try_emplace(proto->supportedProtocol(), proto);
     if (!emplace_pair.second) {
         throw DuplicateRegistrationException();
     }
 
     // set ourselves to handle all messages from this protocol
     // weird gymnastics to get around the fact that weak pointers aren't copyable
-    proto->SetMessageObserver(
+    proto->setMessageObserver(
     [shptr=seastar::make_lw_shared<>(weak_from_this())] (Request& request) {
-        K2DEBUG("handling request for verb="<< request.verb <<", from ep="<< request.endpoint.GetURL());
+        K2DEBUG("handling request for verb="<< request.verb <<", from ep="<< request.endpoint.getURL());
         seastar::weak_ptr<RPCDispatcher>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
         if (weakP) {
             weakP->_handleNewMessage(request);
@@ -41,7 +41,7 @@ RPCDispatcher::RegisterProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
     });
 
     // set ourselves as the low-memory observer for the protocol
-    proto->SetLowTransportMemoryObserver(
+    proto->setLowTransportMemoryObserver(
     [shptr=seastar::make_lw_shared<>(weak_from_this())] (const String& protoname, size_t requiredBytes) {
         K2DEBUG("lowmem notification from proto="<< protoname <<", requiredBytes="<< requiredBytes);
         seastar::weak_ptr<RPCDispatcher>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
@@ -53,8 +53,8 @@ RPCDispatcher::RegisterProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
     return seastar::make_ready_future<>();
 }
 
-void RPCDispatcher::RegisterMessageObserver(Verb verb, MessageObserver_t observer) {
-    K2DEBUG("Registering message observer for verb: " << verb);
+void RPCDispatcher::registerMessageObserver(Verb verb, MessageObserver_t observer) {
+    K2DEBUG("registering message observer for verb: " << verb);
     if (observer == nullptr) {
         _observers.erase(verb);
         K2DEBUG("Removing message observer for verb: " << verb);
@@ -71,7 +71,7 @@ void RPCDispatcher::RegisterMessageObserver(Verb verb, MessageObserver_t observe
     }
 }
 
-void RPCDispatcher::Start() {
+void RPCDispatcher::start() {
     K2DEBUG("start");
 }
 
@@ -80,7 +80,7 @@ seastar::future<> RPCDispatcher::stop() {
 
     // reset the messsage observer for each protocol as we're about to go away
     for(auto&& proto: _protocols) {
-        proto.second->SetMessageObserver(nullptr);
+        proto.second->setMessageObserver(nullptr);
     }
     _protocols.clear();
 
@@ -94,9 +94,9 @@ seastar::future<> RPCDispatcher::stop() {
 
 // Process new messages received from protocols
 void RPCDispatcher::_handleNewMessage(Request& request) {
-    K2DEBUG("handling request for verb="<< request.verb <<", from ep="<< request.endpoint.GetURL());
+    K2DEBUG("handling request for verb="<< request.verb <<", from ep="<< request.endpoint.getURL());
     // see if this is a response
-    if (request.metadata.IsResponseIDSet()) {
+    if (request.metadata.isResponseIDSet()) {
         // process as a response
         auto nodei = _rrPromises.find(request.metadata.responseID);
         if (nodei == _rrPromises.end()) {
@@ -111,43 +111,43 @@ void RPCDispatcher::_handleNewMessage(Request& request) {
     }
     auto iter = _observers.find(request.verb);
     if (iter != _observers.end()) {
-        K2DEBUG("Dispatching request for verb="<< request.verb <<", from ep="<< request.endpoint.GetURL());
+        K2DEBUG("Dispatching request for verb="<< request.verb <<", from ep="<< request.endpoint.getURL());
         iter->second(request);
     }
     else {
-        K2DEBUG("no observer for verb " << request.verb << ", from " << request.endpoint.GetURL());
+        K2DEBUG("no observer for verb " << request.verb << ", from " << request.endpoint.getURL());
     }
 }
 
 void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
-    K2DEBUG("Sending message for verb: " << verb << ", to endpoint=" << endpoint.GetURL());
+    K2DEBUG("sending message for verb: " << verb << ", to endpoint=" << endpoint.getURL());
 
-    auto protoi = _protocols.find(endpoint.GetProtocol());
+    auto protoi = _protocols.find(endpoint.getProtocol());
     if (protoi == _protocols.end()) {
-        K2WARN("Unsupported protocol: "<< endpoint.GetProtocol());
+        K2WARN("Unsupported protocol: "<< endpoint.getProtocol());
         return;
     }
-    protoi->second->Send(verb, std::move(payload), endpoint, std::move(meta));
+    protoi->second->send(verb, std::move(payload), endpoint, std::move(meta));
 }
 
-void RPCDispatcher::Send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint) {
+void RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint) {
     K2DEBUG("Plain send");
     MessageMetadata metadata;
-    metadata.SetPayloadSize(payload->getSize());
+    metadata.setPayloadSize(payload->getSize());
     _send(verb, std::move(payload), endpoint, std::move(metadata));
 }
 
-void RPCDispatcher::SendReply(std::unique_ptr<Payload> payload, Request& forRequest) {
+void RPCDispatcher::sendReply(std::unique_ptr<Payload> payload, Request& forRequest) {
     K2DEBUG("Reply send for request: " << forRequest.metadata.requestID);
     MessageMetadata metadata;
-    metadata.SetResponseID(forRequest.metadata.requestID);
-    metadata.SetPayloadSize(payload->getSize());
+    metadata.setResponseID(forRequest.metadata.requestID);
+    metadata.setPayloadSize(payload->getSize());
 
     _send(ZEROVERB, std::move(payload), forRequest.endpoint, std::move(metadata));
 }
 
 seastar::future<std::unique_ptr<Payload>>
-RPCDispatcher::SendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout) {
+RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout) {
     uint64_t msgid = _msgSequenceID++;
     K2DEBUG("Request send with msgid=" << msgid);
 
@@ -155,8 +155,8 @@ RPCDispatcher::SendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoi
     PayloadPromise prom;
     // record the promise so that we can fulfil it if we get a response
     MessageMetadata metadata;
-    metadata.SetRequestID(msgid);
-    metadata.SetPayloadSize(payload->getSize());
+    metadata.setRequestID(msgid);
+    metadata.setPayloadSize(payload->getSize());
 
     _send(verb, std::move(payload), endpoint, std::move(metadata));
 
@@ -176,10 +176,10 @@ RPCDispatcher::SendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoi
     return fut;
 }
 
-void RPCDispatcher::RegisterLowTransportMemoryObserver(LowTransportMemoryObserver_t observer) {
+void RPCDispatcher::registerLowTransportMemoryObserver(LowTransportMemoryObserver_t observer) {
     K2DEBUG("register low mem observer");
     if (observer == nullptr) {
-        K2DEBUG("Setting default low transport memory observer");
+        K2DEBUG("setting default low transport memory observer");
         _lowMemObserver = [](const String& ttype, size_t suggestedBytes) {
             K2WARN("no low-mem observer installed. Transport: "<< ttype << ", requires release of "<< suggestedBytes << "bytes");
         };
@@ -189,17 +189,17 @@ void RPCDispatcher::RegisterLowTransportMemoryObserver(LowTransportMemoryObserve
     }
 }
 
-std::unique_ptr<TXEndpoint> RPCDispatcher::GetTXEndpoint(String url) {
-    K2DEBUG("Get endpoint for " << url)
+std::unique_ptr<TXEndpoint> RPCDispatcher::getTXEndpoint(String url) {
+    K2DEBUG("get endpoint for " << url)
     // temporary endpoint just so that we can see what the protocol is supposed to be
-    auto ep = TXEndpoint::FromURL(url, nullptr);
+    auto ep = TXEndpoint::fromURL(url, nullptr);
 
-    auto protoi = _protocols.find(ep->GetProtocol());
+    auto protoi = _protocols.find(ep->getProtocol());
     if (protoi == _protocols.end()) {
-        K2WARN("Unsupported protocol: "<< ep->GetProtocol());
+        K2WARN("Unsupported protocol: "<< ep->getProtocol());
         return nullptr;
     }
-    return protoi->second->GetTXEndpoint(std::move(url));
+    return protoi->second->getTXEndpoint(std::move(url));
 }
 
 }// namespace k2

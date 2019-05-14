@@ -55,13 +55,13 @@ public:
 
     void start()
     {
-        _dispatcher.local().RegisterMessageObserver(MsgVerbs::GET,
+        _dispatcher.local().registerMessageObserver(MsgVerbs::GET,
             [this](k2::Request& request) mutable {
                 this->handleGET(request);
             });
 
         // You can store the endpoint for more efficient communication
-        _myEndpoint = _dispatcher.local().GetTXEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
+        _myEndpoint = _dispatcher.local().getTXEndpoint("tcp+k2rpc://127.0.0.1:" + std::to_string(_tcpPort));
         if (!_myEndpoint) {
             throw std::runtime_error("unable to get an endpoint for url");
         }
@@ -74,21 +74,21 @@ public:
 
     void handleGET(k2::Request& request)
     {
-        auto received = GetPayloadString(request.payload.get());
-        K2INFO("Received GET message from endpoint: " << request.endpoint.GetURL()
+        auto received = getPayloadString(request.payload.get());
+        K2INFO("Received GET message from endpoint: " << request.endpoint.getURL()
               << ", with payload: " << received);
         k2::String msgData("GET Message received reqid=");
         msgData += std::to_string(2);
 
-        std::unique_ptr<k2::Payload> msg = request.endpoint.NewPayload();
+        std::unique_ptr<k2::Payload> msg = request.endpoint.newPayload();
         msg->getWriter().write(msgData.c_str(), msgData.size()+1);
 
         // Here we just forward the message using a straight Send and we don't expect any responses to our forward
-        _dispatcher.local().SendReply(std::move(msg), request);
+        _dispatcher.local().sendReply(std::move(msg), request);
     }
 
 private:
-  static std::string GetPayloadString(k2::Payload* payload) {
+  static std::string getPayloadString(k2::Payload* payload) {
         if (!payload) {
             return "NO_PAYLOAD_RECEIVED";
         }
@@ -151,7 +151,7 @@ int main(int argc, char** argv)
         return virtualNetwork.start()
             .then([&] {
 
-                return protocolFactory.start(k2::TCPRPCProtocol::Builder(std::ref(virtualNetwork), tcpPort));
+                return protocolFactory.start(k2::TCPRPCProtocol::builder(std::ref(virtualNetwork), tcpPort));
             })
             .then([&] {
                 return dispatcher.start();
@@ -160,16 +160,16 @@ int main(int argc, char** argv)
                 return service.start(std::ref(dispatcher), tcpPort);
             })
             .then([&] {
-                return virtualNetwork.invoke_on_all(&k2::VirtualNetworkStack::Start);
+                return virtualNetwork.invoke_on_all(&k2::VirtualNetworkStack::start);
             })
             .then([&] {
-                return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::Start);
+                return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::start);
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::RegisterProtocol, seastar::ref(protocolFactory));
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(protocolFactory));
             })
             .then([&] {
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::Start);
+                return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
             })
             .then([&] {
                 return service.invoke_on_all(&k2::benchmarker::Service::start);

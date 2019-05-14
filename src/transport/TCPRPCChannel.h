@@ -42,22 +42,22 @@ public: // lifecycle
     // close the channel gracefully within the given timeout.
     // That is, we stop reading data, and we try to flush out any pending writes
     // returns a future which completes when we shut down, or when timeout expires with an exception
-    seastar::future<> GracefulClose(Duration timeout={});
+    seastar::future<> gracefulClose(Duration timeout={});
 
 public: // API
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
     // The RPC message is configured with the given metadata
-    void Send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata meta, bool flush=true);
+    void send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata meta, bool flush=true);
 
     // Call this method with a callback to observe incoming RPC messages
-    void RegisterMessageObserver(MessageObserver_t observer);
+    void registerMessageObserver(MessageObserver_t observer);
 
     // Call this method with a callback to observe the failure of this channel (e.g. tcp connection breakage)
-    void RegisterFailureObserver(FailureObserver_t observer);
+    void registerFailureObserver(FailureObserver_t observer);
 
     // Obtain the endpoint for this channel
-    TXEndpoint& GetTXEndpoint() { return _endpoint;}
+    TXEndpoint& getTXEndpoint() { return _endpoint;}
 
 private: // methods
     // we call this method when we successfully connect to a remote end.

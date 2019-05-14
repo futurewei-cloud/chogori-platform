@@ -15,12 +15,12 @@ RPCProtocolFactory::~RPCProtocolFactory() {
     K2DEBUG("dtor");
 }
 
-void RPCProtocolFactory::Start() {
+void RPCProtocolFactory::start() {
     K2DEBUG("start");
     // Create the protocol instance
     _instance = _builder();
     if (_instance) {
-        _instance->Start();
+        _instance->start();
     }
 }
 

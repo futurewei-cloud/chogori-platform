@@ -44,21 +44,21 @@ public: // lifecycle
     }
 
     // Set the desired number of retries
-    ExponentialBackoffStrategy& WithRetries(int retries){
+    ExponentialBackoffStrategy& withRetries(int retries){
         K2DEBUG("retries: " << retries);
         _retries = retries;
         return *this;
     }
 
     // Set the exponential increase rate
-    ExponentialBackoffStrategy& WithRate(int rate) {
+    ExponentialBackoffStrategy& withRate(int rate) {
         K2DEBUG("rate: " << rate);
         _rate = rate;
         return *this;
     }
 
     // Set the desired starting value
-    ExponentialBackoffStrategy& WithStartTimeout(Duration startTimeout) {
+    ExponentialBackoffStrategy& withStartTimeout(Duration startTimeout) {
         K2DEBUG("startTimeout: " << startTimeout.count());
         _currentTimeout = startTimeout;
         return *this;
@@ -69,8 +69,8 @@ public: // API
     // exhausted, then we return the exception tossed from the last run.
     // Note that we do not setup any timeout timers here. We just provide the correct value to use
     template<typename Func>
-    seastar::future<> Do(Func&& func) {
-        K2DEBUG("Initial Do");
+    seastar::future<> run(Func&& func) {
+        K2DEBUG("Initial run");
         if (_used) {
             K2WARN("This strategy has already been used");
             return seastar::make_exception_future<>(DuplicateExecutionException());

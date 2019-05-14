@@ -15,7 +15,7 @@ class TXEndpoint {
 public: // lifecycle
     // construct an endpoint from a url with the given allocator
     // Returns nullptr if there was a problem parsing the url
-    static std::unique_ptr<TXEndpoint> FromURL(String url, BinaryAllocatorFunctor allocator);
+    static std::unique_ptr<TXEndpoint> fromURL(String url, BinaryAllocatorFunctor allocator);
 
     // default constructor
     TXEndpoint();
@@ -33,17 +33,17 @@ public: // lifecycle
     ~TXEndpoint();
 
 public: // API
-    // Get the URL for this endpoint
-    const String& GetURL() const { return _url;}
+    // get the URL for this endpoint
+    const String& getURL() const { return _url;}
 
-    // Get the protocol for this endpoint
-    const String& GetProtocol() const { return _protocol;}
+    // get the protocol for this endpoint
+    const String& getProtocol() const { return _protocol;}
 
-    // Get the IP for this endpoint
-    const String& GetIP() const { return _ip;}
+    // get the IP for this endpoint
+    const String& getIP() const { return _ip;}
 
-    // Get the port for this endpoint
-    uint32_t GetPort() const { return _port;}
+    // get the port for this endpoint
+    uint32_t getPort() const { return _port;}
 
     // Comparison. Two endpoints are the same if their hashes are the same
     bool operator==(const TXEndpoint &other) const {
@@ -51,11 +51,11 @@ public: // API
     }
 
     // the stored hash value for this endpoint.
-    size_t Hash() const { return _hash; }
+    size_t hash() const { return _hash; }
 
     // This method should be used to create new payloads. The payloads are allocated in a manner consistent
     // with the transport for the protocol of this endpoint
-    std::unique_ptr<Payload> NewPayload() {
+    std::unique_ptr<Payload> newPayload() {
         if (_allocator) {
             return std::make_unique<Payload>(_allocator, _protocol);
         }
@@ -64,7 +64,7 @@ public: // API
 
     // This method can be used to create a new binary in a manner consistent
     // with the transport for the protocol of this endpoint
-    Binary NewBinary() {
+    Binary newBinary() {
         if (_allocator) {
             return _allocator();
         }
@@ -72,7 +72,7 @@ public: // API
     }
 
     // Use to determine if this endpoint can allocate
-    bool CanAllocate() const {
+    bool canAllocate() const {
         return _allocator != nullptr;
     }
 
@@ -99,7 +99,7 @@ template <>
 struct hash<k2::TXEndpoint> {
 
 size_t operator()(const k2::TXEndpoint& endpoint) const {
-    return endpoint.Hash();
+    return endpoint.hash();
 }
 
 }; // struct hash
