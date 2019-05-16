@@ -18,6 +18,9 @@ struct KeyValuePair {
 
 template<typename ValueType>
 struct KeyValuePairKeyExtractor {
+	inline size_t getKeyLength(ValueType const &value) const {
+		return value->key.length();
+	}
     inline const char* operator()(ValueType const &value) const {
         return value->key.c_str();
     }
@@ -36,10 +39,10 @@ public:
         keyValuePair->key = std::move(key);
         keyValuePair->value = std::move(newNode);
 
-        auto inserted = m_keyValuePairTrie.insert(keyValuePair);
+        auto inserted = m_keyValuePairTrie.insert(keyValuePair, keyValuePair->key.length());
         //  Value already exists
         if (!inserted) {
-            auto exist = m_keyValuePairTrie.lookup(keyValuePair->key.c_str());
+            auto exist = m_keyValuePairTrie.lookup(keyValuePair->key.c_str(), keyValuePair->key.length());
             newNode->next = std::move(exist.mValue->value);
             exist.mValue->value = std::move(newNode);
         }
@@ -56,7 +59,7 @@ public:
 
         // Node* node = (*it)->value.get();
 
-        auto it = m_keyValuePairTrie.lookup(key.c_str());
+        auto it = m_keyValuePairTrie.lookup(key.c_str(), key.length());
         if (!it.mIsValid) {
             return nullptr;
         }
@@ -70,21 +73,20 @@ public:
 
     void trim(const String& key, uint64_t version) {
         if (version == std::numeric_limits<uint64_t>::max()) {
-            auto it = m_keyValuePairTrie.find(key.c_str());
-            if (it == m_keyValuePairTrie.end()) {
+            auto it = m_keyValuePairTrie.lookup(key.c_str(), key.length());
+            if (!it.mIsValid) {
                 return;
             }
-            m_keyValuePairTrie.remove(key.c_str());
-            delete (*it);
+            m_keyValuePairTrie.remove(key.c_str(), key.length());
+             return;
+        }
+
+        auto it = m_keyValuePairTrie.lookup(key.c_str(), key.length());
+        if (!it.mIsValid) {
             return;
         }
 
-        auto it = m_keyValuePairTrie.find(key.c_str());
-        if (it == m_keyValuePairTrie.end()) {
-            return;
-        }
-
-        Node* node = (*it)->value.get();
+        Node* node = it.mValue->value.get();
         if (node) {
             node = node->next.get();
         }
