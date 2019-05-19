@@ -204,7 +204,7 @@ private:
 
     seastar::future<std::unique_ptr<ResponseMessage>> sendMessage(ExecutorTaskPtr pTask)
     {
-        return _dispatcher.local().sendRequest((k2::Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE,
+        return _dispatcher.local().sendRequest(KnownVerbs::PartitionMessages,
             std::move(pTask->_pPlatformData->_pPayload),
             *pTask->_pPlatformData->_pEndpoint,
             pTask->getTimeout())
@@ -233,7 +233,7 @@ private:
             if(header.messageSize != readBytes - hdrSize) {
                 throw ExecutionException(Status::MessageParsingError, "Invalid message size");
             }
-            
+
             response->payload = Payload(std::move(buffers), readBytes - hdrSize);
             K2DEBUG("Message received. returning response...");
 

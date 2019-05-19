@@ -24,7 +24,7 @@ public:
     _header(0),
     _request(std::move(request)),
     _disp(disp) {
-        bool ret = _outPayload->getWriter().getContiguousStructure(_header);
+        bool ret = _outPayload->getWriter().reserveContiguousStructure(_header);
         assert(ret); //  Always must have space for a response header
     }
 
@@ -104,7 +104,7 @@ seastar::future<> NodePoolService::stop() {
     K2INFO("NodePoolService stopping");
     _stopped = true;
     // unregistar all observers
-    _dispatcher.local().registerMessageObserver((Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE, nullptr);
+    _dispatcher.local().registerMessageObserver(KnownVerbs::PartitionMessages, nullptr);
     _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
     return when_all(std::move(_taskProcessorLoop))
         .then_wrapped([](auto&& fut) {
@@ -116,7 +116,7 @@ seastar::future<> NodePoolService::stop() {
 void NodePoolService::start() {
     K2INFO("NodePoolService starting");
     _stopped = false;
-    _dispatcher.local().registerMessageObserver((Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE,
+    _dispatcher.local().registerMessageObserver(KnownVerbs::PartitionMessages,
             [this](k2::Request&& request) mutable {
                 K2DEBUG("Dispatching message to AssignmentManager");
                 PartitionRequest partitionRequest;

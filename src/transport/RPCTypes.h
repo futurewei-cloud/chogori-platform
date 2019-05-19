@@ -11,15 +11,30 @@
 namespace k2 {
 // This file contains definitions for RPC types
 // The type for verbs in the RPC system
+
+//
+//  Verb describes particular service within K2 endpoint
+//
 typedef uint8_t Verb;
 
+//
+//  Verbs that K2 is using internally
+//
+class KnownVerbs
+{
+public:
+    enum Verbs : Verb
+    {
+        None = 0,               //  Currently is used with responses
+        ZEROVERB = None,        //  Transport naming for None
+        PartitionMessages = 1   //  K2 Partition management service
+    };
+};
+
 // properly print verbs
-inline std::ostream& operator<<(std::ostream & os, Verb& verb) {
-    os << std::to_string(verb);
+inline std::ostream& operator<<(std::ostream& os, Verb verb) {
+    os << verb;
     return os;
 }
 
-// whenever we need a zero-value for verbs
-const static Verb ZEROVERB = 0;
-
-} // k2
+} // namespace k2

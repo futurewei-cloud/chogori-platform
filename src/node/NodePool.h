@@ -117,7 +117,7 @@ public:
 
     const NodeEndpointConfig& getEndpoint(size_t endpointId) const
     {
-        assert(endpointId < getNodesCount());
+        ASSERT(endpointId < getNodesCount());
         return endpoints[endpointId];
     }
 
@@ -144,8 +144,8 @@ public:
 
     void setScheduingPlatform(ISchedulingPlatform* platform)
     {
-        assert(!schedulingPlatform);
-        assert(platform);
+        ASSERT(!schedulingPlatform);
+        ASSERT(platform);
         schedulingPlatform = platform;
     }
 };

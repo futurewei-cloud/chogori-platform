@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <chrono>
+#include <cstring>
 
 #include <seastar/core/temporary_buffer.hh>
 
@@ -152,6 +153,21 @@ inline Binary binaryReference(seastar::temporary_buffer<CharT>& buffer, size_t o
 {
     assert(offset + size <= buffer.size());
     return binaryReference(buffer.get_write()+offset, size);
+}
+
+inline bool append(Binary& binary, size_t& writeOffset, const void* data, size_t size)
+{
+    if(binary.size() < writeOffset + size)
+        return false;
+    std::memcpy(binary.get_write() + writeOffset, data, size);
+    writeOffset += size;
+    return true;
+}
+
+template<typename T>
+inline bool appendRaw(Binary& binary, size_t& writeOffset, const T& data)
+{
+    return append(binary, writeOffset, &data, sizeof(T));
 }
 
 }   //  namespace k2

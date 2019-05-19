@@ -60,7 +60,7 @@ void RPCDispatcher::registerMessageObserver(Verb verb, RequestObserver_t observe
         K2DEBUG("Removing message observer for verb: " << verb);
         return;
     }
-    if (verb == ZEROVERB) {
+    if (verb == KnownVerbs::ZEROVERB) {
         // can't allow registration of the ZEROVERB
         throw DuplicateRegistrationException();
     }
@@ -138,10 +138,8 @@ void RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint
 
 void RPCDispatcher::sendReply(std::unique_ptr<Payload> payload, Request& forRequest) {
     K2DEBUG("Reply send for request: " << forRequest.metadata.requestID);
-    MessageMetadata metadata;
-    metadata.setResponseID(forRequest.metadata.requestID);
-
-    _send(ZEROVERB, std::move(payload), forRequest.endpoint, std::move(metadata));
+    MessageMetadata metadata = MessageMetadata::createResponse(forRequest.metadata);
+    _send(KnownVerbs::ZEROVERB, std::move(payload), forRequest.endpoint, std::move(metadata));
 }
 
 seastar::future<std::unique_ptr<Payload>>

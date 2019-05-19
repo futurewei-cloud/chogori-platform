@@ -51,6 +51,7 @@ class Payload
 {
     friend class PayloadReader;
     friend class PayloadWriter;
+    friend class ReadOnlyPayload;
 public:
     class NonAllocatingPayloadException : public std::exception {};
 protected:
@@ -197,17 +198,24 @@ public:
 class PayloadReader
 {
     friend class Payload;
+    friend class ReadOnlyPayload;
 protected:
-    const Payload& payload;
+    const Payload* payload;
     Payload::Position position;
-    constexpr PayloadReader(const Payload& payload, Payload::Position position) : payload(payload), position(position) { }
+    constexpr PayloadReader(const Payload& payload, Payload::Position position) : payload(&payload), position(position) { }
 
     constexpr bool readMany() { return true; }
 
 public:
+    PayloadReader(const PayloadReader&) = default;
+    PayloadReader& operator=(const PayloadReader& other) = default;
+    PayloadReader(PayloadReader&&) = default;
+    PayloadReader& operator=(PayloadReader&&) = default;
+
+
     bool isEnd() const
     {
-        return position.buffer == payload.buffers.size();
+        return position.buffer == payload->buffers.size();
     }
 
     bool read(void* data, size_t size)
@@ -217,7 +225,7 @@ public:
             if(isEnd())
                 return false;
 
-            const Binary& buffer = payload.buffers[position.buffer];
+            const Binary& buffer = payload->buffers[position.buffer];
             size_t currentBufferRemaining = buffer.size()-position.offset;
             size_t needToCopySize = std::min(size, currentBufferRemaining);
 
@@ -244,7 +252,7 @@ public:
         if(isEnd())
             return false;
 
-        Binary& buffer = const_cast<Binary&>(payload.buffers[position.buffer]);
+        Binary& buffer = const_cast<Binary&>(payload->buffers[position.buffer]);
         size_t currentBufferRemaining = buffer.size()-position.offset;
         if(currentBufferRemaining >= size)  //  Can reference buffer
         {
@@ -267,7 +275,7 @@ public:
         if(isEnd())
             return false;
 
-        const Binary& buffer = payload.buffers[position.buffer];
+        const Binary& buffer = payload->buffers[position.buffer];
         b = buffer[position.offset];
         if(position.offset == buffer.size() - 1)
         {
@@ -349,13 +357,13 @@ class PayloadWriter
 {
     friend class Payload;
 protected:
-    Payload& payload;
+    Payload* payload;
     Payload::Position position;
     size_t offset;
 
     bool allocateBuffer()
     {
-        return payload.allocateBuffer();
+        return payload->allocateBuffer();
     }
 
     bool allocateBufferIfNeeded()
@@ -365,7 +373,7 @@ protected:
 
     void moveToNextBufferIfNeeded()
     {
-        if(position.buffer == payload.buffers.size()-1 && payload.buffers[position.buffer].size() == position.offset)
+        if(position.buffer == payload->buffers.size()-1 && payload->buffers[position.buffer].size() == position.offset)
         {
             position.buffer++;
             position.offset = 0;
@@ -375,14 +383,14 @@ protected:
     bool isAllocationNeeded()
     {
         moveToNextBufferIfNeeded();
-        return position.buffer == payload.buffers.size();
+        return position.buffer == payload->buffers.size();
     }
 
     void increaseGlobalOffset(size_t change)
     {
         offset += change;
-        if(payload.size < offset)
-            payload.size = offset;
+        if(payload->size < offset)
+            payload->size = offset;
     }
 
     bool writeMany() { return true; }
@@ -399,21 +407,34 @@ public:
         size_t offset;
 
         Position(Payload::Position position, size_t offset) : position(position), offset(offset) { }
+
+    public:
+        int64_t operator -(const Position& other) const { return (int64_t)offset - (int64_t)other.offset; }
+        bool operator ==(const Position& other) const { return offset == other.offset; }
+        bool operator >(const Position& other) const { return offset > other.offset; }
+        bool operator >=(const Position& other) const { return offset >= other.offset; }
+        bool operator <(const Position& other) const { return offset < other.offset; }
+        bool operator <=(const Position& other) const { return offset < other.offset; }
     };
 
-    PayloadWriter(Payload& payload, size_t offset) : payload(payload), offset(offset)
+    PayloadWriter(Payload& payload, size_t offset) : payload(&payload), offset(offset)
     {
         position = payload.navigate(offset);
     }
 
-    PayloadWriter(Payload& payload, const PayloadWriter::Position& writerPosition) : payload(payload), position(writerPosition.position), offset(writerPosition.offset) {}
+    PayloadWriter(Payload& payload, const PayloadWriter::Position& writerPosition) : payload(&payload), position(writerPosition.position), offset(writerPosition.offset) {}
+
+    PayloadWriter(const PayloadWriter&) = default;
+    PayloadWriter& operator=(const PayloadWriter& other) = default;
+    PayloadWriter(PayloadWriter&&) = default;
+    PayloadWriter& operator=(PayloadWriter&&) = default;
 
     bool write(uint8_t b)
     {
         if(!allocateBufferIfNeeded())
             return false;
 
-        payload.buffers[position.buffer].get_write()[position.offset] = b;
+        payload->buffers[position.buffer].get_write()[position.offset] = b;
         position.offset++;
 
         increaseGlobalOffset(1);
@@ -429,7 +450,7 @@ public:
 
         while(size > 0)
         {
-            Binary& buffer = const_cast<Binary&>(payload.buffers[position.buffer]);
+            Binary& buffer = const_cast<Binary&>(payload->buffers[position.buffer]);
 
             size_t currentBufferRemaining = buffer.size()-position.offset;
             size_t needToCopySize = std::min(size, currentBufferRemaining);
@@ -445,7 +466,7 @@ public:
                 size -= needToCopySize;
                 data = (void*)((char*)data + needToCopySize);
 
-                if(position.buffer == payload.buffers.size())
+                if(position.buffer == payload->buffers.size())
                 {
                     if(!allocateBuffer())
                         return false;
@@ -463,9 +484,9 @@ public:
 
     void truncateToCurrent()
     {
-        if(position.buffer < payload.buffers.size()-1)
-            payload.buffers.erase(payload.buffers.begin() + position.buffer + 1, payload.buffers.end());
-        payload.size = offset;
+        if(position.buffer < payload->buffers.size()-1)
+            payload->buffers.erase(payload->buffers.begin() + position.buffer + 1, payload->buffers.end());
+        payload->size = offset;
     }
 
     Position getCurrent() const
@@ -474,23 +495,23 @@ public:
     }
 
     template<typename StructT>
-    bool getContiguousStructure(StructT*& structure)
+    bool reserveContiguousStructure(StructT*& structure)
     {
-        return getContiguousBuffer(sizeof(StructT), *(void**)&structure);
+        return reserveContiguousBuffer(sizeof(StructT), *(void**)&structure);
     }
 
-    bool getContiguousBuffer(size_t size, void*& data)
+    bool reserveContiguousBuffer(size_t size, void*& data)
     {
         if(!allocateBufferIfNeeded())
             return false;
 
-        Binary& buffer = const_cast<Binary&>(payload.buffers[position.buffer]);
+        Binary& buffer = const_cast<Binary&>(payload->buffers[position.buffer]);
 
         size_t currentBufferRemaining = buffer.size()-position.offset;
         if(currentBufferRemaining < size)
             return false;
 
-        data = payload.buffers[position.buffer].get_write() + position.offset;
+        data = payload->buffers[position.buffer].get_write() + position.offset;
         if(currentBufferRemaining == size)
         {
             position.buffer++;
@@ -511,7 +532,7 @@ public:
 
         while(size > 0)
         {
-            Binary& buffer = const_cast<Binary&>(payload.buffers[position.buffer]);
+            Binary& buffer = const_cast<Binary&>(payload->buffers[position.buffer]);
 
             size_t currentBufferRemaining = buffer.size()-position.offset;
             size_t needToCopySize = std::min(size, currentBufferRemaining);
@@ -523,7 +544,7 @@ public:
                 position.buffer++;
                 position.offset = 0;
                 size -= needToCopySize;
-                if(position.buffer == payload.buffers.size())
+                if(position.buffer == payload->buffers.size())
                 {
                     if(!allocateBuffer())
                         return false;
@@ -603,5 +624,22 @@ inline PayloadWriter Payload::getWriter()
 
     return PayloadWriter(*this, size);
 }
+
+
+//
+//  Provides read only access to some payload, which it owns
+//
+class ReadOnlyPayload
+{
+protected:
+    Payload payload;
+    Payload::Position position;
+public:
+    PayloadReader getReader() const { return PayloadReader(payload, position); }
+
+    ReadOnlyPayload(Payload payload, const PayloadReader& currentReader)    //  TODO: need to make position public and use instead of reader
+        : payload(std::move(payload)), position(currentReader.position) {}
+};
+
 
 } //  namespace k2

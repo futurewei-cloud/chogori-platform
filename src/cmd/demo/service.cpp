@@ -32,7 +32,7 @@ using namespace std::chrono_literals; // so that we can type "1ms"
 class Service : public seastar::weakly_referencable<Service> {
 public: // public types
     // The message verbs supported by this service
-    enum MsgVerbs: uint8_t {
+    enum MsgVerbs: k2::Verb {
         POST = 100,
         GET = 101,
         ACK = 102

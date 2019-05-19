@@ -15,46 +15,32 @@
 
 namespace k2
 {
-std::unique_ptr<Payload> __recvMessage(boost::asio::ip::tcp::socket& socket) {
-    k2::RPCParser parser([]{return false;});
-    std::unique_ptr<Payload> result;
-    bool completed = false;
-    parser.registerMessageObserver([&result, &completed](k2::Verb, k2::MessageMetadata, std::unique_ptr<Payload> payload) {
-        result = std::move(payload);
-        completed = true;
-    });
-    parser.registerParserFailureObserver([&completed](std::exception_ptr) {
-        K2ERROR("Failed to receive message");
-        completed = true;
-    });
+std::unique_ptr<Payload> __recvMessage(boost::asio::ip::tcp::socket& socket)
+{
+    MessageDescription message;
+    TIF(MessageReader::readSingleMessage(message, [&](Binary& buffer) {
+        boost::array<uint8_t, 16*1024> boostBuf;
+        boost::system::error_code error;
 
-    boost::array<uint8_t, 1024> boostBuf;
-    boost::system::error_code error;
-
-    while (!completed) {
         size_t readBytes = socket.read_some(boost::asio::buffer(boostBuf), error);
-        K2DEBUG("Read from socket: " << readBytes << " bytes" << ", error=" << error);
         if (error)
             throw boost::system::system_error(error); // Some error occurred
+        ASSERT(readBytes > 0);
+        buffer = Binary(boostBuf.data(), readBytes);
 
-        assert(readBytes > 0);
+        return Status::Ok;
+    }));
 
-        k2::Binary buf(boostBuf.data(), readBytes);
-        parser.feed(std::move(buf));
-        parser.dispatchSome();
-    }
-    K2DEBUG("Received message of size: "<< (result?result->getSize():0));
-    return result;
+    return std::make_unique<Payload>(std::move(message.payload));
 }
 
 std::unique_ptr<Payload> __createTransportPayload(Payload&& userData) {
     K2DEBUG("creating transport payload from data size=" << userData.getSize());
-    k2::MessageMetadata metadata;
+    MessageMetadata metadata;
     metadata.setRequestID(uint64_t(std::rand()));
     metadata.setPayloadSize(userData.getSize());
 
-    return k2::RPCParser::serializeMessage(
-        std::move(userData), (k2::Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE, std::move(metadata));
+    return RPCParser::serializeMessage(std::move(userData), KnownVerbs::PartitionMessages, std::move(metadata));
 }
 
 std::unique_ptr<ResponseMessage> sendMessage(const char* ip, uint16_t port, Payload&& message)

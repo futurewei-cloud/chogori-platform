@@ -10,6 +10,8 @@
 
 // k2
 #include "common/Log.h"
+#include "common/Payload.h"
+#include "RPCTypes.h"
 
 namespace k2 {
 namespace txconstants {
@@ -48,7 +50,7 @@ public:
     // a MessageMetadata, and then use the API from MessageMetadata to determine what fields are set and
     // what their values are
     uint8_t features = 0x0;
-    uint8_t verb = 0x0;
+    Verb verb = KnownVerbs::None;
 };
 
 // The variable message header. Fields here are only valid if set in the Features bitmap above
@@ -101,6 +103,28 @@ public: // fields
     uint32_t requestID;
     uint32_t responseID;
     // MAYBE TODO CRC, crypto, sender endpoint
+
+    static MessageMetadata createResponse(MessageMetadata& originalRequest)
+    {
+        MessageMetadata result;
+        result.setResponseID(originalRequest.requestID);
+        return result;
+    }
+};
+
+//
+//  Describes received messsage
+//
+struct MessageDescription
+{
+    Verb verb;
+    MessageMetadata metadata;
+    Payload payload;
+
+    MessageDescription() : verb(KnownVerbs::None) {}
+
+    MessageDescription(Verb verb, MessageMetadata metadata, Payload payload) :
+        verb(verb), metadata(std::move(metadata)), payload(std::move(payload)) { }
 };
 
 } // k2

@@ -131,7 +131,7 @@ protected:
                     return false;
 
                 default:
-                    assert(false);
+                    ASSERT(false);
             }
         }
 

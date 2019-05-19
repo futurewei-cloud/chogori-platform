@@ -74,8 +74,7 @@ protected:
             MessageExchangeRound(seastar::lw_shared_ptr<Connection> connection) : _connection(connection)
             {
                 PayloadWriter writer = _outPayload.getWriter();
-                bool ret = writer.getContiguousStructure(_header);
-                assert(ret); //  Always must have space for a response header
+                ASSERT(writer.reserveContiguousStructure(_header)); //  Always must have space for a response header
             }
 
             PayloadWriter getResponseWriter() override

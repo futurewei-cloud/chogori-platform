@@ -1,6 +1,6 @@
 #pragma once
 #include "common/Payload.h"
-#include "common/Message.h"
+#include "common/PartitionMessage.h"
 
 namespace k2
 {

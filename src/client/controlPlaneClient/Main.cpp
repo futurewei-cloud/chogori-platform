@@ -22,7 +22,7 @@ void assignPartition(k2::PartitionAssignmentId partitionId, const char* ip, uint
     std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
         PartitionMessage::serializeMessage(k2::MessageType::PartitionAssign, partitionId, assignmentMessage));
 
-    assert(response);
+    ASSERT(response);
     if(response->getStatus() != Status::Ok)
         std::cerr << "Assignment failed: " << getStatusText(response->getStatus()) << std::endl << std::flush;
 }

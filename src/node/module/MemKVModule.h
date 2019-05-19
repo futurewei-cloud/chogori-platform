@@ -4,6 +4,7 @@
 #include "node/Module.h"
 #include "node/indexer/IndexerInterface.h"
 #include "node/indexer/MapIndexer.h"
+#include "common/PartitionMessage.h"
 
 namespace k2
 {
@@ -134,7 +135,7 @@ public:
     //
     ModuleResponse onAssign(AssignmentTask& task) override
     {
-        assert(task.getPartition().moduleData == nullptr);
+        ASSERT(task.getPartition().moduleData == nullptr);
         task.getPartition().moduleData = new PartitionContext();
         return ModuleResponse::Ok;
     }

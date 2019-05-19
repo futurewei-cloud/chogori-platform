@@ -23,7 +23,7 @@ Request::Request(Request&& o):
     endpoint(std::move(o.endpoint)),
     metadata(std::move(o.metadata)),
     payload(std::move(o.payload)) {
-    o.verb = ZEROVERB;
+    o.verb = KnownVerbs::ZEROVERB;
     K2DEBUG("move Request @" << ((void*)this)<< ", " << verb << ", from " << endpoint.getURL());
 }
 

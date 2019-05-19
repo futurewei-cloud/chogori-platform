@@ -1,12 +1,16 @@
 #pragma once
 
 #include <iostream>
+#include <signal.h>
 
 namespace k2
 {
 
-#define TERMINATE(text)     { std::cerr << text << std::endl << std::flush; std::abort(); }
-#define ASSERT(condition)   {   if(!(condition)) TERMINATE(#condition);    }
+#define CORE_DUMP(text)     {std::cerr << text << std::endl << std::flush; std::abort(); }
+
+//  Asserts below should never be disabled and work on production also
+#define ASSERT(condition)   {   if(!(condition)) CORE_DUMP(#condition);    }
+#define ASSERT_TRUE(condition)   ASSERT(condition)
 
 #define K2_STATUS_DEFINITION(STATUS)                                                                                    \
     STATUS(Ok, "Ok")                                                                                                    \

@@ -4,6 +4,7 @@
 #pragma once
 // stl
 #include <cstdint> // for int types
+#include <queue>
 
 // k2
 #include "RPCTypes.h"
@@ -44,6 +45,11 @@ public:
     // byte of the header
     // returns the number of bytes written as header
     inline static size_t serializeHeader(Binary& binary, Verb verb, MessageMetadata metadata);
+
+    //
+    //  Write transport header to the binary. Return false, if not enough space in binary.
+    //
+    inline static bool writeHeader(Binary& binary, Verb verb, MessageMetadata meta, size_t* written = nullptr);
 
     // Utility method used to serialize the given user message into a transport message, expressed as a Payload.
     // The user can also provide features via the metadata field
@@ -166,31 +172,47 @@ size_t RPCParser::serializeHeader(Binary& binary, Verb verb, MessageMetadata met
     binary.trim_front(txconstants::MAX_HEADER_SIZE - headerSize);
     size_t writeOffset = 0;
 
+    ASSERT(writeHeader(binary, verb, meta, &writeOffset));
+
+    return headerSize;
+}
+
+//
+//  Write header of the
+//
+inline
+bool RPCParser::writeHeader(Binary& binary, Verb verb, MessageMetadata meta, size_t* written) {
+    size_t writeOffset = 0;
+
     // take care of the fixed header first
     FixedHeader fHeader{.features=meta.features, .verb=verb};
-    std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&fHeader, sizeof(fHeader));
-    writeOffset += sizeof(fHeader);
+    if(!appendRaw(binary, writeOffset, fHeader))
+        return false;
 
     // now for variable stuff
     if (meta.isPayloadSizeSet()) {
         K2DEBUG("have payload");
-        std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&meta.payloadSize, sizeof(meta.payloadSize));
-        writeOffset += sizeof(meta.payloadSize);
+        if(!appendRaw(binary, writeOffset, meta.payloadSize))
+            return false;
     }
     if (meta.isRequestIDSet()) {
         K2DEBUG("have request id" << meta.requestID);
-        std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&meta.requestID, sizeof(meta.requestID));
-        writeOffset += sizeof(meta.requestID);
+        if(!appendRaw(binary, writeOffset, meta.requestID))
+            return false;
     }
     if (meta.isResponseIDSet()) {
         K2DEBUG("have response id" << meta.responseID);
-        std::memcpy(binary.get_write() + writeOffset, (uint8_t*)&meta.responseID, sizeof(meta.responseID));
-        writeOffset += sizeof(meta.responseID);
+        if(!appendRaw(binary, writeOffset, meta.responseID))
+            return false;
     }
 
     // all done.
     K2DEBUG("Write offset after writing header: " << writeOffset);
-    return headerSize;
+
+    if(written)
+        *written = writeOffset;
+
+    return true;
 }
 
 inline
@@ -556,5 +578,154 @@ RPCParser::serializeMessage(Payload&& message, Verb verb, MessageMetadata metada
     auto headerSize = RPCParser::serializeHeader(buffers[0], verb, std::move(metadata));
     return std::make_unique<Payload>(std::move(buffers), headerSize + metaPayloadSize);
 }
+
+//
+//  TODO: below given simple interface to do message reading and writting. Implementation are not efficient, since parser
+//  currently is not based on streaming (PayloadWriter/PayloadReader) interfaces. We need to change parser to make it more
+//  simple, so we can integrate it with MessageReader/Builder in more efficient way.
+//
+
+//
+//  Simple message reader, which works as sink-source pattern for buffers-messages.
+//  Customer of MessageReaders provides incoming data buffers using putBuffer function and collect
+//  parsed messages using getMessage function.
+//
+class MessageReader
+{
+protected:
+    std::queue<Binary> inBuffers;
+    std::queue<MessageDescription> outMessages;
+    RPCParser parser;
+    Status status = Status::Ok;
+public:
+    MessageReader() : parser([]{return false;})
+    {
+        parser.registerMessageObserver([this](Verb verb, MessageMetadata metadata, std::unique_ptr<Payload> payload)
+        {
+            outMessages.emplace(verb, metadata, std::move(*payload));
+        });
+
+        parser.registerParserFailureObserver([this](std::exception_ptr)
+        {
+            status = Status::MessageParsingError;
+        });
+    }
+
+    Status getStatus() { return status; }
+
+    bool putBuffer(Binary binary)
+    {
+        if(status != Status::Ok)
+            return false;
+
+        inBuffers.push(std::move(binary));
+        return true;
+    }
+
+    bool getMessage(MessageDescription& outMessage)
+    {
+        while(true)
+        {
+            if(!outMessages.empty())
+            {
+                outMessage = std::move(outMessages.front());
+                outMessages.pop();
+                return true;
+            }
+
+            if(status != Status::Ok || inBuffers.empty())
+                return false;
+
+            parser.feed(std::move(inBuffers.front()));
+            inBuffers.pop();
+            parser.dispatchSome();
+        }
+
+        return false;
+    }
+
+    Status readMessage(MessageDescription& outMessage, std::function<Status(Binary& outBuffer)> bufferSource)
+    {
+        while(true)
+        {
+            Binary buffer;
+            RIF(bufferSource(buffer));
+
+            putBuffer(std::move(buffer));
+            if(getMessage(outMessage))
+                return Status::Ok;
+
+            RIF(status);
+        }
+    }
+
+    static Status readSingleMessage(MessageDescription& outMessage, std::function<Status(Binary& outBuffer)> bufferSource)
+    {
+        MessageReader reader;
+        RET(reader.readMessage(outMessage, std::move(bufferSource)));
+    }
+};
+
+//
+//  Create messages to send
+//
+class MessageBuilder
+{
+protected:
+    MessageDescription message;
+    PayloadWriter::Position headerPosition;
+    size_t headerSize;
+
+    void writeHeader()
+    {
+        PayloadWriter writer(message.payload, headerPosition);
+
+        void* headerMemory = nullptr;
+        ASSERT_TRUE(writer.reserveContiguousBuffer(txconstants::MAX_HEADER_SIZE, headerMemory));
+
+        Binary headerBuffer = binaryReference(headerMemory, txconstants::MAX_HEADER_SIZE);
+
+        ASSERT(RPCParser::writeHeader(headerBuffer, message.verb, message.metadata, &headerSize));
+        writer = PayloadWriter(message.payload, headerPosition);
+        ASSERT_TRUE(writer.skip(headerSize));
+    }
+
+    MessageBuilder(Verb verb, MessageMetadata metadata, Payload payload) : message(verb, metadata, std::move(payload)),
+        headerPosition(message.payload.getWriter().getCurrent())
+    {
+        //  Write header just to estimate it's size and skip it
+        message.metadata.setPayloadSize(1);  //  TODO: if we don't set size, RPCParser will not allocate enough space for it - we need to make this field static later
+        writeHeader();
+    }
+
+public:
+    static MessageBuilder request(Verb verb, MessageMetadata metadata, Payload payload)
+    {
+        return MessageBuilder(verb, std::move(metadata), std::move(payload));
+    }
+
+    static MessageBuilder response(Payload newMessagePayload, MessageDescription originalRequestMessage)
+    {
+        return MessageBuilder(KnownVerbs::None, MessageMetadata::createResponse(originalRequestMessage.metadata), std::move(newMessagePayload));
+    }
+
+    PayloadWriter getWriter() { return message.payload.getWriter(); }
+
+    template<typename... ArgsT>
+    MessageBuilder& write(ArgsT&... args)
+    {
+        ASSERT_TRUE(getWriter().writeMany(args...));
+        return* this;
+    }
+
+    Payload&& build()
+    {
+        int64_t payloadSize = (message.payload.getWriter().getCurrent() - headerPosition) - headerSize;
+        assert(payloadSize > 0);
+        message.metadata.payloadSize = payloadSize;
+        writeHeader();  //  Write header one more timenow with updated size
+        return std::move(message.payload);
+    }
+};
 
 } // namespace k2

@@ -34,7 +34,7 @@ public:
     typedef seastar::distributed<Client> Dist_t;
 
     // The message verbs supported by this service
-    enum MsgVerbs: uint8_t
+    enum MsgVerbs: Verb
     {
         POST = 100,
         GET = 101,

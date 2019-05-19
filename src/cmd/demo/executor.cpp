@@ -44,7 +44,7 @@ static void makeAssignPartitionPayload(k2::Payload& payload)
     assignmentMessage.partitionVersion = partitionId.version;
 
     PartitionMessage::Header* header;
-    bool ret = payload.getWriter().getContiguousStructure(header);
+    bool ret = payload.getWriter().reserveContiguousStructure(header);
     assert(ret);
     header->messageType = MessageType::PartitionAssign;
     header->partition = partitionId;
