@@ -20,6 +20,7 @@ using namespace std::chrono_literals; // so that we can type "1ms"
 // k2 transport
 #include "transport/RPCDispatcher.h"
 #include "transport/TCPRPCProtocol.h"
+#include "transport/RRDMARPCProtocol.h"
 #include "common/Log.h"
 #include "transport/BaseTypes.h"
 #include "transport/RPCProtocolFactory.h"
@@ -87,17 +88,17 @@ public:  // application lifespan
         K2INFO("Registering message handlers");
 
         disp.registerMessageObserver(MsgVerbs::POST,
-            [this](k2::Request& request) mutable {
-                this->handlePOST(request);
+            [this](k2::Request&& request) mutable {
+                this->handlePOST(std::move(request));
             });
 
         disp.registerMessageObserver(MsgVerbs::GET,
-            [this](k2::Request& request) mutable {
-                this->handleGET(request);
+            [this](k2::Request&& request) mutable {
+                this->handleGET(std::move(request));
             });
 
         disp.registerMessageObserver(MsgVerbs::ACK,
-            [this](k2::Request& request) mutable {
+            [this](k2::Request&& request) mutable {
                 auto received = getPayloadString(request.payload.get());
                 K2INFO("Received ACK from " << request.endpoint.getURL() <<
                       ", and payload: " << received);
@@ -189,7 +190,7 @@ public: // Work generators
 
 public:
     // Message handlers
-    void handlePOST(k2::Request& request) {
+    void handlePOST(k2::Request&& request) {
         auto received = getPayloadString(request.payload.get());
         K2INFO("Received POST message from endpoint: " << request.endpoint.getURL()
               << ", with payload: " << received);
@@ -202,7 +203,7 @@ public:
         _dispatcher.local().sendReply(std::move(msg), request);
     }
 
-    void handleGET(k2::Request& request) {
+    void handleGET(k2::Request&& request) {
         auto received = getPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.getURL()
               << ", with payload: " << received);
@@ -259,6 +260,7 @@ int main(int argc, char** argv) {
     // limit the pool to the number of network stacks we want to watch. The stacks are configured based on the cmd line options
     k2::VirtualNetworkStack::Dist_t vnet;
     k2::RPCProtocolFactory::Dist_t tcpproto;
+    k2::RPCProtocolFactory::Dist_t rrdmaproto;
     k2::RPCDispatcher::Dist_t dispatcher;
     Service::Dist_t service;
 
@@ -267,21 +269,34 @@ int main(int argc, char** argv) {
     // which are registered by seastar components (e.g. metrics, logging, reactor, network, etc)
     seastar::app_template app;
     app.add_options()
-        ("tcp_port", bpo::value<uint32_t>()->default_value(14000), "TCP port to listen on");
+        ("tcp_port", bpo::value<uint32_t>()->default_value(14000), "TCP port to listen on")
+        ("use_tcp", bpo::value<bool>()->default_value(true), "Should we use TCP")
+        ("use_rrdma", bpo::value<bool>()->default_value(false), "Should we use RRDMA");
 
     // we are now ready to assemble the running application
     auto result = app.run_deprecated(argc, argv, [&] {
         auto&& config = app.configuration();
+        bool use_tcp = config["use_tcp"].as<bool>();
+        bool use_rrdma = config["use_rrdma"].as<bool>();
+        uint32_t tcp_port = config["tcp_port"].as<uint32_t>();
 
         // call the stop() method on each object when we're about to exit. This also deletes the objects
         seastar::engine().at_exit([&] {
             K2INFO("vnet stop");
             return vnet.stop();
         });
-        seastar::engine().at_exit([&] {
-            K2INFO("tcpproto stop");
-            return tcpproto.stop();
-        });
+        if (use_tcp) {
+            seastar::engine().at_exit([&] {
+                K2INFO("tcpproto stop");
+                return tcpproto.stop();
+            });
+        }
+        if (use_rrdma) {
+            seastar::engine().at_exit([&] {
+                K2INFO("rrdma stop");
+                return rrdmaproto.stop();
+            });
+        }
         seastar::engine().at_exit([&] {
             K2INFO("dispatcher stop");
             return dispatcher.stop();
@@ -290,7 +305,6 @@ int main(int argc, char** argv) {
             K2INFO("service stop");
             return service.stop();
         });
-        uint32_t tcp_port = config["tcp_port"].as<uint32_t>();
 
         return
             // These calls here actually call the constructor of each distributed class, once on
@@ -300,9 +314,19 @@ int main(int argc, char** argv) {
             // The application remains running since various components register recurring events
             // There are also some internal components which register recurring events (e.g. metrics http server)
             vnet.start()
-                .then([&vnet, &tcpproto, tcp_port]() {
-                    K2INFO("start tcpproto");
-                    return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(vnet), tcp_port));
+                .then([&vnet, &tcpproto, tcp_port, use_tcp]() {
+                    if (use_tcp) {
+                        K2INFO("start tcpproto");
+                        return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(vnet), tcp_port));
+                    }
+                    return seastar::make_ready_future<>();
+                })
+                .then([&vnet, &rrdmaproto, use_rrdma]() {
+                    if (use_rrdma) {
+                        K2INFO("start rrdmaproto");
+                        return rrdmaproto.start(k2::RRDMARPCProtocol::builder(std::ref(vnet)));
+                    }
+                    return seastar::make_ready_future<>();
                 })
                 .then([&]() {
                     K2INFO("start dispatcher");
@@ -318,14 +342,35 @@ int main(int argc, char** argv) {
                     K2INFO("Start VNS");
                     return vnet.invoke_on_all(&k2::VirtualNetworkStack::start);
                 })
-                .then([&]() {
-                    K2INFO("Start tcpproto");
-                    return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::start);
+                .then([&tcpproto, use_tcp]() {
+                    if (use_tcp) {
+                        K2INFO("Start tcpproto");
+                        return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::start);
+                    }
+                    return seastar::make_ready_future<>();
                 })
-                .then([&]() {
-                    K2INFO("RegisterProtocol dispatcher");
-                    // Could register more protocols here via separate invoke_on_all calls
-                    return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
+                .then([&rrdmaproto, use_rrdma]() {
+                    if (use_rrdma) {
+                        K2INFO("Start rrdmaproto");
+                        return rrdmaproto.invoke_on_all(&k2::RPCProtocolFactory::start);
+                    }
+                    return seastar::make_ready_future<>();
+                })
+                .then([&dispatcher, &tcpproto, use_tcp]() {
+                    if (use_tcp) {
+                        K2INFO("RegisterProtocol TCP dispatcher");
+                        // Could register more protocols here via separate invoke_on_all calls
+                        return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
+                    }
+                    return seastar::make_ready_future<>();
+                })
+                .then([&dispatcher, &rrdmaproto, use_rrdma]() {
+                    if (use_rrdma) {
+                        K2INFO("RegisterProtocol RRDMA dispatcher");
+                        // Could register more protocols here via separate invoke_on_all calls
+                        return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(rrdmaproto));
+                    }
+                    return seastar::make_ready_future<>();
                 })
                 .then([&]() {
                     K2INFO("Start dispatcher");

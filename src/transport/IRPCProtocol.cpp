@@ -18,17 +18,17 @@ IRPCProtocol::~IRPCProtocol() {
     K2DEBUG("dtor");
 }
 
-void IRPCProtocol::setMessageObserver(MessageObserver_t observer) {
+void IRPCProtocol::setMessageObserver(RequestObserver_t observer) {
     K2DEBUG("set message observer");
     if (observer == nullptr) {
         K2DEBUG("setting default message observer");
-        _messageObserver = [](Request& request) {
+        _messageObserver = [](Request&& request) {
             K2WARN("Message: " << request.verb << " from " << request.endpoint.getURL()
                << " ignored since there is no message observer registered...");
         };
     }
     else {
-        _messageObserver = observer;
+        _messageObserver = std::move(observer);
     }
 }
 
@@ -41,7 +41,7 @@ void IRPCProtocol::setLowTransportMemoryObserver(LowTransportMemoryObserver_t ob
         };
     }
     else {
-        _lowMemObserver = observer;
+        _lowMemObserver = std::move(observer);
     }
 }
 

@@ -56,8 +56,8 @@ public:
     void start()
     {
         _dispatcher.local().registerMessageObserver(MsgVerbs::GET,
-            [this](k2::Request& request) mutable {
-                this->handleGET(request);
+            [this](k2::Request&& request) mutable {
+                this->handleGET(std::move(request));
             });
 
         // You can store the endpoint for more efficient communication
@@ -72,7 +72,7 @@ public:
         return seastar::make_ready_future<>();
     }
 
-    void handleGET(k2::Request& request)
+    void handleGET(k2::Request&& request)
     {
         auto received = getPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.getURL()

@@ -28,16 +28,6 @@ namespace k2 {
 // This class should be used as a distributed<> container
 class RPCDispatcher: public seastar::weakly_referencable<RPCDispatcher> {
 public: // types
-    // The type of a message observer
-    // TODO See if we can use something faster than std::function.
-    // Benchmark indicates 20ns penalty per runtime call
-    // See https://www.boost.org/doc/libs/1_69_0/doc/html/function/faq.html
-    typedef std::function<void(Request& request)> MessageObserver_t;
-
-    // the type of a low memory observer. This function will be called when a transport requires a release of
-    // some memory
-    typedef std::function<void(const String& ttype, size_t requiredBytes)> LowTransportMemoryObserver_t;
-
     // distributed<> version of the class
     typedef seastar::distributed<RPCDispatcher> Dist_t;
 
@@ -77,7 +67,7 @@ public: // API
     // registerMessageObserver allows you to register an observer function for a given RPC verb.
     // You can have at most one observer per verb. a DuplicateRegistrationException will be
     // thrown if there is an observer already installed for this verb
-    void registerMessageObserver(Verb verb, MessageObserver_t observer);
+    void registerMessageObserver(Verb verb, RequestObserver_t observer);
 
     // registerLowTransportMemoryObserver allows the user to register an observer which will be called when
     // a transport becomes low on memory.
@@ -97,6 +87,9 @@ public: // API
     // 2. send messages.
     // returns blank pointer if we failed to parse the url or if the protocol is not supported
     std::unique_ptr<TXEndpoint> getTXEndpoint(String url);
+
+    // Returns the listener endpoint for the given protocol (or empty pointer if not supported)
+    seastar::lw_shared_ptr<TXEndpoint> getServerEndpoint(const String& protocol);
 
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
@@ -118,7 +111,7 @@ public: // API
 
 private: // methods
     // Process new messages received from protocols
-    void _handleNewMessage(Request& request);
+    void _handleNewMessage(Request&& request);
 
     // Helper method useds to send messages
     void _send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta);
@@ -128,7 +121,7 @@ private: // fields
     std::unordered_map<String, seastar::shared_ptr<IRPCProtocol>> _protocols;
 
     // the message observers
-    std::unordered_map<Verb, MessageObserver_t> _observers;
+    std::unordered_map<Verb, RequestObserver_t> _observers;
 
     // to track the request-reply promises and timeouts
     typedef seastar::promise<std::unique_ptr<Payload>> PayloadPromise;

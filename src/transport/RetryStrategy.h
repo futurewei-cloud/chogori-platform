@@ -35,7 +35,8 @@ public: // lifecycle
         _currentTimeout(std::chrono::microseconds(1)),
         _success(false),
         _used(false) {
-        K2DEBUG("ctor retries " << _retries <<", rate " << _rate << ", startTimeout " << _currentTimeout.count());
+        K2DEBUG("ctor retries " << _retries <<", rate " << _rate << ", startTimeout "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(_currentTimeout).count() << "ms");
     }
 
     // destructor
@@ -59,7 +60,7 @@ public: // lifecycle
 
     // Set the desired starting value
     ExponentialBackoffStrategy& withStartTimeout(Duration startTimeout) {
-        K2DEBUG("startTimeout: " << startTimeout.count());
+        K2DEBUG("startTimeout: " << std::chrono::duration_cast<std::chrono::milliseconds>(startTimeout).count() << "ms");
         _currentTimeout = startTimeout;
         return *this;
     }
@@ -75,17 +76,20 @@ public: // API
             K2WARN("This strategy has already been used");
             return seastar::make_exception_future<>(DuplicateExecutionException());
         }
-        auto resultPtr = seastar::make_lw_shared<>(seastar::make_ready_future<>());
+        auto resultPtr = seastar::make_lw_shared<>(
+            seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException()));
         return seastar::do_until(
             [this] { return _success || this->_try >= this->_retries; },
             [this, func=std::move(func), resultPtr] {
                 this->_try++;
                 this->_currentTimeout*=this->_try;
-                K2DEBUG("running try " << this->_try << ", with timeout " << this->_currentTimeout.count());
+                K2DEBUG("running try " << this->_try << ", with timeout "
+                    << std::chrono::duration_cast<std::chrono::milliseconds>(_currentTimeout).count() << "ms");
                 return func(this->_retries - this->_try, this->_currentTimeout).
-                    handle_exception_type([](RPCDispatcher::DispatcherShutdown&) {
+                    handle_exception_type([this](RPCDispatcher::DispatcherShutdown&) {
                         K2DEBUG("Dispatcher has shut down. Stopping retry");
-                        return seastar::make_ready_future<>();
+                        this->_try = this->_retries; // ff to the last retry
+                        return seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException());
                     }).
                     then_wrapped([this, resultPtr](auto&& fut) {
                         // the func future is done.

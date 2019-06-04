@@ -18,7 +18,7 @@ namespace k2 {
 class AMClientConnection: public IClientConnection {
 public:
     // construct a "connection" to allow a response to be sent to the given request
-    AMClientConnection(k2::Request request, k2::RPCDispatcher& disp):
+    AMClientConnection(k2::Request&& request, k2::RPCDispatcher& disp):
     _responded(false),
     _outPayload(request.endpoint.newPayload()),
     _header(0),
@@ -117,7 +117,7 @@ void NodePoolService::start() {
     K2INFO("NodePoolService starting");
     _stopped = false;
     _dispatcher.local().registerMessageObserver((Verb)Constants::NodePoolMsgVerbs::PARTITION_MESSAGE,
-            [this](k2::Request& request) mutable {
+            [this](k2::Request&& request) mutable {
                 K2DEBUG("Dispatching message to AssignmentManager");
                 PartitionRequest partitionRequest;
                 partitionRequest.message = createPartitionMessage(std::move(request.payload), request.endpoint.getURL());

@@ -2,3 +2,6 @@
 .editorconfig
 .vscode/
 build/
+*.rpm
+*.deb
+*.changes

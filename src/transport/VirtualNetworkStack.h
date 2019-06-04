@@ -7,6 +7,7 @@
 #include <seastar/core/distributed.hh> // distributed<> stuff
 #include <seastar/net/api.hh> // socket/network stuff
 #include <seastar/core/future.hh> // future stuff
+#include <seastar/net/rdma.hh>
 
 // k2
 #include "BaseTypes.h"
@@ -25,10 +26,6 @@ class VirtualNetworkStack{
 public: // types
     // Distributed version of the class
     typedef seastar::distributed<VirtualNetworkStack> Dist_t;
-
-    // the type of a function we can call to notify that we're low on memory. Function is called with required
-    // number of bytes to release
-    typedef std::function<void(size_t requiredNumberOfBytes)> LowMemoryObserver_t;
 
 public: // lifecycle
     // Constructor.
@@ -64,7 +61,24 @@ public: // UDP API
     // TODO add UDP support
 
 public: // RDMA API
-    // TODO add RDMA support
+    // Create a server(listening) RRDMA socket on the local interface.
+    seastar::rdma::RDMAListener listenRRDMA();
+
+    // Create an RRDMA connection to connect to a given remote address.
+    std::unique_ptr<seastar::rdma::RDMAConnection> connectRRDMA(seastar::rdma::EndPoint remoteAddress);
+
+    // Create a binary from the RRDMA provider
+    BinaryAllocatorFunctor getRRDMAAllocator();
+
+    // RegisterLowRRDMAMemoryObserver allows the user to register a observer which will be called when
+    // the RRDMA stack becomes low on memory and requires the application to release some buffers back.
+    // The call is level triggered at the end of every polling cycle when the RRDMA transport detected that
+    // its memory is running low. The user is called with is required total number of bytes that should be released.
+    //
+    // The intended use case here is for applications which hold on to Payloads for long periods of time.
+    // These applications should register themselves here, and when called should release enough Payloads to satisfy
+    // the requiredNumberOfBytes parameter in their callback.
+    void registerLowRRDMAMemoryObserver(LowMemoryObserver_t observer);
 
 public: // distributed<> interface
     // Should be called by user when all distributed objects have been created
@@ -75,6 +89,7 @@ public: // distributed<> interface
 
 private: // fields
     LowMemoryObserver_t _lowTCPMemObserver;
+    LowMemoryObserver_t _lowRRDMAMemObserver;
 
 private: // Not needed
     VirtualNetworkStack(const VirtualNetworkStack& o) = delete;

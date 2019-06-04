@@ -6,46 +6,39 @@
 #include <seastar/core/distributed.hh> // distributed stuff
 #include <seastar/core/shared_ptr.hh> // pointers (shared/lw)
 #include <seastar/core/weak_ptr.hh> // pointers (weak)
+#include <seastar/net/rdma.hh>
 
 // k2
 #include "IRPCProtocol.h"
 #include "VirtualNetworkStack.h"
 #include "RPCProtocolFactory.h"
-#include "TCPRPCChannel.h"
+#include "RRDMARPCChannel.h"
 #include "RPCHeader.h"
 
 namespace k2 {
 
-// TCPRPCProtocol is a protocol which use the currently configured TCP stack, with responsibility to:
-// - listen for incoming TCP connections
-// - create outgoing TCP connections when asked to send messages
+// RRDMARPCProtocol is a protocol which uses the currently configured RRDMA stack, with responsibility to:
+// - listen for incoming RRDMA connections
+// - create outgoing RRDMA connections when asked to send messages
 // - receive incoming messages and pass them on to the message observer for the protocol
 // NB, the class is meant to be used as a distributed<> container
-class TCPRPCProtocol: public IRPCProtocol, public seastar::weakly_referencable<TCPRPCProtocol> {
+class RRDMARPCProtocol: public IRPCProtocol, public seastar::weakly_referencable<RRDMARPCProtocol> {
 public: // types
-    // Convenience builder which does not create a listener (client-mode only)
+    // Convenience builder which opens an RRDMA listener across all cores
     static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet);
 
-    // Convenience builder which opens a listener on the same port across all cores
-    static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet, uint16_t port);
-
-    // Allow building of protocols with an address provider.
-    static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet, IAddressProvider& addrProvider);
-
-    // The official protocol name supported for communications over TCPRPC channels
+    // The official protocol name supported for communications over RRDMARPC channels
     static const String proto;
 
 public: // lifecycle
-    // Construct the protocol with a vnet which supports TCP and listens on the given address
-    TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet, SocketAddress addr);
-
-    // Construct the protocol with a vnet which supports TCP and no ability to accept incoming connections
-    TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet);
+    // Construct the protocol with a vnet which supports RRDMA
+    RRDMARPCProtocol(VirtualNetworkStack::Dist_t& vnet);
 
     // Destructor
-    virtual ~TCPRPCProtocol();
+    virtual ~RRDMARPCProtocol();
 
 public: // API
+
     // This method creates an endpoint for a given URL. The endpoint is needed in order to
     // 1. obtain protocol-specific payloads
     // 2. send messages.
@@ -71,36 +64,32 @@ public: // distributed<> interface
 
 private: // methods
     // utility method which ew use to obtain a connection(either existing or new) for the given endpoint
-    seastar::lw_shared_ptr<TCPRPCChannel> _getOrMakeChannel(TXEndpoint& endpoint);
+    seastar::lw_shared_ptr<RRDMARPCChannel> _getOrMakeChannel(TXEndpoint& endpoint);
 
     // process a new channel creation
-    seastar::lw_shared_ptr<TCPRPCChannel>
-    _handleNewChannel(seastar::future<seastar::connected_socket> futureSocket, const TXEndpoint& endpoint);
+    seastar::lw_shared_ptr<RRDMARPCChannel>
+    _handleNewChannel(std::unique_ptr<seastar::rdma::RDMAConnection> rconn, TXEndpoint endpoint);
 
-    // Helper method to create an TXEndpoint from a socket address
-    TXEndpoint _endpointFromAddress(SocketAddress addr);
+    // Helper method to create an TXEndpoint from an rdma address
+    TXEndpoint _endpointFromAddress(seastar::rdma::EndPoint addr);
 
 private: // fields
-    // the address we're listening on
-    SocketAddress _addr;
-
-    // the endpoint version of the address we're listening on
-    seastar::lw_shared_ptr<TXEndpoint> _svrEndpoint;
-
     // we use this flag to signal exit
     bool _stopped;
-    // our listening socket
-    seastar::lw_shared_ptr<seastar::server_socket> _listen_socket;
-    // the underlying TCP channels we're dealing with
-    std::unordered_map<TXEndpoint, seastar::lw_shared_ptr<TCPRPCChannel>> _channels;
+    // our listener
+    seastar::rdma::RDMAListener _listener;
+    // the endpoint version of the address we're listening on
+    seastar::lw_shared_ptr<TXEndpoint> _svrEndpoint;
+    // the underlying RRDMA channels we're dealing with
+    std::unordered_map<TXEndpoint, seastar::lw_shared_ptr<RRDMARPCChannel>> _channels;
 
 private: // not needed
-    TCPRPCProtocol() = delete;
-    TCPRPCProtocol(const TCPRPCProtocol& o) = delete;
-    TCPRPCProtocol(TCPRPCProtocol&& o) = delete;
-    TCPRPCProtocol &operator=(const TCPRPCProtocol& o) = delete;
-    TCPRPCProtocol &operator=(TCPRPCProtocol&& o) = delete;
+    RRDMARPCProtocol() = delete;
+    RRDMARPCProtocol(const RRDMARPCProtocol& o) = delete;
+    RRDMARPCProtocol(RRDMARPCProtocol&& o) = delete;
+    RRDMARPCProtocol &operator=(const RRDMARPCProtocol& o) = delete;
+    RRDMARPCProtocol &operator=(RRDMARPCProtocol&& o) = delete;
 
-}; // class TCPRPCProtocol
+}; // class RRDMARPCProtocol
 
 } // namespace k2

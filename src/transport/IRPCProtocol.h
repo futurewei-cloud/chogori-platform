@@ -9,6 +9,7 @@
 #include "VirtualNetworkStack.h"
 #include "TXEndpoint.h"
 #include "Request.h"
+#include "BaseTypes.h"
 #include "common/Common.h"
 
 namespace k2 {
@@ -30,14 +31,6 @@ public:
 // NB. RPCProtocols are not meant to be created directly. Instead, you should use a RPCProtocolFactory
 // to create protocols in a distributed manner.
 class IRPCProtocol {
-public: // types
-    // A message observer is a function which receives a request
-    typedef std::function<void(Request&)> MessageObserver_t;
-
-    // The type of observer for low memory events. The caller is provided with the transport protocol that requires
-    // release, and the required number of bytes to release
-    typedef std::function<void(const String&, size_t)> LowTransportMemoryObserver_t;
-
 public: // lifecycle
     // RPCProtocols must be constructed with the distributed<> virtual network stack, and should specify the protocol
     IRPCProtocol(VirtualNetworkStack::Dist_t& vnet, const String& supportedProtocol);
@@ -47,7 +40,7 @@ public: // lifecycle
 
 public: // API
     // Use this method to set the observer for messages from this protocol
-    void setMessageObserver(MessageObserver_t observer);
+    void setMessageObserver(RequestObserver_t observer);
 
     // This method returns the protocol supported by the implementation
     const String& supportedProtocol() { return _protocol;}
@@ -76,6 +69,9 @@ public: // API
     // This is an asyncronous API. No guarantees are made on the delivery of the payload after the call returns.
     virtual void send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) = 0;
 
+    // Returns the endpoint where this protocol accepts incoming connections.
+    virtual seastar::lw_shared_ptr<TXEndpoint> getServerEndpoint() = 0;
+
 public: // distributed<> interface.
     // called by seastar's distributed mechanism when stop() is invoked on the distributed container.
     virtual seastar::future<> stop() = 0;
@@ -88,7 +84,7 @@ protected: // fields
     VirtualNetworkStack::Dist_t& _vnet;
 
     // the (optional) observer for incoming messages
-    MessageObserver_t _messageObserver;
+    RequestObserver_t _messageObserver;
 
     // the optional observer for low memory events
     LowTransportMemoryObserver_t _lowMemObserver;

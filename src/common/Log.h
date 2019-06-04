@@ -71,3 +71,12 @@ inline LogEntry StartLogStream() {
 #define K2INFO(msg) K2LOG("INFO", msg)
 #define K2WARN(msg) K2LOG("WARN", msg)
 #define K2ERROR(msg) K2LOG("ERROR", msg)
+
+#ifndef NDEBUG
+#define K2ASSERT(cond, msg) { \
+    if(!(cond)) {K2ERROR(msg);} \
+    assert((cond)); \
+}
+#else
+#define K2ASSERT(cond, msg)
+#endif

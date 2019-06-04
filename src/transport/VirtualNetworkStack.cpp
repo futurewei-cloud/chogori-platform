@@ -9,17 +9,21 @@
 
 // k2
 #include "common/Log.h"
+
 // determine the packet size we should allocate: mtu - tcp_header_size - ip_header_size - ethernet_header_size
 const uint16_t tcpsegsize = seastar::net::hw_features().mtu
                             - seastar::net::tcp_hdr_len_min
                             - seastar::net::ipv4_hdr_len_min
                             - seastar::net::eth_hdr_len;
 
+const uint16_t rrdmasegsize = seastar::rdma::RDMAStack::RCDataSize;
+
 namespace k2 {
 
 VirtualNetworkStack::VirtualNetworkStack() {
     K2DEBUG("ctor");
     registerLowTCPMemoryObserver(nullptr); // install default observer
+    registerLowRRDMAMemoryObserver(nullptr); // install default observer
 }
 
 VirtualNetworkStack::~VirtualNetworkStack() {
@@ -28,7 +32,7 @@ VirtualNetworkStack::~VirtualNetworkStack() {
 }
 
 seastar::server_socket VirtualNetworkStack::listenTCP(SocketAddress sa, seastar::listen_options opt) {
-    K2DEBUG("listen tcp" << sa);
+    K2DEBUG("listen tcp on: " << sa);
     // TODO For now, just use the engine's global network
     return seastar::engine().net().listen(std::move(sa), std::move(opt));
 }
@@ -74,6 +78,35 @@ void VirtualNetworkStack::registerLowTCPMemoryObserver(LowMemoryObserver_t obser
 seastar::future<> VirtualNetworkStack::stop() {
     K2DEBUG("stop");
     return seastar::make_ready_future<>();
+}
+
+seastar::rdma::RDMAListener VirtualNetworkStack::listenRRDMA() {
+    K2DEBUG("listen rrdma");
+    return seastar::engine()._rdma_stack->listen();
+}
+
+std::unique_ptr<seastar::rdma::RDMAConnection>
+VirtualNetworkStack::connectRRDMA(seastar::rdma::EndPoint remoteAddress) {
+    return seastar::engine()._rdma_stack->connect(std::move(remoteAddress));
+}
+
+BinaryAllocatorFunctor VirtualNetworkStack::getRRDMAAllocator() {
+    return []() {
+        K2DEBUG("rrdma allocating binary with size=" << rrdmasegsize);
+        return Binary(rrdmasegsize);
+    };
+}
+
+void VirtualNetworkStack::registerLowRRDMAMemoryObserver(LowMemoryObserver_t observer) {
+    if (observer == nullptr) {
+        _lowRRDMAMemObserver = [](size_t requiredReleaseBytes){
+            K2WARN("RRDMA transport needs memory: "<< requiredReleaseBytes << ", but there is no observer registered");
+        };
+    }
+    else {
+        //TODO hook this into the underlying RDMA provider
+        _lowRRDMAMemObserver = observer;
+    }
 }
 
 } // k2 namespace

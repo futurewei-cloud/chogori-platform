@@ -6,7 +6,7 @@
 // third-party
 #include <seastar/net/api.hh> // seastar's network stuff
 #include <seastar/core/weak_ptr.hh> // weak ptr
-#include <seastar/util/std-compat.hh>
+#include <seastar/net/rdma.hh>
 
 // k2
 #include "common/Common.h"
@@ -19,18 +19,17 @@
 
 namespace k2 {
 
-// A TCP channel wraps a seastar connected_socket with an RPCParser to enable sending and receiving
-// RPC messages over a TCP connection
+// A RRDMA channel wraps a seastar connected_socket with an RPCParser to enable sending and receiving
+// RPC messages over a RRDMA connection
 // The class provides Observer interface to allow for user to observe RPC messages coming over this channel
-class TCPRPCChannel: public seastar::weakly_referencable<TCPRPCChannel> {
-
+class RRDMARPCChannel: public seastar::weakly_referencable<RRDMARPCChannel> {
 public: // lifecycle
-    // Construct a new channel, wrapping a future connected socket to a client at the given address
-    TCPRPCChannel(seastar::future<seastar::connected_socket> futureSocket, TXEndpoint endpoint,
+    // Construct a new channel, wrapping an existing rdma connection to a client at the given address
+    RRDMARPCChannel(std::unique_ptr<seastar::rdma::RDMAConnection> rconn, TXEndpoint endpoint,
                   RequestObserver_t requestObserver, FailureObserver_t failureObserver);
 
     // destructor
-    ~TCPRPCChannel();
+    ~RRDMARPCChannel();
 
     // close the channel gracefully within the given timeout.
     // That is, we stop reading data, and we try to flush out any pending writes
@@ -55,14 +54,6 @@ public: // API
     // This method needs to be called so that the channel can begin processing messages
     void run();
 
-private: // methods
-    // we call this method when we successfully connect to a remote end.
-    // While we're connecting, any writes are queued in the channel and now we have to flush them
-    void _processQueuedWrites();
-
-    // helper method to setup an incoming connected socket
-    void _setConnectedSocket(seastar::connected_socket sock);
-
 private: // fields
     // this is the RPC message parser
     RPCParser _rpcParser;
@@ -76,45 +67,23 @@ private: // fields
     // the endpoint for the channel
     TXEndpoint _endpoint;
 
-    // this holds the underlying socket
-    seastar::connected_socket _fd;
-
-    // flag we use to tell if the _fd is set
-    bool _fdIsSet;
+    // this holds the underlying rdma connection
+    std::unique_ptr<seastar::rdma::RDMAConnection> _rconn;
 
     // flag to tell if the channel is closing
     bool _closingInProgress;
 
+    // we return this future when we were in the the middle of closing down and someone calls gracefulClose()
     seastar::future<> _closerFuture = seastar::make_ready_future<>();
-
-    // the input stream from our socket
-    seastar::input_stream<char> _in;
-
-    // the output stream from our socket
-    seastar::output_stream<char> _out;
-
-    // a place to store pending writes while we're connecting
-    struct _BufferedWrite {
-        Verb verb;
-        std::unique_ptr<Payload> payload;
-        MessageMetadata meta;
-    };
-    std::vector<_BufferedWrite> _pendingWrites;
 
     // flag to determine if we're running
     bool _running;
 
-    // used during intialization to process incoming connected_socket
-    seastar::future<seastar::connected_socket> _futureSocket;
-
-    // used to properly chain sends
-    seastar::compat::optional<seastar::future<>> _sendFuture;
-
 private: // Not needed
-    TCPRPCChannel(const TCPRPCChannel& o) = delete;
-    TCPRPCChannel(TCPRPCChannel&& o) = delete;
-    TCPRPCChannel& operator=(const TCPRPCChannel& o) = delete;
-    TCPRPCChannel& operator=(TCPRPCChannel&& o) = delete;
+    RRDMARPCChannel(const RRDMARPCChannel& o) = delete;
+    RRDMARPCChannel(RRDMARPCChannel&& o) = delete;
+    RRDMARPCChannel& operator=(const RRDMARPCChannel& o) = delete;
+    RRDMARPCChannel& operator=(RRDMARPCChannel&& o) = delete;
 
-}; // TCPRPCChannel
+}; // RRDMARPCChannel
 } //k2
