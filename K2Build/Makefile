@@ -30,11 +30,11 @@ clean:
 
 package_deb: install
 	@echo ">>> Packaging deb"
-	@cd ../ && fpm --depends libseastar-k2=1.0.6 -s dir -t deb --deb-generate-changes -n k2platform -f -m k2 -a amd64 -v $(package_version) --deb-dist stable --description "K2 Platform Applications http://rnd-github-usa-g.huawei.com/SeattleCloudBU/DFV_K2_Platform/" -C $(INSTALL_DIR)
+	@cd ../ && fpm --depends "libseastar-k2 = 1.0.6" -s dir -t deb --deb-generate-changes -n k2platform -f -m k2 -a amd64 -v $(package_version) --deb-dist stable --description "K2 Platform Applications http://rnd-github-usa-g.huawei.com/SeattleCloudBU/DFV_K2_Platform/" -C $(INSTALL_DIR)
 
 package_rpm: install
 	@echo ">>> Packaging rpm"
-	@cd ../ && fpm --depends libseastar-k2=1.0.6 -s dir -t rpm -n k2platform -f -m k2 -a amd64 -v $(package_version) --rpm-dist stable --description "K2 Platform Applications http://rnd-github-usa-g.huawei.com/SeattleCloudBU/DFV_K2_Platform/" -C $(INSTALL_DIR)
+	@cd ../ && fpm --depends "libseastar-k2 = 1.0.6" -s dir -t rpm -n k2platform -f -m k2 -a amd64 -v $(package_version) --rpm-dist stable --description "K2 Platform Applications http://rnd-github-usa-g.huawei.com/SeattleCloudBU/DFV_K2_Platform/" -C $(INSTALL_DIR)
 
 package_push_deb:
 	@$(eval DEB_NAME := $(wildcard ../k2platform_*.deb))
