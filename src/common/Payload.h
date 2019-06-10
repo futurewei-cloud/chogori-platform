@@ -52,10 +52,8 @@ class Payload
     friend class PayloadReader;
     friend class PayloadWriter;
     friend class ReadOnlyPayload;
-public:
-    class NonAllocatingPayloadException : public std::exception {};
 protected:
-    static auto constexpr DefaultAllocator = [](){ return Binary(8096); };
+    static Binary DefaultAllocator() { return Binary(8096); }
     std::vector<Binary> buffers;
     size_t size;
     BinaryAllocatorFunctor allocator;
@@ -88,7 +86,7 @@ protected:
 
     bool allocateBuffer()
     {
-        if (allocator == nullptr) { throw NonAllocatingPayloadException();}
+        ASSERT(allocator);
         Binary buf = allocator();
         if (!buf) {
             return false;
