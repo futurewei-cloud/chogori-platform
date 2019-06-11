@@ -16,9 +16,13 @@
 #include <seastar/util/reference_wrapper.hh> // for app_template
 #include <seastar/core/future.hh> // for future stuff
 #include <seastar/core/timer.hh> // periodic timer
+#include <seastar/core/metrics_registration.hh> // metrics
+#include <seastar/core/metrics.hh>
 
 using namespace std::chrono_literals; // so that we can type "1ms"
 namespace bpo = boost::program_options;
+namespace sm = seastar::metrics;
+
 using Clock=std::chrono::steady_clock;
 
 // k2 transport
@@ -47,7 +51,7 @@ public:  // application lifespan
         _data(0),
         _stopped(true),
         _haveSendPromise(false),
-        _timer(seastar::timer<>([this] { 
+        _timer(seastar::timer<>([this] {
             _stopped = true;
             if (_haveSendPromise) {
                 _haveSendPromise = false;
@@ -84,8 +88,16 @@ public:  // application lifespan
         return _stopPromise.get_future();
     }
 
+    void registerMetrics() {
+        _metric_groups.add_group("txbench_client", {
+            sm::make_gauge("total_count", [this]{return _session.totalCount;}, sm::description("Total number of requests")),
+            sm::make_gauge("total_size", [this]{return _session.totalSize;}, sm::description("Total data size sent"))
+        });
+    }
+
     seastar::future<> start() {
         _stopped = false;
+        registerMetrics();
         _disp.registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
@@ -285,6 +297,7 @@ private:
     bool _haveSendPromise;
     Clock::time_point _start;
     seastar::timer<> _timer;
+    sm::metric_groups _metric_groups;
 }; // class Client
 
 int main(int argc, char** argv) {
