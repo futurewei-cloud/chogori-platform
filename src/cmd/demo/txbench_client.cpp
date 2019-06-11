@@ -30,6 +30,7 @@ using Clock=std::chrono::steady_clock;
 #include "transport/RPCProtocolFactory.h"
 #include "transport/VirtualNetworkStack.h"
 #include "transport/RetryStrategy.h"
+#include "transport/Prometheus.h"
 
 #include "txbench_common.h"
 
@@ -39,13 +40,20 @@ public: // public types
     typedef seastar::distributed<Client> Dist_t;
 
 public:  // application lifespan
-    Client(k2::RPCDispatcher::Dist_t& dispatcher, bpo::variables_map& config):
+    Client(k2::RPCDispatcher::Dist_t& dispatcher, const bpo::variables_map& config):
         _disp(dispatcher.local()),
         _tcpRemotes(config["tcp_remotes"].as<std::vector<std::string>>()),
         _testDuration(config["test_duration_s"].as<uint32_t>()*1s),
         _data(0),
         _stopped(true),
-        _haveSendPromise(false) {
+        _haveSendPromise(false),
+        _timer(seastar::timer<>([this] { 
+            _stopped = true;
+            if (_haveSendPromise) {
+                _haveSendPromise = false;
+                _sendProm.set_value();
+            }
+        })) {
         _session.config = SessionConfig{.echoMode=config["echo_mode"].as<bool>(),
                                         .responseSize=config["request_size"].as<uint32_t>(),
                                         .pipelineSize=config["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
@@ -218,9 +226,12 @@ private:
                 }
             }
         });
+
+        _timer.arm(_testDuration);
+
         _start = Clock::now();
         return seastar::do_until(
-            [this] { return _stopped || Clock::now() - _start > _testDuration; },
+            [this] { return _stopped; },
             [this] { // body of loop
                 if (canSend()) {
                     send();
@@ -273,6 +284,7 @@ private:
     seastar::promise<> _stopPromise;
     bool _haveSendPromise;
     Clock::time_point _start;
+    seastar::timer<> _timer;
 }; // class Client
 
 int main(int argc, char** argv) {
@@ -281,10 +293,12 @@ int main(int argc, char** argv) {
     k2::RPCProtocolFactory::Dist_t rrdmaproto;
     k2::RPCDispatcher::Dist_t dispatcher;
     Client::Dist_t client;
+    k2::Prometheus prometheus;
 
     seastar::app_template app;
     app.add_options()
         ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken(), "The remote tcp endpoints")
+        ("prometheus_port", bpo::value<uint16_t>()->default_value(8089), "HTTP port for the prometheus server")
         ("request_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to send with each request")
         ("ack_count", bpo::value<uint32_t>()->default_value(5), "How many messages do we ack at once")
         ("pipeline_depth_mbytes", bpo::value<uint32_t>()->default_value(200), "How much data do we allow to go un-ACK-ed")
@@ -294,9 +308,14 @@ int main(int argc, char** argv) {
 
     // we are now ready to assemble the running application
     auto result = app.run_deprecated(argc, argv, [&] {
-        auto&& config = app.configuration();
+        auto& config = app.configuration();
+        uint16_t promport = config["prometheus_port"].as<uint16_t>();
 
         // call the stop() method on each object when we're about to exit. This also deletes the objects
+        seastar::engine().at_exit([&] {
+            K2INFO("prometheus stop");
+            return prometheus.Stop();
+        });
         seastar::engine().at_exit([&] {
             K2INFO("vnet stop");
             return vnet.stop();
@@ -320,10 +339,14 @@ int main(int argc, char** argv) {
 
         return
             // OBJECT CREATION (via distributed<>.start())
-            [&] {
+            [&]{
+                K2INFO("Start prometheus");
+                return prometheus.Start(promport, "K2 txbench client metrics", "txbench_client");
+            }()
+            .then([&] {
                 K2INFO("create vnet");
                 return vnet.start();
-            }()
+            })
             .then([&]() {
                 K2INFO("create tcpproto");
                 return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(vnet)));
@@ -338,7 +361,7 @@ int main(int argc, char** argv) {
             })
             .then([&]() {
                 K2INFO("create client");
-                return client.start(std::ref(dispatcher), std::ref(config));
+                return client.start(std::ref(dispatcher), app.configuration());
             })
             // STARTUP LOGIC
             .then([&]() {

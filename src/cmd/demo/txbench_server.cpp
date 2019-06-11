@@ -24,6 +24,7 @@ namespace bpo = boost::program_options;
 #include "transport/BaseTypes.h"
 #include "transport/RPCProtocolFactory.h"
 #include "transport/VirtualNetworkStack.h"
+#include "transport/Prometheus.h"
 
 #include "txbench_common.h"
 
@@ -57,6 +58,7 @@ public:  // application lifespan
 
     seastar::future<> start() {
         _stopped = false;
+
         _registerDATA_URL();
         _registerSTART_SESSION();
         _registerREQUEST();
@@ -178,19 +180,26 @@ int main(int argc, char** argv) {
     k2::RPCProtocolFactory::Dist_t rrdmaproto;
     k2::RPCDispatcher::Dist_t dispatcher;
     Service::Dist_t service;
+    k2::Prometheus prometheus;
     TXBenchAddressProvider addrProvider;
 
     seastar::app_template app;
     app.add_options()
+        ("prometheus_port", bpo::value<uint16_t>()->default_value(8088), "HTTP port for the prometheus server")
         ("tcp_ports", bpo::value<std::vector<uint32_t>>()->multitoken(), "TCP ports to listen on");
 
     // we are now ready to assemble the running application
     auto result = app.run_deprecated(argc, argv, [&] {
-        auto&& config = app.configuration();
+        auto& config = app.configuration();
         std::vector<uint32_t> tcp_ports = config["tcp_ports"].as<std::vector<uint32_t>>();
+        uint16_t promport = config["prometheus_port"].as<uint16_t>();
         addrProvider = TXBenchAddressProvider(tcp_ports);
 
         // call the stop() method on each object when we're about to exit. This also deletes the objects
+        seastar::engine().at_exit([&] {
+            K2INFO("prometheus stop");
+            return prometheus.Stop();
+        });
         seastar::engine().at_exit([&] {
             K2INFO("vnet stop");
             return vnet.stop();
@@ -214,10 +223,14 @@ int main(int argc, char** argv) {
 
         return
             // OBJECT CREATION (via distributed<>.start())
-            [&] {
+            [&]{
+                K2INFO("Start prometheus");
+                return prometheus.Start(promport, "K2 txbench server metrics", "txbench_server");
+            }()
+            .then([&] {
                 K2INFO("create vnet");
                 return vnet.start();
-            }()
+            })
             .then([&]() {
                 K2INFO("create tcpproto");
                 return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(vnet), std::ref(addrProvider)));
