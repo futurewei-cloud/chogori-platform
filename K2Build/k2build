@@ -13,4 +13,4 @@ if [ -t 1 ] ; then IT=-it; else IT=; fi
 echo ">>> Pulling latest builder image: ${FULL_IMG_NAME}"
 docker pull ${FULL_IMG_NAME}
 echo ">>> Executing command \"$*\" in the build container"
-docker run -p 8088:8088 --init --rm ${IT} -v "${PWD}:/build" ${FULL_IMG_NAME} $*;
+docker run --init --rm ${IT} -v "${PWD}:/build" ${FULL_IMG_NAME} $*;
