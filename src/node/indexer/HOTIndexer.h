@@ -13,7 +13,7 @@ namespace k2
 
 struct KeyValuePair {
     String key;
-    std::unique_ptr<Node> value;
+    std::unique_ptr<VersionedTreeNode> value;
 };
 
 template<typename ValueType>
@@ -31,7 +31,7 @@ class HOTIndexer : public IndexerInterface<HOTIndexer> {
     KeyValuePairTrieType m_keyValuePairTrie;
 public:
     void insert(String key, String value, uint64_t version) {
-        std::unique_ptr<Node> newNode(new Node);
+        std::unique_ptr<VersionedTreeNode> newNode(new VersionedTreeNode);
         newNode->value = std::move(value);
         newNode->version = version;
 
@@ -48,7 +48,7 @@ public:
         }
     }
 
-    Node* find(const String& key, uint64_t version) {
+    VersionedTreeNode* find(const String& key, uint64_t version) {
         //
         // Bug: sometimes find() cannot find existing key
         //
@@ -57,14 +57,14 @@ public:
         //     return nullptr;
         // }
 
-        // Node* node = (*it)->value.get();
+        // VersionedTreeNode* node = (*it)->value.get();
 
         auto it = m_keyValuePairTrie.lookup(key.c_str(), key.length());
         if (!it.mIsValid) {
             return nullptr;
         }
 
-        Node* node = it.mValue->value.get();
+        VersionedTreeNode* node = it.mValue->value.get();
         while (node && node->version > version) {
             node = node->next.get();
         }
@@ -86,7 +86,7 @@ public:
             return;
         }
 
-        Node* node = it.mValue->value.get();
+        VersionedTreeNode* node = it.mValue->value.get();
         if (node) {
             node = node->next.get();
         }

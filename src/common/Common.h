@@ -18,6 +18,30 @@
 #include "Constants.h"
 #include "Status.h"
 
+#define DISABLE_COPY(className)                                 \
+    className(const className&) = delete;                       \
+    className& operator=(const className&) = delete;            \
+
+#define DISABLE_MOVE(className)                                 \
+    className(className&&) = delete;                            \
+    className& operator=(className&&) = delete;                 \
+
+#define DISABLE_COPY_MOVE(className)                            \
+    DISABLE_COPY(className)                                     \
+    DISABLE_MOVE(className)                                     \
+
+#define DEFAULT_COPY(className)                                 \
+    className(className&) = default;                            \
+    className& operator=(className&) = default;                 \
+
+#define DEFAULT_MOVE(className)                                 \
+    className(className&&) = default;                           \
+    className& operator=(className&&) = default;                \
+
+#define DEFAULT_COPY_MOVE(className)                            \
+    DEFAULT_COPY(className)                                     \
+    DEFAULT_MOVE(className)                                     \
+
 namespace k2
 {
 

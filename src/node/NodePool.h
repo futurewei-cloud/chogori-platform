@@ -6,9 +6,13 @@
 #include <memory>
 #include <atomic>
 #include "ISchedulingPlatform.h"
+#include "NodeConfig.h"
 
 namespace k2
 {
+
+class Node;
+class PoolMonitor;
 
 //
 //  Address configuration for endpoint
@@ -54,7 +58,10 @@ struct NodeEndpointConfig
 //
 class INodePool
 {
+    DISABLE_COPY_MOVE(INodePool)
 protected:
+    INodePool() {}
+
     class LockScope
     {
         std::atomic_bool& lock;
@@ -69,10 +76,16 @@ protected:
     };
 
 protected:
-    std::vector<NodeEndpointConfig> endpoints;
+    std::vector<Node*> nodes;   //  Use pointer instead of unique_ptr here just because, we don't want include Node.h in NodePool.h to cause cyclic dependency
     std::unordered_map<CollectionId, CollectionPtr> collections;
     std::unordered_map<ModuleId, std::unique_ptr<IModule>> modules;
     std::atomic_bool collectionLock { false };
+
+    NodePoolConfig config;
+
+    ISchedulingPlatform* schedulingPlatform = nullptr;
+    PoolMonitor* monitorPtr = nullptr;
+
 
     Status _internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
     {
@@ -105,49 +118,29 @@ protected:
         return Status::Ok;
     }
 
-    ISchedulingPlatform* schedulingPlatform = nullptr;
-
 public:
     Status internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
     {
         RET(_internalizeCollection(std::move(metadata), ptr));
     }
 
-    size_t getNodesCount() const { return endpoints.size(); }
+    size_t getNodesCount() const { return nodes.size(); }
 
-    const NodeEndpointConfig& getEndpoint(size_t endpointId) const
+    Node& getNode(size_t nodeId)
     {
-        ASSERT(endpointId < getNodesCount());
-        return endpoints[endpointId];
+        ASSERT(nodeId < getNodesCount());
+        return *nodes[nodeId];
     }
 
     ISchedulingPlatform& getScheduingPlatform() { return *schedulingPlatform; }
-};
 
-//
-//  Represents a class containing state of K2 Node Pool.
-//
-class NodePool : public INodePool
-{
-public:
-    Status registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module)
-    {
-        auto emplaceResult = modules.try_emplace(moduleId, std::move(module));
-        return emplaceResult.second ? Status::Ok : LOG_ERROR(Status::ModuleWithSuchIdAlreadyRegistered);
-    }
+    Node& getCurrentNode() { return getNode(getScheduingPlatform().getCurrentNodeId()); }
 
-    Status registerNode(NodeEndpointConfig nodeConfig)
-    {
-        endpoints.push_back(nodeConfig);
-        return Status::Ok;
-    }
+    const NodePoolConfig& getConfig() const { return config; }
 
-    void setScheduingPlatform(ISchedulingPlatform* platform)
-    {
-        ASSERT(!schedulingPlatform);
-        ASSERT(platform);
-        schedulingPlatform = platform;
-    }
+    const PoolMonitor& getMonitor() const { return *monitorPtr; }
+
+    bool isTerminated() const { return false; }
 };
 
 }   //  namespace k2

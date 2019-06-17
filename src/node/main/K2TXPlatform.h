@@ -15,8 +15,7 @@
 #include "transport/TCPRPCProtocol.h"
 #include "transport/RPCProtocolFactory.h"
 #include "transport/VirtualNetworkStack.h"
-#include "node/AssignmentManager.h"
-#include "node/NodePool.h"
+#include "node/NodePoolImpl.h"
 
 namespace k2 {
 
@@ -27,7 +26,7 @@ public: // types
     typedef seastar::distributed<NodePoolService> Dist_t;
 
 public:
-    NodePoolService(NodePool& pool, k2::RPCDispatcher::Dist_t& dispatcher);
+    NodePoolService(INodePool& pool, k2::RPCDispatcher::Dist_t& dispatcher);
     ~NodePoolService();
 
 public: // distributed<> interface
@@ -41,7 +40,7 @@ private: // helpers
     seastar::future<> startTaskProcessor();
 
 private: // fields
-    AssignmentManager _assignmentManager;
+    Node& _node;
     bool _stopped;
     seastar::future<> _taskProcessorLoop = seastar::make_ready_future<>();
     k2::RPCDispatcher::Dist_t& _dispatcher;
@@ -63,7 +62,7 @@ public: //lifecycle
 
     // this method runs nodes based on the configuration provided in the given NodePool configurator
     // The method is not expected to return until signal(e.g. SIGTERM) or a fatal error occurs
-    Status run(NodePool& pool);
+    Status run(NodePoolImpl& pool);
 
 public: // ISchedulingPlatform interface
     // return a node identifier

@@ -2,14 +2,14 @@
 
 #include "IndexerInterface.h"
 
-namespace k2 
+namespace k2
 {
 class MapIndexer : public IndexerInterface<MapIndexer> {
 private:
-    std::map<String, std::unique_ptr<Node>> m_map;
+    std::map<String, std::unique_ptr<VersionedTreeNode>> m_map;
 public:
     void insert(String key, String value, uint64_t version) {
-        std::unique_ptr<Node> newNode(new Node);
+        std::unique_ptr<VersionedTreeNode> newNode(new VersionedTreeNode);
         newNode->value = std::move(value);
         newNode->version = version;
 
@@ -21,13 +21,13 @@ public:
         }
     }
 
-    Node* find(const String& key, uint64_t version) {
+    VersionedTreeNode* find(const String& key, uint64_t version) {
         auto it = m_map.find(key);
         if (it == m_map.end()) {
             return nullptr;
         }
 
-        Node* node = it->second.get();
+        VersionedTreeNode* node = it->second.get();
         while (node && node->version > version) {
             node = node->next.get();
         }
@@ -45,7 +45,7 @@ public:
             return;
         }
 
-        Node* node = it->second.get();
+        VersionedTreeNode* node = it->second.get();
         if (node) {
             node = node->next.get();
         }

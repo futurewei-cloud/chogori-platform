@@ -102,6 +102,11 @@ protected:
         }
     }
 
+    bool haveTasksToRun()
+    {
+        return !getTaskList(TaskListType::Active).isEmpty();
+    }
+
     bool processActiveTasks(std::chrono::nanoseconds maxPartitionTime)  //  When return false, partition is deleted
     {
         TimeTracker partitionTracker(maxPartitionTime);

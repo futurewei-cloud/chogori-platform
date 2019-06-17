@@ -4,6 +4,7 @@
 #include "NodeConfig.h"
 #include "common/Status.h"
 #include "NodePool.h"
+#include "PoolMonitor.h"
 
 
 namespace k2
@@ -15,9 +16,9 @@ class AssignmentManager
 {
 protected:
     INodePool& pool;
-
     std::array<std::pair<PartitionId, std::unique_ptr<Partition>>, Constants::MaxCountOfPartitionsPerNode> partitions;  //  List of currently assigned partitions
-    int partitionCount = 0; //  Count of currently assigned partitions
+    int partitionCount = 0;             //  Count of currently assigned partitions
+    uint32_t processedTaskRound = 0;    //  How many rounds was processed from the beginning. Used to track whether mananager is stall.
 
     Partition* getPartition(PartitionId id)
     {
@@ -96,6 +97,9 @@ protected:
 
     Status _processMessage(PartitionRequest& request)
     {
+        if(pool.getMonitor().getState() == PoolMonitor::State::waitingForInitialization)
+            return LOG_ERROR(Status::NodePoolHasNotYetBeenInitialized);
+
         switch(request.message->getMessageType())
         {
             case MessageType::PartitionAssign:
@@ -110,6 +114,32 @@ protected:
             default:
                 return LOG_ERROR(Status::UnkownMessageType);
         }
+    }
+
+    std::chrono::steady_clock::time_point lastTaskProcessingCall ;
+    std::chrono::steady_clock::time_point lastPoolMonitorSessionCheckTime;
+    std::chrono::steady_clock::time_point lastPoolMonitorSessionCheckValue;
+
+    void checkStateConsistency()
+    {
+        if(pool.getMonitor().getState() == PoolMonitor::State::disabled)
+            return;
+
+        std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
+        std::chrono::steady_clock::time_point heartbeatTime = pool.getMonitor().getLastHeartbeatTime().getSteady();
+        if(heartbeatTime > lastPoolMonitorSessionCheckValue)
+        {
+            lastPoolMonitorSessionCheckValue = heartbeatTime;
+            lastPoolMonitorSessionCheckTime = std::chrono::steady_clock::now();
+        }
+        else
+            ASSERT(currentTime - lastPoolMonitorSessionCheckTime < pool.getConfig().getNoHeartbeatGracefullPeriod());
+    }
+
+    void updateLiveness()
+    {
+        processedTaskRound++;
+        checkStateConsistency();
     }
 
 public:
@@ -131,20 +161,35 @@ public:
         }
     }
 
+    bool isAlive() const
+    {
+        return true;
+    }
+
     void processTasks()
     {
+        updateLiveness();
+
         if(partitionCount == 0)
             return;
 
-        std::chrono::nanoseconds maxIterationTime = NodeConfig::getTaskProcessingIterationMaxExecutionTime();
+        std::chrono::nanoseconds maxIterationTime = pool.getConfig().getTaskProcessingIterationMaxExecutionTime();
         TimeTracker iterationTracker(maxIterationTime);
 
         std::chrono::nanoseconds remainingTime;
         while((remainingTime = iterationTracker.remaining()) > std::chrono::nanoseconds::zero())
         {
+            bool hadActiveTasks = true;
+
             std::chrono::nanoseconds maxPartitionTime = remainingTime/partitionCount;
             for(int i = 0; i < partitionCount; i++)
             {
+                checkStateConsistency();
+
+                if(!partitions[i].second->haveTasksToRun())
+                    continue;
+                hadActiveTasks = true;
+
                 if(!partitions[i].second->processActiveTasks(maxPartitionTime))
                 {
                     //  Partition was dropped
@@ -153,6 +198,9 @@ public:
                     partitionCount--;
                 }
             }
+
+            if(!hadActiveTasks) //  If haven't found any tasks just skip the look
+                break;
         }
     }
 

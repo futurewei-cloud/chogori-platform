@@ -51,7 +51,7 @@ protected:
             }
 
             default:
-                assert(false);
+                ASSERT(false);
                 return ProcessResult::Done;
         }
     }

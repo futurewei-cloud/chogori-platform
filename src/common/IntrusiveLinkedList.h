@@ -39,7 +39,7 @@ public:
         void* prev = nullptr;
         void* next = nullptr;
 
-        bool isEmpty() { return prev == nullptr && next == nullptr; }
+        bool isEmpty() const { return prev == nullptr && next == nullptr; }
         void clear()
         {
             prev = nullptr;
@@ -63,7 +63,9 @@ protected:
 
 public:
 
-    size_t size() { return count; }
+    size_t size() const { return count; }
+
+    bool isEmpty() const { return size() == 0; }
 
     void remove(T& element)
     {
@@ -163,12 +165,12 @@ public:
         bool operator!=(const Iterator& other) const { return current != other.current; }
     };
 
-    Iterator begin()
+    Iterator begin() const
     {
         return Iterator(head);
     }
 
-    Iterator end()
+    Iterator end() const
     {
         return Iterator(nullptr);
     }

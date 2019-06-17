@@ -1,12 +1,13 @@
-#include "node/NodePool.h"
+#include "node/NodePoolImpl.h"
 #include "node/module/MemKVModule.h"
+#include "node/Node.h"
 #include "K2TXPlatform.h"
 #include <yaml-cpp/yaml.h>
 
 using namespace k2;
 
 // TODO: Move the configuration logic into a separate file.
-void loadConfig(NodePool& pool, const std::string& configFile)
+void loadConfig(NodePoolImpl& pool, const std::string& configFile)
 {
     YAML::Node config = YAML::LoadFile(configFile);
 
@@ -18,8 +19,16 @@ void loadConfig(NodePool& pool, const std::string& configFile)
         nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(node["endpoint"]["ip"].as<std::string>().c_str()));
         nodeConfig.ipv4.port = node["endpoint"]["port"].as<uint16_t>();
 
-        TIF(pool.registerNode(nodeConfig));
+        TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
     }
+
+    for(YAML::Node node : config["partitionManagerSet"])
+    {
+        std::string partitionManager = node["address"].as<std::string>();
+        pool.getConfig().partitionManagerSet.push_back(partitionManager);
+    }
+
+    pool.getConfig().monitorEnabled = config["monitorEnabled"].as<bool>(false);
 }
 
 int main(int argc, char** argv)
@@ -40,7 +49,7 @@ int main(int argc, char** argv)
         bpo::variables_map variablesMap;
         bpo::store(bpo::parse_command_line(argc, argv, k2Options), variablesMap);
 
-        k2::NodePool pool;
+        k2::NodePoolImpl pool;
         TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
         if(variablesMap.count("k2config"))
         {
@@ -54,7 +63,7 @@ int main(int argc, char** argv)
             nodeConfig.type = NodeEndpointConfig::IPv4;
             nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("0.0.0.0"));
             nodeConfig.ipv4.port = 11311;
-            TIF(pool.registerNode(nodeConfig));
+            TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
         }
 
         K2TXPlatform platform;

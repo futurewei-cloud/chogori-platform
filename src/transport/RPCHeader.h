@@ -110,6 +110,14 @@ public: // fields
         result.setResponseID(originalRequest.requestID);
         return result;
     }
+
+    static MessageMetadata newRequest()
+    {
+        MessageMetadata metadata;
+        metadata.setRequestID(uint64_t(std::rand()));
+
+        return metadata;
+    }
 };
 
 //

@@ -28,6 +28,10 @@ namespace k2
     STATUS(UnkownMessageType, "Unkown message type")                                                                    \
     STATUS(AssignOperationIsBrokenByOffload, "Offload command received during assign process")                                      \
     STATUS(ModuleWithSuchIdAlreadyRegistered, "Attempt to register the module with duplicated id")                                      \
+    STATUS(NoPartitionManagerSetup, "No partition manager settings")                                                  \
+    STATUS(PartitionManagerSerializationError, "Partition manager serialization")                                      \
+    STATUS(NodePoolHasNotYetBeenInitialized, "Node pool has not been yet initialized")                                      \
+    STATUS(FailedToConnectToPartitionManager, "Connection to partition manager failed")                                      \
 
 #define K2_STATUS_ENUM_APPLY(StatusName, StatusString)  StatusName,
 

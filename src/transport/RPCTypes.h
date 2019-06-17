@@ -27,7 +27,8 @@ public:
     {
         None = 0,               //  Currently is used with responses
         ZEROVERB = None,        //  Transport naming for None
-        PartitionMessages = 1   //  K2 Partition management service
+        PartitionMessages = 1,  //  K2 Partition management service
+        PartitionManager = 2
     };
 };
 

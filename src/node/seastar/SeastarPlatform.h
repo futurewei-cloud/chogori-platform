@@ -10,7 +10,7 @@
 #include <seastar/core/distributed.hh>
 #include <seastar/core/app-template.hh>
 
-#include <node/AssignmentManager.h>
+#include <node/Node.h>
 #include <node/ISchedulingPlatform.h>
 
 
@@ -29,7 +29,7 @@ protected:
     {
     protected:
         seastar::lw_shared_ptr<seastar::server_socket> _listener;
-        AssignmentManager _assignmentManager;
+        Node& _node;
 
         class Connection
         {
@@ -119,7 +119,7 @@ protected:
                     request.client = std::make_unique<MessageExchangeRound>(connection);
                     seastar::future<> endRoundFuture = connection->_endRoundPromise.get_future();
 
-                    _assignmentManager.processMessage(request);
+                    _node.assignmentManager.processMessage(request);
 
                     return std::move(endRoundFuture);
                 });
@@ -127,7 +127,7 @@ protected:
 
         void startTransport()
         {
-            NodeEndpointConfig nodeConfig = _assignmentManager.getNodePool().getEndpoint(engine().cpu_id());
+            NodeEndpointConfig nodeConfig = _node.getEndpoint();
             assert(nodeConfig.type == NodeEndpointConfig::IPv4);
 
             seastar::listen_options lo;
@@ -181,13 +181,13 @@ protected:
         {
             seastar::keep_doing([this]
             {
-                _assignmentManager.processTasks();
+                _node.processTasks();
                 return seastar::make_ready_future<>();
             }).or_terminate();
         }
 
     public:
-        TCPServer(NodePool& nodePool) : _assignmentManager(nodePool) { }
+        TCPServer(INodePool& nodePool) : _node(nodePool.getCurrentNode()) { }
 
         void start()
         {
@@ -201,7 +201,7 @@ protected:
 public:
     SeastarPlatform() {}
 
-    Status run(NodePool& pool)
+    Status run(INodePool& pool)
     {
         seastar::distributed<TCPServer> server;
         seastar::app_template app;

@@ -54,6 +54,7 @@ class Payload
     friend class ReadOnlyPayload;
 protected:
     static Binary DefaultAllocator() { return Binary(8096); }
+
     std::vector<Binary> buffers;
     size_t size;
     BinaryAllocatorFunctor allocator;
@@ -300,8 +301,6 @@ public:
     template<typename KeyT, typename ValueT>
     bool read(std::map<KeyT, ValueT>& m)
     {
-        m.clear();
-
         uint32_t size;
         if(!read(size))
             return false;
@@ -315,6 +314,25 @@ public:
                 return false;
 
             m[std::move(key)] = std::move(value);
+        }
+
+        return true;
+    }
+
+    template<typename ValueT>
+    bool read(std::vector<ValueT>& list)
+    {
+        uint32_t size;
+        if(!read(size))
+            return false;
+
+        for(uint32_t i = 0; i < size; i++)
+        {
+            ValueT value;
+            if(!read(value))    //  TODO: read directly into array
+                return false;
+
+            list.push_back(std::move(value));
         }
 
         return true;
@@ -573,6 +591,22 @@ public:
         for(auto& kvp : m)
         {
             if(!write(kvp.first) || !write(kvp.second))
+                return false;
+        }
+
+        return true;
+    }
+
+    template<typename ValueT>
+    bool write(const std::vector<ValueT>& list)
+    {
+        ASSERT(list.size() < std::numeric_limits<uint32_t>::max());
+        if(!write((uint32_t)list.size()))
+            return false;
+
+        for(const ValueT& value : list)
+        {
+            if(!write(value))
                 return false;
         }
 

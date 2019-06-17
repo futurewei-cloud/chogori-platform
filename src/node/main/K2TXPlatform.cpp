@@ -88,8 +88,8 @@ std::unique_ptr<PartitionMessage> createPartitionMessage(std::unique_ptr<Payload
 //
 // end Glue classes
 //
-NodePoolService::NodePoolService(NodePool& pool, k2::RPCDispatcher::Dist_t& dispatcher):
-    _assignmentManager(pool),
+NodePoolService::NodePoolService(INodePool& pool, k2::RPCDispatcher::Dist_t& dispatcher):
+    _node(pool.getCurrentNode()),
     _stopped(true),
     _dispatcher(dispatcher) {
     K2DEBUG("NodePoolService constructed")
@@ -122,7 +122,7 @@ void NodePoolService::start() {
                 PartitionRequest partitionRequest;
                 partitionRequest.message = createPartitionMessage(std::move(request.payload), request.endpoint.getURL());
                 partitionRequest.client = std::make_unique<AMClientConnection>(std::move(request), _dispatcher.local());
-                _assignmentManager.processMessage(partitionRequest);
+                _node.assignmentManager.processMessage(partitionRequest);
             });
 
     // TODO need to pass this on to the assignment manager as it may be holding messages around
@@ -136,7 +136,7 @@ seastar::future<> NodePoolService::startTaskProcessor() {
             return _stopped; // break loop if we're stopped
         },
         [this] {
-            _assignmentManager.processTasks();
+            _node.processTasks();
             return seastar::make_ready_future<>();
         }
     ).handle_exception([this] (std::exception_ptr eptr) {
@@ -153,18 +153,18 @@ K2TXPlatform::~K2TXPlatform() {
 
 class NodePoolAddressProvider: public k2::IAddressProvider {
 public:
-    NodePoolAddressProvider(NodePool& pool): _pool(pool){}
+    NodePoolAddressProvider(INodePool& pool): _pool(pool){}
     ~NodePoolAddressProvider(){}
     seastar::socket_address getAddress(int coreID) override {
-        NodeEndpointConfig nodeConfig = _pool.getEndpoint(coreID);
+        const NodeEndpointConfig& nodeConfig = _pool.getNode(coreID).getEndpoint();
         return seastar::make_ipv4_address(nodeConfig.ipv4.address, nodeConfig.ipv4.port);
     }
 
 private:
-    NodePool& _pool;
+    INodePool& _pool;
 };
 
-Status K2TXPlatform::run(NodePool& pool) {
+Status K2TXPlatform::run(NodePoolImpl& pool) {
     // service are constructed starting with the available VirtualNetworkStacks(dpdk receive queues)
     // so that we have a stack on each core. The stack is:
     //  1 VF -> N protocols -> 1 RPCDispatcher -> 1 ServiceHandler.
@@ -251,7 +251,12 @@ Status K2TXPlatform::run(NodePool& pool) {
             .then([&]() {
                 K2INFO("Start service");
                 return service.invoke_on_all(&NodePoolService::start);
-        });
+            })
+            .then([&]() {
+                K2INFO("Start monitor");
+                pool.getMonitor().start();
+                return seastar::make_ready_future<>();
+            });
     });
     K2INFO("Shutdown was successful!");
     return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;;

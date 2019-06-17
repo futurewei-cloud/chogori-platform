@@ -7,10 +7,10 @@ namespace k2
 //
 //  K2 internal MVCC representation
 //
-struct Node {
+struct VersionedTreeNode {
     uint64_t version;
     String value;
-    std::unique_ptr<Node> next;
+    std::unique_ptr<VersionedTreeNode> next;
 };
 
 //
@@ -26,7 +26,7 @@ public:
     }
 
     // find the specific version of the key from the indexer
-    Node* find(const String& key, uint64_t version) {
+    VersionedTreeNode* find(const String& key, uint64_t version) {
         return static_cast<DerivedClass*>(this)->find(key, version);
     }
 

@@ -1,6 +1,7 @@
 #include <type_traits>
 #include <iostream>
 
+#include <node/NodePoolImpl.h>
 #include <node/AssignmentManager.h>
 #include <node/indexer/MapIndexer.h>
 #include <node/indexer/UnorderedMapIndexer.h>
@@ -123,7 +124,7 @@ public:
 
 TEMPLATE_TEST_CASE("Single Partitions Assignment/Offload", "[SinglePartitions_Assignment/Offload]", HOTIndexer, MapIndexer, UnorderedMapIndexer)
 {
-    NodePool pool;
+    NodePoolImpl pool;
     pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<TestType>>());
 
     AssignmentManager assignmentManager(pool);
@@ -169,7 +170,7 @@ TEMPLATE_TEST_CASE("Single Partitions Assignment/Offload", "[SinglePartitions_As
 
 TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartitions_Assignment/Offload]", HOTIndexer, MapIndexer, UnorderedMapIndexer)
 {
-    NodePool pool;
+    NodePoolImpl pool;
     pool.registerModule(ModuleId::Default, std::make_unique<MemKVModule<TestType>>());
 
     AssignmentManager assignmentManager(pool);

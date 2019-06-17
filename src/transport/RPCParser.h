@@ -185,7 +185,10 @@ bool RPCParser::writeHeader(Binary& binary, Verb verb, MessageMetadata meta, siz
     size_t writeOffset = 0;
 
     // take care of the fixed header first
-    FixedHeader fHeader{.features=meta.features, .verb=verb};
+    FixedHeader fHeader;
+    fHeader.features=meta.features;
+    fHeader.verb=verb;
+
     if(!appendRaw(binary, writeOffset, fHeader))
         return false;
 
@@ -702,6 +705,16 @@ public:
     static MessageBuilder request(Verb verb, MessageMetadata metadata, Payload payload)
     {
         return MessageBuilder(verb, std::move(metadata), std::move(payload));
+    }
+
+    static MessageBuilder request(Verb verb, Payload payload)
+    {
+        return MessageBuilder(verb, MessageMetadata::newRequest(), std::move(payload));
+    }
+
+    static MessageBuilder request(Verb verb)
+    {
+        return MessageBuilder(verb, MessageMetadata::newRequest(), Payload());
     }
 
     static MessageBuilder response(Payload newMessagePayload, MessageDescription originalRequestMessage)
