@@ -43,6 +43,10 @@ void TCPRPCProtocol::start() {
         lo.reuse_address = true;
         lo.lba = seastar::server_socket::load_balancing_algorithm::port;
         _listen_socket = _vnet.local().listenTCP(_addr, lo);
+        if (_addr.port() == 0) {
+            // update the local endpoint if we're binding to port 0
+            _svrEndpoint = seastar::make_lw_shared<>(_endpointFromAddress(_listen_socket->local_address()));
+        }
 
         seastar::do_until(
             [this] { return _stopped;},

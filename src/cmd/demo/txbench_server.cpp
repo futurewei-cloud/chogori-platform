@@ -71,6 +71,7 @@ public:  // application lifespan
 
 private:
     void _registerDATA_URL() {
+        K2INFO("TCP endpoint is: " << _disp.getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
         _disp.registerMessageObserver(GET_DATA_URL,
             [this](k2::Request&& request) mutable {
                 auto response = request.endpoint.newPayload();
