@@ -61,3 +61,8 @@ inline Status logError(Status status, const char* fileName, int line, const char
 #define TIF(status) { k2::Status ____status____ = (status); if(____status____ != k2::Status::Ok) { LOG_ERROR(____status____); throw ____status____; } }
 
 }  //  namespace k2
+
+
+#define K2_STATUS_TEXT_APPLY(StatusName, StatusString)  #StatusString,
+#define K2_DEFINE_STATUS_TEXT() namespace k2 { const char* const statusText[(int)Status::StatusCount] { K2_STATUS_DEFINITION(K2_STATUS_TEXT_APPLY) }; }
+

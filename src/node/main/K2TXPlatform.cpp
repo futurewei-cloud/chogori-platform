@@ -6,6 +6,7 @@
 #include "common/Log.h"
 #include "common/Constants.h"
 #include "transport/IRPCProtocol.h"
+#include <sched.h>
 
 namespace k2 {
 //
@@ -116,6 +117,7 @@ seastar::future<> NodePoolService::stop() {
 void NodePoolService::start() {
     K2INFO("NodePoolService starting");
     _stopped = false;
+
     _dispatcher.local().registerMessageObserver(KnownVerbs::PartitionMessages,
             [this](k2::Request&& request) mutable {
                 K2DEBUG("Dispatching message to AssignmentManager");
@@ -164,6 +166,23 @@ private:
     INodePool& _pool;
 };
 
+
+class NodesInitializer
+{
+public:
+    void initializeNodes(seastar::reference_wrapper<NodePoolImpl> pool, seastar::reference_wrapper<RPCDispatcher::Dist_t> dispatcher)
+    {
+        std::vector<String> endpoints;
+        for(auto endpoint : dispatcher.get().local().getServerEndpoints())
+            endpoints.push_back(endpoint->getURL());
+
+        pool.get().setCurrentNodeLocationInfo(std::move(endpoints), sched_getcpu());
+    }
+
+    void start() {}
+    seastar::future<> stop() { return seastar::make_ready_future<>(); }
+};
+
 Status K2TXPlatform::run(NodePoolImpl& pool) {
     // service are constructed starting with the available VirtualNetworkStacks(dpdk receive queues)
     // so that we have a stack on each core. The stack is:
@@ -172,11 +191,12 @@ Status K2TXPlatform::run(NodePoolImpl& pool) {
     // same time.
     // To build this, we use the seastar distributed<> mechanism, but we extend it so that we
     // limit the pool to the number of network stacks we want to watch. The stacks are configured based on the cmd line options
-    k2::VirtualNetworkStack::Dist_t vnet;
-    k2::RPCProtocolFactory::Dist_t tcpproto;
-    k2::RPCDispatcher::Dist_t dispatcher;
+    VirtualNetworkStack::Dist_t vnet;
+    RPCProtocolFactory::Dist_t tcpproto;
+    RPCDispatcher::Dist_t dispatcher;
     NodePoolService::Dist_t service;
     NodePoolAddressProvider addrProvider(pool);
+    seastar::distributed<NodesInitializer> nodesInitializer;
 
     // TODO: So far couldn't find a good way to configure Seastar thorugh app. add_options without using command arguments.
     // Will do more research later and fix it. Now just configure through argument
@@ -207,6 +227,10 @@ Status K2TXPlatform::run(NodePoolImpl& pool) {
         seastar::engine().at_exit([&] {
             K2INFO("service stop");
             return service.stop();
+        });
+        seastar::engine().at_exit([&] {
+            K2INFO("initializer stop");
+            return nodesInitializer.stop();
         });
 
         return
@@ -253,13 +277,21 @@ Status K2TXPlatform::run(NodePoolImpl& pool) {
                 return service.invoke_on_all(&NodePoolService::start);
             })
             .then([&]() {
-                K2INFO("Start monitor");
-                pool.getMonitor().start();
+                K2INFO("Start node initializer");
+                return nodesInitializer.start();
+            })
+            .then([&]() {
+                K2INFO("Initialize nodes");
+                return nodesInitializer.invoke_on_all(&NodesInitializer::initializeNodes, seastar::ref(pool), seastar::ref(dispatcher));
+            })
+            .then([&]() {
+                K2INFO("Complete initialization of the Node Pool");
+                pool.completeInitialization();
                 return seastar::make_ready_future<>();
             });
     });
     K2INFO("Shutdown was successful!");
-    return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;;
+    return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;
 }
 
 } // namespace k2

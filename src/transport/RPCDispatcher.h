@@ -91,6 +91,9 @@ public: // API
     // Returns the listener endpoint for the given protocol (or empty pointer if not supported)
     seastar::lw_shared_ptr<TXEndpoint> getServerEndpoint(const String& protocol);
 
+    //  List all server endpoint supported by this dispatcher
+    std::vector<seastar::lw_shared_ptr<TXEndpoint>> getServerEndpoints() const;
+
     // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
     // This is a lower-level API which is useful for sending messages that do not expect replies.
@@ -108,7 +111,6 @@ public: // API
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
     void sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
-
 private: // methods
     // Process new messages received from protocols
     void _handleNewMessage(Request&& request);

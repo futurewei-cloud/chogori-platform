@@ -206,4 +206,11 @@ seastar::lw_shared_ptr<TXEndpoint> RPCDispatcher::getServerEndpoint(const String
     return protoi->second->getServerEndpoint();
 }
 
+std::vector<seastar::lw_shared_ptr<TXEndpoint>> RPCDispatcher::getServerEndpoints() const {
+    std::vector<seastar::lw_shared_ptr<TXEndpoint>> result;
+    for(const auto& kvp : _protocols)
+        result.push_back(kvp.second->getServerEndpoint());
+    return result;
+}
+
 }// namespace k2

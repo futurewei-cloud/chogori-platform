@@ -85,7 +85,7 @@ protected:
 
     ISchedulingPlatform* schedulingPlatform = nullptr;
     PoolMonitor* monitorPtr = nullptr;
-
+    String name;
 
     Status _internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
     {
@@ -141,6 +141,8 @@ public:
     const PoolMonitor& getMonitor() const { return *monitorPtr; }
 
     bool isTerminated() const { return false; }
+
+    const String& getName() const { return name; }
 };
 
 }   //  namespace k2

@@ -31,14 +31,19 @@
     DISABLE_MOVE(className)                                     \
 
 #define DEFAULT_COPY(className)                                 \
-    className(className&) = default;                            \
-    className& operator=(className&) = default;                 \
+    className(const className&) = default;                      \
+    className& operator=(const className&) = default;           \
 
 #define DEFAULT_MOVE(className)                                 \
     className(className&&) = default;                           \
     className& operator=(className&&) = default;                \
 
 #define DEFAULT_COPY_MOVE(className)                            \
+    DEFAULT_COPY(className)                                     \
+    DEFAULT_MOVE(className)                                     \
+
+#define DEFAULT_COPY_MOVE_INIT(className)                       \
+    className() {}                                              \
     DEFAULT_COPY(className)                                     \
     DEFAULT_MOVE(className)                                     \
 

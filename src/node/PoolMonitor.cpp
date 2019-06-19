@@ -148,12 +148,20 @@ void PoolMonitor::run()
     }
 }
 
-
 void PoolMonitor::registerNodePool()
 {
     manager::NodePoolRegistrationMessage::Request registerRequest;
     manager::NodePoolRegistrationMessage::Response registerResponse;
-    registerRequest.poolInfo = poolInfo;
+
+    registerRequest.poolId = pool.getName();
+    for(size_t i = 0; i < pool.getNodesCount(); i++)
+    {
+        manager::NodeInfo node;
+        node.name = pool.getNode(i).getName();
+        node.endpoints = pool.getNode(i).getEndpoints();
+        registerRequest.nodes.push_back(std::move(node));
+    }
+
     TIF(sendMessage(registerRequest, registerResponse));
 
     sessionId = registerResponse.sessionId;
@@ -161,12 +169,14 @@ void PoolMonitor::registerNodePool()
     state = State::active;
 }
 
-
 void PoolMonitor::sendHeartbeat()
 {
     manager::HeartbeatMessage::Request heartbeatRequest;
     manager::HeartbeatMessage::Response heartbeatResponse;
-    heartbeatRequest.poolInfo = poolInfo;
+
+    heartbeatRequest.poolId = pool.getName();
+    for(size_t i = 0; i < pool.getNodesCount(); i++)
+        heartbeatRequest.nodeNames.push_back(pool.getNode(i).getName());
     heartbeatRequest.sessionId = sessionId;
 
     TIF(sendMessage(heartbeatRequest, heartbeatResponse));

@@ -19,6 +19,7 @@ public:
     NodePoolImpl() : monitor(*this)
     {
         monitorPtr = &monitor;
+        name = "K2Pool_" + std::to_string(getpid()); //  TODO: add ip and some randomization
     }
 
     Status registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module)
@@ -33,6 +34,12 @@ public:
         return Status::Ok;
     }
 
+    void setCurrentNodeLocationInfo(std::vector<String> endpoints, int coreId)
+    {
+        String nodeName = name + "_" + std::to_string(getScheduingPlatform().getCurrentNodeId());
+        getCurrentNode().setLocationInfo(std::move(nodeName), std::move(endpoints), coreId);
+    }
+
     void setScheduingPlatform(ISchedulingPlatform* platform)
     {
         ASSERT(!schedulingPlatform);
@@ -43,6 +50,11 @@ public:
     NodePoolConfig& getConfig() { return config; }
 
     PoolMonitor& getMonitor() { return monitor; }
+
+    void completeInitialization()
+    {
+        getMonitor().start();
+    }
 
     ~NodePoolImpl()
     {

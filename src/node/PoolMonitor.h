@@ -48,8 +48,6 @@ protected:
 
     long sessionId = 0;
 
-    manager::PoolInfo poolInfo;
-
     void run();
     void sendHeartbeat();
     void registerNodePool();

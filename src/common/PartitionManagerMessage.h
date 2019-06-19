@@ -19,17 +19,14 @@ enum class MessageType : uint8_t
 template<typename RequestType>
 using RequestMessage = MessageWithType<MessageType, RequestType>;
 
-class PoolInfo
+class NodeInfo
 {
 public:
-    String nodePoolId;
-    std::vector<String> nodeEndpoints;
+    String name;
+    std::vector<String> endpoints;
 
-    PoolInfo() {}
-
-    DEFAULT_COPY_MOVE(PoolInfo)
-
-    K2_PAYLOAD_FIELDS(nodePoolId, nodeEndpoints);
+    DEFAULT_COPY_MOVE_INIT(NodeInfo)
+    K2_PAYLOAD_FIELDS(name, endpoints);
 };
 
 class NodePoolRegistrationMessage
@@ -40,9 +37,10 @@ public:
     public:
         static constexpr MessageType getMessageType() { return MessageType::NodePoolRegistration; }
 
-        PoolInfo poolInfo;
+        String poolId;
+        std::vector<NodeInfo> nodes;
 
-        K2_PAYLOAD_FIELDS(poolInfo);
+        K2_PAYLOAD_FIELDS(poolId, nodes);
     };
 
     class Response
@@ -62,10 +60,11 @@ public:
     public:
         static constexpr MessageType getMessageType() { return MessageType::Heartbeat; }
 
-        PoolInfo poolInfo;
+        String poolId;
         long sessionId; //  Value returned by Partition Manager after registration
+        std::vector<String> nodeNames;
 
-        K2_PAYLOAD_FIELDS(poolInfo, sessionId);
+        K2_PAYLOAD_FIELDS(poolId, sessionId, nodeNames);
     };
 
     class Response

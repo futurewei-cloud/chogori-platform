@@ -17,7 +17,7 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
         // TODO: map the endpoint type; fixing it to IPv4 for the moment
         nodeConfig.type = NodeEndpointConfig::IPv4;
         nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(node["endpoint"]["ip"].as<std::string>().c_str()));
-        nodeConfig.ipv4.port = node["endpoint"]["port"].as<uint16_t>();
+        nodeConfig.ipv4.port = node["endpoint"]["port"].as<uint16_t>(0);
 
         TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
     }
