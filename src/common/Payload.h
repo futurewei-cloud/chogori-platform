@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <set>
 #include <cassert>
 #include <limits>
 
@@ -151,6 +152,8 @@ public:
 
     PayloadWriter getWriter();
 
+    PayloadWriter getWriter(size_t offset);
+
     void clear()
     {
         buffers.resize(0);
@@ -198,6 +201,7 @@ class PayloadReader
 {
     friend class Payload;
     friend class ReadOnlyPayload;
+    friend class PayloadWriter;
 protected:
     const Payload* payload;
     Payload::Position position;
@@ -338,6 +342,26 @@ public:
         return true;
     }
 
+    template<typename T>
+    bool read(std::set<T>& s)
+    {
+        uint32_t size;
+        if(!read(size))
+            return false;
+
+        for(uint32_t i = 0; i < size; i++)
+        {
+            T key;
+
+            if(!read(key))
+                return false;
+
+           s.insert(std::move(key));
+        }
+
+        return true;
+    }
+
     template<typename T>    //  Read for primitive types
     std::enable_if_t<isPayloadCopyableType<T>() || isNumbericType<T>(), bool> read(T& value)
     {
@@ -454,6 +478,36 @@ public:
         position.offset++;
 
         increaseGlobalOffset(1);
+
+        return true;
+    }
+
+    bool write(PayloadReader& reader, size_t size)
+    {
+         while(size > 0)
+        {
+            if(reader.isEnd()) {
+                return false;
+            }
+
+            const Binary& buffer = reader.payload->buffers[reader.position.buffer];
+            size_t currentBufferRemaining = buffer.size()-reader.position.offset;
+            size_t needToCopySize = std::min(size, currentBufferRemaining);
+
+            write(buffer.get()+reader.position.offset, needToCopySize);
+
+            if(size >= currentBufferRemaining)
+            {
+                reader.position.buffer++;
+                reader.position.offset = 0;
+                size -= needToCopySize;
+            }
+            else
+            {
+                reader.position.offset += needToCopySize;
+                break;
+            }
+        }
 
         return true;
     }
@@ -613,6 +667,21 @@ public:
         return true;
     }
 
+    template<typename T>
+    bool write(const std::set<T>& s)
+    {
+        if(!write((uint32_t)s.size()))
+            return false;
+
+        for(auto& key : s)
+        {
+            if(!write(key))
+                return false;
+        }
+
+        return true;
+    }
+
     template<typename T>    //  Read for primitive types - need copy here to get address
     std::enable_if_t<isNumbericType<T>(), bool> write(const T value)
     {
@@ -657,6 +726,13 @@ inline PayloadWriter Payload::getWriter()
     return PayloadWriter(*this, size);
 }
 
+inline PayloadWriter Payload::getWriter(size_t offset)
+{
+    if(buffers.size() == 0)
+        allocateBuffer();
+
+    return PayloadWriter(*this, offset);
+}
 
 //
 //  Provides read only access to some payload, which it owns

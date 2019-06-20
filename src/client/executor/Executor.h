@@ -254,7 +254,7 @@ private:
                     return _transport.invoke_on_all(&TransportPlatform::start);
                 })
                 .then([&] {
-                    // unblock the mutex waiting for the transport to start
+                    // unblock the conditional waiting for the transport to start
                     _conditional.notify_all();
 
                     return seastar::make_ready_future<>();

@@ -1,10 +1,12 @@
 // std
 #include <iostream>
-// k2
-#include "node/NodePool.h"
-#include "client/executor/Executor.h"
+// k2:client
+#include <client/lib/Client.h>
+#include <client/executor/Executor.h>
 
 using namespace k2;
+using namespace k2::client;
+
 class MockClient: public k2::client::IClient
 {
     virtual void init(const k2::client::ClientSettings& settings)
@@ -63,6 +65,7 @@ int main()
 
     // start executor in thread pool mode
     settings.userInitThread = false;
+    settings.networkProtocol = "tcp+k2rpc";
     executor.init(settings);
     // start executor in a thread pool
     executor.start();
@@ -89,6 +92,7 @@ int main()
     executor.execute("tcp+k2rpc://127.0.0.1:11311", std::chrono::microseconds(10000), std::move(pPayload),
         [] (std::unique_ptr<ResponseMessage> response) {
             K2INFO("response from payload1:" << k2::getStatusText(response->status));
+            ASSERT(response->status == Status::Ok)
         }
     );
 

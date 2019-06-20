@@ -189,6 +189,9 @@ private:
                 catch(ExecutionException& e) {
                     pTask->_pPlatformData->_pResponse->status = e._status;
                 }
+                catch (RPCDispatcher::RequestTimeoutException& e) {
+                    pTask->_pPlatformData->_pResponse->status =  Status::TimedOut;
+                }
                 catch(...) {
                    pTask->_pPlatformData->_pResponse->status =  Status::UnknownError;
                 }

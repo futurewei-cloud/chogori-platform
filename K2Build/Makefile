@@ -15,7 +15,7 @@ build:
 test: build
 	@echo ">>> Testing"
 	@../$(BUILD_DIR)/test/node/node_test && testReturnCode=$? && exit $(testReturnCode)
-
+	@../$(BUILD_DIR)/test/client/client_test && testReturnCode=$? && exit $(testReturnCode)
 integrate: build
 	@echo ">>> Running integration test"
 	@../integration/run.sh && testReturnCode=$? && exit $(testReturnCode)

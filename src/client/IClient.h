@@ -16,6 +16,7 @@ class IClient;
 class ClientSettings
 {
 public:
+    std::string networkProtocol;
     std::string k2ClusterEndpoint;  //  URL of the cluster Partition Manager
     uint8_t networkThreadCount = 1; //  How many threads to use for network processing
     bool userInitThread = false;    //  If set to true, thread that is calling client init will be used as one of network threads
@@ -39,6 +40,10 @@ public:
     const std::string& getHighKey() const { return highKey; }
 
     bool isSingleKey() const { return highKey.empty() && lowKeyInclusive && highKeyInclusive; }
+
+    bool isHighKeyInclusive() const { return highKeyInclusive; }
+
+    bool isLowKeyInclusive() const { return lowKeyInclusive; }
 
     Range(std::string lowKey, bool lowKeyInclusive, std::string highKey, bool highKeyInclusive) :
         lowKey(lowKey), highKey(highKey), lowKeyInclusive(lowKeyInclusive), highKeyInclusive(highKeyInclusive) {}
@@ -110,12 +115,18 @@ public:
 //
 //  Result of the operation
 //
-class OperationResult
+class OperationResponse
 {
 public:
     Status status;
     uint32_t moduleCode = 0;
     Payload payload;
+};
+
+class OperationResult
+{
+public:
+    std::vector<OperationResponse> _responses;
 };
 
 //

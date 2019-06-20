@@ -14,7 +14,8 @@ namespace k2
 
 #define K2_STATUS_DEFINITION(STATUS)                                                                                    \
     STATUS(Ok, "Ok")                                                                                                    \
-    STATUS(UnknownError, "Unknown error")                                                                                 \
+    STATUS(UnknownError, "Unknown error")                                                                               \
+    STATUS(TimedOut, "Timed out on the request")                                                                                               \
     STATUS(SchedulerPlatformStartingFailure, "Some error during scheduler start")                                       \
     STATUS(MessageParsingError, "Failed to parse a message")                                                            \
     STATUS(PartitionAlreadyAssigned, "Attempt to assign partition which is already assigned")                           \
