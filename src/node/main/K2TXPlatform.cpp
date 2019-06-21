@@ -200,9 +200,14 @@ Status K2TXPlatform::run(NodePoolImpl& pool) {
 
     // TODO: So far couldn't find a good way to configure Seastar thorugh app. add_options without using command arguments.
     // Will do more research later and fix it. Now just configure through argument
-    std::string nodesCountArg = std::string("-c") + std::to_string(pool.getNodesCount());
+    std::string nodesCountArg = std::to_string(pool.getNodesCount());
+    std::string cpuSetArg = pool.getConfig().getCpuSetString();
 
-    const char* argv[] = { "NodePool", nodesCountArg.c_str(), nullptr };
+    const char* argv[] = { "NodePool", 
+                           "--poll-mode", 
+                           (cpuSetArg.empty() ? "-c" : "--cpuset"),
+                           (cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str()),
+                           nullptr };
     int argc = sizeof(argv) / sizeof(*argv) - 1;
 
 

@@ -13,6 +13,8 @@ class NodePoolConfig
 public:
     bool monitorEnabled = false;
     std::vector<String> partitionManagerSet;
+    std::string cpuSetStr;
+    std::string cpuSetGeneralStr;
 
     std::chrono::nanoseconds getTaskProcessingIterationMaxExecutionTime() const { return std::chrono::nanoseconds(10000); }
 
@@ -23,6 +25,8 @@ public:
     bool isMonitorEnabled() const { return monitorEnabled; }
 
     const std::vector<String> getPartitionManagerSet() const { return partitionManagerSet; }
+    const std::string& getCpuSetString() const { return cpuSetStr; }
+    const std::string& getCpuSetGeneralString() const { return cpuSetGeneralStr; }
 };
 
 }   //  namespace k2

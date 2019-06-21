@@ -28,7 +28,12 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
         pool.getConfig().partitionManagerSet.push_back(partitionManager);
     }
 
-    pool.getConfig().monitorEnabled = config["monitorEnabled"].as<bool>(false);
+    pool.getConfig().monitorEnabled = config["monitorEnabled"].as<bool>(pool.getConfig().monitorEnabled);
+    if (config["cpuset"])
+    {
+        pool.getConfig().cpuSetStr = config["cpuset"].as<std::string>();
+    }
+    pool.getConfig().cpuSetGeneralStr = config["cpuset_general"].as<std::string>();
 }
 
 int main(int argc, char** argv)
