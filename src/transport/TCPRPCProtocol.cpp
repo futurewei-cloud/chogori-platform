@@ -46,6 +46,7 @@ void TCPRPCProtocol::start() {
         if (_addr.port() == 0) {
             // update the local endpoint if we're binding to port 0
             _svrEndpoint = seastar::make_lw_shared<>(_endpointFromAddress(_listen_socket->local_address()));
+            K2INFO("Effective listening TCP Proto on: " << _svrEndpoint->getURL());
         }
 
         seastar::do_until(

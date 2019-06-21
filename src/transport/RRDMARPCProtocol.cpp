@@ -31,6 +31,8 @@ void RRDMARPCProtocol::start() {
     K2DEBUG("start");
     if (seastar::engine()._rdma_stack) {
         _listener = _vnet.local().listenRRDMA();
+        K2INFO("Starting listening RRDMA Proto on: " << _svrEndpoint->getURL());
+
         _stopped = false;
 
         seastar::do_until(

@@ -13,6 +13,7 @@
 // third-party
 #include <seastar/core/distributed.hh> // for distributed<>
 #include <seastar/core/app-template.hh> // for app_template
+#include <seastar/core/reactor.hh> // for app_template
 #include <seastar/util/reference_wrapper.hh> // for app_template
 #include <seastar/core/future.hh> // for future stuff
 #include <seastar/core/timer.hh> // periodic timer
@@ -22,8 +23,6 @@
 using namespace std::chrono_literals; // so that we can type "1ms"
 namespace bpo = boost::program_options;
 namespace sm = seastar::metrics;
-
-using Clock=std::chrono::steady_clock;
 
 // k2 transport
 #include "transport/RPCDispatcher.h"
@@ -57,7 +56,8 @@ public:  // application lifespan
                 _haveSendPromise = false;
                 _sendProm.set_value();
             }
-        })) {
+        })),
+        _lastAckedTotal(0) {
         _session.config = SessionConfig{.echoMode=config["echo_mode"].as<bool>(),
                                         .responseSize=config["request_size"].as<uint32_t>(),
                                         .pipelineSize=config["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
@@ -89,15 +89,26 @@ public:  // application lifespan
     }
 
     void registerMetrics() {
-        _metric_groups.add_group("txbench_client", {
-            sm::make_gauge("total_count", [this]{return _session.totalCount;}, sm::description("Total number of requests")),
-            sm::make_gauge("total_size", [this]{return _session.totalSize;}, sm::description("Total data size sent"))
+        _metric_groups.clear();
+        std::vector<sm::label_instance> labels;
+        labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
+        labels.push_back(sm::label_instance("active_cores", std::min(_tcpRemotes.size(), size_t(seastar::smp::count))));
+        _metric_groups.add_group("session", {
+            sm::make_gauge("ack_batch_size", _session.config.ackCount, sm::description("How many messages we ack at once"), labels),
+            sm::make_gauge("session_id", _session.sessionID, sm::description("Session ID"), labels),
+            sm::make_counter("total_count", _session.totalCount, sm::description("Total number of requests"), labels),
+            sm::make_counter("total_bytes", _session.totalSize, sm::description("Total data bytes sent"), labels),
+            sm::make_gauge("pipeline_depth", [this]{ return _session.config.pipelineCount  - _session.unackedCount;},
+                    sm::description("Available pipeline depth"), labels),
+            sm::make_gauge("pipeline_bytes", [this]{ return _session.config.pipelineSize  - _session.unackedSize;},
+                    sm::description("Available pipeline bytes"), labels),
+            sm::make_histogram("request_latency", [this]{ return _requestLatency.getHistogram();},
+                    sm::description("Latency of acks"), labels)
         });
     }
 
     seastar::future<> start() {
         _stopped = false;
-        registerMetrics();
         _disp.registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
@@ -177,6 +188,11 @@ private:
     }
 
     seastar::future<> _startSession() {
+        _requestIssueTimes.clear();
+        _requestIssueTimes.resize(_session.config.pipelineCount);
+        _lastAckedTotal = 0;
+        registerMetrics();
+
         auto req = _session.client.newPayload();
         req->getWriter().write((void*)&_session.config, sizeof(_session.config));
         return _disp.sendRequest(START_SESSION, std::move(req), _session.client, 1s).
@@ -208,6 +224,7 @@ private:
              ", with testDuration=" << std::chrono::duration_cast<std::chrono::milliseconds>(_testDuration).count()  << "ms");
 
         _disp.registerMessageObserver(ACK, [this](k2::Request&& request) {
+            auto now = k2::Clock::now(); // to compute reqest latencies
             if (request.payload) {
                 Ack ack{};
                 auto rdr = request.payload->getReader();
@@ -222,6 +239,9 @@ private:
                            << ", recv=" << ack.totalCount);
                     return;
                 }
+                if (ack.totalCount <= _lastAckedTotal) {
+                    K2WARN("Received ack that is too old tc=" << _session.totalCount << ", uc=" << _session.unackedCount << ", ac=" << ack.totalCount);
+                }
                 if (ack.totalSize > _session.totalSize) {
                     K2WARN("Received ack for too much data: have=" << _session.totalSize
                            << ", recv=" << ack.totalSize);
@@ -229,6 +249,11 @@ private:
                 }
                 if (ack.checksum != (ack.totalCount*(ack.totalCount+1)) /2) {
                     K2WARN("Checksum mismatch. got=" << ack.checksum << ", expected=" << (ack.totalCount*(ack.totalCount+1)) /2);
+                }
+                for (uint64_t reqid = _session.totalCount - _session.unackedCount; reqid < ack.totalCount; reqid++) {
+                    auto idx = reqid % _session.config.pipelineCount;
+                    auto dur = now - _requestIssueTimes[idx];
+                    _requestLatency.add(dur);
                 }
                 _session.unackedCount = _session.totalCount - ack.totalCount;
                 _session.unackedSize = _session.totalSize - ack.totalSize;
@@ -241,7 +266,7 @@ private:
 
         _timer.arm(_testDuration);
 
-        _start = Clock::now();
+        _start = k2::Clock::now();
         return seastar::do_until(
             [this] { return _stopped; },
             [this] { // body of loop
@@ -257,7 +282,7 @@ private:
                 return seastar::make_ready_future<>();
             }
         ).finally([this] {
-            _actualTestDuration = Clock::now() - _start;
+            _actualTestDuration = k2::Clock::now() - _start;
         });
     }
 
@@ -280,6 +305,7 @@ private:
         payload->getWriter().write((void*)&_session.sessionID, sizeof(_session.sessionID));
         payload->getWriter().write((void*)&_session.totalCount, sizeof(_session.totalCount));
         payload->getWriter().write(_data, _session.config.responseSize - padding );
+        _requestIssueTimes[_session.totalCount % _session.config.pipelineCount] = k2::Clock::now();
         _disp.send(REQUEST, std::move(payload), _session.client);
     }
 
@@ -295,9 +321,12 @@ private:
     seastar::promise<> _sendProm;
     seastar::promise<> _stopPromise;
     bool _haveSendPromise;
-    Clock::time_point _start;
+    k2::TimePoint _start;
     seastar::timer<> _timer;
     sm::metric_groups _metric_groups;
+    k2::ExponentialHistogram _requestLatency;
+    std::vector<k2::TimePoint> _requestIssueTimes;
+    uint64_t _lastAckedTotal;
 }; // class Client
 
 int main(int argc, char** argv) {
