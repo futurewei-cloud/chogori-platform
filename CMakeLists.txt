@@ -19,6 +19,7 @@ add_compile_definitions(K2_DEBUG_LOGGING=${K2_DEBUG_LOGGING})
 include_directories(src)
 include_directories(src/include)
 include_directories(test/include)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/src) # benchmarker protobuf
 
 find_package (Seastar REQUIRED)
 find_package (yaml-cpp REQUIRED) # required for configuration file parsing

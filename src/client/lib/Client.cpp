@@ -33,6 +33,17 @@ Payload Client::createPayload()
     return std::move(*createPayload(endpoint).release());
 }
 
+void Client::createPayload(std::function<void(Payload&&)> onCompleted) {
+    std::string endpoint = _settings.networkProtocol + "://0.0.0.0:0000";
+
+    _executor.execute(endpoint, [onCompleted] (std::unique_ptr<k2::Payload> pPayload) mutable {
+        PartitionMessage::Header* header;
+        bool ret = pPayload->getWriter().reserveContiguousStructure(header);
+        ASSERT(ret);
+        onCompleted(std::move(*pPayload.release()));
+    });
+}
+
 void Client::execute(Operation&& operation, std::function<void(IClient&, OperationResult&&)> onCompleted)
 {
     // we expect at least one message

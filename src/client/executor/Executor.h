@@ -225,11 +225,14 @@ private:
                 return _transport.stop();
             });
 
+            K2INFO("Starting transport platform...");
+
             return virtualNetwork.start()
                 .then([&] {
                     return protocolFactory.start(k2::TCPRPCProtocol::builder(std::ref(virtualNetwork), 0));
                 })
                 .then([&] {
+
                     return dispatcher.start();
                 })
                 .then([&] {
@@ -239,19 +242,28 @@ private:
                         std::ref(dispatcher));
                 })
                 .then([&] {
+                    K2INFO("Starting vnet...");
+
                     return virtualNetwork.invoke_on_all(&k2::VirtualNetworkStack::start);
                 })
                 .then([&] {
+                    K2INFO("Starting tcp...");
+
                     return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::start);
                 })
                 .then([&] {
                     return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(protocolFactory));
                 })
                 .then([&] {
+                    K2INFO("Starting dispatcher...");
+
                     return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
                 })
                 .then([&] {
-                    return _transport.invoke_on_all(&TransportPlatform::start);
+                    auto ret = _transport.invoke_on_all(&TransportPlatform::start);
+                    K2INFO("Transport started!");
+
+                    return ret;
                 })
                 .then([&] {
                     // unblock the conditional waiting for the transport to start

@@ -30,6 +30,11 @@ class MockClient: public k2::client::IClient
     {
         return std::move(Payload());
     }
+
+    virtual void createPayload(std::function<void(Payload&&)> onCompleted)
+    {
+        (void)onCompleted;
+    }
 };
 
 static void makeAssignPartitionPayload(k2::Payload& payload)

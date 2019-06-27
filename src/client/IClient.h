@@ -156,6 +156,11 @@ public:
     virtual Payload createPayload() = 0;
 
     //
+    //  Create payload for particular message (async)
+    //
+    virtual void createPayload(std::function<void(Payload&&)> onCompleted) = 0;
+
+    //
     //  Destructor
     //
     virtual ~IClient() {}

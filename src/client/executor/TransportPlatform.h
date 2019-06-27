@@ -91,8 +91,6 @@ public:
 
     seastar::future<> start()
     {
-        K2INFO("Starting transport platform...")
-
         return seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
             // invoke the client's loop only if initialized within the client's thread
             if(_settings._userInitThread && hasTimerExpired()) {
