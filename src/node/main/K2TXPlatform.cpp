@@ -7,6 +7,8 @@
 #include "common/Constants.h"
 #include "transport/IRPCProtocol.h"
 #include <sched.h>
+#include <common/seastar/SeastarApp.h>
+#include <transport/SeastarTransport.h>
 
 namespace k2 {
 //
@@ -166,7 +168,6 @@ private:
     INodePool& _pool;
 };
 
-
 class NodesInitializer
 {
 public:
@@ -183,120 +184,52 @@ public:
     seastar::future<> stop() { return seastar::make_ready_future<>(); }
 };
 
-Status K2TXPlatform::run(NodePoolImpl& pool) {
-    // service are constructed starting with the available VirtualNetworkStacks(dpdk receive queues)
-    // so that we have a stack on each core. The stack is:
-    //  1 VF -> N protocols -> 1 RPCDispatcher -> 1 ServiceHandler.
-    // Note how we can have more than one listener per VF so that we can process say UDP and TCP packets at the
-    // same time.
-    // To build this, we use the seastar distributed<> mechanism, but we extend it so that we
-    // limit the pool to the number of network stacks we want to watch. The stacks are configured based on the cmd line options
-    VirtualNetworkStack::Dist_t vnet;
-    RPCProtocolFactory::Dist_t tcpproto;
-    RPCDispatcher::Dist_t dispatcher;
-    NodePoolService::Dist_t service;
-    NodePoolAddressProvider addrProvider(pool);
-    seastar::distributed<NodesInitializer> nodesInitializer;
-
+Status K2TXPlatform::run(NodePoolImpl& pool)
+{
     // TODO: So far couldn't find a good way to configure Seastar thorugh app. add_options without using command arguments.
     // Will do more research later and fix it. Now just configure through argument
     std::string nodesCountArg = std::to_string(pool.getNodesCount());
     std::string cpuSetArg = pool.getConfig().getCpuSetString();
 
-    const char* argv[] = { "NodePool", 
-                           "--poll-mode", 
+    const char* argv[] = { "NodePool",
+                           "--poll-mode",
                            (cpuSetArg.empty() ? "-c" : "--cpuset"),
                            (cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str()),
                            nullptr };
     int argc = sizeof(argv) / sizeof(*argv) - 1;
 
-
     // we are now ready to assemble the running application
-    seastar::app_template app;
-    auto result = app.run_deprecated(argc, (char**)argv, [&] {
-        //auto&& config= app.configuration(); // TODO use this configuration to configure things
+    SeastarApp server;
+    NodePoolAddressProvider addrProvider(pool);
+    SeastarTransport transport(server, addrProvider);
+    NodePoolService::Dist_t service;
+    seastar::distributed<NodesInitializer> nodesInitializer;
 
-        // call the stop() method on each object when we're about to exit. This also deletes the objects
-        seastar::engine().at_exit([&] {
-            K2INFO("vnet stop");
-            return vnet.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("tcpproto stop");
-            return tcpproto.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("dispatcher stop");
-            return dispatcher.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("service stop");
-            return service.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("initializer stop");
-            return nodesInitializer.stop();
-        });
-
-        return
-            // These calls here actually call the constructor of each distributed class, once on
-            // each core. This produces thread-local instances in each distributed<>
-            // create and wire all objects. We do this by chaining a bunch of
-            // futures which all complete pretty much instantly.
-            // The application remains running since various components register recurring events
-            // There are also some internal components which register recurring events (e.g. metrics http server)
-            vnet.start()
-            .then([&vnet, &tcpproto, &addrProvider]() {
-                K2INFO("start tcpproto");
-                return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(vnet), std::ref(addrProvider)));
-            })
-            .then([&]() {
-                K2INFO("start dispatcher");
-                return dispatcher.start();
-            })
-            .then([&]() {
-                K2INFO("start service");
-                return service.start(std::ref(pool), std::ref(dispatcher));
-            })
-            // once the objects have been constructed and wired, they can
-            // all perform their startup logic
-            .then([&]() {
-                K2INFO("Start VNS");
-                return vnet.invoke_on_all(&k2::VirtualNetworkStack::start);
-            })
-            .then([&]() {
-                K2INFO("Start tcpproto");
-                return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::start);
-            })
-            .then([&]() {
-                K2INFO("RegisterProtocol dispatcher");
-                // Could register more protocols here via separate invoke_on_all calls
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
-            })
-            .then([&]() {
-                K2INFO("Start dispatcher");
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
-            })
-            .then([&]() {
+    server
+        .registerService(service, std::ref(pool), std::ref(transport.getDispatcher()))
+        .registerService(nodesInitializer)
+        .registerInitializer([&]()
+            {
                 K2INFO("Start service");
                 return service.invoke_on_all(&NodePoolService::start);
             })
-            .then([&]() {
-                K2INFO("Start node initializer");
-                return nodesInitializer.start();
-            })
-            .then([&]() {
+        .registerInitializer([&]()
+            {
                 K2INFO("Initialize nodes");
-                return nodesInitializer.invoke_on_all(&NodesInitializer::initializeNodes, seastar::ref(pool), seastar::ref(dispatcher));
+                return nodesInitializer.invoke_on_all(&NodesInitializer::initializeNodes, seastar::ref(pool), seastar::ref(transport.getDispatcher()));
             })
-            .then([&]() {
+        .registerInitializer([&]()
+            {
                 K2INFO("Complete initialization of the Node Pool");
                 pool.completeInitialization();
                 return seastar::make_ready_future<>();
             });
-    });
+
+    int result = server.run(argc, argv);
+
     K2INFO("Shutdown was successful!");
     return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;
 }
+
 
 } // namespace k2
