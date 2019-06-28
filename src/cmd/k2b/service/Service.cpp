@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <fstream>
+#include <thread>
 // boost
 #include "boost/program_options.hpp"
 #include "boost/filesystem.hpp"
@@ -25,10 +26,7 @@ namespace k2
 namespace benchmarker
 {
 
-using namespace k2;
-using namespace k2::client;
-using namespace k2::benchmarker;
-using boost::asio::ip::tcp;
+namespace asio = boost::asio;
 
 static void makeSetMessage(k2::Payload& payload, std::string key, std::string value)
 {
@@ -37,17 +35,17 @@ static void makeSetMessage(k2::Payload& payload, std::string key, std::string va
      payload.getWriter().write(request);
 }
 
-class K2Client: public Client
+class K2Client: public client::Client
 {
 public:
     K2Client()
     {
-        PartitionDescription desc;
+        client::PartitionDescription desc;
         PartitionAssignmentId id;
         id.parse("1.1.1");
         desc.nodeEndpoint = "tcp+k2rpc://127.0.0.1:11311";
         desc.id = id;
-        PartitionMapRange partitionRange;
+        client::PartitionMapRange partitionRange;
         partitionRange.lowKey = "d";
         partitionRange.highKey = "f";
         desc.range = partitionRange;
@@ -66,21 +64,19 @@ public:
 class BenchmarkerService
 {
 private:
-    const int tcpPort = 1300;
-    std::atomic_bool _stopFlag;
-    boost::asio::io_service _ioService;
-    boost::asio::ip::tcp::acceptor _acceptor;
+    volatile const int _tcpPort = 1300;
+    std::shared_ptr<asio::io_service> _pIoService;
+    std::shared_ptr<asio::ip::tcp::acceptor> _pAcceptor;
+    std::thread _asioThread;
     K2Client _client;
-    std::thread _socketThread;
     Session _session;
 
 public:
     BenchmarkerService()
-    : _stopFlag(false)
-    , _acceptor(boost::asio::ip::tcp::acceptor(_ioService))
-    , _session(std::move(Session(KeySpace(std::unique_ptr<Generator>(new RandomNumberGenerator()), 10))))
+    : _session(std::move(Session(KeySpace(std::unique_ptr<Generator>(new RandomNumberGenerator()), 10))))
     {
-       // empty
+        _pIoService = std::make_shared<asio::io_service>();
+        _pAcceptor = std::make_shared<asio::ip::tcp::acceptor>(*_pIoService);
     }
 
     k2bdto::Response handleRequest(k2bdto::Request& request)
@@ -100,9 +96,9 @@ public:
         return std::move(response);
     }
 
-    Operation createOperation(Range range, Payload payload)
+    client::Operation createClientOperation(client::Range range, Payload payload)
     {
-        Operation operation;
+        client::Operation operation;
         client::Message message;
         message.content = std::move(payload);
         message.ranges.push_back(std::move(range));
@@ -127,10 +123,10 @@ public:
             // populate payload
             makeSetMessage(payload, std::move(key), std::move(value));
             // create operation
-            Range range = Range::singleKey("f");
-            Operation operation = std::move(createOperation(std::move(range), std::move(payload)));
+            client::Range range = client::Range::singleKey("f");
+            client::Operation operation = std::move(createClientOperation(std::move(range), std::move(payload)));
             // execute operation
-            _client.execute(std::move(operation), [&](IClient& client, OperationResult&& result) {
+            _client.execute(std::move(operation), [&](client::IClient& client, client::OperationResult&& result) {
                 // prevent compilation warnings
                 (void)client;
                 K2INFO("client response: " << getStatusText(result._responses[0].status));
@@ -140,103 +136,120 @@ public:
         return true;
     }
 
-    uint64_t transportLoop()
+    uint64_t transportLoop(client::IClient& client)
     {
+        (void)client;
         runSession(_session);
 
         return 100000;
     }
 
-    void start()
+    void initK2Client()
     {
-        _socketThread = std::thread([this] {
-            listen();
-        });
-
         // initialize the client
-        ClientSettings settings;
+        client::ClientSettings settings;
         settings.userInitThread = true;
         settings.networkProtocol = "tcp+k2rpc";
-        settings.runInLoop = ([this] (k2::client::IClient& client) {
-            (void)client;
-            return transportLoop();
-        });
-        // start client
-        _client.init(settings);
+        settings.runInLoop = std::bind(&BenchmarkerService::transportLoop, this, std::placeholders::_1);
 
+        _client.init(settings);
+    }
+
+    void start()
+    {
+	    bindPort();
+	    listenAsync();
+
+        // start asio service in separate thread otherwise it will be blocked by the k2 client loop
+        _asioThread = std::thread([this] {
+            _pIoService->run();
+        });
+
+        // start k2 client; blocking call
+        initK2Client();
+
+        // stop this service
         stop();
     }
 
     void stop()
     {
-        _stopFlag = true;
-        _acceptor.cancel();
-        _acceptor.close();
-        _socketThread.join();
+        _pIoService->stop();
+        _pAcceptor->cancel();
+        _pAcceptor->close();
+        _asioThread.join();
     }
 
-    void listen()
+    void handleAcceptAsync(std::shared_ptr<asio::ip::tcp::socket> pSocket, const boost::system::error_code &socketError)
     {
-        K2INFO("Listening on port:" << tcpPort);
+    	(void)socketError;
+	    readSocket(pSocket);
 
-         auto endpoint = tcp::endpoint(tcp::v4(), tcpPort);
-        _acceptor.open(endpoint.protocol());
-        _acceptor.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
-        _acceptor.bind(endpoint);
-        _acceptor.listen();
-
-        try {
-            // keep listening until stopped
-            for(;!_stopFlag;) {
-                tcp::socket socket(_ioService);
-                _acceptor.accept(socket);
-                // read socket
-                std::array<char, 1024> readBuffer;
-                boost::system::error_code error;
-                socket.read_some(boost::asio::buffer(readBuffer), error);
-                if (error == boost::asio::error::eof) {
-                    break; // Connection closed cleanly by peer.
-                } else if (error) {
-                    throw boost::system::system_error(error); // Some other error.
-                }
-
-                k2bdto::Response response;
-                // parse request
-                try {
-                    std::string inputString(readBuffer.data());
-                    k2bdto::Request request;
-                    request.ParseFromString(inputString);
-                    response = std::move(handleRequest(request));
-                }
-                catch(...) {
-                    K2ERROR("Exception thrown!");
-
-                    std::exception_ptr pException = std::current_exception();
-                    try {
-                        std::rethrow_exception(pException);
-                    }
-                    catch(const std::exception& e) {
-                        response.set_status(k2bdto::Response_Status_ERROR);
-                        response.set_message(e.what());
-                    }
-                    catch(...) {
-                        response.set_status(k2bdto::Response_Status_ERROR);
-                    }
-                }
-
-                // send back response
-                boost::system::error_code ignored_error;
-                std::string output;
-                response.SerializeToString(&output);
-                auto asioBuffer = boost::asio::buffer(output.c_str(), output.size());
-                boost::asio::write(socket, asioBuffer, ignored_error);
-            }
-        }
-        catch(std::exception& e) {
-            K2ERROR(e.what());
-        }
+        // listen for the next request
+	    listenAsync();
     }
 
+    void listenAsync()
+    {
+    	std::shared_ptr<asio::ip::tcp::socket> pSocket = std::make_shared<asio::ip::tcp::socket>(*_pIoService);
+	    _pAcceptor->async_accept(*pSocket, std::bind(&BenchmarkerService::handleAcceptAsync, this, pSocket, std::placeholders::_1));
+    }
+
+    void bindPort()
+    {
+        K2INFO("Benchmarker listening on port:" << _tcpPort);
+
+        auto endpoint = asio::ip::tcp::endpoint(asio::ip::tcp::v4(), _tcpPort);
+       	_pAcceptor.reset(new asio::ip::tcp::acceptor(*_pIoService));
+    	_pAcceptor->open(endpoint.protocol());
+        _pAcceptor->set_option(asio::ip::tcp::acceptor::reuse_address(true));
+        _pAcceptor->bind(endpoint);
+        _pAcceptor->listen();
+    }
+
+    void readSocket(std::shared_ptr<asio::ip::tcp::socket> pSocket)
+    {
+       // read socket
+       std::array<char, 1024> readBuffer;
+       boost::system::error_code error;
+       pSocket->read_some(asio::buffer(readBuffer), error);
+       if (error == asio::error::eof) {
+	       //break; // Connection closed cleanly by peer.
+       } else if (error) {
+	       throw boost::system::system_error(error); // Some other error.
+       }
+
+       k2bdto::Response response;
+       // parse request
+       try {
+	       std::string inputString(readBuffer.data());
+	       k2bdto::Request request;
+	       request.ParseFromString(inputString);
+	       response = std::move(handleRequest(request));
+       }
+       catch(...) {
+	       K2ERROR("Exception thrown!");
+
+	       std::exception_ptr pException = std::current_exception();
+	       try {
+		       std::rethrow_exception(pException);
+	       }
+	       catch(const std::exception& e) {
+		       response.set_status(k2bdto::Response_Status_ERROR);
+		       response.set_message(e.what());
+	       }
+	       catch(...) {
+		       response.set_status(k2bdto::Response_Status_ERROR);
+	       }
+       }
+
+       // send back response
+       boost::system::error_code ignored_error;
+       std::string output;
+       response.SerializeToString(&output);
+       auto asioBuffer = asio::buffer(output.c_str(), output.size());
+       asio::write(*pSocket, asioBuffer, ignored_error);
+    }
 }; // BenchmarkerService class
 
 }; // benchmarker namespace
