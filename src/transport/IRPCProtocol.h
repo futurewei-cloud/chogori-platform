@@ -22,7 +22,19 @@ public:
     virtual ~IAddressProvider(){}
 
     // this should be implemented by concrete classes. It should return the address for a given coreID
-    virtual SocketAddress getAddress(int coreID) = 0;
+    virtual SocketAddress getAddress(int coreID) const = 0;
+};
+
+//
+//  Provider which returns address which always belong to single port
+//
+class SinglePortAddressProvider : public IAddressProvider
+{
+protected:
+    uint16_t port;
+public:
+    SinglePortAddressProvider(uint16_t port) : port(port) {}
+    SocketAddress getAddress(int) const override { return port; }
 };
 
 // This is an interface for RPCProtocols

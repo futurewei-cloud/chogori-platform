@@ -29,6 +29,7 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
     }
 
     pool.getConfig().monitorEnabled = config["monitorEnabled"].as<bool>(pool.getConfig().monitorEnabled);
+    pool.getConfig().rdmaEnabled = config["rdmaEnabled"].as<bool>(pool.getConfig().rdmaEnabled);
     if (config["cpuset"])
     {
         pool.getConfig().cpuSetStr = config["cpuset"].as<std::string>();
@@ -38,8 +39,6 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
 
 int main(int argc, char** argv)
 {
-    (void)argc; // TODO use me
-    (void)argv; // TODO use me
     try
     {
         namespace bpo = boost::program_options;

@@ -65,13 +65,14 @@ private:
 };
 
 // Create a new PartitionMessage from the given payload and url
-std::unique_ptr<PartitionMessage> createPartitionMessage(std::unique_ptr<Payload> inPayload, const String& url) {
+std::unique_ptr<PartitionMessage> createPartitionMessage(std::unique_ptr<Payload> inPayload, const String& url)
+{
     if (!inPayload) {
         K2ERROR("Received unexpected message with empty payload from: " << url);
         return nullptr;
     }
     PartitionMessage::Header header;
-    inPayload->getReader().read(&header, sizeof(header));
+    inPayload->getReader().read(header);
     auto readOffset = sizeof(header);
     auto remainingBytes = header.messageSize;
     assert(readOffset + remainingBytes == inPayload->getSize());
@@ -88,100 +89,109 @@ std::unique_ptr<PartitionMessage> createPartitionMessage(std::unique_ptr<Payload
     );
 }
 
-//
-// end Glue classes
-//
-NodePoolService::NodePoolService(INodePool& pool, k2::RPCDispatcher::Dist_t& dispatcher):
-    _node(pool.getCurrentNode()),
-    _stopped(true),
-    _dispatcher(dispatcher) {
-    K2DEBUG("NodePoolService constructed")
-}
-
-NodePoolService::~NodePoolService() {
-    K2DEBUG("NodePoolService destructed")
-}
-
-// required for seastar::distributed interface
-seastar::future<> NodePoolService::stop() {
-    K2INFO("NodePoolService stopping");
-    _stopped = true;
-    // unregistar all observers
-    _dispatcher.local().registerMessageObserver(KnownVerbs::PartitionMessages, nullptr);
-    _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
-    return when_all(std::move(_taskProcessorLoop))
-        .then_wrapped([](auto&& fut) {
-            fut.ignore_ready_future();
-            return seastar::make_ready_future<>();
-        });
-}
-
-void NodePoolService::start() {
-    K2INFO("NodePoolService starting");
-    _stopped = false;
-
-    _dispatcher.local().registerMessageObserver(KnownVerbs::PartitionMessages,
-            [this](k2::Request&& request) mutable {
-                K2DEBUG("Dispatching message to AssignmentManager");
-                PartitionRequest partitionRequest;
-                partitionRequest.message = createPartitionMessage(std::move(request.payload), request.endpoint.getURL());
-                partitionRequest.client = std::make_unique<AMClientConnection>(std::move(request), _dispatcher.local());
-                _node.assignmentManager.processMessage(partitionRequest);
-            });
-
-    // TODO need to pass this on to the assignment manager as it may be holding messages around
-    _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
-    _taskProcessorLoop = startTaskProcessor();
-}
-
-seastar::future<> NodePoolService::startTaskProcessor() {
-    return seastar::do_until(
-        [this] {
-            return _stopped; // break loop if we're stopped
-        },
-        [this] {
-            _node.processTasks();
-            return seastar::make_ready_future<>();
-        }
-    ).handle_exception([this] (std::exception_ptr eptr) {
-        K2ERROR("Ignoring assignment manager exception: " << eptr);
-        return seastar::make_ready_future<>();
-    });
-}
-
-K2TXPlatform::K2TXPlatform() {
-}
-
-K2TXPlatform::~K2TXPlatform() {
-}
-
-class NodePoolAddressProvider: public k2::IAddressProvider {
-public:
-    NodePoolAddressProvider(INodePool& pool): _pool(pool){}
-    ~NodePoolAddressProvider(){}
-    seastar::socket_address getAddress(int coreID) override {
-        const NodeEndpointConfig& nodeConfig = _pool.getNode(coreID).getEndpoint();
-        return seastar::make_ipv4_address(nodeConfig.ipv4.address, nodeConfig.ipv4.port);
-    }
-
-private:
-    INodePool& _pool;
-};
-
-class NodesInitializer
+// This class allows us to run a NodePool as a distributed<> service. It essentially wraps
+// an AssignmentManager, making sure we have one assignment manager per core
+class NodePoolService
 {
-public:
-    void initializeNodes(seastar::reference_wrapper<NodePoolImpl> pool, seastar::reference_wrapper<RPCDispatcher::Dist_t> dispatcher)
+public: // types
+    class Distributed : public seastar::distributed<NodePoolService>
     {
+    public:
+        Distributed(SeastarApp& server, NodePoolImpl& pool,  SeastarTransport& transport)
+        {
+            server
+                .registerService(*this, std::ref(pool), std::ref(transport.getDispatcher()))
+                .startOnCores(*this, seastar::ref(pool))
+                .registerInitializer([&]()
+                    {
+                        pool.completeInitialization();
+                        K2INFO("Node Pool successfully initialized.");
+                        return seastar::make_ready_future<>();
+                    });
+        }
+    };
+
+public:
+    NodePoolService(INodePool& pool, k2::RPCDispatcher::Dist_t& dispatcher) :
+        _node(pool.getCurrentNode()), _stopped(true), _dispatcher(dispatcher) {}
+
+public: // distributed<> interface
+    void start(seastar::reference_wrapper<NodePoolImpl> pool)
+    {
+        _stopped = false;
+
+        _dispatcher.local().registerMessageObserver(
+                KnownVerbs::PartitionMessages,
+                [this](k2::Request&& request) mutable
+                {
+                    K2DEBUG("Dispatching message to AssignmentManager");
+                    PartitionRequest partitionRequest;
+                    partitionRequest.message = createPartitionMessage(std::move(request.payload), request.endpoint.getURL());
+                    partitionRequest.client = std::make_unique<AMClientConnection>(std::move(request), _dispatcher.local());
+                    _node.assignmentManager.processMessage(partitionRequest);
+                });
+
+        // TODO need to pass this on to the assignment manager as it may be holding messages around
+        _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
+        _taskProcessorLoop = startTaskProcessor();
+
+        //  Initialized nodes with correct endpoint
         std::vector<String> endpoints;
-        for(auto endpoint : dispatcher.get().local().getServerEndpoints())
+        for(auto endpoint : _dispatcher.local().getServerEndpoints())
             endpoints.push_back(endpoint->getURL());
 
         pool.get().setCurrentNodeLocationInfo(std::move(endpoints), sched_getcpu());
     }
 
-    void start() {}
-    seastar::future<> stop() { return seastar::make_ready_future<>(); }
+    seastar::future<> stop()    // required for seastar::distributed interface
+    {
+        K2INFO("NodePoolService stopping");
+        _stopped = true;
+        // unregister all observers
+        _dispatcher.local().registerMessageObserver(KnownVerbs::PartitionMessages, nullptr);
+        _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
+        return when_all(std::move(_taskProcessorLoop))
+            .then_wrapped([](auto&& fut) {
+                fut.ignore_ready_future();
+                return seastar::make_ready_future<>();
+            });
+    }
+private: // helpers
+    seastar::future<> startTaskProcessor()
+    {
+        return seastar::do_until(
+            [this] { return _stopped; },
+            [this]
+            {
+                _node.processTasks();
+                return seastar::make_ready_future<>();
+            });
+    }
+
+private: // fields
+    Node& _node;
+    bool _stopped;
+    seastar::future<> _taskProcessorLoop = seastar::make_ready_future<>();
+    k2::RPCDispatcher::Dist_t& _dispatcher;
+
+private: // don't need
+    NodePoolService() = delete;
+    DISABLE_COPY_MOVE(NodePoolService)
+}; // class NodePoolService
+
+//
+//  Provide ports for TCP transports
+//
+class NodePoolAddressProvider: public k2::IAddressProvider {
+public:
+    NodePoolAddressProvider(INodePool& pool): _pool(pool){}
+    ~NodePoolAddressProvider(){}
+    seastar::socket_address getAddress(int coreID) const override {
+        const NodeEndpointConfig& nodeConfig = _pool.getNode(coreID).getEndpoint();
+        return seastar::make_ipv4_address(nodeConfig.ipv4.address, nodeConfig.ipv4.port);
+    }
+private:
+    INodePool& _pool;
 };
 
 Status K2TXPlatform::run(NodePoolImpl& pool)
@@ -198,34 +208,17 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
                            nullptr };
     int argc = sizeof(argv) / sizeof(*argv) - 1;
 
-    // we are now ready to assemble the running application
-    SeastarApp server;
-    NodePoolAddressProvider addrProvider(pool);
-    SeastarTransport transport(server, addrProvider);
-    NodePoolService::Dist_t service;
-    seastar::distributed<NodesInitializer> nodesInitializer;
+    //
+    //  Initialize application, transport and service
+    //
+    SeastarApp app;
+    SeastarTransport transport(app, TransportConfig(std::make_unique<NodePoolAddressProvider>(pool), pool.getConfig().isRDMAEnabled()));
+    NodePoolService::Distributed service(app, pool, transport);
 
-    server
-        .registerService(service, std::ref(pool), std::ref(transport.getDispatcher()))
-        .registerService(nodesInitializer)
-        .registerInitializer([&]()
-            {
-                K2INFO("Start service");
-                return service.invoke_on_all(&NodePoolService::start);
-            })
-        .registerInitializer([&]()
-            {
-                K2INFO("Initialize nodes");
-                return nodesInitializer.invoke_on_all(&NodesInitializer::initializeNodes, seastar::ref(pool), seastar::ref(transport.getDispatcher()));
-            })
-        .registerInitializer([&]()
-            {
-                K2INFO("Complete initialization of the Node Pool");
-                pool.completeInitialization();
-                return seastar::make_ready_future<>();
-            });
-
-    int result = server.run(argc, argv);
+    //
+    //  Start seastar processing loop
+    //
+    int result = app.run(argc, argv);
 
     K2INFO("Shutdown was successful!");
     return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;

@@ -12,6 +12,7 @@ class NodePoolConfig
 {
 public:
     bool monitorEnabled = false;
+    bool rdmaEnabled = false;
     std::vector<String> partitionManagerSet;
     std::string cpuSetStr;
     std::string cpuSetGeneralStr;
@@ -23,6 +24,7 @@ public:
     std::chrono::microseconds getNoHeartbeatGracefullPeriod() const { return std::chrono::milliseconds(30); }
 
     bool isMonitorEnabled() const { return monitorEnabled; }
+    bool isRDMAEnabled() const { return rdmaEnabled; }
 
     const std::vector<String> getPartitionManagerSet() const { return partitionManagerSet; }
     const std::string& getCpuSetString() const { return cpuSetStr; }

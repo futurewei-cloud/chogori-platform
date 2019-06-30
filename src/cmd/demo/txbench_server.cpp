@@ -161,7 +161,7 @@ public:
     TXBenchAddressProvider() = default;
     TXBenchAddressProvider(const std::vector<uint32_t>& ports): _ports(ports){}
     TXBenchAddressProvider& operator=(TXBenchAddressProvider&&) = default;
-    seastar::socket_address getAddress(int coreID) override {
+    seastar::socket_address getAddress(int coreID) const override {
         if (size_t(coreID) < _ports.size()) {
             K2DEBUG("Have port: " << coreID << ":" << _ports[coreID]);
             return seastar::socket_address(seastar::ipv4_addr{uint16_t(_ports[coreID])});

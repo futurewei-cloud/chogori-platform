@@ -44,6 +44,20 @@ public:
         return *this;
     }
 
+    template<typename ServiceT, typename... StartArgs>
+    SeastarApp& startOnCores(seastar::distributed<ServiceT>& service, StartArgs&&... startArgs)
+    {
+        initializers.push_back([&service, args = std::make_tuple(std::forward<StartArgs>(startArgs)...)]() mutable
+            {
+                return std::apply([&service](auto&& ... args) mutable
+                {
+                    return service.invoke_on_all(&ServiceT::start, std::forward<StartArgs>(args)...);
+                }, std::move(args));
+            });
+
+        return *this;
+    }
+
     template<typename ServiceT, typename... ArgsT>
     SeastarApp& registerServices(seastar::distributed<ServiceT>& service, ArgsT&... args)
     {
@@ -51,6 +65,15 @@ public:
         registerServices(args...);
 
         return *this;
+    }
+
+    SeastarApp& registerInfoLog(std::string logMessage)
+    {
+        return registerInitializer([logMessage = std::move(logMessage)]() mutable
+            {
+                K2INFO(std::move(logMessage));
+                return seastar::make_ready_future<>();
+            });
     }
 
     int run(int argc, const char** argv)

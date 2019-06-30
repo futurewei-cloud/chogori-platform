@@ -19,67 +19,29 @@
 
 namespace k2 {
 
-// This class allows us to run a NodePool as a distributed<> service. It essentially wraps
-// an AssignmentManager, making sure we have one assignment manager per core
-class NodePoolService {
-public: // types
-    typedef seastar::distributed<NodePoolService> Dist_t;
-
-public:
-    NodePoolService(INodePool& pool, k2::RPCDispatcher::Dist_t& dispatcher);
-    ~NodePoolService();
-
-public: // distributed<> interface
-    // required for seastar::distributed interface
-    seastar::future<> stop();
-
-    // called after construction
-    void start();
-
-private: // helpers
-    seastar::future<> startTaskProcessor();
-
-private: // fields
-    Node& _node;
-    bool _stopped;
-    seastar::future<> _taskProcessorLoop = seastar::make_ready_future<>();
-    k2::RPCDispatcher::Dist_t& _dispatcher;
-
-private: // don't need
-    NodePoolService() = delete;
-    NodePoolService(const NodePoolService& o) = delete;
-    NodePoolService(NodePoolService&& o) = delete;
-    NodePoolService& operator=(const NodePoolService& o) = delete;
-    NodePoolService& operator=(NodePoolService&& o) = delete;
-}; // class NodePoolService
-
 // This class provides the ISchedulingPlatform interface and takes care of
 // running a NodePool over tx transport
-class K2TXPlatform : public ISchedulingPlatform {
-public: //lifecycle
-    K2TXPlatform();
-    ~K2TXPlatform();
+class K2TXPlatform : public ISchedulingPlatform
+{
+public:
+    K2TXPlatform() {}
 
-    // this method runs nodes based on the configuration provided in the given NodePool configurator
+    // this method runs nodes based on the NodePool configuration
     // The method is not expected to return until signal(e.g. SIGTERM) or a fatal error occurs
     Status run(NodePoolImpl& pool);
 
-public: // ISchedulingPlatform interface
-    // return a node identifier
-    uint64_t getCurrentNodeId() override {
-        return seastar::engine().cpu_id();
-    }
+    //
+    //  ISchedulingPlatform interface
+    //
+    uint64_t getCurrentNodeId() override { return seastar::engine().cpu_id(); } // return a node identifier
 
     // run the given function after the given delayTime
-    void delay(std::chrono::microseconds delayTimeUs, std::function<void()>&& callback) override {
+    void delay(std::chrono::microseconds delayTimeUs, std::function<void()>&& callback) override
+    {
         seastar::sleep(delayTimeUs).then([cb = std::move(callback)] { cb(); });
     }
 
-private: // don't need
-    K2TXPlatform(const K2TXPlatform& o) = delete;
-    K2TXPlatform(K2TXPlatform&& o) = delete;
-    K2TXPlatform& operator=(const K2TXPlatform& o) = delete;
-    K2TXPlatform& operator=(K2TXPlatform&& o) = delete;
+    DISABLE_COPY_MOVE(K2TXPlatform)
 }; // class K2TXPlatform
 
 } //  namespace k2

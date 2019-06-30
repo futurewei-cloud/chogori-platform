@@ -1,9 +1,34 @@
 #pragma once
 
 #include "common/seastar/SeastarApp.h"
+#include "transport/RPCDispatcher.h"
+#include "transport/RRDMARPCProtocol.h"
+#include "transport/TCPRPCProtocol.h"
+#include "transport/RPCProtocolFactory.h"
+#include "transport/VirtualNetworkStack.h"
 
 namespace k2
 {
+class TransportConfig
+{
+    std::unique_ptr<IAddressProvider> tcpAddrProvider;
+    bool rdmaEnabled = false;
+public:
+    TransportConfig(std::unique_ptr<IAddressProvider>&& tcpAddrProvider, bool rdmaEnabled = false) :
+        tcpAddrProvider(std::move(tcpAddrProvider)), rdmaEnabled(rdmaEnabled) { }
+
+    bool isTCPEnabled() const { return (bool)tcpAddrProvider; }
+    bool isRDMAEnabled() const { return rdmaEnabled; }
+
+    IAddressProvider& getTCPAddressProvider() const
+    {
+        ASSERT(isTCPEnabled());
+        return *tcpAddrProvider;
+    }
+
+    DEFAULT_MOVE(TransportConfig);
+};
+
 class SeastarTransport
 {
 protected:
@@ -14,41 +39,72 @@ protected:
     // same time.
     // To build this, we use the seastar distributed<> mechanism, but we extend it so that we
     // limit the pool to the number of network stacks we want to watch. The stacks are configured based on the cmd line options
+    TransportConfig config;
     VirtualNetworkStack::Dist_t vnet;
-    RPCProtocolFactory::Dist_t tcpproto;
+    RPCProtocolFactory::Dist_t tcpProto;
+    RPCProtocolFactory::Dist_t rdmaProto;
     RPCDispatcher::Dist_t dispatcher;
-    NodePoolService::Dist_t service;
-public:
-    SeastarTransport(SeastarApp& app, IAddressProvider& addrProvider)
-    {
-        app
-            .registerService(vnet)
-            .registerService(tcpproto, k2::TCPRPCProtocol::builder(std::ref(vnet), std::ref(addrProvider)))
-            .registerService(dispatcher)
-            .registerInitializer([&]()
-                {
-                    K2INFO("SeastarTransport: Start Virtual Network Stack");
-                    return vnet.invoke_on_all(&k2::VirtualNetworkStack::start);
-                })
-            .registerInitializer([&]()
-                {
-                    K2INFO("SeastarTransport: Start TCP protocol factory");
-                    return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::start);
-                })
-            .registerInitializer([&]()
-                {
-                    K2INFO("SeastarTransport: Register TCP with dispatcher");
-                    // Could register more protocols here via separate invoke_on_all calls
-                    return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
-                })
-            .registerInitializer([&]()
-                {
-                    K2INFO("SeastarTransport: Start dispatcher");
-                    return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
-                });
-    }
 
+    class ProtocolInitializer
+    {
+    protected:
+        std::vector<std::tuple<RPCProtocolFactory::Dist_t*, RPCProtocolFactory::BuilderFunc_t, const char*>> protocols;
+    public:
+        void add(RPCProtocolFactory::Dist_t& protocol, RPCProtocolFactory::BuilderFunc_t&& builder, const char* protoName)
+        {
+            protocols.emplace_back(&protocol, std::move(builder), protoName);
+        }
+
+        //  Should be called after Virtual Network Stack service registration and before dispatcher registration
+        void init(SeastarApp& app)
+        {
+            for(auto& p : protocols)
+                app.registerService(*std::get<0>(p), std::move(std::get<1>(p)));
+        }
+
+        void startAndRegister(SeastarApp& app, RPCDispatcher::Dist_t& dispatcher)
+        {
+            for(auto& p : protocols)
+            {
+                RPCProtocolFactory::Dist_t& proto = *std::get<0>(p);
+                const char* name = std::get<2>(p);
+                app
+                    .startOnCores(proto)
+                    .registerInitializer([&proto, &dispatcher]()
+                    {
+                        return dispatcher.invoke_on_all(&RPCDispatcher::registerProtocol, seastar::ref(proto));
+                    }).registerInfoLog(std::string("SeastarTransport: protocol ") + name + " successfully initialized.");
+            }
+        }
+    };
+public:
     RPCDispatcher::Dist_t& getDispatcher() { return dispatcher; }
+
+    SeastarTransport(SeastarApp& app, TransportConfig&& configuration) : config(std::move(configuration))
+    {
+        //
+        //  Set protocols that we are going to use
+        //
+        ProtocolInitializer protocols;
+        if(config.isTCPEnabled())
+            protocols.add(tcpProto, TCPRPCProtocol::builder(std::ref(vnet), std::ref(config.getTCPAddressProvider())), "TCP");
+
+        if(config.isRDMAEnabled())
+            protocols.add(rdmaProto, RRDMARPCProtocol::builder(std::ref(vnet)), "RDMA");
+
+        //
+        //  Register Virtual Network Stack, protocols and dispatcher
+        //
+        app.registerService(vnet);
+
+        protocols.init(app);
+
+        app.registerService(dispatcher).startOnCores(vnet);
+
+        protocols.startAndRegister(app, dispatcher);
+
+        app.startOnCores(dispatcher).registerInfoLog("SeastarTransport: successfully initialized.");
+    }
 };
 
 }  //  namespace k2
