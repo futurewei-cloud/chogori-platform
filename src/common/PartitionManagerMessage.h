@@ -22,11 +22,11 @@ using RequestMessage = MessageWithType<MessageType, RequestType>;
 class NodeInfo
 {
 public:
-    String name;
+    String tcpHostAndPort;
     std::vector<String> endpoints;
 
     DEFAULT_COPY_MOVE_INIT(NodeInfo)
-    K2_PAYLOAD_FIELDS(name, endpoints);
+    K2_PAYLOAD_FIELDS(tcpHostAndPort, endpoints);
 };
 
 class NodePoolRegistrationMessage
@@ -47,8 +47,9 @@ public:
     {
     public:
         long sessionId;
+        std::vector<String> nodeIds;
 
-        K2_PAYLOAD_FIELDS(sessionId);
+        K2_PAYLOAD_FIELDS(sessionId, nodeIds);
     };
 };
 

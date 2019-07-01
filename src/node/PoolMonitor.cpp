@@ -148,23 +148,44 @@ void PoolMonitor::run()
     }
 }
 
+const String tcpEndPointPrefix = "tcp+k2rpc://";
+
+bool getTCPHostAndPort(const std::vector<String>& endpoints, String& tcpHostAndPort)
+{
+    for(const String& endpoint : endpoints)
+    {
+        if(
+            endpoint.size() <= tcpEndPointPrefix.size() ||
+            endpoint.substr(0, tcpEndPointPrefix.size()) != tcpEndPointPrefix)   //  TODO: in C++20 will be starts_with
+            continue;
+
+        tcpHostAndPort = endpoint.substr(endpoint.size());
+        return true;
+    }
+
+    return false;
+}
+
 void PoolMonitor::registerNodePool()
 {
     manager::NodePoolRegistrationMessage::Request registerRequest;
     manager::NodePoolRegistrationMessage::Response registerResponse;
+    ASSERT(nodeTCPHostAndPorts.empty());
 
     registerRequest.poolId = pool.getName();
     for(size_t i = 0; i < pool.getNodesCount(); i++)
     {
         manager::NodeInfo node;
-        node.name = pool.getNode(i).getName();
         node.endpoints = pool.getNode(i).getEndpoints();
+        ASSERT(getTCPHostAndPort(node.endpoints, node.tcpHostAndPort));
+        nodeTCPHostAndPorts.push_back(node.tcpHostAndPort);
         registerRequest.nodes.push_back(std::move(node));
     }
 
     TIF(sendMessage(registerRequest, registerResponse));
 
     sessionId = registerResponse.sessionId;
+    nodeRegistrationIds = registerResponse.nodeIds;
     lastHeartbeat = TimePoint::now();
     state = State::active;
 }
@@ -176,7 +197,7 @@ void PoolMonitor::sendHeartbeat()
 
     heartbeatRequest.poolId = pool.getName();
     for(size_t i = 0; i < pool.getNodesCount(); i++)
-        heartbeatRequest.nodeNames.push_back(pool.getNode(i).getName());
+        heartbeatRequest.nodeNames.push_back(nodeTCPHostAndPorts[i]);
     heartbeatRequest.sessionId = sessionId;
 
     TIF(sendMessage(heartbeatRequest, heartbeatResponse));

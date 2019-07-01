@@ -41,6 +41,8 @@ public:
     };
 protected:
     INodePool& pool;
+    std::vector<String> nodeTCPHostAndPorts; //  TCP endpoints for each node that Partition Manager will use for comunications
+    std::vector<String> nodeRegistrationIds; //  Ids which Partition Manager assigned to nodes
     State state = State::waitingForInitialization;
     std::thread monitorThread;
 

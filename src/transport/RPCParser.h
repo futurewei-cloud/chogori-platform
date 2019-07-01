@@ -717,9 +717,19 @@ public:
         return MessageBuilder(verb, MessageMetadata::newRequest(), Payload());
     }
 
-    static MessageBuilder response(Payload newMessagePayload, MessageDescription originalRequestMessage)
+    static MessageBuilder response(Payload newMessagePayload, const MessageMetadata& originalRequestMessageMetadata)
     {
-        return MessageBuilder(KnownVerbs::None, MessageMetadata::createResponse(originalRequestMessage.metadata), std::move(newMessagePayload));
+        return MessageBuilder(KnownVerbs::None, originalRequestMessageMetadata.createResponse(), std::move(newMessagePayload));
+    }
+
+    static MessageBuilder response(const MessageMetadata& originalRequestMessageMetadata)
+    {
+        return response(Payload(), originalRequestMessageMetadata);
+    }
+
+    static MessageBuilder response(Payload newMessagePayload, const MessageDescription& originalRequestMessage)
+    {
+        return response(std::move(newMessagePayload), originalRequestMessage.metadata);
     }
 
     PayloadWriter getWriter() { return message.payload.getWriter(); }

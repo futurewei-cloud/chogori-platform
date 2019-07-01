@@ -62,7 +62,7 @@ public: // API
         this->requestID = requestID;
         this->features |= (1<<0); // bit0
     }
-    bool isRequestIDSet() {
+    bool isRequestIDSet() const {
         K2DEBUG("is request id set=" << (this->features & (1<<0)) );
         return this->features & (1<<0); // bit0
     }
@@ -73,7 +73,7 @@ public: // API
         this->responseID = responseID;
         this->features |= (1<<1); // bit1
     }
-    bool isResponseIDSet() {
+    bool isResponseIDSet() const {
         K2DEBUG("is response id set=" << (this->features & (1<<1)) );
         return this->features & (1<<1); // bit1
     }
@@ -85,7 +85,7 @@ public: // API
             this->features |= (1<<2); // bit2
         }
     }
-    bool isPayloadSizeSet() {
+    bool isPayloadSizeSet() const {
         K2DEBUG("is payloadSize set=" << (this->features & (1<<2)) );
         return this->features & (1<<2); // bit2
     }
@@ -104,10 +104,15 @@ public: // fields
     uint32_t responseID;
     // MAYBE TODO CRC, crypto, sender endpoint
 
-    static MessageMetadata createResponse(MessageMetadata& originalRequest)
+    static MessageMetadata createResponse(const MessageMetadata& originalRequest)
+    {
+        return originalRequest.createResponse();
+    }
+
+    MessageMetadata createResponse() const
     {
         MessageMetadata result;
-        result.setResponseID(originalRequest.requestID);
+        result.setResponseID(requestID);
         return result;
     }
 
