@@ -85,9 +85,18 @@ public:
     public:
         static constexpr MessageType getMessageType() { return MessageType::PartitionMapRequest; }
 
-        PartitionVersion version;   //  Lowest version to load
+        PartitionVersion version { 0, 0 };
 
         K2_PAYLOAD_FIELDS(version);
+    };
+
+    class Response
+    {
+    public:
+        PartitionMap partitionMap;
+        std::map<String, std::vector<String>> shardEndpoints;    //  ShardId -> [endpoints]
+
+        K2_PAYLOAD_FIELDS(partitionMap, shardEndpoints);
     };
 };
 

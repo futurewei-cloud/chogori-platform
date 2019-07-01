@@ -13,32 +13,32 @@ using namespace k2;
 using namespace k2::client;
 
 
-PartitionDescription createPartition(PartitionMapRange&& range, const std::string& endpoint)
+PartitionDescription createPartition(PartitionRange&& range, const std::string& endpoint)
 {
-        PartitionDescription desc;
-        desc.nodeEndpoint = endpoint;
-        desc.range = std::move(range);
+    PartitionDescription desc;
+    desc.nodeEndpoint = endpoint;
+    desc.range = std::move(range);
 
-        return std::move(desc);
+    return desc;
 }
 
-PartitionMapRange createPartitionRange(const std::string& lowKey, const std::string& highKey)
+PartitionRange createPartitionRange(const std::string& lowKey, const std::string& highKey)
 {
-    PartitionMapRange range;
+    PartitionRange range;
     range.lowKey = lowKey;
     range.highKey = highKey;
 
-    return std::move(range);
+    return range;
 }
 
-PartitionMap& addPartition(PartitionMap& partitionMap, PartitionDescription&& partition)
+client::PartitionMap& addPartition(client::PartitionMap& partitionMap, PartitionDescription&& partition)
 {
     partitionMap.map.insert(std::move(partition));
 
     return partitionMap;
 }
 
-std::vector<PartitionDescription> getPartitionsForRange(const Range& range, PartitionMap& partitionMap)
+std::vector<PartitionDescription> getPartitionsForRange(const Range& range, client::PartitionMap& partitionMap)
 {
     std::vector<PartitionDescription> partitions;
     auto it = partitionMap.find(range);
@@ -54,7 +54,7 @@ SCENARIO("Iterator", "[partitionMap]")
 {
     WHEN("There are no partitions")
     {
-         PartitionMap partitionMap;
+         client::PartitionMap partitionMap;
 
         THEN("If we try to find a partition it should return the end iterator")
         {
@@ -63,7 +63,7 @@ SCENARIO("Iterator", "[partitionMap]")
     }
     WHEN("There's a single partition")
     {
-        PartitionMap partitionMap;
+        client::PartitionMap partitionMap;
         std::string endpoint = "endpoint1";
         std::string endpoint2 = "endpoint2";
         addPartition(partitionMap, createPartition(createPartitionRange("b", "c"), endpoint));
@@ -108,7 +108,7 @@ SCENARIO("Partition", "[client]")
 {
     WHEN("There are no partitions")
     {
-        PartitionMap partitionMap;
+        client::PartitionMap partitionMap;
 
         THEN("We should not find a range")
         {
@@ -117,7 +117,7 @@ SCENARIO("Partition", "[client]")
     }
     WHEN("There's a single partition")
     {
-        PartitionMap partitionMap;
+        client::PartitionMap partitionMap;
         std::string endpoint = "endpoint1";
         addPartition(partitionMap, createPartition(createPartitionRange("c", "f"), endpoint));
 
@@ -212,7 +212,7 @@ SCENARIO("Partition", "[client]")
     }
     WHEN("There are two consecutive closed partitions")
     {
-        PartitionMap partitionMap;
+        client::PartitionMap partitionMap;
         std::string endpoint1 = "endpoint1";
         std::string endpoint2 = "endpoint2";
         addPartition(partitionMap, createPartition(createPartitionRange("b", "d"), endpoint1));
@@ -264,7 +264,7 @@ SCENARIO("Partition", "[client]")
     }
      WHEN("There are four consecutive open partitions")
     {
-        PartitionMap partitionMap;
+        client::PartitionMap partitionMap;
         std::string endpoint1 = "endpoint1";
         std::string endpoint2 = "endpoint2";
         std::string endpoint3 = "endpoint3";
@@ -323,7 +323,7 @@ SCENARIO("Partition", "[client]")
     }
     WHEN("There are two non consecutive partitions")
     {
-        PartitionMap partitionMap;
+        client::PartitionMap partitionMap;
         std::string endpoint1 = "endpoint1";
         std::string endpoint2 = "endpoint2";
         addPartition(partitionMap, createPartition(createPartitionRange("b", "d"), endpoint1));
@@ -388,7 +388,7 @@ SCENARIO("Partition", "[client]")
     }
     WHEN("There are three consecutive partitions")
     {
-        PartitionMap partitionMap;
+        client::PartitionMap partitionMap;
         std::string endpoint1 = "endpoint1";
         std::string endpoint2 = "endpoint2";
         std::string endpoint3 = "endpoint3";

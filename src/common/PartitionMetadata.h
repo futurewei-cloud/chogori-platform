@@ -48,24 +48,27 @@ struct PartitionAssignmentId
 
 //
 //  Key space range which defines partition
+//  Partition map range always have exclusive high key. Empty high key mean maximum
 //
 class PartitionRange
 {
-protected:
+public: //  TODO: move lowKey and highKey to protected
     String lowKey;
     String highKey;
-public:
-    PartitionRange() {}
-    PartitionRange(String lowKey, String highKey) : lowKey(std::move(lowKey)), highKey(std::move(highKey)) { }
-    PartitionRange(const PartitionRange& range) = default;
-    PartitionRange& operator=(PartitionRange& other) = default;
-    PartitionRange(PartitionRange&& range)  = default;
-    PartitionRange& operator=(PartitionRange&& other) = default;
 
-    const String& getLowKey() { return lowKey; }
-    const String& getHighKey() { return highKey; }
+    PartitionRange() {}
+    PartitionRange(String lowKey, String highKey) : lowKey(std::move(lowKey)), highKey(std::move(highKey)) {}
+    DEFAULT_COPY_MOVE(PartitionRange);
+
+    const String& getLowKey() const { return lowKey; }
+    const String& getHighKey() const { return highKey; }
 
     K2_PAYLOAD_FIELDS(lowKey, highKey);
+
+    bool operator<(const PartitionRange& other) const noexcept
+    {
+        return getLowKey() < other.getLowKey();
+    }
 };
 
 //
@@ -83,14 +86,54 @@ public:
     PartitionMetadata(PartitionId partitionId, PartitionRange&& range, CollectionId collectionId) :
         partitionId(partitionId), range(std::move(range)), collectionId(collectionId) {}
 
-    PartitionMetadata(PartitionMetadata&& other) = default;
-    PartitionMetadata& operator=(PartitionMetadata&& other) = default;
+    DEFAULT_COPY_MOVE(PartitionMetadata)
 
     PartitionId getId() const { return partitionId; }
     const PartitionRange& getPartitionRange() const { return range; }
     CollectionId getCollectionId() const { return collectionId; }
 
     K2_PAYLOAD_FIELDS(partitionId, range, collectionId);
+};
+
+
+
+//
+//  Describe the partition
+//
+class PartitionDescription
+{
+public:
+    //  Range that is used in partition map
+    //  Partition map range always have exclusive high key. Empty high key mean maximum
+    //  Low key is inclusive unless its empty, which means minumum key.
+    PartitionRange range;
+    PartitionAssignmentId id;
+    String nodeEndpoint;
+
+    //DEFAULT_COPY_MOVE_INIT(PartitionDescription)
+
+    K2_PAYLOAD_FIELDS(range, id, nodeEndpoint);
+
+    const String& getLowKey() const { return range.getLowKey(); }
+    const String& getHighKey() const { return range.getHighKey(); }
+
+    bool operator<(const PartitionDescription& other) const noexcept
+    {
+        return range < other.range;
+    }
+};
+
+//
+//  Map of partitions
+//
+class PartitionMap
+{
+public:
+    std::set<PartitionDescription> map;
+    PartitionVersion version;
+
+    DEFAULT_COPY_MOVE_INIT(PartitionMap)
+    K2_PAYLOAD_FIELDS(map, version);
 };
 
 }   //  namespace k2

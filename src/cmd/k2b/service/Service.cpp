@@ -40,12 +40,12 @@ class K2Client: public client::Client
 public:
     K2Client()
     {
-        client::PartitionDescription desc;
+        PartitionDescription desc;
         PartitionAssignmentId id;
         id.parse("1.1.1");
         desc.nodeEndpoint = "tcp+k2rpc://127.0.0.1:11311";
         desc.id = id;
-        client::PartitionMapRange partitionRange;
+        PartitionRange partitionRange;
         partitionRange.lowKey = "d";
         partitionRange.highKey = "f";
         desc.range = partitionRange;

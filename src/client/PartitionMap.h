@@ -11,50 +11,7 @@ namespace k2
 namespace client
 {
 
-//
-//  Range that is used in partition map
-//  Partition map range always have exclusive high key. Empty high key mean maximum
-//  Low key is inclusive unless its empty, which means minumum key.
-//
-class PartitionMapRange
-{
-public:
-    String lowKey;
-    String highKey;
-
-    K2_PAYLOAD_FIELDS(lowKey, highKey);
-};
-
-//
-//  Describe the partition
-//
-class PartitionDescription
-{
-public:
-    PartitionMapRange range;
-    PartitionAssignmentId id;
-    String nodeEndpoint;
-
-    K2_PAYLOAD_FIELDS(range, id, nodeEndpoint);
-
-    const String& getLowKey() const
-    {
-        return range.lowKey;
-    }
-
-    const String& getHighKey() const
-    {
-        return range.highKey;
-    }
-};
-
-// required for serialization
-static bool operator<(const PartitionDescription& lhs, const PartitionDescription& rhs) noexcept
-{
-    return lhs.range.lowKey < rhs.range.lowKey;
-}
-
-static bool intersectsRangeHighPartitionLow(const Range& range, const PartitionMapRange& partition)
+static bool intersectsRangeHighPartitionLow(const Range& range, const PartitionRange& partition)
 {
     const std::string& rangeHighKey = range.isSingleKey() ? range.getLowKey() : range.getHighKey();
 
@@ -70,7 +27,7 @@ static bool intersectsRangeHighPartitionLow(const Range& range, const PartitionM
     }
 }
 
-static bool intersectsRangeLowPartitionHigh(const Range& range, const PartitionMapRange& partition)
+static bool intersectsRangeLowPartitionHigh(const Range& range, const PartitionRange& partition)
 {
     if(partition.highKey.empty()) {
         return true;
@@ -79,7 +36,7 @@ static bool intersectsRangeLowPartitionHigh(const Range& range, const PartitionM
     return partition.highKey > range.getLowKey();
 }
 
-static bool intersect(const Range& range, const PartitionMapRange& partition)
+static bool intersect(const Range& range, const PartitionRange& partition)
 {
     return intersectsRangeHighPartitionLow(range, partition) && intersectsRangeLowPartitionHigh(range, partition);
 }
@@ -87,19 +44,10 @@ static bool intersect(const Range& range, const PartitionMapRange& partition)
 //
 //  Map of partitions
 //
-class PartitionMap
+class PartitionMap : public k2::PartitionMap
 {
 public:
-    std::set<PartitionDescription> map;
-    PartitionVersion version;
     std::atomic_long ref_count {0};
-
-    K2_PAYLOAD_FIELDS(map, version);
-
-    PartitionMap()
-    {
-        // empty
-    }
 
     //
     // PartitionMap iterator. It is assumed that the value of the value of the underlying Range is not modified while iterating.

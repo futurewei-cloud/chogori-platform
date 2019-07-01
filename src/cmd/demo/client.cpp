@@ -34,7 +34,7 @@ public:
         id.parse("1.1.1");
         desc.nodeEndpoint = "tcp+k2rpc://127.0.0.1:11311";
         desc.id = id;
-        PartitionMapRange partitionRange;
+        PartitionRange partitionRange;
         partitionRange.lowKey = "d";
         partitionRange.highKey = "f";
         desc.range = partitionRange;
