@@ -11,7 +11,7 @@ typedef plog_id_t PlogId;
 
 struct PlogInfo
 {
-    uint64_t size;
+    uint32_t size;
     bool sealed;
 };
 
@@ -159,13 +159,13 @@ public:
     class ReadRegion
     {
     public:
-        uint64_t  offset;
-        uint64_t  size;
+        uint32_t  offset;
+        uint32_t  size;
         Binary buffer;
 
     public:
-        ReadRegion(uint64_t  offset, uint64_t  size) : offset(offset), size(size) { }
-        ReadRegion(uint64_t  offset, uint64_t  size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
+        ReadRegion(uint32_t  offset, uint32_t  size) : offset(offset), size(size) { }
+        ReadRegion(uint32_t  offset, uint32_t  size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
     };
 
     typedef std::vector<ReadRegion> ReadRegions;
@@ -174,7 +174,7 @@ public:
 
     virtual IOResult<PlogInfo> getInfo(const PlogId& plogId) = 0;
 
-    virtual IOResult<uint64_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
+    virtual IOResult<uint32_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
 
     virtual IOResult<ReadRegions> read(const PlogId& plogId, ReadRegions plogDataToReadList) = 0;
 

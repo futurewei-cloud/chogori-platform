@@ -8,19 +8,19 @@
 using namespace k2;
 using namespace std;
 
-const auto plogBaseDir = std::filesystem::path{"./plogs/"};
+const auto plogBaseDir = std::filesystem::current_path().concat("/plogs/");
 
 SEASTAR_TEST_CASE(test_create_plogFileHeader)
 {
     std::cout << get_name() << "...... ";
 
-    PlogFD plogFD;
+    PlogFileDescriptor plogFileDescriptor;
 
-    auto ptr = reinterpret_cast<const PlogInfo*>(plogFD.headBuffer.get());
+    auto ptr = reinterpret_cast<const PlogInfo*>(plogFileDescriptor.headBuffer.get());
     BOOST_REQUIRE(ptr->size == plogInfoSize);    
     BOOST_REQUIRE(ptr->sealed == false); 
 
-    ptr = reinterpret_cast<const PlogInfo*>(plogFD.tailBuffer.get());
+    ptr = reinterpret_cast<const PlogInfo*>(plogFileDescriptor.tailBuffer.get());
     BOOST_REQUIRE(ptr->size == plogInfoSize);    
     BOOST_REQUIRE(ptr->sealed == false);  
 
@@ -39,9 +39,9 @@ SEASTAR_TEST_CASE(test_create_plog_file)
 
     return seastar::open_file_dma(plogFileName, seastar::open_flags::rw | seastar::open_flags::create)
     .then([](seastar::file f) {
-        return seastar::do_with(PlogFD(),[f](auto& plogFD) mutable {
-            return f.dma_write(0, plogFD.headBuffer.get(), DMA_ALIGNMENT)
-            .then([f](uint64_t ret) mutable {
+        return seastar::do_with(PlogFileDescriptor(),[f](auto& plogFileDescriptor) mutable {
+            return f.dma_write(0, plogFileDescriptor.headBuffer.get(), DMA_ALIGNMENT)
+            .then([f](auto ret) mutable {
                 return f.flush();
             })
             .then([f] () mutable {
@@ -107,9 +107,9 @@ SEASTAR_TEST_CASE(test_load_then_getinfo)
 
     return seastar::open_file_dma(plogFileName, seastar::open_flags::rw | seastar::open_flags::create)
     .then([](seastar::file f)  {
-        return seastar::do_with(PlogFD(),[f](auto& plogFD) mutable {
-            return f.dma_write(0, plogFD.headBuffer.get(), DMA_ALIGNMENT)
-            .then([f](uint64_t ret) mutable {
+        return seastar::do_with(PlogFileDescriptor(),[f](auto& plogFileDescriptor) mutable {
+            return f.dma_write(0, plogFileDescriptor.headBuffer.get(), DMA_ALIGNMENT)
+            .then([f](auto ret) mutable {
                 return f.flush();
             })
             .then([f] () mutable {
@@ -172,13 +172,13 @@ SEASTAR_TEST_CASE(test_append_upto_4k)
             std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
         }
 
-        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogIds[0]].headBuffer.get());
+        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogIds[0]].headBuffer.get());
         auto originPlogSize = ptr->size;
 
         return plogMock->append(plogIds[0], std::move(writeBufferList))
-        .then([plogMock, plogId = plogIds[0], originPlogSize](uint64_t offset) {
+        .then([plogMock, plogId = plogIds[0], originPlogSize](auto offset) {
             BOOST_REQUIRE(offset == originPlogSize);
-            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogId].headBuffer.get());
+            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogId].headBuffer.get());
             size_t writeBufferSize = 1000+2000;
             BOOST_REQUIRE(offset + writeBufferSize == ptr->size);
 
@@ -207,12 +207,13 @@ SEASTAR_TEST_CASE(test_append_more_than_4k)
             std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
         }
 
-        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogIds[0]].headBuffer.get());
+        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogIds[0]].headBuffer.get());
         auto originPlogSize = ptr->size;
         
-        return plogMock->append(plogIds[0], std::move(writeBufferList)).then([plogMock, plogId = plogIds[0], originPlogSize](uint64_t offset) {
+        return plogMock->append(plogIds[0], std::move(writeBufferList))
+        .then([plogMock, plogId = plogIds[0], originPlogSize](auto offset) {
             BOOST_REQUIRE(offset == originPlogSize);
-            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogId].headBuffer.get());
+            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogId].headBuffer.get());
             size_t writeBufferSize = 1000+2000+4000+8000+15000;
             BOOST_REQUIRE(offset + writeBufferSize == ptr->size);
 
@@ -233,9 +234,9 @@ SEASTAR_TEST_CASE(test_load_then_append)
 
     return seastar::open_file_dma(plogFileName, seastar::open_flags::rw | seastar::open_flags::create)
     .then([](seastar::file f)  {
-        return seastar::do_with(PlogFD(),[f](auto& plogFD) mutable {
-            return f.dma_write(0, plogFD.headBuffer.get(), DMA_ALIGNMENT)
-            .then([f](uint64_t ret) mutable {
+        return seastar::do_with(PlogFileDescriptor(),[f](auto& plogFileDescriptor) mutable {
+            return f.dma_write(0, plogFileDescriptor.headBuffer.get(), DMA_ALIGNMENT)
+            .then([f](auto ret) mutable {
                 return f.flush();
             })
             .then([f] () mutable {
@@ -264,9 +265,9 @@ SEASTAR_TEST_CASE(test_load_then_append)
         }
 
         return plogMock->append(plogId, std::move(writeBufferList))
-        .then([plogMock, plogId, plogInfo](uint64_t offset) {
+        .then([plogMock, plogId, plogInfo](auto offset) {
             BOOST_REQUIRE(offset == plogInfo.size);
-            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogId].headBuffer.get());
+            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogId].headBuffer.get());
             size_t writeBufferSize = 1000+2000+4000+8000+15000;
             BOOST_REQUIRE(offset + writeBufferSize == ptr->size);
 
@@ -289,7 +290,7 @@ SEASTAR_TEST_CASE(test_append_plogId_not_exist)
     writeBufferList.push_back(Binary{2000});
 
     return plogMock->append(plogId, std::move(writeBufferList))
-    .then([plogMock, plogId](uint64_t offset){
+    .then([plogMock, plogId](auto offset){
         BOOST_FAIL("Expected exception");
     })
     .handle_exception([](auto e){
@@ -320,11 +321,8 @@ SEASTAR_TEST_CASE(test_append_exceed_plog_limit)
         writeBufferList.push_back(Binary{1000});
         writeBufferList.push_back(Binary{plogMock->m_plogMaxSize});
 
-        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogId].headBuffer.get());
-        auto originPlogSize = ptr->size;
-
         return plogMock->append(plogId, std::move(writeBufferList))
-        .then([plogMock, plogId](uint64_t offset){
+        .then([plogMock, plogId](auto offset){
             BOOST_FAIL("Expected exception");
         })
         .handle_exception([](auto e){
@@ -361,20 +359,20 @@ SEASTAR_TEST_CASE(test_read)
             std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
         }
 
-        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogIds[0]].headBuffer.get());
+        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogIds[0]].headBuffer.get());
         auto originPlogSize = ptr->size;
         
         return plogMock->append(plogIds[0], std::move(writeBufferList))
-        .then([plogMock, plogId = plogIds[0], originPlogSize](uint64_t startPos) {
+        .then([plogMock, plogId = plogIds[0], originPlogSize](auto startPos) {
             BOOST_REQUIRE(startPos == originPlogSize);
-            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogId].headBuffer.get());
-            size_t writeBufferSize = 1000+2000+4000+8000+15000;
+            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogId].headBuffer.get());
+            uint32_t writeBufferSize = 1000+2000+4000+8000+15000;
             BOOST_REQUIRE(startPos + writeBufferSize == ptr->size);
 
-            return seastar::make_ready_future<std::pair<PlogId, size_t> >(make_pair(plogId, startPos));
+            return seastar::make_ready_future<std::pair<PlogId, uint32_t> >(make_pair(plogId, startPos));
         });
 
-    }).then([plogMock](auto p){
+    }).then([plogMock](std::pair<PlogId, uint32_t> p){
         PlogMock::ReadRegions plogDataToReadList;
         auto offset = p.second;
         plogDataToReadList.push_back(PlogMock::ReadRegion{offset, 1000});
@@ -451,12 +449,12 @@ SEASTAR_TEST_CASE(test_read_capacity_not_enough)
             std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
         }
 
-        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFDList[plogIds[0]].headBuffer.get());
+        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogIds[0]].headBuffer.get());
         auto originPlogSize = ptr->size;
         
         return plogMock->append(plogIds[0], std::move(writeBufferList))
-        .then([plogMock, plogId = plogIds[0], originPlogSize](uint64_t startPos) mutable {
-           return seastar::make_ready_future<std::pair<PlogId, size_t> >(make_pair(plogId, startPos));
+        .then([plogMock, plogId = plogIds[0], originPlogSize](auto startPos) mutable {
+           return seastar::make_ready_future<std::pair<PlogId, uint32_t> >(make_pair(plogId, startPos));
         });
     })
     .then([plogMock, this](auto p){
@@ -503,7 +501,7 @@ SEASTAR_TEST_CASE(test_seal)
         }
         
         return plogMock->append(plogIds[0], std::move(writeBufferList))
-        .then([plogId=plogIds[0]](uint64_t offset){
+        .then([plogId=plogIds[0]](auto offset){
             return seastar::make_ready_future<PlogId>(plogId);
         });
     })
@@ -519,7 +517,7 @@ SEASTAR_TEST_CASE(test_seal)
             }
 
             return plogMock->append(plogId, std::move(writeBufferList))
-            .then([plogMock](uint64_t offset) {
+            .then([plogMock](auto offset) {
                 BOOST_FAIL("Expected exception");
             })
             .handle_exception([](auto e){
@@ -584,7 +582,7 @@ SEASTAR_TEST_CASE(test_drop)
             std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
         }
         return plogMock->append(plogIds[0], std::move(writeBufferList))
-        .then([plogId=plogIds[0]](uint64_t offset){
+        .then([plogId=plogIds[0]](auto offset){
             return seastar::make_ready_future<PlogId>(plogId);
         });
     })
