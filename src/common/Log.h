@@ -53,6 +53,7 @@ inline LogEntry StartLogStream() {
 }
 
 } // namespace log
+
 } // namepace k2
 // This file contains some utility macros for logging and tracing,
 // TODO hook this up into proper logging

@@ -99,9 +99,9 @@ public: // API
 
 public: // fields
     uint8_t features = 0x0;
-    uint32_t payloadSize;
-    uint32_t requestID;
-    uint32_t responseID;
+    uint32_t payloadSize = 0;
+    uint32_t requestID = 0;
+    uint32_t responseID = 0;
     // MAYBE TODO CRC, crypto, sender endpoint
 
     static MessageMetadata createResponse(const MessageMetadata& originalRequest)

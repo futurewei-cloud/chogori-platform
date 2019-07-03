@@ -5,6 +5,7 @@
 #include <memory>
 #include <chrono>
 #include <cstring>
+#include <iomanip>
 
 #include <seastar/core/temporary_buffer.hh>
 
@@ -195,6 +196,45 @@ template<typename T>
 inline bool appendRaw(Binary& binary, size_t& writeOffset, const T& data)
 {
     return append(binary, writeOffset, &data, sizeof(T));
+}
+
+inline void print(std::ostream& stream, const void* buffer, size_t size)
+{
+    stream << '(' << size << ")[";
+
+    bool printChars = false;
+    for(size_t i = 0; i < size; i++)
+    {
+        char c = *((char*)buffer+i);
+        if(isprint(c))
+        {
+            if(!printChars)
+            {
+                printChars = true;
+                stream << '\'';
+            }
+
+            stream << c;
+        }
+        else
+        {
+            if(printChars)
+            {
+                stream << '\'';
+                printChars = false;
+            }
+
+            stream << 'x' << std::setfill('0') << std::setw(2) << std::hex << std::uppercase << (uint32_t)(uint8_t)c;
+        }
+    }
+
+    stream << ']';
+}
+
+inline std::ostream& operator<<(std::ostream& stream, const Binary& binary)
+{
+    print(stream, binary.get(), binary.size());
+    return stream;
 }
 
 }   //  namespace k2

@@ -74,6 +74,7 @@ protected:
         assert(offset <= size);
         if(offset == 0)
             return Position { 0, 0 };
+
         size_t bufferOffset = 0;
         for(uint32_t i = 0; i < buffers.size(); i++)    //  TODO: use binary search on separate array
         {
@@ -162,15 +163,17 @@ public:
 
     std::vector<boost::asio::const_buffer> toBoostBuffers() const
     {
-        auto bytesToWrite = getSize();
+        size_t bytesToWrite = getSize();
 
         std::vector<boost::asio::const_buffer> result(buffers.size());
-        for(size_t i = 0; i < buffers.size() && bytesToWrite > 0; ++i) {
-            auto& buffer = buffers[i];
-            auto toshare = std::min(buffer.size(), bytesToWrite);
-            result.emplace_back(buffer.get(), toshare);
-            bytesToWrite -= toshare;
+        for(size_t i = 0; i < buffers.size() && bytesToWrite > 0; ++i)
+        {
+            const Binary& buffer = buffers[i];
+            size_t toShare = std::min(buffer.size(), bytesToWrite);
+            result.emplace_back(buffer.get(), toShare);
+            bytesToWrite -= toShare;
         }
+
         return result;
     }
 
@@ -191,8 +194,26 @@ public:
         return result;
     }
 #endif
+
+    void print(std::ostream& stream) const
+    {
+        stream << "{ size: " << getSize();
+        size_t remaining = getSize();
+        for(size_t i = 0; i < buffers.size(); remaining -= buffers[i].size(), i++)
+        {
+            stream << ' ' << i << '=';
+            k2::print(stream, buffers[i].get(), std::min(buffers[i].size(), remaining));
+        }
+
+        stream << "}";
+    }
 };
 
+inline std::ostream& operator<<(std::ostream& stream, const Payload& payload)
+{
+    payload.print(stream);
+    return stream;
+}
 
 //
 //  PayloadReader helps to navigate through the payload and read the message. Create by the Payload
@@ -464,10 +485,7 @@ public:
 
     PayloadWriter(Payload& payload, const PayloadWriter::Position& writerPosition) : payload(&payload), position(writerPosition.position), offset(writerPosition.offset) {}
 
-    PayloadWriter(const PayloadWriter&) = default;
-    PayloadWriter& operator=(const PayloadWriter& other) = default;
-    PayloadWriter(PayloadWriter&&) = default;
-    PayloadWriter& operator=(PayloadWriter&&) = default;
+    DEFAULT_COPY_MOVE_INIT(PayloadWriter)
 
     bool write(uint8_t b)
     {
@@ -484,7 +502,7 @@ public:
 
     bool write(PayloadReader& reader, size_t size)
     {
-         while(size > 0)
+        while(size > 0)
         {
             if(reader.isEnd()) {
                 return false;

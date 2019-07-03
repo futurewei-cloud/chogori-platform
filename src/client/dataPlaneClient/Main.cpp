@@ -7,7 +7,7 @@
 
 #include "node/module/MemKVModule.h"
 
-#include "client/boost/Client.h"
+#include <client/PartitionMessageTransport.h>
 
 namespace k2
 {
@@ -16,8 +16,8 @@ void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
 
-    std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
-        PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest)));
+    std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
+        k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest));
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
@@ -28,8 +28,8 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
 
-    std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
-        PartitionMessage::serializeMessage(k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest)));
+    std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
+        k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest));
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)

@@ -71,6 +71,7 @@ std::unique_ptr<PartitionMessage> createPartitionMessage(std::unique_ptr<Payload
         K2ERROR("Received unexpected message with empty payload from: " << url);
         return nullptr;
     }
+
     PartitionMessage::Header header;
     inPayload->getReader().read(header);
     auto readOffset = sizeof(header);

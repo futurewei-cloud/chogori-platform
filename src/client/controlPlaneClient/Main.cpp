@@ -4,8 +4,7 @@
 #include <boost/filesystem.hpp>
 
 #include "common/PartitionMetadata.h"
-
-#include "client/boost/Client.h"
+#include <client/PartitionMessageTransport.h>
 
 namespace k2
 {
@@ -19,12 +18,10 @@ void assignPartition(k2::PartitionAssignmentId partitionId, const char* ip, uint
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId.id, PartitionRange("A", "B"), collectionId);   //  TODO: change range
     assignmentMessage.partitionVersion = partitionId.version;
 
-    std::unique_ptr<ResponseMessage> response = sendMessage(ip, port,
-        PartitionMessage::serializeMessage(k2::MessageType::PartitionAssign, partitionId, assignmentMessage));
+    std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port, k2::MessageType::PartitionAssign, partitionId, assignmentMessage);
 
     ASSERT(response);
-    if(response->getStatus() != Status::Ok)
-        std::cerr << "Assignment failed: " << getStatusText(response->getStatus()) << std::endl << std::flush;
+    TIF(response->getStatus());
 }
 
 void offloadPartition(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port)

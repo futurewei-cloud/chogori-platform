@@ -52,41 +52,26 @@ public:
         K2_PAYLOAD_COPYABLE;
     };
 
-    class PayloadBuilder
+    template<class MessageT>
+    static void serializeMessage(PayloadWriter& writer, MessageType messageType, PartitionAssignmentId partition, const MessageT& messageContent)
     {
-    protected:
-        Payload payload;
         Header* header;
-    public:
-        PayloadBuilder(MessageType messageType, PartitionAssignmentId partition)
-        {
-            bool ret = payload.getWriter().reserveContiguousStructure(header);
-            assert(ret);
-            header->messageType = messageType;
-            header->partition = partition;
-        }
+        ASSERT(writer.reserveContiguousStructure(header));
 
-        PayloadWriter getWriter()
-        {
-            assert(header);
-            return payload.getWriter();
-        }
+        header->messageType = messageType;
+        header->partition = partition;
 
-        Payload&& done()
-        {
-            assert(header);
-            header->messageSize = payload.getSize()-sizeof(Header);
-            header = nullptr;
-            return std::move(payload);
-        }
-    };
+        auto contentPos = writer.getCurrent();
+        ASSERT(writer.write(messageContent));
+        header->messageSize = writer.getCurrent() - contentPos; //  TODO: consider drop messageSize
+    }
 
     template<class MessageT>
     static Payload serializeMessage(MessageType messageType, PartitionAssignmentId partition, const MessageT& messageContent)
     {
-        PayloadBuilder builder(messageType, partition);
-        builder.getWriter().write(messageContent);
-        return std::move(builder.done());
+        Payload result;
+        serializeMessage(result.getWriter(), messageType, partition, messageContent);
+        return result;
     }
 };
 
@@ -121,6 +106,8 @@ public:
         Status status;
         uint32_t moduleCode;
         size_t messageSize;
+
+        K2_PAYLOAD_COPYABLE;
     };
 
     Status status;

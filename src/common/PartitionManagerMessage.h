@@ -46,6 +46,7 @@ public:
     class Response
     {
     public:
+        Status status = Status::Ok;
         long sessionId;
         std::vector<String> nodeIds;
 
@@ -71,6 +72,7 @@ public:
     class Response
     {
     public:
+        Status status = Status::Ok;
         long sessionId;
 
         K2_PAYLOAD_FIELDS(sessionId);
@@ -86,17 +88,20 @@ public:
         static constexpr MessageType getMessageType() { return MessageType::PartitionMapRequest; }
 
         PartitionVersion version { 0, 0 };
+        String collection;
 
-        K2_PAYLOAD_FIELDS(version);
+        K2_PAYLOAD_FIELDS(version, collection);
     };
 
     class Response
     {
     public:
+        Status status = Status::Ok;
+        CollectionId collectionId;
         PartitionMap partitionMap;
         std::map<String, std::vector<String>> shardEndpoints;    //  ShardId -> [endpoints]
 
-        K2_PAYLOAD_FIELDS(partitionMap, shardEndpoints);
+        K2_PAYLOAD_FIELDS(collectionId, partitionMap, shardEndpoints);
     };
 };
 

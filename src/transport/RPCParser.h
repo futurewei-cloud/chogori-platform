@@ -679,18 +679,24 @@ protected:
     PayloadWriter::Position headerPosition;
     size_t headerSize;
 
-    void writeHeader()
+    void defineHeaderSize()
+    {
+        writeHeader(txconstants::MAX_HEADER_SIZE);
+
+        //  Truncate to real size
+        PayloadWriter writer(message.payload, headerPosition);
+        ASSERT_TRUE(writer.skip(headerSize));
+        writer.truncateToCurrent();
+    }
+
+    void writeHeader(int maxBufferSize)
     {
         PayloadWriter writer(message.payload, headerPosition);
 
         void* headerMemory = nullptr;
-        ASSERT_TRUE(writer.reserveContiguousBuffer(txconstants::MAX_HEADER_SIZE, headerMemory));
-
-        Binary headerBuffer = binaryReference(headerMemory, txconstants::MAX_HEADER_SIZE);
-
+        ASSERT_TRUE(writer.reserveContiguousBuffer(maxBufferSize, headerMemory));
+        Binary headerBuffer = binaryReference(headerMemory, maxBufferSize);
         ASSERT(RPCParser::writeHeader(headerBuffer, message.verb, message.metadata, &headerSize));
-        writer = PayloadWriter(message.payload, headerPosition);
-        ASSERT_TRUE(writer.skip(headerSize));
     }
 
     MessageBuilder(Verb verb, MessageMetadata metadata, Payload payload) : message(verb, metadata, std::move(payload)),
@@ -698,7 +704,7 @@ protected:
     {
         //  Write header just to estimate it's size and skip it
         message.metadata.setPayloadSize(1);  //  TODO: if we don't set size, RPCParser will not allocate enough space for it - we need to make this field static later
-        writeHeader();
+        defineHeaderSize();
     }
 
 public:
@@ -746,7 +752,7 @@ public:
         int64_t payloadSize = (message.payload.getWriter().getCurrent() - headerPosition) - headerSize;
         assert(payloadSize > 0);
         message.metadata.payloadSize = payloadSize;
-        writeHeader();  //  Write header one more timenow with updated size
+        writeHeader(headerSize);  //  Write header one more time now with updated size
         return std::move(message.payload);
     }
 };
