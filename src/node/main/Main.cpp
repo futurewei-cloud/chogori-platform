@@ -22,7 +22,7 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
         TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
     }
 
-    for(YAML::Node node : config["configReplSet"])
+    for(YAML::Node node : config["partitionManagerSet"])
     {
         std::string partitionManager = node["address"].as<std::string>();
         // port?
