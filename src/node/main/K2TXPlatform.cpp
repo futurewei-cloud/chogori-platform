@@ -201,13 +201,23 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     // Will do more research later and fix it. Now just configure through argument
     std::string nodesCountArg = std::to_string(pool.getNodesCount());
     std::string cpuSetArg = pool.getConfig().getCpuSetString();
+    bool isRDMAEnabled = pool.getConfig().isRDMAEnabled();
 
     const char* argv[] = { "NodePool",
                            "--poll-mode",
                            (cpuSetArg.empty() ? "-c" : "--cpuset"),
                            (cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str()),
+                           "-m",
+                           pool.getConfig().getMemorySizeString().c_str(),
+                           isRDMAEnabled ? "--hugepages" : nullptr,
+                           isRDMAEnabled ? "--rdma" : nullptr,
+                           isRDMAEnabled ? pool.getConfig().getRdmaNicId().c_str() : nullptr,
                            nullptr };
     int argc = sizeof(argv) / sizeof(*argv) - 1;
+    if ( !isRDMAEnabled )
+    {
+        argc -= 3;
+    }
 
     //
     //  Initialize application, transport and service

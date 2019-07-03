@@ -11,30 +11,33 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
 {
     YAML::Node config = YAML::LoadFile(configFile);
 
-    for(YAML::Node node : config["nodes"])
+    for(uint16_t count=0; count<config["nodes_count"].as<uint16_t>(0); ++count)
     {
         NodeEndpointConfig nodeConfig;
         // TODO: map the endpoint type; fixing it to IPv4 for the moment
         nodeConfig.type = NodeEndpointConfig::IPv4;
-        nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(node["endpoint"]["ip"].as<std::string>().c_str()));
-        nodeConfig.ipv4.port = node["endpoint"]["port"].as<uint16_t>(0);
+        nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(config["address"].as<std::string>().c_str()));
+        nodeConfig.ipv4.port = config["nodes_minimum_port"].as<uint16_t>(0) + count;
 
         TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
     }
 
-    for(YAML::Node node : config["partitionManagerSet"])
+    for(YAML::Node node : config["configReplSet"])
     {
         std::string partitionManager = node["address"].as<std::string>();
+        // port?
         pool.getConfig().partitionManagerSet.push_back(partitionManager);
     }
 
     pool.getConfig().monitorEnabled = config["monitorEnabled"].as<bool>(pool.getConfig().monitorEnabled);
     pool.getConfig().rdmaEnabled = config["rdmaEnabled"].as<bool>(pool.getConfig().rdmaEnabled);
-    if (config["cpuset"])
+    if (config["nodes_cpu_set"])
     {
-        pool.getConfig().cpuSetStr = config["cpuset"].as<std::string>();
+        pool.getConfig().cpuSetStr = config["nodes_cpu_set"].as<std::string>();
     }
-    pool.getConfig().cpuSetGeneralStr = config["cpuset_general"].as<std::string>();
+    pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
+    pool.getConfig().rdmaNicId = config["nic_id"].as<std::string>();
+    pool.getConfig().memorySizeStr = config["memory"].as<std::string>();
 }
 
 int main(int argc, char** argv)

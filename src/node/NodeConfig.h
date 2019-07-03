@@ -16,6 +16,8 @@ public:
     std::vector<String> partitionManagerSet;
     std::string cpuSetStr;
     std::string cpuSetGeneralStr;
+    std::string rdmaNicId;
+    std::string memorySizeStr;
 
     std::chrono::nanoseconds getTaskProcessingIterationMaxExecutionTime() const { return std::chrono::nanoseconds(10000); }
 
@@ -29,6 +31,8 @@ public:
     const std::vector<String> getPartitionManagerSet() const { return partitionManagerSet; }
     const std::string& getCpuSetString() const { return cpuSetStr; }
     const std::string& getCpuSetGeneralString() const { return cpuSetGeneralStr; }
+    const std::string& getRdmaNicId() const { return rdmaNicId; }
+    const std::string& getMemorySizeString() const { return memorySizeStr; }
 };
 
 }   //  namespace k2
