@@ -13,6 +13,7 @@ class NodePoolConfig
 public:
     bool monitorEnabled = false;
     bool rdmaEnabled = false;
+    bool hugePagesEnabled = false;
     std::vector<String> partitionManagerSet;
     std::string cpuSetStr;
     std::string cpuSetGeneralStr;
@@ -27,6 +28,7 @@ public:
 
     bool isMonitorEnabled() const { return monitorEnabled; }
     bool isRDMAEnabled() const { return rdmaEnabled; }
+    bool isHugePagesEnabled() const { return hugePagesEnabled; }
 
     const std::vector<String> getPartitionManagerSet() const { return partitionManagerSet; }
     const std::string& getCpuSetString() const { return cpuSetStr; }

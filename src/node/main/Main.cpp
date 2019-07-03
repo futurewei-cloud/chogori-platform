@@ -38,6 +38,7 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
     pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
     pool.getConfig().rdmaNicId = config["nic_id"].as<std::string>();
     pool.getConfig().memorySizeStr = config["memory"].as<std::string>();
+    pool.getConfig().hugePagesEnabled = config["hugepages"].as<bool>(pool.getConfig().hugePagesEnabled);
 }
 
 int main(int argc, char** argv)

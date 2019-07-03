@@ -9,6 +9,7 @@
 #include <sched.h>
 #include <common/seastar/SeastarApp.h>
 #include <transport/SeastarTransport.h>
+#include <boost/scoped_array.hpp>
 
 namespace k2 {
 //
@@ -202,22 +203,27 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     std::string nodesCountArg = std::to_string(pool.getNodesCount());
     std::string cpuSetArg = pool.getConfig().getCpuSetString();
     bool isRDMAEnabled = pool.getConfig().isRDMAEnabled();
+    bool isHugePagesEnabled = pool.getConfig().isHugePagesEnabled();
+    std::string nicId = pool.getConfig().getRdmaNicId();
 
-    const char* argv[] = { "NodePool",
-                           "--poll-mode",
-                           (cpuSetArg.empty() ? "-c" : "--cpuset"),
-                           (cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str()),
-                           "-m",
-                           pool.getConfig().getMemorySizeString().c_str(),
-                           isRDMAEnabled ? "--hugepages" : nullptr,
-                           isRDMAEnabled ? "--rdma" : nullptr,
-                           isRDMAEnabled ? pool.getConfig().getRdmaNicId().c_str() : nullptr,
-                           nullptr };
-    int argc = sizeof(argv) / sizeof(*argv) - 1;
-    if ( !isRDMAEnabled )
+    boost::scoped_array<const char *> argv(new const char *[10]);
+    int argc = 0;
+    argv[argc++] = "NodePool";
+    argv[argc++] = "--poll-mode";
+    argv[argc++] = (cpuSetArg.empty() ? "-c" : "--cpuset");
+    argv[argc++] = (cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str());
+    argv[argc++] = "-m";
+    argv[argc++] = pool.getConfig().getMemorySizeString().c_str();
+    if ( isHugePagesEnabled )
     {
-        argc -= 3;
+        argv[argc++] = "--hugepages";
     }
+    if ( isRDMAEnabled )
+    {
+        argv[argc++] = "--rdma";
+        argv[argc++] = pool.getConfig().getRdmaNicId().c_str();
+    }
+    argv[argc] = nullptr;
 
     //
     //  Initialize application, transport and service
@@ -229,7 +235,7 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     //
     //  Start seastar processing loop
     //
-    int result = app.run(argc, argv);
+    int result = app.run(argc, argv.get());
 
     K2INFO("Shutdown was successful!");
     return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;
