@@ -9,7 +9,6 @@
 #include <sched.h>
 #include <common/seastar/SeastarApp.h>
 #include <transport/SeastarTransport.h>
-#include <boost/scoped_array.hpp>
 
 namespace k2 {
 //
@@ -209,10 +208,21 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     std::vector<const char *> argv;
     argv.push_back("NodePool");
     argv.push_back("--poll-mode");
-    argv.push_back( cpuSetArg.empty() ? "-c" : "--cpuset" );
-    argv.push_back( cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str() );
-    argv.push_back( "-m" );
-    argv.push_back( pool.getConfig().getMemorySizeString().c_str() );
+    if ( cpuSetArg.empty() )
+    {
+        argv.push_back( "-c" );
+        argv.push_back( nodesCountArg.c_str() );
+    }
+    else
+    {
+        argv.push_back( "--cpuset" );
+        argv.push_back( cpuSetArg.c_str() );
+    }
+    if ( !pool.getConfig().getMemorySizeString().empty() )
+    {
+        argv.push_back( "-m" );
+        argv.push_back( pool.getConfig().getMemorySizeString().c_str() );
+    }
     if ( isHugePagesEnabled )
     {
         argv.push_back( "--hugepages" );
@@ -220,7 +230,7 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     if ( isRDMAEnabled )
     {
         argv.push_back( "--rdma" );
-        argv.push_back( pool.getConfig().getRdmaNicId().c_str() );
+        argv.push_back( nicId.c_str() );
     }
     argv.push_back( nullptr );
 
