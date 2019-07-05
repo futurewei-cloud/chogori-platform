@@ -97,7 +97,7 @@ public:
         char host[maxHostSize];
 
         int port;
-        ASSERT(sscanf(address, "%s:%d", host, &port) == 2);
+        ASSERT(sscanf(address, "%[^:]:%d", host, &port) == 2);
 
         BoostTransport::messageExchange(host, port, verb, request, response);
     }

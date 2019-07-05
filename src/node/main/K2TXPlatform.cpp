@@ -206,24 +206,23 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     bool isHugePagesEnabled = pool.getConfig().isHugePagesEnabled();
     std::string nicId = pool.getConfig().getRdmaNicId();
 
-    boost::scoped_array<const char *> argv(new const char *[10]);
-    int argc = 0;
-    argv[argc++] = "NodePool";
-    argv[argc++] = "--poll-mode";
-    argv[argc++] = (cpuSetArg.empty() ? "-c" : "--cpuset");
-    argv[argc++] = (cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str());
-    argv[argc++] = "-m";
-    argv[argc++] = pool.getConfig().getMemorySizeString().c_str();
+    std::vector<const char *> argv;
+    argv.push_back("NodePool");
+    argv.push_back("--poll-mode");
+    argv.push_back( cpuSetArg.empty() ? "-c" : "--cpuset" );
+    argv.push_back( cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str() );
+    argv.push_back( "-m" );
+    argv.push_back( pool.getConfig().getMemorySizeString().c_str() );
     if ( isHugePagesEnabled )
     {
-        argv[argc++] = "--hugepages";
+        argv.push_back( "--hugepages" );
     }
     if ( isRDMAEnabled )
     {
-        argv[argc++] = "--rdma";
-        argv[argc++] = pool.getConfig().getRdmaNicId().c_str();
+        argv.push_back( "--rdma" );
+        argv.push_back( pool.getConfig().getRdmaNicId().c_str() );
     }
-    argv[argc] = nullptr;
+    argv.push_back( nullptr );
 
     //
     //  Initialize application, transport and service
@@ -235,7 +234,7 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     //
     //  Start seastar processing loop
     //
-    int result = app.run(argc, argv.get());
+    int result = app.run(argv.size()-1, argv.data());
 
     K2INFO("Shutdown was successful!");
     return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;

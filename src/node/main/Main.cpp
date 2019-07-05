@@ -24,8 +24,8 @@ void loadConfig(NodePoolImpl& pool, const std::string& configFile)
 
     for(YAML::Node node : config["partitionManagerSet"])
     {
+        // address field is of form "<ipv4>:<port>":
         std::string partitionManager = node["address"].as<std::string>();
-        // port?
         pool.getConfig().partitionManagerSet.push_back(partitionManager);
     }
 
