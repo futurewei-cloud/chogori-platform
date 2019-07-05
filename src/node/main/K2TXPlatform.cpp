@@ -9,6 +9,7 @@
 #include <sched.h>
 #include <common/seastar/SeastarApp.h>
 #include <transport/SeastarTransport.h>
+#include <boost/scoped_array.hpp>
 
 namespace k2 {
 //
@@ -201,13 +202,27 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     // Will do more research later and fix it. Now just configure through argument
     std::string nodesCountArg = std::to_string(pool.getNodesCount());
     std::string cpuSetArg = pool.getConfig().getCpuSetString();
+    bool isRDMAEnabled = pool.getConfig().isRDMAEnabled();
+    bool isHugePagesEnabled = pool.getConfig().isHugePagesEnabled();
+    std::string nicId = pool.getConfig().getRdmaNicId();
 
-    const char* argv[] = { "NodePool",
-                           "--poll-mode",
-                           (cpuSetArg.empty() ? "-c" : "--cpuset"),
-                           (cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str()),
-                           nullptr };
-    int argc = sizeof(argv) / sizeof(*argv) - 1;
+    std::vector<const char *> argv;
+    argv.push_back("NodePool");
+    argv.push_back("--poll-mode");
+    argv.push_back( cpuSetArg.empty() ? "-c" : "--cpuset" );
+    argv.push_back( cpuSetArg.empty() ? nodesCountArg.c_str() : cpuSetArg.c_str() );
+    argv.push_back( "-m" );
+    argv.push_back( pool.getConfig().getMemorySizeString().c_str() );
+    if ( isHugePagesEnabled )
+    {
+        argv.push_back( "--hugepages" );
+    }
+    if ( isRDMAEnabled )
+    {
+        argv.push_back( "--rdma" );
+        argv.push_back( pool.getConfig().getRdmaNicId().c_str() );
+    }
+    argv.push_back( nullptr );
 
     //
     //  Initialize application, transport and service
@@ -219,7 +234,7 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     //
     //  Start seastar processing loop
     //
-    int result = app.run(argc, argv);
+    int result = app.run(argv.size()-1, argv.data());
 
     K2INFO("Shutdown was successful!");
     return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;
