@@ -20,6 +20,7 @@ namespace bpo = boost::program_options;
 #include "transport/RPCDispatcher.h"
 #include "transport/TCPRPCProtocol.h"
 #include "transport/RRDMARPCProtocol.h"
+#include "transport/TXEndpoint.h"
 #include "common/Log.h"
 #include "transport/BaseTypes.h"
 #include "transport/RPCProtocolFactory.h"
@@ -159,19 +160,23 @@ private:
 class TXBenchAddressProvider: public k2::IAddressProvider {
 public:
     TXBenchAddressProvider() = default;
-    TXBenchAddressProvider(const std::vector<uint32_t>& ports): _ports(ports){}
+    TXBenchAddressProvider(const std::vector<std::string>& urls): _urls(urls){}
     TXBenchAddressProvider& operator=(TXBenchAddressProvider&&) = default;
     seastar::socket_address getAddress(int coreID) const override {
-        if (size_t(coreID) < _ports.size()) {
-            K2DEBUG("Have port: " << coreID << ":" << _ports[coreID]);
-            return seastar::socket_address(seastar::ipv4_addr{uint16_t(_ports[coreID])});
+        if (size_t(coreID) < _urls.size()) {
+            K2DEBUG("Have url: " << coreID << ":" << _urls[coreID]);
+            auto ep = k2::TXEndpoint::fromURL(_urls[coreID], nullptr);
+            if (!ep) {
+                K2ASSERT(false, "Unable to construct Endpoint from URL: " << _urls[coreID]);
+            }
+            return seastar::socket_address(seastar::ipv4_addr(ep->getIP(), uint16_t(ep->getPort())));
         }
         K2DEBUG("This core does not have a port: " << coreID);
         return seastar::socket_address(seastar::ipv4_addr{0});
     }
 
 private:
-    std::vector<uint32_t> _ports;
+    std::vector<std::string> _urls;
 }; // class TXBenchAddressProvider
 
 int main(int argc, char** argv) {
@@ -187,14 +192,14 @@ int main(int argc, char** argv) {
     seastar::app_template app;
     app.add_options()
         ("prometheus_port", bpo::value<uint16_t>()->default_value(8088), "HTTP port for the prometheus server")
-        ("tcp_ports", bpo::value<std::vector<uint32_t>>()->multitoken(), "TCP ports to listen on");
+        ("tcp_urls", bpo::value<std::vector<std::string>>()->multitoken(), "TCP urls to listen on");
 
     // we are now ready to assemble the running application
     auto result = app.run_deprecated(argc, argv, [&] {
         auto& config = app.configuration();
-        std::vector<uint32_t> tcp_ports = config["tcp_ports"].as<std::vector<uint32_t>>();
+        std::vector<std::string> tcp_urls = config["tcp_urls"].as<std::vector<std::string>>();
         uint16_t promport = config["prometheus_port"].as<uint16_t>();
-        addrProvider = TXBenchAddressProvider(tcp_ports);
+        addrProvider = TXBenchAddressProvider(tcp_urls);
 
         // call the stop() method on each object when we're about to exit. This also deletes the objects
         seastar::engine().at_exit([&] {
