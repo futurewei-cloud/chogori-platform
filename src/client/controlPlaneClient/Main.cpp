@@ -5,6 +5,7 @@
 
 #include "common/PartitionMetadata.h"
 #include <client/PartitionMessageTransport.h>
+#include <boost/timer.hpp>
 
 namespace k2
 {
@@ -18,7 +19,9 @@ void assignPartition(k2::PartitionAssignmentId partitionId, const char* ip, uint
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId.id, PartitionRange("A", "B"), collectionId);   //  TODO: change range
     assignmentMessage.partitionVersion = partitionId.version;
 
+    boost::timer timer;
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port, k2::MessageType::PartitionAssign, partitionId, assignmentMessage);
+    std::cout << "assignPartition:" << timer.elapsed()  << "s" << std::endl;
 
     ASSERT(response);
     TIF(response->getStatus());

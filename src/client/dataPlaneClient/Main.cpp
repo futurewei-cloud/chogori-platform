@@ -8,6 +8,7 @@
 #include "node/module/MemKVModule.h"
 
 #include <client/PartitionMessageTransport.h>
+#include <boost/timer.hpp>
 
 namespace k2
 {
@@ -16,8 +17,12 @@ void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
 
+    boost::timer timer;
+
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest));
+
+    std::cout << "moduleSet:" << timer.elapsed() << "s" << std::endl;
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
@@ -28,8 +33,11 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
 
+    boost::timer timer;
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest));
+
+    std::cout << "moduleGet:" << timer.elapsed()  << "s" << std::endl;
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)

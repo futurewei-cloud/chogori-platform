@@ -12,17 +12,24 @@ namespace k2
 class TransportConfig
 {
     std::unique_ptr<IAddressProvider> tcpAddrProvider;
-    bool rdmaEnabled = false;
+    bool tcpEnabled;
+    bool rdmaEnabled;
 public:
-    TransportConfig(std::unique_ptr<IAddressProvider>&& tcpAddrProvider, bool rdmaEnabled = false) :
-        tcpAddrProvider(std::move(tcpAddrProvider)), rdmaEnabled(rdmaEnabled) { }
+    TransportConfig(bool tcpEnabled = true, bool rdmaEnabled = false) : tcpEnabled(tcpEnabled), rdmaEnabled(rdmaEnabled)
+    {
+        ASSERT(tcpEnabled || rdmaEnabled);
+    }
 
-    bool isTCPEnabled() const { return (bool)tcpAddrProvider; }
+    TransportConfig(std::unique_ptr<IAddressProvider>&& tcpAddrProvider, bool rdmaEnabled = false) :
+        tcpAddrProvider(std::move(tcpAddrProvider)), tcpEnabled(true), rdmaEnabled(rdmaEnabled) { }
+
+    bool isTCPEnabled() const { return tcpEnabled; }
+    bool isTCPServer() const { return (bool)tcpAddrProvider; }
     bool isRDMAEnabled() const { return rdmaEnabled; }
 
     IAddressProvider& getTCPAddressProvider() const
     {
-        ASSERT(isTCPEnabled());
+        ASSERT(isTCPServer());
         return *tcpAddrProvider;
     }
 
@@ -87,7 +94,14 @@ public:
         //
         ProtocolInitializer protocols;
         if(config.isTCPEnabled())
-            protocols.add(tcpProto, TCPRPCProtocol::builder(std::ref(vnet), std::ref(config.getTCPAddressProvider())), "TCP");
+        {
+            protocols.add(
+                tcpProto,
+                config.isTCPServer() ?
+                    TCPRPCProtocol::builder(std::ref(vnet), std::ref(config.getTCPAddressProvider())) :
+                    TCPRPCProtocol::builder(std::ref(vnet)),
+                "TCP");
+        }
 
         if(config.isRDMAEnabled())
             protocols.add(rdmaProto, RRDMARPCProtocol::builder(std::ref(vnet)), "RDMA");

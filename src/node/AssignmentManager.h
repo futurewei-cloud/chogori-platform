@@ -179,7 +179,7 @@ public:
         std::chrono::nanoseconds remainingTime;
         while((remainingTime = iterationTracker.remaining()) > std::chrono::nanoseconds::zero())
         {
-            bool hadActiveTasks = true;
+            bool hadActiveTasks = false;
 
             std::chrono::nanoseconds maxPartitionTime = remainingTime/partitionCount;
             for(int i = 0; i < partitionCount; i++)
