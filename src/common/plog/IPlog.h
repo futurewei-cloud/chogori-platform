@@ -11,7 +11,7 @@ typedef plog_id_t PlogId;
 
 struct PlogInfo
 {
-    uint64_t size;
+    uint32_t size;
     bool sealed;
 };
 
@@ -147,8 +147,8 @@ public:
 };
 */
 
-template<class ResultT>
-using IOResult = seastar::future<ResultT>;
+template<typename... ResultT>
+using IOResult = seastar::future<ResultT...>;
 
 //
 //  IPlog in simplified Plog interface, containing only essential for K2 function and arguments.
@@ -158,29 +158,29 @@ class IPlog
 public:
     class ReadRegion
     {
-    protected:
-        uint32_t offset;
-        uint32_t size;
+    public:
+        uint32_t  offset;
+        uint32_t  size;
         Binary buffer;
 
     public:
-        ReadRegion(uint32_t offset, uint32_t size) : offset(offset), size(size) { }
-        ReadRegion(uint32_t offset, uint32_t size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
+        ReadRegion(uint32_t  offset, uint32_t  size) : offset(offset), size(size) { }
+        ReadRegion(uint32_t  offset, uint32_t  size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
     };
 
     typedef std::vector<ReadRegion> ReadRegions;
 
-    virtual IOResult<std::vector<PlogId>> create() = 0;
+    virtual IOResult<std::vector<PlogId>> create(uint plogCount) = 0;
 
     virtual IOResult<PlogInfo> getInfo(const PlogId& plogId) = 0;
 
-    virtual IOResult<uint64_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
+    virtual IOResult<uint32_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
 
     virtual IOResult<ReadRegions> read(const PlogId& plogId, ReadRegions plogDataToReadList) = 0;
 
-    virtual IOResult<void> seal(const PlogId plogId) = 0;
+    virtual IOResult<> seal(const PlogId& plogId) = 0;
 
-    virtual IOResult<void> drop(const PlogId plogId) = 0;
+    virtual IOResult<> drop(const PlogId& plogId) = 0;
 };  //  class IPlog
 
 }   //  namespace k2
