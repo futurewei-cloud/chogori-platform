@@ -1,4 +1,5 @@
 add_subdirectory(scheduler)
+add_subdirectory(plog)
 project (k2common VERSION 1.0.0 DESCRIPTION "common library for k2 platform")
 
 file(GLOB HEADERS "*.h")
