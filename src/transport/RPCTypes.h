@@ -32,10 +32,4 @@ public:
     };
 };
 
-// properly print verbs
-inline std::ostream& operator<<(std::ostream& os, Verb verb) {
-    os << verb;
-    return os;
-}
-
 } // namespace k2
