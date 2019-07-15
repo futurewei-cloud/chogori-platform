@@ -47,12 +47,12 @@ public:
     template<typename ServiceT, typename... StartArgs>
     SeastarApp& registerNonDistributedService(ServiceT& service, StartArgs&&... startArgs)
     {
-        finalizers.push_back([&] { return service.Stop(); });
+        finalizers.push_back([&] { return service.stop(); });
         initializers.push_back([&service, args = std::make_tuple(std::forward<StartArgs>(startArgs)...)]() mutable
         {
             return std::apply([&service](auto&& ... args) mutable
             {
-                return service.Start(std::forward<StartArgs>(args)...);
+                return service.start(std::forward<StartArgs>(args)...);
             }, std::move(args));
         });
 

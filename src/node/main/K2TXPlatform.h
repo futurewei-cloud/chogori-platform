@@ -26,6 +26,7 @@ class K2TXPlatform : public ISchedulingPlatform
 {
 protected:
     k2::Prometheus _prometheus;
+    const uint16_t _defaultPrometheusPort = 8089;
 
 public:
     K2TXPlatform() {}

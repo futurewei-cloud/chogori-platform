@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
         // call the stop() method on each object when we're about to exit. This also deletes the objects
         seastar::engine().at_exit([&] {
             K2INFO("prometheus stop");
-            return prometheus.Stop();
+            return prometheus.stop();
         });
         seastar::engine().at_exit([&] {
             K2INFO("vnet stop");
@@ -231,7 +231,7 @@ int main(int argc, char** argv) {
             // OBJECT CREATION (via distributed<>.start())
             [&]{
                 K2INFO("Start prometheus");
-                return prometheus.Start(promport, "K2 txbench server metrics", "txbench_server");
+                return prometheus.start(promport, "K2 txbench server metrics", "txbench_server");
             }()
             .then([&] {
                 K2INFO("create vnet");

@@ -62,10 +62,10 @@ public:
     // @param port: the http port on which we will expose metrics
     // @param helpMessage: message that describes what these metrics are about (e.g. "K2 NodePool metrics")
     // @param prefix: this string will be prefix of the exported Prometheus metrics. It is used to key dashboards
-    seastar::future<> Start(uint16_t port, const char* helpMessage, const char* prefix);
+    seastar::future<> start(uint16_t port, const char* helpMessage, const char* prefix);
 
     // this method should be called to stop the server (usually on engine exit)
-    seastar::future<> Stop();
+    seastar::future<> stop();
 
 private:
     seastar::httpd::http_server_control _prometheusServer;

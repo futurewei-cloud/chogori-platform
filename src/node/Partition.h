@@ -1,15 +1,12 @@
 #pragma once
 
+#include <seastar/core/metrics.hh>
 #include "common/PartitionMetadata.h"
 #include "Collection.h"
 #include "persistence/IPersistentLog.h"
 #include "TaskRequest.h"
 #include "common/IntrusiveLinkedList.h"
-#include <seastar/core/metrics.hh>
 #include "transport/Prometheus.h"
-#include <seastar/core/reactor.hh>
-#include <seastar/core/metrics_registration.hh>
-#include <seastar/core/metrics.hh>
 
 namespace k2
 {
@@ -40,9 +37,9 @@ protected:
     std::array<TaskList, (size_t)TaskListType::TaskListCount> taskLists;  //  Partition tasks
     PartitionMetadata metadata;
     Collection& collection;
-    seastar::metrics::metric_groups _metricGroups;
-    k2::ExponentialHistogram _executeLatency;
-    k2::ExponentialHistogram _connectionLatency;
+    seastar::metrics::metric_groups metricGroups;
+    ExponentialHistogram taskRequestLifecycleHistogram; // Tracks the lifecycle of the TaskRequest
+
 
     static void removeFromList(TaskList& list, TaskRequest& task)
     {
@@ -125,14 +122,11 @@ protected:
                 break;
 
             TaskRequest::ProcessResult response = task.process(remainingTime);  //  TODO: move to partition
-            auto now = std::chrono::steady_clock::now();
             switch (response)
             {
                 case TaskRequest::ProcessResult::Done:
                     deleteTask(task);
-                    _executeLatency.add(task.getElapsedTime());
-                    now = std::chrono::steady_clock::now();
-                    std::cout << "Partition task done time:" << std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() << std::endl;
+                    taskRequestLifecycleHistogram.add(task.getElapsedTime());
                     break;
 
                 case TaskRequest::ProcessResult::Sleep:
@@ -196,8 +190,8 @@ public:
     void registerMetrics()
     {
         std::vector<seastar::metrics::label_instance> labels;
-        _metricGroups.add_group("partition", {
-            seastar::metrics::make_histogram("task_execution_latency", [this] { return _executeLatency.getHistogram(); }, seastar::metrics::description("Latency of task execution"), labels),
+        metricGroups.add_group("partition", {
+            seastar::metrics::make_histogram("task_request_lifecycle_time", [this] { return taskRequestLifecycleHistogram.getHistogram(); }, seastar::metrics::description("The lifecycle time of a task request"), labels),
         });
     }
 };  //  class Partition

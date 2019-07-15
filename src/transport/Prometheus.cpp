@@ -11,7 +11,7 @@ Prometheus::Prometheus() {
     K2DEBUG("Prometheus ctor");
 }
 seastar::future<>
-Prometheus::Start(uint16_t port, const char* helpMessage, const char* prefix) {
+Prometheus::start(uint16_t port, const char* helpMessage, const char* prefix) {
     K2INFO("starting prometheus on port: " << port);
     seastar::prometheus::config pctx;
     pctx.metric_help=helpMessage;
@@ -23,7 +23,7 @@ Prometheus::Start(uint16_t port, const char* helpMessage, const char* prefix) {
     });
 }
 
-seastar::future<> Prometheus::Stop() {
+seastar::future<> Prometheus::stop() {
     K2INFO("Stopping prometheus");
     return  _prometheusServer.stop();
 }

@@ -3,8 +3,6 @@
 #include "common/PartitionMessage.h"
 #include "common/IntrusiveLinkedList.h"
 #include "common/MemoryArena.h"
-#include <seastar/core/metrics.hh>
-#include "transport/Prometheus.h"
 
 namespace k2
 {
@@ -63,13 +61,11 @@ protected:
     Partition& partition;
     MemoryArena arena;  //  Task local memory
     TimeTracker timeTracker;
-    std::chrono::time_point<std::chrono::steady_clock> requestTime;
 
     K2_LINKED_LIST_NODE
     TaskListType ownerTaskList; //  Task list in which this task resides
 
     TaskRequest(Partition& partition) : partition(partition), ownerTaskList(TaskListType::None) {}
-    TaskRequest(Partition& partition, std::chrono::time_point<std::chrono::steady_clock>& requestTimeRef) : partition(partition), requestTime(requestTimeRef), ownerTaskList(TaskListType::None) {}
 
     enum class ProcessResult
     {
@@ -107,6 +103,9 @@ public:
     //
     bool canContinue() { return !timeTracker.exceeded(); }
 
+    //
+    // Return the elapsed time since the task was created.
+    //
     std::chrono::nanoseconds getElapsedTime() { return timeTracker.elapsed(); }
 
     //
