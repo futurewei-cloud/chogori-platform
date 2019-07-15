@@ -52,7 +52,7 @@ IOResult<std::vector<PlogId>>  PlogMock::create(uint plogCount)
                             auto plogFileDescriptor = seastar::make_lw_shared<PlogFileDescriptor>();
                             // write head information (plogInfo) to plog file
                             return f.dma_write(0, plogFileDescriptor->headBuffer.get(), DMA_ALIGNMENT)
-                            .then([&plogIds, plogId{std::move(plogId)}, plogFileDescriptor, f, this](auto ret) mutable {
+                            .then([&plogIds, plogId{std::move(plogId)}, plogFileDescriptor, f, this](auto) mutable {
                                 plogFileDescriptor->f = std::move(f);
                                 m_plogFileDescriptorList[plogId] = std::move(*plogFileDescriptor);                                
                                 return m_plogFileDescriptorList[plogId].f.flush();
@@ -112,7 +112,7 @@ IOResult<PlogInfo>  PlogMock::getInfo(const PlogId& plogId)
                     }else{
                         // read tail to buffer
                         return f.dma_read(offset, plogFileDescriptor->tailBuffer.get_write(), DMA_ALIGNMENT)
-                        .then([plogId{std::move(plogId)}, plogFileDescriptor, ptr, f, this](auto ret) mutable {
+                        .then([plogId{std::move(plogId)}, plogFileDescriptor, ptr, f, this](auto) mutable {
                             plogFileDescriptor->f = std::move(f);
                             m_plogFileDescriptorList[plogId] = std::move(*plogFileDescriptor);                                       
                         })
@@ -181,7 +181,7 @@ IOResult<uint32_t>  PlogMock::append(const PlogId& plogId, std::vector<Binary> b
                 ptr->size = origPlogInfo.size + writeBufferSize;
 
                 return m_plogFileDescriptorList[plogId].f.dma_write(0, m_plogFileDescriptorList[plogId].headBuffer.get(), DMA_ALIGNMENT)
-                .then([plogId, this](auto ret) mutable {
+                .then([plogId, this](auto) mutable {
                     return m_plogFileDescriptorList[plogId].f.flush();
                 });
 
@@ -203,7 +203,7 @@ IOResult<uint32_t>  PlogMock::append(const PlogId& plogId, std::vector<Binary> b
 
             // write plogs from write_buffer to plog file
             return m_plogFileDescriptorList[plogId].f.dma_write(offset, buffer->get(), buffer->size())
-            .then([plogId, this](auto ret) mutable {
+            .then([plogId, this](auto) mutable {
                 return m_plogFileDescriptorList[plogId].f.flush();
             });
         })
@@ -243,7 +243,7 @@ IOResult<PlogMock::ReadRegions>  PlogMock::read(const PlogId& plogId, PlogMock::
                     readRegions[count].buffer = Binary{bufferSize};
 
                     return m_plogFileDescriptorList[plogId].f.dma_read(offset, readRegions[count].buffer.get_write(), bufferSize)
-                    .then([&readRegions,  &count,startPos, offset] (auto ret) mutable {
+                    .then([&readRegions,  &count,startPos, offset] (auto) mutable {
                         readRegions[count].buffer.trim_front(startPos-offset);
                         readRegions[count].buffer.trim(readRegions[count].size);
                         count++;
@@ -264,12 +264,12 @@ IOResult<PlogMock::ReadRegions>  PlogMock::read(const PlogId& plogId, PlogMock::
 IOResult<>  PlogMock::seal(const PlogId& plogId) 
 {  
     return getInfo(plogId)
-    .then([plogId, this] (PlogInfo plogInfo) mutable {
+    .then([plogId, this] (auto) mutable {
         auto ptr = reinterpret_cast<PlogInfo*>(m_plogFileDescriptorList[plogId].headBuffer.get_write());
         ptr->sealed = true;
 
         return m_plogFileDescriptorList[plogId].f.dma_write(0, m_plogFileDescriptorList[plogId].headBuffer.get(), DMA_ALIGNMENT)
-        .then([plogId, this](auto ret) mutable {
+        .then([plogId, this](auto) mutable {
             return m_plogFileDescriptorList[plogId].f.flush();
         });
     }); 
@@ -279,7 +279,7 @@ IOResult<>  PlogMock::seal(const PlogId& plogId)
 IOResult<>  PlogMock::drop(const PlogId& plogId) 
 {
     return getInfo(plogId)
-    .then([plogId, this] (PlogInfo plogInfo) mutable {
+    .then([plogId, this] (auto) mutable {
         return m_plogFileDescriptorList[plogId].f.close();
     })
     .then([plogId, this]{

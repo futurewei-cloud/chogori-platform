@@ -41,7 +41,7 @@ SEASTAR_TEST_CASE(test_create_plog_file)
     .then([](seastar::file f) {
         return seastar::do_with(PlogFileDescriptor(),[f](auto& plogFileDescriptor) mutable {
             return f.dma_write(0, plogFileDescriptor.headBuffer.get(), DMA_ALIGNMENT)
-            .then([f](auto ret) mutable {
+            .then([f](auto) mutable {
                 return f.flush();
             })
             .then([f] () mutable {
@@ -109,7 +109,7 @@ SEASTAR_TEST_CASE(test_load_then_getinfo)
     .then([](seastar::file f)  {
         return seastar::do_with(PlogFileDescriptor(),[f](auto& plogFileDescriptor) mutable {
             return f.dma_write(0, plogFileDescriptor.headBuffer.get(), DMA_ALIGNMENT)
-            .then([f](auto ret) mutable {
+            .then([f](auto) mutable {
                 return f.flush();
             })
             .then([f] () mutable {
@@ -137,7 +137,7 @@ SEASTAR_TEST_CASE(test_getinfo_plogId_not_exist)
     auto plogId = plogMock->generatePlogId();
 
     return plogMock->getInfo(plogId)
-    .then([](PlogInfo info){ 
+    .then([](auto){ 
         BOOST_FAIL("Expected exception");
     })
     .handle_exception([](auto e){
@@ -236,7 +236,7 @@ SEASTAR_TEST_CASE(test_load_then_append)
     .then([](seastar::file f)  {
         return seastar::do_with(PlogFileDescriptor(),[f](auto& plogFileDescriptor) mutable {
             return f.dma_write(0, plogFileDescriptor.headBuffer.get(), DMA_ALIGNMENT)
-            .then([f](auto ret) mutable {
+            .then([f](auto) mutable {
                 return f.flush();
             })
             .then([f] () mutable {
@@ -290,7 +290,7 @@ SEASTAR_TEST_CASE(test_append_plogId_not_exist)
     writeBufferList.push_back(Binary{2000});
 
     return plogMock->append(plogId, std::move(writeBufferList))
-    .then([plogMock, plogId](auto offset){
+    .then([plogMock, plogId](auto){
         BOOST_FAIL("Expected exception");
     })
     .handle_exception([](auto e){
@@ -322,7 +322,7 @@ SEASTAR_TEST_CASE(test_append_exceed_plog_limit)
         writeBufferList.push_back(Binary{plogMock->m_plogMaxSize});
 
         return plogMock->append(plogId, std::move(writeBufferList))
-        .then([plogMock, plogId](auto offset){
+        .then([plogMock, plogId](auto){
             BOOST_FAIL("Expected exception");
         })
         .handle_exception([](auto e){
@@ -416,7 +416,7 @@ SEASTAR_TEST_CASE(test_read_plogId_not_exist)
     plogDataToReadList.push_back(PlogMock::ReadRegion{0, 1000});
  
     return plogMock->read(plogId, std::move(plogDataToReadList))
-    .then([plogMock](PlogMock::ReadRegions readRegions) {
+    .then([plogMock](auto) {
         BOOST_FAIL("Expected exception");
     })
     .handle_exception([](auto e){
@@ -466,7 +466,7 @@ SEASTAR_TEST_CASE(test_read_capacity_not_enough)
         plogDataToReadList.push_back(PlogMock::ReadRegion{offset, 2001});
 
         return plogMock->read(plogId, std::move(plogDataToReadList))
-        .then([plogMock](PlogMock::ReadRegions readRegions) {
+        .then([plogMock](auto) {
             BOOST_FAIL("Expected exception");
         })
         .handle_exception([](auto e){
@@ -501,7 +501,7 @@ SEASTAR_TEST_CASE(test_seal)
         }
         
         return plogMock->append(plogIds[0], std::move(writeBufferList))
-        .then([plogId=plogIds[0]](auto offset){
+        .then([plogId=plogIds[0]](auto){
             return seastar::make_ready_future<PlogId>(plogId);
         });
     })
@@ -517,7 +517,7 @@ SEASTAR_TEST_CASE(test_seal)
             }
 
             return plogMock->append(plogId, std::move(writeBufferList))
-            .then([plogMock](auto offset) {
+            .then([plogMock](auto) {
                 BOOST_FAIL("Expected exception");
             })
             .handle_exception([](auto e){
@@ -582,7 +582,7 @@ SEASTAR_TEST_CASE(test_drop)
             std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
         }
         return plogMock->append(plogIds[0], std::move(writeBufferList))
-        .then([plogId=plogIds[0]](auto offset){
+        .then([plogId=plogIds[0]](auto){
             return seastar::make_ready_future<PlogId>(plogId);
         });
     })
@@ -590,7 +590,7 @@ SEASTAR_TEST_CASE(test_drop)
         return plogMock->drop(plogId)
         .then([plogMock, plogId, this]() {
             return plogMock->getInfo(plogId)
-            .then([](PlogInfo info){ 
+            .then([](auto){ 
                 BOOST_FAIL("Expected exception");
             })
             .handle_exception([](auto e){
@@ -637,7 +637,7 @@ SEASTAR_TEST_CASE(test_drop_plogId_not_exist)
 }
 
 
-SEASTAR_TEST_CASE(Remove_all_test_folders) 
+SEASTAR_TEST_CASE(Remove_test_folders) 
 {
     std::cout << get_name() << std::endl;
 

@@ -13,9 +13,12 @@ build:
 	@$(MAKE) -C../$(BUILD_DIR)
 
 test: build
-	@echo ">>> Testing"
+	@echo ">>> Testing node"
 	@../$(BUILD_DIR)/test/node/node_test && testReturnCode=$? && exit $(testReturnCode)
+	@echo ">>> Testing client"
 	@../$(BUILD_DIR)/test/client/client_test && testReturnCode=$? && exit $(testReturnCode)
+	@echo ">>> Testing plogmock"
+	@../$(BUILD_DIR)/test/plogmock/plogmock_test && testReturnCode=$? && exit $(testReturnCode)
 integrate: build
 	@echo ">>> Running integration test"
 	@../integration/run.sh && testReturnCode=$? && exit $(testReturnCode)

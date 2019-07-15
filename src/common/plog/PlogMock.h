@@ -104,7 +104,7 @@ public:
      *   - body: plog blocks
      *   - padding: align to dma_alignment
      * 
-     * plogCount - the number of plog files that created
+     * plogCount - the number of plog files to create
      * return - a list of unique plog ids that created
      **/
     IOResult<std::vector<PlogId>> create(uint plogCount) override;
