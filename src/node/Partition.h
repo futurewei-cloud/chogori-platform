@@ -5,6 +5,11 @@
 #include "persistence/IPersistentLog.h"
 #include "TaskRequest.h"
 #include "common/IntrusiveLinkedList.h"
+#include <seastar/core/metrics.hh>
+#include "transport/Prometheus.h"
+#include <seastar/core/reactor.hh>
+#include <seastar/core/metrics_registration.hh>
+#include <seastar/core/metrics.hh>
 
 namespace k2
 {
@@ -35,6 +40,9 @@ protected:
     std::array<TaskList, (size_t)TaskListType::TaskListCount> taskLists;  //  Partition tasks
     PartitionMetadata metadata;
     Collection& collection;
+    seastar::metrics::metric_groups _metricGroups;
+    k2::ExponentialHistogram _executeLatency;
+    k2::ExponentialHistogram _connectionLatency;
 
     static void removeFromList(TaskList& list, TaskRequest& task)
     {
@@ -117,10 +125,14 @@ protected:
                 break;
 
             TaskRequest::ProcessResult response = task.process(remainingTime);  //  TODO: move to partition
+            auto now = std::chrono::steady_clock::now();
             switch (response)
             {
                 case TaskRequest::ProcessResult::Done:
                     deleteTask(task);
+                    _executeLatency.add(task.getElapsedTime());
+                    now = std::chrono::steady_clock::now();
+                    std::cout << "Partition task done time:" << std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() << std::endl;
                     break;
 
                 case TaskRequest::ProcessResult::Sleep:
@@ -145,7 +157,7 @@ protected:
 
 public:
     Partition(INodePool& pool, PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
-        version(version), nodePool(pool), metadata(std::move(metadata)), collection(collection) {}
+        version(version), nodePool(pool), metadata(std::move(metadata)), collection(collection) { registerMetrics(); }
 
     ~Partition() { release(); }
 
@@ -179,6 +191,14 @@ public:
     {
         assert(state == State::Assigning);
         state = State::Running;
+    }
+
+    void registerMetrics()
+    {
+        std::vector<seastar::metrics::label_instance> labels;
+        _metricGroups.add_group("partition", {
+            seastar::metrics::make_histogram("task_execution_latency", [this] { return _executeLatency.getHistogram(); }, seastar::metrics::description("Latency of task execution"), labels),
+        });
     }
 };  //  class Partition
 

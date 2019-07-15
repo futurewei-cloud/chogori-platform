@@ -5,6 +5,10 @@
 #include <atomic>
 #include <fstream>
 #include <thread>
+// seastar
+#include <seastar/core/reactor.hh>
+#include <seastar/core/metrics_registration.hh>
+#include <seastar/core/metrics.hh>
 // boost
 #include "boost/program_options.hpp"
 #include "boost/filesystem.hpp"
@@ -12,12 +16,12 @@
 #include <boost/asio.hpp>
 // k2:client
 #include <client/lib/Client.h>
-// benchmarker
+// k2:benchmarker
 #include <benchmarker/generator/RandomNumberGenerator.h>
 #include <benchmarker/KeySpace.h>
 #include <benchmarker/Session.h>
 #include "benchmarker/proto/k2bdto.pb.h"
-// KV module
+// k2:kv module
 #include "node/module/MemKVModule.h"
 
 namespace k2

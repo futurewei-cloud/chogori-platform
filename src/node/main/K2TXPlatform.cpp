@@ -10,6 +10,10 @@
 #include <common/seastar/SeastarApp.h>
 #include <transport/SeastarTransport.h>
 
+#include <seastar/core/reactor.hh>
+#include <seastar/core/metrics_registration.hh>
+#include <seastar/core/metrics.hh>
+
 namespace k2 {
 //
 // glue classes used to glue existing AssignmentManger assumptions to message-oriented transport
@@ -238,6 +242,7 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     //  Initialize application, transport and service
     //
     SeastarApp app;
+    app.registerNonDistributedService(_prometheus, 8089, std::ref("K2 node pool metrics"), std::ref("k2_node_pool"));
     SeastarTransport transport(app, TransportConfig(std::make_unique<NodePoolAddressProvider>(pool), pool.getConfig().isRDMAEnabled()));
     NodePoolService::Distributed service(app, pool, transport);
 
