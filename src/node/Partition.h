@@ -91,6 +91,7 @@ protected:
     void deleteTask(TaskRequest& task)
     {
         removeFromList(task);
+        taskRequestLifecycleHistogram.add(task.getElapsedTime());
         delete &task;
     }
 
@@ -126,7 +127,6 @@ protected:
             {
                 case TaskRequest::ProcessResult::Done:
                     deleteTask(task);
-                    taskRequestLifecycleHistogram.add(task.getElapsedTime());
                     break;
 
                 case TaskRequest::ProcessResult::Sleep:

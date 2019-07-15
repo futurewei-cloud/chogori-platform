@@ -30,7 +30,7 @@ public:
     }
 
     template<typename ServiceT, typename... StartArgs>
-    SeastarApp& registerService(seastar::distributed<ServiceT>& service, StartArgs&&... startArgs)
+    SeastarApp& registerService(ServiceT& service, StartArgs&&... startArgs)
     {
         finalizers.push_back([&] { return service.stop(); });
         initializers.push_back([&service, args = std::make_tuple(std::forward<StartArgs>(startArgs)...)]() mutable
@@ -40,21 +40,6 @@ public:
                     return service.start(std::forward<StartArgs>(args)...);
                 }, std::move(args));
             });
-
-        return *this;
-    }
-
-    template<typename ServiceT, typename... StartArgs>
-    SeastarApp& registerNonDistributedService(ServiceT& service, StartArgs&&... startArgs)
-    {
-        finalizers.push_back([&] { return service.stop(); });
-        initializers.push_back([&service, args = std::make_tuple(std::forward<StartArgs>(startArgs)...)]() mutable
-        {
-            return std::apply([&service](auto&& ... args) mutable
-            {
-                return service.start(std::forward<StartArgs>(args)...);
-            }, std::move(args));
-        });
 
         return *this;
     }
