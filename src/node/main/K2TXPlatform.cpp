@@ -238,6 +238,8 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     //  Initialize application, transport and service
     //
     SeastarApp app;
+    // TODO: set the prometheus port via configuration
+    app.registerNonDistributedService(_prometheus, _defaultPrometheusPort, std::ref("K2 node pool metrics"), std::ref("k2_node_pool"));
     SeastarTransport transport(app, TransportConfig(std::make_unique<NodePoolAddressProvider>(pool), pool.getConfig().isRDMAEnabled()));
     NodePoolService::Distributed service(app, pool, transport);
 

@@ -15,6 +15,7 @@
 #include "transport/TCPRPCProtocol.h"
 #include "transport/RPCProtocolFactory.h"
 #include "transport/VirtualNetworkStack.h"
+#include "transport/Prometheus.h"
 #include "node/NodePoolImpl.h"
 
 namespace k2 {
@@ -23,6 +24,10 @@ namespace k2 {
 // running a NodePool over tx transport
 class K2TXPlatform : public ISchedulingPlatform
 {
+protected:
+    k2::Prometheus _prometheus;
+    const uint16_t _defaultPrometheusPort = 8089;
+
 public:
     K2TXPlatform() {}
 

@@ -104,6 +104,11 @@ public:
     bool canContinue() { return !timeTracker.exceeded(); }
 
     //
+    // Return the elapsed time since the task was created.
+    //
+    std::chrono::nanoseconds getElapsedTime() { return timeTracker.elapsed(); }
+
+    //
     //  Task has it's own associated memory arena. TODO: use Folly Memory Arena
     //
     void* taskScopeMalloc(size_t size) { return arena.alloc(size); }

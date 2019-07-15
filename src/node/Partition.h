@@ -1,10 +1,12 @@
 #pragma once
 
+#include <seastar/core/metrics.hh>
 #include "common/PartitionMetadata.h"
 #include "Collection.h"
 #include "persistence/IPersistentLog.h"
 #include "TaskRequest.h"
 #include "common/IntrusiveLinkedList.h"
+#include "transport/Prometheus.h"
 
 namespace k2
 {
@@ -35,6 +37,9 @@ protected:
     std::array<TaskList, (size_t)TaskListType::TaskListCount> taskLists;  //  Partition tasks
     PartitionMetadata metadata;
     Collection& collection;
+    seastar::metrics::metric_groups metricGroups;
+    ExponentialHistogram taskRequestLifecycleHistogram; // Tracks the lifecycle of the TaskRequest
+
 
     static void removeFromList(TaskList& list, TaskRequest& task)
     {
@@ -121,6 +126,7 @@ protected:
             {
                 case TaskRequest::ProcessResult::Done:
                     deleteTask(task);
+                    taskRequestLifecycleHistogram.add(task.getElapsedTime());
                     break;
 
                 case TaskRequest::ProcessResult::Sleep:
@@ -145,7 +151,7 @@ protected:
 
 public:
     Partition(INodePool& pool, PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
-        version(version), nodePool(pool), metadata(std::move(metadata)), collection(collection) {}
+        version(version), nodePool(pool), metadata(std::move(metadata)), collection(collection) { registerMetrics(); }
 
     ~Partition() { release(); }
 
@@ -179,6 +185,14 @@ public:
     {
         assert(state == State::Assigning);
         state = State::Running;
+    }
+
+    void registerMetrics()
+    {
+        std::vector<seastar::metrics::label_instance> labels;
+        metricGroups.add_group("partition", {
+            seastar::metrics::make_histogram("task_request_lifecycle_time", [this] { return taskRequestLifecycleHistogram.getHistogram(); }, seastar::metrics::description("The lifecycle time of a task request"), labels),
+        });
     }
 };  //  class Partition
 
