@@ -108,6 +108,8 @@ public:
                 _readySessions.insert(std::move(std::pair<std::string, SessionPtr>(sessionId, pSession)));
                 response.set_uuid(sessionId);
                 response.set_status(k2bdto::Response_Status_OK);
+
+                K2INFO("Started session:" << pSession->getType() << " ,uuid:" << pSession->getSessionId() << " ,keyCount:" << pSession->getTargetCount())
             }
         }
         else {
