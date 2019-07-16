@@ -238,7 +238,7 @@ private:
 
             K2INFO("Starting transport platform...");
 
-            return return _prometheus.start(prometheusTcpPort, "K2 client executor metrics", "k2_client_executor");
+            return _prometheus.start(prometheusTcpPort, "K2 client executor metrics", "k2_client_executor")
                 .then([&] {
 
                     return virtualNetwork.start();
