@@ -15,8 +15,8 @@ struct ExecutorQueue
     static constexpr int _MAX_QUEUE_SIZE = 10;
 
     // shared members between the Client thread and the Seastar platform
-    boost::lockfree::spsc_queue<ExecutorTaskPtr> _readyTasks{_MAX_QUEUE_SIZE};
-    boost::lockfree::spsc_queue<ExecutorTaskPtr> _completedTasks{_MAX_QUEUE_SIZE};
+    boost::lockfree::spsc_queue<ExecutorTaskPtr> _readyTasks{_MAX_QUEUE_SIZE}; // tasks that are ready to be executed
+    boost::lockfree::spsc_queue<ExecutorTaskPtr> _completedTasks{_MAX_QUEUE_SIZE}; // tasks that have completed execution
     // the mutex here is not used for synchronization, but to prevent the threads from spinning and wasting resources
     std::mutex _mutex;
     std::condition_variable _conditional;

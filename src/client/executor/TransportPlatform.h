@@ -23,6 +23,8 @@
 namespace k2
 {
 
+namespace metrics = seastar::metrics;
+
 class TransportPlatform
 {
 public:
@@ -45,12 +47,13 @@ public:
     };
 
 private:
-    struct ExecutionException: public std::exception
+    class ExecutionException: public std::exception
     {
+    protected:
         std::exception_ptr _cause;
         Status _status;
         std::string _message = "Exception thrown during execution.";
-
+    public:
         ExecutionException(Status status)
         : _status(status)
         {
@@ -58,20 +61,30 @@ private:
         }
 
         ExecutionException(Status status, std::string message)
-        : _status(status), _message(std::move(message))
+        : _status(status)
+        , _message(std::move(message))
         {
             // empty
         }
 
-        const std::string& what()
+        virtual const char* what() const noexcept override
         {
-            return _message;
+            return _message.c_str();
+        }
+
+        const Status& getStatus() const
+        {
+            return _status;
         }
     };
 
     // class defined
     bool _stopFlag = false;
     std::chrono::time_point<std::chrono::steady_clock> _runTaskTimepoint;
+    metrics::metric_groups _metricGroups;
+    k2::ExponentialHistogram _callbackTime;
+    k2::ExponentialHistogram _sendMessageLatency;
+    k2::ExponentialHistogram _clientLoopTime;
     // from arguments
     Settings _settings;
     ExecutorQueue& _queue;
@@ -91,14 +104,19 @@ public:
 
     seastar::future<> start()
     {
+        registerMetrics();
+
         return seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
-            // invoke the client's loop only if initialized within the client's thread
-            if(_settings._userInitThread && hasTimerExpired()) {
+            // invoke the client's loop only if initialized within the client's thread; give priority to existing tasks
+            if(_settings._userInitThread && hasTimerExpired() && _queue.empty()) {
+                const auto startTime = std::chrono::steady_clock::now();
                 // execute client loop
-                uint64_t timeslice = _settings._clientLoopFn(_settings._rClient);
+                const uint64_t timeslice = _settings._clientLoopFn(_settings._rClient);
                 // set next interval
-                std::chrono::microseconds microSeconds(timeslice);
-                _runTaskTimepoint = std::chrono::steady_clock::now() + microSeconds;
+                const auto now = std::chrono::steady_clock::now();
+                _runTaskTimepoint = now + std::chrono::microseconds(timeslice);
+                auto duration = now - startTime;
+                _clientLoopTime.add(std::move(duration));
             }
 
             ExecutorTaskPtr pTask = _queue.pop();
@@ -185,7 +203,7 @@ private:
                     std::rethrow_exception(eptr);
                 }
                 catch(ExecutionException& e) {
-                    pTask->_pPlatformData->_pResponse->status = e._status;
+                    pTask->_pPlatformData->_pResponse->status = e.getStatus();
                 }
                 catch (RPCDispatcher::RequestTimeoutException& e) {
                     pTask->_pPlatformData->_pResponse->status =  Status::TimedOut;
@@ -205,18 +223,20 @@ private:
 
     seastar::future<std::unique_ptr<ResponseMessage>> sendMessage(ExecutorTaskPtr pTask)
     {
+        const std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
+
         return _dispatcher.local().sendRequest(KnownVerbs::PartitionMessages,
             std::move(pTask->_pPlatformData->_pPayload),
             *pTask->_pPlatformData->_pEndpoint,
             pTask->getTimeout())
-        .then([](std::unique_ptr<k2::Payload> payload) {
+        .then([this, startTime = std::move(startTime)](std::unique_ptr<k2::Payload> payload) {
+            auto duration = std::chrono::steady_clock::now() - startTime;
+            _sendMessageLatency.add(std::move(duration));
             // parse a ResponseMessage from the received payload
             auto readBytes = payload->getSize();
             auto hdrSize = sizeof(ResponseMessage::Header);
-            K2DEBUG("transport read " << readBytes << " bytes. Reading header of size " << hdrSize);
             ResponseMessage::Header header;
             payload->getReader().read(&header, hdrSize);
-            K2DEBUG("read header: status=" << getStatusText(header.status) << ", msgsize=" << header.messageSize << ", modulecode="<< header.moduleCode);
 
             if(Status::Ok != header.status) {
                 throw ExecutionException(header.status, "Error status");
@@ -236,7 +256,6 @@ private:
             }
 
             response->payload = Payload(std::move(buffers), readBytes - hdrSize);
-            K2DEBUG("Message received. returning response...");
 
             return seastar::make_ready_future<std::unique_ptr<ResponseMessage>>(std::move(response));
          });
@@ -249,6 +268,8 @@ private:
 
     void  invokeCallback(ExecutorTaskPtr pTask)
     {
+        auto duration = std::chrono::steady_clock::now() - pTask->_pClientData->_startTime;
+        _callbackTime.add(std::move(duration));
         pTask->invokeResponseCallback();
         _queue.completeTask(pTask);
     }
@@ -272,6 +293,16 @@ private:
             }
            _queue._completedTasks.push(pTask);
         }
+    }
+
+    void registerMetrics()
+    {
+        std::vector<metrics::label_instance> labels;
+        _metricGroups.add_group("transport", {
+            metrics::make_histogram("callback_time", [this] { return _callbackTime.getHistogram(); }, metrics::description("Time of invoking client callback"), labels),
+            metrics::make_histogram("send_message_latency", [this] { return _sendMessageLatency.getHistogram(); }, metrics::description("Latency to send a single message"), labels),
+            metrics::make_histogram("client_loop_time", [this] { return _clientLoopTime.getHistogram(); }, metrics::description("Time spend executing client loop"), labels),
+        });
     }
 
 }; // class TransportPlatform

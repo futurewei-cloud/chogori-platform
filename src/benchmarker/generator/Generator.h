@@ -27,6 +27,12 @@ public:
             // empty
         }
 
+        iterator()
+        : _pGenerator(nullptr)
+        {
+            // empty
+        }
+
         virtual bool operator== (const iterator& arg) const
         {
             return (arg._cursor == _cursor);
@@ -57,7 +63,7 @@ public:
 
     virtual iterator end()
     {
-        return iterator(*this, std::string());
+        return iterator();
     }
 
 protected:

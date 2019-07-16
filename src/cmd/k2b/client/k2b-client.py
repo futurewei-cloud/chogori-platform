@@ -17,12 +17,13 @@ sock.connect((host, port))
 request = k2bdto_pb2.Request()
 request.sequenceId = random.randint(1, 100000)
 request.operation.type = k2bdto_pb2.Request.Operation.PRIME
+request.operation.load.count = 1000;
 
 # send request
 sock.send(request.SerializeToString())
 
 # read socket
-response = k2bdto_pb2.Response();
+response = k2bdto_pb2.Response()
 response.ParseFromString(sock.recv(256))
 print(text_format.MessageToString(response))
 sock.close()

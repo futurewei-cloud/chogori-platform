@@ -16,35 +16,43 @@ class KeySpace
 {
 protected:
     std::unique_ptr<Generator> _pGenerator;
-    uint64_t _count = 0;
+    const uint64_t _count;
 public:
     class iterator
     {
+    friend class KeySpace;
     protected:
         uint64_t _count = 0;
         uint64_t _cursor = 0;
         Generator* _pGenerator;
         Generator::iterator _it;
-    public:
-        iterator(Generator& generator, uint64_t count, uint64_t cursor)
+
+        iterator(Generator& generator, uint64_t count)
         : _count(count)
-        , _cursor(cursor)
+        , _cursor(0)
         , _pGenerator(&generator)
-        , _it(generator.begin())
+        , _it(_pGenerator->begin())
         {
-            if(cursor == ((uint64_t)-1)) {
-                _it = std::move(_pGenerator->end());
-            }
+            // empty
         }
 
+        iterator()
+        : _count(0)
+        , _cursor(0)
+        , _pGenerator(nullptr)
+        {
+            // empty
+        }
+
+    public:
         iterator& operator++ ()
         {
             ++_cursor;
             ++_it;
 
-            if(_cursor >= _count) {
+            if(_count!=0 && _cursor >= _count) {
                 _it = _pGenerator->end();
-                _cursor = ((uint64_t)-1);
+                _pGenerator = nullptr;
             }
 
             return *this;
@@ -52,7 +60,7 @@ public:
 
         bool operator== (const iterator& arg) const
         {
-            return (_cursor == arg._cursor && _it == arg._it);
+            return (_pGenerator==nullptr && arg._pGenerator==nullptr) || (_cursor == arg._cursor && _it == arg._it);
         }
 
         bool operator!= (const iterator& arg) const
@@ -68,8 +76,9 @@ public:
 
     KeySpace(std::unique_ptr<Generator> pGenerator)
     : _pGenerator(std::move(pGenerator))
+    , _count(0) // unbounded
     {
-        _count = 0; // unbounded
+        // empty
     }
 
     KeySpace(std::unique_ptr<Generator> pGenerator, uint64_t count)
@@ -81,12 +90,12 @@ public:
 
     iterator begin()
     {
-        return iterator(*_pGenerator.get(), _count, 0);
+        return iterator(*_pGenerator.get(), _count);
     }
 
     iterator end()
     {
-        return iterator(*_pGenerator.get(), _count, ((uint64_t)-1)); // make generator = null as the end iterator
+        return iterator();
     }
 
 };

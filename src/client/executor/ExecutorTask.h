@@ -45,12 +45,14 @@ struct ExecutorTask
         PayloadRefCallback _fPayloadRef = nullptr;
         PayloadPtrCallback _fPayloadPtr = nullptr;
         ResponseCallback _fResponse = nullptr;
+        std::chrono::time_point<std::chrono::steady_clock> _startTime;
 
         ClientData(String url, Duration timeout, PayloadRefCallback& fPayloadRef, ResponseCallback& fResponse)
             : _url(std::move(url))
             , _timeout(std::move(timeout))
             , _fPayloadRef(fPayloadRef)
             , _fResponse(fResponse)
+            , _startTime(std::chrono::steady_clock::now())
         {
             // empty
         }
@@ -58,6 +60,7 @@ struct ExecutorTask
         ClientData(String url, PayloadPtrCallback fPayloadPtr)
             : _url(std::move(url))
             , _fPayloadPtr(fPayloadPtr)
+            , _startTime(std::chrono::steady_clock::now())
         {
             // empty
         }
@@ -67,6 +70,7 @@ struct ExecutorTask
             , _pPayload(std::move(pPayload))
             , _timeout(timeout)
             , _fResponse(fResponse)
+            , _startTime(std::chrono::steady_clock::now())
         {
             // empty
         }

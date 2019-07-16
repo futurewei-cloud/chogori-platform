@@ -11,6 +11,8 @@
 #include <boost/lockfree/queue.hpp>
 // seastar
 #include <seastar/core/sleep.hh>
+#include <seastar/core/metrics_registration.hh>
+#include <seastar/core/metrics.hh>
 // k2
 #include <common/Payload.h>
 #include <node/NodePool.h>
@@ -21,6 +23,7 @@
 #include "transport/RPCProtocolFactory.h"
 #include "transport/VirtualNetworkStack.h"
 #include "transport/RetryStrategy.h"
+#include "transport/Prometheus.h"
 // k2:client
 #include <client/IClient.h>
 #include "TransportPlatform.h"
@@ -47,6 +50,8 @@ namespace k2
 // - Shared states are thread-safe.
 //
 
+namespace metrics = seastar::metrics;
+
 class Executor
 {
 private:
@@ -58,12 +63,14 @@ private:
     // this class
     std::thread _transportThread;
     TransportPlatform::Dist_t _transport;
+    const uint16_t prometheusTcpPort = 8089;
     // the mutex is used to wait until the transport platform is started
     std::mutex _mutex;
     std::condition_variable _conditional;
     // from arguments
     client::ClientSettings _settings;
     client::IClient& _rClient;
+    k2::Prometheus _prometheus;
 
 public:
     Executor(client::IClient& rClient)
@@ -192,10 +199,10 @@ private:
         seastar::app_template app;
 
         // TODO: update to use n cores
-        char *argv[] = {(char *)"k2-seastar-executor", (char*)"-c1", nullptr};
+        const char* argv[] = { "k2-client-executor", "-c", "1", nullptr };
         int argc = sizeof(argv) / sizeof(*argv) - 1;
 
-        int result = app.run(argc, argv, [&] {
+        int result = app.run_deprecated(argc, (char**)argv, [&] {
             seastar::engine().at_exit([&] {
                 K2INFO("Stopping transport platform...");
 
@@ -211,15 +218,19 @@ private:
                         return protocolFactory.stop();
                     })
                     .then([&] {
-                      K2INFO("Stopping vnet...");
+                        K2INFO("Stopping vnet...");
 
-                      return virtualNetwork.stop();
+                        return virtualNetwork.stop();
+                    }).then([&] {
+                        K2INFO("Stopping prometheus...");
+
+                        return _prometheus.stop();
                     });
             });
 
             // poll the stop flag to stop the transport
             seastar::do_until([&] { return _stopFlag.load() && _queue.empty(); }, [&] {
-                return seastar::sleep(std::chrono::seconds(1));
+                return seastar::sleep(std::chrono::milliseconds(1));
             })
             .then([&] {
                 return _transport.stop();
@@ -227,7 +238,11 @@ private:
 
             K2INFO("Starting transport platform...");
 
-            return virtualNetwork.start()
+            return return _prometheus.start(prometheusTcpPort, "K2 client executor metrics", "k2_client_executor");
+                .then([&] {
+
+                    return virtualNetwork.start();
+                })
                 .then([&] {
                     return protocolFactory.start(k2::TCPRPCProtocol::builder(std::ref(virtualNetwork), 0));
                 })
