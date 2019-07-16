@@ -190,6 +190,7 @@ public:
     void registerMetrics()
     {
         std::vector<seastar::metrics::label_instance> labels;
+        labels.push_back(seastar::metrics::label_instance("partition_id", getId()));
         metricGroups.add_group("partition", {
             seastar::metrics::make_histogram("task_request_lifecycle_time", [this] { return taskRequestLifecycleHistogram.getHistogram(); }, seastar::metrics::description("The lifecycle time of a task request"), labels),
         });
