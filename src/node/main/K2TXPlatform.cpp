@@ -5,12 +5,14 @@
 #include <seastar/core/app-template.hh> // for app_template
 #include "common/Log.h"
 #include "common/Constants.h"
+#include "common/TimeMeasure.h"
 #include "transport/IRPCProtocol.h"
 #include <sched.h>
 #include <common/seastar/SeastarApp.h>
 #include <transport/SeastarTransport.h>
 
 namespace k2 {
+
 //
 // glue classes used to glue existing AssignmentManger assumptions to message-oriented transport
 //
@@ -26,10 +28,13 @@ public:
     _outPayload(request.endpoint.newPayload()),
     _header(0),
     _request(std::move(request)),
-    _disp(disp) {
+    _disp(disp),
+    _logger("Connection livetime")
+    {
         bool ret = _outPayload->getWriter().reserveContiguousStructure(_header);
         assert(ret); //  Always must have space for a response header
     }
+
 
     ~AMClientConnection() {}
 public:
@@ -52,6 +57,7 @@ public:
         _header->messageSize = _outPayload->getSize() - txconstants::MAX_HEADER_SIZE - sizeof(ResponseMessage::Header);
         _responded = true;
 
+        TimeScopeLogger t("Sending response");
         _disp.sendReply(std::move(_outPayload), _request);
     }
 
@@ -61,6 +67,7 @@ private:
     ResponseMessage::Header* _header;
     k2::Request _request;
     k2::RPCDispatcher& _disp;
+    TimeScopeLogger _logger;
 
 };
 
@@ -125,10 +132,12 @@ public: // distributed<> interface
                 KnownVerbs::PartitionMessages,
                 [this](k2::Request&& request) mutable
                 {
-                    K2DEBUG("Dispatching message to AssignmentManager");
+                    K2INFO("Dispatching message to AssignmentManager");
                     PartitionRequest partitionRequest;
                     partitionRequest.message = createPartitionMessage(std::move(request.payload), request.endpoint.getURL());
                     partitionRequest.client = std::make_unique<AMClientConnection>(std::move(request), _dispatcher.local());
+
+                    TimeScopeLogger t("Passing message to _node.assignmentManager.processMessage");
                     _node.assignmentManager.processMessage(partitionRequest);
                 });
 
@@ -165,6 +174,7 @@ private: // helpers
             [this]
             {
                 _node.processTasks();
+                seastar::engine().force_poll();
                 return seastar::make_ready_future<>();
             });
     }

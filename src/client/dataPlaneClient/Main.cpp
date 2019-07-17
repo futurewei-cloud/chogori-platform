@@ -4,11 +4,12 @@
 #include <boost/filesystem.hpp>
 
 #include "common/PartitionMetadata.h"
-
+#include "common/TimeMeasure.h"
 #include "node/module/MemKVModule.h"
 
 #include <client/PartitionMessageTransport.h>
 #include <boost/timer.hpp>
+#include <time.h>
 
 namespace k2
 {
@@ -17,12 +18,11 @@ void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
 
-    boost::timer timer;
-
+    Stopwatch<> stopWatch;
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest));
 
-    std::cout << "moduleSet:" << timer.elapsed() << "s" << std::endl;
+    std::cout << "moduleSet:" << stopWatch.elapsedUS()  << "us" << std::endl;
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
@@ -33,11 +33,11 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
 
-    boost::timer timer;
+    Stopwatch<> stopWatch;
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest));
 
-    std::cout << "moduleGet:" << timer.elapsed()  << "s" << std::endl;
+    std::cout << "moduleGet:" << stopWatch.elapsedUS()  << "us" << std::endl;
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
