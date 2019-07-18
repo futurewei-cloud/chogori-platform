@@ -45,5 +45,31 @@ public:
     ~TimeScopeLogger() { K2INFO(text << ": " << stopWatch.elapsedNS() << "ns"); }
 };
 
+//
+//  Check whether some time interval is exceeded
+//
+class TimeTracker
+{
+    Stopwatch<std::chrono::steady_clock> stopWatch;
+    std::chrono::nanoseconds timeToTrack;
+
+public:
+    DEFAULT_COPY_MOVE_INIT(TimeTracker)
+
+    TimeTracker(std::chrono::nanoseconds timeToTrackNS) : timeToTrack(timeToTrackNS)  {}
+
+    bool exceeded() { return elapsed() > timeToTrack; };
+
+    std::chrono::nanoseconds remaining()
+    {
+        auto elapsedTime = stopWatch.elapsed();
+        if(elapsedTime > timeToTrack)
+            return std::chrono::nanoseconds::zero();
+
+        return timeToTrack - elapsedTime;
+    }
+
+    std::chrono::nanoseconds elapsed() { return stopWatch.elapsed(); }
+};
 
 }   //  namespace k2

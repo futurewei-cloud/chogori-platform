@@ -3,6 +3,7 @@
 #include "common/PartitionMessage.h"
 #include "common/IntrusiveLinkedList.h"
 #include "common/MemoryArena.h"
+#include "common/TimeMeasure.h"
 
 namespace k2
 {

@@ -7,6 +7,7 @@
 #include "TaskRequest.h"
 #include "common/IntrusiveLinkedList.h"
 #include "transport/Prometheus.h"
+#include "common/Log.h"
 
 namespace k2
 {
@@ -40,39 +41,17 @@ protected:
     seastar::metrics::metric_groups metricGroups;
     ExponentialHistogram taskRequestLifecycleHistogram; // Tracks the lifecycle of the TaskRequest
 
+    static void removeFromList(TaskList& list, TaskRequest& task);
 
-    static void removeFromList(TaskList& list, TaskRequest& task)
-    {
-        list.remove(task);
-        task.ownerTaskList = TaskListType::None;
-    }
-
-    void removeFromList(TaskRequest& task)
-    {
-        if(task.ownerTaskList == TaskListType::None)
-            return;
-
-        removeFromList(getTaskList(task.ownerTaskList), task);
-    }
+    void removeFromList(TaskRequest& task);
 
     TaskList& getTaskList(TaskListType type) { return taskLists[(int)type-1]; }
 
-    void putToListBack(TaskRequest& task, TaskListType type)
-    {
-        removeFromList(task);
-        getTaskList(type).pushBack(task);
-        task.ownerTaskList = type;
-    }
+    void putToListBack(TaskRequest& task, TaskListType type);
 
-    void activateTask(TaskRequest& task)
-    {
-        putToListBack(task, TaskListType::Active);
-    }
+    void activateTask(TaskRequest& task) { putToListBack(task, TaskListType::Active); }
 
-    void putTaskToSleep(TaskRequest& task)
-    {
-        putToListBack(task, TaskListType::Sleeping);
-    }
+    void putTaskToSleep(TaskRequest& task) { putToListBack(task, TaskListType::Sleeping); }
 
     template<typename T, typename... ArgT>
     typename std::enable_if<std::is_base_of<TaskRequest, T>::value, T*>::type createTask(ArgT&&... arg)  //  TODO: Change to unique_ptr
@@ -88,66 +67,13 @@ protected:
         return task;
     }
 
-    void deleteTask(TaskRequest& task)
-    {
-        removeFromList(task);
-        taskRequestLifecycleHistogram.add(task.getElapsedTime());
-        delete &task;
-    }
+    void deleteTask(TaskRequest& task);
 
-    void release()
-    {
-        state = State::Offloaded;   //  To mark it in memory
-        for(TaskList& list : taskLists)
-        {
-            for(TaskRequest& task : list)
-            {
-                task.cancel();
-                deleteTask(task);
-            }
-        }
-    }
+    void release();
 
-    bool haveTasksToRun()
-    {
-        return !getTaskList(TaskListType::Active).isEmpty();
-    }
+    bool haveTasksToRun() { return !getTaskList(TaskListType::Active).isEmpty(); }
 
-    bool processActiveTasks(std::chrono::nanoseconds maxPartitionTime)  //  When return false, partition is deleted
-    {
-        TimeTracker partitionTracker(maxPartitionTime);
-        for(TaskRequest& task : getTaskList(TaskListType::Active))
-        {
-            std::chrono::nanoseconds remainingTime;
-            if((remainingTime = partitionTracker.remaining()) > std::chrono::nanoseconds::zero())
-                break;
-
-            TaskRequest::ProcessResult response = task.process(remainingTime);  //  TODO: move to partition
-            switch (response)
-            {
-                case TaskRequest::ProcessResult::Done:
-                    deleteTask(task);
-                    break;
-
-                case TaskRequest::ProcessResult::Sleep:
-                    putTaskToSleep(task);
-                    break;
-
-                case TaskRequest::ProcessResult::Delay:
-                    activateTask(task);
-                    break;
-
-                case TaskRequest::ProcessResult::DropPartition:
-                    release();
-                    return false;
-
-                default:
-                    ASSERT(false);
-            }
-        }
-
-        return true;
-    }
+    bool processActiveTasks(std::chrono::nanoseconds maxPartitionTime);  //  When return false, partition is deleted
 
 public:
     Partition(INodePool& pool, PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
@@ -175,26 +101,11 @@ public:
     //
     //  TODO: hide below function from module somehow
     //
-    void awakeTask(TaskRequest& task)
-    {
-        assert(task.ownerTaskList == TaskListType::Sleeping);
-        activateTask(task);
-    }
+    void awakeTask(TaskRequest& task);
 
-    void transitionToRunningState()
-    {
-        assert(state == State::Assigning);
-        state = State::Running;
-    }
+    void transitionToRunningState();
 
-    void registerMetrics()
-    {
-        std::vector<seastar::metrics::label_instance> labels;
-        labels.push_back(seastar::metrics::label_instance("partition_id", getId()));
-        metricGroups.add_group("partition", {
-            seastar::metrics::make_histogram("task_request_lifecycle_time", [this] { return taskRequestLifecycleHistogram.getHistogram(); }, seastar::metrics::description("The lifecycle time of a task request"), labels),
-        });
-    }
+    void registerMetrics();
 };  //  class Partition
 
 }   //  namespace k2

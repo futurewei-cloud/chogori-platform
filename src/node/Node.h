@@ -44,10 +44,10 @@ public:
 
     const String& getName() const { return name; }
 
-    void processTasks()
+    bool processTasks() //  Return true if at least on task was processed
     {
         processedRounds++;
-        assignmentManager.processTasks();
+        return assignmentManager.processTasks();
     }
 
     //

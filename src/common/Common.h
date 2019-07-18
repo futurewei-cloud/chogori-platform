@@ -110,42 +110,6 @@ public:
     T* operator->() { return (T*)data.get_write(); }
 };
 
-//
-//  Check whether some time interval is exceeded
-//
-class TimeTracker
-{
-    typedef std::chrono::steady_clock ClockT;
-    typedef std::chrono::time_point<ClockT> TimePointT;
-
-    TimePointT startTime;
-    std::chrono::nanoseconds timeToTrack;
-
-    static TimePointT now() { return ClockT::now(); }
-public:
-    TimeTracker() : startTime(std::chrono::nanoseconds::zero()), timeToTrack(std::chrono::nanoseconds::zero())  {}
-    TimeTracker(std::chrono::nanoseconds timeToTrackNS) : startTime(now()), timeToTrack(timeToTrackNS)  {}
-    TimeTracker(const TimeTracker& other) = default;
-
-    bool exceeded() { return elapsed() > timeToTrack; };
-
-    std::chrono::nanoseconds remaining()
-    {
-        TimePointT currentTime = now();
-        auto elapsedTime = currentTime - startTime;
-
-        if(elapsedTime > timeToTrack)
-            return std::chrono::nanoseconds::zero();
-
-        return timeToTrack - elapsedTime;
-    }
-
-    std::chrono::nanoseconds elapsed()
-    {
-        return now() - startTime;
-    }
-};
-
 //  Seastar likes to use char for their buffers. Let make conversion easy.
 template<typename T>
 std::enable_if_t<std::is_arithmetic<T>::value && sizeof(T) == 1, Binary&> toBinary(seastar::temporary_buffer<T>& buffer)
