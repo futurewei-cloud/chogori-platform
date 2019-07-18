@@ -80,6 +80,7 @@ private:
 
     // class defined
     bool _stopFlag = false;
+    const std::chrono::microseconds _minDelay;
     std::chrono::time_point<std::chrono::steady_clock> _runTaskTimepoint;
     metrics::metric_groups _metricGroups;
     k2::ExponentialHistogram _callbackTime;
@@ -95,7 +96,8 @@ public:
         Settings settings,
         ExecutorQueue& queue,
         RPCDispatcher::Dist_t& dispatcher)
-    : _settings(settings)
+    : _minDelay(std::chrono::microseconds(5))
+    , _settings(settings)
     , _queue(queue)
     , _dispatcher(dispatcher)
     {
@@ -106,29 +108,38 @@ public:
     {
         registerMetrics();
 
-        return seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
-            // invoke the client's loop only if initialized within the client's thread; give priority to existing tasks
-            if(_settings._userInitThread && hasTimerExpired() && _queue.empty()) {
-                const auto startTime = std::chrono::steady_clock::now();
-                // execute client loop
-                const uint64_t timeslice = _settings._clientLoopFn(_settings._rClient);
-                // set next interval
-                const auto now = std::chrono::steady_clock::now();
-                _runTaskTimepoint = now + std::chrono::microseconds(timeslice);
-                auto duration = now - startTime;
-                _clientLoopTime.add(std::move(duration));
-            }
+        std::vector<seastar::future<>> futures;
 
-            ExecutorTaskPtr pTask = _queue.pop();
-            if (pTask) {
+        if(_settings._userInitThread) {
+            auto future = seastar::do_until([&] { return _stopFlag; }, [&] {
+                // execute client loop
+                const long int timeslice = _settings._clientLoopFn(_settings._rClient);
+                const auto delay = (timeslice < _minDelay.count()) ? _minDelay : std::chrono::microseconds(timeslice);
+
+                return seastar::sleep(std::move(delay));
+            });
+
+            futures.push_back(std::move(future));
+        }
+
+        auto future = seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
+            return _queue.popWithFuture().then([&] (ExecutorTaskPtr pTask) {
+                if(!pTask || !pTask.get()) {
+
+                    K2ERROR("Something went wrong; got null task from queue")
+                    ASSERT(false);
+                }
+
                 pTask->_pPlatformData.reset(new ExecutorTask::PlatformData());
 
                 // execute the task and invoke the client's callback
                 return executeTask(pTask);
-            }
+            });
+        });
 
-            return seastar::make_ready_future<>();
-        })
+        futures.push_back(std::move(future));
+
+        return seastar::when_all_succeed(futures.begin(), futures.end())
         .handle_exception([] (std::exception_ptr eptr) {
             K2ERROR("Executor: exception: " << eptr);
 

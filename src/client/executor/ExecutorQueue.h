@@ -14,12 +14,11 @@ struct ExecutorQueue
     // TODO: this is arbitrary defined
     static constexpr int _MAX_QUEUE_SIZE = 10;
 
+    // queue of promises to be fullfilled
+    boost::lockfree::spsc_queue<seastar::lw_shared_ptr<seastar::promise<ExecutorTaskPtr>>> _promises{_MAX_QUEUE_SIZE};
     // shared members between the Client thread and the Seastar platform
     boost::lockfree::spsc_queue<ExecutorTaskPtr> _readyTasks{_MAX_QUEUE_SIZE}; // tasks that are ready to be executed
     boost::lockfree::spsc_queue<ExecutorTaskPtr> _completedTasks{_MAX_QUEUE_SIZE}; // tasks that have completed execution
-    // the mutex here is not used for synchronization, but to prevent the threads from spinning and wasting resources
-    std::mutex _mutex;
-    std::condition_variable _conditional;
     std::vector<std::unique_ptr<ExecutorTask::ClientData>> _clientData;
 
     ExecutorQueue()
@@ -43,9 +42,24 @@ struct ExecutorQueue
             return pTask;
         }
 
-        conditionallyWait();
-
         return nullptr;
+    }
+
+    //
+    // Returns a future which will be fullfilled once a task is available in the queue
+    //
+    seastar::future<ExecutorTaskPtr> popWithFuture()
+    {
+        ExecutorTaskPtr pTask = pop();
+        if(!pTask) {
+            auto pPromise = seastar::make_lw_shared<seastar::promise<ExecutorTaskPtr>>();
+            if(_promises.push(pPromise)) {
+
+                return pPromise->get_future();
+            }
+        }
+
+        return seastar::make_ready_future<ExecutorTaskPtr>(pTask);
     }
 
     //
@@ -56,9 +70,15 @@ struct ExecutorQueue
         bool ret = false;
         if(_completedTasks.pop(pTask)) {
             pTask->_pClientData = std::move(pClientData);
-            ret = _readyTasks.push(pTask);
-            ASSERT(ret);
-            notifyAll();
+
+            seastar::lw_shared_ptr<seastar::promise<ExecutorTaskPtr>> pPromise;
+            if(_promises.pop(pPromise)) { // we have a promise to fulfill
+                pPromise->set_value(pTask);
+            }
+            else {
+                ret = _readyTasks.push(pTask);
+                ASSERT(ret);
+            }
         }
 
         return ret;
@@ -73,18 +93,6 @@ struct ExecutorQueue
     bool empty()
     {
         return _readyTasks.empty();
-    }
-
-    void conditionallyWait()
-    {
-        std::unique_lock<std::mutex> lock(_mutex);
-        // TODO: 1 millisecond is arbitrarily chosen
-       _conditional.wait_for(lock, std::chrono::milliseconds(1));
-    }
-
-    void notifyAll()
-    {
-        _conditional.notify_all();
     }
 
     void collectClientData()

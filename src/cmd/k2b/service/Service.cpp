@@ -109,7 +109,7 @@ public:
                 response.set_uuid(sessionId);
                 response.set_status(k2bdto::Response_Status_OK);
 
-                K2INFO("Started session:" << pSession->getType() << " ,uuid:" << pSession->getSessionId() << " ,keyCount:" << pSession->getTargetCount())
+                K2INFO("Started session;" << pSession->getType() << " uuid:" << pSession->getSessionId() << ", keyCount:" << pSession->getTargetCount())
             }
         }
         else {
@@ -137,20 +137,25 @@ public:
     //
     // Return true if the session should be scheduled again, false otherwise.
     //
-    bool runSession(SessionPtr pSession)
+    int runSession(SessionPtr pSession)
     {
-        for(int i=0; i<2; i++) {
+        const int penalty = 5; // microseconds
+        const int pipeline = 9;
+
+        for(int i=0; i<pipeline; i++) {
             if(pSession->isDone()) {
 
-               return false; // we are done
+               return -1; // we are done
             }
+
+            const int delay = (pipeline-i) * penalty;
 
             const std::string key = std::move(pSession->next());
             try {
                 if(key.empty()) {
-                    K2INFO("Session iterator exhausted; failed:" << pSession->getFailedKeys().size());
+                    K2INFO("Session iterator exhausted; failedKeys:" << pSession->getFailedKeys().size());
 
-                    return true;
+                    return delay; // we do not have more keys to send out, but we need to wait for the ones in-flight to complete
                 }
 
                 _client.createPayload([this, pSession, key] (Payload&& payload) {
@@ -174,7 +179,8 @@ public:
                             }
                         });
                     }
-                    catch(std::exception& e) { // the client could be busy; retry
+                    catch(std::exception& e) {
+                         // the client could be busy; retry
                         pSession->retry(key);
                         K2WARN("Exception thrown during execution; exception:" << e.what());
                     }
@@ -182,13 +188,12 @@ public:
             }
             catch(std::exception& e) { // the client could be busy; retry
                 pSession->retry(key);
-                K2WARN("Exception thrown while creating payload; exception:" << e.what());
-
-                return true;
+                
+                return delay; // delay the next batch based on the pending requests
             }
         }
 
-        return true;
+        return 0; // all messages were send
     }
 
     uint64_t transportLoop(client::IClient& client)
@@ -203,7 +208,8 @@ public:
 
         if(!_runningSessions.empty()) {
             SessionPtr pSession = _runningSessions.begin()->second;
-            if(!runSession(pSession)) {
+            const int delay = runSession(pSession);
+            if(delay < 0) { // we are done
                 auto it = _runningSessions.find(pSession->getSessionId());
                 if(it!=_runningSessions.end()) {
                     _runningSessions.erase(it);
@@ -213,12 +219,12 @@ public:
             }
             else
             {
-                return 0; // we have a running session; schedule immediately
+                return delay; // schedule the next batch after the delay
             }
         }
 
         // we do not have any active session; take a break before scheduling again
-        return 10;
+        return 100;
     }
 
     void initK2Client()
@@ -340,9 +346,9 @@ public:
                << ", totalCount:" << pSession->getTargetCount()
                << ", failed:" << pSession->getFailedKeys().size()
                << ", retryCounter:" << pSession->getRetryCounter()
+               << ", durationSeconds:" << std::to_string(std::chrono::duration_cast<std::chrono::seconds>(pSession->getEndTime() - pSession->getStartTime()).count())
                << ", startTime:" << std::ctime(&startTime)
                << ", endTime:" << std::ctime(&endTime)
-               << ", durationSeconds:" << std::to_string(std::chrono::duration_cast<std::chrono::seconds>(pSession->getEndTime() - pSession->getStartTime()).count())
                << std::endl;
 
         return std::move(report.str());
@@ -364,7 +370,8 @@ public:
     void registerMetrics()
     {
         std::vector<metrics::label_instance> labels;
-        //labels.push_back(metrics::label_instance("session_id", _sessionId));
+        std::vector<metrics::label_instance> primeLabels(labels);
+        primeLabels.push_back(metrics::label_instance("operation", "prime"));
 
         _metricGroups.add_group("benchmarker", {
             metrics::make_counter("running_sessions", [this] { return _runningSessions.size();}, metrics::description("Count of running sessions"), labels),
@@ -378,8 +385,7 @@ public:
                 }
 
                 return count;
-            },
-            metrics::description("Count of keys for all prime sessions"), labels),
+            }, metrics::description("Count of keys for all prime sessions"), primeLabels),
             metrics::make_histogram("prime_sessions_success_latency", [this] {
                 auto sessions = filterSessions(_runningSessions, "PRIME");
                 if(sessions.size() > 0) {
@@ -387,7 +393,7 @@ public:
                 }
 
                 return seastar::metrics::histogram();
-            }, metrics::description("Latency of success publish keys"), labels),
+            }, metrics::description("Latency of success publish keys"), primeLabels),
         });
     }
 
