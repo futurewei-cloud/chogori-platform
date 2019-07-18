@@ -165,7 +165,7 @@ std::unique_ptr<Payload> Client::createPayload(const std::string& endpoint)
     return std::move(pPayload);
 }
 
-Client::std::vector<PartitionDescription> getPartitions(Range& range)
+std::vector<PartitionDescription> Client::getPartitions(Range& range)
 {
     std::vector<PartitionDescription> partitions;
     auto it = _partitionMap.find(range);
