@@ -21,6 +21,13 @@ class MockClient: public k2::client::IClient
         (void)onCompleted;
     }
 
+    virtual void execute(PartitionDescription& partition, std::function<void(Payload&)> onPayload, std::function<void(IClient&, OperationResult&&)> onCompleted)
+    {
+        (void)partition;
+        (void)onPayload;
+        (void)onCompleted;
+    }
+
     virtual void runInThreadPool(std::function<void(IClient&)> routine)
     {
         (void)routine;

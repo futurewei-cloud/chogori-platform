@@ -130,7 +130,9 @@ public:
                     ASSERT(false);
                 }
 
+                auto start = std::chrono::steady_clock::now();
                 pTask->_pPlatformData.reset(new ExecutorTask::PlatformData());
+                _clientLoopTime.add(std::chrono::steady_clock::now() - start);
 
                 // execute the task and invoke the client's callback
                 return executeTask(pTask);

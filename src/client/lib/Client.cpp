@@ -77,6 +77,25 @@ void Client::execute(Operation&& operation, std::function<void(IClient&, Operati
     sendPayload(firstPartition.nodeEndpoint, std::move(pSourcePayload), pCollector);
 }
 
+void Client::execute(PartitionDescription& partition, std::function<void(Payload&)> onPayload, std::function<void(IClient&, OperationResult&&)> onCompleted)
+{
+    _executor.execute(partition.nodeEndpoint, _defaultTimeout,
+        [this, partition, onPayload] (Payload& payload) mutable {
+            onPayload(payload);
+            writePartitionHeader(payload, partition);
+        },
+        [this, onCompleted] (std::unique_ptr<ResponseMessage> message) mutable {
+            OperationResult result;
+            OperationResponse response;
+            response.status = message->getStatus();
+            response.moduleCode = message->getModuleCode();
+            response.payload = std::move(message->payload);
+            result._responses.push_back(std::move(response));
+            // calback
+            onCompleted(*this, std::move(result));
+        });
+}
+
 void Client::runInThreadPool(std::function<void(IClient&)> routine)
 {
     // TODO: implement method
@@ -145,6 +164,19 @@ std::unique_ptr<Payload> Client::createPayload(const std::string& endpoint)
 
     return std::move(pPayload);
 }
+
+Client::std::vector<PartitionDescription> getPartitions(Range& range)
+{
+    std::vector<PartitionDescription> partitions;
+    auto it = _partitionMap.find(range);
+    while(it != _partitionMap.end()) {
+        partitions.push_back(*it);
+        ++it;
+    }
+
+    return std::move(partitions);
+}
+
 
 }; // mamespace client;
 

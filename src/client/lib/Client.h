@@ -61,7 +61,14 @@ public:
     virtual Payload createPayload();
     virtual void createPayload(std::function<void(Payload&&)> onCompleted);
     virtual void execute(Operation&& operation, std::function<void(IClient&, OperationResult&&)> onCompleted);
+    virtual void execute(PartitionDescription& partition, std::function<void(Payload&)> onPayload, std::function<void(IClient&, OperationResult&&)> onCompleted);
     virtual void runInThreadPool(std::function<void(IClient&)> routine);
+
+    //
+    // Return the partitions for the given range.
+    //
+    std::vector<PartitionDescription> getPartitions(Range& range);
+
 protected:
     void sendPayload(const std::string& endpoint, std::unique_ptr<Payload> pPayload, std::shared_ptr<ResultCollector> pCollector);
     std::unique_ptr<Payload> createPayload(const std::string& endpoint);

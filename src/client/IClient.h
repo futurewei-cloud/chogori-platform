@@ -146,6 +146,11 @@ public:
     virtual void execute(Operation&& settings, std::function<void(IClient&, OperationResult&&)> onCompleted) = 0;
 
     //
+    //  Execute user's operation for a singe partition.
+    //
+    virtual void execute(PartitionDescription& partition, std::function<void(Payload&)> onPayload, std::function<void(IClient&, OperationResult&&)> onCompleted) = 0;
+
+    //
     //  Execute task within the client network thread pool. This can make task execution more efficient.
     //
     virtual void runInThreadPool(std::function<void(IClient&)> routine) = 0;

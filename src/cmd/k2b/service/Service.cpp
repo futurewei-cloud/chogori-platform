@@ -149,8 +149,8 @@ public:
             }
 
             const int delay = (pipeline-i) * penalty;
-
             const std::string key = std::move(pSession->next());
+            
             try {
                 if(key.empty()) {
                     K2INFO("Session iterator exhausted; failedKeys:" << pSession->getFailedKeys().size());
@@ -158,37 +158,11 @@ public:
                     return delay; // we do not have more keys to send out, but we need to wait for the ones in-flight to complete
                 }
 
-                _client.createPayload([this, pSession, key] (Payload&& payload) {
-                    try {
-                        std::string value = key;
-                        // populate payload
-                        makeSetMessage(payload, key, value);
-                        // create operation
-                        client::Range range = client::Range::singleKey(key);
-                        client::Operation operation = std::move(createClientOperation(std::move(range), std::move(payload)));
-                        // execute operation
-                        _client.execute(std::move(operation), [pSession, key](client::IClient& client, client::OperationResult&& result) {
-                            // prevent compilation warnings
-                            (void)client;
-                            if(result._responses[0].status != Status::Ok) {
-                                K2INFO("client response: " << getStatusText(result._responses[0].status) << ", key:" << key);
-                                pSession->failed(key);
-                            }
-                            else {
-                                pSession->success(key);
-                            }
-                        });
-                    }
-                    catch(std::exception& e) {
-                         // the client could be busy; retry
-                        pSession->retry(key);
-                        K2WARN("Exception thrown during execution; exception:" << e.what());
-                    }
-                });
+                sendKeyOneShot(key, pSession);
             }
             catch(std::exception& e) { // the client could be busy; retry
                 pSession->retry(key);
-                
+
                 return delay; // delay the next batch based on the pending requests
             }
         }
@@ -394,6 +368,59 @@ public:
 
                 return seastar::metrics::histogram();
             }, metrics::description("Latency of success publish keys"), primeLabels),
+        });
+    }
+
+    void sendKeyOneShot(const std::string& key, SessionPtr pSession) {
+        client::Range range = client::Range::singleKey(key);
+        auto partitions = std::move(_client.getPartitions(range));
+
+        _client.execute(partitions[0],
+            [this, key] (Payload& payload) mutable {
+                // populate payload
+                makeSetMessage(payload, key, key);
+            }
+            ,
+            [pSession, key](client::IClient& client, client::OperationResult&& result) {
+                // prevent compilation warnings
+                (void)client;
+                if(result._responses[0].status != Status::Ok) {
+                    K2INFO("client response: " << getStatusText(result._responses[0].status) << ", key:" << key);
+                    pSession->failed(key);
+                }
+                else {
+                    pSession->success(key);
+                }
+        });
+    }
+
+    void sendKey(const std::string key, SessionPtr pSession)
+    {
+        _client.createPayload([this, pSession, key] (Payload&& payload) {
+            try {
+                // populate payload
+                makeSetMessage(payload, key, key);
+                // create operation
+                client::Range range = client::Range::singleKey(key);
+                client::Operation operation = std::move(createClientOperation(std::move(range), std::move(payload)));
+                // execute operation
+                _client.execute(std::move(operation), [pSession, key](client::IClient& client, client::OperationResult&& result) {
+                    // prevent compilation warnings
+                    (void)client;
+                    if(result._responses[0].status != Status::Ok) {
+                        K2INFO("client response: " << getStatusText(result._responses[0].status) << ", key:" << key);
+                        pSession->failed(key);
+                    }
+                    else {
+                        pSession->success(key);
+                    }
+                });
+            }
+            catch(std::exception& e) {
+                // the client could be busy; retry
+                pSession->retry(key);
+                K2WARN("Exception thrown during execution; exception:" << e.what());
+            }
         });
     }
 
