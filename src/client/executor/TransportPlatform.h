@@ -83,6 +83,8 @@ private:
     const std::chrono::microseconds _minDelay;
     std::chrono::time_point<std::chrono::steady_clock> _runTaskTimepoint;
     // metrics
+    std::chrono::time_point<std::chrono::steady_clock> _taskLoopScheduleTime;
+    std::chrono::time_point<std::chrono::steady_clock> _clientLoopScheduleTime;
     metrics::metric_groups _metricGroups;
     ExponentialHistogram _sendMessageLatency;
     ExponentialHistogram _taskTime;
@@ -91,6 +93,9 @@ private:
     ExponentialHistogram _createEndpointTime;
     ExponentialHistogram _clientLoopTime;
     ExponentialHistogram _payloadCallbackTime;
+    ExponentialHistogram _resultCallbackTime;
+    ExponentialHistogram _taskLoopIdleTime;
+    ExponentialHistogram _clientLoopIdleTime;
     // from arguments
     Settings _settings;
     ExecutorQueue& _queue;
@@ -106,7 +111,10 @@ public:
     , _queue(queue)
     , _dispatcher(dispatcher)
     {
-         _runTaskTimepoint = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        _runTaskTimepoint = now;
+        _taskLoopScheduleTime = now;
+        _clientLoopScheduleTime = now;
     }
 
     seastar::future<> start()
@@ -117,8 +125,10 @@ public:
 
         if(_settings._userInitThread) {
             auto future = seastar::do_until([&] { return _stopFlag; }, [&] {
+                auto timePoint = std::chrono::steady_clock::now();
+                _clientLoopIdleTime.add(timePoint - _clientLoopScheduleTime);
+                _clientLoopScheduleTime = timePoint;
                 // execute client loop
-                const auto timePoint = std::chrono::steady_clock::now();
                 const long int timeslice = _settings._clientLoopFn(_settings._rClient);
                 _clientLoopTime.add(std::chrono::steady_clock::now() - timePoint);
                 const auto delay = (timeslice < _minDelay.count()) ? _minDelay : std::chrono::microseconds(timeslice);
@@ -130,9 +140,12 @@ public:
         }
 
         auto future = seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
+            const auto now = std::chrono::steady_clock::now();
+            _taskLoopIdleTime.add(now - _taskLoopScheduleTime);
+            _taskLoopScheduleTime = now;
+
             return _queue.popWithFuture().then([&] (ExecutorTaskPtr pTask) {
                 if(!pTask || !pTask.get()) {
-
                     K2ERROR("Something went wrong; got null task from queue")
                     ASSERT(false);
                 }
@@ -295,8 +308,10 @@ private:
 
     void  invokeCallback(ExecutorTaskPtr pTask)
     {
-        _taskTime.add(std::chrono::steady_clock::now() - pTask->_pClientData->_startTime);
+        const auto timePoint = std::chrono::steady_clock::now();
         pTask->invokeResponseCallback();
+        _resultCallbackTime.add(std::chrono::steady_clock::now() - timePoint);
+        _taskTime.add(std::chrono::steady_clock::now() - pTask->_pClientData->_startTime);
         _queue.completeTask(pTask);
     }
 
@@ -329,9 +344,12 @@ private:
             metrics::make_histogram("task_dequeue_time", [this] { return _dequeueTime.getHistogram(); }, metrics::description("Time the task spend waiting in the queue until it is dequeued"), labels),
             metrics::make_histogram("send_message_latency", [this] { return _sendMessageLatency.getHistogram(); }, metrics::description("Latency to send a single message"), labels),
             metrics::make_histogram("client_loop_time", [this] { return _clientLoopTime.getHistogram(); }, metrics::description("Time spend executing client loop"), labels),
-            metrics::make_histogram("payload_callback_time", [this] { return _payloadCallbackTime.getHistogram(); }, metrics::description("Time spend executing client loop"), labels),
+            metrics::make_histogram("payload_callback_time", [this] { return _payloadCallbackTime.getHistogram(); }, metrics::description("Time spend executing the payload callback"), labels),
+            metrics::make_histogram("result_callback_time", [this] { return _resultCallbackTime.getHistogram(); }, metrics::description("Time spend executing result callback"), labels),
             metrics::make_histogram("create_payload_time", [this] { return _createPayloadTime.getHistogram(); }, metrics::description("Time spend in the payload callback"), labels),
             metrics::make_histogram("create_endpoint_time", [this] { return _createEndpointTime.getHistogram(); }, metrics::description("Time it takes to create and transport endpoint"), labels),
+            metrics::make_histogram("task_loop_idle_time", [this] { return _taskLoopIdleTime.getHistogram(); }, metrics::description("Time waiting until the next task loop invocation"), labels),
+            metrics::make_histogram("client_loop_idle_time_time", [this] { return _clientLoopIdleTime.getHistogram(); }, metrics::description("Time waiting until the next client loop invocation"), labels),
         });
     }
 
