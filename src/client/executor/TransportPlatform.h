@@ -82,10 +82,15 @@ private:
     bool _stopFlag = false;
     const std::chrono::microseconds _minDelay;
     std::chrono::time_point<std::chrono::steady_clock> _runTaskTimepoint;
+    // metrics
     metrics::metric_groups _metricGroups;
-    k2::ExponentialHistogram _callbackTime;
-    k2::ExponentialHistogram _sendMessageLatency;
-    k2::ExponentialHistogram _clientLoopTime;
+    ExponentialHistogram _sendMessageLatency;
+    ExponentialHistogram _taskTime;
+    ExponentialHistogram _dequeueTime;
+    ExponentialHistogram _createPayloadTime;
+    ExponentialHistogram _createEndpointTime;
+    ExponentialHistogram _clientLoopTime;
+    ExponentialHistogram _payloadCallbackTime;
     // from arguments
     Settings _settings;
     ExecutorQueue& _queue;
@@ -113,7 +118,9 @@ public:
         if(_settings._userInitThread) {
             auto future = seastar::do_until([&] { return _stopFlag; }, [&] {
                 // execute client loop
+                const auto timePoint = std::chrono::steady_clock::now();
                 const long int timeslice = _settings._clientLoopFn(_settings._rClient);
+                _clientLoopTime.add(std::chrono::steady_clock::now() - timePoint);
                 const auto delay = (timeslice < _minDelay.count()) ? _minDelay : std::chrono::microseconds(timeslice);
 
                 return seastar::sleep(std::move(delay));
@@ -130,9 +137,9 @@ public:
                     ASSERT(false);
                 }
 
-                auto start = std::chrono::steady_clock::now();
+                const auto timePoint = std::chrono::steady_clock::now();
+                _dequeueTime.add(timePoint - pTask->_pClientData->_startTime);
                 pTask->_pPlatformData.reset(new ExecutorTask::PlatformData());
-                _clientLoopTime.add(std::chrono::steady_clock::now() - start);
 
                 // execute the task and invoke the client's callback
                 return executeTask(pTask);
@@ -170,14 +177,22 @@ private:
         if(!pTask->hasEndpoint()) {
             createEndpoint(pTask);
         }
+        const auto startTime = std::chrono::steady_clock::now();
         pTask->_pPlatformData->_pPayload = pTask->_pPlatformData->_pEndpoint->newPayload();
+        const auto timePoint = std::chrono::steady_clock::now();
+        _createPayloadTime.add(timePoint - startTime);
+        // invoke payload callback
         pTask->invokePayloadCallback();
+        _payloadCallbackTime.add(std::chrono::steady_clock::now() - timePoint);
     }
 
     void createEndpoint(ExecutorTaskPtr pTask)
     {
+        const auto startTime = std::chrono::steady_clock::now();
         auto& disp = _dispatcher.local();
         pTask->_pPlatformData->_pEndpoint = disp.getTXEndpoint(pTask->getUrl());
+        _createEndpointTime.add(std::chrono::steady_clock::now() - startTime);
+
         if (!pTask->_pPlatformData->_pEndpoint) {
             throw std::runtime_error("unable to create endpoint for url");
         }
@@ -236,15 +251,14 @@ private:
 
     seastar::future<std::unique_ptr<ResponseMessage>> sendMessage(ExecutorTaskPtr pTask)
     {
-        const std::chrono::time_point<std::chrono::steady_clock> startTime = std::chrono::steady_clock::now();
+        const auto startTime = std::chrono::steady_clock::now();
 
         return _dispatcher.local().sendRequest(KnownVerbs::PartitionMessages,
             std::move(pTask->_pPlatformData->_pPayload),
             *pTask->_pPlatformData->_pEndpoint,
             pTask->getTimeout())
         .then([this, startTime = std::move(startTime)](std::unique_ptr<k2::Payload> payload) {
-            auto duration = std::chrono::steady_clock::now() - startTime;
-            _sendMessageLatency.add(std::move(duration));
+            _sendMessageLatency.add(std::chrono::steady_clock::now() - startTime);
             // parse a ResponseMessage from the received payload
             auto readBytes = payload->getSize();
             auto hdrSize = sizeof(ResponseMessage::Header);
@@ -281,8 +295,7 @@ private:
 
     void  invokeCallback(ExecutorTaskPtr pTask)
     {
-        auto duration = std::chrono::steady_clock::now() - pTask->_pClientData->_startTime;
-        _callbackTime.add(std::move(duration));
+        _taskTime.add(std::chrono::steady_clock::now() - pTask->_pClientData->_startTime);
         pTask->invokeResponseCallback();
         _queue.completeTask(pTask);
     }
@@ -312,9 +325,13 @@ private:
     {
         std::vector<metrics::label_instance> labels;
         _metricGroups.add_group("transport", {
-            metrics::make_histogram("callback_time", [this] { return _callbackTime.getHistogram(); }, metrics::description("Time of invoking client callback"), labels),
+            metrics::make_histogram("task_lifecycle_time", [this] { return _taskTime.getHistogram(); }, metrics::description("Lifecycle time of the task"), labels),
+            metrics::make_histogram("task_dequeue_time", [this] { return _dequeueTime.getHistogram(); }, metrics::description("Time the task spend waiting in the queue until it is dequeued"), labels),
             metrics::make_histogram("send_message_latency", [this] { return _sendMessageLatency.getHistogram(); }, metrics::description("Latency to send a single message"), labels),
             metrics::make_histogram("client_loop_time", [this] { return _clientLoopTime.getHistogram(); }, metrics::description("Time spend executing client loop"), labels),
+            metrics::make_histogram("payload_callback_time", [this] { return _payloadCallbackTime.getHistogram(); }, metrics::description("Time spend executing client loop"), labels),
+            metrics::make_histogram("create_payload_time", [this] { return _createPayloadTime.getHistogram(); }, metrics::description("Time spend in the payload callback"), labels),
+            metrics::make_histogram("create_endpoint_time", [this] { return _createEndpointTime.getHistogram(); }, metrics::description("Time it takes to create and transport endpoint"), labels),
         });
     }
 
