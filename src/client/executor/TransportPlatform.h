@@ -87,10 +87,10 @@ private:
     std::chrono::time_point<std::chrono::steady_clock> _clientLoopScheduleTime;
     metrics::metric_groups _metricGroups;
     ExponentialHistogram _sendMessageLatency;
+    ExponentialHistogram _createPayloadLatency;
+    ExponentialHistogram _createEndpointLatency;
     ExponentialHistogram _taskTime;
     ExponentialHistogram _dequeueTime;
-    ExponentialHistogram _createPayloadTime;
-    ExponentialHistogram _createEndpointTime;
     ExponentialHistogram _clientLoopTime;
     ExponentialHistogram _payloadCallbackTime;
     ExponentialHistogram _resultCallbackTime;
@@ -193,7 +193,7 @@ private:
         const auto startTime = std::chrono::steady_clock::now();
         pTask->_pPlatformData->_pPayload = pTask->_pPlatformData->_pEndpoint->newPayload();
         const auto timePoint = std::chrono::steady_clock::now();
-        _createPayloadTime.add(timePoint - startTime);
+        _createPayloadLatency.add(timePoint - startTime);
         // invoke payload callback
         pTask->invokePayloadCallback();
         _payloadCallbackTime.add(std::chrono::steady_clock::now() - timePoint);
@@ -204,7 +204,7 @@ private:
         const auto startTime = std::chrono::steady_clock::now();
         auto& disp = _dispatcher.local();
         pTask->_pPlatformData->_pEndpoint = disp.getTXEndpoint(pTask->getUrl());
-        _createEndpointTime.add(std::chrono::steady_clock::now() - startTime);
+        _createEndpointLatency.add(std::chrono::steady_clock::now() - startTime);
 
         if (!pTask->_pPlatformData->_pEndpoint) {
             throw std::runtime_error("unable to create endpoint for url");
@@ -343,13 +343,13 @@ private:
             metrics::make_histogram("task_lifecycle_time", [this] { return _taskTime.getHistogram(); }, metrics::description("Lifecycle time of the task"), labels),
             metrics::make_histogram("task_dequeue_time", [this] { return _dequeueTime.getHistogram(); }, metrics::description("Time the task spend waiting in the queue until it is dequeued"), labels),
             metrics::make_histogram("send_message_latency", [this] { return _sendMessageLatency.getHistogram(); }, metrics::description("Latency to send a single message"), labels),
+            metrics::make_histogram("create_payload_latency", [this] { return _createPayloadLatency.getHistogram(); }, metrics::description("Time spend in the payload callback"), labels),
+            metrics::make_histogram("create_endpoint_latency", [this] { return _createEndpointLatency.getHistogram(); }, metrics::description("Time it takes to create and transport endpoint"), labels),
             metrics::make_histogram("client_loop_time", [this] { return _clientLoopTime.getHistogram(); }, metrics::description("Time spend executing client loop"), labels),
             metrics::make_histogram("payload_callback_time", [this] { return _payloadCallbackTime.getHistogram(); }, metrics::description("Time spend executing the payload callback"), labels),
             metrics::make_histogram("result_callback_time", [this] { return _resultCallbackTime.getHistogram(); }, metrics::description("Time spend executing result callback"), labels),
-            metrics::make_histogram("create_payload_time", [this] { return _createPayloadTime.getHistogram(); }, metrics::description("Time spend in the payload callback"), labels),
-            metrics::make_histogram("create_endpoint_time", [this] { return _createEndpointTime.getHistogram(); }, metrics::description("Time it takes to create and transport endpoint"), labels),
             metrics::make_histogram("task_loop_idle_time", [this] { return _taskLoopIdleTime.getHistogram(); }, metrics::description("Time waiting until the next task loop invocation"), labels),
-            metrics::make_histogram("client_loop_idle_time_time", [this] { return _clientLoopIdleTime.getHistogram(); }, metrics::description("Time waiting until the next client loop invocation"), labels),
+            metrics::make_histogram("client_loop_idle_time", [this] { return _clientLoopIdleTime.getHistogram(); }, metrics::description("Time waiting until the next client loop invocation"), labels),
         });
     }
 

@@ -48,7 +48,7 @@ public:
         PartitionDescription desc;
         PartitionAssignmentId id;
         id.parse("1.1.1");
-        desc.nodeEndpoint = "tcp+k2rpc://127.0.0.1:11311";
+        desc.nodeEndpoint = "rrdma+k2rpc://[fe80::9a03:9bff:fe89:13ba]:285";
         desc.id = id;
         PartitionRange partitionRange;
         partitionRange.lowKey = "";

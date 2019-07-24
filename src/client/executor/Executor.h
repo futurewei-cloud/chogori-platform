@@ -19,6 +19,7 @@
 // k2:transport
 #include "transport/RPCDispatcher.h"
 #include "transport/TCPRPCProtocol.h"
+#include "transport/RRDMARPCProtocol.h"
 #include "transport/BaseTypes.h"
 #include "transport/RPCProtocolFactory.h"
 #include "transport/VirtualNetworkStack.h"
@@ -61,9 +62,10 @@ private:
     std::atomic<bool> _userInitThread = false;
     ExecutorQueue _queue;
     // this class
+    const uint16_t prometheusTcpPort = 8089;
     std::thread _transportThread;
     TransportPlatform::Dist_t _transport;
-    const uint16_t prometheusTcpPort = 8089;
+    std::vector<const char *> _argv;
     // the mutex is used to wait until the transport platform is started
     std::mutex _mutex;
     std::condition_variable _conditional;
@@ -76,7 +78,8 @@ public:
     Executor(client::IClient& rClient)
     : _rClient(rClient)
     {
-        // empty
+        _argv.push_back("k2-client-executor");
+        _argv.push_back("--poll-mode");
     }
 
     ~Executor()
@@ -95,6 +98,9 @@ public:
         _userInitThread = _settings.userInitThread;
         _stopFlag = false;
         _initFlag = true;
+
+        _argv.push_back("-c");
+	    _argv.push_back(std::to_string(_settings.networkThreadCount).c_str());
     }
 
     //
@@ -193,16 +199,34 @@ private:
         namespace bpo = boost::program_options;
 
         k2::VirtualNetworkStack::Dist_t virtualNetwork;
-        k2::RPCProtocolFactory::Dist_t protocolFactory;
+        k2::RPCProtocolFactory::Dist_t tcpproto;
+	    k2::RPCProtocolFactory::Dist_t rdmaproto;
         k2::RPCDispatcher::Dist_t dispatcher;
-
-        seastar::app_template app;
+	    bool startRdmaFlag = false;
 
         // TODO: update to use n cores
-        const char* argv[] = { "k2-client-executor", "-c", "1", nullptr };
-        int argc = sizeof(argv) / sizeof(*argv) - 1;
+	    //_argv.push_back("--cpuset");
+	    //_argv.push_back("30");
+	    //_argv.push_back("--rdma");
+	    //_argv.push_back("mlx5_0");
+	    //_argv.push_back("-m");
+	    //_argv.push_back("10G");
+	    //_argv.push_back("--hugepages");
 
-        int result = app.run_deprecated(argc, (char**)argv, [&] {
+        std::string argString;
+        for(const char* pArg : _argv) {
+            argString += pArg;
+            argString += " ";
+            if(std::string(pArg).find("rdma")!=std::string::npos) {
+                startRdmaFlag = true;
+            }
+        }
+        _argv.push_back(nullptr);
+
+        K2INFO("Command arguments: " << argString);
+
+        seastar::app_template app;
+        int result = app.run_deprecated(_argv.size()-1, (char**)_argv.data(), [&] {
             seastar::engine().at_exit([&] {
                 K2INFO("Stopping transport platform...");
 
@@ -213,9 +237,14 @@ private:
                         return dispatcher.stop();
                     })
                     .then([&] {
+                        K2INFO("Stopping rdma...");
+
+                        return (startRdmaFlag) ? rdmaproto.stop() : seastar::make_ready_future<>();
+                    })
+                    .then([&] {
                         K2INFO("Stopping tcp...");
 
-                        return protocolFactory.stop();
+                        return tcpproto.stop();
                     })
                     .then([&] {
                         K2INFO("Stopping vnet...");
@@ -244,8 +273,11 @@ private:
                     return virtualNetwork.start();
                 })
                 .then([&] {
-                    return protocolFactory.start(k2::TCPRPCProtocol::builder(std::ref(virtualNetwork), 0));
+                    return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(virtualNetwork)));
                 })
+		        .then([&]() {
+		            return (startRdmaFlag) ? rdmaproto.start(k2::RRDMARPCProtocol::builder(std::ref(virtualNetwork))) : seastar::make_ready_future<>();
+		        })
                 .then([&] {
 
                     return dispatcher.start();
@@ -264,11 +296,21 @@ private:
                 .then([&] {
                     K2INFO("Starting tcp...");
 
-                    return protocolFactory.invoke_on_all(&k2::RPCProtocolFactory::start);
+                    return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::start);
                 })
                 .then([&] {
-                    return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(protocolFactory));
+                    return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
                 })
+		        .then([&] {
+		            K2INFO("Starting rdma...");
+
+		            return (startRdmaFlag) ? rdmaproto.invoke_on_all(&k2::RPCProtocolFactory::start) : seastar::make_ready_future<>();
+		        })
+		        .then([&] {
+		            K2INFO("Registering rdma protocol...");
+
+		            return (startRdmaFlag) ? dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(rdmaproto)) : seastar::make_ready_future<>();
+		        })
                 .then([&] {
                     K2INFO("Starting dispatcher...");
 
