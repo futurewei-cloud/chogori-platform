@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Tasks.h"
-#include "NodeConfig.h"
+#include <config/NodePoolConfig.h>
 #include "common/Status.h"
 #include "NodePool.h"
 #include "PoolMonitor.h"

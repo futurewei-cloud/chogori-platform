@@ -8,6 +8,7 @@
 #include <iomanip>
 
 #include <seastar/core/temporary_buffer.hh>
+#include <seastar/core/shared_ptr.hh>
 
 // We use OBS index layer as the partition management, and it is currently being built by gcc 5.3.0.
 // gcc 5.3.0 can only support c++11/14. So we temporarily disable the c++17 features by using the below marco PARTITION_MANAGER_USE_OBS_INDEX
@@ -87,6 +88,30 @@ typedef String Endpoint;
 typedef std::chrono::steady_clock Clock;
 typedef Clock::duration Duration;
 typedef std::chrono::time_point<Clock> TimePoint;
+
+//
+// Overloading the shared_ptr in order to make it easy to switch from seastar to std
+//
+template<typename T>
+using k2_shared_ptr = seastar::lw_shared_ptr<T>;
+
+template <typename T, typename... A>
+inline
+k2_shared_ptr<T> k2_make_shared(A&&... a) {
+    return  seastar::make_lw_shared<T>(std::forward<A>(a)...);
+}
+
+template <typename T>
+inline
+k2_shared_ptr<T> k2_make_shared(T&& a) {
+    return seastar::make_lw_shared<T>(std::move(a));
+}
+
+template <typename T>
+inline
+k2_shared_ptr<T> k2_make_shared(T& a) {
+    return seastar::make_lw_shared<T>(a);
+}
 
 //
 //  Hold the reference to buffer containing class

@@ -3,43 +3,9 @@
 #include "node/Node.h"
 #include "K2TXPlatform.h"
 #include <yaml-cpp/yaml.h>
+#include <config/ConfigLoader.h>
 
 using namespace k2;
-
-// TODO: Move the configuration logic into a separate file.
-void loadConfig(NodePoolImpl& pool, const std::string& configFile)
-{
-    YAML::Node config = YAML::LoadFile(configFile);
-
-    for(uint16_t count=0; count<config["nodes_count"].as<uint16_t>(0); ++count)
-    {
-        NodeEndpointConfig nodeConfig;
-        // TODO: map the endpoint type; fixing it to IPv4 for the moment
-        nodeConfig.type = NodeEndpointConfig::IPv4;
-        nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(config["address"].as<std::string>().c_str()));
-        nodeConfig.ipv4.port = config["nodes_minimum_port"].as<uint16_t>(0) + count;
-
-        TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
-    }
-
-    for(YAML::Node node : config["partitionManagerSet"])
-    {
-        // address field is of form "<ipv4>:<port>":
-        std::string partitionManager = node["address"].as<std::string>();
-        pool.getConfig().partitionManagerSet.push_back(partitionManager);
-    }
-
-    pool.getConfig().monitorEnabled = config["monitorEnabled"].as<bool>(pool.getConfig().monitorEnabled);
-    pool.getConfig().rdmaEnabled = config["rdmaEnabled"].as<bool>(pool.getConfig().rdmaEnabled);
-    if (config["nodes_cpu_set"])
-    {
-        pool.getConfig().cpuSetStr = config["nodes_cpu_set"].as<std::string>();
-    }
-    pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
-    pool.getConfig().rdmaNicId = config["nic_id"].as<std::string>();
-    pool.getConfig().memorySizeStr = config["memory"].as<std::string>();
-    pool.getConfig().hugePagesEnabled = config["hugepages"].as<bool>(pool.getConfig().hugePagesEnabled);
-}
 
 int main(int argc, char** argv)
 {
@@ -57,25 +23,47 @@ int main(int argc, char** argv)
         bpo::variables_map variablesMap;
         bpo::store(bpo::parse_command_line(argc, argv, k2Options), variablesMap);
 
-        k2::NodePoolImpl pool;
-        TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
+        k2_shared_ptr<Config> pConfig = k2_make_shared<Config>();
         if(variablesMap.count("k2config"))
         {
-            // Configure pool based on the configuration file
-            loadConfig(pool, variablesMap["k2config"].as<std::string>());
+            // load the configuration
+            pConfig = ConfigLoader::loadConfig(variablesMap["k2config"].as<std::string>());
         }
         else
         {
             // create default configuration
-            NodeEndpointConfig nodeConfig;
-            nodeConfig.type = NodeEndpointConfig::IPv4;
-            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("0.0.0.0"));
-            nodeConfig.ipv4.port = 11311;
-            TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
+            K2INFO("Using default configuration");
+            auto pPoolConfig = k2_make_shared<NodePoolConfig>();
+            pConfig->addNodePool(pPoolConfig);
+            auto pNodeConfig = k2_make_shared<NodeEndpointConfig>();
+            pPoolConfig->addNode(pNodeConfig);
+            pNodeConfig->type = NodeEndpointConfig::IPv4;
+            (pNodeConfig->ipv4).address = ntohl((uint32_t)inet_addr("0.0.0.0"));
+            (pNodeConfig->ipv4).port = 11311;
         }
 
+        auto nodePoolConfigs = std::move(pConfig->getNodePools());
+        ASSERT(nodePoolConfigs.size() == 1); // currently we are only supporting one node pool
+        auto pNodePoolConfig = nodePoolConfigs[0];
+        auto nodeConfigs = std::move(pNodePoolConfig->getNodes());
+        ASSERT(nodeConfigs.size() > 0); // we expect at least one endpoint
+
+        std::vector<std::unique_ptr<k2::NodePoolImpl>> pools;
+        for(auto pPoolConfig : nodePoolConfigs) {
+            auto pPool = std::make_unique<k2::NodePoolImpl>(pPoolConfig);
+            // this is KV module pool
+            TIF(pPool->registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
+            for(auto pNodeConfig : nodeConfigs) {
+                auto pNode = std::make_unique<Node>(*pPool, pNodeConfig);
+                TIF(pPool->registerNode(std::move(pNode)));
+            }
+            pools.push_back(std::move(pPool));
+        }
+
+        k2::NodePoolImpl& pool = *(pools[0]);
         K2TXPlatform platform;
         pool.setScheduingPlatform(&platform);
+        // blocking call
         TIF(platform.run(pool));
     }
     catch(const Status& status)

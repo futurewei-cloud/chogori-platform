@@ -6,7 +6,8 @@ nodes_count: 1
 address: "0.0.0.0"
 nodes_minimum_port: 11311
 monitorEnabled: false
-rdmaEnabled: false
-#hugepages: true
-#memory: "10G"
-#nic_id: "mlx5_0"
+# rdma
+rdmaEnabled: true
+hugepages: true
+memory: "10G"
+nic_id: "mlx5_0"
