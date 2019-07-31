@@ -132,7 +132,7 @@ bool AssignmentManager::processTasks()
 
     std::chrono::nanoseconds remainingTime;
     bool workDone = false;
-    while((remainingTime = iterationTracker.remaining()) > std::chrono::nanoseconds::zero())
+    while(partitionCount && (remainingTime = iterationTracker.remaining()) > std::chrono::nanoseconds::zero())
     {
         bool hadActiveTasks = false;
 
