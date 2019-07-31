@@ -16,7 +16,6 @@
 // k2
 #include <common/Payload.h>
 #include <node/NodePool.h>
-#include <config/Config.h>
 // k2:transport
 #include "transport/RPCDispatcher.h"
 #include "transport/TCPRPCProtocol.h"
@@ -62,7 +61,6 @@ private:
     std::atomic<bool> _stopFlag = false;
     std::atomic<bool> _userInitThread = false;
     ExecutorQueue _queue;
-    k2_shared_ptr<Config> _pConfig;
     // this class
     const uint16_t prometheusTcpPort = 8089;
     std::thread _transportThread;
@@ -101,18 +99,8 @@ public:
         _stopFlag = false;
         _initFlag = true;
 
-        uint64_t nodeCount = _settings.networkThreadCount;
-        
-        auto nodePools = _pConfig->getNodePools();
-        if(!nodePools.empty()) {
-            nodeCount = std::min(nodeCount, nodePools.size());
-            auto pNodePoolConfig = nodePools[0];
-            auto nodeArgv = pNodePoolConfig->toArgv();
-            _argv.insert(_argv.end(), nodeArgv.begin(), nodeArgv.end());
-        }
-
         _argv.push_back("-c");
-	    _argv.push_back(std::to_string(nodeCount).c_str());
+	    _argv.push_back(std::to_string(_settings.networkThreadCount).c_str());
     }
 
     //
@@ -215,6 +203,15 @@ private:
 	    k2::RPCProtocolFactory::Dist_t rdmaproto;
         k2::RPCDispatcher::Dist_t dispatcher;
 	    bool startRdmaFlag = false;
+
+        // TODO: update to use n cores
+	    //_argv.push_back("--cpuset");
+	    //_argv.push_back("30");
+	    //_argv.push_back("--rdma");
+	    //_argv.push_back("mlx5_0");
+	    //_argv.push_back("-m");
+	    //_argv.push_back("10G");
+	    //_argv.push_back("--hugepages");
 
         std::string argString;
         for(const char* pArg : _argv) {

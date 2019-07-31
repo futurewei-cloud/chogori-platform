@@ -1,12 +1,12 @@
 ---
-id: "1234567890"
+name: "np1"
 nodes_count: 1
 #nodes_cpu_set: "30"
 #pool_cpu_set: "18,19"
-address: "0.0.0.0"
+#address: "10.218.233.149"
 nodes_minimum_port: 11311
 monitorEnabled: false
-rdmaEnabled: false
+#rdmaEnabled: true
 #hugepages: true
 #memory: "10G"
 #nic_id: "mlx5_0"

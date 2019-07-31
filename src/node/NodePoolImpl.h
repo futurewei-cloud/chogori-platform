@@ -16,15 +16,10 @@ class NodePoolImpl : public INodePool
     PoolMonitor monitor;
 
 public:
-    NodePoolImpl(k2_shared_ptr<NodePoolConfig> config) : INodePool(config), monitor(*this)
+    NodePoolImpl() : monitor(*this)
     {
         monitorPtr = &monitor;
         name = "K2Pool_" + std::to_string(getpid()); //  TODO: add ip and some randomization
-    }
-
-    NodePoolImpl() : NodePoolImpl(k2_make_shared<NodePoolConfig>())
-    {
-        // empty
     }
 
     Status registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module)
@@ -51,6 +46,8 @@ public:
         ASSERT(platform);
         schedulingPlatform = platform;
     }
+
+    NodePoolConfig& getConfig() { return config; }
 
     PoolMonitor& getMonitor() { return monitor; }
 

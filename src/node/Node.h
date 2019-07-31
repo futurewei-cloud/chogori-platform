@@ -18,7 +18,7 @@ class Node
 public:
     AssignmentManager assignmentManager;
 protected:
-    k2_shared_ptr<NodeEndpointConfig> pNodeConfig;
+    NodeEndpointConfig nodeConfig;
     uint32_t processedRounds = 0;
 
     std::vector<String> endPoints;
@@ -35,10 +35,10 @@ protected:
     }
 
 public:
-    Node(INodePool& pool, k2_shared_ptr<NodeEndpointConfig> nodeConfig) :
-        assignmentManager(pool), pNodeConfig(nodeConfig) { /* empty */ }
+    Node(INodePool& pool, NodeEndpointConfig nodeConfig) :
+        assignmentManager(pool), nodeConfig(std::move(nodeConfig)) { }
 
-    const NodeEndpointConfig& getEndpoint() const { return *pNodeConfig; }
+    const NodeEndpointConfig& getEndpoint() const { return nodeConfig; }
 
     const std::vector<String>& getEndpoints() const { return endPoints; }
 

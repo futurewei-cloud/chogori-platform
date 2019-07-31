@@ -191,23 +191,37 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     // Will do more research later and fix it. Now just configure through argument
     std::string nodesCountArg = std::to_string(pool.getNodesCount());
     std::string cpuSetArg = pool.getConfig().getCpuSetString();
+    bool isRDMAEnabled = pool.getConfig().isRDMAEnabled();
+    bool isHugePagesEnabled = pool.getConfig().isHugePagesEnabled();
     std::string nicId = pool.getConfig().getRdmaNicId();
 
     std::vector<const char *> argv;
     argv.push_back("NodePool");
     argv.push_back("--poll-mode");
-    argv.push_back( "-c" );
-    argv.push_back( nodesCountArg.c_str() );
-    auto nodeArgv = std::move(pool.getConfig().toArgv());
-    argv.insert(argv.end(), nodeArgv.begin(), nodeArgv.end());
-
-    std::string argString;
-    for(const char* pArg : argv) {
-       argString += pArg;
-       argString += " ";
+    if ( cpuSetArg.empty() )
+    {
+        argv.push_back( "-c" );
+        argv.push_back( nodesCountArg.c_str() );
     }
-    K2INFO("Command line arguments: " << argString);
-
+    else
+    {
+        argv.push_back( "--cpuset" );
+        argv.push_back( cpuSetArg.c_str() );
+    }
+    if ( !pool.getConfig().getMemorySizeString().empty() )
+    {
+        argv.push_back( "-m" );
+        argv.push_back( pool.getConfig().getMemorySizeString().c_str() );
+    }
+    if ( isHugePagesEnabled )
+    {
+        argv.push_back( "--hugepages" );
+    }
+    if ( isRDMAEnabled )
+    {
+        argv.push_back( "--rdma" );
+        argv.push_back( nicId.c_str() );
+    }
     argv.push_back( nullptr );
 
     //
