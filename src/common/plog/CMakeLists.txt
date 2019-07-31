@@ -1,6 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(plog STATIC ${HEADERS} ${SOURCES})
+add_library(k2plog STATIC ${HEADERS} ${SOURCES})
 
-install(FILES ${HEADERS} DESTINATION include/plog)
+install(TARGETS k2plog DESTINATION lib)
+install(FILES ${HEADERS} DESTINATION include/common/plog)

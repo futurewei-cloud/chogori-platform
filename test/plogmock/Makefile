@@ -1,7 +1,7 @@
 RM = rm -f
 CC = g++
 CFLAGS = $(shell pkg-config --cflags seastar) -g
-CXXFLAG = $(CFLAGS) -std=c++17 
+CXXFLAG = $(CFLAGS) -std=c++17 -fpermissive
 LDFLAGS0 = $(shell pkg-config --libs --static seastar) 
 LDFLAGS = -lseastar_testing -lboost_unit_test_framework -lstdc++fs $(LDFLAGS0) 
 
