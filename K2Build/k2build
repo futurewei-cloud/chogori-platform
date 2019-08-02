@@ -14,19 +14,3 @@ echo ">>> Pulling latest builder image: ${FULL_IMG_NAME}"
 docker pull ${FULL_IMG_NAME}
 echo ">>> Executing command \"$*\" in the build container"
 docker run --init --rm ${IT} -v "${PWD}:/build" --cap-add=SYS_PTRACE --security-opt seccomp=unconfined ${FULL_IMG_NAME} $*;
-
-#!/bin/bash
-
-hugeadm --pool-pages-min 2MB:14000
-ip link set ens7f0 mtu 9042
-ip link set ens7f1 mtu 9042
-echo never > /sys/kernel/mm/transparent_hugepage/enabled
-echo 0 > /proc/sys/kernel/numa_balancing
-echo 0 > /proc/sys/kernel/watchdog
-echo 0 > /proc/sys/kernel/nmi_watchdog
-for i in {30..39}
-do
-    echo 0 > /sys/devices/system/machinecheck/machinecheck${i}/check_interval
-done
-echo 5 > /proc/sys/vm/stat_interval
-swapoff -a
