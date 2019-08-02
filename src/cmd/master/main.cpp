@@ -38,8 +38,8 @@ int main(int argc, char** argv) {
             seastar::sleep(std::chrono::seconds(10)).then([] {
                 rootScheduler->stop();
 
-                return seastar::make_ready_future<>(); 
-            });
+                return seastar::make_ready_future<>();
+            }).ignore_ready_future();
 
             return seastar::async([] {
                 // create schedulers

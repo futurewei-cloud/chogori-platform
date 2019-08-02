@@ -124,7 +124,7 @@ public:
         auto started = myRDTSC();
         return conn->ping(_pings_per_connection).then([started] {
             auto finished = myRDTSC();
-            clients.invoke_on(0, &client::ping_report, started, finished);
+            return clients.invoke_on(0, &client::ping_report, started, finished);
         });
     }
 
@@ -132,7 +132,7 @@ public:
         auto started = myRDTSC();
         return conn->rxrx().then([started] (size_t bytes) {
             auto finished = myRDTSC();
-            clients.invoke_on(0, &client::rxtx_report, started, finished, bytes);
+            return clients.invoke_on(0, &client::rxtx_report, started, finished, bytes);
         });
     }
 
@@ -155,7 +155,7 @@ public:
                 static_cast<double>(_total_pings) / secs);
             clients.stop().then([] {
                 engine().exit(0);
-            });
+            }).ignore_ready_future();
         }
     }
 
@@ -179,7 +179,7 @@ public:
                 static_cast<double>((_processed_bytes * 8)) / (1000 * 1000 * 1000) / secs);
             clients.stop().then([] {
                 engine().exit(0);
-            });
+            }).ignore_ready_future();
         }
     }
 
@@ -193,7 +193,7 @@ public:
             socket_address local = socket_address(::sockaddr_in{AF_INET, INADDR_ANY, {0}, 0});
             engine().net().connect(make_ipv4_address(server_addr), local, protocol).then([this, test] (connected_socket fd) {
                 auto conn = new connection(std::move(fd));
-                (this->*tests.at(test))(conn).then_wrapped([conn] (auto&& f) {
+                return (this->*tests.at(test))(conn).then_wrapped([conn] (auto&& f) {
                     delete conn;
                     try {
                         f.get();
@@ -201,7 +201,7 @@ public:
                         fprint(std::cerr, "request error: %s\n", ex.what());
                     }
                 });
-            });
+            }).or_terminate().ignore_ready_future();
         }
         return make_ready_future();
     }
@@ -252,8 +252,8 @@ int main(int ac, char ** av) {
         }
 
         clients.start().then([server, test, ncon] () {
-            clients.invoke_on_all(&client::start, ipv4_addr{server}, test, ncon);
-        });
+            return clients.invoke_on_all(&client::start, ipv4_addr{server}, test, ncon);
+        }).ignore_ready_future();
     });
 }
 

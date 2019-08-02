@@ -110,7 +110,7 @@ void RRDMARPCChannel::run() {
             chan->_closerFuture = chan->gracefulClose();
         }
         return seastar::make_ready_future<>();
-    }); // finally
+    }).ignore_ready_future(); // finally
 }
 
 void RRDMARPCChannel::registerMessageObserver(RequestObserver_t observer) {

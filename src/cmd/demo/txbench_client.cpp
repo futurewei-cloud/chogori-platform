@@ -184,6 +184,9 @@ private:
                 }
                 return std::move(fut);
             });
+        })
+        .finally([retryStrategy](){
+            K2INFO("Finished getting remote data endpoint");
         });
     }
 

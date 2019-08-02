@@ -184,7 +184,7 @@ public: // Work generators
                     // reschedule again since we're still alive
                     self->_updateTimer.arm(_updateTimerInterval);
                 }
-            });
+            }).ignore_ready_future();
         }
     }
 

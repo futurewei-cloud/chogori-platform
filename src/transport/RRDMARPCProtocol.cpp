@@ -56,7 +56,7 @@ void RRDMARPCProtocol::start() {
                 }
                 return seastar::make_ready_future();
             });
-        }).or_terminate();
+        }).or_terminate().ignore_ready_future();
     }
 }
 
@@ -98,7 +98,7 @@ seastar::future<> RRDMARPCProtocol::stop() {
     // here we return a future which completes once all GracefulClose futures complete.
     return seastar::when_all(futs.begin(), futs.end()).
         then([] (std::vector<seastar::future<>>) {
-            return seastar::make_ready_future<>();
+            return seastar::make_ready_future();
         });
 }
 
@@ -175,9 +175,10 @@ RRDMARPCProtocol::_handleNewChannel(std::unique_ptr<seastar::rdma::RDMAConnectio
                 if (chanIter != weakP->_channels.end()) {
                     auto chan = chanIter->second;
                     weakP->_channels.erase(chanIter);
-                    chan->gracefulClose().then([chan] {});
+                    return chan->gracefulClose().then([chan] {});
                 }
             }
+            return seastar::make_ready_future();
         });
     assert(chan->getTXEndpoint().canAllocate());
     _channels.emplace(chan->getTXEndpoint(), chan);

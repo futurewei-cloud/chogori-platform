@@ -18,8 +18,9 @@ Prometheus::start(uint16_t port, const char* helpMessage, const char* prefix) {
     pctx.prefix=prefix;
 
     return _prometheusServer.start("prometheus").then([this, pctx, port]() {
-        seastar::prometheus::start(_prometheusServer, pctx);
-        return _prometheusServer.listen(seastar::ipv4_addr{port});
+        return seastar::prometheus::start(_prometheusServer, pctx).then([this, port]{
+            return _prometheusServer.listen(seastar::ipv4_addr{port});
+        });
     });
 }
 

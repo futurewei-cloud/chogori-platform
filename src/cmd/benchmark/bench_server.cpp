@@ -74,7 +74,7 @@ public:
                 } catch (std::exception& ex) {
                     std::cout << "request error " << ex.what() << "\n";
                 }
-            });
+            }).ignore_ready_future();
             do_accepts(listeners);
         }).then_wrapped([] (auto&& f) {
             try {
@@ -82,7 +82,7 @@ public:
             } catch (std::exception& ex) {
                 std::cout << "accept failed: " << ex.what() << "\n";
             }
-        });
+        }).ignore_ready_future();
     }
     class connection {
         connected_socket _fd;
@@ -183,9 +183,9 @@ int main(int ac, char** av) {
             engine().at_exit([server] {
                 return server->stop();
             });
-            server->invoke_on_all(&tcp_server::listen, ipv4_addr{port});
+            return server->invoke_on_all(&tcp_server::listen, ipv4_addr{port});
         }).then([port] {
             std::cout << "Seastar TCP server listening on port " << port << " ...\n";
-        });
+        }).ignore_ready_future();
     });
 }

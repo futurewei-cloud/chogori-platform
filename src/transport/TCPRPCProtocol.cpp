@@ -69,7 +69,7 @@ void TCPRPCProtocol::start() {
                 }
                 return seastar::make_ready_future();
             });
-        }).or_terminate();
+        }).or_terminate().ignore_ready_future();
     }
     else {
         K2INFO("Starting non-listening TCP Proto...");
@@ -135,7 +135,7 @@ seastar::future<> TCPRPCProtocol::stop() {
     // here we return a future which completes once all GracefulClose futures complete.
     return seastar::when_all(futs.begin(), futs.end()).
         then([] (std::vector<seastar::future<>>) {
-            return seastar::make_ready_future<>();
+            return seastar::make_ready_future();
         });
 }
 
@@ -216,9 +216,10 @@ TCPRPCProtocol::_handleNewChannel(seastar::future<seastar::connected_socket> fut
                 if (chanIter != weakP->_channels.end()) {
                     auto chan = chanIter->second;
                     weakP->_channels.erase(chanIter);
-                    chan->gracefulClose().then([chan] {});
+                    return chan->gracefulClose().then([chan] {});
                 }
             }
+            return seastar::make_ready_future();
         });
     assert(chan->getTXEndpoint().canAllocate());
     _channels.emplace(chan->getTXEndpoint(), chan);

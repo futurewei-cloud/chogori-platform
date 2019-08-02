@@ -263,7 +263,7 @@ private:
             })
             .then([&] {
                 return _transport.stop();
-            });
+            }).ignore_ready_future();
 
             K2INFO("Starting transport platform...");
 

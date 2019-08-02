@@ -40,10 +40,10 @@ public:
                         if (packet.empty()) {
                             K2INFO("remote end closed connection");
                             assert(this->_in.eof()); // at this point _in.eof() should be true
-                            return; // just say we're done so the loop can evaluate the end condition
+                            return seastar::make_ready_future(); // just say we're done so the loop can evaluate the end condition
                         }
                         K2INFO("Read "<< packet.size() << " bytes: " << k2::String(packet.get(), packet.size()));
-                        this->send(std::move(packet));
+                        return this->send(std::move(packet));
                     });
             }
         )
@@ -56,7 +56,7 @@ public:
                     CLOG("closed output")
                     delete this;
                 });
-        });
+        }).ignore_ready_future();
     }
 }; // class connection
 
@@ -91,7 +91,7 @@ public:
                 }
                 return seastar::make_ready_future();
             });
-        }).or_terminate();
+        }).or_terminate().ignore_ready_future();
     }
 
     seastar::future<> stop() {
@@ -110,9 +110,9 @@ int main(int argc, char** argv) {
             K2INFO("Engine exit");
             return server.stop();
         });
-        server.start().then([&]() {
+        return server.start().then([&]() {
             K2INFO("Service started...");
-            server.invoke_on_all(&Server::run);
+            return server.invoke_on_all(&Server::run);
         });
     });
     K2INFO("main exit");

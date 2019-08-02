@@ -46,7 +46,7 @@ void TCPRPCChannel::run() {
             K2WARN("future channel failed connecting");
             chan->_failureObserver(chan->_endpoint, exc);
         }
-    });
+    }).ignore_ready_future();
 }
 
 void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata) {
@@ -154,7 +154,7 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
             chan->_closerFuture = chan->gracefulClose();
         }
         return seastar::make_ready_future<>();
-    }); // finally
+    }).ignore_ready_future(); // finally
 }
 
 void TCPRPCChannel::registerMessageObserver(RequestObserver_t observer) {
