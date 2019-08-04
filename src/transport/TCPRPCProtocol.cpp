@@ -49,7 +49,7 @@ void TCPRPCProtocol::start() {
             K2INFO("Effective listening TCP Proto on: " << _svrEndpoint->getURL());
         }
 
-        seastar::do_until(
+        (void) seastar::do_until(
             [this] { return _stopped;},
             [this] {
             return _listen_socket->accept().then(
@@ -69,7 +69,7 @@ void TCPRPCProtocol::start() {
                 }
                 return seastar::make_ready_future();
             });
-        }).or_terminate().ignore_ready_future();
+        }).or_terminate();
     }
     else {
         K2INFO("Starting non-listening TCP Proto...");

@@ -141,7 +141,7 @@ public: // Work generators
             // NB: since seastar future continuations may be scheduled to run at later points,
             // it may be possible that the Service instance goes away in a middle of a retry.
             // To avoid a segmentation fault, either use copies, or as in this example - weak reference
-            retryStrategy->run([self=weak_from_this(), msground](size_t retriesLeft, k2::Duration timeout) {
+            (void) retryStrategy->run([self=weak_from_this(), msground](size_t retriesLeft, k2::Duration timeout) {
                 K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
                        << timeout.count() << ", in reqid="<< msground);
                 if (!self) {
@@ -184,7 +184,7 @@ public: // Work generators
                     // reschedule again since we're still alive
                     self->_updateTimer.arm(_updateTimerInterval);
                 }
-            }).ignore_ready_future();
+            });
         }
     }
 

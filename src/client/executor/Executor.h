@@ -258,12 +258,12 @@ private:
             });
 
             // poll the stop flag to stop the transport
-            seastar::do_until([&] { return _stopFlag.load() && _queue.empty(); }, [&] {
+            (void) seastar::do_until([&] { return _stopFlag.load() && _queue.empty(); }, [&] {
                 return seastar::sleep(std::chrono::milliseconds(1));
             })
             .then([&] {
                 return _transport.stop();
-            }).ignore_ready_future();
+            });
 
             K2INFO("Starting transport platform...");
 

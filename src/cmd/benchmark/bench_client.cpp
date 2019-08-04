@@ -153,9 +153,9 @@ public:
             fprint(std::cout, "Total Time(Secs): %f\n", secs);
             fprint(std::cout, "Requests/Sec: %f\n",
                 static_cast<double>(_total_pings) / secs);
-            clients.stop().then([] {
+            (void) clients.stop().then([] {
                 engine().exit(0);
-            }).ignore_ready_future();
+            });
         }
     }
 
@@ -177,9 +177,9 @@ public:
             fprint(std::cout, "Total Time(Secs): %f\n", secs);
             fprint(std::cout, "Bandwidth(Gbits/Sec): %f\n",
                 static_cast<double>((_processed_bytes * 8)) / (1000 * 1000 * 1000) / secs);
-            clients.stop().then([] {
+            (void) clients.stop().then([] {
                 engine().exit(0);
-            }).ignore_ready_future();
+            });
         }
     }
 
@@ -191,7 +191,7 @@ public:
 
         for (unsigned i = 0; i < ncon; i++) {
             socket_address local = socket_address(::sockaddr_in{AF_INET, INADDR_ANY, {0}, 0});
-            engine().net().connect(make_ipv4_address(server_addr), local, protocol).then([this, test] (connected_socket fd) {
+            (void) engine().net().connect(make_ipv4_address(server_addr), local, protocol).then([this, test] (connected_socket fd) {
                 auto conn = new connection(std::move(fd));
                 return (this->*tests.at(test))(conn).then_wrapped([conn] (auto&& f) {
                     delete conn;
@@ -201,7 +201,7 @@ public:
                         fprint(std::cerr, "request error: %s\n", ex.what());
                     }
                 });
-            }).or_terminate().ignore_ready_future();
+            }).or_terminate();
         }
         return make_ready_future();
     }
@@ -251,9 +251,9 @@ int main(int ac, char ** av) {
             return engine().exit(1);
         }
 
-        clients.start().then([server, test, ncon] () {
+        (void)clients.start().then([server, test, ncon] () {
             return clients.invoke_on_all(&client::start, ipv4_addr{server}, test, ncon);
-        }).ignore_ready_future();
+        });
     });
 }
 

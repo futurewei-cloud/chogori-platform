@@ -65,16 +65,16 @@ public:
 
     void do_accepts(std::vector<server_socket>& listeners) {
         int which = listeners.size() - 1;
-        listeners[which].accept().then([this, &listeners] (connected_socket fd, socket_address addr) mutable {
+        (void) listeners[which].accept().then([this, &listeners] (connected_socket fd, socket_address addr) mutable {
             auto conn = new connection(*this, std::move(fd), addr);
-            conn->process().then_wrapped([conn] (auto&& f) {
+            (void) conn->process().then_wrapped([conn] (auto&& f) {
                 delete conn;
                 try {
                     f.get();
                 } catch (std::exception& ex) {
                     std::cout << "request error " << ex.what() << "\n";
                 }
-            }).ignore_ready_future();
+            });
             do_accepts(listeners);
         }).then_wrapped([] (auto&& f) {
             try {
@@ -82,7 +82,7 @@ public:
             } catch (std::exception& ex) {
                 std::cout << "accept failed: " << ex.what() << "\n";
             }
-        }).ignore_ready_future();
+        });
     }
     class connection {
         connected_socket _fd;
@@ -179,13 +179,13 @@ int main(int ac, char** av) {
             return engine().exit(1);
         }
         auto server = new distributed<tcp_server>;
-        server->start().then([server = std::move(server), port] () mutable {
+        (void) server->start().then([server = std::move(server), port] () mutable {
             engine().at_exit([server] {
                 return server->stop();
             });
             return server->invoke_on_all(&tcp_server::listen, ipv4_addr{port});
         }).then([port] {
             std::cout << "Seastar TCP server listening on port " << port << " ...\n";
-        }).ignore_ready_future();
+        });
     });
 }

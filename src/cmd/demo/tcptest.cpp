@@ -32,7 +32,7 @@ public:
     }
 
     void run() {
-        seastar::do_until(
+        (void) seastar::do_until(
             [this] { return this->_in.eof(); }, // end condition for loop
             [this] { // body of loop
                 return this->_in.read().then(
@@ -56,7 +56,7 @@ public:
                     CLOG("closed output")
                     delete this;
                 });
-        }).ignore_ready_future();
+        });
     }
 }; // class connection
 
@@ -75,7 +75,7 @@ public:
 
     void run() {
         K2INFO("Running Server");
-        seastar::do_until(
+        (void) seastar::do_until(
             [this] { return _stopped;},
             [this] {
             return _listen_socket->accept().then([this] (seastar::connected_socket fd, seastar::socket_address addr) mutable {
@@ -91,7 +91,7 @@ public:
                 }
                 return seastar::make_ready_future();
             });
-        }).or_terminate().ignore_ready_future();
+        }).or_terminate();
     }
 
     seastar::future<> stop() {

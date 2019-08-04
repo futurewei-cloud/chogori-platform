@@ -35,7 +35,7 @@ void RRDMARPCProtocol::start() {
 
         _stopped = false;
 
-        seastar::do_until(
+        (void) seastar::do_until(
             [this] { return _stopped;},
             [this] {
             return _listener.accept().then(
@@ -56,7 +56,7 @@ void RRDMARPCProtocol::start() {
                 }
                 return seastar::make_ready_future();
             });
-        }).or_terminate().ignore_ready_future();
+        }).or_terminate();
     }
 }
 

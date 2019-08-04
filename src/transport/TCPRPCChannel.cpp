@@ -32,7 +32,7 @@ TCPRPCChannel::~TCPRPCChannel(){
 void TCPRPCChannel::run() {
     assert(!_running);
     _running = true;
-    _futureSocket.then([chan=weak_from_this()](seastar::connected_socket fd) {
+    (void) _futureSocket.then([chan=weak_from_this()](seastar::connected_socket fd) {
         if (chan) {
             K2DEBUG("future channel connected successfully");
             if (chan->_closingInProgress) {
@@ -46,7 +46,7 @@ void TCPRPCChannel::run() {
             K2WARN("future channel failed connecting");
             chan->_failureObserver(chan->_endpoint, exc);
         }
-    }).ignore_ready_future();
+    });
 }
 
 void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata) {
@@ -119,7 +119,7 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
     _processQueuedWrites();
 
     // setup read loop
-    seastar::do_until(
+    (void) seastar::do_until(
         [chan=weak_from_this()] { return !chan || chan->_in.eof(); }, // end condition for loop
         [chan=weak_from_this()] { // body of loop
             if (!chan) {
@@ -154,7 +154,7 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
             chan->_closerFuture = chan->gracefulClose();
         }
         return seastar::make_ready_future<>();
-    }).ignore_ready_future(); // finally
+    }); // finally
 }
 
 void TCPRPCChannel::registerMessageObserver(RequestObserver_t observer) {

@@ -43,7 +43,7 @@ public:
     // run the given function after the given delayTime
     void delay(std::chrono::microseconds delayTimeUs, std::function<void()>&& callback) override
     {
-        seastar::sleep(delayTimeUs).then([cb = std::move(callback)] { cb(); }).ignore_ready_future();
+        (void) seastar::sleep(delayTimeUs).then([cb = std::move(callback)] { cb(); });
     }
 
     DISABLE_COPY_MOVE(K2TXPlatform)

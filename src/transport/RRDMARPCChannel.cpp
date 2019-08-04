@@ -75,7 +75,7 @@ void RRDMARPCChannel::run() {
     );
 
     // setup read loop
-    seastar::do_until(
+    (void) seastar::do_until(
         [chan=weak_from_this()] { return !chan || chan->_rconn->closed(); }, // end condition for loop
         [chan=weak_from_this()] { // body of loop
             if (!chan) {
@@ -110,7 +110,7 @@ void RRDMARPCChannel::run() {
             chan->_closerFuture = chan->gracefulClose();
         }
         return seastar::make_ready_future<>();
-    }).ignore_ready_future(); // finally
+    }); // finally
 }
 
 void RRDMARPCChannel::registerMessageObserver(RequestObserver_t observer) {
