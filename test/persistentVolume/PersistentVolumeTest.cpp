@@ -2,13 +2,13 @@
 #include <seastar/testing/test_case.hh>
 
 #include <iostream>
-#include "../../src/node/persistence/PersistentVolume.h"
+#include <node/persistence/PersistentVolume.h>
 
 using namespace k2;
 using namespace std;
 
-const auto plogBaseDir = std::filesystem::current_path().concat("/plogs/");
-uint32_t constexpr BUFFERSIZE = 100000;
+const auto plogBaseDir = std::filesystem::temp_directory_path().concat("/plogs/");
+uint32_t constexpr BUFFERSIZE = 100;
 
 SEASTAR_TEST_CASE(test_addNewChunk)
 {
@@ -16,16 +16,16 @@ SEASTAR_TEST_CASE(test_addNewChunk)
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
 
     return persistentVolume->addNewChunk()
-    .then([persistentVolume]() {
-        BOOST_REQUIRE(persistentVolume->m_chunkList.size() == 1);
-        auto& chunkInfo = persistentVolume->m_chunkList.back();
+        .then([persistentVolume]() {
+            BOOST_REQUIRE(persistentVolume->m_chunkList.size() == 1);
+            auto& chunkInfo = persistentVolume->m_chunkList.back();
 
-        BOOST_REQUIRE(chunkInfo.chunkId == 1);
-        BOOST_REQUIRE(chunkInfo.size == 0);
-        BOOST_REQUIRE(chunkInfo.actualSize == 0);
-        std::cout << "done." << std::endl;
-        return seastar::make_ready_future<>(); // reach here
-    });     
+            BOOST_REQUIRE(chunkInfo.chunkId == 1);
+            BOOST_REQUIRE(chunkInfo.size == 0);
+            BOOST_REQUIRE(chunkInfo.actualSize == 0);
+            std::cout << "done." << std::endl;
+            return seastar::make_ready_future<>(); // reach here
+        });
 }
 
 
@@ -39,7 +39,7 @@ SEASTAR_TEST_CASE(test_getInfo)
         chunkInfo.chunkId = i;
         chunkInfo.size = i;
         chunkInfo.actualSize = i;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
+        persistentVolume->m_chunkList.push_back(chunkInfo);
     }
 
     for (ChunkId i=0; i<5; i++){
@@ -50,9 +50,9 @@ SEASTAR_TEST_CASE(test_getInfo)
     }
 
     std::cout << "done." << std::endl;
-    return seastar::make_ready_future<>();    
-}    
- 
+    return seastar::make_ready_future<>();
+}
+
 SEASTAR_TEST_CASE(test_getInfo_ChunkIdNotFound)
 {
     std::cout << get_name() << "...... " << std::flush;
@@ -63,48 +63,21 @@ SEASTAR_TEST_CASE(test_getInfo_ChunkIdNotFound)
         chunkInfo.chunkId = i;
         chunkInfo.size = i;
         chunkInfo.actualSize = i;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
+        persistentVolume->m_chunkList.push_back(chunkInfo);
     }
 
     try{
         persistentVolume->getInfo(persistentVolume->m_chunkList.back().chunkId+1);
         BOOST_FAIL("Expected exception.");
     }catch(ChunkException& e){
-        BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId+1); 
-        std::cout << "done." << std::endl;    // reach here 
+        BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId+1);
+        std::cout << "done." << std::endl;    // reach here
     }catch (...) {
         BOOST_FAIL("Incorrect exception type.");
     }
 
-    return seastar::make_ready_future<>();     
-}  
-
-SEASTAR_TEST_CASE(test_decreaseUsage)
-{
-    std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
-
-    for (size_t i=0; i<2; i++){
-        ChunkInfo chunkInfo;
-        chunkInfo.chunkId = i;
-        chunkInfo.size = 100;
-        chunkInfo.actualSize = 100;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
-    }
-
-    auto chunkInfo = persistentVolume->decreaseUsage(ChunkId(0), 30);
-    BOOST_REQUIRE(chunkInfo.chunkId == 0);
-    BOOST_REQUIRE(chunkInfo.size == 100);
-    BOOST_REQUIRE(chunkInfo.actualSize == 70);
-
-    auto chunkInfo1 = persistentVolume->decreaseUsage(ChunkId(1), 130);
-    BOOST_REQUIRE(chunkInfo1.chunkId == 1);
-    BOOST_REQUIRE(chunkInfo1.size == 100);
-    BOOST_REQUIRE(chunkInfo1.actualSize == 0);
-
-    std::cout << "done." << std::endl;
-    return seastar::make_ready_future<>();     
-}  
+    return seastar::make_ready_future<>();
+}
 
 SEASTAR_TEST_CASE(test_decreaseUsage_ChunkIdNotFound)
 {
@@ -116,22 +89,21 @@ SEASTAR_TEST_CASE(test_decreaseUsage_ChunkIdNotFound)
         chunkInfo.chunkId = i;
         chunkInfo.size = 100;
         chunkInfo.actualSize = 100;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
+        persistentVolume->m_chunkList.push_back(chunkInfo);
     }
 
     try{
-        persistentVolume->decreaseUsage(persistentVolume->m_chunkList.back().chunkId+1, 30);
+        persistentVolume->setUsage(persistentVolume->m_chunkList.back().chunkId+1, 30);
         BOOST_FAIL("Expected exception.");
     }catch(ChunkException& e){
-        BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId+1);  
+        BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId+1);
         std::cout << "done." << std::endl; // reach here
     }catch (...) {
         BOOST_FAIL("Incorrect exception type.");
     }
 
-    return seastar::make_ready_future<>();     
-}  
-
+    return seastar::make_ready_future<>();
+}
 
 SEASTAR_TEST_CASE(test_totaUsage)
 {
@@ -145,14 +117,14 @@ SEASTAR_TEST_CASE(test_totaUsage)
         chunkInfo.size = i*100;
         chunkInfo.actualSize = i*90;
         sum += i*90;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
+        persistentVolume->m_chunkList.push_back(chunkInfo);
     }
 
      BOOST_REQUIRE(persistentVolume->totalUsage() == sum);
 
     std::cout << "done." << std::endl;
-    return seastar::make_ready_future<>();     
-}  
+    return seastar::make_ready_future<>();
+}
 
 SEASTAR_TEST_CASE(test_totaSize)
 {
@@ -166,14 +138,14 @@ SEASTAR_TEST_CASE(test_totaSize)
         chunkInfo.size = i*100;
         sum += i*100;
         chunkInfo.actualSize = i*90;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
+        persistentVolume->m_chunkList.push_back(chunkInfo);
     }
 
     BOOST_REQUIRE(persistentVolume->totalSize() == sum);
 
     std::cout << "done." << std::endl;
-    return seastar::make_ready_future<>();     
-}  
+    return seastar::make_ready_future<>();
+}
 
 SEASTAR_TEST_CASE(test_getChunks)
 {
@@ -185,13 +157,13 @@ SEASTAR_TEST_CASE(test_getChunks)
         chunkInfo.chunkId = i;
         chunkInfo.size = i*100;
         chunkInfo.actualSize = i*90;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
+        persistentVolume->m_chunkList.push_back(chunkInfo);
     }
 
     auto iter = persistentVolume->getChunks();
     size_t i = 0;
 
-    while(iter->next()){
+    for(; iter->isValid(); iter->advance()){
         auto chunkInfo = iter->getCurrent();
         BOOST_REQUIRE(chunkInfo.chunkId == i);
         BOOST_REQUIRE(chunkInfo.size == i*100);
@@ -202,8 +174,8 @@ SEASTAR_TEST_CASE(test_getChunks)
     BOOST_REQUIRE(i==10);
 
     std::cout << "done." << std::endl;
-    return seastar::make_ready_future<>();     
-} 
+    return seastar::make_ready_future<>();
+}
 
 SEASTAR_TEST_CASE(test_getChunks_EmptyChunkSet)
 {
@@ -211,11 +183,11 @@ SEASTAR_TEST_CASE(test_getChunks_EmptyChunkSet)
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
 
     auto iter = persistentVolume->getChunks();
-    BOOST_REQUIRE(!iter->next());
+    BOOST_REQUIRE(iter->isEnd());
 
     std::cout << "done." << std::endl;
-    return seastar::make_ready_future<>();     
-} 
+    return seastar::make_ready_future<>();
+}
 
 SEASTAR_TEST_CASE(test_append)
 {
@@ -230,7 +202,7 @@ SEASTAR_TEST_CASE(test_append)
             }else {
                 auto binary = std::make_unique<Binary>(Binary{BUFFERSIZE});
                 std::fill(binary->get_write(), binary->get_write()+binary->size(), (uint8_t)(recordPositions.size()%256));
-                
+
                 return persistentVolume->append(std::move(*binary))
                 .then([&recordPositions](auto recordPosition) {
                     recordPositions.push_back(recordPosition);
@@ -265,33 +237,6 @@ SEASTAR_TEST_CASE(test_append)
     });
 }
 
-SEASTAR_TEST_CASE(test_append_ExceedLimit)
-{
-    std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
-    persistentVolume->m_plog->setPlogMaxSize(81920);
-
-    auto binary = std::make_unique<Binary>(Binary{BUFFERSIZE});
-    std::fill(binary->get_write(), binary->get_write()+binary->size(), 1);
-    return persistentVolume->append(std::move(*binary))
-    .then([](auto){ 
-        BOOST_FAIL("Expected exception.");
-    })
-    .handle_exception([persistentVolume](auto e){
-        try{
-            std::rethrow_exception(e);
-        } catch (ChunkException& e) {
-            BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId);
-            std::cout << "done." << std::endl;  // reach here
-        } catch (...) {
-            BOOST_FAIL("Incorrect exception type.");
-        }
-    })
-    .then([persistentVolume]{        
-        return seastar::make_ready_future<>();
-    });
-}
-
 SEASTAR_TEST_CASE(test_read)
 {
     std::cout << get_name() << "...... " << std::flush;
@@ -299,7 +244,7 @@ SEASTAR_TEST_CASE(test_read)
 
     return seastar::do_with(std::vector<RecordPosition>{}, [persistentVolume](auto& recordPositions) mutable {
         return seastar::repeat([&recordPositions, persistentVolume] () mutable {
-            if(persistentVolume->m_chunkList.size() >= 5)
+            if(recordPositions.size() >= 30)
             {
                 return  seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::yes);
             }else {
@@ -308,6 +253,7 @@ SEASTAR_TEST_CASE(test_read)
                 return persistentVolume->append(std::move(*binary))
                 .then([&recordPositions](auto recordPosition) {
                     recordPositions.push_back(recordPosition);
+                    //std::cout << recordPosition.chunkId << ":" << recordPosition.offset << std::endl;
                     return  seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
                 });
             }
@@ -319,10 +265,14 @@ SEASTAR_TEST_CASE(test_read)
 
             return seastar::do_for_each(range_ptr->begin(),range_ptr->end(), [&recordPositions, persistentVolume, range_ptr](auto i){
                 auto buffer = seastar::make_lw_shared<Binary>() ;
+                //std::cout << i << ":" << recordPositions[i].chunkId << ":" << recordPositions[i].offset << std::endl;
                 return persistentVolume->read(recordPositions[i], BUFFERSIZE, *buffer)
                 .then([buffer, i](auto readSize){
                     BOOST_REQUIRE(readSize == BUFFERSIZE);
+                    //std::cout << (uint32_t)(i%256) << std::endl;
                     BOOST_REQUIRE(std::all_of(buffer->begin(), buffer->end(), [expectedValue{uint8_t(i%256)}](auto& value){
+                        if(value != expectedValue)
+                            std::cout << (uint32_t)value << ":" << (uint32_t)expectedValue << std::endl;
                         return value == expectedValue;
                     }));
                     return seastar::make_ready_future<>();
@@ -402,7 +352,7 @@ SEASTAR_TEST_CASE(test_read_ChunkIdNotFound)
         RecordPosition recordPosition{persistentVolume->m_chunkList.back().chunkId+1, 0};
         auto buffer = seastar::make_lw_shared<Binary>();
         return persistentVolume->read(recordPosition, BUFFERSIZE, *buffer)
-        .then([](auto){ 
+        .then([](auto){
             BOOST_FAIL("Expected exception.");
         })
         .handle_exception([recordPosition, persistentVolume](auto e){
@@ -469,11 +419,11 @@ SEASTAR_TEST_CASE(test_drop_ChunkIdNotFound)
         chunkInfo.chunkId = i;
         chunkInfo.size = 100;
         chunkInfo.actualSize = 100;
-        persistentVolume->m_chunkList.push_back(chunkInfo);        
+        persistentVolume->m_chunkList.push_back(chunkInfo);
     }
 
     return persistentVolume->drop(persistentVolume->m_chunkList.back().chunkId+1)
-    .then([]{ 
+    .then([]{
         BOOST_FAIL("Expected exception.");
     })
     .handle_exception([persistentVolume](auto e){
@@ -486,14 +436,15 @@ SEASTAR_TEST_CASE(test_drop_ChunkIdNotFound)
             BOOST_FAIL("Incorrect exception type.");
         }
     })
-    .then([persistentVolume]{        
+    .then([persistentVolume]{
         return seastar::make_ready_future<>();
     });
-}  
+}
 
-SEASTAR_TEST_CASE(Remove_test_folders) 
+SEASTAR_TEST_CASE(Remove_test_folders)
 {
     std::cout << get_name() << std::endl;
+    std::cout << "Remove folder " << plogBaseDir << std::endl;
 
     if(std::filesystem::exists(plogBaseDir)){
         std::filesystem::remove_all(plogBaseDir);

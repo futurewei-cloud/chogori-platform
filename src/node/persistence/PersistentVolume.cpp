@@ -2,24 +2,43 @@
 
 namespace k2
 {
-/**********************************************************
- * constructor: initialize plog path
- ***********************************************************/
-PersistentVolume::PersistentVolume(String plogPath) : iterator(*this)
-{
-    m_plog = seastar::make_lw_shared<PlogMock>(plogPath.c_str());
-}
 
-/**********************************************************
- * desstructor
- ***********************************************************/
-PersistentVolume::~PersistentVolume()
+enum class LogType : uint8_t
 {
-}
+    Add,
+    Remove
+};
 
-/**********************************************************
- *   public member methods
-***********************************************************/
+struct EntryRecord
+{
+    LogType logType;
+    PlogId plogId;
+
+    K2_PAYLOAD_COPYABLE;
+};
+
+class EntryService
+{
+protected:
+    std::vector<PlogId> plogId;
+    PlogId currentPlog;
+    std::shared_ptr<PersistentVolume> volume;
+public:
+    EntryService(std::vector<PlogId> plogId) : plogId(std::move(plogId)) { }
+
+    IOResult<std::vector<EntryRecord>> loadRecords()
+    {
+        return seastar::make_ready_future<std::vector<EntryRecord>>(std::vector<EntryRecord>());
+    }
+
+    IOResult<> logRecord(EntryRecord)
+    {
+        return seastar::make_ready_future<>();
+    }
+};
+
+const uint32_t MaxPlogSize = 32*1024;
+
 IOResult<RecordPosition> PersistentVolume::append(Binary binary)
 {
     auto appendSize = binary.size();
@@ -33,26 +52,21 @@ IOResult<RecordPosition> PersistentVolume::append(Binary binary)
             auto& plogId = m_chunkList.back().plogId;
             return m_plog->getInfo(plogId)
             .then([&plogId, appendSize, this](auto plogInfo){
-                if(plogInfo.sealed || appendSize > m_plog->getPlogMaxSize()-plogInfo.size)
-                {
+                if(plogInfo.sealed || plogInfo.size+appendSize > MaxPlogSize)
                     // current chunk doesn't have enough space, need a new chunk to append
-                    return m_plog->seal(plogId)
-                    .then([this]{
-                        return addNewChunk();
-                    });
-                } else {
+                    return m_plog->seal(plogId).then([this]{ return addNewChunk(); });
+                else
                     // current chunk has enough space to append
                     return seastar::make_ready_future<>();
-                }
             });
         }
     }()
     .then([appendSize, binary{std::move(binary)}, this] () mutable {
-        if(appendSize > m_plog->getPlogMaxSize()-plogInfoSize)
+        if(appendSize+plogInfoSize > MaxPlogSize)
         {
             // the binary buffer is too large to append to plog, throw a ChunkException.
             auto msg = "Append buffer[" + std::to_string(binary.size())
-                       + "] exceeds the limit of chunk capability: " + std::to_string(m_plog->getPlogMaxSize()-plogInfoSize);
+                       + "] exceeds the limit of chunk capability: " + std::to_string(MaxPlogSize-plogInfoSize);
             return seastar::make_exception_future<uint32_t>(ChunkException(msg, m_chunkList.back().chunkId));
         }else {
             // write the binary buffer to plog
@@ -111,7 +125,7 @@ ChunkInfo PersistentVolume::getInfo(ChunkId chunkId)
 }
 
 
-ChunkInfo PersistentVolume::decreaseUsage(ChunkId chunkId, uint32_t usage)
+ChunkInfo PersistentVolume::setUsage(ChunkId chunkId, uint32_t usage)
 {
     int i = std::min((size_t)chunkId, m_chunkList.size()-1);
     for( ; i>=0 && (m_chunkList[i].chunkId != chunkId); i--);
@@ -121,7 +135,7 @@ ChunkInfo PersistentVolume::decreaseUsage(ChunkId chunkId, uint32_t usage)
         auto msg = "ChunkId: " + std::to_string(chunkId) + " not found.";
         throw ChunkException(msg, chunkId);
     }else {
-        m_chunkList[i].actualSize = m_chunkList[i].actualSize>usage ?  m_chunkList[i].actualSize-usage : 0;
+        m_chunkList[i].actualSize = usage;
         return m_chunkList[i];
     }
 }
@@ -137,7 +151,7 @@ IOResult<> PersistentVolume::drop(ChunkId chunkId)
         auto msg = "ChunkId: " + std::to_string(chunkId) + " not found.";
         return seastar::make_exception_future<>(ChunkException(msg, chunkId));
     } else {
-        // drop correponding plog Id
+        // drop corresponding plog Id
         return m_plog->drop(m_chunkList[i].plogId)
         .then([i, this]() {
             // drop this chunk from chunk set
@@ -163,17 +177,10 @@ uint64_t PersistentVolume::totalSize()
     });
 }
 
-
 std::unique_ptr<IPersistentVolume::IIterator> PersistentVolume::getChunks()
 {
-    iterator.m_chunkIndex = 0;
-    return std::make_unique<PersistentVolume::Iterator>(iterator);
+    return std::make_unique<PersistentVolume::_Iterator>(*this);
 }
-
-
-/**********************************************************
- *   private member methods
-***********************************************************/
 
 IOResult<> PersistentVolume::addNewChunk()
 {
@@ -186,5 +193,30 @@ IOResult<> PersistentVolume::addNewChunk()
         return seastar::make_ready_future<>();
     });
 }
+
+IOResult<std::unique_ptr<IPersistentVolume>> PersistentVolume::open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs)
+{
+    std::unique_ptr<PersistentVolume> volume(new PersistentVolume(plogService));
+    volume->entryService = std::make_unique<EntryService>(std::move(entryPlogs));
+    return volume->entryService->loadRecords().then([volume = std::move(volume)](std::vector<EntryRecord> records) mutable
+        {
+            for(auto& record : records)
+            {
+                ChunkInfo chunkInfo;
+                chunkInfo.plogId = record.plogId;   //  TODO: set size
+                volume->m_chunkList.push_back(std::move(chunkInfo));
+            }
+
+            return std::unique_ptr<IPersistentVolume>(volume.release());
+        });
+}
+
+PersistentVolume::PersistentVolume() {}
+
+PersistentVolume::~PersistentVolume() {}
+
+PersistentVolume::PersistentVolume(std::shared_ptr<IPlog> plog) : m_plog(plog) {}
+
+PersistentVolume::PersistentVolume(String plogPath) : PersistentVolume(std::make_shared<PlogMock>(std::move(plogPath))) {}
 
 }   //  namespace k2

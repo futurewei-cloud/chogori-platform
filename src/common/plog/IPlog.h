@@ -1,13 +1,17 @@
 #pragma once
 
-#include "common/Common.h"
+#include "common/Serialization.h"
 #include "plog_client.h"
 #include <seastar/core/sharded.hh>
+#include "common/Payload.h"
 
 namespace k2
 {
 
-typedef plog_id_t PlogId;
+struct PlogId : plog_id_t
+{
+    K2_PAYLOAD_COPYABLE;
+};
 
 struct PlogInfo
 {
@@ -166,21 +170,78 @@ public:
     public:
         ReadRegion(uint32_t  offset, uint32_t  size) : offset(offset), size(size) { }
         ReadRegion(uint32_t  offset, uint32_t  size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
+
+        DEFAULT_MOVE(ReadRegion);
     };
 
     typedef std::vector<ReadRegion> ReadRegions;
 
+    //
+    //  Allocate group of plogs
+    //
     virtual IOResult<std::vector<PlogId>> create(uint plogCount) = 0;
 
+    //
+    //  Return PLOG information
+    //
     virtual IOResult<PlogInfo> getInfo(const PlogId& plogId) = 0;
 
+    //
+    //  Append buffers to the end of PLOG. Size of all data in buffers cannot exceed 2MB
+    //
     virtual IOResult<uint32_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
 
+    //
+    //  Read the region from PLOG
+    //
     virtual IOResult<ReadRegions> read(const PlogId& plogId, ReadRegions plogDataToReadList) = 0;
 
+    //
+    //  Seal PLOG: make PLOG read-only and finalize the size
+    //
     virtual IOResult<> seal(const PlogId& plogId) = 0;
 
+    //
+    //  Drop the PLOG
+    //
     virtual IOResult<> drop(const PlogId& plogId) = 0;
+
+    //
+    //  Helper functions
+    //
+    IOResult<Binary> read(const PlogId& plogId, uint32_t offset, uint32_t size)
+    {
+        ReadRegions regions;
+        regions.emplace_back(offset, size, k2::Binary(size));
+        return read(plogId, std::move(regions)).then([](ReadRegions regions)
+        {
+            return std::move(regions[0].buffer);
+        });
+    }
+
+    //
+    //  Read all data from Plog into payload
+    //
+    IOResult<> readAll(const PlogId& plogId, Payload& payload)
+    {
+        return getInfo(plogId).then([&payload, plogId, this](PlogInfo info) mutable
+        {
+            return seastar::do_with(info.size, uint32_t(0), plogId, [this, &payload](uint32_t& size, uint32_t& offset, PlogId& plogId) mutable
+            {
+                return seastar::repeat([&size, &offset, &plogId, &payload, this]() mutable
+                {
+                    if(offset >= size)
+                        return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
+
+                    return read(plogId, offset, std::max(size - offset, (uint32_t)8*1024)).then([&payload](Binary bin)
+                    {
+                        payload.appendBinary(std::move(bin));
+                        return  seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::yes);
+                    });
+                });
+            });
+        });
+    }
 };  //  class IPlog
 
 }   //  namespace k2

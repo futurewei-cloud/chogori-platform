@@ -19,6 +19,8 @@ test: build
 	@../$(BUILD_DIR)/test/client/client_test && testReturnCode=$? && exit $(testReturnCode)
 	@echo ">>> Testing plogmock"
 	@../$(BUILD_DIR)/test/plogmock/plogmock_test && testReturnCode=$? && exit $(testReturnCode)
+	@echo ">>> Testing PersistentVolume"
+	@../$(BUILD_DIR)/test/persistentVolume/persistentVolume_test && testReturnCode=$? && exit $(testReturnCode)
 integrate: build
 	@echo ">>> Running integration test"
 	@../integration/run.sh && testReturnCode=$? && exit $(testReturnCode)
