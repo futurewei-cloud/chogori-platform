@@ -1,0 +1,46 @@
+---
+schema: "2019-07" # required version of the configuration schema
+instance-version: 123456 # required version of the configuration instance, monotonically increasing integer
+cluster-name: "mysql-backend-na" # optional field with the name of the cluster
+
+partition-manager: # optional partition manager for partition and configuration updates
+    endpoints: # required list of partition manager endpoints
+        - "tcp+k2rpc://192.168.124.1:1400"
+        - "rrdma+k2rpc://[fe80::9a03:9bff:fe89:13ba]:128"
+    :
+node-pool-base: &node-pool-base
+    -   node_count: 10
+    -   monitor_enabled: true # optional flag to enable node pool monitoring
+    -   hugepages: true # optional memory configuration flag
+    -   memory: "10G" # optional memory chunk allocated to the pool
+    -   cpu_set: "10-19"
+
+        rdma:
+            -   nic_id: "mlx5_0" # optional nic dedicated to the pool
+        tcp:
+            -   port: 1000
+
+node-base: &node-base
+    tcp:
+        -   port: 556
+
+node-pools:
+    <<: *node-pool-base
+        -   id: "np1"
+            nodes: # optional list of nodes to start for the node pool
+                <<: *node-base
+                    -   id: "node1" # required identifier of the node
+                    -   cpu: 15 # optional core dedicated to the node
+
+cluster:
+    "hostname1":
+        node-pools:
+            "np1":
+                tcp:
+                    -   address: "192.168.200.1"
+                nodes:
+                    -   0:
+                        partitions: [ "1.1.1", "2.1.1" ]
+                        rdma:
+                            -   address: "host1.local"
+                            -   port: 246

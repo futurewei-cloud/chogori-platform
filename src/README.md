@@ -11,6 +11,7 @@ This folder contains source code of the main K2 platform components.
 * common: code shared between components
 * transport: K2 transport library
 * benchmarker: benchmarking related code
+* config: K2 configuration
 
 ## Contact
 

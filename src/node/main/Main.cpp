@@ -2,43 +2,45 @@
 #include "node/module/MemKVModule.h"
 #include "node/Node.h"
 #include "K2TXPlatform.h"
-#include <yaml-cpp/yaml.h>
+#include <config/ConfigLoader.h>
 
 using namespace k2;
 
 // TODO: Move the configuration logic into a separate file.
-void loadConfig(NodePoolImpl& pool, const std::string& configFile)
+void registerNodePool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfig)
 {
-    YAML::Node config = YAML::LoadFile(configFile);
-
-    for(uint16_t count=0; count<config["nodes_count"].as<uint16_t>(0); ++count)
-    {
+    auto pNodePool = pConfig->getNodePools()[0];
+    for(auto pNode : pNodePool->getNodes()) {
         NodeEndpointConfig nodeConfig;
-        // TODO: map the endpoint type; fixing it to IPv4 for the moment
-        nodeConfig.type = NodeEndpointConfig::IPv4;
-        nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(config["address"].as<std::string>().c_str()));
-        nodeConfig.ipv4.port = config["nodes_minimum_port"].as<uint16_t>(0) + count;
+        const auto& transport = pNode->getTransport();
+        if(transport.isTcpEnabled()) {
+            // TODO: map the endpoint type; fixing it to IPv4 for the moment
+            nodeConfig.type = NodeEndpointConfig::IPv4;
+            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(transport.getTcpAddress().c_str()));
+            nodeConfig.ipv4.port = transport.getTcpPort();
+        }
 
         TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
     }
 
-    for(YAML::Node node : config["partitionManagerSet"])
+    const auto pConfigManager = pConfig->getPartitionManager();
+    if(pConfigManager)
     {
         // address field is of form "<ipv4>:<port>":
-        std::string partitionManager = node["address"].as<std::string>();
-        pool.getConfig().partitionManagerSet.push_back(partitionManager);
+        pool.getConfig().partitionManagerSet.insert(pool.getConfig().partitionManagerSet.end(),
+            pConfigManager->getEndpoints().begin(), pConfigManager->getEndpoints().end());
     }
 
-    pool.getConfig().monitorEnabled = config["monitorEnabled"].as<bool>(pool.getConfig().monitorEnabled);
-    pool.getConfig().rdmaEnabled = config["rdmaEnabled"].as<bool>(pool.getConfig().rdmaEnabled);
-    if (config["nodes_cpu_set"])
+    pool.getConfig().monitorEnabled = pNodePool->isMonitoringEnabled();
+    pool.getConfig().rdmaEnabled = pNodePool->getTransport().isRdmaEnabled();
+    if (!pNodePool->getCpuSet().empty())
     {
-        pool.getConfig().cpuSetStr = config["nodes_cpu_set"].as<std::string>();
+        pool.getConfig().cpuSetStr = pNodePool->getCpuSet();
     }
-    pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
-    pool.getConfig().rdmaNicId = config["nic_id"].as<std::string>();
-    pool.getConfig().memorySizeStr = config["memory"].as<std::string>();
-    pool.getConfig().hugePagesEnabled = config["hugepages"].as<bool>(pool.getConfig().hugePagesEnabled);
+    //pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
+    pool.getConfig().rdmaNicId = pNodePool->getTransport().getRdmaNicId();
+    pool.getConfig().memorySizeStr = pNodePool->getMemorySize();
+    pool.getConfig().hugePagesEnabled = pNodePool->isHugePagesEnabled();
 }
 
 int main(int argc, char** argv)
@@ -59,20 +61,12 @@ int main(int argc, char** argv)
 
         k2::NodePoolImpl pool;
         TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
-        if(variablesMap.count("k2config"))
-        {
-            // Configure pool based on the configuration file
-            loadConfig(pool, variablesMap["k2config"].as<std::string>());
-        }
-        else
-        {
-            // create default configuration
-            NodeEndpointConfig nodeConfig;
-            nodeConfig.type = NodeEndpointConfig::IPv4;
-            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr("0.0.0.0"));
-            nodeConfig.ipv4.port = 11311;
-            TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
-        }
+        std::shared_ptr<config::Config> pConfig = variablesMap.count("k2config")
+            ? config::ConfigLoader::loadConfig(variablesMap["k2config"].as<std::string>())
+            : pConfig = config::ConfigLoader::loadDefaultConfig();
+
+        // Register pool based on the configuration file
+        registerNodePool(pool, pConfig);
 
         K2TXPlatform platform;
         pool.setScheduingPlatform(&platform);
