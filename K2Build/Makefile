@@ -12,15 +12,24 @@ build:
 	@cmake -B../$(BUILD_DIR) -H../ -DCMAKE_INSTALL_PREFIX=../$(INSTALL_DIR)/$(INSTALL_PFX)
 	@$(MAKE) -C../$(BUILD_DIR)
 
-test: build
+test_node: build
 	@echo ">>> Testing node"
 	@../$(BUILD_DIR)/test/node/node_test && testReturnCode=$? && exit $(testReturnCode)
+
+test_client: build
 	@echo ">>> Testing client"
 	@../$(BUILD_DIR)/test/client/client_test && testReturnCode=$? && exit $(testReturnCode)
+
+test_plog: build
 	@echo ">>> Testing plogmock"
 	@../$(BUILD_DIR)/test/plogmock/plogmock_test && testReturnCode=$? && exit $(testReturnCode)
+
+test_volume: build
 	@echo ">>> Testing PersistentVolume"
-	@../$(BUILD_DIR)/test/persistentVolume/persistentVolume_test && testReturnCode=$? && exit $(testReturnCode)
+	@../$(BUILD_DIR)/test/persistentVolume/persistent_volume_test && testReturnCode=$? && exit $(testReturnCode)
+
+test: test_node test_client test_plog test_volume
+
 integrate: build
 	@echo ">>> Running integration test"
 	@../integration/run.sh && testReturnCode=$? && exit $(testReturnCode)
