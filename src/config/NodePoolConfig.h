@@ -13,17 +13,31 @@ namespace config
 class NodePoolConfig
 {
 friend class ConfigParserLegacy;
+friend class ConfigParser201907;
 friend class Config;
 protected:
-    std::vector<std::shared_ptr<NodeConfig>> _nodes;
-    Transport _transport;
+    std::string _id;
+    std::shared_ptr<Transport> _pTransport;
     std::string _cpuSet;
     bool _monitoringEnabledFlag = false;
     // memory
     bool _hugePagesEnabledFlag = false;
     std::string _memorySize;
+    std::vector<std::shared_ptr<NodeConfig>> _nodes;
+    std::vector<std::string> _partitions;
 
 public:
+    NodePoolConfig()
+    : _pTransport(std::make_shared<Transport>())
+    {
+        // empty
+    }
+
+    const std::string& getId() const
+    {
+        return _id;
+    }
+
     const std::vector<std::shared_ptr<NodeConfig>>& getNodes() const
     {
         return _nodes;
@@ -39,9 +53,9 @@ public:
         return _hugePagesEnabledFlag;
     }
 
-    const Transport& getTransport()
+    const std::shared_ptr<Transport> getTransport() const
     {
-        return _transport;
+        return _pTransport;
     }
 
     const std::string& getCpuSet() const

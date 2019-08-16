@@ -11,6 +11,7 @@ namespace config
 class Transport
 {
 friend class ConfigParserLegacy;
+friend class ConfigParser201907;
 friend class NodePoolConfig;
 
 protected:
@@ -49,6 +50,16 @@ public:
     const std::string& getRdmaNicId() const
     {
         return _rdmaNicId;
+    }
+
+    const std::string& getRdmaAddress() const
+    {
+        return _rdmaAddress;
+    }
+
+    uint64_t getRdmaPort() const
+    {
+        return _rdmaPort;
     }
 
 }; // class Transport

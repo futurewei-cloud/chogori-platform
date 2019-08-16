@@ -7,40 +7,53 @@ partition-manager: # optional partition manager for partition and configuration 
     endpoints: # required list of partition manager endpoints
         - "tcp+k2rpc://192.168.124.1:1400"
         - "rrdma+k2rpc://[fe80::9a03:9bff:fe89:13ba]:128"
-    :
-node-pool-base: &node-pool-base
-    -   node_count: 10
-    -   monitor_enabled: true # optional flag to enable node pool monitoring
-    -   hugepages: true # optional memory configuration flag
-    -   memory: "10G" # optional memory chunk allocated to the pool
-    -   cpu_set: "10-19"
 
-        rdma:
-            -   nic_id: "mlx5_0" # optional nic dedicated to the pool
-        tcp:
-            -   port: 1000
+transport-base: &transport-base
+    rdma:
+        nic_id: "mlx5_0"
+    tcp:
+        address: "0.0.0.0"
+        port: 1000
+
+node-pool-base: &node-pool-base
+    node-count: 2
+    enable-monitoring: false
+    transport:
+        <<: *transport-base
 
 node-base: &node-base
-    tcp:
-        -   port: 556
+    transport:
+        <<: *transport-base
+        tcp:
+            port: 2000
 
 node-pools:
-    <<: *node-pool-base
-        -   id: "np1"
-            nodes: # optional list of nodes to start for the node pool
+    -   id: "np1"
+        <<: *node-pool-base
+        node-count: 3
+        nodes:
+            -   id: 0
                 <<: *node-base
-                    -   id: "node1" # required identifier of the node
-                    -   cpu: 15 # optional core dedicated to the node
+                cpu: 15
+            -   id: 1
+                <<: *node-base
+                transport:
+                    tcp:
+                        port: 3000
+    -   id: "np2"
+        <<: *node-pool-base
 
 cluster:
-    "hostname1":
+    -   host: "host1.futurewei.com"
         node-pools:
-            "np1":
-                tcp:
-                    -   address: "192.168.200.1"
+            -   id: "np1"
+                transport:
+                    tcp:
+                        address: "192.168.200.1"
                 nodes:
-                    -   0:
+                    -   id: 0
                         partitions: [ "1.1.1", "2.1.1" ]
-                        rdma:
-                            -   address: "host1.local"
-                            -   port: 246
+                        transport:
+                            rdma:
+                                address: "host1.local"
+                                port: 246

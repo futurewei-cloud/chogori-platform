@@ -12,12 +12,12 @@ void registerNodePool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfi
     auto pNodePool = pConfig->getNodePools()[0];
     for(auto pNode : pNodePool->getNodes()) {
         NodeEndpointConfig nodeConfig;
-        const auto& transport = pNode->getTransport();
-        if(transport.isTcpEnabled()) {
+        const auto pTransport = pNode->getTransport();
+        if(pTransport->isTcpEnabled()) {
             // TODO: map the endpoint type; fixing it to IPv4 for the moment
             nodeConfig.type = NodeEndpointConfig::IPv4;
-            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(transport.getTcpAddress().c_str()));
-            nodeConfig.ipv4.port = transport.getTcpPort();
+            nodeConfig.ipv4.address = ntohl((uint32_t)inet_addr(pTransport->getTcpAddress().c_str()));
+            nodeConfig.ipv4.port = pTransport->getTcpPort();
         }
 
         TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
@@ -32,13 +32,13 @@ void registerNodePool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfi
     }
 
     pool.getConfig().monitorEnabled = pNodePool->isMonitoringEnabled();
-    pool.getConfig().rdmaEnabled = pNodePool->getTransport().isRdmaEnabled();
+    pool.getConfig().rdmaEnabled = pNodePool->getTransport()->isRdmaEnabled();
     if (!pNodePool->getCpuSet().empty())
     {
         pool.getConfig().cpuSetStr = pNodePool->getCpuSet();
     }
     //pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
-    pool.getConfig().rdmaNicId = pNodePool->getTransport().getRdmaNicId();
+    pool.getConfig().rdmaNicId = pNodePool->getTransport()->getRdmaNicId();
     pool.getConfig().memorySizeStr = pNodePool->getMemorySize();
     pool.getConfig().hugePagesEnabled = pNodePool->isHugePagesEnabled();
 }

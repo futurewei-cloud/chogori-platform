@@ -28,7 +28,11 @@ test_volume: build
 	@echo ">>> Testing PersistentVolume"
 	@../$(BUILD_DIR)/test/persistentVolume/persistent_volume_test && testReturnCode=$? && exit $(testReturnCode)
 
-test: test_node test_client test_plog test_volume
+test_config: build
+	@echo ">>> Testing config"
+   	@../$(BUILD_DIR)/test/config/config_test && testReturnCode=$? && exit $(testReturnCode)
+
+test: test_node test_client test_plog test_volume test_config
 
 integrate: build
 	@echo ">>> Running integration test"

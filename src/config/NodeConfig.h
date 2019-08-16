@@ -12,15 +12,28 @@ class NodeConfig
 {
 friend class NodePoolConfig;
 friend class ConfigParserLegacy;
+friend class ConfigParser201907;
 
 protected:
-    Transport _transport;
+    std::shared_ptr<Transport> _pTransport;
+    std::vector<std::string> _partitions;
     int _nodeId;
 
 public:
-    const Transport& getTransport() const
+    NodeConfig()
+    : _pTransport(std::make_shared<Transport>())
     {
-        return _transport;
+        // empty
+    }
+
+    const std::shared_ptr<Transport> getTransport() const
+    {
+        return _pTransport;
+    }
+
+    const std::vector<std::string>& getPartitions() const
+    {
+        return _partitions;
     }
 
 }; // class NodeConfig
