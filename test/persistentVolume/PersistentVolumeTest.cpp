@@ -1,5 +1,6 @@
 #define EXPOSE_PRIVATES
 #include <seastar/testing/test_case.hh>
+#include <../include/Common.h>
 
 #include <iostream>
 #include <node/persistence/PersistentVolume.h>
@@ -7,7 +8,7 @@
 using namespace k2;
 using namespace std;
 
-const auto plogBaseDir = std::filesystem::temp_directory_path().concat("/plogs/");
+const auto plogBaseDir = generateTempFolderPath("volume_test");
 uint32_t constexpr BUFFERSIZE = 100;
 
 SEASTAR_TEST_CASE(test_addNewChunk)

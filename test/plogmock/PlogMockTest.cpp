@@ -4,12 +4,12 @@
 #include <iostream>
 #include <filesystem>
 #include "../../src/common/plog/PlogMock.h"
-
+#include <../include/Common.h>
 
 using namespace k2;
 using namespace std;
 
-const auto plogBaseDir = std::filesystem::temp_directory_path().concat("/plogs/");
+const auto plogBaseDir = generateTempFolderPath("plogmock_test");
 
 SEASTAR_TEST_CASE(test_create_plogFileHeader)
 {
