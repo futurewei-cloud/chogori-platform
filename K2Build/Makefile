@@ -30,7 +30,7 @@ test_volume: build
 
 test_config: build
 	@echo ">>> Testing config"
-   	@../$(BUILD_DIR)/test/config/config_test && testReturnCode=$? && exit $(testReturnCode)
+	@../$(BUILD_DIR)/test/config/config_test && testReturnCode=$? && exit $(testReturnCode)
 
 test: test_node test_client test_plog test_volume test_config
 
