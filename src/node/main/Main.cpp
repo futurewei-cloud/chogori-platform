@@ -63,7 +63,7 @@ int main(int argc, char** argv)
         TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
         std::shared_ptr<config::Config> pConfig = variablesMap.count("k2config")
             ? config::ConfigLoader::loadConfig(variablesMap["k2config"].as<std::string>())
-            : pConfig = config::ConfigLoader::loadDefaultConfig();
+            : config::ConfigLoader::loadDefaultConfig();
 
         // Register pool based on the configuration file
         registerNodePool(pool, pConfig);
