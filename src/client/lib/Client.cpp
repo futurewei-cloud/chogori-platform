@@ -27,6 +27,26 @@ void Client::init(const ClientSettings& settings)
     _executor.start();
 }
 
+void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Config> pConfig)
+{
+    for(auto pNodeConfig : pConfig->getNodes()) {
+        for(auto pPartitionConfig : pNodeConfig->getPartitions()) {
+            PartitionDescription desc;
+            PartitionAssignmentId id;
+            id.parse(pPartitionConfig->getId().c_str());
+            desc.nodeEndpoint = std::move(pNodeConfig->getTransport()->getEndpoint());
+            desc.id = id;
+            PartitionRange partitionRange;
+            partitionRange.lowKey = pPartitionConfig->getRange()._lowerBound;
+            partitionRange.highKey = pPartitionConfig->getRange()._upperBound;
+            desc.range = std::move(partitionRange);
+            _partitionMap.map.insert(std::move(desc));
+        }
+    }
+
+    init(settings);
+}
+
 Payload Client::createPayload()
 {
     std::string endpoint = _settings.networkProtocol + "://0.0.0.0:0000";

@@ -14,6 +14,8 @@
 #include <seastar/core/reactor.hh>
 #include <seastar/core/metrics_registration.hh>
 #include <seastar/core/metrics.hh>
+// k2:config
+#include <config/ConfigLoader.h>
 // k2:client
 #include <client/lib/Client.h>
 // k2:benchmarker
@@ -40,32 +42,6 @@ static void makeSetMessage(k2::Payload& payload, std::string key, std::string va
      payload.getWriter().write(request);
 }
 
-class K2Client: public client::Client
-{
-public:
-    K2Client()
-    {
-        PartitionDescription desc;
-        PartitionAssignmentId id;
-        id.parse("1.1.1");
-        desc.nodeEndpoint = "rrdma+k2rpc://[fe80::9a03:9bff:fe89:13ba]:285";
-        desc.id = id;
-        PartitionRange partitionRange;
-        partitionRange.lowKey = "";
-        partitionRange.highKey = "";
-        desc.range = partitionRange;
-        _partitionMap.map.insert(desc);
-
-        /*desc.nodeEndpoint = "tcp+k2rpc://127.0.0.1:12345";
-        id.parse("2.1.1");
-        desc.id = id;
-        partitionRange.lowKey = "z";
-        partitionRange.highKey = "";
-        desc.range = partitionRange;
-        _partitionMap.map.insert(desc);*/
-    }
-};
-
 class BenchmarkerService
 {
 using SessionPtr = std::shared_ptr<Session>;
@@ -76,17 +52,19 @@ private:
     std::shared_ptr<asio::io_service> _pIoService;
     std::shared_ptr<asio::ip::tcp::acceptor> _pAcceptor;
     std::thread _asioThread;
-    K2Client _client;
+    client::Client _client;
     metrics::metric_groups _metricGroups;
     std::map<std::string, SessionPtr> _readySessions;
     std::map<std::string, SessionPtr> _runningSessions;
     std::map<std::string, SessionPtr> _compleatedSessions;
+    std::shared_ptr<config::Config> _pK2Config;
 
 public:
     BenchmarkerService()
     {
         _pIoService = std::make_shared<asio::io_service>();
         _pAcceptor = std::make_shared<asio::ip::tcp::acceptor>(*_pIoService);
+        _pK2Config = std::make_shared<config::Config>();
     }
 
     k2bdto::Response handleRequest(k2bdto::Request& request)
@@ -150,7 +128,7 @@ public:
 
             const int delay = (pipeline-i) * penalty;
             const std::string key = std::move(pSession->next());
-            
+
             try {
                 if(key.empty()) {
                     K2INFO("Session iterator exhausted; failedKeys:" << pSession->getFailedKeys().size());
@@ -209,7 +187,7 @@ public:
         settings.networkProtocol = "tcp+k2rpc";
         settings.runInLoop = std::bind(&BenchmarkerService::transportLoop, this, std::placeholders::_1);
 
-        _client.init(settings);
+        _client.init(settings, _pK2Config);
     }
 
     void start()
@@ -424,6 +402,11 @@ public:
         });
     }
 
+    void setK2Config(std::shared_ptr<config::Config> pK2Config)
+    {
+        _pK2Config = pK2Config;
+    }
+
 }; // BenchmarkerService class
 
 }; // benchmarker namespace
@@ -438,7 +421,24 @@ int main(int argc, char** argv)
     using namespace k2;
     using namespace k2::benchmarker;
 
+    namespace bpo = boost::program_options;
+    bpo::options_description options("K2B Options");
+
+    // get the k2 config from the command line
+    options.add_options()
+        ("k2config", bpo::value<std::string>(), "k2 configuration file")
+        ;
+
+    // parse the command line options
+    bpo::variables_map optionsMap;
+    bpo::store(bpo::parse_command_line(argc, argv, options), optionsMap);
+
+    std::shared_ptr<config::Config> pK2Config = optionsMap.count("k2config")
+        ? config::ConfigLoader::loadConfig(optionsMap["k2config"].as<std::string>())
+        : config::ConfigLoader::loadDefaultConfig();
+
     BenchmarkerService service;
+    service.setK2Config(pK2Config);
     service.start();
 
     (void)argc;

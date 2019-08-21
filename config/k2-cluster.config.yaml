@@ -13,10 +13,10 @@ transport-base: &transport-base
         nic_id: "mlx5_0"
     tcp:
         address: "0.0.0.0"
-        port: 1000
+        port: 14000
 
 node-pool-base: &node-pool-base
-    node-count: 2
+    node-count: 1
     enable-monitoring: false
     transport:
         <<: *transport-base
@@ -24,36 +24,23 @@ node-pool-base: &node-pool-base
 node-base: &node-base
     transport:
         <<: *transport-base
-        tcp:
-            port: 2000
 
 node-pools:
     -   id: "np1"
         <<: *node-pool-base
-        node-count: 3
-        nodes:
-            -   id: 0
-                <<: *node-base
-                cpu: 15
-            -   id: 1
-                <<: *node-base
-                transport:
-                    tcp:
-                        port: 3000
-    -   id: "np2"
-        <<: *node-pool-base
 
 cluster:
-    -   host: "host1.futurewei.com"
+    -   host: "host1"
         node-pools:
             -   id: "np1"
-                transport:
-                    tcp:
-                        address: "192.168.200.1"
                 nodes:
                     -   id: 0
-                        partitions: [ "1.1.1", "2.1.1" ]
+                        partitions:
+                            -   id: "1.1.1"
+                                range: "[a-g)"
+                            -   id: "2.1.1"
+                                range: "g)"
                         transport:
-                            rdma:
-                                address: "host1.local"
-                                port: 246
+                            tcp:
+                                address: "192.168.200.1"
+                                

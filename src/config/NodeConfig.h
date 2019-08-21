@@ -2,6 +2,7 @@
 
 // k2:config
 #include "Transport.h"
+#include "PartitionConfig.h"
 
 namespace k2
 {
@@ -16,7 +17,7 @@ friend class ConfigParser201907;
 
 protected:
     std::shared_ptr<Transport> _pTransport;
-    std::vector<std::string> _partitions;
+    std::map<std::string, std::shared_ptr<PartitionConfig>> _partitionsMap;
     int _nodeId;
 
 public:
@@ -31,9 +32,27 @@ public:
         return _pTransport;
     }
 
-    const std::vector<std::string>& getPartitions() const
+    const std::vector<std::shared_ptr<PartitionConfig>> getPartitions() const
     {
-        return _partitions;
+        std::vector<std::shared_ptr<PartitionConfig>> partitions;
+
+        std::transform(
+            std::begin(_partitionsMap),
+            std::end(_partitionsMap),
+            std::back_inserter(partitions),
+            [](const auto& pair) {
+                return pair.second;
+            }
+        );
+
+        return std::move(partitions);
+    }
+
+    const std::shared_ptr<PartitionConfig> getPartition(const std::string& id)
+    {
+         auto pair = _partitionsMap.find(id);
+
+        return (pair!=_partitionsMap.end()) ? pair->second : nullptr;
     }
 
 }; // class NodeConfig

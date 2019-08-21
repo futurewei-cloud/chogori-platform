@@ -43,6 +43,11 @@ public:
         return _nodes;
     }
 
+    const std::shared_ptr<NodeConfig> getNode(size_t id) const
+    {
+        return (id >= _nodes.size()) ? nullptr : _nodes[id];
+    }
+
     bool isMonitoringEnabled() const
     {
         return _monitoringEnabledFlag;

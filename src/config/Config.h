@@ -48,6 +48,33 @@ public:
         return (pair!=_nodePoolMap.end()) ? pair->second : nullptr;
     }
 
+    const std::vector<std::shared_ptr<PartitionConfig>> getPartitions() const
+    {
+        std::vector<std::shared_ptr<PartitionConfig>> partitions;
+
+        for(auto pNodePoolConfig : getNodePools()) {
+            for(auto pNodeConfig : pNodePoolConfig->getNodes()) {
+                auto vector = std::move(pNodeConfig->getPartitions());
+                partitions.insert(partitions.end(), vector.begin(), vector.end());
+            }
+        }
+
+        return std::move(partitions);
+    }
+
+    const std::vector<std::shared_ptr<NodeConfig>> getNodes() const
+    {
+        std::vector<std::shared_ptr<NodeConfig>> vector;
+
+        for(auto pNodePoolConfig : getNodePools()) {
+            for(auto pNodeConfig : pNodePoolConfig->getNodes()) {
+                vector.push_back(pNodeConfig);
+            }
+        }
+
+        return std::move(vector);
+    }
+
     const std::shared_ptr<PartitionManagerConfig> getPartitionManager() const
     {
         return _pPartitionManager;

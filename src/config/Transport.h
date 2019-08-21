@@ -2,6 +2,8 @@
 
 // std
 #include <string>
+// boost
+#include <boost/format.hpp>
 
 namespace k2
 {
@@ -22,7 +24,7 @@ protected:
     // rdma
     bool _enableRdmaFlag = false;
     std::string _rdmaAddress;
-    uint64_t _rdmaPort;
+    uint64_t _rdmaPort = 0;
     std::string _rdmaNicId;
 
 public:
@@ -60,6 +62,20 @@ public:
     uint64_t getRdmaPort() const
     {
         return _rdmaPort;
+    }
+
+    std::string getEndpoint() const
+    {
+        std::string formatStr = "+k2rpc://%s:%d";
+        if(isRdmaEnabled()) {
+            formatStr = "rdma" + formatStr;
+
+            return std::move(boost::str(boost::format(formatStr) % _rdmaAddress % _rdmaPort));
+        }
+
+        formatStr = "tcp" + formatStr;
+
+        return std::move(boost::str(boost::format(formatStr) % _tcpAddress % _tcpPort));
     }
 
 }; // class Transport

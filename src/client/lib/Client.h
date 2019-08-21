@@ -6,6 +6,8 @@
 #include <mutex>
 // k2
 #include <common/PartitionMetadata.h>
+// k2:config
+#include <config/Config.h>
 // k2:client
 #include <client/IClient.h>
 #include <client/PartitionMap.h>
@@ -68,6 +70,11 @@ public:
     // Return the partitions for the given range.
     //
     std::vector<PartitionDescription> getPartitions(Range& range);
+
+    //
+    // Init the client from static configuration.
+    //
+    void init(client::ClientSettings& settings, std::shared_ptr<config::Config> pConfig);
 
 protected:
     void sendPayload(const std::string& endpoint, std::unique_ptr<Payload> pPayload, std::shared_ptr<ResultCollector> pCollector);

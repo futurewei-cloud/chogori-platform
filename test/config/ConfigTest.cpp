@@ -61,13 +61,15 @@ SCENARIO("Config", "[2019-07]")
                 -   host: "hostname1"
                     node-pools:
                         -   id: "np1"
-                            transport:
-                                tcp:
-                                    address: "192.168.200.1"
                             nodes:
                                 -   id: 0
-                                    partitions: [ "1.1.1", "2.1.1" ]
+                                    partitions:
+                                        -   id: "1.1.1"
+                                            range: '[a-z)'
+                                        -   id: "2.1.1"
                                     transport:
+                                        tcp:
+                                            address: "192.168.200.1"
                                         rdma:
                                             address: "host1.local"
                                             port: 246
@@ -87,11 +89,15 @@ SCENARIO("Config", "[2019-07]")
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getTcpPort() == 2000);
             REQUIRE(nodePools[0]->getNodes()[1]->getTransport()->getTcpPort() == 3000);
             REQUIRE(nodePools[0]->getNodes()[2]->getTransport()->getTcpPort() == 1000);
-            REQUIRE(nodePools[0]->getTransport()->getTcpAddress() == "192.168.200.1");
+            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getTcpAddress() == "192.168.200.1");
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getRdmaPort() == 246);
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getRdmaAddress() == "host1.local");
             REQUIRE(nodePools[0]->getNodes()[0]->getPartitions().size() == 2);
-            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0] == "1.1.1");
+            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getId() == "1.1.1");
+            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._lowerBound == "a");
+            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBound == "z");
+            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._lowerBoundClosed == true);
+            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBoundClosed == false);
 
             REQUIRE(nodePools[1]->getId() == "np2");
             REQUIRE(nodePools[1]->getNodes().size() == 2);
