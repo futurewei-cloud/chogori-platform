@@ -26,6 +26,20 @@ protected:
     std::string _rdmaNicId;
 
 public:
+    Transport()
+    {
+        // empty
+    }
+
+    Transport(const std::string& tcpAddress, uint64_t tcpPort, const std::string& rdmaAddress, uint64_t rdmaPort, const std::string& rdmaNicId)
+    : _tcpAddress(tcpAddress)
+    , _tcpPort(tcpPort)
+    , _rdmaAddress(rdmaAddress)
+    , _rdmaPort(rdmaPort)
+    , _rdmaNicId(rdmaNicId)
+    {
+        // empty
+    }
 
     const std::string& getTcpAddress() const
     {
@@ -66,7 +80,7 @@ public:
     {
         std::string formatStr = "+k2rpc://%s:%d";
         if(isRdmaEnabled()) {
-            formatStr = "rdma" + formatStr;
+            formatStr = "rrdma" + formatStr;
 
             return std::move(boost::str(boost::format(formatStr) % _rdmaAddress % _rdmaPort));
         }

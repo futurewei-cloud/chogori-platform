@@ -103,6 +103,30 @@ public:
 	    _argv.push_back(std::to_string(_settings.networkThreadCount).c_str());
     }
 
+    void init(const client::ClientSettings& settings, std::shared_ptr<config::NodePoolConfig> pNodePoolConfig)
+    {
+        ASSERT(!_initFlag);
+        
+        if(pNodePoolConfig->getTransport()->isRdmaEnabled()) {
+            _argv.push_back("--rdma");
+            _argv.push_back(pNodePoolConfig->getTransport()->getRdmaNicId().c_str());
+        }
+        const std::string memorySize = pNodePoolConfig->getMemorySize();
+        if(!memorySize.empty()) {
+            _argv.push_back("-m");
+	        _argv.push_back(memorySize.c_str());
+        }
+        if(pNodePoolConfig->isHugePagesEnabled()) {
+            _argv.push_back("--hugepages");
+        }
+
+        // TODO: update to use n cores
+	    //_argv.push_back("--cpuset");
+	    //_argv.push_back("30");
+
+        init(settings);
+    }
+
     //
     // Start the executor.
     //

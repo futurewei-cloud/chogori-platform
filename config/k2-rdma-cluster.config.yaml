@@ -41,5 +41,8 @@ cluster:
                             -   id: "1.1.1"
                                 range: "-"
                         transport:
+                            rdma:
+                                adress: "[fe80::9a03:9bff:fe89:13ba]"
+                                port: 205
                             tcp:
-                                address: "192.168.200.1"
+                                address: "10.218.233.149"

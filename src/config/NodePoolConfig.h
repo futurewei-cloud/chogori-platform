@@ -33,6 +33,16 @@ public:
         // empty
     }
 
+    NodePoolConfig(std::shared_ptr<Transport> pTransport, const std::string& cpuSet, const std::string& memorySize, bool hugePagesEnabledFlag, bool monitoringEnabledFlag)
+    : _pTransport(pTransport)
+    , _cpuSet(cpuSet)
+    , _monitoringEnabledFlag(monitoringEnabledFlag)
+    , _hugePagesEnabledFlag(hugePagesEnabledFlag)
+    , _memorySize(memorySize)
+    {
+        // empty
+    }
+
     const std::string& getId() const
     {
         return _id;
