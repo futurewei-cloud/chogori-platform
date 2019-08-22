@@ -9,6 +9,8 @@ partition_manager: # optional partition manager for partition and configuration 
         - "rrdma+k2rpc://[fe80::9a03:9bff:fe89:13ba]:128"
 
 transport-base: &transport-base
+    rdma:
+        nic_id: "mlx5_0"
     tcp:
         address: "0.0.0.0"
         port: 11311
@@ -16,6 +18,8 @@ transport-base: &transport-base
 node-pool-base: &node-pool-base
     node_count: 1
     enable_monitoring: false
+    enable_hugepages: true
+    memory_size: "10G"
     transport:
         <<: *transport-base
 
@@ -23,7 +27,7 @@ node-base: &node-base
     transport:
         <<: *transport-base
 
-node-pools:
+node_pools:
     -   id: "np1"
         <<: *node-pool-base
 

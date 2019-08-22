@@ -45,7 +45,7 @@ public:
             pNodePoolConfig->_cpuSet = YamlUtils::getRequiredValue(config, "nodes_cpu_set", std::string("0"));
         }
         // rdma
-        pNodePoolConfig->_pTransport->_enableRdmaFlag = YamlUtils::getOptionalValue(config["rdmaEnabled"], pNodePoolConfig->_pTransport->_enableRdmaFlag);
+        //pNodePoolConfig->_pTransport->_enableRdmaFlag = YamlUtils::getOptionalValue(config["rdmaEnabled"], pNodePoolConfig->_pTransport->_enableRdmaFlag);
         pNodePoolConfig->_pTransport->_rdmaNicId = YamlUtils::getOptionalValue(config["nic_id"], pNodePoolConfig->_pTransport->_rdmaNicId);
         // memory
         pNodePoolConfig->_memorySize = YamlUtils::getOptionalValue(config["memory"], pNodePoolConfig->_memorySize);

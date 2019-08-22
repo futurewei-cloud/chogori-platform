@@ -27,9 +27,9 @@ public:
     {
         std::shared_ptr<Config> pConfig = std::make_shared<Config>();
         pConfig->_schema = YamlUtils::getRequiredValue(yamlConfig, "schema", std::string(""));
-        pConfig->_clusterName = YamlUtils::getOptionalValue(yamlConfig["cluster-name"], std::string(""));
-        pConfig->_instanceVersion = YamlUtils::getOptionalValue(yamlConfig["instance-version"], 0);
-        parseNodePools(YamlUtils::mergeAnchors(yamlConfig["node-pools"]), pConfig);
+        pConfig->_clusterName = YamlUtils::getOptionalValue(yamlConfig["cluster_name"], std::string(""));
+        pConfig->_instanceVersion = YamlUtils::getOptionalValue(yamlConfig["instance_version"], 0);
+        parseNodePools(YamlUtils::mergeAnchors(yamlConfig["node_pools"]), pConfig);
         parseCluster(yamlConfig["cluster"], pConfig);
 
         return pConfig;
@@ -66,7 +66,10 @@ public:
             return;
         }
 
-        const int nodesToCreate = pNodePoolConfig->getNodes().empty() ? YamlUtils::getOptionalValue(yamlConfig["node-count"], 1) : 0;
+        const int nodesToCreate = pNodePoolConfig->getNodes().empty() ? YamlUtils::getOptionalValue(yamlConfig["node_count"], 1) : 0;
+        pNodePoolConfig->_memorySize = YamlUtils::getOptionalValue(yamlConfig["memory_size"], pNodePoolConfig->_memorySize);
+        pNodePoolConfig->_hugePagesEnabledFlag = YamlUtils::getOptionalValue(yamlConfig["enable_hugepages"], pNodePoolConfig->_hugePagesEnabledFlag);
+        pNodePoolConfig->_monitoringEnabledFlag = YamlUtils::getOptionalValue(yamlConfig["enable_monitoring"], pNodePoolConfig->_monitoringEnabledFlag);
         parseTransport(YamlUtils::mergeAnchors(yamlConfig["transport"]), pNodePoolConfig->_pTransport);
 
         // create all nodes based on the count
@@ -156,7 +159,7 @@ public:
         }
 
         for(auto host: yamlConfig) {
-            parseNodePools(host["node-pools"], pConfig);
+            parseNodePools(host["node_pools"], pConfig);
         }
     }
 
@@ -177,7 +180,8 @@ public:
         node = yaml["rdma"];
         if(node) {
             pTransport->_rdmaPort = YamlUtils::getOptionalValue(node["port"], pTransport->_rdmaPort);
-            pTransport->_rdmaAddress = YamlUtils::getOptionalValue(node["address"],  pTransport->_rdmaAddress);
+            pTransport->_rdmaAddress = YamlUtils::getOptionalValue(node["address"], pTransport->_rdmaAddress);
+            pTransport->_rdmaNicId = YamlUtils::getOptionalValue(node["nic_id"], pTransport->_rdmaNicId);
         }
     }
 

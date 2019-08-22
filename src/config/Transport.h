@@ -18,21 +18,14 @@ friend class NodePoolConfig;
 
 protected:
     // tcp
-    bool _enableTcpFlag = true;
     std::string _tcpAddress = "0.0.0.0";
     uint64_t _tcpPort = 11311;
     // rdma
-    bool _enableRdmaFlag = false;
     std::string _rdmaAddress;
     uint64_t _rdmaPort = 0;
     std::string _rdmaNicId;
 
 public:
-
-    bool isTcpEnabled() const
-    {
-        return _enableTcpFlag;
-    }
 
     const std::string& getTcpAddress() const
     {
@@ -42,11 +35,6 @@ public:
     uint64_t getTcpPort() const
     {
         return _tcpPort;
-    }
-
-    bool isRdmaEnabled() const
-    {
-        return _enableRdmaFlag;
     }
 
     const std::string& getRdmaNicId() const
@@ -62,6 +50,16 @@ public:
     uint64_t getRdmaPort() const
     {
         return _rdmaPort;
+    }
+
+    bool isTcpEnabled() const
+    {
+        return (_tcpPort > 0 && !_tcpAddress.empty());
+    }
+
+    bool isRdmaEnabled() const
+    {
+        return (!_rdmaNicId.empty() || (_rdmaPort >0 && _rdmaAddress.empty()));
     }
 
     std::string getEndpoint() const

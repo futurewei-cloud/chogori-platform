@@ -18,8 +18,8 @@ SCENARIO("Config", "[2019-07]")
         const std::string configStr =
         {R"(---
             schema: "2019-07"
-            instance-version: 123456
-            cluster-name: "mysql-backend-na"
+            instance_version: 123456
+            cluster_name: "mysql-backend-na"
 
             transport-base: &transport-base
                 rdma:
@@ -29,8 +29,10 @@ SCENARIO("Config", "[2019-07]")
                     port: 1000
 
             node-pool-base: &node-pool-base
-                node-count: 2
-                enable-monitoring: false
+                node_count: 2
+                enable_monitoring: true
+                enable_hugepages: true
+                memory_size: "10G"
                 transport:
                     <<: *transport-base
 
@@ -40,10 +42,10 @@ SCENARIO("Config", "[2019-07]")
                     tcp:
                         port: 2000
 
-            node-pools:
+            node_pools:
                 -   id: "np1"
                     <<: *node-pool-base
-                    node-count: 3
+                    node_count: 3
                     nodes:
                         -   id: 0
                             <<: *node-base
@@ -55,11 +57,10 @@ SCENARIO("Config", "[2019-07]")
                                     port: 3000
 
                 -   id: "np2"
-                    <<: *node-pool-base
 
             cluster:
                 -   host: "hostname1"
-                    node-pools:
+                    node_pools:
                         -   id: "np1"
                             nodes:
                                 -   id: 0
@@ -80,16 +81,20 @@ SCENARIO("Config", "[2019-07]")
         {
             auto pConfig = ConfigLoader::loadConfigString(configStr);
             REQUIRE(pConfig->getSchema() == "2019-07");
-
             auto nodePools = pConfig->getNodePools();
             REQUIRE(nodePools.size() == 2);
 
             REQUIRE(nodePools[0]->getId() == "np1");
             REQUIRE(nodePools[0]->getNodes().size() == 3);
+            REQUIRE(nodePools[0]->isHugePagesEnabled() == true);
+            REQUIRE(nodePools[0]->isMonitoringEnabled() == true);
+            REQUIRE(nodePools[0]->getMemorySize() == "10G");
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getTcpPort() == 2000);
             REQUIRE(nodePools[0]->getNodes()[1]->getTransport()->getTcpPort() == 3000);
             REQUIRE(nodePools[0]->getNodes()[2]->getTransport()->getTcpPort() == 1000);
+            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->isTcpEnabled() == true);
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getTcpAddress() == "192.168.200.1");
+            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->isRdmaEnabled() == true);
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getRdmaPort() == 246);
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getRdmaAddress() == "host1.local");
             REQUIRE(nodePools[0]->getNodes()[0]->getPartitions().size() == 2);
@@ -100,8 +105,9 @@ SCENARIO("Config", "[2019-07]")
             REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBoundClosed == false);
 
             REQUIRE(nodePools[1]->getId() == "np2");
-            REQUIRE(nodePools[1]->getNodes().size() == 2);
+            REQUIRE(nodePools[1]->getNodes().size() == 1);
             REQUIRE(nodePools[1]->getTransport()->getTcpAddress() == "0.0.0.0");
+            REQUIRE(nodePools[1]->getNodes()[0]->getTransport()->isRdmaEnabled() == false);
         }
     }
 
