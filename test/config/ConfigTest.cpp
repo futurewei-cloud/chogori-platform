@@ -72,7 +72,7 @@ SCENARIO("Config", "[2019-07]")
                                         tcp:
                                             address: "192.168.200.1"
                                         rdma:
-                                            address: "host1.local"
+                                            address: "[fe80::9a03:9bff:fe89:13da]"
                                             port: 246
 
         )"};
@@ -89,25 +89,35 @@ SCENARIO("Config", "[2019-07]")
             REQUIRE(nodePools[0]->isHugePagesEnabled() == true);
             REQUIRE(nodePools[0]->isMonitoringEnabled() == true);
             REQUIRE(nodePools[0]->getMemorySize() == "10G");
+            REQUIRE(nodePools[0]->getTransport()->getRdmaNicId() == "mlx5_0");
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getTcpPort() == 2000);
             REQUIRE(nodePools[0]->getNodes()[1]->getTransport()->getTcpPort() == 3000);
             REQUIRE(nodePools[0]->getNodes()[2]->getTransport()->getTcpPort() == 1000);
+            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getRdmaNicId() == "mlx5_0");
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->isTcpEnabled() == true);
-            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getTcpAddress() == "192.168.200.1");
+            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getTcpAddress() == "0.0.0.0");
             REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->isRdmaEnabled() == true);
-            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getRdmaPort() == 246);
-            REQUIRE(nodePools[0]->getNodes()[0]->getTransport()->getRdmaAddress() == "host1.local");
-            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions().size() == 2);
-            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getId() == "1.1.1");
-            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._lowerBound == "a");
-            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBound == "z");
-            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._lowerBoundClosed == true);
-            REQUIRE(nodePools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBoundClosed == false);
 
             REQUIRE(nodePools[1]->getId() == "np2");
             REQUIRE(nodePools[1]->getNodes().size() == 1);
             REQUIRE(nodePools[1]->getTransport()->getTcpAddress() == "0.0.0.0");
             REQUIRE(nodePools[1]->getNodes()[0]->getTransport()->isRdmaEnabled() == false);
+
+            auto hostPools = pConfig->getNodePoolsForHost("hostname1");
+            REQUIRE(hostPools.size() == 2);
+            REQUIRE(hostPools[0]->getTransport()->getRdmaNicId() == "mlx5_0");
+            REQUIRE(hostPools[0]->getNodes()[0]->getTransport()->isTcpEnabled() == true);
+            REQUIRE(hostPools[0]->getNodes()[0]->getTransport()->isRdmaEnabled() == true);
+            REQUIRE(hostPools[0]->getNodes()[0]->getTransport()->getTcpAddress() == "192.168.200.1");
+            REQUIRE(hostPools[0]->getNodes()[0]->getTransport()->getRdmaPort() == 246);
+            REQUIRE(hostPools[0]->getNodes()[0]->getTransport()->getRdmaAddress() == "[fe80::9a03:9bff:fe89:13da]");
+            REQUIRE(hostPools[0]->getNodes()[0]->getTransport()->getEndpoint() == "rrdma+k2rpc://[fe80::9a03:9bff:fe89:13da]:246");
+            REQUIRE(hostPools[0]->getNodes()[0]->getPartitions().size() == 2);
+            REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getId() == "1.1.1");
+            REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getRange()._lowerBound == "a");
+            REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBound == "z");
+            REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getRange()._lowerBoundClosed == true);
+            REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBoundClosed == false);
         }
     }
 

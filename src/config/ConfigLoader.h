@@ -1,5 +1,9 @@
 #pragma once
-
+// std
+#include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 // k2
 #include <common/Common.h>
 // k2:config
@@ -49,6 +53,21 @@ public:
         }
 
         return pParser->parseConfig(node);
+    }
+
+    static std::vector<std::shared_ptr<NodePoolConfig>> getHostNodePools(std::shared_ptr<Config> pConfig)
+    {
+        return std::move(pConfig->getNodePoolsForHost(getHostname()));
+    }
+
+    static std::string getHostname()
+    {
+        const size_t masSize = 512;
+        char hostname[masSize];
+        const int result = gethostname(hostname, masSize);
+        ASSERT(!result);
+
+        return std::move(std::string(hostname));
     }
 
 }; // class ConfigLoader

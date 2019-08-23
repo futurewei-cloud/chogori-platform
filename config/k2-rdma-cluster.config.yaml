@@ -32,17 +32,17 @@ node_pools:
         <<: *node-pool-base
 
 cluster:
-    -   host: "host1"
+    -   host: "k2-bvu-20006" # lab host
         node_pools:
             -   id: "np1"
                 nodes:
                     -   id: 0
                         partitions:
                             -   id: "1.1.1"
-                                range: "-"
+                                range: '-' # the entire range
                         transport:
                             rdma:
-                                adress: "[fe80::9a03:9bff:fe89:13ba]"
-                                port: 205
+                                address: '[fe80::9a03:9bff:fe89:13ba]'
+                                port: 205 # will change when the nodepool is restarted
                             tcp:
                                 address: "10.218.233.149"

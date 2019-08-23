@@ -23,12 +23,12 @@ node-base: &node-base
     transport:
         <<: *transport-base
 
-node-pools:
+node_pools:
     -   id: "np1"
         <<: *node-pool-base
 
 cluster:
-    -   host: "host1"
+    -   host: "0a6566944dd5" # ari's laptop
         node_pools:
             -   id: "np1"
                 nodes:

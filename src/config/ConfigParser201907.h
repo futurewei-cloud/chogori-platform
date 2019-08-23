@@ -17,6 +17,11 @@ namespace config
 
 class ConfigParser201907: public IConfigParser
 {
+private:
+    const std::string ID_TOKEN = "id";
+    const std::string NODE_POOLS_TOKEN = "node_pools";
+    const std::string TRANSPORT_TOKEN = "transport";
+
 public:
     ConfigParser201907()
     {
@@ -29,29 +34,26 @@ public:
         pConfig->_schema = YamlUtils::getRequiredValue(yamlConfig, "schema", std::string(""));
         pConfig->_clusterName = YamlUtils::getOptionalValue(yamlConfig["cluster_name"], std::string(""));
         pConfig->_instanceVersion = YamlUtils::getOptionalValue(yamlConfig["instance_version"], 0);
-        parseNodePools(YamlUtils::mergeAnchors(yamlConfig["node_pools"]), pConfig);
-        parseCluster(yamlConfig["cluster"], pConfig);
+        parseNodePools(YamlUtils::mergeAnchors(yamlConfig[NODE_POOLS_TOKEN]), pConfig->_nodePoolMap);
+        parseCluster(yamlConfig, pConfig);
 
         return pConfig;
     }
 
-    void parseNodePools(const YAML::Node& yamlConfig, std::shared_ptr<Config> pConfig)
+    void parseNodePools(const YAML::Node& yamlConfig, std::map<std::string, std::shared_ptr<NodePoolConfig>>& nodePoolMap)
     {
         if(!yamlConfig) {
             return;
         }
 
-        std::vector<std::shared_ptr<NodePoolConfig>> nodePools;
-        std::map<std::string, std::shared_ptr<NodePoolConfig>> nodeMap;
-
         int i=0;
         for(auto nodePool: yamlConfig) {
-            const std::string id = YamlUtils::getOptionalValue(nodePool["id"], std::to_string(i));
-            auto pNodePoolConfig = pConfig->getNodePool(id);
+            const std::string id = YamlUtils::getOptionalValue(nodePool[ID_TOKEN], std::to_string(i));
+            auto pNodePoolConfig = nodePoolMap.find(id) == nodePoolMap.end() ? nullptr : nodePoolMap.find(id)->second;
             if(!pNodePoolConfig) {
                 pNodePoolConfig = std::make_shared<NodePoolConfig>();
                 pNodePoolConfig->_id = id;
-                pConfig->_nodePoolMap.insert(std::pair(id, pNodePoolConfig));
+                nodePoolMap.insert(std::pair(id, pNodePoolConfig));
             }
             // apply the nodepool overrides
             parseNodePool(YamlUtils::mergeAnchors(nodePool), pNodePoolConfig);
@@ -70,7 +72,7 @@ public:
         pNodePoolConfig->_memorySize = YamlUtils::getOptionalValue(yamlConfig["memory_size"], pNodePoolConfig->_memorySize);
         pNodePoolConfig->_hugePagesEnabledFlag = YamlUtils::getOptionalValue(yamlConfig["enable_hugepages"], pNodePoolConfig->_hugePagesEnabledFlag);
         pNodePoolConfig->_monitoringEnabledFlag = YamlUtils::getOptionalValue(yamlConfig["enable_monitoring"], pNodePoolConfig->_monitoringEnabledFlag);
-        parseTransport(YamlUtils::mergeAnchors(yamlConfig["transport"]), pNodePoolConfig->_pTransport);
+        parseTransport(YamlUtils::mergeAnchors(yamlConfig[TRANSPORT_TOKEN]), pNodePoolConfig->_pTransport);
 
         // create all nodes based on the count
         for(uint16_t count=0; count < nodesToCreate; ++count) {
@@ -95,14 +97,14 @@ public:
         int i=0;
         for(auto n: yamlConfig) {
             auto node = YamlUtils::mergeAnchors(n);
-            const size_t id = YamlUtils::getOptionalValue(node["id"], i);
+            const size_t id = YamlUtils::getOptionalValue(node[ID_TOKEN], i);
             ASSERT(pNodePoolConfig->getNodes().size() > id);
             auto pNodeConfig = pNodePoolConfig->getNodes()[id];
             auto partitions = node["partitions"];
             if(partitions) {
                 int j=0;
                 for(auto partition :  partitions) {
-                    std::string partitionId = YamlUtils::getOptionalValue(partition["id"], std::to_string(j));
+                    std::string partitionId = YamlUtils::getOptionalValue(partition[ID_TOKEN], std::to_string(j));
                     auto pPartitionConfig = pNodeConfig->getPartition(partitionId);
                     if(!pPartitionConfig) {
                         pPartitionConfig = std::make_shared<PartitionConfig>();
@@ -114,7 +116,7 @@ public:
                 }
             }
 
-            parseTransport(YamlUtils::mergeAnchors(node["transport"]), pNodeConfig->_pTransport);
+            parseTransport(YamlUtils::mergeAnchors(node[TRANSPORT_TOKEN]), pNodeConfig->_pTransport);
             ++i;
         }
      }
@@ -125,7 +127,7 @@ public:
             return;
         }
 
-        const std::string id = YamlUtils::getOptionalValue(yamlConfig["id"], pPartitionConfig->_id);
+        const std::string id = YamlUtils::getOptionalValue(yamlConfig[ID_TOKEN], pPartitionConfig->_id);
         const std::string range = YamlUtils::getOptionalValue(yamlConfig["range"], std::string());
         if(!range.empty()) {
             std::istringstream stream(range);
@@ -155,11 +157,39 @@ public:
     void parseCluster(const YAML::Node& yamlConfig, std::shared_ptr<Config> pConfig)
     {
         if(!yamlConfig) {
+
+            return;
+        }
+        auto clusterNode = yamlConfig["cluster"];
+        if(!clusterNode) {
+
             return;
         }
 
-        for(auto host: yamlConfig) {
-            parseNodePools(host["node_pools"], pConfig);
+        for(auto hostNode: clusterNode) {
+            std::string hostName = YamlUtils::getRequiredValue(hostNode, "host", std::string());
+            auto nodePoolsNode = hostNode[NODE_POOLS_TOKEN];
+            if(!nodePoolsNode) {
+                continue;
+            }
+
+            std::map<std::string, std::shared_ptr<NodePoolConfig>> nodePoolMap;
+            parseNodePools(yamlConfig[NODE_POOLS_TOKEN], nodePoolMap);
+
+            for(auto nodePoolNode : nodePoolsNode) {
+                auto it = nodePoolMap.find(YamlUtils::getRequiredValue(nodePoolNode, ID_TOKEN, std::string()));
+                ASSERT(it!=nodePoolMap.end());
+                auto pNodePoolConfig = it->second;
+                parseNodePool(YamlUtils::mergeAnchors(nodePoolNode), pNodePoolConfig);
+            }
+
+            std::vector<std::shared_ptr<NodePoolConfig>> nodePools;
+            std::transform(
+                std::begin(nodePoolMap),
+                std::end(nodePoolMap),
+                std::back_inserter(nodePools), [](const auto& pair) { return pair.second; }
+            );
+            pConfig->_clusterMap.insert(std::pair(hostName, std::move(nodePools)));
         }
     }
 

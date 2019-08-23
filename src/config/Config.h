@@ -22,13 +22,13 @@ protected:
     std::string _schema;
     std::string _clusterName;
     std::map<std::string, std::shared_ptr<NodePoolConfig>> _nodePoolMap;
+    std::map<std::string, std::vector<std::shared_ptr<NodePoolConfig>>> _clusterMap;
     std::shared_ptr<PartitionManagerConfig> _pPartitionManager;
 
 public:
     const std::vector<std::shared_ptr<NodePoolConfig>> getNodePools() const
     {
         std::vector<std::shared_ptr<NodePoolConfig>> nodePools;
-
         std::transform(
             std::begin(_nodePoolMap),
             std::end(_nodePoolMap),
@@ -62,17 +62,29 @@ public:
         return std::move(partitions);
     }
 
-    const std::vector<std::shared_ptr<NodeConfig>> getNodes() const
+    const std::vector<std::shared_ptr<NodeConfig>> getClusterNodes() const
     {
         std::vector<std::shared_ptr<NodeConfig>> vector;
 
-        for(auto pNodePoolConfig : getNodePools()) {
-            for(auto pNodeConfig : pNodePoolConfig->getNodes()) {
-                vector.push_back(pNodeConfig);
+        for(auto pair : _clusterMap) {
+            for(auto pNodePoolConfig : pair.second) {
+                for(auto pNodeConfig : pNodePoolConfig->getNodes()) {
+                    vector.push_back(pNodeConfig);
+                }
             }
         }
 
         return std::move(vector);
+    }
+
+    const std::vector<std::shared_ptr<NodePoolConfig>> getNodePoolsForHost(const std::string& hostname)
+    {
+        auto it = _clusterMap.find(hostname);
+        if(it==_clusterMap.end()) {
+            return std::move(std::vector<std::shared_ptr<NodePoolConfig>>());
+        }
+
+        return it->second;
     }
 
     const std::shared_ptr<PartitionManagerConfig> getPartitionManager() const

@@ -9,8 +9,16 @@ using namespace k2;
 // TODO: Move the configuration logic into a separate file.
 void registerNodePool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfig)
 {
-    auto pNodePool = pConfig->getNodePools()[0];
-    for(auto pNode : pNodePool->getNodes()) {
+    // get the host's node pool configuration
+    auto nodePoolConfigVector = config::ConfigLoader::getHostNodePools(pConfig);
+    if(nodePoolConfigVector.empty()) {
+        // fallback to the default nodepool configuration
+        nodePoolConfigVector = pConfig->getNodePools();
+    }
+    ASSERT(!nodePoolConfigVector.empty());
+    auto pNodePoolConfig = nodePoolConfigVector[0];
+
+    for(auto pNode : pNodePoolConfig->getNodes()) {
         NodeEndpointConfig nodeConfig;
         const auto pTransport = pNode->getTransport();
         if(pTransport->isTcpEnabled()) {
@@ -31,16 +39,16 @@ void registerNodePool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfi
             pConfigManager->getEndpoints().begin(), pConfigManager->getEndpoints().end());
     }
 
-    pool.getConfig().monitorEnabled = pNodePool->isMonitoringEnabled();
-    pool.getConfig().rdmaEnabled = pNodePool->getTransport()->isRdmaEnabled();
-    if (!pNodePool->getCpuSet().empty())
+    pool.getConfig().monitorEnabled = pNodePoolConfig->isMonitoringEnabled();
+    pool.getConfig().rdmaEnabled = pNodePoolConfig->getTransport()->isRdmaEnabled();
+    if (!pNodePoolConfig->getCpuSet().empty())
     {
-        pool.getConfig().cpuSetStr = pNodePool->getCpuSet();
+        pool.getConfig().cpuSetStr = pNodePoolConfig->getCpuSet();
     }
     //pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
-    pool.getConfig().rdmaNicId = pNodePool->getTransport()->getRdmaNicId();
-    pool.getConfig().memorySizeStr = pNodePool->getMemorySize();
-    pool.getConfig().hugePagesEnabled = pNodePool->isHugePagesEnabled();
+    pool.getConfig().rdmaNicId = pNodePoolConfig->getTransport()->getRdmaNicId();
+    pool.getConfig().memorySizeStr = pNodePoolConfig->getMemorySize();
+    pool.getConfig().hugePagesEnabled = pNodePoolConfig->isHugePagesEnabled();
 }
 
 int main(int argc, char** argv)

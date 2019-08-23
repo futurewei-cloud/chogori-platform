@@ -32,7 +32,7 @@ void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Conf
     ASSERT(!settings.networkProtocol.empty())
 
     bool enableRdma = false;
-    for(auto pNodeConfig : pConfig->getNodes()) {
+    for(auto pNodeConfig : pConfig->getClusterNodes()) {
         if(pNodeConfig->getTransport()->isRdmaEnabled()) {
             enableRdma = true; // if there's a node configured for RDMA, enable it
         }
