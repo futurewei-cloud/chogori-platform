@@ -24,8 +24,15 @@ protected:
     std::map<std::string, std::shared_ptr<NodePoolConfig>> _nodePoolMap;
     std::map<std::string, std::vector<std::shared_ptr<NodePoolConfig>>> _clusterMap;
     std::shared_ptr<PartitionManagerConfig> _pPartitionManager;
+    std::shared_ptr<NodePoolConfig> _pClientNodePoolConfig;
 
 public:
+    Config()
+    : _pClientNodePoolConfig(std::make_shared<NodePoolConfig>())
+    {
+        // empty
+    }
+
     const std::vector<std::shared_ptr<NodePoolConfig>> getNodePools() const
     {
         std::vector<std::shared_ptr<NodePoolConfig>> nodePools;
@@ -90,6 +97,11 @@ public:
     const std::shared_ptr<PartitionManagerConfig> getPartitionManager() const
     {
         return _pPartitionManager;
+    }
+
+    const std::shared_ptr<NodePoolConfig> getClientConfig() const
+    {
+        return _pClientNodePoolConfig;
     }
 
     const std::string& getSchema() const

@@ -31,6 +31,10 @@ node_pools:
     -   id: "np1"
         <<: *node-pool-base
 
+client:
+    node_pool:
+        <<: *node-pool-base
+
 cluster:
     -   host: "k2-bvu-20006" # lab host
         node_pools:

@@ -36,10 +36,12 @@ public:
         pConfig->_instanceVersion = YamlUtils::getOptionalValue(yamlConfig["instance_version"], 0);
         parseNodePools(YamlUtils::mergeAnchors(yamlConfig[NODE_POOLS_TOKEN]), pConfig->_nodePoolMap);
         parseCluster(yamlConfig, pConfig);
+        parseClient(yamlConfig["client"], pConfig->_pClientNodePoolConfig);
 
         return pConfig;
     }
 
+protected:
     void parseNodePools(const YAML::Node& yamlConfig, std::map<std::string, std::shared_ptr<NodePoolConfig>>& nodePoolMap)
     {
         if(!yamlConfig) {
@@ -191,6 +193,15 @@ public:
             );
             pConfig->_clusterMap.insert(std::pair(hostName, std::move(nodePools)));
         }
+    }
+
+    void parseClient(const YAML::Node& yamlConfig, std::shared_ptr<NodePoolConfig> pNodePoolConfig)
+    {
+        if(!yamlConfig) {
+            return;
+        }
+
+        parseNodePool(YamlUtils::mergeAnchors(yamlConfig["node_pool"]), pNodePoolConfig);
     }
 
     void parseTransport(const YAML::Node& yamlConfig, std::shared_ptr<Transport> pTransport)

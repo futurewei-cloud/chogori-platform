@@ -57,6 +57,9 @@ SCENARIO("Config", "[2019-07]")
                                     port: 3000
 
                 -   id: "np2"
+            client:
+                node_pool:
+                    <<: *node-pool-base
 
             cluster:
                 -   host: "hostname1"
@@ -118,6 +121,8 @@ SCENARIO("Config", "[2019-07]")
             REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBound == "z");
             REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getRange()._lowerBoundClosed == true);
             REQUIRE(hostPools[0]->getNodes()[0]->getPartitions()[0]->getRange()._upperBoundClosed == false);
+
+            REQUIRE(pConfig->getClientConfig()->getTransport()->getRdmaNicId() == "mlx5_0");
         }
     }
 

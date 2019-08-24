@@ -31,11 +31,7 @@ void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Conf
 {
     ASSERT(!settings.networkProtocol.empty())
 
-    bool enableRdma = false;
     for(auto pNodeConfig : pConfig->getClusterNodes()) {
-        if(pNodeConfig->getTransport()->isRdmaEnabled()) {
-            enableRdma = true; // if there's a node configured for RDMA, enable it
-        }
         for(auto pPartitionConfig : pNodeConfig->getPartitions()) {
             PartitionDescription desc;
             PartitionAssignmentId id;
@@ -49,17 +45,9 @@ void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Conf
             _partitionMap.map.insert(std::move(desc));
         }
     }
-
-    auto pTransport = std::make_shared<config::Transport>();
-    auto pNodePoolConfig = std::make_shared<config::NodePoolConfig>();
-    // TODO: we need to provide this configuration settings via external configuration; hardcodding it for the moment
-    if(enableRdma) {
-        pTransport = std::make_shared<config::Transport>("", 0, "", 0, "mlx5_0");
-        pNodePoolConfig = std::make_shared<config::NodePoolConfig>(pTransport, "", "10G", true, false);
-    }
-
+    
     _settings = settings;
-    _executor.init(settings, pNodePoolConfig);
+    _executor.init(settings, pConfig->getClientConfig());
     _executor.start();
 }
 
