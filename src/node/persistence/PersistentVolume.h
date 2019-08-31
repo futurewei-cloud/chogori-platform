@@ -8,8 +8,10 @@
 
 #ifdef EXPOSE_PRIVATES
 #define PRIVATE public
+#define PROTECTED public
 #else
 #define PRIVATE private
+#define PROTECTED protected
 #endif
 
 namespace k2
@@ -32,7 +34,7 @@ class EntryService;
 
 class PersistentVolume : public IPersistentVolume
 {
-PRIVATE:
+PROTECTED:
     std::vector<ChunkInfo> m_chunkList; //  TODO: this need to be map to LinkedList nodes
     std::shared_ptr<IPlog> m_plog;
     std::unique_ptr<EntryService> entryService;
@@ -144,11 +146,13 @@ public:
     std::unique_ptr<IIterator> getChunks() override;
 
     //
-    //  Constructor
+    //  Open volume
     //      plogService - plog interface implementation
     //      entryPlogs - plogs to store metadata. TODO: replace with PlogEntry Service
     //
-    static IOResult<std::unique_ptr<IPersistentVolume>> open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs);
+    static IOResult<std::shared_ptr<PersistentVolume>> open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs);
+
+    static IOResult<std::shared_ptr<PersistentVolume>> create(std::shared_ptr<IPlog> plogService);
 
     ~PersistentVolume();
 

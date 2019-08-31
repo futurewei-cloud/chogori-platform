@@ -154,28 +154,28 @@ public:
 template<typename... ResultT>
 using IOResult = seastar::future<ResultT...>;
 
+class ReadRegion
+{
+public:
+    uint32_t  offset;
+    uint32_t  size;
+    Binary buffer;
+
+public:
+    ReadRegion(uint32_t  offset, uint32_t  size) : offset(offset), size(size) { }
+    ReadRegion(uint32_t  offset, uint32_t  size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
+
+    DEFAULT_MOVE(ReadRegion);
+};
+
+typedef std::vector<ReadRegion> ReadRegions;
+
 //
 //  IPlog in simplified Plog interface, containing only essential for K2 function and arguments.
 //
 class IPlog
 {
 public:
-    class ReadRegion
-    {
-    public:
-        uint32_t  offset;
-        uint32_t  size;
-        Binary buffer;
-
-    public:
-        ReadRegion(uint32_t  offset, uint32_t  size) : offset(offset), size(size) { }
-        ReadRegion(uint32_t  offset, uint32_t  size, Binary buffer) : offset(offset), size(size), buffer(std::move(buffer)) {}
-
-        DEFAULT_MOVE(ReadRegion);
-    };
-
-    typedef std::vector<ReadRegion> ReadRegions;
-
     //
     //  Allocate group of plogs
     //
@@ -187,14 +187,14 @@ public:
     virtual IOResult<PlogInfo> getInfo(const PlogId& plogId) = 0;
 
     //
-    //  Append buffers to the end of PLOG. Size of all data in buffers cannot exceed 2MB
+    //  Append buffers to the end of PLOG. Size of data in buffer cannot exceed 2MB
     //
-    virtual IOResult<uint32_t> append(const PlogId& plogId, std::vector<Binary> bufferList) = 0;
+    virtual IOResult<uint32_t> append(const PlogId& plogId, Binary buffer) = 0;
 
     //
     //  Read the region from PLOG
     //
-    virtual IOResult<ReadRegions> read(const PlogId& plogId, ReadRegions plogDataToReadList) = 0;
+    virtual IOResult<ReadRegion> read(const PlogId& plogId, ReadRegion region) = 0;
 
     //
     //  Seal PLOG: make PLOG read-only and finalize the size
@@ -211,12 +211,20 @@ public:
     //
     IOResult<Binary> read(const PlogId& plogId, uint32_t offset, uint32_t size)
     {
-        ReadRegions regions;
-        regions.emplace_back(offset, size, k2::Binary(size));
-        return read(plogId, std::move(regions)).then([](ReadRegions regions)
+        return read(plogId, ReadRegion(offset, size, Binary(size))).then([](ReadRegion region)
         {
-            return std::move(regions[0].buffer);
+            return std::move(region.buffer);
         });
+    }
+
+    virtual IOResult<ReadRegions> readMany(const PlogId& plogId, ReadRegions plogDataToReadList)
+    {
+        std::vector<seastar::future<ReadRegion>> readFutures;
+        for(ReadRegion& region : plogDataToReadList)
+            readFutures.push_back(read(plogId, std::move(region)));
+
+        return seastar::when_all_succeed(readFutures.begin(), readFutures.end())
+            .then([this](std::vector<ReadRegion> regions) mutable { return regions; });
     }
 
     //
@@ -226,21 +234,63 @@ public:
     {
         return getInfo(plogId).then([&payload, plogId, this](PlogInfo info) mutable
         {
+            if(!info.size)
+                return seastar::make_ready_future<>();
+
             return seastar::do_with(info.size, uint32_t(0), plogId, [this, &payload](uint32_t& size, uint32_t& offset, PlogId& plogId) mutable
             {
                 return seastar::repeat([&size, &offset, &plogId, &payload, this]() mutable
                 {
                     if(offset >= size)
-                        return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
+                        return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::yes);
 
-                    return read(plogId, offset, std::max(size - offset, (uint32_t)8*1024)).then([&payload](Binary bin)
+                    return read(plogId, offset, std::min(size - offset, (uint32_t)8*1024)).then([&payload, &offset](Binary bin)
                     {
+                        offset += bin.size();
                         payload.appendBinary(std::move(bin));
-                        return  seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::yes);
+                        return  seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
                     });
                 });
             });
         });
+    }
+
+    IOResult<Payload> readAll(const PlogId& plogId)
+    {
+        return seastar::do_with(Payload(nullptr), [this, plogId] (auto& payload) mutable
+        {
+            return readAll(plogId, payload).then([&payload] { return seastar::make_ready_future<Payload>(std::move(payload)); });
+        });
+    }
+
+    virtual IOResult<uint32_t> appendMany(const PlogId& plogId, std::vector<Binary> bufferList)
+    {
+        size_t totalSize = 0;
+        for(Binary& bin : bufferList)
+            totalSize += bin.size();
+
+        Binary buffer(totalSize);
+        uint8_t* ptr = buffer.get_write();
+        for(Binary& bin : bufferList)
+        {
+            std::memcpy(ptr, bin.get(), bin.size());
+            ptr += bin.size();
+        }
+
+        return append(plogId, std::move(buffer));
+    }
+
+    IOResult<uint32_t> append(const PlogId& plogId, const void* buffer, size_t bufferSize)
+    {
+        return append(plogId, Binary((const uint8_t*)buffer, bufferSize));
+    }
+
+    IOResult<uint32_t> getSize(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.size; }); }
+    IOResult<bool> isSealed(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.sealed; }); }
+
+    IOResult<PlogId> createOne()
+    {
+        return create(1).then([this](std::vector<PlogId> plogIds) { return plogIds[0]; });
     }
 };  //  class IPlog
 

@@ -20,21 +20,84 @@ struct EntryRecord
 class EntryService
 {
 protected:
-    std::vector<PlogId> plogId;
-    PlogId currentPlog;
-    std::shared_ptr<PersistentVolume> volume;
+    std::shared_ptr<IPlog> plogService;
+    std::vector<PlogId> plogs;
+    std::vector<size_t> sizes;
+    size_t activePlog = 0;
+    size_t maxPlogSize = 16*1024;
+
+    bool parse(Payload& payload, std::vector<EntryRecord>& records)
+    {
+        PayloadReader reader = payload.getReader();
+        return reader.read(records);
+    }
+
+    IOResult<> append(Binary& bin)
+    {
+        if(activePlog >= plogs.size())
+            return seastar::make_exception_future<>(PlogException("", P_CAPACITY_NOT_ENOUGH));
+
+        if(sizes[activePlog] + bin.size() > maxPlogSize)
+        {
+            activePlog++;
+            return append(bin);
+        }
+
+        return plogService->append(plogs[activePlog], binaryReference(bin.get_write(), bin.size()))
+            .discard_result()
+            .handle_exception([this, &bin](std::exception_ptr)
+            {
+                activePlog++;   //  Plog failure - switch to next one
+                return append(bin);
+            })
+            .then([this, size = bin.size()]
+            {
+                sizes[activePlog] += size;
+                return seastar::make_ready_future<>();
+            });
+    }
+
+    IOResult<> log(const void* data, size_t size)
+    {
+        return seastar::do_with(Binary((const uint8_t*)data, size), [this](Binary& bin)
+        {
+            return append(bin);
+        });
+    }
+
 public:
-    EntryService(std::vector<PlogId> plogId) : plogId(std::move(plogId)) { }
+    EntryService(std::shared_ptr<IPlog> plogService, std::vector<PlogId> plogs) : plogService(plogService), plogs(std::move(plogs)) { }
 
-    IOResult<std::vector<EntryRecord>> loadRecords()
+    IOResult<std::vector<EntryRecord>> init()
     {
-        return seastar::make_ready_future<std::vector<EntryRecord>>(std::vector<EntryRecord>());
+        std::vector<seastar::future<Payload>> loadPlogFutures;
+        activePlog = 0;
+        for(const PlogId& plogId : plogs)
+            loadPlogFutures.push_back(plogService->readAll(plogId));
+
+        return seastar::when_all_succeed(loadPlogFutures.begin(), loadPlogFutures.end())
+            .then([this](std::vector<Payload> payloads) mutable
+            {
+                std::vector<EntryRecord> records;
+                for(size_t i = 0; i < plogs.size(); i++)
+                {
+                    Payload& payload = payloads[i];
+                    if(payload.getSize() > 0)
+                    {
+                        if(!parse(payload, records))
+                            throw std::move(payload);
+                        activePlog = i;
+                    }
+                    sizes.push_back(payload.getSize());
+                }
+
+                return seastar::make_ready_future<std::vector<EntryRecord>>(std::move(records));
+            });
     }
 
-    IOResult<> logRecord(EntryRecord)
-    {
-        return seastar::make_ready_future<>();
-    }
+    IOResult<> logRecord(EntryRecord record) { return log(&record, sizeof(record)); }
+
+    IOResult<> logRecords(std::vector<EntryRecord> records) { return log(records.data(), records.size()*sizeof(EntryRecord)); }
 };
 
 const uint32_t MaxPlogSize = 32*1024;
@@ -68,12 +131,8 @@ IOResult<RecordPosition> PersistentVolume::append(Binary binary)
             auto msg = "Append buffer[" + std::to_string(binary.size())
                        + "] exceeds the limit of chunk capability: " + std::to_string(MaxPlogSize-plogInfoSize);
             return seastar::make_exception_future<uint32_t>(ChunkException(msg, m_chunkList.back().chunkId));
-        }else {
-            // write the binary buffer to plog
-            std::vector<Binary> bufferList;
-            bufferList.push_back(std::move(binary));
-            return m_plog->append(m_chunkList.back().plogId, std::move(bufferList));
-        }
+        }else
+            return m_plog->append(m_chunkList.back().plogId, std::move(binary));
     })
     .then([appendSize, this](auto offset) {
         // update chunk Information
@@ -99,12 +158,9 @@ IOResult<uint32_t> PersistentVolume::read(const RecordPosition& position, const 
 
     // determine the actual size to read
     auto readSize = std::min(sizeToRead, plogInfoSize+chunkInfo.size-position.offset);
-    IPlog::ReadRegions plogDataToReadList;
-    plogDataToReadList.push_back(IPlog::ReadRegion{position.offset, readSize});
-    // read records to buffer
-    return m_plog->read(chunkInfo.plogId, std::move(plogDataToReadList))
-    .then([&buffer](auto readRegions) {
-        buffer = std::move(readRegions[0].buffer);
+    return m_plog->read(chunkInfo.plogId, ReadRegion{position.offset, readSize})
+    .then([&buffer](auto region) {
+        buffer = std::move(region.buffer);
         return seastar::make_ready_future<uint32_t>(buffer.size());
     });
 }
@@ -185,20 +241,53 @@ std::unique_ptr<IPersistentVolume::IIterator> PersistentVolume::getChunks()
 IOResult<> PersistentVolume::addNewChunk()
 {
     return m_plog->create(1)
-    .then([this](auto plogIds){
-        ChunkInfo chunkInfo{plogIds[0]};
-        chunkInfo.chunkId = m_chunkList.size()==0 ? 1 : (m_chunkList.back().chunkId + 1);
-        m_chunkList.push_back(std::move(chunkInfo));
+        .then([this](std::vector<PlogId> plogIds)
+        {
+            EntryRecord record;
+            record.plogId = plogIds[0];
+            record.logType = LogType::Add;
 
-        return seastar::make_ready_future<>();
-    });
+            return entryService->logRecord(record)
+                .then([this, plogId = record.plogId]
+                {
+                    ChunkInfo chunkInfo{plogId};
+                    chunkInfo.chunkId = m_chunkList.size()==0 ? 1 : (m_chunkList.back().chunkId + 1);
+                    m_chunkList.push_back(std::move(chunkInfo));
+
+                    return seastar::make_ready_future<>();
+                });
+            });
 }
 
-IOResult<std::unique_ptr<IPersistentVolume>> PersistentVolume::open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs)
+namespace {
+
+struct PersistentVolumeWithConstructorAccess : public PersistentVolume
 {
-    std::unique_ptr<PersistentVolume> volume(new PersistentVolume(plogService));
-    volume->entryService = std::make_unique<EntryService>(std::move(entryPlogs));
-    return volume->entryService->loadRecords().then([volume = std::move(volume)](std::vector<EntryRecord> records) mutable
+    PersistentVolumeWithConstructorAccess(std::shared_ptr<IPlog> plog) : PersistentVolume(plog) {}
+};
+
+}
+
+IOResult<std::shared_ptr<PersistentVolume>> PersistentVolume::create(std::shared_ptr<IPlog> plogService)
+{
+    return plogService->create(16)
+        .then([plogService](std::vector<PlogId> plogIds)
+        {
+            auto volume = std::make_shared<PersistentVolumeWithConstructorAccess>(plogService);
+            volume->entryService = std::make_unique<EntryService>(plogService, std::move(plogIds));
+
+            return volume->entryService->init().then([volume](std::vector<EntryRecord>)
+            {
+                return std::dynamic_pointer_cast<PersistentVolume>(volume);
+            });
+        });
+}
+
+IOResult<std::shared_ptr<PersistentVolume>> PersistentVolume::open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs)
+{
+    auto volume = std::make_shared<PersistentVolumeWithConstructorAccess>(plogService);
+    volume->entryService = std::make_unique<EntryService>(plogService, std::move(entryPlogs));
+    return volume->entryService->init().then([volume = std::move(volume)](std::vector<EntryRecord> records) mutable
         {
             for(auto& record : records)
             {
@@ -207,7 +296,7 @@ IOResult<std::unique_ptr<IPersistentVolume>> PersistentVolume::open(std::shared_
                 volume->m_chunkList.push_back(std::move(chunkInfo));
             }
 
-            return std::unique_ptr<IPersistentVolume>(volume.release());
+            return std::dynamic_pointer_cast<PersistentVolume>(volume);
         });
 }
 

@@ -22,8 +22,8 @@ typedef struct affinity_policy
     uint32_t   *server_id;                                 /* server id array point */
 }affinity_policy_t;
 
-/*** 
-* Return Code definition Section 
+/***
+* Return Code definition Section
 */
 /**
 * just for SGL
@@ -34,7 +34,7 @@ typedef struct affinity_policy
 *
 */
 typedef enum cache_ctrl_flag
-{ 
+{
     CACHE_PRIORITY_WRITE_READ_DEFAULT  = 0x0000,     /* read write read cache default. */
     CACHE_PRIORITY_WRITE_THROUGH_IDX   = 0x0002,     /* write cache write through idx */
     CACHE_PRIORITY_WRITE_RESIDENT_IDX  = 0x0004,     /* write cache write resident idx */
@@ -44,13 +44,13 @@ typedef enum cache_ctrl_flag
 
 
 
-/*** 
+/***
  *     ####### Return Code definition Section #######
  */
 typedef enum plog_ret_code
 {
     P_BUSY                          = -100000,    /* PLog is busy. Please retry later. */
-    P_ARGS_INVAILD                  = -99999,     /* Invalid input args. */
+    P_ARGS_INVALID                  = -99999,     /* Invalid input args. */
     P_PLOG_SEALED                   = -99998,     /* The plog is sealed thus any append request would be rejected. */
     P_REQUEST_TIMEOUT               = -99997,     /* PLog request timeout. */
     P_PLOG_ID_NOT_EXIST             = -99996,     /* PLogID does not exist. */
@@ -61,25 +61,25 @@ typedef enum plog_ret_code
     P_PLOG_CORRUPTED                = -99991,     /* The PLog has corrupted permanently and only parts of the data can be obtained. */
     P_PLOG_UNAVAILABLE              = -99990,     /* The PLog is unavailalbe. Recovery is not guranteed. */
     P_PLOG_IS_SEALLING              = -99989,     /* The PLog is sealing and cannot be accessed. Please retry later. */
-    P_PLOG_UNSEALED                 = -99988,        
+    P_PLOG_UNSEALED                 = -99988,
     P_PLOG_CLIENT_NOT_READY         = -99987,     /* PLOG Client not ready yet */
     P_PLOG_CLIENT_UNAVAILABLE       = -99986,     /* canot find  PLOG Client service.  PLOG Client maybe down*/
     P_NAMESPACE_ID_INVALID          = -99985,     /* check namespaceid fail:namespaceid in req to plog server is different from namespaceid in vdb*/
     P_NAMESPACE_NOT_EXIST           = -99984,     /* namespace does not exist*/
     P_NAMESPACE_ALREADY_EXIST       = -99983,     /* namespace already exist*/
-    
+
     P_ERROR                         = -1,         /* Unknown Error*/
     P_OK                            = 0,          /* OK */
-    
+
 }plog_ret_code_e;
 
-/*** 
+/***
  *     ####### types definition Section #######
  */
 // the max number of plog per one batch-creation
 #define MAX_PLOG_NUM_PER_CREATION (256)
 
-/*** 
+/***
  *     ####### Types definition Section #######
  */
 /**
@@ -98,14 +98,14 @@ typedef enum plog_perf_type
 
 /**
  * Plog durability types:
- * 1. multi-copy supports 2/3/4 copies. 
- * 2. erasure-coding supports different types as well. In order to choose EC type, user specifies the AZ level(single/two_az/tri_az) and 
+ * 1. multi-copy supports 2/3/4 copies.
+ * 2. erasure-coding supports different types as well. In order to choose EC type, user specifies the AZ level(single/two_az/tri_az) and
  *    plogmanager will dynamically choose which N+M to use based on comprehensive analysis of durability, performance and cost.
  */
 typedef enum plog_durability
 {
     // for single-AZ multi-copy:
-    SINGLE_AZ_MULTICOPY_1  = 0,  //1              // copy, currently, not support    
+    SINGLE_AZ_MULTICOPY_1  = 0,  //1              // copy, currently, not support
     SINGLE_AZ_MULTICOPY_2  = 1,  // copies.
     SINGLE_AZ_MULTICOPY_3  = 2,  // copies.
     SINGLE_AZ_MULTICOPY_4  = 3,  // copies.
@@ -114,13 +114,13 @@ typedef enum plog_durability
     // for two-AZ multi-copy.
     TWO_AZ_MULTICOPY_2  = 11,
     TWO_AZ_MULTICOPY_3  = 12,
-    TWO_AZ_MULTICOPY_4  = 13,   
-    
+    TWO_AZ_MULTICOPY_4  = 13,
+
     // for three-AZ multi-copy.
     TRI_AZ_MULTICOPY_3  = 21,
-    TRI_AZ_MULTICOPY_4  = 22,   
-    TRI_AZ_MULTICOPY_5  = 23,   
-    TRI_AZ_MULTICOPY_6  = 24,   
+    TRI_AZ_MULTICOPY_4  = 22,
+    TRI_AZ_MULTICOPY_5  = 23,
+    TRI_AZ_MULTICOPY_6  = 24,
 
     // for erasure-codings.
     SINGLE_AZ_EC = 50,
@@ -132,7 +132,7 @@ typedef enum plog_durability
     TWO_AZ_EC_MIRROR_5_9    = 56,
     TRI_AZ_EC_10_11    = 57,
     TRI_AZ_EC_20_16   = 58,
-    
+
     // INTERNAL TEST ONLY. DO NOT USE FOR PRODUCTION.
     TEST_ONLY_EC_4_2   = 101,
     TEST_ONLY_EC_6_3   = 102,
@@ -147,17 +147,17 @@ typedef enum plog_durability
  * PLog Capacity:
  *   Specified numbers are just suggestions, while the real size of a plog will depend on the media capacity.
  *     Taking SSD as the storage media, if user requests 64MB plog size while the block size of SSD is 96MB,
- *     Persistence would allocate 96MB plog for this request. User may gain performance benefit when the SSD 
+ *     Persistence would allocate 96MB plog for this request. User may gain performance benefit when the SSD
  *   can erase the entire block when delete the plog.
  */
 typedef enum plog_capacity
 {
     PLOG_SIZE_64M  = 0,
-    PLOG_SIZE_128M = 1,                          
-    PLOG_SIZE_256M = 2,                          
-    PLOG_SIZE_512M = 3,                          
-    PLOG_SIZE_1G   = 4,                          
-    PLOG_SIZE_4G   = 5,                            
+    PLOG_SIZE_128M = 1,
+    PLOG_SIZE_256M = 2,
+    PLOG_SIZE_512M = 3,
+    PLOG_SIZE_1G   = 4,
+    PLOG_SIZE_4G   = 5,
 }plog_capacity_e;
 
 /**
@@ -191,7 +191,7 @@ typedef struct plog_descriptor
 typedef struct plog_io_guide_info
 {
     //uint32_t min_append_block_size; //not used any more.
-    uint32_t preferred_append_block_size; 
+    uint32_t preferred_append_block_size;
     uint32_t max_append_block_size;
 }plog_io_guide_info_t;
 
@@ -205,19 +205,19 @@ typedef struct plog_io_guide_info
 
     the state change is non-reversible and the executable io operation must follow this table:
 
-    --------------------------------------------------------------------------- 
+    ---------------------------------------------------------------------------
     |    state\operation            | append |    read | delete | seal | getploginfo |
-    --------------------------------------------------------------------------- 
+    ---------------------------------------------------------------------------
     |    PLOG_UNSEAL                |    Y     |     Y     |     N      |     Y     |      Y            |
-    --------------------------------------------------------------------------- 
+    ---------------------------------------------------------------------------
     |    PLOG_NORMAL_SEALED        |    N    |     Y     |     Y      |     N     |      Y            |
-    --------------------------------------------------------------------------- 
+    ---------------------------------------------------------------------------
     |    PLOG_ABNORMAL_SEALED    |    N    |     Y     |     Y      |     N     |      Y            |
-    ---------------------------------------------------------------------------  
+    ---------------------------------------------------------------------------
  */
 typedef enum plog_state
 {
-    PLOG_UNSEAL           = 0,                      /* normal for write */  
+    PLOG_UNSEAL           = 0,                      /* normal for write */
     PLOG_ABNORMAL_SEALED  = 1,                      /* abnormal seal. for example: seal when layer Persistence Layer failed */
     PLOG_NORMAL_SEALED    = 2,                      /* normal sealed */
     PLOG_SEALING          = 3,                       /* plog is in progress of sealing, can not append and query will not give consistent result */
@@ -231,7 +231,7 @@ typedef struct plog_state_info
 {
     plog_state_e     state;                        /* plog state. */
     plog_ret_code_e  err_code_when_seal;           /* error code when seal. */
-    uint64_t         last_known_valid_size;        /* plog's last known valid tail size. */ 
+    uint64_t         last_known_valid_size;        /* plog's last known valid tail size. */
 }plog_state_info_t;
 
 /**
@@ -288,9 +288,9 @@ typedef struct plog_vec
  */
 typedef enum plog_io_priority
 {
-    PLOG_HIGH_PRIORITY      = 0,                      
-    PLOG_NORMAL_PRIORITY    = 1,                    
-    PLOG_LOW_PRIORITY       = 2,                          
+    PLOG_HIGH_PRIORITY      = 0,
+    PLOG_NORMAL_PRIORITY    = 1,
+    PLOG_LOW_PRIORITY       = 2,
 }plog_io_priority_e;
 
 /**
@@ -314,7 +314,7 @@ typedef enum plog_append_flag
     PLOG_FLAG_APPEND_FULL_EC_STRIPE       = 0x0002,
     PLOG_FLAG_APPEND_WRITE_BACK           = 0x0004,
     PLOG_FLAG_APPEND_WRITE_BACK_AND_PARTIAL_EC_STRIPE = 0x0001 | 0x0004,
-    
+
     //TEST ONLY
     TEST_PLOG_FLAG_APPEND_MOCK_DATA       = 0x8000,  /* test only. For fast store data, the data would not be transfered through the NewWork, and will store as 0 on the storage device*/
 }plog_append_flag_e;
@@ -323,8 +323,8 @@ typedef enum plog_read_flag
 {
     PLOG_FLAG_READ_DEFAULT               = 0x0000,
     PLOG_FLAG_READ_REPLICA_WHEN_ERROR    = 0x0001,  /* read data from other replica when error occurs, this could miss some data that is processing on Primary node. */
-    
-    PLOG_FLAG_READ_WITHOUT_CHECK_CRC     = 0x0002,  /* do not verify crc on read */ 
+
+    PLOG_FLAG_READ_WITHOUT_CHECK_CRC     = 0x0002,  /* do not verify crc on read */
     PLOG_FLAG_READ_WITHOUT_CACHE         = 0x0080,  /* do not put data in cache on read, just for SGl*/
 }plog_read_flag_e;
 
@@ -385,7 +385,7 @@ typedef void(*plog_cb_func)(void *private_ctx, int ret_code);
 
 typedef struct plog_call_back
 {
-    plog_cb_func   cb;                       /* callback */   
+    plog_cb_func   cb;                       /* callback */
     void *         private_ctx;              /* user context */
 } plog_call_back_t;
 
@@ -395,7 +395,7 @@ typedef struct plog_call_back
 typedef struct plog_data_to_read
 {
     uint64_t offset;                               /* offset */
-    uint32_t length;                               /* len */    
+    uint32_t length;                               /* len */
 }plog_data_to_read_t;
 
 /**
@@ -412,62 +412,62 @@ typedef struct plog_data_to_read_vec
  */
 typedef struct plog_userid_stru
 {
-    uint32_t userid_type;                       /* userid type£¬for exampe,used to indicate the type of database */
+    uint32_t userid_type;                       /* userid typeï¿½ï¿½for exampe,used to indicate the type of database */
     uint32_t userid_len;                        /* valid data length in userid_buf,for database,use 32 bytes UUID*/
     uint8_t*  userid_buf;                        /* userid buffer,for database,use 32 bytes UUID*/
 }plog_userid_t;
 
-/*** 
+/***
  *     ####### Function definition Section #######
  */
 
 /*******************************************************************************
 * Function Description: Initialize PlogClient.
 
-* Output Parameters: 
+* Output Parameters:
             None
-            
-* Return Value: 
-            P_OK    
+
+* Return Value:
+            P_OK
             P_ERROR
-* Comments: 
+* Comments:
 *******************************************************************************/
 int libclient_init(void);
 
 /*******************************************************************************
 * Function Description: PlogClient exit
 
-* Input Parameters: 
+* Input Parameters:
             None
-            
-* Output Parameters: 
+
+* Output Parameters:
             None
-            
-* Return Value: 
-            P_OK    
+
+* Return Value:
+            P_OK
             P_ERROR
-* Comments: 
+* Comments:
 *******************************************************************************/
 int libclient_exit(void);
 
 /*******************************************************************************
-* Function Description: 
+* Function Description:
             query the system capacity by perftype&durability.
-* Input Parameters: 
+* Input Parameters:
             @type:       plog_perf_type_e
             @durability: the durability
             @trace_info:   the trace id which used to trace the api call
-* Output Parameters: 
+* Output Parameters:
             @total_capacity:  the total capacity of the perftype
             @used_capacity:   capacity already used
-* Return Value: 
+* Return Value:
             P_ARGS_INVAILD
             P_REQUEST_TIMEOUT
             P_BUSY
             P_OK
             P_ERROR
             P_PERF_AND_DUR_NOT_SUPPORTED
-* Comments: 
+* Comments:
 *******************************************************************************/
 int query_capacity(const plog_perf_type_e type, const plog_durability_e durability, void* trace_info, uint64_t* total_capacity, uint64_t* used_capacity);
 

@@ -10,6 +10,8 @@
 #include <seastar/core/temporary_buffer.hh>
 #include <seastar/core/shared_ptr.hh>
 
+#include <iostream>
+
 // We use OBS index layer as the partition management, and it is currently being built by gcc 5.3.0.
 // gcc 5.3.0 can only support c++11/14. So we temporarily disable the c++17 features by using the below marco PARTITION_MANAGER_USE_OBS_INDEX
 #ifndef PARTITION_MANAGER_USE_OBS_INDEX
@@ -189,6 +191,7 @@ inline bool appendRaw(Binary& binary, size_t& writeOffset, const T& data)
 
 inline void print(std::ostream& stream, const void* buffer, size_t size)
 {
+    std::ios_base::fmtflags flags(std::cout.flags());
     stream << '(' << size << ")[";
 
     bool printChars = false;
@@ -218,6 +221,7 @@ inline void print(std::ostream& stream, const void* buffer, size_t size)
     }
 
     stream << ']';
+    std::cout.flags(flags);
 }
 
 inline std::ostream& operator<<(std::ostream& stream, const Binary& binary)
