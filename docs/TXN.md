@@ -89,6 +89,8 @@ To resolve the conflict of `R`ead transaction encountering a `W`rite intent (`R-
 
 ![Read Conflict PUSH](./TxnReadConflict.png)
 
+- Note that if we try to perform a PUSH it is possible to encounter no record at the TRH (e.g. due to network message delay). In that situation, we assume the transaction in question has been aborted, and we generate a WAL entry with status=ABORTED for the transaction thus effectively aborting the transaction which failed to create its TRH in time
+
 At the core, the resolution algorithm is as follows:
 
 ```python
@@ -113,6 +115,7 @@ def Read(key, MTR):
 
 # at TRH participant, resolving a PUSH (could be either a R-W push or W-W push)
 def Push(targetMTR, candidateMTR):
+    # NB: A lookup for a txn we do not have a status for results in a WAL write for an Abort for this transaction.
     txnStatus = lookupTxnStatus(targetMTR)
 
     if txnStatus.isCommitted: # case 1 (target TXN already committed)
@@ -149,9 +152,12 @@ A write executed in a transaction is sent directly to the participant who owns t
 If the incoming write for a given key discovers that the read cache contains an entry for this key such that `write.TS <= entry.TS`, we have detected a `W->R` conflict. The write is rejected and we send a message to the client to abort. This is the only choice here since we've already promised a snapshot view to some client as of time entry.TS and we cannot insert new versions into that history.
 
 #### Write conflict potential
-It is possible for an incoming write intent to discover that there is another write intent in the data store for the same key: `W->W` conflict. We only look at the latest version recorded in the data store. By construction, there can only be one WI present in the version history and it has to be the latest version we have. It is not possible to commit while there is a WI in the record history and so we have to abort one of the transactions if they are both still in progress.
+To determine if there is such a conflict, we look at the history of the key. If the latest version in the history is a committed value and `commit.TS >= write.TS` then we have no other choice but immediately abort the incoming write.
 
-At the time we receive the second WI(TXN2, TRH2, MTR2), we have a WI(TXN1, TRH1, MTR1) for transaction1. To resolve, we perform a PUSH operation which is identical to the PUSH operation we described in the `R->W` conflict resolution. The PUSH has to be sent to the record holder for the existing intent (TRH1).
+if the latest version in the history is a WI, then we have to perform a PUSH operation as we described in the `R->W` conflict resolution.
+
+By construction then, there can only be one WI present in the version history and it has to be the latest version we have. It is not possible to commit while there is a WI in the record history and so we have to abort one of the transactions if they are both still in progress.
+
 - NB: When selecting a victim transaction, any independent observer must deterministically arrive to the same conclusion in order to avoid starvation issues.
 
 ![W->W Conflict](./TxnWriteConflict.png)
