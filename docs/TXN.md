@@ -48,7 +48,7 @@ In the WI we also rembember the MTR and TRH for the transaction which created th
 TSO is a separate service whose job is to provide a global clock. The design and scalability of this component is addressed in a [separate document](./TSO.md). For the purposes of this document it is sufficient to understand that the TSO service allows each client to locally produce globally-unique timestamps which are agreed upon by all clients and nodes of a given K2 cluster.
 
 # Outline of approach
-We've chosen a modified Serializable Snapshot Isolation approach. Roughly, we use MVCC to achieve snapshot isolation, and we enhance the server-side handling and book-keeping to make it serializable, as described in the paper  [Serializable Isolation for Snapshot Databases](./SerializableSnapshotIsolation-fekete-sigmod2008.pdf). Here is the outline:
+We've chosen a modified Serializable Snapshot Isolation approach. Roughly, we use MVCC to achieve snapshot isolation, and we enhance the server-side handling and book-keeping to make it serializable, as described in the paper by [Serializable SI - CockroachDB](https://www.cockroachlabs.com/blog/serializable-lockless-distributed-isolation-cockroachdb/) and  [Serializable Isolation for Snapshot Databases](./SerializableSnapshotIsolation-fekete-sigmod2008.pdf). Here is the outline:
 
 ## Starting a transaction
 ![Begin](./TxnBegin.png)
@@ -67,6 +67,7 @@ Further operations, including commit/abort have to be issued using the returned 
 - Each operation must specify an MTR(Minimum Transaction Record) tuple.
 - A TransactionRecordHolder (TRH) is designated by the CL for mutating transactions. The TRH is is one of the write participants in the transaction. We pick the first such writer for most transactions, but it is possible to pick a more optimal TRH for certain workloads. The assignment is done lazily when the first write is encountered, and the assignment message is piggy-backed onto that first write.
 - All write operations specify a TRH in addition to the MTR.
+- each participant maintains an index of `MTR->WI` so that it can cleanup write intents when the TRH comes to finalize a transaction (i.e. after the application commits/aborts). There is also an LRU list on this index so that the participant can discover potentially abandoned or long-running WIs and communicate with the TRH to finalize them.
 
 ### Reads
 ![Read](./TxnRead.png)
@@ -133,6 +134,7 @@ def Push(targetMTR, candidateMTR):
     # priorities match. Abort based on configurable, DB-level policy
     # example policy 1: abort the older TXN
     # example policy 2: abort lower TxnID to achieve deterministic but randomized abortion thus preventing starvation
+    # in cases where there is no other distinguishing mechanism, the policy can pick the candidate(pusher) to abort
     loserMTR = TxnAbortDBConflictPolicy.pickLoser(targetMTR, candidateMTR)
     abortTransaction(loserMTR)
     return TxnAbortMessage(loserMTR)
@@ -173,122 +175,41 @@ The commit step is rather simple once we realize that if the client application 
 Abort is performed identically to the commit - we send a message to the TRH, setting the state of the transaction to `Aborted`. The TRH then has to go and perform asynchronous cleanup of write intents (if any) at the transaction participants
 
 ## Transaction Heartbeat
-There is a server-side timeout of 10ms per transaction, maintained at the TRH. The client is required to emit a heartbeat to the TRH to make sure the transaction is not marked as abandoned and thus aborted by the server automatically.
+There is a server-side timeout of 100ms per transaction, maintained at the TRH. The client is required to emit a heartbeat to the TRH to make sure the transaction is not marked as abandoned and thus aborted by the server automatically.
+This heartbeat is also used by all of the participants in the transaction. They periodically check with the TRH to make sure the txn is still alive
 
-## Optimizations
-Some ideas for optimization
+## Transaction Finalization
+This is an asynchronous process which is driven by the TRH to handle the transaction state in the entire system after the transaction is committed/aborted. This process involves communicating with all transaction write participants in order to commit/abort the WIs present in these participants.
+The process is always driven by the client application since without a commit/abort message from the client, the TRH does not know what are all of the write participants - this information is sent to the TRH in the commit/abort message from the application.
+For internally-driven abort (e.g. as a result of a PUSH), we simply mark the TRH state as aborted but we still do not kickoff the finalization process. We initiate the process when the client comes to commit/abort.
+In the case when the client abandons a transaction, the heartbeat to the TRH will cease and the TRH will self-mark the transaction as aborted. Each participant independently will discover that it has WIs which are too old (>heartbeat_interval), and will contact the TRH to make sure the TXN is alive. They will discover that the transaction has been aborted due to the missing heartbeat and will cleanup their write intents. A good place to maintain this information at each participant is the `MTR->[WI]` cache as an LRU list.
 
-- Transaction execution time will be goverened by network latency. It may be helpful to allow appications to execute operations in batches so that we can:
-    - group operations to the same node into single message
-    - execute operations to different nodes in parallel
-    We can potentially collapse transactions into 2 total round trips if transaction is executed on single partition
-        1. obtain timestamp
-        1. execute operations and commit in one shot
+## Recovery process
+<mark>TODO</mark> describe handling of failures of TRH, Read participant, Write participant
 
-## Other Notes
-- all write intents contain MTR
-- each partition needs index of MTR-> write intents
-- Consider using separate wal for intents. Potentially cheaper to GC. May cause write amplification
-- Upon conflict of pending txns, resolve
-    - Priority
-    - timestamp
-    - pusher
-- integration with module interface
-- recovery process
-- gc process
-- WAL interaction
-- upon abort, respond with priority value for winner. Upon retry, use the winner's priority
+## Integration with K2 Module Interface
+<mark>TODO</mark> give details on implementation on top of K2 Module Interface
+
+## GC process
+<mark>TODO</mark> give details on GC for WALs
+
+## Other ideas
+- It may be helpful to allow appications to execute operations in batches so that we can group operations to the same node into single message
+- Allow WI to be placed at any point in the history as long as they don't conflict with the read cache.
+- Consider using separate WAL for intents. Potentially cheaper to GC since we can just maintain a watermarm and drop the tail past the watermark once WIs are finalized. May cause write amplification though
+- provide atomic higher-level operations (sinfonia style):
+    - swap
+    - cas
+    - atomic_read_many
+    - acquire_lease
+    - acquire_lease_many
+    - update_if_lease_held
 
 # Detailed component design
 ## [TimeStamp Oracle](./TSO.md)
 ## [Transaction Client](./TXN_CLIENT.md)
 ## [Benchmark](./TXN_BENCHMARK.md)
-## [Transaction Manager](./TXN_MANAGER.md)
 
 # Benchmark
 - [UW YCSB-T repo - requires account](https://syslab.cs.washington.edu/research/transtorm/)
 - [UW YCSB-T paper](./YCSB+T.pdf)
-
-# Transaction solutions
-[Serializable SI - CockroachDB](https://www.cockroachlabs.com/blog/serializable-lockless-distributed-isolation-cockroachdb/)
-
-## SnapshotSerializable
-- any cycle produced by SI has 2 rw(T1 reads -> T2 writes same key) dependency edges, which occur consecutively
-- Dangerous: there is a cycle and we have consecutive RW edges
-- Every non-serializable execution contains a dangerous structure.
-
-similar properties to Snapshot Isolation, but fix concurrency issues at runtime by aborting conflicting transactions via cycle detection
-- serializable: the DB state is equivalent to some serial txn execution
-- recoverable: partially committed transactions still appear ACID. Abandoned/aborted transactions have no effect
-- lockless: Operations done without taking locks
-- Distributed: no central oracle
-- Every transaction is assigned a timestamp (from the node on which it starts) when it begins. All operations in that transaction take place at this same timestamp, for the duration of the transactions
-    - ?? are there issues with using local timestamps for transactions?
-    - ?? Does this happen at every participant? Do we use the first such timestamp?
-- Individual operations can locally determine when they conflict with another operation, and what the transaction timestamp of the conflicted operation is.
-- Operations are only allowed to conflict with earlier timestamps; a transaction is not allowed to commit if doing so would create a conflict with a later timestamp.
-- LRU interval cache is used for locking. The timestamp cache is a size-limited, in-memory LRU (least recently used) data structure, with the oldest timestamps being evicted when the size limit is reached. To deal with keys not in the cache, we also maintain a “low water mark”, which is equivalent to the earliest read timestamp of any key that is present in the cache. If a write operation writes to a key not present in the cache, the “low water mark” is returned instead.
-    - ?? How is this setup on cold start?
-    - ?? not persisted. What if there were a bunch of reads, the node restarts, and an older write comes in?
-- two uncommitted transactions: consider two transactions [T1, T2], where timestamp(T1) < timestamp(T2). T1 writes to a key ‘A’. Later, T2 reads from key ‘A’, before T1 has committed.
-    - can't give neither committed(T1 may commit) nor uncommitted(T1 may abort) value to T2
-    - ?? Doesn't this mean that we can never allow concurrent reads since we don't know if the oldest TXN may attempt a write?
-    - intents are kept with uncommitted writes
-    - ?? How are they cleaned up?
-    - solutions
-        - If the second transaction has a higher timestamp, it can wait for the first transaction to commit or abort before completing the operation.
-        - One of the two transactions can be aborted.
-        - The second transaction (which is encountering an intent) looks up the first transaction’s transaction record, the location of which is present in the intent.
-        - The transaction performs a “push” on the discovered transaction record. The push operation is as follows:
-            - If the first transaction is already committed (the intent was not yet cleaned up), then the second transaction can clean up the intent and proceed as if the intent were a normal value.
-            - Likewise, if the other transaction already aborted, the intent can be removed and the second transaction can proceed as if the intent were not present.
-            - Otherwise, the surviving transaction is deterministic according to priority.
-            - It is not optimal to always abort either the pusher or pushee; there are cases where both transactions will attempt to push the other, so “victory” must be deterministic between any transaction pair.
-            - Each transaction record is thus assigned a priority; priority is an integer number. In a push operation, the transaction with the lowest priority is always aborted (if priority is equal, the transaction with the higher timestamp is aborted. In the extremely rare case where both are equal, the pushing transaction is aborted).
-            - New transactions have a random priority. If a transaction is aborted by a push operation and is restarted, its new priority is max(randomInt(), [priority of transaction that caused the restart] - 1]); this has the effect of probabilistically ratcheting up a transaction’s priority if it is restarted multiple times.
-        - However, we additionally add a heartbeat timestamp to every transaction. While in progress, an active transaction is responsible for periodically updating the heartbeat timestamp on its central transaction record; if a push operation encounters a transaction with an expired heartbeat timestamp, then it is considered abandoned and can be aborted regardless of priority.
-            - ?? Does that mean we need to heartbeat to every node which we touch (R/W) ?
-
-## Warp
-- The key insight of the acyclic transactions protocol is to arrange the servers for a transaction into a chain, and to validate and order transactions using a dynamically- determined number of passes through this chain
-- vservers: Warp uses a system of virtual servers to map multiple partitions of the mapping to a single server. Clients con- struct their acyclic transaction chains by constructing a chain through the virtual servers, and then mapping these virtual servers to their respective servers. A server that maps to multiple virtual servers in a chain will appear at multiple places in the chain, where it acts as each of its virtual servers independently. Within each physical server, state is partitioned by virtual server, so that each virtual server functions as if it were independent. Vir- tual servers enable the system to perform dynamic load balancing more efficiently.
-
-## Sinfonia
-- mini-T are conditional
-- data located with (mnode_id, address). This allows data locality
-
-### features:
-- batched updates
-- txn across nodes
-- 2 round trips to start, execute, and commit
-
-### acid features:
-- atomicity: mini-t execute completely or none at all
-- consistency: data remains consistent
-- isolation (serializable)
-- durability (commited txns are not lost in failure scenarios)
-
-### txn details:
-- piggy-back the last txn action onto the prepare msg if it doesn't affect coordinator decision (abt/com), e.g. data update
-- piggy-back some other requests to prepare msg if participant can decide inline (e.g. read==NIL)
-
-mini_t:
-    - compare items
-    - read items
-    - write items
-
-higher-level primitives:
-  swap
-  cas
-  atomic_read_many
-  acquire_lease
-  acquire_lease_many
-  update_if_lease_held
-
-if mediator token is < previous token, send back for retry through the chain to the head. How does retry help?
-
-
-MVCC allows snapshot isolation (i.e. txns observe a full frozen copy of the database). Can provide up-to ReadRepeatable
-2PC gives atomicity for entire transaction
-MVCC-Repeatable + 2PC gives Serializable
-Externally serializable needs global clock (e.g. TrueTime)
