@@ -43,6 +43,21 @@ To calculate ts and tr, we can use the difference between local time
 Messages at times can be lost or delayed. To weed out outliers we can keep a window of message latencies in either direction and read the median value.
 We can also get more accurate *ts* and *tr* if we measure the time directly from the transport layer. This however, will require that the time synchronization happen over unreliable channels.
 
+### Drift
+To monitor and correct any potential drift, the Chronos service will keep track of the max *de* across all the nodes. At every time sync request, the Chronos service will also provide the de for that particular client. Where emax is the maximum value of e and ei is the reported
+
+> de = demax - e2 - e1
+
+The client will adjust it's e with the de value provided.
+
+> `e2 = e2 + de
+
+To make sure that we can keep read your writes property across the cluster, we have to guarantee that the de is smaller than ts
+
+> ts > de
+
+In the case that the above property is violated, the client can wait for `de - ts` before executing a transaction.
+
 ## Failover
 ### Client
 To prevent the client's timestamp from going backwards, we will wait until the refresh period *t* has elapsed. This can be efficiently done my measuring CPU cycles. As soon as we are outside of that window, it should be safe to start generating timestamps.
