@@ -1,0 +1,23 @@
+@startuml
+!pragma teoz true
+
+title Fused-time Synchronization
+
+autonumber 13 "Time Local Send TLs: "
+{start} Alice -> Chronos: - Request
+activate Alice
+
+note over Alice
+    ts = 2
+    tr = 5
+end note
+
+autonumber 12 "Remote Time TR: "
+Chronos -> Chronos:
+
+autonumber 20 "Time Local Receive TLr: "
+{end} Chronos --> Alice: - Response
+{start} <-> {end} : duration: ts + tr = 7
+deactivate Alice
+
+@enduml
