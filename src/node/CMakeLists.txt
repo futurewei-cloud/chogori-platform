@@ -7,7 +7,6 @@ file(GLOB INDEXER_HEADERS "indexer/*.h")
 
 add_library(k2node STATIC ${HEADERS} ${SOURCES})
 target_link_libraries (k2node PRIVATE k2common)
-add_subdirectory(main)
 add_subdirectory(persistence)
 
 install(FILES module/MemKVModule.h DESTINATION include/node/module)

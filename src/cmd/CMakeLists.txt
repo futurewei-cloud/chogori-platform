@@ -4,3 +4,4 @@
 
 add_subdirectory(demo)
 add_subdirectory(k2b)
+add_subdirectory(nodepool)

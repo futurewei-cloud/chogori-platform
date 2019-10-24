@@ -7,8 +7,7 @@
 using namespace k2;
 
 // TODO: Move the configuration logic into a separate file.
-void registerNodePool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfig)
-{
+void setupNodesInPool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfig) {
     // get the host's node pool configuration
     auto nodePoolConfigVector = config::ConfigLoader::getHostNodePools(pConfig);
     if(nodePoolConfigVector.empty()) {
@@ -32,17 +31,15 @@ void registerNodePool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfi
     }
 
     const auto pConfigManager = pConfig->getPartitionManager();
-    if(pConfigManager)
-    {
+    if (pConfigManager) {
         // address field is of form "<ipv4>:<port>":
         pool.getConfig().partitionManagerSet.insert(pool.getConfig().partitionManagerSet.end(),
-            pConfigManager->getEndpoints().begin(), pConfigManager->getEndpoints().end());
+                                                    pConfigManager->getEndpoints().begin(), pConfigManager->getEndpoints().end());
     }
 
     pool.getConfig().monitorEnabled = pNodePoolConfig->isMonitoringEnabled();
     pool.getConfig().rdmaEnabled = pNodePoolConfig->getTransport()->isRdmaEnabled();
-    if (!pNodePoolConfig->getCpuSet().empty())
-    {
+    if (!pNodePoolConfig->getCpuSet().empty()) {
         pool.getConfig().cpuSetStr = pNodePoolConfig->getCpuSet();
     }
     //pool.getConfig().cpuSetGeneralStr = config["pool_cpu_set"].as<std::string>();
@@ -74,7 +71,7 @@ int main(int argc, char** argv)
             : config::ConfigLoader::loadDefaultConfig();
 
         // Register pool based on the configuration file
-        registerNodePool(pool, pConfig);
+        setupNodesInPool(pool, pConfig);
 
         K2TXPlatform platform;
         pool.setScheduingPlatform(&platform);
