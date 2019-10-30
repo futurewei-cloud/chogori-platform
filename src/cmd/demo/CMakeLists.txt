@@ -8,6 +8,7 @@ add_executable (txbench_server txbench_server.cpp txbench_common.h)
 add_executable (tcptest tcptest.cpp)
 add_executable (executor executor.cpp)
 add_executable (client client.cpp)
+add_executable (txn_client_demo txn_client_demo.cpp)
 
 
 target_link_libraries (service PRIVATE k2transport k2common Seastar::seastar )
@@ -16,5 +17,6 @@ target_link_libraries (txbench_server PRIVATE k2transport k2common Seastar::seas
 target_link_libraries (tcptest PRIVATE k2transport k2common Seastar::seastar )
 target_link_libraries (executor PRIVATE k2transport Seastar::seastar)
 target_link_libraries (client PRIVATE k2client Seastar::seastar)
+target_link_libraries (txn_client_demo PRIVATE Seastar::seastar)
 
 install (TARGETS txbench_client txbench_server DESTINATION bin)

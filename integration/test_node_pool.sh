@@ -4,7 +4,7 @@ cd ${topname}/..
 set -e
 
 
-./build/src/node/main/node_pool&
+./build/src/cmd/nodepool/node_pool&
 child_pid=$!
 
 function finish {
