@@ -1,5 +1,13 @@
 pipeline {
     agent any
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+    triggers {
+        pollSCM('* * * * *')
+        upstream(upstreamProjects: "DFV_K2_Devtools, DFV_K2_SeaStar, DFV_K2_HOT", threshold: hudson.model.Result.SUCCESS)
+    }
     stages {
         stage('Checkout') {
             agent {label "builder"}
