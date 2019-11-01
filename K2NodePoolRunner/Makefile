@@ -2,7 +2,7 @@
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))/..
 MK_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
-include ../K2Build/DFV_K2_BuildDeps/DockerMake.base
+include ../K2Build/dfv_k2_build_deps/DockerMake.base
 IMG_NAME=k2nodepoolrunner
 DEP_IMAGES=$(DOCKER_REGISTRY)/k2base:latest
 

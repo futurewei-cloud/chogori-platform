@@ -6,7 +6,7 @@ pipeline {
     }
     triggers {
         pollSCM('* * * * *')
-        upstream(upstreamProjects: "DFV_K2_Devtools, DFV_K2_SeaStar, DFV_K2_HOT", threshold: hudson.model.Result.SUCCESS)
+        upstream(upstreamProjects: "dfv_k2_devtools, dfv_k2_seastar, dfv_k2_hot", threshold: hudson.model.Result.SUCCESS)
     }
     stages {
         stage('Checkout') {
@@ -19,7 +19,7 @@ pipeline {
                           doGenerateSubmoduleConfigurations: false,
                           extensions: [[$class: 'SubmoduleOption', disableSubmodules: false, parentCredentials: true, recursiveSubmodules: true, reference: '', trackingSubmodules: false]],
                           submoduleCfg: [],
-                          userRemoteConfigs: [[credentialsId: 'fb82a473-e4f4-4f14-b0d5-0f28af79d0ca', url: 'git@rnd-github-usa-g.huawei.com:SeattleCloudBU/DFV_K2_Platform.git']]
+                          userRemoteConfigs: [[credentialsId: 'fb82a473-e4f4-4f14-b0d5-0f28af79d0ca', url: 'ssh://git@ssh-gitlab.futurewei.com:30022/k2/dfv_k2_platform.git']]
                         ])
             }
         }

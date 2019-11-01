@@ -1,5 +1,5 @@
 # build the image
-include ../DFV_K2_BuildDeps/DockerMake.base
+include ../dfv_k2_build_deps/DockerMake.base
 IMG_NAME=k2platform_builder
 DEP_IMAGES=$(DOCKER_REGISTRY)/k2builder:latest
 
