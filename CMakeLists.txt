@@ -8,6 +8,9 @@ project (k2_platform VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 add_compile_options(-O3 -g -Werror -Wall -Wextra)
 
+# cmake modules
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+
 if(DEFINED ENV{K2_DEBUG_LOGGING})
 	set(K2_DEBUG_LOGGING $ENV{K2_DEBUG_LOGGING})
 else()

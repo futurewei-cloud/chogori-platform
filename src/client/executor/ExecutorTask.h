@@ -22,8 +22,9 @@ typedef seastar::lw_shared_ptr<ExecutorTask> ExecutorTaskPtr;
 // - The client thread is responsible for the lifecycle of the task object and all the members, except from the payload and the response.
 // - The transport platform is responsible for the lifecycle of the payload and the response.
 //
-struct ExecutorTask
+class ExecutorTask
 {
+public:
     //
     // Data for which the transport platform is responsible for.
     //
@@ -41,7 +42,7 @@ struct ExecutorTask
     {
         String _url;
         std::unique_ptr<Payload> _pPayload;
-        k2::Duration _timeout;
+        k2::Duration _timeout = std::chrono::microseconds(1000);
         PayloadRefCallback _fPayloadRef = nullptr;
         PayloadPtrCallback _fPayloadPtr = nullptr;
         ResponseCallback _fResponse = nullptr;
@@ -59,6 +60,7 @@ struct ExecutorTask
 
         ClientData(String url, PayloadPtrCallback fPayloadPtr)
             : _url(std::move(url))
+            , _timeout(std::chrono::microseconds(1000))
             , _fPayloadPtr(fPayloadPtr)
             , _startTime(std::chrono::steady_clock::now())
         {

@@ -9,8 +9,16 @@
 namespace k2
 {
 
-struct ExecutorQueue
+class ExecutorQueue
 {
+private:
+    // No copy
+    ExecutorQueue(const ExecutorQueue& q)
+    {
+        (void)q;
+    }
+
+public:
     // TODO: this is arbitrary defined
     static constexpr int _MAX_QUEUE_SIZE = 10;
 
