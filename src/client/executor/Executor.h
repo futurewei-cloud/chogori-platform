@@ -133,9 +133,7 @@ public:
     //
     void stop()
     {
-         K2INFO("Stopping executor...");
         _pPlatform->stop();
-        K2INFO("Executor stoped!");
     }
 
     //

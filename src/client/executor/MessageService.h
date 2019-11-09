@@ -293,6 +293,7 @@ private:
         _createEndpointLatency.add(std::chrono::steady_clock::now() - startTime);
 
         if (!pTask->_pPlatformData->_pEndpoint) {
+            
             throw std::runtime_error("unable to create endpoint for url");
         }
     }

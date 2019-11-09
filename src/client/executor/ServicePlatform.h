@@ -113,7 +113,7 @@ public:
         // wait for the service to start before returning
         std::unique_lock<std::mutex> lock(_mutex);
         int counter = 5;
-        _conditional.wait_for(lock, std::chrono::milliseconds(1), [&counter] {
+        _conditional.wait_for(lock, std::chrono::seconds(1), [&counter] {
             counter--;
 
             if(counter <= 0) {
@@ -127,6 +127,11 @@ public:
 
     void stop()
     {
+        if(_stopFlag) {
+
+            return;
+        }
+
          K2INFO("Stopping platform...");
 
         _stopFlag = true;
@@ -136,8 +141,21 @@ public:
                 _transportThread.join();
             }
         }
+        else {
+            // wait for the service to stop before unblocking
+            std::unique_lock<std::mutex> lock(_mutex);
+            int counter = 5;
+            _conditional.wait_for(lock, std::chrono::seconds(1), [&counter] {
+            counter--;
 
-        K2INFO("Platform stopped!");
+            if(counter <= 0) {
+
+                throw std::runtime_error("Platform: failed while waiting for the transport to stop!");
+            }
+
+            return false;
+            });
+        }
     }
 
 protected:
@@ -213,6 +231,9 @@ protected:
 
                             return seastar::make_ready_future<>();
                         }
+                    }).then([&] {
+                        // unblock the call who invoked stop()
+                        _conditional.notify_all();
                     });
             });
 

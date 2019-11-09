@@ -85,23 +85,23 @@ SCENARIO("Executor in the user's thread", "[payload]")
 
         int count = 0;
         bool flag = false;
+
         settings.runInLoop = ([&] (k2::client::IClient& client) {
             (void)client;
 
-            if(count > 0) {
-                return 1;
-            }
-            else if(count > 100)
+            count++;
+            if(flag || count > 30)
             {
                 executor.stop();
             }
-            count++;
+            if(count > 1) {
+                return 1000;
+            }
 
             K2INFO("executing loop");
             std::unique_ptr<Payload> pPayload;
             executor.execute("tcp+k2rpc://127.0.0.1:11311",
                 [&] (std::unique_ptr<k2::Payload> payload) mutable {
-                std::cout << "Payload Created" << std::endl;
                 makeAssignPartitionPayload(*(payload.get()), "4.1.1");
                 pPayload = std::move(payload);
                 K2INFO("payload1 created");
@@ -112,7 +112,6 @@ SCENARIO("Executor in the user's thread", "[payload]")
                     K2INFO("response from payload1:" << k2::getStatusText(response->status));
                     ASSERT(response->status == Status::Ok)
                     flag = true;
-                    executor.stop();
                 });
             });
 
