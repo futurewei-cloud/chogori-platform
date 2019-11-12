@@ -4,6 +4,7 @@
 
 add_subdirectory (common)
 add_subdirectory (client)
+add_subdirectory (modules)
 add_subdirectory (node)
 add_subdirectory (config)
 add_subdirectory (cmd)

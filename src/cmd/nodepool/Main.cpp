@@ -1,5 +1,5 @@
 #include "node/NodePoolImpl.h"
-#include "node/module/MemKVModule.h"
+#include "modules/memkv/server/MemKVModule.h"
 #include "node/Node.h"
 #include "K2TXPlatform.h"
 #include <config/ConfigLoader.h>

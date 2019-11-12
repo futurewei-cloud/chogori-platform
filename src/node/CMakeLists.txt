@@ -9,7 +9,6 @@ add_library(k2node STATIC ${HEADERS} ${SOURCES})
 target_link_libraries (k2node PRIVATE k2common)
 add_subdirectory(persistence)
 
-install(FILES module/MemKVModule.h DESTINATION include/node/module)
 install(FILES ${HEADERS} DESTINATION include/node)
 install(FILES ${PERSISTANCE_HEADERS} DESTINATION include/node/persistence)
 install(FILES ${INDEXER_HEADERS} DESTINATION include/node/indexer)
