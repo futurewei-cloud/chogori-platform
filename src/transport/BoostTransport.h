@@ -26,12 +26,36 @@ public:
         socket.connect(endpoint);
     }
 
-    void sendRawData(const Payload& sendPayload)
+    class shared_const_buffer {
+        // adapter class for converting Payloads into boost const buffers
+        public:
+            explicit shared_const_buffer(Payload&& payload)
+                : _byteCount(payload.getSize()),
+                _data(payload.release()),
+                _buffer(_data.size()) {
+                for (size_t i = 0; i < _data.size() && _byteCount > 0; ++i) {
+                    size_t toShare = std::min(_data[i].size(), _byteCount);
+                    _buffer.emplace_back(_data[i].get(), toShare);
+                    _byteCount -= toShare;
+                }
+            }
+
+            // Implement the ConstBufferSequence requirements.
+            typedef std::vector<boost::asio::const_buffer>::const_iterator const_iterator;
+            const_iterator begin() const { return _buffer.begin(); }
+            const_iterator end() const { return _buffer.end(); }
+
+           private:
+            size_t _byteCount;
+            std::vector<Binary> _data;
+            std::vector<boost::asio::const_buffer> _buffer;
+    };
+
+    void sendRawData(Payload&& sendPayload)
     {
         boost::asio::socket_base::message_flags flags{};
         boost::system::error_code error;
-
-        socket.send(sendPayload.toBoostBuffers(), flags, error);
+        socket.send(shared_const_buffer(std::forward<Payload>(sendPayload)), flags, error);
         if(error)
         {
             K2ERROR("Error while sending message:" << error);
@@ -39,7 +63,7 @@ public:
         }
     }
 
-    std::unique_ptr<MessageDescription> recieveMessage()
+    std::unique_ptr<MessageDescription> receiveMessage()
     {
         auto message = std::make_unique<MessageDescription>();
         TIF(MessageReader::readSingleMessage(*message, [&](Binary& buffer)
@@ -62,7 +86,7 @@ public:
     std::unique_ptr<MessageDescription> messageExchange(Payload&& payload)
     {
         sendRawData(std::move(payload));
-        return recieveMessage();
+        return receiveMessage();
     }
 
     template<typename RequestT>

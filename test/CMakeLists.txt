@@ -1,4 +1,8 @@
-cmake_minimum_required (VERSION 3.12)
+#<!--
+#    (C)opyright Futurewei Technologies Inc, 2019
+#-->
+
+include_directories(include)
 
 add_subdirectory (node)
 add_subdirectory (client)
