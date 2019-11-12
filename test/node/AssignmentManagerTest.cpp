@@ -6,10 +6,10 @@
 #include <node/indexer/MapIndexer.h>
 #include <node/indexer/UnorderedMapIndexer.h>
 #include <node/indexer/HOTIndexer.h>
-#include <node/module/MemKVModule.h>
+#include <modules/memkv/server/MemKVModule.h>
 #include <node/NodePool.h>
 
-#include "catch2/catch.hpp"
+#include <catch2/catch.hpp>
 
 #define REQUIRE_OK(status_pair) REQUIRE(checkStatus(status_pair,Status::Ok))
 #define REQUIRE_NODENOTSERVICEPARTITION(status_pair) REQUIRE(checkStatus(status_pair, Status::NodeNotServicePartition))

@@ -5,7 +5,7 @@
 
 #include "common/PartitionMetadata.h"
 #include "common/TimeMeasure.h"
-#include "node/module/MemKVModule.h"
+#include <modules/memkv/server/MemKVModule.h>
 
 #include <client/PartitionMessageTransport.h>
 #include <boost/timer.hpp>

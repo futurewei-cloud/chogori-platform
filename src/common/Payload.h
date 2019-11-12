@@ -6,10 +6,7 @@
 #include <limits>
 
 #include "Common.h"
-#ifndef PARTITION_MANAGER_USE_OBS_INDEX
 #include <seastar/net/packet.hh>
-#endif
-#include <boost/asio/buffer.hpp>
 
 namespace k2
 {
@@ -161,23 +158,6 @@ public:
         size = 0;
     }
 
-    std::vector<boost::asio::const_buffer> toBoostBuffers() const
-    {
-        size_t bytesToWrite = getSize();
-
-        std::vector<boost::asio::const_buffer> result(buffers.size());
-        for(size_t i = 0; i < buffers.size() && bytesToWrite > 0; ++i)
-        {
-            const Binary& buffer = buffers[i];
-            size_t toShare = std::min(buffer.size(), bytesToWrite);
-            result.emplace_back(buffer.get(), toShare);
-            bytesToWrite -= toShare;
-        }
-
-        return result;
-    }
-
-#ifndef PARTITION_MANAGER_USE_OBS_INDEX
     static seastar::net::packet toPacket(Payload&& payload)
     {
         seastar::net::packet result;
@@ -193,7 +173,6 @@ public:
 
         return result;
     }
-#endif
 
     void print(std::ostream& stream) const
     {
