@@ -281,6 +281,14 @@ In the case when the client abandons a transaction, the heartbeat to the TRH wil
     - update_if_lease_held
 - We might achieve better throughput under standard benchmark if we consider allowing for a HOLD in cases of conflict resolution(PUSH operation). If we have a Candidate/Pusher which we think will succeed if we knew the outcome of an intent, we can hold onto the candidate operation for short period of time to allow for the intent to commit. For a better implementation, it maybe best to implement a solution which does a transparent hold - a hold that doesn't require special handling at the client (e.g. additional notification and heartbeating). THis could be achieved simply by re-queueing an incoming task once with a delay of potential 999 network round-trip latency (e.g. 10-20usecs).
 
+### Pipelined operations
+It is possible to reduce total transaction execution time by as much as 50% in cases where transactions execute non-sequential operations (e.g. batched writes). The reduction is achieved by sending all operations and the commit to their participants in parallel. The writers send confirmations to the TRH when the writes are durable (i.e. written in the WAL), and the TRH responds to client to ACK the commit. There are a few implications to this approach which make the protocol more complex:
+1. For the duration of time where there are in-progress writes and a pending commit, the state of the transaction at TRH is state=PENDING. This is a new state
+1. A transaction is now considered committed if all of the writers successfully record the operations in their WAL. Previously, a txn is committed only if the TRH record has state = COMMITTED.
+1. A txn record which is in state PENDING, must have a list of all participants in the transaction. Previously, we did not require this list until the state was to be flipped to COMMITTED
+1. When performing a PUSH, we can encounter a transaction in PENDING state. When we encounter this state, it is possible that the transaction is either in progress, or there was some message timeout/failure. If the txn is still live (within heartbeat window), it may be best to just wait for the TXN to move to COMMITTED state and thus hold the PUSH operation. Otherwise, we now have to go to all of the participants in the transaction and validate the writes. If all writes succeeded, then the TXN can be moved to COMMITTED and the PUSH can be resolved. If any writer failed, then the TXN is aborted and the PUSH can be resolved.
+1. Similarly, when recovering a node, if we recover a txn record in state PENDING, we must go to each participant and verify if all writes succeeded or not, converting the TXN to either COMMITTED or ABORTED respectively.
+
 # Detailed component design
 ## [TimeStamp Oracle](./TSO.md)
 ## [Transaction Client](./TXN_CLIENT.md)
