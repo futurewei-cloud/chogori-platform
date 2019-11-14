@@ -1,6 +1,6 @@
 #define EXPOSE_PRIVATES
 #include <seastar/testing/test_case.hh>
-#include <../include/Common.h>
+#include <TestUtil.h>
 
 #include <iostream>
 #include <node/persistence/PersistentVolume.h>

@@ -24,7 +24,7 @@
 #include <benchmarker/Session.h>
 #include "benchmarker/proto/k2bdto.pb.h"
 // kv module
-#include "node/module/MemKVModule.h"
+#include "modules/memkv/server/MemKVModule.h"
 
 namespace k2
 {

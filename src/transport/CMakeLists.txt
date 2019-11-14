@@ -1,7 +1,6 @@
 #<!--
 #    (C)opyright Futurewei Technologies Inc, 2019
 #-->
-project(k2transport VERSION 1.0.0 DESCRIPTION "transport library for k2 platform")
 
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")

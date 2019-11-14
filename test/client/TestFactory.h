@@ -4,7 +4,7 @@
 #include <common/PartitionMetadata.h>
 // k2:client
 #include <client/lib/Client.h>
-#include <node/module/MemKVModule.h>
+#include "modules/memkv/server/MemKVModule.h"
 
 using namespace k2;
 using namespace k2::client;

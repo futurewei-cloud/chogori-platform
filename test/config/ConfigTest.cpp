@@ -2,7 +2,7 @@
 // std
 #include <vector>
 // catch
-#include "catch2/catch.hpp"
+#include <catch2/catch.hpp>
 // k2
 #include <config/Config.h>
 #include <config/ConfigLoader.h>

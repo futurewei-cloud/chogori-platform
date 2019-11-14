@@ -3,8 +3,8 @@
 
 #include <iostream>
 #include <filesystem>
-#include "../../src/common/plog/PlogMock.h"
-#include <../include/Common.h>
+#include <common/plog/PlogMock.h>
+#include <TestUtil.h>
 
 using namespace k2;
 using namespace std;
