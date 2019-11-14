@@ -42,4 +42,4 @@ Requirements:
 
 | Name                                                                          | Scope                           |
 |:------------------------------------------------------------------------------|:--------------------------------|
-| [dfvdenali@huawei.com](mailto:dfvdenali@huawei.com)                           | General discussions             |
+| [MS Teams](https://teams.microsoft.com/l/channel/19%3a80ad8dec4e364c0196f5422e5cd6af70%40thread.skype/K2-Public?groupId=4bc52ade-0b7d-40b6-a20a-7e8e66545532&tenantId=0fee8ff2-a3b2-4018-9c75-3a1d5591fedc)                           | General discussions             |
