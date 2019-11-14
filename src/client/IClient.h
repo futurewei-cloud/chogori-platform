@@ -163,7 +163,7 @@ public:
     //
     //  Create payload for particular message (async)
     //
-    virtual void createPayload(std::function<void(Payload&&)> onCompleted) = 0;
+    virtual void createPayload(std::function<void(IClient&, Payload&&)> onCompleted) = 0;
 
     //
     //  Destructor

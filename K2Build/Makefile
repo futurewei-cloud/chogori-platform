@@ -18,7 +18,7 @@ test_node: build
 
 test_client: build
 	@echo ">>> Testing client"
-	@../$(BUILD_DIR)/test/client/client_test && testReturnCode=$? && exit $(testReturnCode)
+	@../$(BUILD_DIR)/test/client/partitionmap_test && testReturnCode=$? && exit $(testReturnCode)
 
 test_plog: build
 	@echo ">>> Testing plogmock"

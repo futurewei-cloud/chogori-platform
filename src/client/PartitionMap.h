@@ -78,7 +78,7 @@ public:
     public:
         iterator& operator++()
         {
-            // we reached the end
+            // we reached the end; a properly terminated partition mpa has to have an empty high key
             if(_it->getHighKey().empty()) {
                 _range = nullptr;
             }

@@ -35,6 +35,7 @@ public:
         bool _useUserThread = false;
         int _threadPoolCount = 1;
         uint16_t _serviceTcpPort = 0;  // dissabled
+        uint16_t _prometheusTcpPort = 0;
     };
 
 private:
@@ -43,9 +44,7 @@ private:
     std::atomic<bool> _stopFlag = false;
     std::atomic<bool> _useUserThread = false;
     // this class
-    const uint16_t _prometheusTcpPort = 8090;
     std::thread _transportThread;
-    k2::Prometheus _prometheus;
     std::vector<const char *> _argv;
     std::vector<char> _argVector;
     // the mutex is used to wait until the transport platform is started
@@ -127,7 +126,7 @@ public:
 
     void stop()
     {
-        if(_stopFlag) {
+        if(_stopFlag || !_initFlag) {
 
             return;
         }
@@ -146,14 +145,14 @@ public:
             std::unique_lock<std::mutex> lock(_mutex);
             int counter = 5;
             _conditional.wait_for(lock, std::chrono::seconds(1), [&counter] {
-            counter--;
+                counter--;
 
-            if(counter <= 0) {
+                if(counter <= 0) {
 
-                throw std::runtime_error("Platform: failed while waiting for the transport to stop!");
-            }
+                    throw std::runtime_error("Platform: failed while waiting for the transport to stop!");
+                }
 
-            return false;
+                return false;
             });
         }
     }
@@ -176,6 +175,7 @@ protected:
         k2::RPCProtocolFactory::Dist_t tcpproto;
 	    k2::RPCProtocolFactory::Dist_t rdmaproto;
         k2::RPCDispatcher::Dist_t dispatcher;
+        k2::Prometheus _prometheus;
 	    bool startRdmaFlag = false;
 
         // check if rdma is enabled
@@ -221,17 +221,17 @@ protected:
                         K2INFO("Stopping vnet...");
 
                         return virtualNetwork.stop();
-                    }).then([&] {
-                        if(_prometheusTcpPort > 0) {
+                    })
+                    .then([&] {
+                        if(_settings._prometheusTcpPort > 0) {
                             K2INFO("Stopping prometheus...");
 
                             return _prometheus.stop();
                         }
-                        else {
 
-                            return seastar::make_ready_future<>();
-                        }
-                    }).then([&] {
+                        return seastar::make_ready_future<>();
+                    })
+                    .then([&] {
                         // unblock the call who invoked stop()
                         _conditional.notify_all();
                     });
@@ -255,8 +255,8 @@ protected:
             K2INFO("Starting service platform...");
             auto future2 = seastar::make_ready_future<>()
                 .then([&] {
-                    if(_prometheusTcpPort > 0) {
-                        return _prometheus.start(_prometheusTcpPort, "K2 service platform metrics", "k2_service_platform");
+                    if(_settings._prometheusTcpPort > 0) {
+                        return _prometheus.start(_settings._prometheusTcpPort, "K2 service platform metrics", "k2_service_platform");
                     }
                     else {
                         return seastar::make_ready_future<>();

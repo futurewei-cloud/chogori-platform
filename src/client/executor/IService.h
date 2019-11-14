@@ -15,7 +15,7 @@ public:
      {
          // EMPTY
      }
-     
+
 }; // IService
 
 }; // namespace k2

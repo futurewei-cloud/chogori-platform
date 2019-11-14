@@ -13,7 +13,7 @@ set_target_properties(k2client PROPERTIES
 	SOVERSION 1
 )
 
-target_link_libraries (k2client PRIVATE k2transport k2common k2config Seastar::seastar)
+target_link_libraries (k2client PRIVATE k2common k2config k2transport boost_system boost_program_options boost_filesystem Seastar::seastar)
 
 install(TARGETS k2client DESTINATION lib)
 install(FILES ${HEADERS} DESTINATION include/client)

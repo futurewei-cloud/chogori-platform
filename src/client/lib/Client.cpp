@@ -45,7 +45,7 @@ void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Conf
             _partitionMap.map.insert(std::move(desc));
         }
     }
-    
+
     _settings = settings;
     _executor.init(settings, pConfig->getClientConfig());
     _executor.start();
@@ -57,14 +57,16 @@ Payload Client::createPayload()
     return std::move(*createPayload(endpoint).release());
 }
 
-void Client::createPayload(std::function<void(Payload&&)> onCompleted) {
+void Client::createPayload(std::function<void(IClient&, Payload&&)> onCompleted) {
     std::string endpoint = _settings.networkProtocol + "://0.0.0.0:0000";
 
-    _executor.execute(endpoint, [onCompleted] (std::unique_ptr<k2::Payload> pPayload) mutable {
+    IClient* pClient = this;
+
+    _executor.execute(endpoint, [pClient, onCompleted] (std::unique_ptr<k2::Payload> pPayload) mutable {
         PartitionMessage::Header* header;
         bool ret = pPayload->getWriter().reserveContiguousStructure(header);
         ASSERT(ret);
-        onCompleted(std::move(*pPayload.release()));
+        onCompleted(*pClient, std::move(*pPayload.release()));
     });
 }
 

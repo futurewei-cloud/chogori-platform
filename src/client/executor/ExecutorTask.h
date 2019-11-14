@@ -94,12 +94,12 @@ public:
 
     bool shouldCreatePayload()
     {
-        return (_pClientData->_fPayloadPtr) || (_pClientData->_fPayloadRef);
+        return hasPayloadCallback();
     }
 
-    bool hasResponseCallback()
+    bool hasPayloadCallback()
     {
-        return _pClientData->_fResponse != nullptr;
+        return _pClientData->_fPayloadPtr || _pClientData->_fPayloadRef;
     }
 
     bool hasEndpoint()

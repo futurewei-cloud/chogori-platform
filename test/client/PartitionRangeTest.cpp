@@ -275,8 +275,9 @@ SCENARIO("Partition", "[client]")
         addPartition(partitionMap, createPartition(createPartitionRange("g", ""), endpoint4));
 
         THEN("We expect to find the first partition when the low key of the first partition is empty")
-        {
-            REQUIRE(getPartitionsForRange(Range::singleKey("a"), partitionMap)[0].nodeEndpoint == endpoint1);
+        {   auto partitions = getPartitionsForRange(Range::singleKey("a"), partitionMap);
+            REQUIRE(partitions.size() == 1);
+            REQUIRE(partitions[0].nodeEndpoint == endpoint1);
         }
         THEN("We expect to find the lat partition when the high key of the last partition is empty")
         {
@@ -289,6 +290,12 @@ SCENARIO("Partition", "[client]")
             REQUIRE(partitions[1].nodeEndpoint == endpoint2);
             REQUIRE(partitions[2].nodeEndpoint == endpoint3);
             REQUIRE(partitions[3].nodeEndpoint == endpoint4);
+        }
+        THEN("We expect to find the partition for a closed range")
+        {
+            auto partitions = getPartitionsForRange(Range::close("b", "c"), partitionMap);
+            REQUIRE(partitions.size() == 1);
+            REQUIRE(partitions[0].nodeEndpoint == endpoint2);
         }
         THEN("We expect to find all partitions when the range spans all partitions")
         {

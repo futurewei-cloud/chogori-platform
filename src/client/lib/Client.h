@@ -49,9 +49,10 @@ private:
         }
     };
 
-    Executor _executor;
+
     ClientSettings _settings;
 protected:
+    Executor _executor;
     // TODO: make the timeout configurable
     const k2::Duration _defaultTimeout = std::chrono::milliseconds(10000);
     PartitionMap _partitionMap;
@@ -61,7 +62,7 @@ public:
     virtual ~Client();
     virtual void init(const ClientSettings& settings);
     virtual Payload createPayload();
-    virtual void createPayload(std::function<void(Payload&&)> onCompleted);
+    virtual void createPayload(std::function<void(IClient&, Payload&&)> onCompleted);
     virtual void execute(Operation&& operation, std::function<void(IClient&, OperationResult&&)> onCompleted);
     virtual void execute(PartitionDescription& partition, std::function<void(Payload&)> onPayload, std::function<void(IClient&, OperationResult&&)> onCompleted);
     virtual void runInThreadPool(std::function<void(IClient&)> routine);

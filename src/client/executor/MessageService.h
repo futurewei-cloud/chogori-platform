@@ -175,6 +175,8 @@ public:
 
     seastar::future<> start()
     {
+        K2INFO("Starting message service on cpu:"  << seastar::engine().cpu_id());
+
         registerMetrics();
 
         std::vector<seastar::future<>> futures;
@@ -272,53 +274,60 @@ private:
 
     void createPayload(ExecutorTaskPtr pTask)
     {
-        if(!pTask->hasEndpoint()) {
-            createEndpoint(pTask);
+        // this satisfies the case where the client provides the payload as part of the execution
+        if(pTask->_pClientData->_pPayload.get()) {
+            pTask->_pPlatformData->_pPayload = std::move(pTask->_pClientData->_pPayload);
         }
-
-        const auto startTime = std::chrono::steady_clock::now();
-        pTask->_pPlatformData->_pPayload = pTask->_pPlatformData->_pEndpoint->newPayload();
-        const auto timePoint = std::chrono::steady_clock::now();
-        _createPayloadLatency.add(timePoint - startTime);
-        // invoke payload callback
-        pTask->invokePayloadCallback();
-        _payloadCallbackTime.add(std::chrono::steady_clock::now() - timePoint);
+        else {
+            ASSERT(pTask->_pPlatformData->_pEndpoint.get() != nullptr);
+            const auto startTime = std::chrono::steady_clock::now();
+            pTask->_pPlatformData->_pPayload = pTask->_pPlatformData->_pEndpoint->newPayload();
+            const auto timePoint = std::chrono::steady_clock::now();
+            _createPayloadLatency.add(timePoint - startTime);
+        }
     }
 
     void createEndpoint(ExecutorTaskPtr pTask)
     {
+        if(pTask->_pPlatformData->_pPayload.get()) {
+            // endpoint is present
+            return;
+        }
+
         const auto startTime = std::chrono::steady_clock::now();
         auto& disp = _dispatcher.local();
         pTask->_pPlatformData->_pEndpoint = disp.getTXEndpoint(pTask->getUrl());
         _createEndpointLatency.add(std::chrono::steady_clock::now() - startTime);
 
         if (!pTask->_pPlatformData->_pEndpoint) {
-            
+
             throw std::runtime_error("unable to create endpoint for url");
         }
     }
 
     seastar::future<> executeTask(ExecutorTaskPtr pTask)
     {
-        if(pTask->shouldCreatePayload()) {
-            createPayload(pTask);
-        }
-        // this satisfies the case where the client provides the payload as part of the execution
-        else if(pTask->_pClientData->_pPayload.get()) {
-            pTask->_pPlatformData->_pPayload = std::move(pTask->_pClientData->_pPayload);
-        }
+        createEndpoint(pTask);
+        createPayload(pTask);
 
-        // in this case we just want to invoke the payload callback
-        if(!pTask->hasResponseCallback()) {
-            _queue.completeTask(pTask);
+        // invoke the callback with payload
+        if(pTask->hasPayloadCallback()) {
+            const auto timePoint = std::chrono::steady_clock::now();
+            pTask->invokePayloadCallback();
+            _payloadCallbackTime.add(std::chrono::steady_clock::now() - timePoint);
 
-            return seastar::make_ready_future<>();
-        }
+            // in this case we just want to create the payload; we do not want to send the message
+            if(pTask->_pClientData->_fPayloadPtr) {
+                _queue.completeTask(pTask);
 
-        if(!pTask->hasEndpoint()) {
-            createEndpoint(pTask);
+                return seastar::make_ready_future<>();
+            }
         }
 
+        // check the endpoint is present
+        ASSERT(pTask->_pPlatformData->_pEndpoint.get() != nullptr);
+        // check the payload is present
+        ASSERT(pTask->_pPlatformData->_pPayload.get() != nullptr)
         return sendMessage(pTask)
             .then([&, pTask](std::unique_ptr<ResponseMessage> response) mutable {
                  pTask->_pPlatformData->_pResponse = std::move(response);
@@ -416,7 +425,6 @@ private:
         ExecutorTaskPtr pTask;
         while(tasks.pop(pTask)) {
             if(pTask.get() && pTask->_pPlatformData.get()) {
-                pTask->_pPlatformData->_pPayload->release();
                 pTask->_pPlatformData.release();
             }
            _queue._completedTasks.push(pTask);

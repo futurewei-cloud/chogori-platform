@@ -17,6 +17,8 @@ trap finish EXIT
 
 sleep 2
 
-./test/node_test
 ./build/test/client/executor1_test
 ./build/test/client/executor2_test
+./build/test/client/client1_test
+./build/test/client/client2_test
+./test/node_test

@@ -374,7 +374,8 @@ public:
 
     void sendKey(const std::string key, SessionPtr pSession)
     {
-        _client.createPayload([this, pSession, key] (Payload&& payload) {
+        _client.createPayload([this, pSession, key] (client::IClient& rClient, Payload&& payload) {
+            (void)rClient;
             try {
                 // populate payload
                 makeSetMessage(payload, key, key);

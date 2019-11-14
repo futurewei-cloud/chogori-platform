@@ -147,12 +147,15 @@ TEMPLATE_TEST_CASE("Single Partitions Assignment/Offload", "[SinglePartitions_As
     {
         REQUIRE_OK(client.set(assignmentId, "Arjan", "Xeka"));
         REQUIRE_OK(client.set(assignmentId, "Ivan", "Avramov"));
+        REQUIRE_OK(client.set(assignmentId, "Valentin", "Kuznetsov"));
 
         REQUIRE_VALUE(client.get(assignmentId, "Arjan"), "Xeka");
         REQUIRE_VALUE(client.get(assignmentId, "Ivan"), "Avramov");
+        REQUIRE_VALUE(client.get(assignmentId, "Valentin"), "Kuznetsov");
 
         REQUIRE_OK(client.remove(assignmentId, "Arjan"));
         REQUIRE_OK(client.remove(assignmentId, "Ivan"));
+        REQUIRE_OK(client.remove(assignmentId, "Valentin"));
     }
 
     REQUIRE_OK(transport.send(OffloadMessage::createMessage(Endpoint("1"), assignmentMessage.getPartitionAssignmentId()))->getStatus());
