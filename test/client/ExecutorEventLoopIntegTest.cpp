@@ -16,7 +16,7 @@ using namespace k2::client;
 
 SCENARIO("Executor with event loop")
 {
-    std::string endpointUrl = "tcp+k2rpc://172.17.0.3:11311";
+    std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     MockClient client;
     Executor executor(client);
     ClientSettings settings;
