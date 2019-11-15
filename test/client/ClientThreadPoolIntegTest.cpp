@@ -16,7 +16,7 @@ using namespace k2::client;
 
 SCENARIO("Client in a thread pool")
 {
-    std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
+    std::string endpointUrl = "tcp+k2rpc://172.17.0.3:11311";
     std::vector<PartitionDescription> partitions;
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));

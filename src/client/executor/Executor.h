@@ -11,6 +11,7 @@
 #include <boost/lockfree/queue.hpp>
 // seastar
 #include <seastar/core/sleep.hh>
+#include <seastar/core/semaphore.hh>
 #include <seastar/core/metrics_registration.hh>
 #include <seastar/core/metrics.hh>
 // k2
@@ -30,8 +31,9 @@
 // k2:client
 #include <client/IClient.h>
 // K2:executor
-#include "MessageService.h"
 #include "ServicePlatform.h"
+#include "EventLoopService.h"
+#include "MessageService.h"
 
 namespace k2
 {
@@ -61,7 +63,8 @@ private:
     std::vector<std::unique_ptr<ExecutorQueue>> _queues;
     // this class
     std::unique_ptr<ServicePlatform> _pPlatform;
-    std::unique_ptr<MessageService::Launcher> _pLauncher;
+    std::unique_ptr<IServiceLauncher> _pEventLoopServiceLauncher;
+    std::unique_ptr<IServiceLauncher> _pLauncher;
     std::vector<const char *> _argv;
     // from arguments
     client::ClientSettings _settings;
@@ -88,14 +91,20 @@ public:
 
         _queues.reserve(settings.networkThreadCount);
         for(int i=0; i<settings.networkThreadCount; i++) {
-            _queues.push_back(std::move(std::make_unique<ExecutorQueue>()));
+            _queues.push_back(std::move(std::make_unique<ExecutorQueue>(settings.userInitThread)));
         }
 
         k2::ServicePlatform::Settings platformSettings;
         platformSettings._useUserThread = settings.userInitThread;
-        _pLauncher = std::make_unique<MessageService::Launcher>(MessageService::Settings(_settings.userInitThread, _settings.runInLoop, _rClient), _queues);
-        _pPlatform = std::make_unique<ServicePlatform>(*_pLauncher.get());
+        _pLauncher = std::make_unique<MessageService::Launcher>(_queues);
+        _pPlatform = std::make_unique<ServicePlatform>();
         _pPlatform->init(std::move(platformSettings), _argv);
+        _pPlatform->registerService(std::ref(*_pLauncher.get()));
+
+        if(_settings.userInitThread) {
+            _pEventLoopServiceLauncher = std::make_unique<EventLoopService::Launcher>(_settings.runInLoop, _rClient);
+            _pPlatform->registerService(std::reference_wrapper<IServiceLauncher>(*_pEventLoopServiceLauncher.get()));
+        }
     }
 
     void init(const client::ClientSettings& settings, std::shared_ptr<config::NodePoolConfig> pNodePoolConfig)

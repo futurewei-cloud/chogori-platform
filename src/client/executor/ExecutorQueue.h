@@ -21,15 +21,19 @@ private:
 public:
     // TODO: this is arbitrary defined
     static constexpr int _MAX_QUEUE_SIZE = 10;
+    // if this is a blocking queue or non blocking queue
+    volatile bool _blocking = true;
 
     // queue of promises to be fullfilled
     boost::lockfree::spsc_queue<seastar::lw_shared_ptr<seastar::promise<ExecutorTaskPtr>>> _promises{_MAX_QUEUE_SIZE};
     // shared members between the Client thread and the Seastar platform
     boost::lockfree::spsc_queue<ExecutorTaskPtr> _readyTasks{_MAX_QUEUE_SIZE}; // tasks that are ready to be executed
     boost::lockfree::spsc_queue<ExecutorTaskPtr> _completedTasks{_MAX_QUEUE_SIZE}; // tasks that have completed execution
+    // clean the data at destructor time
     std::vector<std::unique_ptr<ExecutorTask::ClientData>> _clientData;
 
-    ExecutorQueue()
+    ExecutorQueue(bool blocking)
+    : _blocking(blocking)
     {
         // create all the task objects
         for(int i = 0; i < _MAX_QUEUE_SIZE; i++) {
@@ -59,10 +63,9 @@ public:
     seastar::future<ExecutorTaskPtr> popWithFuture()
     {
         ExecutorTaskPtr pTask = pop();
-        if(!pTask) {
+        if(!pTask && _blocking) {
             auto pPromise = seastar::make_lw_shared<seastar::promise<ExecutorTaskPtr>>();
             if(_promises.push(pPromise)) {
-
                 return pPromise->get_future();
             }
         }
@@ -115,6 +118,21 @@ public:
         while(tasks.pop(pTask)) {
            _clientData.push_back(std::move(pTask->_pClientData));
         }
+    }
+
+    void releasePromises()
+    {
+        while(!_promises.empty()) {
+            seastar::lw_shared_ptr<seastar::promise<ExecutorTaskPtr>> pPromise;
+            if(_promises.pop(pPromise)) { // we have a promise to fulfill
+                pPromise->set_value(nullptr);
+            }
+        }
+    }
+
+    bool isBlocking()
+    {
+        return _blocking;
     }
 };
 

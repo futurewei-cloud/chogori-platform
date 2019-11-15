@@ -3,18 +3,18 @@
 namespace k2
 {
 
-class IService: public seastar::weakly_referencable<IService>
+class IServiceLauncher 
 {
-
 public:
+    virtual seastar::future<> init(k2::RPCDispatcher::Dist_t& dispatcher)= 0;
     virtual seastar::future<> start()= 0;
     virtual seastar::future<> stop()= 0;
 
-     virtual ~IService()
+     virtual ~IServiceLauncher()
      {
          // EMPTY
      }
 
-}; // IService
+}; // IServiceLauncher
 
 }; // namespace k2
