@@ -17,14 +17,14 @@
 // k2:config
 #include <config/ConfigLoader.h>
 // k2:client
-#include <client/lib/Client.h>
+#include <client/Client.h>
 // k2:benchmarker
 #include <benchmarker/generator/RandomNumberGenerator.h>
 #include <benchmarker/KeySpace.h>
 #include <benchmarker/Session.h>
 #include "benchmarker/proto/k2bdto.pb.h"
 // kv module
-#include "modules/memkv/server/MemKVModule.h"
+#include <modules/memkv/server/MemKVModule.h>
 
 namespace k2
 {

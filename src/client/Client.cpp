@@ -1,6 +1,6 @@
 // k2
 #include "Client.h"
-#include <client/executor/Executor.h>
+#include <executor/Executor.h>
 
 namespace k2
 {

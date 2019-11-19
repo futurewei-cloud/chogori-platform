@@ -7,7 +7,7 @@
 #include <common/PartitionMetadata.h>
 // k2:client
 #include <client/IClient.h>
-#include <client/executor/Executor.h>
+#include <executor/Executor.h>
 // test
 #include "TestFactory.h"
 

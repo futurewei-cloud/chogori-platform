@@ -8,10 +8,11 @@
 #include <common/PartitionMetadata.h>
 // k2:config
 #include <config/Config.h>
+// k2:executor
+#include <executor/Executor.h>
 // k2:client
 #include <client/IClient.h>
 #include <client/PartitionMap.h>
-#include <client/executor/Executor.h>
 
 namespace k2
 {

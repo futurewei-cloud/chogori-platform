@@ -3,6 +3,7 @@
 #-->
 
 add_subdirectory (common)
+add_subdirectory (executor)
 add_subdirectory (client)
 add_subdirectory (modules)
 add_subdirectory (node)
