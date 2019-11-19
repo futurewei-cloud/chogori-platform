@@ -20,17 +20,7 @@ protected:
     int partitionCount = 0;             //  Count of currently assigned partitions
     uint32_t processedTaskRound = 0;    //  How many rounds was processed from the beginning. Used to track whether mananager is stall.
 
-    Partition* getPartition(PartitionId id)
-    {
-        for(int i = 0; i < partitionCount; i++)
-        {
-            auto& kvp = partitions[i];
-            if(kvp.first == id)
-                return kvp.second.get();
-        }
-
-        return nullptr;
-    }
+    Partition* getPartition(PartitionId id);
 
     bool hasPartition(PartitionId id) { return getPartition(id) != nullptr; }
 

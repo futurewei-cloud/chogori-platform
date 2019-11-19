@@ -6,7 +6,6 @@
 // stl
 #include <cstdint> // for int types
 #include <iostream>
-#include <string>
 
 namespace k2 {
 // This file contains definitions for RPC types

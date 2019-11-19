@@ -66,7 +66,7 @@ protected:
     K2_LINKED_LIST_NODE
     TaskListType ownerTaskList; //  Task list in which this task resides
 
-    TaskRequest(Partition& partition) : partition(partition), ownerTaskList(TaskListType::None) {}
+    TaskRequest(Partition& partition);
 
     enum class ProcessResult
     {
@@ -76,22 +76,18 @@ protected:
         DropPartition
     };
 
-    ProcessResult process(std::chrono::nanoseconds maxExecutionTime)
-    {
-        timeTracker = TimeTracker(maxExecutionTime);
-        return process();
-    }
+    ProcessResult process(std::chrono::nanoseconds maxExecutionTime);
 
     virtual ProcessResult process() = 0;
-    virtual void cancel() {}
+    virtual void cancel();
 
-    std::ostream& logger() { return std::cerr; }  //  Change to something more appropriate
+    std::ostream& logger();
 
 public:
     //
     //  Each task is associated with particular partition. This property returns it
     //
-    Partition& getPartition() { return partition; }
+    Partition& getPartition();
 
     //
     //  One of the know types of the task.
@@ -102,17 +98,17 @@ public:
     //  Check whether module is allowed to proceed with job execution or need to postpone the task
     //  because it's time quota is expired
     //
-    bool canContinue() { return !timeTracker.exceeded(); }
+    bool canContinue();
 
     //
     // Return the elapsed time since the task was created.
     //
-    std::chrono::nanoseconds getElapsedTime() { return timeTracker.elapsed(); }
+    std::chrono::nanoseconds getElapsedTime();
 
     //
     //  Task has it's own associated memory arena. TODO: use Folly Memory Arena
     //
-    void* taskScopeMalloc(size_t size) { return arena.alloc(size); }
+    void* taskScopeMalloc(size_t size);
 
     //
     //  Allocate new object in a task scope (memory will be released when task finishes)
@@ -126,7 +122,7 @@ public:
     //
     //  Make virtual distructor to enforce polymorphism
     //
-    virtual ~TaskRequest() {}
+    virtual ~TaskRequest();
 
     //
     //  Module specific data

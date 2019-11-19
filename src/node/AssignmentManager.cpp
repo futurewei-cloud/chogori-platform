@@ -4,6 +4,16 @@
 namespace k2
 {
 
+Partition* AssignmentManager::getPartition(PartitionId id) {
+    for (int i = 0; i < partitionCount; i++) {
+        auto& kvp = partitions[i];
+        if (kvp.first == id)
+            return kvp.second.get();
+    }
+
+    return nullptr;
+}
+
 Status AssignmentManager::processPartitionAssignmentMessage(PartitionRequest& request)
 {
     if(partitionCount >= Constants::MaxCountOfPartitionsPerNode)
@@ -89,7 +99,7 @@ void AssignmentManager::checkStateConsistency()
         return;
 
     std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::time_point heartbeatTime = pool.getMonitor().getLastHeartbeatTime().getSteady();
+    std::chrono::steady_clock::time_point heartbeatTime = pool.getMonitor().getLastHeartbeatTime().steadyTime;
     if(heartbeatTime > lastPoolMonitorSessionCheckValue)
     {
         lastPoolMonitorSessionCheckValue = heartbeatTime;

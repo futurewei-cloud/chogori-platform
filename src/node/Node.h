@@ -25,49 +25,27 @@ protected:
     String name;
 
     friend class NodePoolImpl;
-    void setLocationInfo(String name, std::vector<String> endpoints_, int coreId)
-    {
-        endPoints = std::move(endpoints_);
-        String endPointsText;
-        for(const auto& endpoint : endPoints)
-            endPointsText += endpoint + ";";
-        K2INFO("Initialized node " << name << ". Core:" << coreId << ". Endpoints:" << endPointsText);
-    }
+    void setLocationInfo(String name, std::vector<String> endpoints_, int coreId);
 
 public:
-    Node(INodePool& pool, NodeEndpointConfig nodeConfig) :
-        assignmentManager(pool), nodeConfig(std::move(nodeConfig)) { }
+    Node(INodePool& pool, NodeEndpointConfig nodeConfig);
 
-    const NodeEndpointConfig& getEndpoint() const { return nodeConfig; }
+    const NodeEndpointConfig& getEndpoint() const;
 
-    const std::vector<String>& getEndpoints() const { return endPoints; }
+    const std::vector<String>& getEndpoints() const;
 
-    const String& getName() const { return name; }
+    const String& getName() const;
 
-    bool processTasks() //  Return true if at least on task was processed
-    {
-        processedRounds++;
-        return assignmentManager.processTasks();
-    }
+    bool processTasks();
 
     //
     //  Pool monitor periodically checks whether Nodes are progress in their work:
     //  with each check it looks whether variable is more than 0 (meaning we ran some rounds) and then set it to zero.
     //  No atomic usage here, since we don't care about immediate consistency
     //
-    uint32_t getProcessedRoundsSinceLastCheck() const { return processedRounds; }
+    uint32_t getProcessedRoundsSinceLastCheck() const;
 
-    uint32_t resetProcessedRoundsSinceLastCheck()
-    {
-        auto result = processedRounds;
-        processedRounds = 0;
-        return result;
-    }
+    uint32_t resetProcessedRoundsSinceLastCheck();
 };
-
-//
-//  Return Node that active within current thread context. Implementation is platform specific
-//
-Node& getActiveNode();
 
 }   //  namespace k2

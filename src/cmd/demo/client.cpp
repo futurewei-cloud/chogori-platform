@@ -9,7 +9,7 @@ using namespace k2;
 using namespace k2::client;
 using namespace std::chrono_literals;
 
-static void makeSetMessage(k2::Payload& payload, std::string& key, std::string& value)
+static void makeSetMessage(k2::Payload& payload, k2::String& key, k2::String& value)
 {
      MemKVModule<>::SetRequest setRequest { key, value };
      auto request = MemKVModule<>::RequestWithType(setRequest);
@@ -86,8 +86,8 @@ int main()
 
     Range range = Range::close("d", "f");
     srand(time(0));
-    std::string value = std::to_string(rand());
-    std::string key = "key";
+    k2::String value = std::to_string(rand());
+    k2::String key = "key";
 
     // set key
     // create payload: the range is required since we need to find the endpoint; different type of endpoint have different payloads

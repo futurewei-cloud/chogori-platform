@@ -16,7 +16,7 @@ using namespace k2::client;
 
 SCENARIO("Client in a thread pool")
 {
-    std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
+    k2::String endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     std::vector<PartitionDescription> partitions;
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));
@@ -27,7 +27,7 @@ SCENARIO("Client in a thread pool")
     settings.networkProtocol = "tcp+k2rpc";
     Executor& rExecutor = client.getExecutor();
 
-    std::string partitionId = "2.1.1";
+    k2::String partitionId = "2.1.1";
     Range range = Range::close("d", "f");
     settings.userInitThread = false;
     client.init(settings);
@@ -45,8 +45,8 @@ SCENARIO("Client in a thread pool")
     _conditional.wait_for(_lock, std::chrono::seconds(5));
 
     srand(time(0));
-    std::string value = std::to_string(rand());
-    std::string key = "key";
+    k2::String value = std::to_string(rand());
+    k2::String key = "key";
 
     // set key
     // create payload: the range is required since we need to find the endpoint; different type of endpoint have different payloads

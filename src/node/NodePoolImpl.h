@@ -16,55 +16,23 @@ class NodePoolImpl : public INodePool
     PoolMonitor monitor;
 
 public:
-    NodePoolImpl() : monitor(*this)
-    {
-        monitorPtr = &monitor;
-        name = "K2Pool_" + std::to_string(getpid()); //  TODO: add ip and some randomization
-    }
+    NodePoolImpl();
 
-    Status registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module)
-    {
-        auto emplaceResult = modules.try_emplace(moduleId, std::move(module));
-        return emplaceResult.second ? Status::Ok : LOG_ERROR(Status::ModuleWithSuchIdAlreadyRegistered);
-    }
+    Status registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module);
 
-    Status registerNode(std::unique_ptr<Node> node)
-    {
-        nodes.push_back(node.release());
-        return Status::Ok;
-    }
+    Status registerNode(std::unique_ptr<Node> node);
 
-    void setCurrentNodeLocationInfo(std::vector<String> endpoints, int coreId)
-    {
-        String nodeName = name + "_" + std::to_string(getScheduingPlatform().getCurrentNodeId());
-        getCurrentNode().setLocationInfo(std::move(nodeName), std::move(endpoints), coreId);
-    }
+    void setCurrentNodeLocationInfo(std::vector<String> endpoints, int coreId);
 
-    void setScheduingPlatform(ISchedulingPlatform* platform)
-    {
-        ASSERT(!schedulingPlatform);
-        ASSERT(platform);
-        schedulingPlatform = platform;
-    }
+    void setScheduingPlatform(ISchedulingPlatform* platform);
 
-    NodePoolConfig& getConfig() { return config; }
+    NodePoolConfig& getConfig();
 
-    PoolMonitor& getMonitor() { return monitor; }
+    PoolMonitor& getMonitor();
 
-    void completeInitialization()
-    {
-        getMonitor().start();
-    }
+    void completeInitialization();
 
-    ~NodePoolImpl()
-    {
-        for(auto& node : nodes)
-        {
-            delete node;
-            node = nullptr;
-        }
-        nodes.clear();
-    }
+    ~NodePoolImpl();
 };
 
 }   //  namespace k2

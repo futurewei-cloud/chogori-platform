@@ -20,24 +20,11 @@ public:
         failure                     //  Everybody observing such state should crash immediately
     };
 
-    class TimePoint
+    struct TimePoint
     {
-    protected:
         std::chrono::system_clock::time_point systemTime;
         std::chrono::steady_clock::time_point steadyTime;
-    public:
-        const std::chrono::system_clock::time_point& getSystem() const { return systemTime; }
-        const std::chrono::steady_clock::time_point& getSteady() const { return steadyTime; }
-
-        TimePoint() {}
-
-        static TimePoint now()
-        {
-            TimePoint result;
-            result.systemTime = std::chrono::system_clock::now();
-            result.steadyTime = std::chrono::steady_clock::now();
-            return result;
-        }
+        static TimePoint now();
     };
 protected:
     INodePool& pool;
@@ -59,26 +46,13 @@ protected:
     Status sendMessage(const RequestT& request, ResponseT& response);
 
 public:
-    PoolMonitor(INodePool& pool) : pool(pool)
-    {
-        state = pool.getConfig().isMonitorEnabled() ? State::waitingForInitialization : State::disabled;
-    }
+    PoolMonitor(INodePool& pool);
 
-    void start()
-    {
-        if(!pool.getConfig().isMonitorEnabled())
-            return;
+    void start();
 
-        monitorThread = std::thread([this]() { run(); });
-    }
+    const TimePoint& getLastHeartbeatTime() const;
 
-    const TimePoint& getLastHeartbeatTime() const { return lastHeartbeat; }
-
-    State getState() const
-    {
-        ASSERT(state != State::failure);
-        return state;
-    }
+    State getState() const;
 };
 
 }   //  namespace k2

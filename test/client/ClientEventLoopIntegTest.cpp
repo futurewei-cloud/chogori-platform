@@ -18,8 +18,8 @@ using namespace k2::client;
 static void setGetKeyScenario(IClient& rClient, const Range& range, std::function<void()> onCompleted)
 {
     srand(time(0));
-    std::string value = std::to_string(rand());
-    std::string key = "key";
+    k2::String value = std::to_string(rand());
+    k2::String key = "key";
 
     // set key
     rClient.createPayload(
@@ -62,7 +62,7 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
 
 SCENARIO("Client in a thread pool")
 {
-    std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
+    k2::String endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     std::vector<PartitionDescription> partitions;
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));
@@ -74,7 +74,7 @@ SCENARIO("Client in a thread pool")
     Executor& rExecutor = client.getExecutor();
 
     settings.userInitThread = true;
-    std::string partitionId = "1.1.1";
+    k2::String partitionId = "1.1.1";
     Range range = Range::close("b", "c");
 
     bool partitionsCreated = false;
