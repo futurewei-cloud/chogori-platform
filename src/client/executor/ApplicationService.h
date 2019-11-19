@@ -1,47 +1,48 @@
 #pragma once
 
+// std
+#include <memory>
 // seastar
 #include <seastar/core/reactor.hh>
 #include <seastar/core/semaphore.hh>
 // k2:transport
 #include <transport/RPCDispatcher.h>
-// k2:client
-#include <client/IClient.h>
 // k2:executor
 #include "IServiceLauncher.h"
 #include "IService.h"
-
+#include "IApplication.h"
 
 namespace k2
 {
 
-class EventLoopService: public IService
+template <class T>
+class ApplicationService: public IService
 {
-
 public:
     // Service launcher
     class Launcher: public IServiceLauncher
     {
     private:
-        std::unique_ptr<seastar::distributed<EventLoopService>> _pDistributed;
-        std::function<uint64_t(client::IClient&)> _runInLoop;
-        client::IClient& _rClient;
+        std::unique_ptr<seastar::distributed<ApplicationService<T>>> _pDistributed;
+        IApplication<T>& _rApplication;
+        std::unique_ptr<T> _pContext;
 
     public:
-        Launcher(std::function<uint64_t(client::IClient&)> runInLoop, client::IClient& rClient)
-        : _runInLoop(runInLoop)
-        , _rClient(rClient)
+        Launcher(IApplication<T>& rApplication, T& rContext)
+        : _rApplication(rApplication)
+        , _pContext(std::move(rContext.newInstance()))
         {
             // EMPTY
         }
 
         virtual seastar::future<> init(k2::RPCDispatcher::Dist_t& rDispatcher) {
+            (void)rDispatcher;
             if(nullptr == _pDistributed.get()) {
                 // create the service in the Seastar context
-                _pDistributed = std::make_unique<seastar::distributed<EventLoopService>>();
+                _pDistributed = std::make_unique<seastar::distributed<ApplicationService>>();
             }
 
-            return _pDistributed->start(std::ref(rDispatcher), _runInLoop, std::ref(_rClient));
+            return _pDistributed->start(std::ref(_rApplication), std::ref(*_pContext));
         }
 
         virtual seastar::future<> stop() {
@@ -59,47 +60,46 @@ public:
 
         virtual seastar::future<> start() {
 
-           return _pDistributed->invoke_on_all(&EventLoopService::start);
+           return _pDistributed->invoke_on_all(&ApplicationService<T>::start);
         }
     };
 
-private:
+protected:
     const std::chrono::microseconds _minDelay; // the minimum amount of time before calling the next application loop
-    k2::RPCDispatcher::Dist_t& _rDispatcher;
     seastar::semaphore _sempahore;
-    std::function<uint64_t(client::IClient&)> _runInLoop;
-    client::IClient& _rClient;
+    std::unique_ptr<IApplication<T>> _pApplication;
     // class defined
     bool _stopFlag = false; // stops the service
+
 public:
-    EventLoopService(k2::RPCDispatcher::Dist_t& rDispatcher, std::function<uint64_t(client::IClient&)> runInLoop, client::IClient& rClient)
+    ApplicationService(IApplication<T>& rApplication, T& rContext)
     : _minDelay(std::chrono::microseconds(5))
-    , _rDispatcher(rDispatcher)
     , _sempahore(seastar::semaphore(1))
-    , _runInLoop(runInLoop)
-    , _rClient(rClient)
+    , _pApplication(std::move(rApplication.newInstance()))
     {
-        // EMPTY
+        _pApplication->onInit(std::move(rContext.newInstance()));
     }
 
     virtual seastar::future<> start()
     {
-        return seastar::with_semaphore(_sempahore, 1, [&] {
+        _pApplication->onStart();
+
+         return seastar::with_semaphore(_sempahore, 1, [&] {
             return seastar::do_until([&] { return _stopFlag; }, [&] {
-                // execute client loop
-                const long int timeslice = _runInLoop(_rClient);
+                // execute event loop
+                const long int timeslice = _pApplication->eventLoop();
                 const auto delay = (timeslice < _minDelay.count()) ? _minDelay : std::chrono::microseconds(timeslice);
 
                 return seastar::sleep(std::move(delay));
             });
         })
         .or_terminate();
-
     }
 
     virtual seastar::future<> stop()
     {
         _stopFlag = true;
+        _pApplication->onStop();
 
         return seastar::with_semaphore(_sempahore, 1, [&] {
 
@@ -107,7 +107,6 @@ public:
         });
     }
 
-
-}; // class EventLoopService
+}; // class ApplicationService
 
 }; // namespace k2

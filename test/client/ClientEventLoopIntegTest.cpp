@@ -62,51 +62,104 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
 
 SCENARIO("Client in a thread pool")
 {
-    std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
+    const std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     std::vector<PartitionDescription> partitions;
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "3.1.1", PartitionRange("g", "j"))));
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "4.1.1", PartitionRange("j", "")))); // empty high key terminates the range
+
+    class TestContext: public IApplicationContext
+    {
+    public:
+        IClient& _rClient;
+        Executor& _rExecutor;
+        std::string _endpoint;
+
+        TestContext(IClient& rClient, Executor& rExecutor, const std::string& endpoint)
+        : _rClient(rClient)
+        , _rExecutor(rExecutor)
+        , _endpoint(endpoint)
+        {
+            // empty
+        }
+
+        std::unique_ptr<TestContext> newInstance()
+        {
+            return std::move(std::make_unique<TestContext>(_rClient, _rExecutor, _endpoint));
+        }
+    };
+
+    class TestApplication: public IApplication<TestContext>
+    {
+    protected:
+        const std::string partitionId = "1.1.1";
+        const Range range = Range::close("b", "c");
+        int count = 0;
+        bool done = false;
+        std::unique_ptr<TestContext> _pContext;
+
+    public:
+        TestApplication()
+        {
+            // empty
+        }
+
+        virtual uint64_t eventLoop()
+        {
+            count++;
+            if(done || count > 5000)
+            {
+                 // verify
+                ASSERT(done);
+                // stop client
+               _pContext->_rClient.stop();
+            }
+            if(count > 1) {
+                return 1000;
+            }
+
+            TestFactory::assignPartitionAsync(_pContext->_rExecutor, _pContext->_endpoint, partitionId, PartitionRange("a", "d"),
+            [&] {
+                setGetKeyScenario(_pContext->_rClient, range,
+                [&] {
+                    done = true;
+                });
+            });
+
+            return 1000;
+        }
+
+        virtual void onInit(std::unique_ptr<TestContext> pContext)
+        {
+           _pContext = std::move(pContext);
+        }
+
+        virtual std::unique_ptr<IApplication> newInstance()
+        {
+            return std::unique_ptr<IApplication>(new TestApplication());
+        }
+
+        void onStart()
+        {
+
+        }
+
+        virtual void onStop()
+        {
+
+        }
+    };
+
     TestClient client(partitions);
     ClientSettings settings;
     settings.networkProtocol = "tcp+k2rpc";
     Executor& rExecutor = client.getExecutor();
+    TestApplication app;
+    TestContext context(client, rExecutor, endpointUrl);
+    client.registerApplication(app, context);
 
-    settings.userInitThread = true;
-    std::string partitionId = "1.1.1";
-    Range range = Range::close("b", "c");
-
-    bool partitionsCreated = false;
-    bool stopFlag = false;
-    int count = 0;
-
-    settings.runInLoop = ([&] (k2::client::IClient& client) {
-        (void)client;
-
-        count++;
-        if(stopFlag || count > 5000)
-        {
-            rExecutor.stop();
-        }
-        if(count > 1) {
-            return 1000;
-        }
-
-        if(!partitionsCreated) {
-            TestFactory::assignPartitionAsync(rExecutor, endpointUrl, partitionId, PartitionRange("a", "d"),
-            [&] {
-                setGetKeyScenario(client, range,
-                [&] {
-                    stopFlag = true;
-                    });
-                });
-        }
-
-        return 1000;
-    });
-
-    // blocks until stopped
+    // start the client; blocks until stopped
     client.init(settings);
 
 }

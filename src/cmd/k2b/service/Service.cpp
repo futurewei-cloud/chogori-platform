@@ -183,7 +183,7 @@ public:
     {
         // initialize the client
         client::ClientSettings settings;
-        settings.userInitThread = true;
+        //settings.userInitThread = true;
         settings.networkProtocol = "tcp+k2rpc";
         settings.runInLoop = std::bind(&BenchmarkerService::transportLoop, this, std::placeholders::_1);
 

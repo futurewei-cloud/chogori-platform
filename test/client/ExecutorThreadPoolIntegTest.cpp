@@ -23,8 +23,6 @@ SCENARIO("Executor in thread pool mode")
     ClientSettings settings;
     settings.networkProtocol = "tcp+k2rpc";
     const std::string partitionId = "4.1.1";
-    // start executor in thread pool mode
-    settings.userInitThread = false;
     executor.init(settings);
     // start executor in a thread pool
     executor.start();

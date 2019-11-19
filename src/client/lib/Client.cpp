@@ -51,6 +51,11 @@ void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Conf
     _executor.start();
 }
 
+ void Client::stop()
+ {
+     _executor.stop();
+ }
+
 Payload Client::createPayload()
 {
     std::string endpoint = _settings.networkProtocol + "://0.0.0.0:0000";

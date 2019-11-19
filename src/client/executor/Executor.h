@@ -32,8 +32,8 @@
 #include <client/IClient.h>
 // K2:executor
 #include "ServicePlatform.h"
-#include "EventLoopService.h"
 #include "MessageService.h"
+#include "ApplicationService.h"
 
 namespace k2
 {
@@ -59,20 +59,22 @@ namespace k2
 class Executor
 {
 private:
+    // this class
+    ServicePlatform _platform;
     // shared
     std::vector<std::unique_ptr<ExecutorQueue>> _queues;
-    // this class
-    std::unique_ptr<ServicePlatform> _pPlatform;
-    std::unique_ptr<IServiceLauncher> _pEventLoopServiceLauncher;
-    std::unique_ptr<IServiceLauncher> _pLauncher;
+    std::vector<std::unique_ptr<IServiceLauncher>> _launchers;
     std::vector<const char *> _argv;
     // from arguments
     client::ClientSettings _settings;
-    client::IClient& _rClient;
-
 public:
     Executor(client::IClient& rClient)
-    : _rClient(rClient)
+    {
+        (void)rClient;
+        // empty
+    }
+
+    Executor()
     {
         // empty
     }
@@ -82,6 +84,14 @@ public:
         stop();
     }
 
+    template<typename T>
+    void registerApplication(IApplication<T>& rApplication, T& rContext)
+    {
+        auto pLauncher = std::unique_ptr<IServiceLauncher>(new typename ApplicationService<T>::Launcher(rApplication, rContext));
+        _platform.registerService(std::ref(*pLauncher));
+        _launchers.push_back(std::move(pLauncher));
+    }
+
     //
     // Initialize the executor.
     //
@@ -89,22 +99,21 @@ public:
     {
         _settings = settings;
 
+        k2::ServicePlatform::Settings platformSettings;
+        platformSettings._useUserThread = false;
+        if(!_launchers.empty()) {
+            platformSettings._useUserThread = true;
+        }
+
         _queues.reserve(settings.networkThreadCount);
         for(int i=0; i<settings.networkThreadCount; i++) {
-            _queues.push_back(std::move(std::make_unique<ExecutorQueue>(settings.userInitThread)));
+            _queues.push_back(std::move(std::make_unique<ExecutorQueue>(platformSettings._useUserThread)));
         }
 
-        k2::ServicePlatform::Settings platformSettings;
-        platformSettings._useUserThread = settings.userInitThread;
-        _pLauncher = std::make_unique<MessageService::Launcher>(_queues);
-        _pPlatform = std::make_unique<ServicePlatform>();
-        _pPlatform->init(std::move(platformSettings), _argv);
-        _pPlatform->registerService(std::ref(*_pLauncher.get()));
-
-        if(_settings.userInitThread) {
-            _pEventLoopServiceLauncher = std::make_unique<EventLoopService::Launcher>(_settings.runInLoop, _rClient);
-            _pPlatform->registerService(std::reference_wrapper<IServiceLauncher>(*_pEventLoopServiceLauncher.get()));
-        }
+        auto pLauncher = std::unique_ptr<IServiceLauncher>(new MessageService::Launcher(_queues));
+        _platform.init(std::move(platformSettings), _argv);
+        _platform.registerService(std::ref(*pLauncher));
+        _launchers.push_back(std::move(pLauncher));
     }
 
     void init(const client::ClientSettings& settings, std::shared_ptr<config::NodePoolConfig> pNodePoolConfig)
@@ -135,7 +144,7 @@ public:
     void start()
     {
         K2INFO("Starting executor...");
-        _pPlatform->start();
+        _platform.start();
     }
 
     //
@@ -143,7 +152,7 @@ public:
     //
     void stop()
     {
-        _pPlatform->stop();
+        _platform.stop();
     }
 
     //
