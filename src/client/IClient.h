@@ -19,10 +19,6 @@ public:
     std::string networkProtocol;
     std::string k2ClusterEndpoint;  //  URL of the cluster Partition Manager
     uint8_t networkThreadCount = 1; //  How many threads to use for network processing
-    //bool userInitThread = false;    //  If set to true, thread that is calling client init will be used as one of network threads
-
-    //  Function will be called from client network thread. Returns number of microseconds after which it can be scheduled again.
-    std::function<uint64_t(IClient&)> runInLoop;
 };
 
 //
@@ -169,6 +165,11 @@ public:
     //  Create payload for particular message (async)
     //
     virtual void createPayload(std::function<void(IClient&, Payload&&)> onCompleted) = 0;
+
+    //
+    // Return the partitions for the given range.
+    //
+    virtual std::vector<PartitionDescription> getPartitions(Range& range) = 0;
 
     //
     //  Destructor

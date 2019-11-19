@@ -42,29 +42,45 @@ static void makeSetMessage(k2::Payload& payload, std::string key, std::string va
      payload.getWriter().write(request);
 }
 
-class BenchmarkerService
+class Context
 {
-using SessionPtr = std::shared_ptr<Session>;
-using SessionMap = std::map<std::string, SessionPtr>;
+public:
+    client::IClient& _rClient;
+    std::shared_ptr<config::Config> _pClusterConfig;
 
-private:
+    Context(client::IClient& rClient, std::shared_ptr<config::Config> pClusterConfig)
+    : _rClient(rClient)
+    , _pClusterConfig(pClusterConfig)
+    {
+        // empty
+    }
+
+    std::unique_ptr<Context> newInstance()
+    {
+        return std::unique_ptr<Context>(new Context(_rClient, _pClusterConfig));
+    }
+};
+
+class BenchmarkerService: public IApplication<Context>
+{
+protected:
+    std::unique_ptr<Context> _pContext;
+    using SessionPtr = std::shared_ptr<Session>;
+    using SessionMap = std::map<std::string, SessionPtr>;
     volatile const int _tcpPort = 1300;
     std::shared_ptr<asio::io_service> _pIoService;
     std::shared_ptr<asio::ip::tcp::acceptor> _pAcceptor;
     std::thread _asioThread;
-    client::Client _client;
     metrics::metric_groups _metricGroups;
     std::map<std::string, SessionPtr> _readySessions;
     std::map<std::string, SessionPtr> _runningSessions;
     std::map<std::string, SessionPtr> _compleatedSessions;
-    std::shared_ptr<config::Config> _pK2Config;
 
 public:
     BenchmarkerService()
     {
         _pIoService = std::make_shared<asio::io_service>();
         _pAcceptor = std::make_shared<asio::ip::tcp::acceptor>(*_pIoService);
-        _pK2Config = std::make_shared<config::Config>();
     }
 
     k2bdto::Response handleRequest(k2bdto::Request& request)
@@ -148,10 +164,8 @@ public:
         return 0; // all messages were send
     }
 
-    uint64_t transportLoop(client::IClient& client)
+    virtual uint64_t eventLoop()
     {
-        (void)client;
-
         if(!_readySessions.empty()) {
             SessionPtr pSession = _readySessions.begin()->second;
             _readySessions.erase(_readySessions.begin());
@@ -179,18 +193,12 @@ public:
         return 100;
     }
 
-    void initK2Client()
+    virtual void onInit(std::unique_ptr<Context> pContext)
     {
-        // initialize the client
-        client::ClientSettings settings;
-        //settings.userInitThread = true;
-        settings.networkProtocol = "tcp+k2rpc";
-        settings.runInLoop = std::bind(&BenchmarkerService::transportLoop, this, std::placeholders::_1);
-
-        _client.init(settings, _pK2Config);
+        _pContext = std::move(pContext);
     }
 
-    void start()
+   virtual void onStart()
     {
         registerMetrics();
 	    bindPort();
@@ -201,14 +209,10 @@ public:
             _pIoService->run();
         });
 
-        // start k2 client; blocking call
-        initK2Client();
-
-        // stop this service
-        stop();
+        K2INFO("Started K2 Benchmarker Service");
     }
 
-    void stop()
+    virtual void onStop()
     {
         _pIoService->stop();
         _pAcceptor->cancel();
@@ -351,9 +355,9 @@ public:
 
     void sendKeyOneShot(const std::string& key, SessionPtr pSession) {
         client::Range range = client::Range::singleKey(key);
-        auto partitions = std::move(_client.getPartitions(range));
+        auto partitions = std::move(_pContext->_rClient.getPartitions(range));
 
-        _client.execute(partitions[0],
+        _pContext->_rClient.execute(partitions[0],
             [this, key] (Payload& payload) mutable {
                 // populate payload
                 makeSetMessage(payload, key, key);
@@ -374,8 +378,7 @@ public:
 
     void sendKey(const std::string key, SessionPtr pSession)
     {
-        _client.createPayload([this, pSession, key] (client::IClient& rClient, Payload&& payload) {
-            (void)rClient;
+        _pContext->_rClient.createPayload([this, pSession, key] (client::IClient& rClient, Payload&& payload) {
             try {
                 // populate payload
                 makeSetMessage(payload, key, key);
@@ -383,7 +386,7 @@ public:
                 client::Range range = client::Range::singleKey(key);
                 client::Operation operation = std::move(createClientOperation(std::move(range), std::move(payload)));
                 // execute operation
-                _client.execute(std::move(operation), [pSession, key](client::IClient& client, client::OperationResult&& result) {
+                rClient.execute(std::move(operation), [pSession, key](client::IClient& client, client::OperationResult&& result) {
                     // prevent compilation warnings
                     (void)client;
                     if(result._responses[0].status != Status::Ok) {
@@ -403,9 +406,9 @@ public:
         });
     }
 
-    void setK2Config(std::shared_ptr<config::Config> pK2Config)
+    virtual std::unique_ptr<IApplication> newInstance()
     {
-        _pK2Config = pK2Config;
+        return std::unique_ptr<IApplication>(new BenchmarkerService());
     }
 
 }; // BenchmarkerService class
@@ -438,12 +441,15 @@ int main(int argc, char** argv)
         ? config::ConfigLoader::loadConfig(optionsMap["k2config"].as<std::string>())
         : config::ConfigLoader::loadDefaultConfig();
 
+     // initialize the client
+    client::ClientSettings settings;
+    settings.networkProtocol = "tcp+k2rpc";
+    client::Client _client;
     BenchmarkerService service;
-    service.setK2Config(pK2Config);
-    service.start();
-
-    (void)argc;
-    (void)argv;
+    Context context(_client, pK2Config);
+    _client.registerApplication(service, context);
+    // start the client; will block until stopped
+    _client.init(settings, pK2Config);
 
     return 0;
 }
