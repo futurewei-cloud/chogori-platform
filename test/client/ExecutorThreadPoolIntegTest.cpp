@@ -19,7 +19,7 @@ SCENARIO("Executor in thread pool mode")
 {
     std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     MockClient client;
-    Executor executor(client);
+    Executor executor;
     ClientSettings settings;
     settings.networkProtocol = "tcp+k2rpc";
     const std::string partitionId = "4.1.1";
