@@ -3,7 +3,7 @@
 // k2
 #include <common/PartitionMetadata.h>
 // k2:client
-#include <client/lib/Client.h>
+#include <client/Client.h>
 #include "modules/memkv/server/MemKVModule.h"
 
 using namespace k2;
@@ -162,12 +162,12 @@ public:
     }
 };
 
-class MockClient: public k2::client::IClient
+class MockClient: public k2::client::Client
 {
     virtual void init(const k2::client::ClientSettings& settings)
     {
         // used to ignore compilation warning
-        (void)settings.userInitThread;
+        (void)settings;
     }
 
     virtual void execute(k2::client::Operation&& settings, std::function<void(IClient&, k2::client::OperationResult&&)> onCompleted)

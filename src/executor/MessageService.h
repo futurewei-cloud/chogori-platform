@@ -23,64 +23,30 @@ namespace k2
 
 namespace metrics = seastar::metrics;
 
-class MessageService: public seastar::weakly_referencable<MessageService>
+class MessageService: public IService
 {
 public:
-    struct Settings
-    {
-    public:
-        bool _userInitThread = false;
-        std::function<uint64_t(client::IClient&)> _clientLoopFn;
-        client::IClient& _rClient;
-
-        Settings(bool userInitThread,  std::function<uint64_t(client::IClient&)> clientLoopFn, client::IClient& rClient)
-        : _userInitThread(userInitThread)
-        , _clientLoopFn(clientLoopFn)
-        , _rClient(rClient)
-        {
-            // empty
-        }
-
-        Settings(std::function<uint64_t(client::IClient&)> clientLoopFn, client::IClient& rClient)
-        : _userInitThread(true)
-        , _clientLoopFn(clientLoopFn)
-        , _rClient(rClient)
-        {
-            // empty
-        }
-
-        Settings(client::IClient& rClient)
-        : _userInitThread(false)
-        , _clientLoopFn(nullptr)
-        , _rClient(rClient)
-        {
-            // empty
-        }
-
-    };
-
     // Service launcher
-    class Launcher: public IService
+    class Launcher: public IServiceLauncher
     {
     private:
         std::unique_ptr<seastar::distributed<MessageService>> _pDistributed;
-        MessageService::Settings _settings;
         std::vector<std::unique_ptr<ExecutorQueue>>& _queues;
 
     public:
-        Launcher(const MessageService::Settings& settings, std::vector<std::unique_ptr<ExecutorQueue>>& queues)
-        : _settings(settings)
-        , _queues(queues)
+        Launcher(std::vector<std::unique_ptr<ExecutorQueue>>& queues)
+        : _queues(queues)
         {
             // EMPTY
         }
 
         virtual seastar::future<> init(k2::RPCDispatcher::Dist_t& rDispatcher) {
             if(nullptr == _pDistributed.get()) {
+                // create the service in the Seastar context
                 _pDistributed = std::make_unique<seastar::distributed<MessageService>>();
             }
 
-            return _pDistributed->start(_settings, std::ref(rDispatcher), std::ref(_queues));
+            return _pDistributed->start(std::ref(rDispatcher), std::ref(_queues));
         }
 
         virtual seastar::future<> stop() {
@@ -138,6 +104,7 @@ private:
     bool _stopFlag = false; // stops the service
     const std::chrono::microseconds _minDelay; // the minimum amount of time before calling the next application loop
     std::chrono::time_point<std::chrono::steady_clock> _runTaskTimepoint;
+    seastar::semaphore _semaphore;
     // metrics
     std::chrono::time_point<std::chrono::steady_clock> _taskLoopScheduleTime;
     std::chrono::time_point<std::chrono::steady_clock> _clientLoopScheduleTime;
@@ -153,17 +120,15 @@ private:
     ExponentialHistogram _taskLoopIdleTime;
     ExponentialHistogram _clientLoopIdleTime;
     // from arguments
-    Settings _settings;
     RPCDispatcher::Dist_t& _dispatcher;
     ExecutorQueue& _queue;
 
 public:
     MessageService(
-        Settings settings,
         RPCDispatcher::Dist_t& dispatcher,
         std::vector<std::unique_ptr<ExecutorQueue>>& _queues)
     : _minDelay(std::chrono::microseconds(5))
-    , _settings(settings)
+    , _semaphore(seastar::semaphore(1))
     , _dispatcher(dispatcher)
     , _queue(*(_queues[seastar::engine().cpu_id()].get()))
     {
@@ -173,103 +138,71 @@ public:
         _clientLoopScheduleTime = now;
     }
 
-    seastar::future<> start()
+    virtual seastar::future<> start()
     {
         K2INFO("Starting message service on cpu:"  << seastar::engine().cpu_id());
 
         registerMetrics();
 
-        std::vector<seastar::future<>> futures;
-
-        // start the application loop
-        if(_settings._userInitThread) {
-            auto future = seastar::do_until([&] { return _stopFlag; }, [&] {
-                auto timePoint = std::chrono::steady_clock::now();
-                _clientLoopIdleTime.add(timePoint - _clientLoopScheduleTime);
-                _clientLoopScheduleTime = timePoint;
-                // execute client loop
-                const long int timeslice = _settings._clientLoopFn(_settings._rClient);
-                _clientLoopTime.add(std::chrono::steady_clock::now() - timePoint);
-                const auto delay = (timeslice < _minDelay.count()) ? _minDelay : std::chrono::microseconds(timeslice);
-
-                return seastar::sleep(std::move(delay));
-            }).or_terminate();
-
-            futures.push_back(std::move(future));
-        }
-
         // start message polling
-        auto future = seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
-            const auto now = std::chrono::steady_clock::now();
-            _taskLoopIdleTime.add(now - _taskLoopScheduleTime);
-            _taskLoopScheduleTime = now;
+        return seastar::with_semaphore(_semaphore, 1, [&] {
+            return seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
+                const auto now = std::chrono::steady_clock::now();
+                _taskLoopIdleTime.add(now - _taskLoopScheduleTime);
+                _taskLoopScheduleTime = now;
 
-            return getNextTask().then([&] (ExecutorTaskPtr pTask) {
-                if(!pTask || !pTask.get()) {
+                return getNextTask().then([&] (ExecutorTaskPtr pTask) {
+                    if(!pTask || !pTask.get()) {
 
-                    return seastar::sleep(std::chrono::microseconds(10));
-                }
+                        return seastar::sleep(std::chrono::microseconds(10));
+                    }
 
-                const auto timePoint = std::chrono::steady_clock::now();
-                _dequeueTime.add(timePoint - pTask->_pClientData->_startTime);
-                pTask->_pPlatformData.reset(new ExecutorTask::PlatformData());
+                    const auto timePoint = std::chrono::steady_clock::now();
+                    _dequeueTime.add(timePoint - pTask->_pClientData->_startTime);
+                    pTask->_pPlatformData.reset(new ExecutorTask::PlatformData());
 
-                // execute the task and invoke the client's callback
-                return executeTask(pTask);
+                    // execute the task and invoke the client's callback
+                    return executeTask(pTask);
+                });
+            })
+            .handle_exception([] (std::exception_ptr eptr) {
+                K2ERROR("Executor: exception: " << eptr);
+
+                return seastar::make_ready_future<>();
+            })
+            .finally([&] {
+                K2INFO("Deleting execution tasks...");
+
+                cleanupQueues();
+                // at this point we are done; unblock the caller
+
+                return seastar::make_ready_future<>();
             });
-
-        }).or_terminate();
-
-        futures.push_back(std::move(future));
-
-        // wait for all the futures to complete
-        return seastar::when_all_succeed(futures.begin(), futures.end())
-        .handle_exception([] (std::exception_ptr eptr) {
-            K2ERROR("Executor: exception: " << eptr);
-
-            return seastar::make_ready_future<>();
-        })
-        .finally([&] {
-            K2INFO("Deleting execution tasks...");
-
-            cleanupQueues();
-            // at this point we are done; unblock the caller
-
-            return seastar::make_ready_future<>();
-        }).or_terminate();
+        });
     }
 
-    seastar::future<> stop()
+    virtual seastar::future<> stop()
     {
         if(_stopFlag) {
             return seastar::make_ready_future<>();
         }
 
          K2INFO("Stopping message service...");
-         // set the flag to stop all services
+
+          // set the flag to stop all services
         _stopFlag = true;
 
-        // poll until the service has gracefully stopped
-        return seastar::do_until([&] { return _queue.empty() ; }, [&] {
+        _queue.releasePromises();
 
-            return seastar::sleep(std::move(std::chrono::seconds(1)));
-        }).or_terminate();
+       return seastar::with_semaphore(_semaphore, 1, [&] {
+
+            return seastar::make_ready_future<>();
+        });
     }
 
 private:
-    seastar::future<ExecutorTaskPtr> getNextTask()
-    {
-        // if it's running in the user thread; then the queue will block until a task is available
-        if(_settings._userInitThread) {
-
-            return _queue.popWithFuture();
-        }
-        // if it's running on a separate thread; the queue will poll; a semaphore can be used instead
-        else {
-            ExecutorTaskPtr pTask = _queue.pop();
-
-            return seastar::make_ready_future<ExecutorTaskPtr>(pTask);
-        }
+    seastar::future<ExecutorTaskPtr> getNextTask() {
+        return _queue.popWithFuture();
     }
 
     void createPayload(ExecutorTaskPtr pTask)
@@ -402,7 +335,7 @@ private:
         return std::chrono::steady_clock::now() > _runTaskTimepoint;
     }
 
-    void  invokeCallback(ExecutorTaskPtr pTask)
+    void invokeCallback(ExecutorTaskPtr pTask)
     {
         const auto timePoint = std::chrono::steady_clock::now();
         pTask->invokeResponseCallback();

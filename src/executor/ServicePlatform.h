@@ -22,7 +22,7 @@
 #include "transport/RetryStrategy.h"
 #include "transport/Prometheus.h"
 // k2:service
-#include "IService.h"
+#include "IServiceLauncher.h"
 
 namespace k2
 {
@@ -35,7 +35,7 @@ public:
         bool _useUserThread = false;
         int _threadPoolCount = 1;
         uint16_t _serviceTcpPort = 0;  // dissabled
-        uint16_t _prometheusTcpPort = 0;
+        uint16_t _prometheusTcpPort = 0; // disabled
     };
 
 private:
@@ -52,11 +52,11 @@ private:
     std::condition_variable _conditional;
     // from arguments
     Settings _settings;
-    IService& _rService;
+    std::vector<std::reference_wrapper<IServiceLauncher>> _services;
+
 
 public:
-    ServicePlatform(IService& rService) :
-    _rService(rService)
+    ServicePlatform()
     {
         _argVector.reserve(100);
         addArgument("k2-service-platform");
@@ -66,6 +66,11 @@ public:
     ~ServicePlatform()
     {
         stop();
+    }
+
+    void registerService(std::reference_wrapper<IServiceLauncher> rService)
+    {
+        _services.push_back(std::move(rService));
     }
 
     void init(const Settings& settings)
@@ -193,10 +198,14 @@ protected:
 
         seastar::app_template app;
         int result = app.run_deprecated(_argv.size()-1, (char**)_argv.data(), [&] {
-            seastar::engine().at_exit([&] {
-                K2INFO("Stopping service...");
+            seastar::engine()
+            .at_exit([&] {
+                return seastar::make_ready_future<>()
+                    .then([&] {
+                        K2INFO("Stopping services...");
 
-                return _rService.stop()
+                        return stopServices();
+                    })
                     .then([&] {
                         K2INFO("Stopping dispatcher...");
 
@@ -232,8 +241,10 @@ protected:
                         return seastar::make_ready_future<>();
                     })
                     .then([&] {
-                        // unblock the call who invoked stop()
+                        // unblock the caller  of stop()
                         _conditional.notify_all();
+
+                        return seastar::make_ready_future<>();
                     });
             });
 
@@ -244,10 +255,8 @@ protected:
                 return seastar::sleep(std::chrono::seconds(1));
             })
             .then([&] {
-                return _rService.stop().then([&] {
-                    // at times it is required to hit ctrl-c to stop the engine; explicitly stop the engine to prevent this
-                    seastar::engine().exit(0);
-                });
+                // at times it is required to hit ctrl-c to stop the engine; explicitly stop the engine to prevent this
+                seastar::engine().exit(0);
             }).or_terminate();
 
             futures.push_back(std::move(future1));
@@ -256,12 +265,14 @@ protected:
             auto future2 = seastar::make_ready_future<>()
                 .then([&] {
                     if(_settings._prometheusTcpPort > 0) {
+
                         return _prometheus.start(_settings._prometheusTcpPort, "K2 service platform metrics", "k2_service_platform");
                     }
-                    else {
-                        return seastar::make_ready_future<>();
-                    }
-                }).then([&] {
+
+                    return seastar::make_ready_future<>();
+                })
+                .then([&] {
+
                    return virtualNetwork.start();
                 })
                 .then([&] {
@@ -273,6 +284,7 @@ protected:
                     return tcpproto.start(builder);
                 })
 		        .then([&]() {
+
 		            return (startRdmaFlag) ? rdmaproto.start(k2::RRDMARPCProtocol::builder(std::ref(virtualNetwork))) : seastar::make_ready_future<>();
 		        })
                 .then([&] {
@@ -280,7 +292,8 @@ protected:
                     return dispatcher.start();
                 })
                 .then([&] {
-                    return _rService.init(std::ref(dispatcher));
+
+                    return initServices(std::ref(dispatcher));
                 })
                 .then([&] {
                     K2INFO("Starting vnet...");
@@ -300,11 +313,11 @@ protected:
 		        .then([&] {
 		            if(startRdmaFlag) {
                         K2INFO("Starting rdma factory...");
+
                         return rdmaproto.invoke_on_all(&k2::RPCProtocolFactory::start);
                     }
-                    else {
-                        return seastar::make_ready_future<>();
-                    }
+
+                    return seastar::make_ready_future<>();
 		        })
 		        .then([&] {
                     if(startRdmaFlag) {
@@ -312,9 +325,8 @@ protected:
 
                         return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(rdmaproto));
                     }
-                    else {
-		                return seastar::make_ready_future<>();
-                    }
+
+                    return seastar::make_ready_future<>();
 		        })
                 .then([&] {
                     K2INFO("Starting dispatcher...");
@@ -322,18 +334,21 @@ protected:
                     return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
                 })
                 .then([&] {
-                    K2INFO("Starting service...");
+                    K2INFO("Starting services...");
 
-                    auto ret = _rService.start();
-                     // unblock the conditional waiting for the transport to start
+                    return startServices();
+                })
+                .then([&] {
+                    // unblock the conditional waiting for the platform to start
                     _conditional.notify_all();
 
-                    return ret;
-                }).or_terminate();
+                    return seastar::make_ready_future<>();
+                })
+                .or_terminate();
 
-            futures.push_back(std::move(future2));
+                futures.push_back(std::move(future2));
 
-            return seastar::when_all_succeed(futures.begin(), futures.end())
+                return seastar::when_all_succeed(futures.begin(), futures.end())
                 .handle_exception([] (std::exception_ptr eptr) {
                     K2ERROR("Service platform: exception: " << eptr);
 
@@ -350,6 +365,37 @@ protected:
 
         return result;
     }
+
+    seastar::future<> stopServices()
+    {
+        std::vector<seastar::future<>> futures;
+        for(size_t i=0; i<_services.size(); i++) {
+            futures.push_back(std::move(_services[i].get().stop()));
+        }
+
+        return seastar::when_all_succeed(futures.begin(), futures.end());
+    }
+
+    seastar::future<> startServices()
+    {
+        std::vector<seastar::future<>> futures;
+        for(size_t i=0; i<_services.size(); i++) {
+            futures.push_back(std::move(_services[i].get().start()));
+        }
+
+        return seastar::when_all_succeed(futures.begin(), futures.end());
+    }
+
+    seastar::future<> initServices(k2::RPCDispatcher::Dist_t& dispatcher)
+    {
+        std::vector<seastar::future<>> futures;
+        for(size_t i=0; i<_services.size(); i++) {
+            futures.push_back(std::move(_services[i].get().init(std::ref(dispatcher))));
+        }
+
+        return seastar::when_all_succeed(futures.begin(), futures.end());
+    }
+
 }; // ServicePlatform
 
 }; // namespace k2

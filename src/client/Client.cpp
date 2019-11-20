@@ -1,6 +1,6 @@
 // k2
 #include "Client.h"
-#include <client/executor/Executor.h>
+#include <executor/Executor.h>
 
 namespace k2
 {
@@ -50,6 +50,11 @@ void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Conf
     _executor.init(settings, pConfig->getClientConfig());
     _executor.start();
 }
+
+ void Client::stop()
+ {
+     _executor.stop();
+ }
 
 Payload Client::createPayload()
 {

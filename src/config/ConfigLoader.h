@@ -4,6 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string>
+#include <streambuf>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 // k2
 #include <common/Common.h>
 // k2:config
@@ -23,9 +28,13 @@ class ConfigLoader
 public:
     static std::shared_ptr<Config> loadConfig(const std::string& configFile)
     {
-        YAML::Node node = YAML::LoadFile(configFile);
+        std::ifstream inFile;
+        inFile.open(configFile);
+        std::stringstream strStream;
+        strStream << inFile.rdbuf();
+        std::string str = strStream.str();
 
-        return loadConfig(node);
+        return loadConfigString(str);
     }
 
     static std::shared_ptr<Config> loadDefaultConfig()

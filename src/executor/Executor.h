@@ -11,6 +11,7 @@
 #include <boost/lockfree/queue.hpp>
 // seastar
 #include <seastar/core/sleep.hh>
+#include <seastar/core/semaphore.hh>
 #include <seastar/core/metrics_registration.hh>
 #include <seastar/core/metrics.hh>
 // k2
@@ -30,8 +31,9 @@
 // k2:client
 #include <client/IClient.h>
 // K2:executor
-#include "MessageService.h"
 #include "ServicePlatform.h"
+#include "MessageService.h"
+#include "ApplicationService.h"
 
 namespace k2
 {
@@ -57,19 +59,22 @@ namespace k2
 class Executor
 {
 private:
+    // this class
+    ServicePlatform _platform;
     // shared
     std::vector<std::unique_ptr<ExecutorQueue>> _queues;
-    // this class
-    std::unique_ptr<ServicePlatform> _pPlatform;
-    std::unique_ptr<MessageService::Launcher> _pLauncher;
+    std::vector<std::unique_ptr<IServiceLauncher>> _launchers;
     std::vector<const char *> _argv;
     // from arguments
     client::ClientSettings _settings;
-    client::IClient& _rClient;
-
 public:
     Executor(client::IClient& rClient)
-    : _rClient(rClient)
+    {
+        (void)rClient;
+        // empty
+    }
+
+    Executor()
     {
         // empty
     }
@@ -79,45 +84,15 @@ public:
         stop();
     }
 
-    //
-    // Initialize the executor.
-    //
-    void init(const client::ClientSettings& settings)
+    void init(const client::ClientSettings& settings);
+    void init(const client::ClientSettings& settings, std::shared_ptr<config::NodePoolConfig> pNodePoolConfig);
+
+    template<typename T>
+    void registerApplication(IApplication<T>& rApplication, T& rContext)
     {
-        _settings = settings;
-
-        _queues.reserve(settings.networkThreadCount);
-        for(int i=0; i<settings.networkThreadCount; i++) {
-            _queues.push_back(std::move(std::make_unique<ExecutorQueue>()));
-        }
-
-        k2::ServicePlatform::Settings platformSettings;
-        platformSettings._useUserThread = settings.userInitThread;
-        _pLauncher = std::make_unique<MessageService::Launcher>(MessageService::Settings(_settings.userInitThread, _settings.runInLoop, _rClient), _queues);
-        _pPlatform = std::make_unique<ServicePlatform>(*_pLauncher.get());
-        _pPlatform->init(std::move(platformSettings), _argv);
-    }
-
-    void init(const client::ClientSettings& settings, std::shared_ptr<config::NodePoolConfig> pNodePoolConfig)
-    {
-        if(pNodePoolConfig->getTransport()->isRdmaEnabled()) {
-            _argv.push_back("--rdma");
-            _argv.push_back(pNodePoolConfig->getTransport()->getRdmaNicId().c_str());
-        }
-        const std::string memorySize = pNodePoolConfig->getMemorySize();
-        if(!memorySize.empty()) {
-            _argv.push_back("-m");
-	        _argv.push_back(memorySize.c_str());
-        }
-        if(pNodePoolConfig->isHugePagesEnabled()) {
-            _argv.push_back("--hugepages");
-        }
-
-        // TODO: update to use n cores
-	    //_argv.push_back("--cpuset");
-	    //_argv.push_back("30");
-
-        init(settings);
+        auto pLauncher = std::unique_ptr<IServiceLauncher>(new typename ApplicationService<T>::Launcher(rApplication, rContext));
+        _platform.registerService(std::ref(*pLauncher));
+        _launchers.push_back(std::move(pLauncher));
     }
 
     //
@@ -126,7 +101,7 @@ public:
     void start()
     {
         K2INFO("Starting executor...");
-        _pPlatform->start();
+        _platform.start();
     }
 
     //
@@ -134,7 +109,7 @@ public:
     //
     void stop()
     {
-        _pPlatform->stop();
+        _platform.stop();
     }
 
     //

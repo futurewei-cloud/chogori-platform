@@ -8,10 +8,11 @@
 #include <common/PartitionMetadata.h>
 // k2:config
 #include <config/Config.h>
+// k2:executor
+#include <executor/Executor.h>
 // k2:client
 #include <client/IClient.h>
 #include <client/PartitionMap.h>
-#include <client/executor/Executor.h>
 
 namespace k2
 {
@@ -50,22 +51,33 @@ private:
     };
 
 
-    ClientSettings _settings;
 protected:
-    Executor _executor;
     // TODO: make the timeout configurable
     const k2::Duration _defaultTimeout = std::chrono::milliseconds(10000);
+    Executor _executor;
     PartitionMap _partitionMap;
+    ClientSettings _settings;
 
 public:
     Client();
     virtual ~Client();
     virtual void init(const ClientSettings& settings);
+    virtual void stop();
     virtual Payload createPayload();
     virtual void createPayload(std::function<void(IClient&, Payload&&)> onCompleted);
     virtual void execute(Operation&& operation, std::function<void(IClient&, OperationResult&&)> onCompleted);
     virtual void execute(PartitionDescription& partition, std::function<void(Payload&)> onPayload, std::function<void(IClient&, OperationResult&&)> onCompleted);
     virtual void runInThreadPool(std::function<void(IClient&)> routine);
+
+
+    //
+    // Register an application to run; if an application is not registered the seastar platform will run in a separate thread.
+    //
+    template<typename T>
+    void registerApplication(IApplication<T>& rApplication, T& rContext)
+    {
+        _executor.registerApplication<T>(rApplication, rContext);
+    }
 
     //
     // Return the partitions for the given range.

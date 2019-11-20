@@ -6,7 +6,7 @@
 // k2
 #include <common/PartitionMetadata.h>
 // k2:client
-#include <client/lib/Client.h>
+#include <client/Client.h>
 #include "modules/memkv/server/MemKVModule.h"
 // test
 #include "TestFactory.h"
@@ -16,7 +16,7 @@ using namespace k2::client;
 
 SCENARIO("Client in a thread pool")
 {
-    k2::String endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
+    const k2::String endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     std::vector<PartitionDescription> partitions;
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
     partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));
@@ -29,7 +29,6 @@ SCENARIO("Client in a thread pool")
 
     k2::String partitionId = "2.1.1";
     Range range = Range::close("d", "f");
-    settings.userInitThread = false;
     client.init(settings);
 
     std::mutex _mutex;

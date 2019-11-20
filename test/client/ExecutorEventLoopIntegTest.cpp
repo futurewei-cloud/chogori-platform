@@ -7,7 +7,7 @@
 #include <common/PartitionMetadata.h>
 // k2:client
 #include <client/IClient.h>
-#include <client/executor/Executor.h>
+#include <executor/Executor.h>
 // test
 #include "TestFactory.h"
 
@@ -16,53 +16,97 @@ using namespace k2::client;
 
 SCENARIO("Executor with event loop")
 {
-    std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
-    MockClient client;
-    Executor executor(client);
-    ClientSettings settings;
-    settings.networkProtocol = "tcp+k2rpc";
-    settings.userInitThread = true;
-    const std::string partitionId = "3.1.1";
-    int count = 0;
-    bool stopFlag = false;
+    class Context: public IApplicationContext
+    {
+    public:
+        Executor& _rExecutor;
 
-    settings.runInLoop = ([&] (k2::client::IClient& client) {
-        (void)client;
-
-        count++;
-        if(stopFlag || count > 4000)
+        Context(Executor& rExecutor)
+        : _rExecutor(rExecutor)
         {
-            executor.stop();
+         // empty
         }
-        if(count > 1) {
+
+        std::unique_ptr<Context> newInstance()
+        {
+            return std::move(std::make_unique<Context>(_rExecutor));
+        }
+    };
+
+    class TestApplication: public IApplication<Context>
+    {
+    protected:
+        const std::string endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
+        const std::string partitionId = "3.1.1";
+        int count = 0;
+        std::unique_ptr<Context> _pContext;
+        bool done = false;
+
+    public:
+        virtual uint64_t eventLoop()
+        {
+            count++;
+            if(done || count > 4000)
+            {
+                 // verify
+                ASSERT(done);
+                // stop executor
+                _pContext->_rExecutor.stop();
+            }
+            if(count > 1) {
+                return 1000;
+            }
+
+            K2INFO("executing loop once");
+
+            // create partition
+            K2INFO("Creating partition: " << partitionId);
+            _pContext->_rExecutor.execute(endpointUrl,
+            [&] (std::unique_ptr<k2::Payload> payload) {
+                TestFactory::makePartitionPayload(*(payload.get()), partitionId, std::move(k2::PartitionRange("g", "j")), MessageType::PartitionAssign);
+                K2INFO("payload created");
+
+                // send the payload
+                _pContext->_rExecutor.execute(endpointUrl, std::chrono::seconds(5), std::move(payload),
+                [&] (std::unique_ptr<ResponseMessage> response) {
+                    K2INFO("response from execute:" << k2::getStatusText(response->status));
+                    ASSERT(response->status == Status::Ok)
+                    done = true;
+                });
+            });
+
             return 1000;
         }
 
-        K2INFO("executing loop once");
+        virtual void onInit(std::unique_ptr<Context> pContext)
+        {
+           _pContext = std::move(pContext);
+        }
 
-        // create partition
-        K2INFO("Creating partition: " << partitionId);
-        executor.execute(endpointUrl,
-        [&] (std::unique_ptr<k2::Payload> payload) {
-            TestFactory::makePartitionPayload(*(payload.get()), partitionId,  std::move(k2::PartitionRange("g", "j")), MessageType::PartitionAssign);
-            K2INFO("payload created");
+        virtual std::unique_ptr<IApplication> newInstance()
+        {
+            return std::unique_ptr<IApplication>(new TestApplication());
+        }
 
-            // send the payload
-            executor.execute(endpointUrl, std::chrono::seconds(5), std::move(payload),
-            [&] (std::unique_ptr<ResponseMessage> response) {
-                K2INFO("response from execute:" << k2::getStatusText(response->status));
-                ASSERT(response->status == Status::Ok)
-                stopFlag = true;
-            });
-        });
+        void onStart()
+        {
 
-        return 1000;
-    });
+        }
 
+        virtual void onStop()
+        {
+
+        }
+    };
+
+    TestApplication app;
+    Executor executor;
+    Context context(executor);
+    executor.registerApplication(app, context);
+    ClientSettings settings;
+    settings.networkProtocol = "tcp+k2rpc";
     executor.init(settings);
+
     // blocks until stopped
     executor.start();
-
-    // verify
-    ASSERT(stopFlag == true);
 }
