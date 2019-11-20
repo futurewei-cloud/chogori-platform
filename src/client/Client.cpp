@@ -9,7 +9,6 @@ namespace client
 {
 
 Client::Client()
-: _executor(*this)
 {
     // empty
 }

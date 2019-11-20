@@ -28,8 +28,6 @@
 #include "transport/VirtualNetworkStack.h"
 #include "transport/RetryStrategy.h"
 #include "transport/Prometheus.h"
-// k2:client
-#include <client/IClient.h>
 // K2:executor
 #include "ServicePlatform.h"
 #include "MessageService.h"
@@ -68,12 +66,6 @@ private:
     // from arguments
     client::ClientSettings _settings;
 public:
-    Executor(client::IClient& rClient)
-    {
-        (void)rClient;
-        // empty
-    }
-
     Executor()
     {
         // empty
