@@ -1,7 +1,6 @@
 #pragma once
 
 #include "NodePool.h"
-#include <thread>
 #include <common/PartitionManagerMessage.h>
 
 namespace k2
@@ -31,7 +30,6 @@ protected:
     std::vector<String> nodeTCPHostAndPorts; //  TCP endpoints for each node that Partition Manager will use for comunications
     std::vector<String> nodeRegistrationIds; //  Ids which Partition Manager assigned to nodes
     State state = State::waitingForInitialization;
-    std::thread monitorThread;
 
     TimePoint lastHeartbeat;
 

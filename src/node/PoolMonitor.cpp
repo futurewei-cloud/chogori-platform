@@ -54,8 +54,6 @@ void PoolMonitor::run()
 
         while(!pool.isTerminated())
         {
-            std::this_thread::sleep_for(pool.getConfig().getMonitorSleepTime());
-
             //  Crash if any of the nodes didn't do any processing
             for(size_t i = 0; i < pool.getNodesCount(); i++)
                 ASSERT(pool.getNode(i).resetProcessedRoundsSinceLastCheck());
@@ -140,8 +138,6 @@ PoolMonitor::PoolMonitor(INodePool& pool) : pool(pool) {
 void PoolMonitor::start() {
     if (!pool.getConfig().isMonitorEnabled())
         return;
-
-    monitorThread = std::thread([this]() { run(); });
 }
 
 const PoolMonitor::TimePoint& PoolMonitor::getLastHeartbeatTime() const { return lastHeartbeat; }
