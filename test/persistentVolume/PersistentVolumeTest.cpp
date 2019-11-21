@@ -3,7 +3,7 @@
 #include <TestUtil.h>
 
 #include <iostream>
-#include <node/persistence/PersistentVolume.h>
+#include <persistence/PersistentVolume.h>
 
 using namespace k2;
 using namespace std;
@@ -47,7 +47,7 @@ SEASTAR_TEST_CASE(test_addNewChunk)
 SEASTAR_TEST_CASE(test_getInfo)
 {
     std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
+    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<5; i++){
         ChunkInfo chunkInfo;
@@ -71,7 +71,7 @@ SEASTAR_TEST_CASE(test_getInfo)
 SEASTAR_TEST_CASE(test_getInfo_ChunkIdNotFound)
 {
     std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
+    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<5; i++){
         ChunkInfo chunkInfo;
@@ -97,7 +97,7 @@ SEASTAR_TEST_CASE(test_getInfo_ChunkIdNotFound)
 SEASTAR_TEST_CASE(test_decreaseUsage_ChunkIdNotFound)
 {
     std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
+    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<2; i++){
         ChunkInfo chunkInfo;
@@ -123,7 +123,7 @@ SEASTAR_TEST_CASE(test_decreaseUsage_ChunkIdNotFound)
 SEASTAR_TEST_CASE(test_totaUsage)
 {
     std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
+    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     uint64_t sum = 0;
     for (size_t i=0; i<10; i++){
@@ -144,7 +144,7 @@ SEASTAR_TEST_CASE(test_totaUsage)
 SEASTAR_TEST_CASE(test_totaSize)
 {
     std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
+    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     uint64_t sum = 0;
     for (size_t i=0; i<10; i++){
@@ -165,7 +165,7 @@ SEASTAR_TEST_CASE(test_totaSize)
 SEASTAR_TEST_CASE(test_getChunks)
 {
     std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
+    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<10; i++){
         ChunkInfo chunkInfo;
@@ -195,7 +195,7 @@ SEASTAR_TEST_CASE(test_getChunks)
 SEASTAR_TEST_CASE(test_getChunks_EmptyChunkSet)
 {
     std::cout << get_name() << "...... " << std::flush;
-    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir.c_str() + String(get_name()));
+    auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     auto iter = persistentVolume->getChunks();
     BOOST_REQUIRE(iter->isEnd());

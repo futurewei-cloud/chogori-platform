@@ -1,10 +1,8 @@
 #pragma once
 
-#include <string>
 #include <functional>
 #include <memory>
 #include <chrono>
-#include <cstring>
 #include <iomanip>
 
 #include <seastar/core/temporary_buffer.hh>
@@ -12,7 +10,6 @@
 
 #include <iostream>
 
-#include <string_view>
 #include <seastar/core/sstring.hh>
 
 #include "Constants.h"
@@ -53,7 +50,7 @@ namespace k2
 //
 //  K2 general string type
 //
-typedef std::string String;
+typedef seastar::sstring String;
 
 //
 //  Value of this type uniquely identifies K2 partition
@@ -87,29 +84,6 @@ typedef std::chrono::steady_clock Clock;
 typedef Clock::duration Duration;
 typedef std::chrono::time_point<Clock> TimePoint;
 
-//
-// Overloading the shared_ptr in order to make it easy to switch from seastar to std
-//
-template<typename T>
-using k2_shared_ptr = seastar::lw_shared_ptr<T>;
-
-template <typename T, typename... A>
-inline
-k2_shared_ptr<T> k2_make_shared(A&&... a) {
-    return  seastar::make_lw_shared<T>(std::forward<A>(a)...);
-}
-
-template <typename T>
-inline
-k2_shared_ptr<T> k2_make_shared(T&& a) {
-    return seastar::make_lw_shared<T>(std::move(a));
-}
-
-template <typename T>
-inline
-k2_shared_ptr<T> k2_make_shared(T& a) {
-    return seastar::make_lw_shared<T>(a);
-}
 
 //
 //  Hold the reference to buffer containing class

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <filesystem>
 #include <common/plog/PlogMock.h>
+#include <common/Common.h>
 #include <TestUtil.h>
 
 using namespace k2;
@@ -13,7 +14,7 @@ const auto plogBaseDir = generateTempFolderPath("plogmock_test");
 
 auto createPlogMock(std::string testName)
 {
-    std::string folder = plogBaseDir + testName;
+    String folder = plogBaseDir + testName;
     std::cout << testName << ".....";   // << " (" << folder << ")" << std::endl;
     return seastar::make_lw_shared<PlogMock>(std::move(folder));
 }
@@ -25,7 +26,7 @@ SEASTAR_TEST_CASE(test_create_plogs)
     std::cout << get_name() << "...... ";
 
     const size_t plogCount = 5;
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->create(plogCount)
         .then([plogMock, plogCount](std::vector<PlogId> plogIds) {
@@ -49,7 +50,7 @@ SEASTAR_TEST_CASE(test_getinfo_plogId_not_exist)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
     PlogId plogId;
     std::memset(&plogId, 1, sizeof(plogId));
 
@@ -77,7 +78,7 @@ SEASTAR_TEST_CASE(test_append_upto_4k)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->create(1)
     .then([plogMock](std::vector<PlogId> plogIds) {
@@ -105,7 +106,7 @@ SEASTAR_TEST_CASE(test_append_more_than_4k)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->create(1)
     .then([plogMock](std::vector<PlogId> plogIds) {
@@ -142,7 +143,7 @@ SEASTAR_TEST_CASE(test_append_plogId_not_exist)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     PlogId plogId;
     std::memset(&plogId, 1, sizeof(plogId));
@@ -173,7 +174,7 @@ SEASTAR_TEST_CASE(test_append_exceed_plog_limit)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->createOne().then([plogMock, this](PlogId plogId){
         std::vector<Binary>  writeBufferList;
@@ -285,7 +286,7 @@ SEASTAR_TEST_CASE(test_read_plogId_not_exist)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     auto plogId = plogMock->generatePlogId();
 
@@ -358,7 +359,7 @@ SEASTAR_TEST_CASE(test_seal)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->create(1).then([plogMock](std::vector<PlogId> plogIds) {
         std::vector<Binary>  writeBufferList;
@@ -410,7 +411,7 @@ SEASTAR_TEST_CASE(test_seal_plogId_not_exist)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     auto plogId = plogMock->generatePlogId();
 
@@ -437,7 +438,7 @@ SEASTAR_TEST_CASE(test_drop)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->create(1)
     .then([plogMock](std::vector<PlogId> plogIds) {
@@ -481,7 +482,7 @@ SEASTAR_TEST_CASE(test_drop_plogId_not_exist)
 {
     std::cout << get_name() << "...... ";
 
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir.c_str() + String(get_name()));
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     auto plogId = plogMock->generatePlogId();
 

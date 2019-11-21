@@ -9,9 +9,9 @@
 #include <seastar/core/future-util.hh>
 
 // k2
-#include "common/Common.h"
-#include "common/Log.h"
 #include "RPCDispatcher.h"
+#include <common/Common.h>
+#include <common/Log.h>
 
 namespace k2 {
 // This file defines a few retry strategies that can be used in communication
@@ -28,42 +28,19 @@ public: // types
 
 public: // lifecycle
     // create a new ExponentialBackoffStrategy
-    ExponentialBackoffStrategy():
-        _retries(3),
-        _try(0),
-        _rate(5),
-        _currentTimeout(std::chrono::microseconds(1)),
-        _success(false),
-        _used(false) {
-        K2DEBUG("ctor retries " << _retries <<", rate " << _rate << ", startTimeout "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(_currentTimeout).count() << "ms");
-    }
+    ExponentialBackoffStrategy();
 
     // destructor
-    ~ExponentialBackoffStrategy(){
-        K2DEBUG("dtor");
-    }
+    ~ExponentialBackoffStrategy();
 
     // Set the desired number of retries
-    ExponentialBackoffStrategy& withRetries(int retries){
-        K2DEBUG("retries: " << retries);
-        _retries = retries;
-        return *this;
-    }
+    ExponentialBackoffStrategy& withRetries(int retries);
 
     // Set the exponential increase rate
-    ExponentialBackoffStrategy& withRate(int rate) {
-        K2DEBUG("rate: " << rate);
-        _rate = rate;
-        return *this;
-    }
+    ExponentialBackoffStrategy& withRate(int rate);
 
     // Set the desired starting value
-    ExponentialBackoffStrategy& withStartTimeout(Duration startTimeout) {
-        K2DEBUG("startTimeout: " << std::chrono::duration_cast<std::chrono::milliseconds>(startTimeout).count() << "ms");
-        _currentTimeout = startTimeout;
-        return *this;
-    }
+    ExponentialBackoffStrategy& withStartTimeout(Duration startTimeout);
 
 public: // API
     // Execute the given function until it either succeeds or we exhaust the retries. If the retries are

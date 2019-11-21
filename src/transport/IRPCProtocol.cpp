@@ -5,6 +5,18 @@
 #include "common/Log.h"
 
 namespace k2 {
+IAddressProvider::IAddressProvider() {
+}
+
+IAddressProvider::~IAddressProvider() {
+}
+
+SinglePortAddressProvider::SinglePortAddressProvider(uint16_t port) : port(port) {
+}
+
+SocketAddress SinglePortAddressProvider::getAddress(int) const {
+    return port;
+}
 
 IRPCProtocol::IRPCProtocol(VirtualNetworkStack::Dist_t& vnet, const String& supportedProtocol):
     _vnet(vnet),
@@ -16,6 +28,10 @@ IRPCProtocol::IRPCProtocol(VirtualNetworkStack::Dist_t& vnet, const String& supp
 
 IRPCProtocol::~IRPCProtocol() {
     K2DEBUG("dtor");
+}
+
+const String& IRPCProtocol::supportedProtocol() {
+    return _protocol;
 }
 
 void IRPCProtocol::setMessageObserver(RequestObserver_t observer) {

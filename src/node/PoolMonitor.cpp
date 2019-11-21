@@ -2,8 +2,7 @@
 #include "Node.h"
 #include <boost/asio.hpp>
 #include <boost/array.hpp>
-#include <transport/BoostTransport.h>
-
+#include "../client/BoostTransport.h"
 
 namespace k2
 {
@@ -40,6 +39,12 @@ Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
     return result;
 }
 
+PoolMonitor::TimePoint PoolMonitor::TimePoint::now() {
+    PoolMonitor::TimePoint result;
+    result.systemTime = std::chrono::system_clock::now();
+    result.steadyTime = std::chrono::steady_clock::now();
+    return result;
+}
 
 void PoolMonitor::run()
 {
@@ -109,7 +114,7 @@ void PoolMonitor::registerNodePool()
 
     sessionId = registerResponse.sessionId;
     nodeRegistrationIds = registerResponse.nodeIds;
-    lastHeartbeat = TimePoint::now();
+    lastHeartbeat = PoolMonitor::TimePoint::now();
     state = State::active;
 }
 
@@ -125,7 +130,25 @@ void PoolMonitor::sendHeartbeat()
 
     TIF(sendMessage(heartbeatRequest, heartbeatResponse));
 
-    lastHeartbeat = TimePoint::now();
+    lastHeartbeat = PoolMonitor::TimePoint::now();
+}
+
+PoolMonitor::PoolMonitor(INodePool& pool) : pool(pool) {
+    state = pool.getConfig().isMonitorEnabled() ? State::waitingForInitialization : State::disabled;
+}
+
+void PoolMonitor::start() {
+    if (!pool.getConfig().isMonitorEnabled())
+        return;
+
+    monitorThread = std::thread([this]() { run(); });
+}
+
+const PoolMonitor::TimePoint& PoolMonitor::getLastHeartbeatTime() const { return lastHeartbeat; }
+
+PoolMonitor::State PoolMonitor::getState() const {
+    ASSERT(state != PoolMonitor::State::failure);
+    return state;
 }
 
 }   //  namespace k2

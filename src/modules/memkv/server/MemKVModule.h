@@ -1,10 +1,10 @@
 #pragma once
 
-#include "node/Tasks.h"
-#include "node/Module.h"
-#include "node/indexer/IndexerInterface.h"
-#include "node/indexer/MapIndexer.h"
-#include "common/PartitionMessage.h"
+#include <node/Tasks.h>
+#include <node/Module.h>
+#include <indexer/IndexerInterface.h>
+#include <indexer/MapIndexer.h>
+#include <common/PartitionMessage.h>
 
 namespace k2
 {
