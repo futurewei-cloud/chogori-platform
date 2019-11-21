@@ -13,17 +13,17 @@ namespace client
 
 static bool intersectsRangeHighPartitionLow(const Range& range, const PartitionRange& partition)
 {
-    const std::string& rangeHighKey = range.isSingleKey() ? range.getLowKey() : range.getHighKey();
+    const String& rangeHighKey = range.isSingleKey() ? range.getLowKey() : range.getHighKey();
 
     if(partition.lowKey.empty() || rangeHighKey.empty()) {
         return true;
     }
 
     if(range.isHighKeyInclusive()) {
-        return rangeHighKey >= partition.lowKey;
+        return rangeHighKey.compare(partition.lowKey) >= 0;
     }
     else {
-        return rangeHighKey > partition.lowKey;
+        return rangeHighKey.compare(partition.lowKey) > 0;
     }
 }
 
@@ -33,7 +33,7 @@ static bool intersectsRangeLowPartitionHigh(const Range& range, const PartitionR
         return true;
     }
 
-    return partition.highKey > range.getLowKey();
+    return partition.highKey.compare(range.getLowKey()) > 0;
 }
 
 static bool intersect(const Range& range, const PartitionRange& partition)

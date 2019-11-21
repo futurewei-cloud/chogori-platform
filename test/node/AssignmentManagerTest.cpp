@@ -3,9 +3,9 @@
 
 #include <node/NodePoolImpl.h>
 #include <node/AssignmentManager.h>
-#include <node/indexer/MapIndexer.h>
-#include <node/indexer/UnorderedMapIndexer.h>
-#include <node/indexer/HOTIndexer.h>
+#include <indexer/MapIndexer.h>
+#include <indexer/UnorderedMapIndexer.h>
+#include <indexer/HOTIndexer.h>
 #include <modules/memkv/server/MemKVModule.h>
 #include <node/NodePool.h>
 

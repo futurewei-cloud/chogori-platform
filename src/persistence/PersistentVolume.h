@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <numeric>
-#include "common/plog/PlogMock.h"
+#include <common/plog/PlogMock.h>
 #include "IPersistentVolume.h"
 
 
@@ -22,11 +22,11 @@ public:
 
     ChunkException(const String& msg, ChunkId chunkId) : _msg(msg), _chunkId(chunkId) { }
 
-    virtual const std::string& str() const { return _msg; }
+    virtual const String& str() const { return _msg; }
 
     ChunkId chunkId() const { return _chunkId; }
 private:
-    std::string _msg;
+    String _msg;
     ChunkId _chunkId;
 };
 
@@ -44,39 +44,18 @@ PROTECTED:
         const PersistentVolume& parent;
         size_t m_chunkIndex;
 
-        bool _isEnd() const { return m_chunkIndex >= parent.m_chunkList.size(); }
+        bool _isEnd() const;
 
     public:
-        bool isEnd() const override { return _isEnd(); }
+        bool isEnd() const override;
 
-        ChunkInfo getCurrent() const override
-        {
-            ASSERT(!_isEnd());
-            return parent.m_chunkList[m_chunkIndex];
-        }
+        ChunkInfo getCurrent() const override;
 
-        bool equal(const k2::IIterator<ChunkInfo>* it) const override
-        {
-            if(_isEnd())
-                return it == nullptr || it->isEnd();
+        bool equal(const k2::IIterator<ChunkInfo>* it) const override;
 
-            if(!it)
-                return _isEnd();
+        bool advance() override;
 
-            auto other = dynamic_cast<const _Iterator*>(it);
-            ASSERT(other);
-
-            return &parent == &other->parent && m_chunkIndex == other->m_chunkIndex;
-        }
-
-        bool advance() override
-        {
-            if(m_chunkIndex < parent.m_chunkList.size())
-                m_chunkIndex++;
-            return !_isEnd();
-        }
-
-        _Iterator(const PersistentVolume& x): parent(x), m_chunkIndex(0) {}
+        _Iterator(const PersistentVolume& x);
 
         friend PersistentVolume;
     };

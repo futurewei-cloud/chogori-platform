@@ -60,19 +60,15 @@ class INodePool
 {
     DISABLE_COPY_MOVE(INodePool)
 protected:
-    INodePool() {}
+    INodePool();
 
     class LockScope
     {
         std::atomic_bool& lock;
     public:
-        LockScope(std::atomic_bool& lock) : lock(lock)
-        {
-            bool expected = false;
-            while(!lock.compare_exchange_strong(expected, true)) { expected = false; }
-        }
+        LockScope(std::atomic_bool& lock);
 
-        ~LockScope() { lock = false; }
+        ~LockScope();
     };
 
 protected:
@@ -87,62 +83,25 @@ protected:
     PoolMonitor* monitorPtr = nullptr;
     String name;
 
-    Status _internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
-    {
-        //
-        //  We store collection metadata per Pool, so Nodes will share it.
-        //  Thus we need to have a lock to synchronize access between Nodes.
-        //  It's not crucial since it happens only during partition assignment
-        //
-        LockScope lockScope(collectionLock);
-
-        auto colIt = collections.find(metadata.getId());
-        if(colIt != collections.end())
-        {
-            ptr = colIt->second.get();
-            return Status::Ok;
-        }
-
-        auto moduleIt = modules.find(metadata.getModuleId());
-        if(moduleIt == modules.end())
-            return Status::ModuleIsNotRegistered;
-
-        CollectionPtr newCollection(std::move(metadata), *moduleIt->second);
-        ModuleResponse moduleResponse = moduleIt->second->onNewCollection(*newCollection.get());   //  Minimal work should be done here to prevent deadlocks
-        if(moduleResponse.type != ModuleResponse::Ok)
-            return Status::ModuleRejectedCollection;
-
-        ptr = newCollection.get();
-        collections[newCollection.get()->getId()] = std::move(newCollection);
-
-        return Status::Ok;
-    }
+    Status _internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr);
 
 public:
-    Status internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
-    {
-        RET(_internalizeCollection(std::move(metadata), ptr));
-    }
+    Status internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr);
 
-    size_t getNodesCount() const { return nodes.size(); }
+    size_t getNodesCount() const;
 
-    Node& getNode(size_t nodeId)
-    {
-        ASSERT(nodeId < getNodesCount());
-        return *nodes[nodeId];
-    }
+    Node& getNode(size_t nodeId);
 
-    ISchedulingPlatform& getScheduingPlatform() { return *schedulingPlatform; }
+    ISchedulingPlatform& getScheduingPlatform();
 
-    Node& getCurrentNode() { return getNode(getScheduingPlatform().getCurrentNodeId()); }
+    Node& getCurrentNode();
 
-    const NodePoolConfig& getConfig() const { return config; }
+    const NodePoolConfig& getConfig() const;
 
-    const PoolMonitor& getMonitor() const { return *monitorPtr; }
+    const PoolMonitor& getMonitor() const;
 
-    bool isTerminated() const { return false; }
+    bool isTerminated() const;
 
-    const String& getName() const { return name; }
+    const String& getName() const;
 };
-
 }   //  namespace k2

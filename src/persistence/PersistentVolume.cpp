@@ -308,4 +308,40 @@ PersistentVolume::PersistentVolume(std::shared_ptr<IPlog> plog) : m_plog(plog) {
 
 PersistentVolume::PersistentVolume(String plogPath) : PersistentVolume(std::make_shared<PlogMock>(std::move(plogPath))) {}
 
-}   //  namespace k2
+bool PersistentVolume::_Iterator::_isEnd() const {
+    return m_chunkIndex >= parent.m_chunkList.size();
+}
+
+bool PersistentVolume::_Iterator::isEnd() const {
+    return _isEnd();
+}
+
+ChunkInfo PersistentVolume::_Iterator::getCurrent() const {
+    ASSERT(!_isEnd());
+    return parent.m_chunkList[m_chunkIndex];
+}
+
+bool PersistentVolume::_Iterator::equal(const k2::IIterator<ChunkInfo>* it) const {
+    if (_isEnd())
+        return it == nullptr || it->isEnd();
+
+    if (!it)
+        return _isEnd();
+
+    auto other = dynamic_cast<const _Iterator*>(it);
+    ASSERT(other);
+
+    return &parent == &other->parent && m_chunkIndex == other->m_chunkIndex;
+}
+
+bool PersistentVolume::_Iterator::advance() {
+    if (m_chunkIndex < parent.m_chunkList.size())
+        m_chunkIndex++;
+    return !_isEnd();
+}
+
+PersistentVolume::_Iterator::_Iterator(const PersistentVolume& x) : parent(x), m_chunkIndex(0) {
+
+}
+
+}  //  namespace k2

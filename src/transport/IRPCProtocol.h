@@ -18,8 +18,8 @@ namespace k2 {
 // different addresses to different cores.
 class IAddressProvider {
 public:
-    IAddressProvider(){}
-    virtual ~IAddressProvider(){}
+    IAddressProvider();
+    virtual ~IAddressProvider();
 
     // this should be implemented by concrete classes. It should return the address for a given coreID
     virtual SocketAddress getAddress(int coreID) const = 0;
@@ -33,8 +33,8 @@ class SinglePortAddressProvider : public IAddressProvider
 protected:
     uint16_t port;
 public:
-    SinglePortAddressProvider(uint16_t port) : port(port) {}
-    SocketAddress getAddress(int) const override { return port; }
+    SinglePortAddressProvider(uint16_t port);
+    SocketAddress getAddress(int) const override;
 };
 
 // This is an interface for RPCProtocols
@@ -55,7 +55,7 @@ public: // API
     void setMessageObserver(RequestObserver_t observer);
 
     // This method returns the protocol supported by the implementation
-    const String& supportedProtocol() { return _protocol;}
+    const String& supportedProtocol();
 
     // setLowTransportMemoryObserver allows the user to register a observer which will be called when
     // a transport becomes low on memory.

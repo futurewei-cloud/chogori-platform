@@ -15,58 +15,19 @@ class MessageInitiatedTaskRequest : public TaskRequest
 protected:
     std::unique_ptr<IClientConnection> client;
 
-    INodePool& getNodePool()
-    {
-        return getPartition().getNodePool();
-    }
+    INodePool& getNodePool();
 
-    void respondToSender(Status status, uint32_t moduleCode = 0)
-    {
-        client->sendResponse(status, moduleCode);
-    }
+    void respondToSender(Status status, uint32_t moduleCode = 0);
 
-    ProcessResult moduleResponseToProcessResult(ModuleResponse response)
-    {
-        switch (response.type)
-        {
-            case ModuleResponse::Ok:
-                return ProcessResult::Done;
+    ProcessResult moduleResponseToProcessResult(ModuleResponse response);
 
-            case ModuleResponse::RescheduleAfterIOCompletion:
-                return ProcessResult::Sleep;
+    IModule& getModule();
 
-            case ModuleResponse::Postpone:
-            {
-                if(response.postponeDelayUs)    //  If delay time if specified, let sleep for that time
-                {
-                    getNodePool().getScheduingPlatform().delay(std::chrono::microseconds(response.postponeDelayUs), [&]
-                    {
-                        //  TODO: fix case when task got cancelled before timer fired
-                        awake();
-                    });
-                    return ProcessResult::Sleep;
-                }
+    IClientConnection& getClient();
 
-                return ProcessResult::Delay;    //  Just reschedule the task after all current tasks in the queue
-            }
-
-            default:
-                ASSERT(false);
-                return ProcessResult::Done;
-        }
-    }
-
-    IModule& getModule() { return partition.getModule(); }
-
-    IClientConnection& getClient() { return *client.get(); }
-
-    void awake() { partition.awakeTask(*this); }
+    void awake();
 public:
-    MessageInitiatedTaskRequest(Partition& partition, std::unique_ptr<IClientConnection>&& connectionClient) :
-        TaskRequest(partition),  client(std::move(connectionClient))
-    {
-        assert(client);
-    }
+    MessageInitiatedTaskRequest(Partition& partition, std::unique_ptr<IClientConnection>&& connectionClient);
 };
 
 
@@ -88,83 +49,26 @@ protected:
 
     State state;
 
-    void respondToSender(Status status, uint32_t moduleCode = 0)
-    {
-        if(status != Status::Ok)
-            getClient().getResponseWriter().truncateToCurrent();
-        client->sendResponse(status, moduleCode);
-    }
+    void respondToSender(Status status, uint32_t moduleCode = 0);
 
-    ProcessResult onPrepare()
-    {
-        IOOperations ioOperations;
+    ProcessResult onPrepare();
 
-        ModuleResponse response = getModule().onPrepare(*this, ioOperations);
-        switch(response.type)
-        {
-            case ModuleResponse::Ok: //  Can move to the next stage
-            {
-                state = State::Apply;
-                return canContinue() ? onApply() : ProcessResult::Delay;
-            }
+    ProcessResult onCoordinate();
 
-            case ModuleResponse::ReturnToClient:
-            {
-                respondToSender(Status::Ok, response.resultCode);
-                return ProcessResult::Done;
-            }
-
-            default:
-                return moduleResponseToProcessResult(response);
-        }
-    }
-
-    ProcessResult onCoordinate()
-    {
-        assert(false);  //  TODO: implement
-        return ProcessResult::Done;
-    }
-
-    ProcessResult onApply()
-    {
-        assert(false);  //  TODO: implement
-        return ProcessResult::Done;
-    }
+    ProcessResult onApply();
 
 public:
-    ClientTask(Partition& partition, std::unique_ptr<IClientConnection>&& client, Payload&& requestPayload) :
-        MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)),
-        responseWriter(getClient().getResponseWriter()), state(State::Prepare) {}
+    ClientTask(Partition& partition, std::unique_ptr<IClientConnection>&& client, Payload&& requestPayload);
 
-    TaskType getType() const override { return TaskType::ClientRequest; }
+    TaskType getType() const override;
 
-    const Payload& getRequestPayload() const { return requestPayload; }
+    const Payload& getRequestPayload() const;
 
-    PayloadWriter& getResponseWriter() { return responseWriter; }
+    PayloadWriter& getResponseWriter();
 
-    ProcessResult process() override
-    {
-        switch (state)
-        {
-            case State::Prepare:
-                return onPrepare();
+    ProcessResult process() override;
 
-            case State::Coordinate:
-                return onCoordinate();
-
-            case State::Apply:
-                return onApply();
-
-            default:
-                assert(false);
-                return ProcessResult::Done;
-        }
-    }
-
-    void releaseRequestPayload()
-    {
-        requestPayload.clear();
-    }
+    void releaseRequestPayload();
 };  //  class ClientTask
 
 
@@ -174,29 +78,11 @@ public:
 class AssignmentTask : public MessageInitiatedTaskRequest
 {
 public:
-    AssignmentTask(Partition& partition, std::unique_ptr<IClientConnection> client) :
-        MessageInitiatedTaskRequest(partition, std::move(client)) {}
+    AssignmentTask(Partition& partition, std::unique_ptr<IClientConnection> client);
 
-    TaskType getType() const override { return TaskType::PartitionAssign; }
+    TaskType getType() const override;
 
-    ProcessResult process() override
-    {
-        if(partition.getState() == Partition::State::Offloading)
-        {
-            respondToSender(Status::AssignOperationIsBrokenByOffload);
-            return ProcessResult::Done;
-        }
-
-        ModuleResponse response = getModule().onAssign(*this);
-        if(response.type == ModuleResponse::Ok)
-        {
-            partition.transitionToRunningState();
-            respondToSender(Status::Ok);
-            return ProcessResult::Done;
-        }
-
-        return moduleResponseToProcessResult(response);
-    }
+    ProcessResult process() override;
 };
 
 
@@ -206,22 +92,11 @@ public:
 class OffloadTask : public MessageInitiatedTaskRequest
 {
 public:
-    OffloadTask(Partition& partition, std::unique_ptr<IClientConnection> client) :
-        MessageInitiatedTaskRequest(partition, std::move(client)) {}
+    OffloadTask(Partition& partition, std::unique_ptr<IClientConnection> client);
 
-    TaskType getType() const override { return TaskType::PartitionOffload; }
+    TaskType getType() const override;
 
-    ProcessResult process() override
-    {
-        ModuleResponse response = getModule().onOffload(*this);
-        if(response.type == ModuleResponse::Ok)
-        {
-            respondToSender(Status::Ok);
-            return ProcessResult::DropPartition;
-        }
-
-        return moduleResponseToProcessResult(response);
-    }
+    ProcessResult process() override;
 };
 
 
@@ -231,9 +106,9 @@ public:
 class MaintainenceTask : public TaskRequest
 {
 public:
-    MaintainenceTask(Partition& partition) : TaskRequest(partition) {}
+    MaintainenceTask(Partition& partition);
 
-    TaskType getType() const override { return TaskType::Maintainence; }
+    TaskType getType() const override;
 };  //  class ClientTask
 
 }   //  namespace k2
