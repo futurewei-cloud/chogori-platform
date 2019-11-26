@@ -270,7 +270,7 @@ public:
             totalSize += bin.size();
 
         Binary buffer(totalSize);
-        uint8_t* ptr = buffer.get_write();
+        char* ptr = buffer.get_write();
         for(Binary& bin : bufferList)
         {
             std::memcpy(ptr, bin.get(), bin.size());
@@ -282,7 +282,7 @@ public:
 
     IOResult<uint32_t> append(const PlogId& plogId, const void* buffer, size_t bufferSize)
     {
-        return append(plogId, Binary((const uint8_t*)buffer, bufferSize));
+        return append(plogId, Binary((const char*)buffer, bufferSize));
     }
 
     IOResult<uint32_t> getSize(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.size; }); }

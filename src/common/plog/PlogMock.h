@@ -57,8 +57,8 @@ struct PlogFileDescriptor
 
     PlogFileDescriptor()
     {
-        memset(headBuffer.get_write(), (uint8_t)0, DMA_ALIGNMENT);
-        memset(tailBuffer.get_write(), (uint8_t)0, DMA_ALIGNMENT);
+        memset(headBuffer.get_write(), (int)0, DMA_ALIGNMENT);
+        memset(tailBuffer.get_write(), (int)0, DMA_ALIGNMENT);
     }
 
     PlogInfo& getInfo() { return *(PlogInfo*)headBuffer.get_write(); }

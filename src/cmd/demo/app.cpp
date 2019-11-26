@@ -2,6 +2,7 @@
 #include <string>
 #include <unordered_map>
 #include <seastar/core/shared_ptr.hh>
+#include <seastar/core/distributed.hh>
 #include <seastar/core/sstring.hh>
 
 #include <common/Log.h>
@@ -52,7 +53,9 @@ public:
 
 class Benchmark: public AppBase {
 public:
-    Benchmark() : AppBase("Benchmark"),field("val1") {}
+    // distributed version of the class
+    typedef seastar::distributed<Benchmark> Dist_t;
+    Benchmark() : AppBase("Benchmark"), field("val1") {}
     virtual void init() override {
         K2INFO("Benchmark initialize");
         K2INFO("Field=" << platform->getApp<Benchmark>("Benchmark"));

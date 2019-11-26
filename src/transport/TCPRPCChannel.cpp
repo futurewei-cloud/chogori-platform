@@ -83,7 +83,7 @@ void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
                         buf.trim(dataSize);
                     }
                     dataSize -= buf.size();
-                    return chan->_out.write(std::move(k2::toCharTempBuffer(buf)));
+                    return chan->_out.write(std::move(buf));
                 }
                 return seastar::make_ready_future<>();
             });
@@ -138,7 +138,7 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
                             return; // just say we're done so the loop can evaluate the end condition
                         }
                         K2DEBUG("Read "<< packet.size());
-                        chan->_rpcParser.feed(std::move(k2::toBinary(packet)));
+                        chan->_rpcParser.feed(std::move(packet));
                         // process some messages from the packet
                         chan->_rpcParser.dispatchSome();
                     }

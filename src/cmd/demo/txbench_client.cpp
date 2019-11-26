@@ -67,7 +67,7 @@ public:  // application lifespan
         K2INFO("ctor");
     };
 
-    virtual ~Client() {
+    ~Client() {
         K2INFO("dtor");
         free(_data);
     }

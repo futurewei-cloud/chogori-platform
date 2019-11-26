@@ -246,12 +246,12 @@ SEASTAR_TEST_CASE(test_read)
                             BOOST_REQUIRE(readRegions[i].buffer.size() == sizes[i]);
                             for(size_t j = 0; j<sizes[i]; j++)
                             {
-                                if(read_ptr[j] != i)
+                                if((size_t)read_ptr[j] != i)
                                 {
                                     std::cout << "!!!" << i << " " << j << " " << (uint32_t)read_ptr[j] << std::endl;
                                 }
 
-                                BOOST_REQUIRE(read_ptr[j] == i);
+                                BOOST_REQUIRE((size_t)read_ptr[j] == i);
                             }
                         }
 
@@ -264,9 +264,9 @@ SEASTAR_TEST_CASE(test_read)
                                 {
                                     for(size_t j = 0; j < sizes[i]; j++)
                                     {
-                                        uint8_t b;
+                                        char b;
                                         BOOST_REQUIRE(reader.read(b));
-                                        BOOST_REQUIRE(b == i);
+                                        BOOST_REQUIRE((size_t)b == i);
                                     }
 
                                     totalSize += sizes[i];

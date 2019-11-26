@@ -42,7 +42,7 @@ public:
     Session(std::string sessionId, std::string type, KeySpace&& keySpace)
     : _sessionId(std::move(sessionId))
     , _type(std::move(type))
-    , _keySpace(std::move(keySpace))
+    , _keySpace(std::forward<KeySpace>(keySpace))
     , _it(_keySpace.begin())
     {
         _startTime = std::chrono::system_clock::now();
@@ -153,7 +153,7 @@ public:
             _retryKeys.pop_back();
             _recordTime(key);
 
-            return std::move(key);
+            return key;
         }
 
         if(_it == _keySpace.end() || _pendingCounter >= _targetCount) {
@@ -166,7 +166,7 @@ public:
         ++_pendingCounter;
         _recordTime(key);
 
-        return std::move(key);
+        return key;
     }
 
     //
@@ -208,7 +208,7 @@ public:
 protected:
     void _recordTime(const std::string& key)
     {
-        _timestampMap.insert(std::move(std::pair<std::string, std::chrono::time_point<std::chrono::steady_clock>>(key, std::move(std::chrono::steady_clock::now()))));
+        _timestampMap.insert(std::pair<std::string, std::chrono::time_point<std::chrono::steady_clock>>(key, std::chrono::steady_clock::now()));
     }
 
     void _deleteTime(const std::string& key)

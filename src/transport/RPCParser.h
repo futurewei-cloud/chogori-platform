@@ -375,7 +375,7 @@ void RPCParser::_stIN_PARTIAL_FIXED_HEADER() {
     K2DEBUG("partial_fixed_header: partSize=" << partSize << ", curSize=" << curSize << ", totalNeed=" << totalNeed);
 
     // 1. copy whatever was left in the partial binary
-    std::memcpy((uint8_t*)&_fixedHeader, _partialBinary.get_write(), partSize);
+    std::memcpy((char*)&_fixedHeader, _partialBinary.get_write(), partSize);
     // done with the partial binary.
     std::move(_partialBinary).prefix(0);
 
@@ -389,7 +389,7 @@ void RPCParser::_stIN_PARTIAL_FIXED_HEADER() {
     }
 
     // and copy the rest of what we need from the current binary
-    std::memcpy((uint8_t*)&_fixedHeader + partSize, _currentBinary.get_write(), totalNeed - partSize);
+    std::memcpy((char*)&_fixedHeader + partSize, _currentBinary.get_write(), totalNeed - partSize);
     // rewind the current binary
     _currentBinary.trim_front(totalNeed - partSize);
 
@@ -426,17 +426,17 @@ void RPCParser::_stWAIT_FOR_VARIABLE_HEADER() {
 
     // now for variable stuff
     if (_metadata.isPayloadSizeSet()) {
-        std::memcpy((uint8_t*)&_metadata.payloadSize, _currentBinary.get_write(), sizeof(_metadata.payloadSize));
+        std::memcpy((char*)&_metadata.payloadSize, _currentBinary.get_write(), sizeof(_metadata.payloadSize));
         K2DEBUG("wait_for_var_header: have payload size: " << _metadata.payloadSize);
         _currentBinary.trim_front(sizeof(_metadata.payloadSize));
     }
     if (_metadata.isRequestIDSet()) {
-        std::memcpy((uint8_t*)&_metadata.requestID, _currentBinary.get_write(), sizeof(_metadata.requestID));
+        std::memcpy((char*)&_metadata.requestID, _currentBinary.get_write(), sizeof(_metadata.requestID));
         K2DEBUG("wait_for_var_header: have request id: "<< _metadata.requestID);
         _currentBinary.trim_front(sizeof(_metadata.requestID));
     }
     if (_metadata.isResponseIDSet()) {
-        std::memcpy((uint8_t*)&_metadata.responseID, _currentBinary.get_write(), sizeof(_metadata.responseID));
+        std::memcpy((char*)&_metadata.responseID, _currentBinary.get_write(), sizeof(_metadata.responseID));
         K2DEBUG("wait_for_var_header: have response id: " << _metadata.responseID);
         _currentBinary.trim_front(sizeof(_metadata.responseID));
     }
@@ -470,8 +470,8 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
     }
 
     // copy the bytes we need into a contiguious region.
-    uint8_t _data[totalNeed];
-    uint8_t* data = _data;
+    char _data[totalNeed];
+    char* data = _data;
 
     std::memcpy(data, _partialBinary.get_write(), partSize);
     // done with the partial binary.
@@ -483,17 +483,17 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
 
     // now set the variable fields
     if (_metadata.isPayloadSizeSet()) {
-        std::memcpy((uint8_t*)&_metadata.payloadSize, data, sizeof(_metadata.payloadSize));
+        std::memcpy((char*)&_metadata.payloadSize, data, sizeof(_metadata.payloadSize));
         K2DEBUG("partial_var_header: have payload size: " << _metadata.payloadSize);
         data += sizeof(_metadata.payloadSize);
     }
     if (_metadata.isRequestIDSet()) {
-        std::memcpy((uint8_t*)&_metadata.requestID, data, sizeof(_metadata.requestID));
+        std::memcpy((char*)&_metadata.requestID, data, sizeof(_metadata.requestID));
         K2DEBUG("partial_var_header: have request id: "<< _metadata.requestID);
         data += sizeof(_metadata.requestID);
     }
     if (_metadata.isResponseIDSet()) {
-        std::memcpy((uint8_t*)&_metadata.responseID, data, sizeof(_metadata.responseID));
+        std::memcpy((char*)&_metadata.responseID, data, sizeof(_metadata.responseID));
         K2DEBUG("partial_var_header: have response id: " << _metadata.responseID);
         data += sizeof(_metadata.responseID);
     }

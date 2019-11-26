@@ -15,7 +15,7 @@ class MaintainenceTask;
 //
 //  Value of the shared state of distributed transaction
 //
-typedef seastar::temporary_buffer<uint8_t> ShareStateValue;
+typedef seastar::temporary_buffer<char> ShareStateValue;
 
 //
 //  Represent transaction shared state calculate for particular partition

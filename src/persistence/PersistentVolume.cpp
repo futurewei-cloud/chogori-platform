@@ -59,7 +59,7 @@ protected:
 
     IOResult<> log(const void* data, size_t size)
     {
-        return seastar::do_with(Binary((const uint8_t*)data, size), [this](Binary& bin)
+        return seastar::do_with(Binary((const char*)data, size), [this](Binary& bin)
         {
             return append(bin);
         });

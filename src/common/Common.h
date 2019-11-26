@@ -60,12 +60,12 @@ typedef uint64_t PartitionId;
 //
 //  Binary represents owned (not referenced) binary data
 //
-typedef seastar::temporary_buffer<uint8_t> Binary;
+typedef seastar::temporary_buffer<char> Binary;
 
 //
 //  Slice represents referenced (not owned) binary data
 //
-typedef seastar::temporary_buffer<uint8_t> Slice;
+typedef seastar::temporary_buffer<char> Slice;
 
 //
 // The type for a function which can allocate Binary
@@ -94,10 +94,9 @@ class Holder
 protected:
     Binary data;
 public:
-    Holder(Binary&& binary)
+    Holder(Binary&& binary):data(std::move(binary))
     {
         assert(data.size() >= sizeof(T));
-        data = std::move(binary);
     }
 
     Holder(Holder&& binary) = default;
@@ -107,34 +106,11 @@ public:
     T* operator->() { return (T*)data.get_write(); }
 };
 
-//  Seastar likes to use char for their buffers. Let make conversion easy.
-template<typename T>
-std::enable_if_t<std::is_arithmetic<T>::value && sizeof(T) == 1, Binary&> toBinary(seastar::temporary_buffer<T>& buffer)
-{
-    return *(Binary*)&buffer;
-}
-
-template<typename T>
-Binary&& moveBinary(seastar::temporary_buffer<T>& buffer)
-{
-    return std::move(toBinary(buffer));
-}
-
-inline seastar::temporary_buffer<char>& toCharTempBuffer(Binary& buffer)
-{
-    return *(seastar::temporary_buffer<char>*)&buffer;
-}
-
-inline seastar::temporary_buffer<char>&& moveCharTempBuffer(Binary& buffer)
-{
-    return std::move(toCharTempBuffer(buffer));
-}
-
 //  Binary which just reference some data. Owner of the data needs to make sure that when it delete the data
 //  nobody has the reference to it
 inline Binary binaryReference(void* data, size_t size)
 {
-    return Binary((uint8_t*)data, size, seastar::deleter());
+    return Binary((char*)data, size, seastar::deleter());
 }
 
 template<typename CharT>
@@ -157,47 +133,6 @@ template<typename T>
 inline bool appendRaw(Binary& binary, size_t& writeOffset, const T& data)
 {
     return append(binary, writeOffset, &data, sizeof(T));
-}
-
-inline void print(std::ostream& stream, const void* buffer, size_t size)
-{
-    std::ios_base::fmtflags flags(std::cout.flags());
-    stream << '(' << size << ")[";
-
-    bool printChars = false;
-    for(size_t i = 0; i < size; i++)
-    {
-        char c = *((char*)buffer+i);
-        if(isprint(c))
-        {
-            if(!printChars)
-            {
-                printChars = true;
-                stream << '\'';
-            }
-
-            stream << c;
-        }
-        else
-        {
-            if(printChars)
-            {
-                stream << '\'';
-                printChars = false;
-            }
-
-            stream << 'x' << std::setfill('0') << std::setw(2) << std::hex << std::uppercase << (uint32_t)(uint8_t)c;
-        }
-    }
-
-    stream << ']';
-    std::cout.flags(flags);
-}
-
-inline std::ostream& operator<<(std::ostream& stream, const Binary& binary)
-{
-    print(stream, binary.get(), binary.size());
-    return stream;
 }
 
 }   //  namespace k2

@@ -115,7 +115,7 @@ public:
         conditional.wait_for(lock, std::chrono::seconds(10));
         ASSERT(callbackInvoked);
 
-        return std::move(pOperationResult);
+        return pOperationResult;
     }
 
     static PartitionDescription createPartitionDescription(const std::string& endpointUrl, const std::string& partitionId, const PartitionRange& range) {

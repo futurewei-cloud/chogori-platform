@@ -16,7 +16,7 @@
 namespace k2 {
 namespace txconstants {
 
-static const uint8_t K2RPCMAGIC = uint8_t('K') ^ uint8_t('2');
+static const char K2RPCMAGIC = char('K') ^ char('2');
 
 // No header of ours would ever exceed this size
 static const uint8_t MAX_HEADER_SIZE = 128;
@@ -44,7 +44,7 @@ static const uint8_t MAX_HEADER_SIZE = 128;
 // The fixed message header
 class FixedHeader {
 public:
-    uint8_t magic = txconstants::K2RPCMAGIC;
+    char magic = txconstants::K2RPCMAGIC;
     uint8_t version = 0x1;
     // bitmap which indicates which variable fields below are set. The bitmap should be used to initialize
     // a MessageMetadata, and then use the API from MessageMetadata to determine what fields are set and

@@ -68,7 +68,7 @@ public:
         auto message = std::make_unique<MessageDescription>();
         TIF(MessageReader::readSingleMessage(*message, [&](Binary& buffer)
             {
-                boost::array<uint8_t, 16*1024> boostBuf;
+                boost::array<char, 16*1024> boostBuf;
                 boost::system::error_code error;
 
                 size_t readBytes = socket.read_some(boost::asio::buffer(boostBuf), error);

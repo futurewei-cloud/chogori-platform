@@ -196,12 +196,12 @@ IOResult<uint32_t> PlogMock::append(const PlogId& plogId, Binary bin)
         });
 }
 
-IOResult<> readFull(seastar::file& f, size_t position, uint8_t* buffer, size_t size)
+IOResult<> readFull(seastar::file& f, size_t position, char* buffer, size_t size)
 {
     ASSERT((position % DMA_ALIGNMENT) == 0);
     ASSERT((size % DMA_ALIGNMENT) == 0);
 
-    return seastar::do_with(size, position, buffer, [&f](size_t& size, size_t& position, uint8_t* &buffer) mutable
+    return seastar::do_with(size, position, buffer, [&f](size_t& size, size_t& position, char* &buffer) mutable
     {
         return seastar::repeat([&size, &position, &buffer, &f]
         {

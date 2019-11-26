@@ -130,13 +130,13 @@ public:
         buffers.push_back(std::forward<Binary>(binary));
     }
 
-    uint8_t getByte(size_t offset) const
+    char getByte(size_t offset) const
     {
         Position position = navigate(offset);
         return buffers[position.buffer][position.offset];
     }
 
-    uint8_t operator[](size_t index) const
+    char operator[](size_t index) const
     {
         return getByte(index);
     }
@@ -167,32 +167,14 @@ public:
             if (buf.size() > bytesToWrite) {
                 buf.trim(bytesToWrite);
             }
-            result = seastar::net::packet(std::move(result), moveCharTempBuffer(buf));
             bytesToWrite -= buf.size();
+            result = seastar::net::packet(std::move(result), std::move(buf));
         }
 
         return result;
     }
-
-    void print(std::ostream& stream) const
-    {
-        stream << "{ size: " << getSize();
-        size_t remaining = getSize();
-        for(size_t i = 0; i < buffers.size(); remaining -= buffers[i].size(), i++)
-        {
-            stream << ' ' << i << '=';
-            k2::print(stream, buffers[i].get(), std::min(buffers[i].size(), remaining));
-        }
-
-        stream << "}";
-    }
 };
 
-inline std::ostream& operator<<(std::ostream& stream, const Payload& payload)
-{
-    payload.print(stream);
-    return stream;
-}
 
 //
 //  PayloadReader helps to navigate through the payload and read the message. Create by the Payload
@@ -273,7 +255,7 @@ public:
         return read(binary.get_write(), size);
     }
 
-    bool read(uint8_t& b)
+    bool read(char& b)
     {
         if(isEnd())
             return false;
@@ -466,7 +448,7 @@ public:
 
     DEFAULT_COPY_MOVE_INIT(PayloadWriter)
 
-    bool write(uint8_t b)
+    bool write(char b)
     {
         if(!allocateBufferIfNeeded())
             return false;

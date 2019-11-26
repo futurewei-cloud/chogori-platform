@@ -33,7 +33,7 @@ public:
 protected:
     virtual std::string next()
     {
-        return std::move(std::to_string(_rand()));
+        return std::to_string(_rand());
     }
 };
 
