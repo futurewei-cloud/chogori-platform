@@ -81,14 +81,15 @@ class IPersistentVolume
 public:
     class IIterator : public k2::IIterator<ChunkInfo> { };
 
-    virtual IOResult<RecordPosition> append(Binary binary) = 0;
-    virtual IOResult<uint32_t> read(const RecordPosition& position, const uint32_t sizeToRead, Binary& buffer) = 0;
+    virtual seastar::future<RecordPosition> append(Binary binary) = 0;
+    virtual seastar::future<uint32_t> read(const RecordPosition& position, const uint32_t sizeToRead, Binary& buffer) = 0;
     virtual ChunkInfo getInfo(ChunkId chunkId) = 0;
     virtual ChunkInfo setUsage(ChunkId chunkId, uint32_t usage) = 0;
-    virtual IOResult<> drop(ChunkId chunkId) = 0;
+    virtual seastar::future<> drop(ChunkId chunkId) = 0;
     virtual uint64_t totalUsage() = 0;
     virtual uint64_t totalSize() = 0;
     virtual std::unique_ptr<IIterator> getChunks() = 0;
+    virtual seastar::future<> close() = 0;
     virtual ~IPersistentVolume() {}
 };
 

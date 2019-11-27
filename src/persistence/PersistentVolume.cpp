@@ -32,7 +32,7 @@ protected:
         return reader.read(records);
     }
 
-    IOResult<> append(Binary& bin)
+    seastar::future<> append(Binary& bin)
     {
         if(activePlog >= plogs.size())
             return seastar::make_exception_future<>(PlogException("", P_CAPACITY_NOT_ENOUGH));
@@ -57,7 +57,7 @@ protected:
             });
     }
 
-    IOResult<> log(const void* data, size_t size)
+    seastar::future<> log(const void* data, size_t size)
     {
         return seastar::do_with(Binary((const char*)data, size), [this](Binary& bin)
         {
@@ -68,7 +68,7 @@ protected:
 public:
     EntryService(std::shared_ptr<IPlog> plogService, std::vector<PlogId> plogs) : plogService(plogService), plogs(std::move(plogs)) { }
 
-    IOResult<std::vector<EntryRecord>> init()
+    seastar::future<std::vector<EntryRecord>> init()
     {
         std::vector<seastar::future<Payload>> loadPlogFutures;
         activePlog = 0;
@@ -95,14 +95,14 @@ public:
             });
     }
 
-    IOResult<> logRecord(EntryRecord record) { return log(&record, sizeof(record)); }
+    seastar::future<> logRecord(EntryRecord record) { return log(&record, sizeof(record)); }
 
-    IOResult<> logRecords(std::vector<EntryRecord> records) { return log(records.data(), records.size()*sizeof(EntryRecord)); }
+    seastar::future<> logRecords(std::vector<EntryRecord> records) { return log(records.data(), records.size()*sizeof(EntryRecord)); }
 };
 
 const uint32_t MaxPlogSize = 32*1024;
 
-IOResult<RecordPosition> PersistentVolume::append(Binary binary)
+seastar::future<RecordPosition> PersistentVolume::append(Binary binary)
 {
     auto appendSize = binary.size();
     return [appendSize, this] {
@@ -144,7 +144,7 @@ IOResult<RecordPosition> PersistentVolume::append(Binary binary)
 }
 
 
-IOResult<uint32_t> PersistentVolume::read(const RecordPosition& position, const uint32_t sizeToRead, Binary& buffer)
+seastar::future<uint32_t> PersistentVolume::read(const RecordPosition& position, const uint32_t sizeToRead, Binary& buffer)
 {
     ChunkInfo chunkInfo;
 
@@ -197,7 +197,7 @@ ChunkInfo PersistentVolume::setUsage(ChunkId chunkId, uint32_t usage)
 }
 
 
-IOResult<> PersistentVolume::drop(ChunkId chunkId)
+seastar::future<> PersistentVolume::drop(ChunkId chunkId)
 {
     int i = std::min((size_t)chunkId, m_chunkList.size()-1);
     for( ; i>=0 && (m_chunkList[i].chunkId != chunkId); i--);
@@ -238,7 +238,7 @@ std::unique_ptr<IPersistentVolume::IIterator> PersistentVolume::getChunks()
     return std::make_unique<PersistentVolume::_Iterator>(*this);
 }
 
-IOResult<> PersistentVolume::addNewChunk()
+seastar::future<> PersistentVolume::addNewChunk()
 {
     return m_plog->create(1)
         .then([this](std::vector<PlogId> plogIds)
@@ -268,7 +268,7 @@ struct PersistentVolumeWithConstructorAccess : public PersistentVolume
 
 }
 
-IOResult<std::shared_ptr<PersistentVolume>> PersistentVolume::create(std::shared_ptr<IPlog> plogService)
+seastar::future<std::shared_ptr<PersistentVolume>> PersistentVolume::create(std::shared_ptr<IPlog> plogService)
 {
     return plogService->create(16)
         .then([plogService](std::vector<PlogId> plogIds)
@@ -283,7 +283,7 @@ IOResult<std::shared_ptr<PersistentVolume>> PersistentVolume::create(std::shared
         });
 }
 
-IOResult<std::shared_ptr<PersistentVolume>> PersistentVolume::open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs)
+seastar::future<std::shared_ptr<PersistentVolume>> PersistentVolume::open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs)
 {
     auto volume = std::make_shared<PersistentVolumeWithConstructorAccess>(plogService);
     volume->entryService = std::make_unique<EntryService>(plogService, std::move(entryPlogs));

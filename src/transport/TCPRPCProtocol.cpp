@@ -53,9 +53,9 @@ void TCPRPCProtocol::start() {
             [this] { return _stopped;},
             [this] {
             return _listen_socket->accept().then(
-                [this] (seastar::connected_socket fd, SocketAddress addr) {
+                [this] (seastar::accept_result result) {
                     K2DEBUG("Accepted connection from " << addr);
-                    _handleNewChannel(seastar::make_ready_future<seastar::connected_socket>(std::move(fd)),  _endpointFromAddress(std::move(addr)));
+                    _handleNewChannel(seastar::make_ready_future<seastar::connected_socket>(std::move(result.connection)),  _endpointFromAddress(std::move(result.remote_address)));
                     return seastar::make_ready_future();
                 }
             )

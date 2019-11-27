@@ -142,18 +142,6 @@ public:
     }
 };
 
-/*
-template<typename ResultT>
-class IOResult : public IOResultBase<IOResult>
-{
-public:
-    ResultT result;
-};
-*/
-
-template<typename... ResultT>
-using IOResult = seastar::future<ResultT...>;
-
 class ReadRegion
 {
 public:
@@ -179,37 +167,40 @@ public:
     //
     //  Allocate group of plogs
     //
-    virtual IOResult<std::vector<PlogId>> create(uint plogCount) = 0;
+    virtual seastar::future<std::vector<PlogId>> create(uint plogCount) = 0;
 
     //
     //  Return PLOG information
     //
-    virtual IOResult<PlogInfo> getInfo(const PlogId& plogId) = 0;
+    virtual seastar::future<PlogInfo> getInfo(const PlogId& plogId) = 0;
 
     //
     //  Append buffers to the end of PLOG. Size of data in buffer cannot exceed 2MB
     //
-    virtual IOResult<uint32_t> append(const PlogId& plogId, Binary buffer) = 0;
+    virtual seastar::future<uint32_t> append(const PlogId& plogId, Binary buffer) = 0;
 
     //
     //  Read the region from PLOG
     //
-    virtual IOResult<ReadRegion> read(const PlogId& plogId, ReadRegion region) = 0;
+    virtual seastar::future<ReadRegion> read(const PlogId& plogId, ReadRegion region) = 0;
 
     //
     //  Seal PLOG: make PLOG read-only and finalize the size
     //
-    virtual IOResult<> seal(const PlogId& plogId) = 0;
+    virtual seastar::future<> seal(const PlogId& plogId) = 0;
 
     //
     //  Drop the PLOG
     //
-    virtual IOResult<> drop(const PlogId& plogId) = 0;
+    virtual seastar::future<> drop(const PlogId& plogId) = 0;
+
+    // close all resources
+    virtual seastar::future<> close() = 0;
 
     //
     //  Helper functions
     //
-    IOResult<Binary> read(const PlogId& plogId, uint32_t offset, uint32_t size)
+    seastar::future<Binary> read(const PlogId& plogId, uint32_t offset, uint32_t size)
     {
         return read(plogId, ReadRegion(offset, size, Binary(size))).then([](ReadRegion region)
         {
@@ -217,7 +208,7 @@ public:
         });
     }
 
-    virtual IOResult<ReadRegions> readMany(const PlogId& plogId, ReadRegions plogDataToReadList)
+    virtual seastar::future<ReadRegions> readMany(const PlogId& plogId, ReadRegions plogDataToReadList)
     {
         std::vector<seastar::future<ReadRegion>> readFutures;
         for(ReadRegion& region : plogDataToReadList)
@@ -230,7 +221,7 @@ public:
     //
     //  Read all data from Plog into payload
     //
-    IOResult<> readAll(const PlogId& plogId, Payload& payload)
+    seastar::future<> readAll(const PlogId& plogId, Payload& payload)
     {
         return getInfo(plogId).then([&payload, plogId, this](PlogInfo info) mutable
         {
@@ -255,7 +246,7 @@ public:
         });
     }
 
-    IOResult<Payload> readAll(const PlogId& plogId)
+    seastar::future<Payload> readAll(const PlogId& plogId)
     {
         return seastar::do_with(Payload(nullptr), [this, plogId] (auto& payload) mutable
         {
@@ -263,7 +254,7 @@ public:
         });
     }
 
-    virtual IOResult<uint32_t> appendMany(const PlogId& plogId, std::vector<Binary> bufferList)
+    virtual seastar::future<uint32_t> appendMany(const PlogId& plogId, std::vector<Binary> bufferList)
     {
         size_t totalSize = 0;
         for(Binary& bin : bufferList)
@@ -280,18 +271,19 @@ public:
         return append(plogId, std::move(buffer));
     }
 
-    IOResult<uint32_t> append(const PlogId& plogId, const void* buffer, size_t bufferSize)
+    seastar::future<uint32_t> append(const PlogId& plogId, const void* buffer, size_t bufferSize)
     {
         return append(plogId, Binary((const char*)buffer, bufferSize));
     }
 
-    IOResult<uint32_t> getSize(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.size; }); }
-    IOResult<bool> isSealed(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.sealed; }); }
+    seastar::future<uint32_t> getSize(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.size; }); }
+    seastar::future<bool> isSealed(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.sealed; }); }
 
-    IOResult<PlogId> createOne()
+    seastar::future<PlogId> createOne()
     {
         return create(1).then([this](std::vector<PlogId> plogIds) { return plogIds[0]; });
     }
+
 };  //  class IPlog
 
 }   //  namespace k2

@@ -51,7 +51,7 @@ struct PlogIdComp {
 
 struct PlogFileDescriptor
 {
-    seastar::file f;                  // plog file descriptor
+    seastar::file ssfile;                  // plog file descriptor
     Binary headBuffer{DMA_ALIGNMENT}; // sync up first 4k(=DMA_ALIGNMENT) with plog file
     Binary tailBuffer{DMA_ALIGNMENT}; // sync up last 4k(=DMA_ALIGNMENT) with plog file when plog size (head+log_blocks) is not aligned.
 
@@ -70,6 +70,7 @@ struct PlogFileDescriptor
     size_t getTailRemaining() const { return DMA_ALIGNMENT - getTailSize(); }
 
     DEFAULT_MOVE(PlogFileDescriptor);
+    seastar::future<> close();
 };
 
 class PlogException : public std::exception {
@@ -113,19 +114,19 @@ public:
      * plogCount - the number of plog files to create
      * return - a list of unique plog ids that created
      **/
-    IOResult<std::vector<PlogId>> create(uint plogCount) override;
+    seastar::future<std::vector<PlogId>> create(uint plogCount) override;
 
     /**
      * retrieve the plog information for given plog id:
-     *    if plog id exists in m_plogFileDescriptorList, retrieve the plog information directly from the map list
-     *    otherwise, load plog information from plog file to m_plogFileDescriptorList if the plog file for
+     *    if plog id exists in m_plogFileDescriptors, retrieve the plog information directly from the map list
+     *    otherwise, load plog information from plog file to m_plogFileDescriptors if the plog file for
      *    the given plog id exists, then return its plog information.
      *
      * plogId - the plog id to retrieve
      * return - the plog information, including plog size and sealing flag
      * Exception - throw an PlogException with status of P_PLOG_ID_NOT_EXIST if the given plog id doesn't exist.
      **/
-    IOResult<PlogInfo> getInfo(const PlogId& plogId) override;
+    seastar::future<PlogInfo> getInfo(const PlogId& plogId) override;
 
     /**
      * append a list of buffers to plog file for given plog id
@@ -138,7 +139,7 @@ public:
      *   - P_PLOG_SEALED if plog file is sealed
      *   - P_EXCEED_PLOGID_LIMIT if the total bytes of write buffers exceeds plog limit
      **/
-    IOResult<uint32_t> append(const PlogId& plogId, Binary buffer) override;
+    seastar::future<uint32_t> append(const PlogId& plogId, Binary buffer) override;
 
     /**
      * retrive a set of plog blocks for given plog id
@@ -150,7 +151,7 @@ public:
      *   - P_PLOG_ID_NOT_EXIST if the given plog id doesn't exist
      *   - P_CAPACITY_NOT_ENOUGH if the bytes in the plog file is not enough to read
      */
-    IOResult<ReadRegion> read(const PlogId& plogId, ReadRegion region)  override;
+    seastar::future<ReadRegion> read(const PlogId& plogId, ReadRegion region)  override;
 
     /**
      * seal plog file for given plog id
@@ -159,7 +160,7 @@ public:
      * return - no return
      * Exception - throw an PlogException with status of P_PLOG_ID_NOT_EXIST if the given plog id doesn't exist
     */
-    IOResult<> seal(const PlogId& plogId) override;
+    seastar::future<> seal(const PlogId& plogId) override;
 
     /**
      * drop plog file for given plog id
@@ -168,7 +169,7 @@ public:
      * return - no return,
      * Exception - throw an PlogException with status of P_PLOG_ID_NOT_EXIST if the given plog id doesn't exist
      */
-    IOResult<> drop(const PlogId& plogId) override;
+    seastar::future<> drop(const PlogId& plogId) override;
 
     void setPlogMaxSize(uint32_t plogMaxSize) {
         m_plogMaxSize = plogMaxSize;
@@ -194,9 +195,11 @@ public:
 
     ~PlogMock();
 
+    seastar::future<> close() override;
+
 PRIVATE:
 
-    IOResult<PlogFileDescriptor*> getDescriptor(const PlogId& plogId);
+    seastar::future<PlogFileDescriptor*> getDescriptor(const PlogId& plogId);
 
     PlogId generatePlogId();
 
@@ -214,7 +217,7 @@ PRIVATE:
     String m_plogPath;
 
     // keep active plog ids and their information
-    std::map<PlogId, PlogFileDescriptor, PlogIdComp> m_plogFileDescriptorList;
+    std::map<PlogId, PlogFileDescriptor, PlogIdComp> m_plogFileDescriptors;
 
     // uniform random engine to generate plog id.
     std::default_random_engine m_generator;

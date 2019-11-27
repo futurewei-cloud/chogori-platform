@@ -61,13 +61,15 @@ PROTECTED:
     };
 
     // append a new chunk to the chunk set, the chunk id is monotonically increased,
-    IOResult<> addNewChunk();
+    seastar::future<> addNewChunk();
 
     PersistentVolume();
 
     PersistentVolume(std::shared_ptr<IPlog> plog);
 
     PersistentVolume(String plogPath);
+
+    seastar::future<> close() {return m_plog->close();};
 
     DISABLE_COPY_MOVE(PersistentVolume);
 
@@ -78,7 +80,7 @@ public:
     // return - a Record Position
     // Exception - throw an ChunkException if the size of binary is too large to append a chunk.
     //
-    IOResult<RecordPosition> append(Binary binary) override;
+    seastar::future<RecordPosition> append(Binary binary) override;
 
     //
     // read a binary data to buffer from given chunk
@@ -88,7 +90,7 @@ public:
     // return - the actually size read from the chunk
     // Exception - throw a ChunkException if the chunk Id doesn't exist.
     //
-    IOResult<uint32_t> read(const RecordPosition& position, const uint32_t sizeToRead, Binary& buffer) override;
+    seastar::future<uint32_t> read(const RecordPosition& position, const uint32_t sizeToRead, Binary& buffer) override;
 
     //
     // retrieve chunk information for given chunk Id
@@ -113,7 +115,7 @@ public:
     // return - no return
     // Exception - throw a ChunkException if the chunk Id doesn't exist.
     //
-    IOResult<> drop(ChunkId chunkId) override;
+    seastar::future<> drop(ChunkId chunkId) override;
 
     // accumulate the total actual size in chunk set
     uint64_t totalUsage() override;
@@ -129,9 +131,9 @@ public:
     //      plogService - plog interface implementation
     //      entryPlogs - plogs to store metadata. TODO: replace with PlogEntry Service
     //
-    static IOResult<std::shared_ptr<PersistentVolume>> open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs);
+    static seastar::future<std::shared_ptr<PersistentVolume>> open(std::shared_ptr<IPlog> plogService, std::vector<PlogId> entryPlogs);
 
-    static IOResult<std::shared_ptr<PersistentVolume>> create(std::shared_ptr<IPlog> plogService);
+    static seastar::future<std::shared_ptr<PersistentVolume>> create(std::shared_ptr<IPlog> plogService);
 
     ~PersistentVolume();
 

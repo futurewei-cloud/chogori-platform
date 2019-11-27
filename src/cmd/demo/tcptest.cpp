@@ -78,9 +78,9 @@ public:
         (void) seastar::do_until(
             [this] { return _stopped;},
             [this] {
-            return _listen_socket->accept().then([this] (seastar::connected_socket fd, seastar::socket_address addr) mutable {
-                K2INFO("Accepted connection from " << addr);
-                ( new connection(std::move(fd), std::move(addr)) )->run();
+            return _listen_socket->accept().then([this] (seastar::accept_result result) mutable {
+                K2INFO("Accepted connection from " << result.remote_address);
+                ( new connection(std::move(result.connection), std::move(result.remote_address)) )->run();
             })
             .handle_exception([this] (auto exc) {
                 if (!_stopped) {

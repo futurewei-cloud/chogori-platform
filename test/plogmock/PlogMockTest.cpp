@@ -15,7 +15,7 @@ const auto plogBaseDir = generateTempFolderPath("plogmock_test");
 auto createPlogMock(std::string testName)
 {
     String folder = plogBaseDir + testName;
-    std::cout << testName << ".....";   // << " (" << folder << ")" << std::endl;
+    std::cerr << testName << ".....";   // << " (" << folder << ")" << std::endl;
     return seastar::make_lw_shared<PlogMock>(std::move(folder));
 }
 
@@ -23,7 +23,7 @@ auto createPlogMock(std::string testName)
 
 SEASTAR_TEST_CASE(test_create_plogs)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     const size_t plogCount = 5;
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
@@ -32,7 +32,7 @@ SEASTAR_TEST_CASE(test_create_plogs)
         .then([plogMock, plogCount](std::vector<PlogId> plogIds) {
             BOOST_REQUIRE(plogIds.size() == plogCount);
 
-            std::vector<IOResult<>> infoFuture;
+            std::vector<seastar::future<>> infoFuture;
             for(auto& plogId : plogIds)
                 infoFuture.push_back(plogMock->getInfo(plogId).then([plogMock, plogId](PlogInfo plogInfo)
                 {
@@ -43,105 +43,121 @@ SEASTAR_TEST_CASE(test_create_plogs)
                 }));
 
             return seastar::when_all_succeed(infoFuture.begin(), infoFuture.end()).discard_result();
-        }).then([] { std::cout << "done." << std::endl; });
+        })
+        .then([] { std::cerr << "done." << std::endl; })
+        .finally([plogMock]() mutable {
+            return plogMock->close();
+        }).then([plogMock](){});
 }
 
 SEASTAR_TEST_CASE(test_getinfo_plogId_not_exist)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
     PlogId plogId;
     std::memset(&plogId, 1, sizeof(plogId));
 
     return plogMock->getInfo(plogId)
-    .then([](auto){
-        BOOST_FAIL("Expected exception");
-        return seastar::make_ready_future<>();
-    })
-    .handle_exception([](auto e){
-        try{
-            std::rethrow_exception(e);
-        } catch (PlogException& e) {
-            BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
+        .then([](auto) {
+            BOOST_FAIL("Expected exception");
+            return seastar::make_ready_future<>();
+        })
+        .handle_exception([](auto e) {
+            try {
+                std::rethrow_exception(e);
+            } catch (PlogException& e) {
+                BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
 
-            std::cout << "done." << std::endl;
-            return seastar::make_ready_future<>();
-        } catch (...) {
-            BOOST_FAIL("Incorrect exception type.");
-            return seastar::make_ready_future<>();
-        }
-    });
+                std::cerr << "done." << std::endl;
+                return seastar::make_ready_future<>();
+            } catch (...) {
+                BOOST_FAIL("Incorrect exception type.");
+                return seastar::make_ready_future<>();
+            }
+        })
+        .finally([plogMock]() mutable {
+            return plogMock->close();
+        }).then([plogMock](){});
+    ;
 }
 
 SEASTAR_TEST_CASE(test_append_upto_4k)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->create(1)
-    .then([plogMock](std::vector<PlogId> plogIds) {
-        std::vector<Binary> writeBufferList;
-        writeBufferList.push_back(Binary{1000});
-        writeBufferList.push_back(Binary{2000});
-        for(uint i=0;i<writeBufferList.size();i++){
-            std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
-        }
+        .then([plogMock](std::vector<PlogId> plogIds) {
+            std::vector<Binary> writeBufferList;
+            writeBufferList.push_back(Binary{1000});
+            writeBufferList.push_back(Binary{2000});
+            for (uint i = 0; i < writeBufferList.size(); i++) {
+                std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write() + writeBufferList[i].size(), i);
+            }
 
-        return plogMock->appendMany(plogIds[0], std::move(writeBufferList))
-        .then([plogMock, plogId = plogIds[0]](auto offset) {
-            BOOST_REQUIRE(offset == 0);
-            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogId].headBuffer.get());
-            size_t writeBufferSize = 1000+2000;
-            BOOST_REQUIRE(offset + writeBufferSize == ptr->size);
+            return plogMock->appendMany(plogIds[0], std::move(writeBufferList))
+                .then([plogMock, plogId = plogIds[0]](auto offset) {
+                    BOOST_REQUIRE(offset == 0);
+                    auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptors[plogId].headBuffer.get());
+                    size_t writeBufferSize = 1000 + 2000;
+                    BOOST_REQUIRE(offset + writeBufferSize == ptr->size);
 
-            std::cout << "done." << std::endl;
-            return seastar::make_ready_future<>();
-        });
-    });
+                    std::cerr << "done." << std::endl;
+                    return seastar::make_ready_future<>();
+                });
+        })
+        .finally([plogMock]() mutable {
+            return plogMock->close();
+        }).then([plogMock](){});
+    ;
 }
 
 SEASTAR_TEST_CASE(test_append_more_than_4k)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
     return plogMock->create(1)
-    .then([plogMock](std::vector<PlogId> plogIds) {
-        std::vector<Binary>  writeBufferList;
-        writeBufferList.push_back(Binary{1000});
-        writeBufferList.push_back(Binary{2000});
-        writeBufferList.push_back(Binary{4000});
-        writeBufferList.push_back(Binary{8000});
-        writeBufferList.push_back(Binary{15000});
+        .then([plogMock](std::vector<PlogId> plogIds) {
+            std::vector<Binary> writeBufferList;
+            writeBufferList.push_back(Binary{1000});
+            writeBufferList.push_back(Binary{2000});
+            writeBufferList.push_back(Binary{4000});
+            writeBufferList.push_back(Binary{8000});
+            writeBufferList.push_back(Binary{15000});
 
-        for(uint i=0;i<writeBufferList.size();i++){
-            std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
-        }
+            for (uint i = 0; i < writeBufferList.size(); i++) {
+                std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write() + writeBufferList[i].size(), i);
+            }
 
-        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogIds[0]].headBuffer.get());
-        auto originPlogSize = ptr->size;
+            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptors[plogIds[0]].headBuffer.get());
+            auto originPlogSize = ptr->size;
 
-        return plogMock->appendMany(plogIds[0], std::move(writeBufferList))
-        .then([plogMock, plogId = plogIds[0], originPlogSize](auto offset) {
-            BOOST_REQUIRE(offset == originPlogSize);
-            auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogId].headBuffer.get());
-            size_t writeBufferSize = 1000+2000+4000+8000+15000;
-            BOOST_REQUIRE(offset + writeBufferSize == ptr->size);
+            return plogMock->appendMany(plogIds[0], std::move(writeBufferList))
+                .then([plogMock, plogId = plogIds[0], originPlogSize](auto offset) {
+                    BOOST_REQUIRE(offset == originPlogSize);
+                    auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptors[plogId].headBuffer.get());
+                    size_t writeBufferSize = 1000 + 2000 + 4000 + 8000 + 15000;
+                    BOOST_REQUIRE(offset + writeBufferSize == ptr->size);
 
-            std::cout << "done." << std::endl;
-            return seastar::make_ready_future<>();
-        });
-    });
+                    std::cerr << "done." << std::endl;
+                    return seastar::make_ready_future<>();
+                });
+        })
+        .finally([plogMock]() mutable {
+            return plogMock->close();
+        }).then([plogMock](){});
+    ;
 }
 
 
 
 SEASTAR_TEST_CASE(test_append_plogId_not_exist)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
@@ -153,54 +169,62 @@ SEASTAR_TEST_CASE(test_append_plogId_not_exist)
     writeBufferList.push_back(Binary{2000});
 
     return plogMock->appendMany(plogId, std::move(writeBufferList))
-    .then([plogMock, plogId](auto){
-        BOOST_FAIL("Expected exception");
-    })
-    .handle_exception([](auto e){
-        try{
-            std::rethrow_exception(e);
-        } catch (PlogException& e) {
-            BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
-            std::cout << "done." << std::endl;
-            return seastar::make_ready_future<>();
-        } catch (...) {
-            BOOST_FAIL("Incorrect exception type.");
-            return seastar::make_ready_future<>();
-        }
-    });
-}
-
-SEASTAR_TEST_CASE(test_append_exceed_plog_limit)
-{
-    std::cout << get_name() << "...... ";
-
-    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
-
-    return plogMock->createOne().then([plogMock, this](PlogId plogId){
-        std::vector<Binary>  writeBufferList;
-
-        return plogMock->append(plogId, Binary{4*1024*1024})
-        .then([plogMock, plogId](auto){
+        .then([plogMock, plogId](auto) {
             BOOST_FAIL("Expected exception");
         })
-        .handle_exception([](auto e){
-            try{
+        .handle_exception([](auto e) {
+            try {
                 std::rethrow_exception(e);
             } catch (PlogException& e) {
-                BOOST_REQUIRE(e.status() == P_EXCEED_PLOGID_LIMIT);
-                std::cout << "done." << std::endl;
+                BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
+                std::cerr << "done." << std::endl;
                 return seastar::make_ready_future<>();
             } catch (...) {
                 BOOST_FAIL("Incorrect exception type.");
                 return seastar::make_ready_future<>();
             }
-        });
-    });
+        })
+        .finally([plogMock]() mutable {
+            return plogMock->close();
+        }).then([plogMock](){});
+    ;
+}
+
+SEASTAR_TEST_CASE(test_append_exceed_plog_limit)
+{
+    std::cerr << get_name() << "...... ";
+
+    auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
+
+    return plogMock->createOne().then([plogMock, this](PlogId plogId){
+            std::vector<Binary>  writeBufferList;
+
+            return plogMock->append(plogId, Binary{4*1024*1024})
+            .then([plogMock, plogId](auto){
+                BOOST_FAIL("Expected exception");
+            })
+            .handle_exception([](auto e){
+                try{
+                    std::rethrow_exception(e);
+                } catch (PlogException& e) {
+                    BOOST_REQUIRE(e.status() == P_EXCEED_PLOGID_LIMIT);
+                    std::cerr << "done." << std::endl;
+                    return seastar::make_ready_future<>();
+                } catch (...) {
+                    BOOST_FAIL("Incorrect exception type.");
+                    return seastar::make_ready_future<>();
+                }
+            });
+        })
+        .finally([plogMock]() mutable {
+            return plogMock->close();
+        }).then([plogMock](){});
 }
 
 
 SEASTAR_TEST_CASE(test_read)
 {
+    std::cerr << get_name() << "...... ";
     auto plogMock = GET_PLOG_MOCK();
 
     return plogMock->createOne().then([plogMock](PlogId plogId)
@@ -248,7 +272,7 @@ SEASTAR_TEST_CASE(test_read)
                             {
                                 if((size_t)read_ptr[j] != i)
                                 {
-                                    std::cout << "!!!" << i << " " << j << " " << (uint32_t)read_ptr[j] << std::endl;
+                                    std::cerr << "!!!" << i << " " << j << " " << (uint32_t)read_ptr[j] << std::endl;
                                 }
 
                                 BOOST_REQUIRE((size_t)read_ptr[j] == i);
@@ -279,12 +303,16 @@ SEASTAR_TEST_CASE(test_read)
                     });
             });
     })
-    .then([] { std::cout << "done." << std::endl; });
+    .then([] { std::cerr << "done." << std::endl; })
+
+    .finally([plogMock]() mutable {
+        return plogMock->close();
+    }).then([plogMock](){});
 }
 
 SEASTAR_TEST_CASE(test_read_plogId_not_exist)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
@@ -299,17 +327,21 @@ SEASTAR_TEST_CASE(test_read_plogId_not_exist)
             std::rethrow_exception(e);
         } catch (PlogException& e) {
             BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
-            std::cout << "done." << std::endl;
+            std::cerr << "done." << std::endl;
             return seastar::make_ready_future<>();
         } catch (...) {
             BOOST_FAIL("Incorrect exception type.");
             return seastar::make_ready_future<>();
         }
-    });
+    })
+    .finally([plogMock]() mutable {
+        return plogMock->close();
+    }).then([plogMock](){});
 }
 
 SEASTAR_TEST_CASE(test_read_capacity_not_enough)
 {
+    std::cerr << get_name() << "...... ";
     auto plogMock = GET_PLOG_MOCK();
 
     return plogMock->create(1).then([plogMock](std::vector<PlogId> plogIds) {
@@ -321,7 +353,7 @@ SEASTAR_TEST_CASE(test_read_capacity_not_enough)
             std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
         }
 
-        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptorList[plogIds[0]].headBuffer.get());
+        auto ptr = reinterpret_cast<const PlogInfo*>(plogMock->m_plogFileDescriptors[plogIds[0]].headBuffer.get());
         auto originPlogSize = ptr->size;
 
         return plogMock->appendMany(plogIds[0], std::move(writeBufferList))
@@ -344,20 +376,23 @@ SEASTAR_TEST_CASE(test_read_capacity_not_enough)
                 std::rethrow_exception(e);
             } catch (PlogException& e) {
                 BOOST_REQUIRE(e.status() == P_CAPACITY_NOT_ENOUGH);
-                std::cout << "done." << std::endl;
+                std::cerr << "done." << std::endl;
                 return seastar::make_ready_future<>();
             } catch (...) {
                 BOOST_FAIL("Incorrect exception type.");
                 return seastar::make_ready_future<>();
             }
         });
-    });
+    })
+    .finally([plogMock]() mutable {
+        return plogMock->close();
+    }).then([plogMock](){});
 }
 
 
 SEASTAR_TEST_CASE(test_seal)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
@@ -395,7 +430,7 @@ SEASTAR_TEST_CASE(test_seal)
                     std::rethrow_exception(e);
                 } catch (PlogException& e) {
                     BOOST_REQUIRE(e.status() == P_PLOG_SEALED);
-                    std::cout << "done." << std::endl;
+                    std::cerr << "done." << std::endl;
                     return seastar::make_ready_future<>();
                 } catch (...) {
                     BOOST_FAIL("Incorrect exception type.");
@@ -403,13 +438,16 @@ SEASTAR_TEST_CASE(test_seal)
                 }
             });
         });
-    });
+    })
+    .finally([plogMock]() mutable {
+        return plogMock->close();
+    }).then([plogMock](){});
 }
 
 
 SEASTAR_TEST_CASE(test_seal_plogId_not_exist)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
@@ -424,19 +462,22 @@ SEASTAR_TEST_CASE(test_seal_plogId_not_exist)
             std::rethrow_exception(e);
         } catch (PlogException& e) {
             BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
-            std::cout << "done." << std::endl;
+            std::cerr << "done." << std::endl;
             return seastar::make_ready_future<>();
         } catch (...) {
             BOOST_FAIL("Incorrect exception type.");
             return seastar::make_ready_future<>();
         }
-    });
+    })
+    .finally([plogMock]() mutable {
+        return plogMock->close();
+    }).then([plogMock](){});
 }
 
 
 SEASTAR_TEST_CASE(test_drop)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
@@ -466,7 +507,7 @@ SEASTAR_TEST_CASE(test_drop)
                     std::rethrow_exception(e);
                 } catch (PlogException& e) {
                     BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
-                    std::cout << "done." << std::endl;
+                    std::cerr << "done." << std::endl;
                     return seastar::make_ready_future<>();
                 } catch (...) {
                     BOOST_FAIL("Incorrect exception type.");
@@ -474,13 +515,16 @@ SEASTAR_TEST_CASE(test_drop)
                 }
             });
         });
-    });
+    })
+    .finally([plogMock]() mutable {
+        return plogMock->close();
+    }).then([plogMock](){});
 }
 
 
 SEASTAR_TEST_CASE(test_drop_plogId_not_exist)
 {
-    std::cout << get_name() << "...... ";
+    std::cerr << get_name() << "...... ";
 
     auto plogMock = seastar::make_lw_shared<PlogMock>(plogBaseDir + get_name());
 
@@ -495,19 +539,22 @@ SEASTAR_TEST_CASE(test_drop_plogId_not_exist)
             std::rethrow_exception(e);
         } catch (PlogException& e) {
             BOOST_REQUIRE(e.status() == P_PLOG_ID_NOT_EXIST);
-            std::cout << "done." << std::endl;
+            std::cerr << "done." << std::endl;
             return seastar::make_ready_future<>();
         } catch (...) {
             BOOST_FAIL("Incorrect exception type.");
             return seastar::make_ready_future<>();
         }
-    });
+    })
+    .finally([plogMock]() mutable {
+        return plogMock->close();
+    }).then([plogMock](){});
 }
 
 
 SEASTAR_TEST_CASE(Remove_test_folders)
 {
-    std::cout << get_name() << std::endl;
+    std::cerr << get_name() << std::endl;
 
     if(std::filesystem::exists(plogBaseDir)){
         std::filesystem::remove_all(plogBaseDir);
