@@ -149,4 +149,7 @@ private: // don't need
     RPCDispatcher& operator=(RPCDispatcher&& o) = delete;
 };
 
+// global RPC dist container which can be initialized by main() of an application so that
+// all users of RPC can just use this global to access RPC capabilities
+extern RPCDispatcher::Dist_t RPC;
 } // namespace k2
