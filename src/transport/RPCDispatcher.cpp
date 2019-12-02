@@ -9,8 +9,9 @@
 
 namespace k2{
 
-RPCDispatcher::RPCDispatcher():
-    _msgSequenceID(uint32_t(std::rand())) {
+RPCDispatcher::Dist_t RPC;
+
+RPCDispatcher::RPCDispatcher() : _msgSequenceID(uint32_t(std::rand())) {
     K2DEBUG("ctor");
     registerLowTransportMemoryObserver(nullptr);
 }
