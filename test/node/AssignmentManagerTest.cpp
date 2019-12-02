@@ -208,7 +208,9 @@ TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartition
 
     for(int i=0; i<num; i++)
     {
-        REQUIRE_OK(transport.send(assignmentMessages[ids[i]].createMessage(Endpoint("1")))->getStatus());
+        auto resp = transport.send(assignmentMessages[ids[i]].createMessage(Endpoint("1")));
+        REQUIRE(resp != nullptr);
+        REQUIRE_OK(resp->getStatus());
     }
 
     MemKVClient<TestType> client(transport);
