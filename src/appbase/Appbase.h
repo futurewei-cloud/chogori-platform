@@ -43,7 +43,7 @@ class MultiAddressProvider : public k2::IAddressProvider {
                 return seastar::socket_address(seastar::ipv4_addr(ep->getIP(), uint16_t(ep->getPort())));
             }
             // might not be in URL form (e.g. just a plain port)
-            K2DEBUG("attemting to use url as a simple port");
+            K2DEBUG("attempting to use url as a simple port");
             try {
                 auto port = std::stoi(_urls[coreID]);
                 return seastar::socket_address((uint16_t)port);
@@ -59,14 +59,22 @@ class MultiAddressProvider : public k2::IAddressProvider {
     std::vector<std::string> _urls;
 };  // class MultiAddressProvider
 
-
+// This is a foundational class used to create K2 Apps.
 template<typename UserAppType>
 class App {
 public:
+    // Use this method to obtain a callable which is used to add additional command-line options (see how we use it below)
     bpo::options_description_easy_init addOptions() { return _app.add_options(); }
 
-    int start(int argc, char** argv) {
-        seastar::distributed<UserAppType> userApp;
+    // This method returns the distributed container for the UserAppType. This is useful if you want to
+    // perform map/reduce type operations (see ss::distributed API)
+    seastar::distributed<UserAppType>& getDist() { return _userApp;}
+
+    // This method should be called to initialize the system.
+    // During initialization, the constructor for UserAppType is called with the given ctorArgs.
+    // Once all components are started, we call UserAppType::start() to let the user begin their workflow
+    template<typename... Args>
+    int start(int argc, char** argv, Args&&... ctorArgs) {
         k2::VirtualNetworkStack::Dist_t vnet;
         k2::RPCProtocolFactory::Dist_t tcpproto;
         k2::RPCProtocolFactory::Dist_t rrdmaproto;
@@ -126,7 +134,7 @@ public:
             });
             seastar::engine().at_exit([&] {
                 K2INFO("stop user app");
-                return userApp.stop();
+                return _userApp.stop();
             });
 
             return
@@ -153,7 +161,7 @@ public:
                 })
                 .then([&]() {
                     K2INFO("create user app");
-                    return userApp.start();
+                    return _userApp.start(std::forward<Args>(ctorArgs)...);
                 })
                 // STARTUP LOGIC
                 .then([&]() {
@@ -184,7 +192,7 @@ public:
                 })
                 .then([&]() {
                     K2INFO("start user app");
-                    return userApp.invoke_on_all(&UserAppType::start);
+                    return _userApp.invoke_on_all(&UserAppType::start);
                 });
         });
         K2INFO("Shutdown was successful!");
@@ -193,6 +201,7 @@ public:
 
 private:
     seastar::app_template _app;
+    seastar::distributed<UserAppType> _userApp;
 }; // class App
 
 } // namespace k2

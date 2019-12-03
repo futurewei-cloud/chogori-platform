@@ -2,11 +2,12 @@
 //    (C)opyright Futurewei Technologies Inc, 2019
 //-->
 #pragma once
-#include <iostream>
+#include <pthread.h>
 #include <chrono>
 #include <ctime>
+#include <iostream>
+#include <seastar/core/reactor.hh>  // for access to reactor
 #include <sstream>
-#include <pthread.h>
 
 namespace k2{
 namespace log {
@@ -48,7 +49,8 @@ inline LogEntry StartLogStream() {
 
     std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
     LogEntry entry;
-    entry.out << "[" << buffer << "]" << "(" << pthread_self() <<") ";
+    auto id = seastar::engine_is_ready() ? seastar::engine().cpu_id() : pthread_self();
+    entry.out << "[" << buffer << "]" << "(" << id <<") ";
     return entry;
 }
 

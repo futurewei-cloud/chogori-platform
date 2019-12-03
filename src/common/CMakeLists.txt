@@ -10,6 +10,7 @@ set_target_properties(k2common PROPERTIES
 	VERSION ${PROJECT_VERSION}
 	SOVERSION 1
 )
+target_link_libraries (k2common PRIVATE Seastar::seastar )
 
 install(TARGETS k2common DESTINATION lib)
 install(FILES ${HEADERS} DESTINATION include/common)
