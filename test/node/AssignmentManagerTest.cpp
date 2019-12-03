@@ -1,13 +1,13 @@
 #include <type_traits>
 #include <iostream>
 
-#include <node/NodePoolImpl.h>
-#include <node/AssignmentManager.h>
-#include <indexer/MapIndexer.h>
-#include <indexer/UnorderedMapIndexer.h>
-#include <indexer/HOTIndexer.h>
-#include <modules/memkv/server/MemKVModule.h>
-#include <node/NodePool.h>
+#include <k2/indexer/HOTIndexer.h>
+#include <k2/indexer/MapIndexer.h>
+#include <k2/indexer/UnorderedMapIndexer.h>
+#include <k2/modules/memkv/server/MemKVModule.h>
+#include <k2/node/AssignmentManager.h>
+#include <k2/node/NodePool.h>
+#include <k2/node/NodePoolImpl.h>
 
 #include <catch2/catch.hpp>
 

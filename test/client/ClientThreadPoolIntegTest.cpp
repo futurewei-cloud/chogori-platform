@@ -4,10 +4,10 @@
 // catch
 #include "catch2/catch.hpp"
 // k2
-#include <common/PartitionMetadata.h>
+#include <k2/common/PartitionMetadata.h>
 // k2:client
-#include <client/Client.h>
-#include "modules/memkv/server/MemKVModule.h"
+#include <k2/client/Client.h>
+#include <k2/modules/memkv/server/MemKVModule.h>
 // test
 #include "TestFactory.h"
 

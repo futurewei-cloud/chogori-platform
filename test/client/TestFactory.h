@@ -1,10 +1,10 @@
 #pragma once
 
 // k2
-#include <common/PartitionMetadata.h>
+#include <k2/common/PartitionMetadata.h>
 // k2:client
-#include <client/Client.h>
-#include "modules/memkv/server/MemKVModule.h"
+#include <k2/client/Client.h>
+#include <k2/modules/memkv/server/MemKVModule.h>
 
 using namespace k2;
 using namespace k2::client;

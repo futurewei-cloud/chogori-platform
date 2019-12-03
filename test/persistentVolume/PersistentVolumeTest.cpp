@@ -2,8 +2,8 @@
 #include <seastar/testing/test_case.hh>
 #include <TestUtil.h>
 
+#include <k2/persistence/PersistentVolume.h>
 #include <iostream>
-#include <persistence/PersistentVolume.h>
 
 using namespace k2;
 using namespace std;

@@ -13,9 +13,9 @@
 #include <vector>
 
 // to build an RPC server
-#include "transport/RPCDispatcher.h"
+#include <k2/transport/RPCDispatcher.h>
 // to handle incoming tcp traffic
-#include "transport/TCPListener.h"
+#include <k2/transport/TCPListener.h>
 
 namespace service {
 
@@ -94,7 +94,7 @@ public:
     ```
 - In any private file, to include a private header file (one in the `src` directory), use an absolute path with `""` like this:
     ```c++
-    #include "transport/Listener.h"
+    #include "Listener.h"
     ```
 
 ## Braced blocks
@@ -102,7 +102,7 @@ public:
 - [Preferred] All nested scopes are braced, even when the language allows omitting the braces (such as an if-statement), this makes patches simpler and is more consistent.
 - [Preferred] Class and function brace should start with new line. Within the function, brace location is flexible. Body is indented.
     ```c++
-    void Function() 
+    void Function()
     {
         if (some condition) {
             stmt;

@@ -4,8 +4,8 @@
 // catch
 #include <catch2/catch.hpp>
 // k2
-#include <config/Config.h>
-#include <config/ConfigLoader.h>
+#include <k2/config/Config.h>
+#include <k2/config/ConfigLoader.h>
 
 using namespace k2;
 using namespace k2::config;
