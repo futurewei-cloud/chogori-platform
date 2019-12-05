@@ -2,10 +2,15 @@
 
 // k2
 #include <k2/common/Common.h>
+
 // k2:config
 #include "NodePoolConfig.h"
 #include "PartitionManagerConfig.h"
 #include "ClusterConfig.h"
+
+// third-party
+#include <boost/program_options.hpp>
+#include <seastar/core/distributed.hh>  // for distributed<>
 
 namespace k2
 {
@@ -121,5 +126,11 @@ public:
 
 }; // class Config
 
-}; // namespace config
-}; // namespace k2
+typedef boost::optional<boost::program_options::variables_map> BPOConfigMap;
+typedef seastar::distributed<config::BPOConfigMap> BPOConfigMapDist_t;
+} // namespace config
+
+// for convenient access to globally initialized configuration
+extern config::BPOConfigMapDist_t ___config___;
+inline config::BPOConfigMapDist_t& Config() { return ___config___; }
+} // namespace k2

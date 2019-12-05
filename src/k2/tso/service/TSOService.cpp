@@ -21,7 +21,7 @@ seastar::future<> TSOService::stop() {
 
 seastar::future<> TSOService::start() {
     K2INFO("Registering message handlers");
-    RPC.local().registerMessageObserver(MsgVerbs::GET,
+    RPC().local().registerMessageObserver(MsgVerbs::GET,
         [this](k2::Request&& request) mutable {
             (void)request;  // TODO do something with the request
         });

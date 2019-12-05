@@ -4,6 +4,9 @@
 #include "Transport.h"
 #include "PartitionConfig.h"
 
+#include <map>
+#include <string>
+
 namespace k2
 {
 namespace config

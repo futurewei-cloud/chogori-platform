@@ -2,6 +2,11 @@
 
 #include "Module.h"
 
+// stl
+#include <map>
+#include <vector>
+#include <string>
+
 namespace k2
 {
 

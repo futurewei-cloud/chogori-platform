@@ -151,5 +151,6 @@ private: // don't need
 
 // global RPC dist container which can be initialized by main() of an application so that
 // all users of RPC can just use this global to access RPC capabilities
-extern RPCDispatcher::Dist_t RPC;
+extern RPCDispatcher::Dist_t ___RPC___;
+inline RPCDispatcher::Dist_t& RPC() { return ___RPC___;}
 } // namespace k2

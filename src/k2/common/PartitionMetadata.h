@@ -8,6 +8,11 @@ namespace k2
 {
 
 //
+//  Value of this type uniquely identifies K2 partition
+//
+typedef uint64_t PartitionId;
+
+//
 //  Version of partition assignment
 //
 struct PartitionVersion
@@ -126,13 +131,10 @@ public:
 //
 //  Map of partitions
 //
-class PartitionMap
+struct PartitionMap
 {
-public:
     std::set<PartitionDescription> map;
     PartitionVersion version;
-
-    DEFAULT_COPY_MOVE_INIT(PartitionMap)
     K2_PAYLOAD_FIELDS(map, version);
 };
 

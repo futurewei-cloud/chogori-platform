@@ -9,7 +9,7 @@
 
 namespace k2{
 
-RPCDispatcher::Dist_t RPC;
+RPCDispatcher::Dist_t ___RPC___;
 
 RPCDispatcher::RPCDispatcher() : _msgSequenceID(uint32_t(std::rand())) {
     K2DEBUG("ctor");

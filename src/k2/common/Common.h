@@ -53,11 +53,6 @@ namespace k2
 typedef seastar::sstring String;
 
 //
-//  Value of this type uniquely identifies K2 partition
-//
-typedef uint64_t PartitionId;
-
-//
 //  Binary represents owned (not referenced) binary data
 //
 typedef seastar::temporary_buffer<char> Binary;
