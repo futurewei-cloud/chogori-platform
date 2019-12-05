@@ -138,8 +138,8 @@ public:
 
             // call the stop() method on each object when we're about to exit. This also deletes the objects
             seastar::engine().at_exit([&] {
-                K2INFO("stop prometheus");
-                return Config().stop();
+                K2INFO("stop config");
+                return ConfigDist().stop();
             });
             seastar::engine().at_exit([&] {
                 K2INFO("stop prometheus");
@@ -159,7 +159,7 @@ public:
             });
             seastar::engine().at_exit([&] {
                 K2INFO("stop dispatcher");
-                return RPC().stop();
+                return RPCDist().stop();
             });
             seastar::engine().at_exit([&] {
                 K2INFO("stop user app");
@@ -169,11 +169,12 @@ public:
             return
                 // OBJECT CREATION (via distributed<>.start())
                 [&] {
-                    K2INFO("create prometheus");
-                    return prometheus.start(promport, "K2 txbench client metrics", "txbench_client");
+                    K2INFO("create config");
+                    return ConfigDist().start(config); // initialize global config
                 }()
                 .then([&] {
-                    return Config().start(config); // initialize global config
+                    K2INFO("create prometheus");
+                    return prometheus.start(promport, "K2 txbench client metrics", "txbench_client");
                 })
                 .then([&] {
                     K2INFO("create vnet");
@@ -189,7 +190,7 @@ public:
                 })
                 .then([&]() {
                     K2INFO("create dispatcher");
-                    return RPC().start();
+                    return RPCDist().start();
                 })
                 .then([&]() {
                     K2INFO("create user app");
@@ -207,7 +208,7 @@ public:
                 .then([&]() {
                     K2INFO("register TCP protocol");
                     // Could register more protocols here via separate invoke_on_all calls
-                    return RPC().invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
+                    return RPCDist().invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
                 })
                 .then([&]() {
                     K2INFO("start RDMA");
@@ -216,11 +217,11 @@ public:
                 .then([&]() {
                     K2INFO("register RDMA protocol");
                     // Could register more protocols here via separate invoke_on_all calls
-                    return RPC().invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(rrdmaproto));
+                    return RPCDist().invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(rrdmaproto));
                 })
                 .then([&]() {
                     K2INFO("start dispatcher");
-                    return RPC().invoke_on_all(&k2::RPCDispatcher::start);
+                    return RPCDist().invoke_on_all(&k2::RPCDispatcher::start);
                 })
                 .then([&]() {
                     K2INFO("start user app");

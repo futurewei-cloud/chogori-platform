@@ -125,12 +125,12 @@ public:
     }
 
 }; // class Config
-
-typedef boost::optional<boost::program_options::variables_map> BPOConfigMap;
-typedef seastar::distributed<config::BPOConfigMap> BPOConfigMapDist_t;
+typedef boost::program_options::variables_map BPOVarMap;
+typedef seastar::distributed<BPOVarMap> BPOConfigMapDist_t;
 } // namespace config
 
 // for convenient access to globally initialized configuration
 extern config::BPOConfigMapDist_t ___config___;
-inline config::BPOConfigMapDist_t& Config() { return ___config___; }
+inline config::BPOConfigMapDist_t& ConfigDist() { return ___config___; }
+inline const config::BPOVarMap& Config() { return ___config___.local(); }
 } // namespace k2

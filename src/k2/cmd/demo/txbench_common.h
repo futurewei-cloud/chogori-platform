@@ -1,10 +1,13 @@
 //<!--
 //    (C)opyright Futurewei Technologies Inc, 2019
 //-->
+#include <k2/transport/BaseTypes.h>
+#include <k2/transport/TXEndpoint.h>
+
 #pragma once
 
 // The message verbs supported by this service
-enum MsgVerbs: uint8_t {
+enum MsgVerbs: k2::Verb {
     GET_DATA_URL = 10, // used to discover the data URL for a node (e.g. rdma or tcp url)
     REQUEST = 11, // incoming requests
     ACK = 12, // ACKS for requests

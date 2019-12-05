@@ -3,50 +3,17 @@
 //-->
 
 // stl
-#include <exception>
-#include <chrono>
-#include <cctype> // for is_print
-#include <string>
-#include <cstdlib>
-#include <ctime>
-
-// third-party
-#include <seastar/core/distributed.hh> // for distributed<>
-#include <seastar/core/app-template.hh> // for app_template
-#include <seastar/core/reactor.hh> // for app_template
-#include <seastar/util/reference_wrapper.hh> // for app_template
-#include <seastar/core/future.hh> // for future stuff
-#include <seastar/core/timer.hh> // periodic timer
-#include <seastar/core/metrics_registration.hh> // metrics
-#include <seastar/core/metrics.hh>
-
-using namespace std::chrono_literals; // so that we can type "1ms"
-namespace bpo = boost::program_options;
-namespace sm = seastar::metrics;
-
-// k2 transport
-#include <k2/transport/RPCDispatcher.h>
-#include <k2/transport/TCPRPCProtocol.h>
-#include <k2/transport/RRDMARPCProtocol.h>
-#include <k2/common/Log.h>
-#include <k2/transport/BaseTypes.h>
-#include <k2/transport/RPCProtocolFactory.h>
-#include <k2/transport/VirtualNetworkStack.h>
+#include <k2/appbase/Appbase.h>
+#include <k2/appbase/AppEssentials.h>
 #include <k2/transport/RetryStrategy.h>
-#include <k2/transport/Prometheus.h>
 
 #include "txbench_common.h"
 
 class Client {
-public: // public types
-    // distributed version of the class
-    typedef seastar::distributed<Client> Dist_t;
-
 public:  // application lifespan
-    Client(k2::RPCDispatcher::Dist_t& dispatcher, const bpo::variables_map& config):
-        _disp(dispatcher.local()),
-        _tcpRemotes(config["tcp_remotes"].as<std::vector<std::string>>()),
-        _testDuration(config["test_duration_s"].as<uint32_t>()*1s),
+    Client():
+        _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<std::string>>()),
+        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _data(0),
         _stopped(true),
         _haveSendPromise(false),
@@ -58,11 +25,11 @@ public:  // application lifespan
             }
         })),
         _lastAckedTotal(0) {
-        _session.config = SessionConfig{.echoMode=config["echo_mode"].as<bool>(),
-                                        .responseSize=config["request_size"].as<uint32_t>(),
-                                        .pipelineSize=config["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
-                                        .pipelineCount=config["pipeline_depth_count"].as<uint32_t>(),
-                                        .ackCount=config["ack_count"].as<uint32_t>()};
+        _session.config = SessionConfig{.echoMode=k2::Config()["echo_mode"].as<bool>(),
+                                        .responseSize=k2::Config()["request_size"].as<uint32_t>(),
+                                        .pipelineSize=k2::Config()["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
+                                        .pipelineCount=k2::Config()["pipeline_depth_count"].as<uint32_t>(),
+                                        .ackCount=k2::Config()["ack_count"].as<uint32_t>()};
         _data = (char*)malloc(_session.config.responseSize);
         K2INFO("ctor");
     };
@@ -79,9 +46,9 @@ public:  // application lifespan
             return seastar::make_ready_future<>();
         }
         _stopped = true;
-        // unregistar all observers
-        _disp.registerMessageObserver(ACK, nullptr);
-        _disp.registerLowTransportMemoryObserver(nullptr);
+        // unregister all observers
+        k2::RPC().registerMessageObserver(ACK, nullptr);
+        k2::RPC().registerLowTransportMemoryObserver(nullptr);
         if (_haveSendPromise) {
             _sendProm.set_value();
         }
@@ -109,7 +76,7 @@ public:  // application lifespan
 
     seastar::future<> start() {
         _stopped = false;
-        _disp.registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
+        k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
         return _discovery().then([this](){
@@ -151,7 +118,7 @@ private:
             K2WARN("No TCP remote endpoint defined for core " << myID);
             return seastar::make_exception_future<>(std::runtime_error("No remote endpoint defined"));
         }
-        auto myRemote = _disp.getTXEndpoint(_tcpRemotes[myID]);
+        auto myRemote = k2::RPC().getTXEndpoint(_tcpRemotes[myID]);
         auto retryStrategy = seastar::make_lw_shared<k2::ExponentialBackoffStrategy>();
         retryStrategy->withRetries(10).withStartTimeout(1s).withRate(5);
         return retryStrategy->run([this, myRemote=std::move(myRemote)](size_t retriesLeft, k2::Duration timeout) {
@@ -162,7 +129,7 @@ private:
                 K2INFO("Stopping retry since we were stopped");
                 return seastar::make_exception_future<>(std::runtime_error("we were stopped"));
             }
-            return _disp.sendRequest(GET_DATA_URL, myRemote->newPayload(), *myRemote, timeout)
+            return k2::RPC().sendRequest(GET_DATA_URL, myRemote->newPayload(), *myRemote, timeout)
             .then([this](std::unique_ptr<k2::Payload> payload) {
                 if (_stopped) return seastar::make_ready_future<>();
                 if (!payload || payload->getSize() == 0) {
@@ -174,7 +141,7 @@ private:
                     remoteURL.append((char*)buf.get_write(), buf.size());
                 }
                 K2INFO("Found remote data endpoint: " << remoteURL);
-                _session.client = *(_disp.getTXEndpoint(remoteURL));
+                _session.client = *(k2::RPC().getTXEndpoint(remoteURL));
                 return seastar::make_ready_future<>();
             })
             .then_wrapped([this](auto&& fut) {
@@ -198,7 +165,7 @@ private:
 
         auto req = _session.client.newPayload();
         req->getWriter().write((void*)&_session.config, sizeof(_session.config));
-        return _disp.sendRequest(START_SESSION, std::move(req), _session.client, 1s).
+        return k2::RPC().sendRequest(START_SESSION, std::move(req), _session.client, 1s).
         then([this](std::unique_ptr<k2::Payload> payload) {
             if (_stopped) return seastar::make_ready_future<>();
             if (!payload || payload->getSize() == 0) {
@@ -226,7 +193,7 @@ private:
              ", with echoMode=" << _session.config.echoMode <<
              ", with testDuration=" << std::chrono::duration_cast<std::chrono::milliseconds>(_testDuration).count()  << "ms");
 
-        _disp.registerMessageObserver(ACK, [this](k2::Request&& request) {
+        k2::RPC().registerMessageObserver(ACK, [this](k2::Request&& request) {
             auto now = k2::Clock::now(); // to compute reqest latencies
             if (request.payload) {
                 Ack ack{};
@@ -309,18 +276,16 @@ private:
         payload->getWriter().write((void*)&_session.totalCount, sizeof(_session.totalCount));
         payload->getWriter().write(_data, _session.config.responseSize - padding );
         _requestIssueTimes[_session.totalCount % _session.config.pipelineCount] = k2::Clock::now();
-        _disp.send(REQUEST, std::move(payload), _session.client);
+        k2::RPC().send(REQUEST, std::move(payload), _session.client);
     }
 
 private:
-    k2::RPCDispatcher& _disp;
     std::vector<std::string> _tcpRemotes;
     k2::Duration _testDuration;
     k2::Duration _actualTestDuration;
     char* _data;
-    // flag we need to tell if we've been stopped
-    bool _stopped;
     BenchSession _session;
+    bool _stopped;
     seastar::promise<> _sendProm;
     seastar::promise<> _stopPromise;
     bool _haveSendPromise;
@@ -333,116 +298,13 @@ private:
 }; // class Client
 
 int main(int argc, char** argv) {
-    k2::VirtualNetworkStack::Dist_t vnet;
-    k2::RPCProtocolFactory::Dist_t tcpproto;
-    k2::RPCProtocolFactory::Dist_t rrdmaproto;
-    k2::RPCDispatcher::Dist_t dispatcher;
-    Client::Dist_t client;
-    k2::Prometheus prometheus;
-
-    seastar::app_template app;
-    app.add_options()
-        ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken(), "The remote tcp endpoints")
-        ("prometheus_port", bpo::value<uint16_t>()->default_value(8089), "HTTP port for the prometheus server")
+    k2::App<Client> app;
+    app.addOptions()
         ("request_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to send with each request")
         ("ack_count", bpo::value<uint32_t>()->default_value(5), "How many messages do we ack at once")
         ("pipeline_depth_mbytes", bpo::value<uint32_t>()->default_value(200), "How much data do we allow to go un-ACK-ed")
         ("pipeline_depth_count", bpo::value<uint32_t>()->default_value(10), "How many requests do we allow to go un-ACK-ed")
         ("echo_mode", bpo::value<bool>()->default_value(false), "Should we echo all data in requests when we ACK. ")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run");
-
-    // we are now ready to assemble the running application
-    auto result = app.run_deprecated(argc, argv, [&] {
-        auto& config = app.configuration();
-        uint16_t promport = config["prometheus_port"].as<uint16_t>();
-
-        // call the stop() method on each object when we're about to exit. This also deletes the objects
-        seastar::engine().at_exit([&] {
-            K2INFO("prometheus stop");
-            return prometheus.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("vnet stop");
-            return vnet.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("tcpproto stop");
-            return tcpproto.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("rrdma stop");
-            return rrdmaproto.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("dispatcher stop");
-            return dispatcher.stop();
-        });
-        seastar::engine().at_exit([&] {
-            K2INFO("client stop");
-            return client.stop();
-        });
-
-        return
-            // OBJECT CREATION (via distributed<>.start())
-            [&]{
-                K2INFO("Start prometheus");
-                return prometheus.start(promport, "K2 txbench client metrics", "txbench_client");
-            }()
-            .then([&] {
-                K2INFO("create vnet");
-                return vnet.start();
-            })
-            .then([&]() {
-                K2INFO("create tcpproto");
-                return tcpproto.start(k2::TCPRPCProtocol::builder(std::ref(vnet)));
-            })
-            .then([&]() {
-                K2INFO("Client started... create RDMA");
-                return rrdmaproto.start(k2::RRDMARPCProtocol::builder(std::ref(vnet)));
-            })
-            .then([&]() {
-                K2INFO("create dispatcher");
-                return dispatcher.start();
-            })
-            .then([&]() {
-                K2INFO("create client");
-                return client.start(std::ref(dispatcher), app.configuration());
-            })
-            // STARTUP LOGIC
-            .then([&]() {
-                K2INFO("Start VNS");
-                return vnet.invoke_on_all(&k2::VirtualNetworkStack::start);
-            })
-            .then([&]() {
-                K2INFO("Start tcpproto");
-                return tcpproto.invoke_on_all(&k2::RPCProtocolFactory::start);
-            })
-            .then([&]() {
-                K2INFO("Register TCP Protocol");
-                // Could register more protocols here via separate invoke_on_all calls
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(tcpproto));
-            })
-            .then([&]() {
-                K2INFO("Start RDMA");
-                return rrdmaproto.invoke_on_all(&k2::RPCProtocolFactory::start);
-            })
-            .then([&]() {
-                K2INFO("Register RDMA Protocol");
-                // Could register more protocols here via separate invoke_on_all calls
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(rrdmaproto));
-            })
-            .then([&]() {
-                K2INFO("Start dispatcher");
-                return dispatcher.invoke_on_all(&k2::RPCDispatcher::start);
-            })
-            .then([&]() {
-                K2INFO("client start");
-                return client.invoke_on_all(&Client::start);
-            }).then([]{
-                K2INFO("******* TEST COMPLETE *******");
-                K2INFO("Hit ctrl+c to terminate...");
-            });
-    });
-    K2INFO("Shutdown was successful!");
-    return result;
+    return app.start(argc, argv);
 }
