@@ -8,6 +8,6 @@
 int main(int argc, char** argv) {
     k2::App app;
     // pass the ss::distributed container to the TSOService constructor
-    app.addActivity<k2::TSOService>(seastar::ref(app.getDist<k2::TSOService>()));
+    app.addApplet<k2::TSOService>(seastar::ref(app.getDist<k2::TSOService>()));
     return app.start(argc, argv);
 }

@@ -133,6 +133,6 @@ private:
 int main(int argc, char** argv) {
     std::srand(std::time(nullptr));
     k2::App app;
-    app.addActivity<Service>();
+    app.addApplet<Service>();
     return app.start(argc, argv);
 }

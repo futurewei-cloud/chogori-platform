@@ -221,6 +221,6 @@ private:
 
 int main(int argc, char** argv) {
     k2::App app;
-    app.addActivity<k2::Service>();
+    app.addApplet<k2::Service>();
     return app.start(argc, argv);
 }

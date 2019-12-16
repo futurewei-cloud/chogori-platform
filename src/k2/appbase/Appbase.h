@@ -75,28 +75,28 @@ class App {
         return PosOptAdder(this);
     }
 
-    // This method returns the distributed container for the ActivityType.
+    // This method returns the distributed container for the AppletType.
     // This container can then be used to perform map/reduce type operations (see ss::distributed API)
-    template <typename ActivityType>
-    seastar::distributed<ActivityType>& getDist() {
-        auto findIter = _activities.find<ActivityType>();
-        if (findIter == _activities.end()) {
-            throw std::runtime_error("activity not found");
+    template <typename AppletType>
+    seastar::distributed<AppletType>& getDist() {
+        auto findIter = _applets.find<AppletType>();
+        if (findIter == _applets.end()) {
+            throw std::runtime_error("applet not found");
         }
-        // this is safe, since we created the object ourselves, based on ActivityType
-        // in other words, if we found an entry of type ActivityType, then the value stored in the map
-        // is guaranteed to be of type seastar::distributed<ActivityType>*
-        return *(static_cast<seastar::distributed<ActivityType>*>(findIter->second));
+        // this is safe, since we created the object ourselves, based on AppletType
+        // in other words, if we found an entry of type AppletType, then the value stored in the map
+        // is guaranteed to be of type seastar::distributed<AppletType>*
+        return *(static_cast<seastar::distributed<AppletType>*>(findIter->second));
     }
 
-    // Add a activity to th
-    template <typename ActivityType, typename... ConstructorArgs>
-    void addActivity(ConstructorArgs&&... ctorArgs) {
-        if (_activities.find<ActivityType>() != _activities.end()) {
-            throw std::runtime_error("duplicate activities not allowed");
+    // Add a applet to the app
+    template <typename AppletType, typename... ConstructorArgs>
+    void addApplet(ConstructorArgs&&... ctorArgs) {
+        if (_applets.find<AppletType>() != _applets.end()) {
+            throw std::runtime_error("duplicate applets not allowed");
         }
 
-        seastar::distributed<ActivityType>* dd = new seastar::distributed<ActivityType>();
+        seastar::distributed<AppletType>* dd = new seastar::distributed<AppletType>();
         _ctors.push_back(
             [dd, args = std::make_tuple(std::forward<ConstructorArgs>(ctorArgs)...)]() mutable {
                 // Start the distributed container which will construct the objects on each core
@@ -106,17 +106,17 @@ class App {
                     },
                     std::move(args));
             });
-        _starters.push_back([dd]() mutable { return dd->invoke_on_all(&ActivityType::start); });
+        _starters.push_back([dd]() mutable { return dd->invoke_on_all(&AppletType::start); });
         _stoppers.push_back([dd]() mutable { return dd->stop(); });
         _dtors.push_back([dd]() mutable { delete dd; });
 
         // type-erase the container and put it in the map.
-        _activities.put<ActivityType>((void*)dd);
+        _applets.put<AppletType>((void*)dd);
     }
 
     // This method should be called to initialize the system.
-    // 1. All activities are constructed with the arguments supplied when addActivity() was called
-    // Once all components are started, we call ActivityTypes::start() to let the user begin their workflow
+    // 1. All applets are constructed with the arguments supplied when addApplet() was called
+    // Once all components are started, we call AppletTypes::start() to let the user begin their workflow
     int start(int argc, char** argv) {
         k2::VirtualNetworkStack::Dist_t vnet;
         k2::RPCProtocolFactory::Dist_t tcpproto;
@@ -195,7 +195,7 @@ class App {
                 return RPCDist().stop();
             });
             seastar::engine().at_exit([&] {
-                K2INFO("stop user activities");
+                K2INFO("stop user applets");
                 std::vector<seastar::future<>> stopFutures;
                 for (auto& stopper : _stoppers) {
                     stopFutures.push_back(stopper());
@@ -230,7 +230,7 @@ class App {
                         return RPCDist().start();
                     })
                     .then([&]() {
-                        K2INFO("create user activities");
+                        K2INFO("create user applets");
                         std::vector<seastar::future<>> ctorFutures;
                         for (auto& ctor : _ctors) {
                             ctorFutures.push_back(ctor());
@@ -265,7 +265,7 @@ class App {
                         return RPCDist().invoke_on_all(&k2::RPCDispatcher::start);
                     })
                     .then([&]() {
-                        K2INFO("start user activities");
+                        K2INFO("start user applets");
                         std::vector<seastar::future<>> startFutures;
                         for (auto& starter : _starters) {
                             startFutures.push_back(starter());
@@ -286,11 +286,11 @@ class App {
 
    private:
     seastar::app_template _app;
-    TypeMap<void*> _activities;
-    std::vector<std::function<seastar::future<>()>> _ctors;     // functors which create user activities
-    std::vector<std::function<seastar::future<>()>> _starters;  // functors which call start() on user activities
-    std::vector<std::function<seastar::future<>()>> _stoppers;  // functors which call stop() on user activities
-    std::vector<std::function<void()>> _dtors;                  // functors which delete user activities
+    TypeMap<void*> _applets;
+    std::vector<std::function<seastar::future<>()>> _ctors;     // functors which create user applets
+    std::vector<std::function<seastar::future<>()>> _starters;  // functors which call start() on user applets
+    std::vector<std::function<seastar::future<>()>> _stoppers;  // functors which call stop() on user applets
+    std::vector<std::function<void()>> _dtors;                  // functors which delete user applets
 };                                                              // class App
 
 } // namespace k2
