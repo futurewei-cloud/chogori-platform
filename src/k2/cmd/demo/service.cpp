@@ -220,6 +220,7 @@ private:
 }// namespace k2
 
 int main(int argc, char** argv) {
-    k2::App<k2::Service> app;
+    k2::App app;
+    app.addActivity<k2::Service>();
     return app.start(argc, argv);
 }

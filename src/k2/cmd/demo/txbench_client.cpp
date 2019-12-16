@@ -298,7 +298,8 @@ private:
 }; // class Client
 
 int main(int argc, char** argv) {
-    k2::App<Client> app;
+    k2::App app;
+    app.addActivity<Client>();
     app.addOptions()
         ("request_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to send with each request")
         ("ack_count", bpo::value<uint32_t>()->default_value(5), "How many messages do we ack at once")
