@@ -1,34 +1,28 @@
 #pragma once
 
-#include <chrono>
-#include <k2/common/Log.h>
+#include "Chrono.h"
+#include "Log.h"
 
 namespace k2
 {
 
-template<typename ClockT = std::chrono::high_resolution_clock>
-class Stopwatch
-{
-public:
-    typedef std::chrono::time_point<ClockT> TimePointT;
+class Stopwatch {
 protected:
-    TimePointT startTime;
+    TimePoint startTime;
 public:
 
-    static TimePointT now() { return ClockT::now(); }
+    Stopwatch() : startTime(Clock::now()) { }
 
-    Stopwatch() : startTime(now()) { }
+    auto elapsed() { return Clock::now() - startTime; }
 
-    auto elapsed() { return now() - startTime; }
-
-    uint64_t elapsedNS() { return std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed()).count(); }
-    uint64_t elapsedUS() { return std::chrono::duration_cast<std::chrono::microseconds>(elapsed()).count(); }
+    uint64_t elapsedNS() { return nsec(elapsed()).count(); }
+    uint64_t elapsedUS() { return usec(elapsed()).count(); }
 };
 
 class TimeScopeLogger
 {
     const char* text;
-    Stopwatch<> stopWatch;
+    Stopwatch stopWatch;
 
     //double get_wall_time()
     //{
@@ -50,26 +44,26 @@ public:
 //
 class TimeTracker
 {
-    Stopwatch<std::chrono::steady_clock> stopWatch;
-    std::chrono::nanoseconds timeToTrack;
+    Stopwatch stopWatch;
+    Duration timeToTrack;
 
 public:
     DEFAULT_COPY_MOVE_INIT(TimeTracker)
 
-    TimeTracker(std::chrono::nanoseconds timeToTrackNS) : timeToTrack(timeToTrackNS)  {}
+    TimeTracker(Duration timeToTrackNS) : timeToTrack(timeToTrackNS)  {}
 
     bool exceeded() { return elapsed() > timeToTrack; };
 
-    std::chrono::nanoseconds remaining()
+    Duration remaining()
     {
         auto elapsedTime = stopWatch.elapsed();
         if(elapsedTime > timeToTrack)
-            return std::chrono::nanoseconds::zero();
+            return Duration::zero();
 
         return timeToTrack - elapsedTime;
     }
 
-    std::chrono::nanoseconds elapsed() { return stopWatch.elapsed(); }
+    Duration elapsed() { return stopWatch.elapsed(); }
 };
 
 }   //  namespace k2

@@ -1,7 +1,7 @@
 #pragma once
 
 // k2
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
 #include <k2/client/Client.h>
 #include <k2/modules/memkv/server/MemKVModule.h>
@@ -50,7 +50,7 @@ public:
 
     static void offloadPartitionAsync(Executor& rExecutor, const std::string& partition, const k2::PartitionRange& range, std::function<void()> callback)
     {
-        rExecutor.execute("tcp+k2rpc://127.0.0.1:11311", std::chrono::seconds(4),
+        rExecutor.execute("tcp+k2rpc://127.0.0.1:11311", 4s,
         [&rExecutor, range, callback, partition] (k2::Payload& payload) {
             TestFactory::makePartitionPayload(payload, partition, k2::PartitionRange(range), MessageType::PartitionOffload);
         },
@@ -63,7 +63,7 @@ public:
 
     static void assignPartitionAsync(Executor& rExecutor, const std::string& url, const std::string& partition, const k2::PartitionRange& range, std::function<void()> callback)
     {
-        rExecutor.execute(url, std::chrono::seconds(4),
+        rExecutor.execute(url, 4s,
         [&rExecutor, range, callback, partition] (k2::Payload& payload) {
             TestFactory::makePartitionPayload(payload, partition, k2::PartitionRange(range), MessageType::PartitionAssign);
         },
@@ -77,13 +77,13 @@ public:
 
     static void offloadAndAssignPartitionAsync(Executor& rExecutor, const std::string& url, const std::string& partition, const k2::PartitionRange& range, std::function<void()> callback)
     {
-        rExecutor.execute(url, std::chrono::seconds(4),
+        rExecutor.execute(url, 4s,
         [&rExecutor, url, range, callback, partition] (k2::Payload& payload) {
             TestFactory::makePartitionPayload(payload, partition, k2::PartitionRange(range), MessageType::PartitionOffload);
         },
         [&rExecutor, url, range, callback, partition] (std::unique_ptr<ResponseMessage> response) {
             (void)response;
-            rExecutor.execute(url, std::chrono::seconds(4),
+            rExecutor.execute(url, 4s,
             [&rExecutor, range, callback, partition] (k2::Payload& payload) {
                 TestFactory::makePartitionPayload(payload, partition, k2::PartitionRange(range), MessageType::PartitionAssign);
             },
@@ -106,14 +106,14 @@ public:
            (void)client;
            callbackInvoked = true;
            K2INFO("callback invoked: " << getStatusText(result._responses[0].status));
-           ASSERT(result._responses[0].status == Status::Ok);
+           assert(result._responses[0].status == Status::Ok);
            pOperationResult = std::move(std::make_unique<OperationResult>(std::move(result)));
            conditional.notify_one();
        });
 
         // wait until the payload is created
-        conditional.wait_for(lock, std::chrono::seconds(10));
-        ASSERT(callbackInvoked);
+        conditional.wait_for(lock, 10s);
+        assert(callbackInvoked);
 
         return pOperationResult;
     }

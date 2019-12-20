@@ -5,9 +5,10 @@
 #pragma once
 #include <seastar/net/socket_defs.hh> // for socket_address
 
-#include <k2/common/Payload.h>
+#include "Payload.h"
 #include <k2/common/Common.h>
 #include "Request.h"
+#include "Status.h"
 #include "TXEndpoint.h"
 
 namespace k2 {
@@ -21,6 +22,10 @@ typedef seastar::socket_address SocketAddress;
 // Benchmark indicates 20ns penalty per runtime call
 // See https://www.boost.org/doc/libs/1_69_0/doc/html/function/faq.html
 typedef std::function<void(Request&& request)> RequestObserver_t;
+
+// The type for RPC request observers. This is meant to be used with the RPC* API of RPCDispatcher
+template <class RequestType_t, class ResponseType_t>
+using RPCRequestObserver_t = std::function<std::tuple<k2::Status, ResponseType_t>(RequestType_t&& request)>;
 
 // The type for observers of channel failures
 typedef std::function<void(TXEndpoint& endpoint, std::exception_ptr exc)> FailureObserver_t;

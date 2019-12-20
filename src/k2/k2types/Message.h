@@ -1,33 +1,32 @@
 #pragma once
 
-#include "PartitionMetadata.h"
 #include <cassert>
+#include "PartitionMetadata.h"
+#include <k2/transport/Status.h>
 
-namespace k2
-{
+namespace k2 {
 //
 //  Message traveled through the system
 //
-class Message
-{
-protected:
+class Message {
+   protected:
     Endpoint sender;
-public:
+
+   public:
     Payload payload;
 
     Message() {}
-    Message(Endpoint&& sender, Payload&& payload) : sender(std::move(sender)), payload(std::move(payload)) { }
+    Message(Endpoint&& sender, Payload&& payload) : sender(std::move(sender)), payload(std::move(payload)) {}
 };
-
 
 //
 //  Represent message sink to respond back to client
 //
-class IClientConnection
-{
-protected:
+class IClientConnection {
+   protected:
     Endpoint sender;
-public:
+
+   public:
     //
     //  Send reponse to sender
     //

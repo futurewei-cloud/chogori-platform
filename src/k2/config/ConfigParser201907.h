@@ -100,7 +100,7 @@ protected:
         for(auto n: yamlConfig) {
             auto node = YamlUtils::mergeAnchors(n);
             const size_t id = YamlUtils::getOptionalValue(node[ID_TOKEN], i);
-            ASSERT(pNodePoolConfig->getNodes().size() > id);
+            assert(pNodePoolConfig->getNodes().size() > id);
             auto pNodeConfig = pNodePoolConfig->getNodes()[id];
             auto partitions = node["partitions"];
             if(partitions) {
@@ -180,7 +180,7 @@ protected:
 
             for(auto nodePoolNode : nodePoolsNode) {
                 auto it = nodePoolMap.find(YamlUtils::getRequiredValue(nodePoolNode, ID_TOKEN, std::string()));
-                ASSERT(it!=nodePoolMap.end());
+                assert(it!=nodePoolMap.end());
                 auto pNodePoolConfig = it->second;
                 parseNodePool(YamlUtils::mergeAnchors(nodePoolNode), pNodePoolConfig);
             }

@@ -11,7 +11,8 @@
 #include "RPCHeader.h"
 #include <k2/common/Common.h>
 #include <k2/common/Log.h>
-#include <k2/common/Payload.h>
+#include "Payload.h"
+#include "Status.h"
 
 namespace k2 {
 
@@ -172,7 +173,8 @@ size_t RPCParser::serializeHeader(Binary& binary, Verb verb, MessageMetadata met
     binary.trim_front(txconstants::MAX_HEADER_SIZE - headerSize);
     size_t writeOffset = 0;
 
-    ASSERT(writeHeader(binary, verb, meta, &writeOffset));
+    auto rcode = writeHeader(binary, verb, meta, &writeOffset);
+    assert(rcode);
 
     return headerSize;
 }
@@ -652,20 +654,20 @@ public:
         while(true)
         {
             Binary buffer;
-            RIF(bufferSource(buffer));
+            RET_IF_BAD(bufferSource(buffer));
 
             putBuffer(std::move(buffer));
             if(getMessage(outMessage))
                 return Status::Ok;
 
-            RIF(status);
+            RET_IF_BAD(status);
         }
     }
 
     static Status readSingleMessage(MessageDescription& outMessage, std::function<Status(Binary& outBuffer)> bufferSource)
     {
         MessageReader reader;
-        RET(reader.readMessage(outMessage, std::move(bufferSource)));
+        return reader.readMessage(outMessage, std::move(bufferSource));
     }
 };
 
@@ -685,7 +687,8 @@ protected:
 
         //  Truncate to real size
         PayloadWriter writer(message.payload, headerPosition);
-        ASSERT_TRUE(writer.skip(headerSize));
+        auto result = writer.skip(headerSize);
+        K2ASSERT(result, "unable to skip");
         writer.truncateToCurrent();
     }
 
@@ -694,9 +697,11 @@ protected:
         PayloadWriter writer(message.payload, headerPosition);
 
         void* headerMemory = nullptr;
-        ASSERT_TRUE(writer.reserveContiguousBuffer(maxBufferSize, headerMemory));
+        auto result = writer.reserveContiguousBuffer(maxBufferSize, headerMemory);
+        K2ASSERT(result, "unable to reserve bytes");
         Binary headerBuffer = binaryReference(headerMemory, maxBufferSize);
-        ASSERT(RPCParser::writeHeader(headerBuffer, message.verb, message.metadata, &headerSize));
+        auto rcode = RPCParser::writeHeader(headerBuffer, message.verb, message.metadata, &headerSize);
+        assert(rcode);
     }
 
     MessageBuilder(Verb verb, MessageMetadata metadata, Payload payload) : message(verb, metadata, std::move(payload)),
@@ -743,7 +748,8 @@ public:
     template<typename... ArgsT>
     MessageBuilder& write(ArgsT&... args)
     {
-        ASSERT_TRUE(getWriter().writeMany(args...));
+        auto ret = getWriter().writeMany(args...);
+        assert(ret);
         return* this;
     }
 

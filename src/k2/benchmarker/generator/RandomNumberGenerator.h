@@ -2,7 +2,7 @@
 
 // std
 #include <random>
-#include <chrono>
+#include <k2/common/Common.h>
 // k2b
 #include "Generator.h"
 
@@ -20,7 +20,7 @@ protected:
 public:
     RandomNumberGenerator()
     {
-        _seed = std::chrono::system_clock::now().time_since_epoch().count();
+        _seed = Clock::now().time_since_epoch().count();
         _rand.seed(_seed);
     }
 

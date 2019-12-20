@@ -56,13 +56,15 @@ public:
     static void serializeMessage(PayloadWriter& writer, MessageType messageType, PartitionAssignmentId partition, const MessageT& messageContent)
     {
         Header* header;
-        ASSERT(writer.reserveContiguousStructure(header));
+        auto rcode = writer.reserveContiguousStructure(header);
+        assert(rcode);
 
         header->messageType = messageType;
         header->partition = partition;
 
         auto contentPos = writer.getCurrent();
-        ASSERT(writer.write(messageContent));
+        rcode = writer.write(messageContent);
+        assert(rcode);
         header->messageSize = writer.getCurrent() - contentPos; //  TODO: consider drop messageSize
     }
 

@@ -25,7 +25,7 @@ public:
 
     virtual seastar::future<> run() {
         // TODO: Implement socker listening logic.
-        return seastar::sleep(std::chrono::milliseconds(500)).then([] {
+        return seastar::sleep(500ms).then([] {
             return seastar::make_ready_future<>();
         });
     };

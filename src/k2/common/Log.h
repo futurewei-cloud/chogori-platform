@@ -3,12 +3,11 @@
 //-->
 #pragma once
 #include <pthread.h>
-#include <chrono>
 #include <ctime>
 #include <iostream>
 #include <seastar/core/reactor.hh>  // for access to reactor
 #include <sstream>
-
+#include "Chrono.h"
 namespace k2{
 namespace log {
 class LogEntry {
@@ -34,7 +33,7 @@ private:
 inline LogEntry StartLogStream() {
     // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
     static thread_local char buffer[100];
-    auto now = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch());
+    auto now = k2::usec(Clock::now().time_since_epoch());
     auto microsec = now.count();
     auto millis = microsec/1000;
     microsec -= millis*1000;
@@ -76,10 +75,13 @@ inline LogEntry StartLogStream() {
 #define K2ERROR(msg) K2LOG("ERROR", msg)
 
 #ifndef NDEBUG
-#define K2ASSERT(cond, msg) { \
-    if(!(cond)) {K2ERROR(msg);} \
-    assert((cond)); \
-}
+#define K2ASSERT(cond, msg) \
+    {                       \
+        if (!(cond)) {      \
+            K2ERROR(msg);   \
+            assert((cond)); \
+        }                   \
+    }
 #else
 #define K2ASSERT(cond, msg)
 #endif

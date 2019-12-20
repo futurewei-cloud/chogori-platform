@@ -4,7 +4,7 @@ namespace k2 {
 
     TaskRequest::TaskRequest(Partition& partition) : partition(partition), ownerTaskList(TaskListType::None) {}
 
-    TaskRequest::ProcessResult TaskRequest::process(std::chrono::nanoseconds maxExecutionTime) {
+    TaskRequest::ProcessResult TaskRequest::process(Duration maxExecutionTime) {
         timeTracker = TimeTracker(maxExecutionTime);
         return process();
     }
@@ -17,7 +17,7 @@ namespace k2 {
 
     bool TaskRequest::canContinue() { return !timeTracker.exceeded(); }
 
-    std::chrono::nanoseconds TaskRequest::getElapsedTime() { return timeTracker.elapsed(); }
+    Duration TaskRequest::getElapsedTime() { return timeTracker.elapsed(); }
 
     void* TaskRequest::taskScopeMalloc(size_t size) { return arena.alloc(size); }
 

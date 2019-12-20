@@ -3,7 +3,8 @@
 #include <boost/asio.hpp>
 #include <boost/array.hpp>
 #include <k2/transport/RPCParser.h>
-#include <k2/common/Status.h>
+#include <k2/transport/Status.h>
+#include <k2/common/Log.h>
 
 
 namespace k2
@@ -66,7 +67,7 @@ public:
     std::unique_ptr<MessageDescription> receiveMessage()
     {
         auto message = std::make_unique<MessageDescription>();
-        TIF(MessageReader::readSingleMessage(*message, [&](Binary& buffer)
+        THROW_IF_BAD(MessageReader::readSingleMessage(*message, [&](Binary& buffer)
             {
                 boost::array<char, 16*1024> boostBuf;
                 boost::system::error_code error;
@@ -74,7 +75,7 @@ public:
                 size_t readBytes = socket.read_some(boost::asio::buffer(boostBuf), error);
                 if (error)
                     throw boost::system::system_error(error); // Some error occurred
-                ASSERT(readBytes > 0);
+                K2ASSERT(readBytes > 0, "unable to read bytes from socket");
                 buffer = Binary(boostBuf.data(), readBytes);
 
                 return Status::Ok;
@@ -117,11 +118,12 @@ public:
     {
         constexpr size_t maxHostSize = 1024;
 
-        ASSERT(strlen(address) < maxHostSize);
+        K2ASSERT(strlen(address) < maxHostSize, "address size too big");
         char host[maxHostSize];
 
         int port;
-        ASSERT(sscanf(address, "%[^:]:%d", host, &port) == 2);
+        auto rcode = sscanf(address, "%[^:]:%d", host, &port) == 2;
+        K2ASSERT(rcode, "unable to parse address");
 
         BoostTransport::messageExchange(host, port, verb, request, response);
     }

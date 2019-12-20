@@ -2,7 +2,6 @@
 
 #include <map>
 #include "Common.h"
-#include "CollectionMetadata.h"
 
 namespace k2
 {

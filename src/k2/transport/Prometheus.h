@@ -4,7 +4,6 @@
 #pragma once
 
 #include <cmath>
-#include <chrono>
 
 #include <seastar/core/future.hh>
 #include <seastar/core/metrics_types.hh>

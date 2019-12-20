@@ -1,5 +1,3 @@
-project(k2scheduler VERSION 1.0.0 DESCRIPTION "scheduler library for k2 platform")
-
 add_library(k2scheduler STATIC
     TcpService.cpp
 )

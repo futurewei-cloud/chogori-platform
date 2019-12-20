@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <memory>
-#include <chrono>
 #include <iomanip>
 
 #include <seastar/core/temporary_buffer.hh>
@@ -12,8 +11,7 @@
 
 #include <seastar/core/sstring.hh>
 
-#include "Constants.h"
-#include "Status.h"
+#include "Chrono.h"
 
 #define DISABLE_COPY(className)                                 \
     className(const className&) = delete;                       \
@@ -71,14 +69,6 @@ typedef std::function<Binary()> BinaryAllocatorFunctor;
 //  Endpoint identifies address of the Node or client. TODO: change to something more appropriate than 'String'.
 //
 typedef String Endpoint;
-
-//
-// duration used in a few places to specify timeouts and such
-//
-typedef std::chrono::steady_clock Clock;
-typedef Clock::duration Duration;
-typedef std::chrono::time_point<Clock> TimePoint;
-
 
 //
 //  Hold the reference to buffer containing class

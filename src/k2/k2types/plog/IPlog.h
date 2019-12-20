@@ -1,9 +1,10 @@
 #pragma once
 
-#include <k2/common/Serialization.h>
+#include <k2/transport/Serialization.h>
 #include "plog_client.h"
 #include <seastar/core/sharded.hh>
-#include <k2/common/Payload.h>
+#include <k2/transport/Payload.h>
+#include <k2/transport/Status.h>
 
 namespace k2
 {

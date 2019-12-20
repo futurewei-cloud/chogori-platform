@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Serialization.h"
+#include <k2/transport/Serialization.h>
+#include <k2/transport/Status.h>
 #include "PartitionMetadata.h"
 
 namespace k2

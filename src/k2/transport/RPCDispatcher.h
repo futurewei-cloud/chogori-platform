@@ -7,7 +7,6 @@
 #include <functional>
 #include <unordered_map>
 #include <exception>
-#include <chrono>
 
 // third party
 #include <seastar/core/distributed.hh>
@@ -111,7 +110,15 @@ public: // API
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
     void sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
-private: // methods
+
+public: // RPC-oriented interface
+    template<class Request_t, class Response_t>
+    seastar::future<std::tuple<k2::Status, Response_t>>  callRPC(Request_t&& request);
+
+    template <class Request_t, class Response_t>
+    void registerRPCObserver(Verb verb, RPCRequestObserver_t<Request_t, Response_t> observer);
+
+   private:  // methods
     // Process new messages received from protocols
     void _handleNewMessage(Request&& request);
 

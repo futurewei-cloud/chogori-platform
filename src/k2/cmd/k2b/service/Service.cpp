@@ -1,6 +1,5 @@
 // std
 #include <iostream>
-#include <chrono>
 #include <array>
 #include <atomic>
 #include <fstream>
@@ -164,7 +163,7 @@ public:
         return 0; // all messages were send
     }
 
-    virtual uint64_t eventLoop()
+    virtual Duration eventLoop()
     {
         if(!_readySessions.empty()) {
             SessionPtr pSession = _readySessions.begin()->second;
@@ -181,16 +180,16 @@ public:
                     _runningSessions.erase(it);
                 }
                 _compleatedSessions.insert(std::move(std::pair<std::string, SessionPtr>(pSession->getSessionId(), pSession)));
-                K2INFO(createReport(pSession));
+                printReport(pSession);
             }
             else
             {
-                return delay; // schedule the next batch after the delay
+                return std::chrono::microseconds(delay); // schedule the next batch after the delay
             }
         }
 
         // we do not have any active session; take a break before scheduling again
-        return 100;
+        return 100us;
     }
 
     virtual void onInit(std::unique_ptr<Context> pContext)
@@ -292,22 +291,15 @@ public:
        asio::write(*pSocket, asioBuffer, ignored_error);
     }
 
-    std::string createReport(std::shared_ptr<Session> pSession)
+    void printReport(std::shared_ptr<Session> pSession)
     {
-        const std::time_t startTime = std::chrono::system_clock::to_time_t(pSession->getStartTime());
-        const std::time_t endTime = std::chrono::system_clock::to_time_t(pSession->getEndTime());
-        std::stringstream report;
-        report << "Session report; "
+        K2INFO("Session report; "
                << "sessionId:" << pSession->getSessionId()
                << ", totalCount:" << pSession->getTargetCount()
                << ", failed:" << pSession->getFailedKeys().size()
                << ", retryCounter:" << pSession->getRetryCounter()
-               << ", durationSeconds:" << std::to_string(std::chrono::duration_cast<std::chrono::seconds>(pSession->getEndTime() - pSession->getStartTime()).count())
-               << ", startTime:" << std::ctime(&startTime)
-               << ", endTime:" << std::ctime(&endTime)
-               << std::endl;
-
-        return std::move(report.str());
+               << ", durationSeconds:" << std::to_string(k2::sec(pSession->getEndTime() - pSession->getStartTime()).count())
+        );
     }
 
     std::vector<SessionPtr> filterSessions(SessionMap& map, std::string type)

@@ -102,12 +102,12 @@ private:
 
     // class defined
     bool _stopFlag = false; // stops the service
-    const std::chrono::microseconds _minDelay; // the minimum amount of time before calling the next application loop
-    std::chrono::time_point<std::chrono::steady_clock> _runTaskTimepoint;
+    const Duration _minDelay; // the minimum amount of time before calling the next application loop
+    TimePoint _runTaskTimepoint;
     seastar::semaphore _semaphore;
     // metrics
-    std::chrono::time_point<std::chrono::steady_clock> _taskLoopScheduleTime;
-    std::chrono::time_point<std::chrono::steady_clock> _clientLoopScheduleTime;
+    TimePoint _taskLoopScheduleTime;
+    TimePoint _clientLoopScheduleTime;
     metrics::metric_groups _metricGroups;
     ExponentialHistogram _sendMessageLatency;
     ExponentialHistogram _createPayloadLatency;
@@ -127,12 +127,12 @@ public:
     MessageService(
         RPCDispatcher::Dist_t& dispatcher,
         std::vector<std::unique_ptr<ExecutorQueue>>& _queues)
-    : _minDelay(std::chrono::microseconds(5))
+    : _minDelay(5us)
     , _semaphore(seastar::semaphore(1))
     , _dispatcher(dispatcher)
     , _queue(*(_queues[seastar::engine().cpu_id()].get()))
     {
-        auto now = std::chrono::steady_clock::now();
+        auto now = Clock::now();
         _runTaskTimepoint = now;
         _taskLoopScheduleTime = now;
         _clientLoopScheduleTime = now;
@@ -147,17 +147,17 @@ public:
         // start message polling
         return seastar::with_semaphore(_semaphore, 1, [&] {
             return seastar::do_until([&] { return _stopFlag && _queue.empty(); }, [&] {
-                const auto now = std::chrono::steady_clock::now();
+                const auto now = Clock::now();
                 _taskLoopIdleTime.add(now - _taskLoopScheduleTime);
                 _taskLoopScheduleTime = now;
 
                 return getNextTask().then([&] (ExecutorTaskPtr pTask) {
                     if(!pTask || !pTask.get()) {
 
-                        return seastar::sleep(std::chrono::microseconds(10));
+                        return seastar::sleep(10us);
                     }
 
-                    const auto timePoint = std::chrono::steady_clock::now();
+                    const auto timePoint = Clock::now();
                     _dequeueTime.add(timePoint - pTask->_pClientData->_startTime);
                     pTask->_pPlatformData.reset(new ExecutorTask::PlatformData());
 
@@ -212,10 +212,10 @@ private:
             pTask->_pPlatformData->_pPayload = std::move(pTask->_pClientData->_pPayload);
         }
         else {
-            ASSERT(pTask->_pPlatformData->_pEndpoint.get() != nullptr);
-            const auto startTime = std::chrono::steady_clock::now();
+            assert(pTask->_pPlatformData->_pEndpoint.get() != nullptr);
+            const auto startTime = Clock::now();
             pTask->_pPlatformData->_pPayload = pTask->_pPlatformData->_pEndpoint->newPayload();
-            const auto timePoint = std::chrono::steady_clock::now();
+            const auto timePoint = Clock::now();
             _createPayloadLatency.add(timePoint - startTime);
         }
     }
@@ -227,10 +227,10 @@ private:
             return;
         }
 
-        const auto startTime = std::chrono::steady_clock::now();
+        const auto startTime = Clock::now();
         auto& disp = _dispatcher.local();
         pTask->_pPlatformData->_pEndpoint = disp.getTXEndpoint(pTask->getUrl());
-        _createEndpointLatency.add(std::chrono::steady_clock::now() - startTime);
+        _createEndpointLatency.add(Clock::now() - startTime);
 
         if (!pTask->_pPlatformData->_pEndpoint) {
 
@@ -245,9 +245,9 @@ private:
 
         // invoke the callback with payload
         if(pTask->hasPayloadCallback()) {
-            const auto timePoint = std::chrono::steady_clock::now();
+            const auto timePoint = Clock::now();
             pTask->invokePayloadCallback();
-            _payloadCallbackTime.add(std::chrono::steady_clock::now() - timePoint);
+            _payloadCallbackTime.add(Clock::now() - timePoint);
 
             // in this case we just want to create the payload; we do not want to send the message
             if(pTask->_pClientData->_fPayloadPtr) {
@@ -258,9 +258,9 @@ private:
         }
 
         // check the endpoint is present
-        ASSERT(pTask->_pPlatformData->_pEndpoint.get() != nullptr);
+        assert(pTask->_pPlatformData->_pEndpoint.get() != nullptr);
         // check the payload is present
-        ASSERT(pTask->_pPlatformData->_pPayload.get() != nullptr)
+        assert(pTask->_pPlatformData->_pPayload.get() != nullptr);
         return sendMessage(pTask)
             .then([&, pTask](std::unique_ptr<ResponseMessage> response) mutable {
                  pTask->_pPlatformData->_pResponse = std::move(response);
@@ -293,14 +293,14 @@ private:
 
     seastar::future<std::unique_ptr<ResponseMessage>> sendMessage(ExecutorTaskPtr pTask)
     {
-        const auto startTime = std::chrono::steady_clock::now();
+        const auto startTime = Clock::now();
 
         return _dispatcher.local().sendRequest(KnownVerbs::PartitionMessages,
             std::move(pTask->_pPlatformData->_pPayload),
             *pTask->_pPlatformData->_pEndpoint,
             pTask->getTimeout())
         .then([this, startTime = std::move(startTime)](std::unique_ptr<k2::Payload> payload) {
-            _sendMessageLatency.add(std::chrono::steady_clock::now() - startTime);
+            _sendMessageLatency.add(Clock::now() - startTime);
             // parse a ResponseMessage from the received payload
             auto readBytes = payload->getSize();
             auto hdrSize = sizeof(ResponseMessage::Header);
@@ -332,15 +332,15 @@ private:
 
     bool hasTimerExpired()
     {
-        return std::chrono::steady_clock::now() > _runTaskTimepoint;
+        return Clock::now() > _runTaskTimepoint;
     }
 
     void invokeCallback(ExecutorTaskPtr pTask)
     {
-        const auto timePoint = std::chrono::steady_clock::now();
+        const auto timePoint = Clock::now();
         pTask->invokeResponseCallback();
-        _resultCallbackTime.add(std::chrono::steady_clock::now() - timePoint);
-        _taskTime.add(std::chrono::steady_clock::now() - pTask->_pClientData->_startTime);
+        _resultCallbackTime.add(Clock::now() - timePoint);
+        _taskTime.add(Clock::now() - pTask->_pClientData->_startTime);
         _queue.completeTask(pTask);
     }
 

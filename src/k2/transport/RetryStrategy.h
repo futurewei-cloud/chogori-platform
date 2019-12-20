@@ -11,6 +11,7 @@
 // k2
 #include <k2/common/Common.h>
 #include <k2/common/Log.h>
+#include <k2/common/Chrono.h>
 #include "RPCDispatcher.h"
 
 namespace k2 {
@@ -61,7 +62,7 @@ public: // API
                 this->_try++;
                 this->_currentTimeout*=this->_try;
                 K2DEBUG("running try " << this->_try << ", with timeout "
-                    << std::chrono::duration_cast<std::chrono::milliseconds>(_currentTimeout).count() << "ms");
+                    << k2::msec(_currentTimeout).count() << "ms");
                 return func(this->_retries - this->_try, this->_currentTimeout).
                     handle_exception_type([this](RPCDispatcher::DispatcherShutdown&) {
                         K2DEBUG("Dispatcher has shut down. Stopping retry");

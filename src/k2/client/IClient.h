@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <k2/transport/Status.h>
 
 namespace k2
 {

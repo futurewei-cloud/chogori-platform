@@ -3,6 +3,7 @@
 #include <boost/asio.hpp>
 #include <boost/array.hpp>
 #include <k2/client/BoostTransport.h>
+#include <k2/common/Chrono.h>
 
 namespace k2
 {
@@ -10,7 +11,7 @@ template<typename RequestT, typename ResponseT>
 Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
 {
     if(pool.getConfig().getPartitionManagerSet().empty())
-        return LOG_ERROR(Status::NoPartitionManagerSetup);
+        return Status::NoPartitionManagerSetup;
 
     Status result;
     for(const auto& pm : pool.getConfig().getPartitionManagerSet())
@@ -39,13 +40,6 @@ Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
     return result;
 }
 
-PoolMonitor::TimePoint PoolMonitor::TimePoint::now() {
-    PoolMonitor::TimePoint result;
-    result.systemTime = std::chrono::system_clock::now();
-    result.steadyTime = std::chrono::steady_clock::now();
-    return result;
-}
-
 void PoolMonitor::run()
 {
     try
@@ -55,9 +49,10 @@ void PoolMonitor::run()
         while(!pool.isTerminated())
         {
             //  Crash if any of the nodes didn't do any processing
-            for(size_t i = 0; i < pool.getNodesCount(); i++)
-                ASSERT(pool.getNode(i).resetProcessedRoundsSinceLastCheck());
-
+            for(size_t i = 0; i < pool.getNodesCount(); i++) {
+                auto rcode = pool.getNode(i).resetProcessedRoundsSinceLastCheck();
+                assert(rcode);
+            }
             sendHeartbeat();
         }
     }
@@ -65,12 +60,12 @@ void PoolMonitor::run()
     {
         state = State::failure;
         std::cerr << e.what() << '\n';
-        ASSERT(false);
+        assert(false);
     }
     catch(...)
     {
         state = State::failure;
-        ASSERT(false);
+        assert(false);
     }
 }
 
@@ -96,23 +91,24 @@ void PoolMonitor::registerNodePool()
 {
     manager::NodePoolRegistrationMessage::Request registerRequest;
     manager::NodePoolRegistrationMessage::Response registerResponse;
-    ASSERT(nodeTCPHostAndPorts.empty());
+    assert(nodeTCPHostAndPorts.empty());
 
     registerRequest.poolId = pool.getName();
     for(size_t i = 0; i < pool.getNodesCount(); i++)
     {
         manager::NodeInfo node;
         node.endpoints = pool.getNode(i).getEndpoints();
-        ASSERT(getTCPHostAndPort(node.endpoints, node.tcpHostAndPort));
+        auto rcode = getTCPHostAndPort(node.endpoints, node.tcpHostAndPort);
+        assert(rcode);
         nodeTCPHostAndPorts.push_back(node.tcpHostAndPort);
         registerRequest.nodes.push_back(std::move(node));
     }
 
-    TIF(sendMessage(registerRequest, registerResponse));
+    THROW_IF_BAD(sendMessage(registerRequest, registerResponse));
 
     sessionId = registerResponse.sessionId;
     nodeRegistrationIds = registerResponse.nodeIds;
-    lastHeartbeat = PoolMonitor::TimePoint::now();
+    lastHeartbeat = Clock::now();
     state = State::active;
 }
 
@@ -126,9 +122,9 @@ void PoolMonitor::sendHeartbeat()
         heartbeatRequest.nodeNames.push_back(nodeTCPHostAndPorts[i]);
     heartbeatRequest.sessionId = sessionId;
 
-    TIF(sendMessage(heartbeatRequest, heartbeatResponse));
+    THROW_IF_BAD(sendMessage(heartbeatRequest, heartbeatResponse));
 
-    lastHeartbeat = PoolMonitor::TimePoint::now();
+    lastHeartbeat = Clock::now();
 }
 
 PoolMonitor::PoolMonitor(INodePool& pool) : pool(pool) {
@@ -140,10 +136,10 @@ void PoolMonitor::start() {
         return;
 }
 
-const PoolMonitor::TimePoint& PoolMonitor::getLastHeartbeatTime() const { return lastHeartbeat; }
+const TimePoint& PoolMonitor::getLastHeartbeatTime() const { return lastHeartbeat; }
 
 PoolMonitor::State PoolMonitor::getState() const {
-    ASSERT(state != PoolMonitor::State::failure);
+    assert(state != PoolMonitor::State::failure);
     return state;
 }
 

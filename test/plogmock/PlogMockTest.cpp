@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include <filesystem>
-#include <k2/common/plog/PlogMock.h>
+#include <k2/k2types/plog/PlogMock.h>
 #include <k2/common/Common.h>
 #include <TestUtil.h>
 

@@ -1,6 +1,3 @@
-add_subdirectory(scheduler)
-add_subdirectory(plog)
-
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 

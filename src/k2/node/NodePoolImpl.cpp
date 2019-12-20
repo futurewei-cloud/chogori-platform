@@ -10,7 +10,7 @@ NodePoolImpl::NodePoolImpl() : monitor(*this)
 Status NodePoolImpl::registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module)
 {
     auto emplaceResult = modules.try_emplace(moduleId, std::move(module));
-    return emplaceResult.second ? Status::Ok : LOG_ERROR(Status::ModuleWithSuchIdAlreadyRegistered);
+    return emplaceResult.second ? Status::Ok : Status::ModuleWithSuchIdAlreadyRegistered;
 }
 
 Status NodePoolImpl::registerNode(std::unique_ptr<Node> node)
@@ -21,14 +21,14 @@ Status NodePoolImpl::registerNode(std::unique_ptr<Node> node)
 
 void NodePoolImpl::setCurrentNodeLocationInfo(std::vector<String> endpoints, int coreId)
 {
-    String nodeName = name + "_" + std::to_string(getScheduingPlatform().getCurrentNodeId());
+    String nodeName = name + "_" + std::to_string(getSchedulingPlatform().getCurrentNodeId());
     getCurrentNode().setLocationInfo(std::move(nodeName), std::move(endpoints), coreId);
 }
 
 void NodePoolImpl::setScheduingPlatform(ISchedulingPlatform* platform)
 {
-    ASSERT(!schedulingPlatform);
-    ASSERT(platform);
+    assert(!schedulingPlatform);
+    assert(platform);
     schedulingPlatform = platform;
 }
 

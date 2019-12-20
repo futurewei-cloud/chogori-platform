@@ -10,7 +10,7 @@
 
 // k2
 #include <k2/common/Log.h>
-#include <k2/common/Payload.h>
+#include "Payload.h"
 #include "RPCTypes.h"
 
 namespace k2 {

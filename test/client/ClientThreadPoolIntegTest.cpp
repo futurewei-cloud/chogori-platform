@@ -4,7 +4,7 @@
 // catch
 #include "catch2/catch.hpp"
 // k2
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
 #include <k2/client/Client.h>
 #include <k2/modules/memkv/server/MemKVModule.h>
@@ -41,7 +41,7 @@ SCENARIO("Client in a thread pool")
         _conditional.notify_all();
     });
     // wait for the partition to be created
-    _conditional.wait_for(_lock, std::chrono::seconds(5));
+    _conditional.wait_for(_lock, 5s);
 
     srand(time(0));
     k2::String value = std::to_string(rand());
@@ -60,11 +60,11 @@ SCENARIO("Client in a thread pool")
     auto result = std::move(TestFactory::invokeOperationSync(client, std::move(TestFactory::createOperation(range, std::move(payload)))));
 
     // assert
-    ASSERT(result->_responses.size() == 1)
-    ASSERT(0 == result->_responses[0].moduleCode);
+    assert(result->_responses.size() == 1);
+    assert(0 == result->_responses[0].moduleCode);
     // extract value
     MemKVModule<>::GetResponse getResponse;
     result->_responses[0].payload.getReader().read(getResponse);
     K2INFO("received value: " << getResponse.value << " for key: " << key);
-    ASSERT(value==getResponse.value);
+    assert(value==getResponse.value);
 }

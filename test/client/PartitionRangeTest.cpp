@@ -4,7 +4,7 @@
 // catch
 #include <catch2/catch.hpp>
 // k2
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
 #include <k2/client/IClient.h>
 #include <k2/client/PartitionMap.h>

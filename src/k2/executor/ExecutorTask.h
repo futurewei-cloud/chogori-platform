@@ -42,27 +42,27 @@ public:
     {
         String _url;
         std::unique_ptr<Payload> _pPayload;
-        k2::Duration _timeout = std::chrono::microseconds(1000);
+        k2::Duration _timeout = 1000us;
         PayloadRefCallback _fPayloadRef = nullptr;
         PayloadPtrCallback _fPayloadPtr = nullptr;
         ResponseCallback _fResponse = nullptr;
-        std::chrono::time_point<std::chrono::steady_clock> _startTime;
+        TimePoint _startTime;
 
         ClientData(String url, Duration timeout, PayloadRefCallback& fPayloadRef, ResponseCallback& fResponse)
             : _url(std::move(url))
             , _timeout(std::move(timeout))
             , _fPayloadRef(fPayloadRef)
             , _fResponse(fResponse)
-            , _startTime(std::chrono::steady_clock::now())
+            , _startTime(Clock::now())
         {
             // empty
         }
 
         ClientData(String url, PayloadPtrCallback fPayloadPtr)
             : _url(std::move(url))
-            , _timeout(std::chrono::microseconds(1000))
+            , _timeout(1000us)
             , _fPayloadPtr(fPayloadPtr)
-            , _startTime(std::chrono::steady_clock::now())
+            , _startTime(Clock::now())
         {
             // empty
         }
@@ -72,7 +72,7 @@ public:
             , _pPayload(std::move(pPayload))
             , _timeout(timeout)
             , _fResponse(fResponse)
-            , _startTime(std::chrono::steady_clock::now())
+            , _startTime(Clock::now())
         {
             // empty
         }

@@ -88,7 +88,7 @@ public:
             }
             else {
                 ret = _readyTasks.push(pTask);
-                ASSERT(ret);
+                assert(ret);
             }
         }
 
@@ -98,7 +98,7 @@ public:
     void completeTask(ExecutorTaskPtr pTask)
     {
         bool ret = _completedTasks.push(pTask);
-        ASSERT(ret);
+        assert(ret);
     }
 
     bool empty()

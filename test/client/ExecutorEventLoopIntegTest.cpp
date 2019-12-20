@@ -4,7 +4,7 @@
 // catch
 #include "catch2/catch.hpp"
 // k2
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
 #include <k2/client/IClient.h>
 #include <k2/executor/Executor.h>
@@ -43,18 +43,18 @@ SCENARIO("Executor with event loop")
         bool done = false;
 
     public:
-        virtual uint64_t eventLoop()
+        virtual Duration eventLoop()
         {
             count++;
             if(done || count > 4000)
             {
                  // verify
-                ASSERT(done);
+                assert(done);
                 // stop executor
                 _pContext->_rExecutor.stop();
             }
             if(count > 1) {
-                return 1000;
+                return 1000us;
             }
 
             K2INFO("executing loop once");
@@ -67,15 +67,15 @@ SCENARIO("Executor with event loop")
                 K2INFO("payload created");
 
                 // send the payload
-                _pContext->_rExecutor.execute(endpointUrl, std::chrono::seconds(5), std::move(payload),
+                _pContext->_rExecutor.execute(endpointUrl, 5s, std::move(payload),
                 [&] (std::unique_ptr<ResponseMessage> response) {
                     K2INFO("response from execute:" << k2::getStatusText(response->status));
-                    ASSERT(response->status == Status::Ok)
+                    assert(response->status == Status::Ok);
                     done = true;
                 });
             });
 
-            return 1000;
+            return 1000us;
         }
 
         virtual void onInit(std::unique_ptr<Context> pContext)

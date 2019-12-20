@@ -1,5 +1,6 @@
 #include "AssignmentManager.h"
 #include <k2/common/TimeMeasure.h>
+#include <k2/common/Log.h>
 
 namespace k2
 {
@@ -17,17 +18,17 @@ Partition* AssignmentManager::getPartition(PartitionId id) {
 Status AssignmentManager::processPartitionAssignmentMessage(PartitionRequest& request)
 {
     if(partitionCount >= Constants::MaxCountOfPartitionsPerNode)
-        return LOG_ERROR(Status::TooManyPartitionsAlready);
+        return Status::TooManyPartitionsAlready;
 
     if(hasPartition(request.message->getPartition().id))
-        return LOG_ERROR(Status::PartitionAlreadyAssigned);
+        return Status::PartitionAlreadyAssigned;
 
     AssignmentMessage assignMessage;
     if(!request.message->getPayload().getReader().read(assignMessage))  //  TODO: allocate under partition memory arena
-        return LOG_ERROR(Status::MessageParsingError);
+        return Status::MessageParsingError;
 
     Collection* collection = nullptr;
-    RIF(pool.internalizeCollection(std::move(assignMessage.collectionMetadata), collection));
+    RET_IF_BAD(pool.internalizeCollection(std::move(assignMessage.collectionMetadata), collection));
 
     partitions[partitionCount++] = std::make_pair(
         request.message->getPartition().id,
@@ -43,10 +44,10 @@ Status AssignmentManager::getAndCheckPartition(std::unique_ptr<PartitionMessage>
 {
     partition = getPartition(message->getPartition().id);
     if(!partition)
-        return LOG_ERROR(Status::NodeNotServicePartition);
+        return Status::NodeNotServicePartition;
 
     if(partition->getVersion() != message->getPartition().version)
-        return LOG_ERROR(Status::PartitionVersionMismatch);
+        return Status::PartitionVersionMismatch;
 
     return Status::Ok;
 }
@@ -54,7 +55,7 @@ Status AssignmentManager::getAndCheckPartition(std::unique_ptr<PartitionMessage>
 Status AssignmentManager::processPartitionOffloadMessage(PartitionRequest& request)
 {
     Partition* partition;
-    RIF(getAndCheckPartition(request.message, partition));
+    RET_IF_BAD(getAndCheckPartition(request.message, partition));
 
     partition->state = Partition::State::Offloading;
     partition->createAndActivateTask<OffloadTask>(std::move(request.client));
@@ -65,7 +66,7 @@ Status AssignmentManager::processPartitionOffloadMessage(PartitionRequest& reque
 Status AssignmentManager::processClientRequestMessage(PartitionRequest& request)
 {
     Partition* partition;
-    RIF(getAndCheckPartition(request.message, partition));
+    RET_IF_BAD(getAndCheckPartition(request.message, partition));
 
     partition->createAndActivateTask<ClientTask>(std::move(request.client), std::move(request.message->getPayload()));
 
@@ -75,7 +76,7 @@ Status AssignmentManager::processClientRequestMessage(PartitionRequest& request)
 Status AssignmentManager::_processMessage(PartitionRequest& request)
 {
     if(pool.getMonitor().getState() == PoolMonitor::State::waitingForInitialization)
-        return LOG_ERROR(Status::NodePoolHasNotYetBeenInitialized);
+        return Status::NodePoolHasNotYetBeenInitialized;
 
     switch(request.message->getMessageType())
     {
@@ -89,7 +90,7 @@ Status AssignmentManager::_processMessage(PartitionRequest& request)
             return processClientRequestMessage(request);
 
         default:
-            return LOG_ERROR(Status::UnkownMessageType);
+            return Status::UnkownMessageType;
     }
 }
 
@@ -98,15 +99,15 @@ void AssignmentManager::checkStateConsistency()
     if(pool.getMonitor().getState() == PoolMonitor::State::disabled)
         return;
 
-    std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::time_point heartbeatTime = pool.getMonitor().getLastHeartbeatTime().steadyTime;
+    TimePoint currentTime = Clock::now();
+    TimePoint heartbeatTime = pool.getMonitor().getLastHeartbeatTime();
     if(heartbeatTime > lastPoolMonitorSessionCheckValue)
     {
         lastPoolMonitorSessionCheckValue = heartbeatTime;
-        lastPoolMonitorSessionCheckTime = std::chrono::steady_clock::now();
+        lastPoolMonitorSessionCheckTime = Clock::now();
     }
     else
-        ASSERT(currentTime - lastPoolMonitorSessionCheckTime < pool.getConfig().getNoHeartbeatGracefullPeriod());
+        assert(currentTime - lastPoolMonitorSessionCheckTime < pool.getConfig().getNoHeartbeatGracefullPeriod());
 }
 
 void AssignmentManager::updateLiveness()
@@ -137,16 +138,16 @@ bool AssignmentManager::processTasks()
     if(!partitionCount)
         return false;
 
-    std::chrono::nanoseconds maxIterationTime = pool.getConfig().getTaskProcessingIterationMaxExecutionTime();
+    Duration maxIterationTime = pool.getConfig().getTaskProcessingIterationMaxExecutionTime();
     TimeTracker iterationTracker(maxIterationTime);
 
-    std::chrono::nanoseconds remainingTime;
+    Duration remainingTime;
     bool workDone = false;
-    while(partitionCount && (remainingTime = iterationTracker.remaining()) > std::chrono::nanoseconds::zero())
+    while(partitionCount && (remainingTime = iterationTracker.remaining()) > Duration::zero())
     {
         bool hadActiveTasks = false;
 
-        std::chrono::nanoseconds maxPartitionTime = remainingTime/partitionCount;
+        Duration maxPartitionTime = remainingTime/partitionCount;
         for(int i = 0; i < partitionCount; i++)
         {
             checkStateConsistency();

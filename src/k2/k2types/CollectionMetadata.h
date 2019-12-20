@@ -2,7 +2,7 @@
 
 #include <map>
 #include "ModuleId.h"
-#include "Serialization.h"
+#include <k2/transport/Serialization.h>
 
 namespace k2
 {

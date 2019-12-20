@@ -73,7 +73,8 @@ protected:
             MessageExchangeRound(seastar::lw_shared_ptr<Connection> connection) : _connection(connection)
             {
                 PayloadWriter writer = _outPayload.getWriter();
-                ASSERT(writer.reserveContiguousStructure(_header)); //  Always must have space for a response header
+                auto rcode = writer.reserveContiguousStructure(_header); //  Always must have space for a response header
+                assert(rcode);
             }
 
             PayloadWriter getResponseWriter() override
@@ -230,9 +231,9 @@ public:
         return engine().cpu_id();
     }
 
-    void delay(std::chrono::microseconds delayTimeUs, std::function<void()>&& callback) override
+    void delay(Duration delay, std::function<void()>&& callback) override
     {
-        seastar::sleep(delayTimeUs).then([cb = std::move(callback)] { cb(); });
+        seastar::sleep(delay).then([cb = std::move(callback)] { cb(); });
     }
 };
 

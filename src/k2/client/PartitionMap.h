@@ -148,7 +148,7 @@ public:
             return iterator(it);
         }
 
-        ASSERT(intersect(range, it->range))
+        assert(intersect(range, it->range));
 
         return iterator(it, range);
     }

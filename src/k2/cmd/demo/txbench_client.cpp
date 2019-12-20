@@ -95,7 +95,7 @@ public:  // application lifespan
             return seastar::make_ready_future<>();
         }).finally([this]() {
             K2INFO("Done with benchmark");
-            auto totalsecs = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(_actualTestDuration).count())/1000.0;
+            auto totalsecs = ((double)k2::msec(_actualTestDuration).count())/1000.0;
             auto szpsec = (((double)_session.totalSize - _session.unackedSize )/(1024*1024*1024))/totalsecs;
             auto cntpsec = ((double)_session.totalCount - _session.unackedCount)/totalsecs;
             K2INFO("sessionID=" << _session.sessionID);
@@ -104,7 +104,7 @@ public:  // application lifespan
             K2INFO("totalCount=" << _session.totalCount << "(" << cntpsec << " per sec)" );
             K2INFO("unackedSize=" << _session.unackedSize);
             K2INFO("unackedCount=" << _session.unackedCount);
-            K2INFO("testDuration=" << std::chrono::duration_cast<std::chrono::milliseconds>(_actualTestDuration).count()  << "ms");
+            K2INFO("testDuration=" << k2::msec(_actualTestDuration).count()  << "ms");
             _stopped = true;
             _stopPromise.set_value();
         });
@@ -123,7 +123,7 @@ private:
         retryStrategy->withRetries(10).withStartTimeout(1s).withRate(5);
         return retryStrategy->run([this, myRemote=std::move(myRemote)](size_t retriesLeft, k2::Duration timeout) {
             K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
-                    << std::chrono::duration_cast<std::chrono::milliseconds>(timeout).count()
+                    << k2::msec(timeout).count()
                     << "ms, with " << myRemote->getURL());
             if (_stopped) {
                 K2INFO("Stopping retry since we were stopped");
@@ -191,7 +191,7 @@ private:
              ", with pipelineDepthCount=" << _session.config.pipelineCount <<
              ", with ackCount=" << _session.config.ackCount <<
              ", with echoMode=" << _session.config.echoMode <<
-             ", with testDuration=" << std::chrono::duration_cast<std::chrono::milliseconds>(_testDuration).count()  << "ms");
+             ", with testDuration=" << k2::msec(_testDuration).count()  << "ms");
 
         k2::RPC().registerMessageObserver(ACK, [this](k2::Request&& request) {
             auto now = k2::Clock::now(); // to compute reqest latencies

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <atomic>
-#include <k2/common/ModuleId.h>
-#include <k2/common/Status.h>
+#include <k2/k2types/ModuleId.h>
+#include <k2/transport/Status.h>
 #include <memory>
 #include "ISchedulingPlatform.h"
 #include "Module.h"
@@ -92,7 +92,7 @@ public:
 
     Node& getNode(size_t nodeId);
 
-    ISchedulingPlatform& getScheduingPlatform();
+    ISchedulingPlatform& getSchedulingPlatform();
 
     Node& getCurrentNode();
 

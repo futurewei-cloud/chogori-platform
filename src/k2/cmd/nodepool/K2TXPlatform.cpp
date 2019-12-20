@@ -4,12 +4,12 @@
 #include "K2TXPlatform.h"
 #include <seastar/core/app-template.hh> // for app_template
 #include <k2/common/Log.h>
-#include <k2/common/Constants.h>
+#include <k2/k2types/Constants.h>
 #include <k2/common/TimeMeasure.h>
 #include <k2/transport/IRPCProtocol.h>
 #include <sched.h>
-#include <k2/common/seastar/SeastarApp.h>
-#include <k2/transport/SeastarTransport.h>
+#include "SeastarApp.h"
+#include "SeastarTransport.h"
 
 namespace k2 {
 

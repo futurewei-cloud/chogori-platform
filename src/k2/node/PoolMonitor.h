@@ -1,6 +1,6 @@
 #pragma once
 
-#include <k2/common/PartitionManagerMessage.h>
+#include <k2/k2types/PartitionManagerMessage.h>
 #include "NodePool.h"
 
 namespace k2
@@ -19,12 +19,6 @@ public:
         failure                     //  Everybody observing such state should crash immediately
     };
 
-    struct TimePoint
-    {
-        std::chrono::system_clock::time_point systemTime;
-        std::chrono::steady_clock::time_point steadyTime;
-        static TimePoint now();
-    };
 protected:
     INodePool& pool;
     std::vector<String> nodeTCPHostAndPorts; //  TCP endpoints for each node that Partition Manager will use for comunications

@@ -65,7 +65,7 @@ public:
     };
 
 protected:
-    const std::chrono::microseconds _minDelay; // the minimum amount of time before calling the next application loop
+    const Duration _minDelay; // the minimum amount of time before calling the next application loop
     seastar::semaphore _sempahore;
     std::unique_ptr<IApplication<T>> _pApplication;
     // class defined
@@ -73,7 +73,7 @@ protected:
 
 public:
     ApplicationService(IApplication<T>& rApplication, T& rContext)
-    : _minDelay(std::chrono::microseconds(5))
+    : _minDelay(5us)
     , _sempahore(seastar::semaphore(1))
     , _pApplication(std::move(rApplication.newInstance()))
     {
@@ -87,8 +87,8 @@ public:
          return seastar::with_semaphore(_sempahore, 1, [&] {
             return seastar::do_until([&] { return _stopFlag; }, [&] {
                 // execute event loop
-                const long int timeslice = _pApplication->eventLoop();
-                const auto delay = (timeslice < _minDelay.count()) ? _minDelay : std::chrono::microseconds(timeslice);
+                const auto timeslice = _pApplication->eventLoop();
+                auto delay = (timeslice < _minDelay) ? _minDelay : timeslice;
 
                 return seastar::sleep(std::move(delay));
             });

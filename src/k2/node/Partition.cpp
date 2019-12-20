@@ -47,14 +47,14 @@ void Partition::release()
     }
 }
 
-bool Partition::processActiveTasks(std::chrono::nanoseconds maxPartitionTime)  //  When return false, partition is deleted
+bool Partition::processActiveTasks(Duration maxPartitionTime)  //  When return false, partition is deleted
 {
-    Stopwatch<std::chrono::steady_clock> stopWatch;
+    Stopwatch stopWatch;
     TimeTracker partitionTracker(maxPartitionTime);
     for(TaskRequest& task : getTaskList(TaskListType::Active))
     {
-        std::chrono::nanoseconds remainingTime = partitionTracker.remaining();
-        if(remainingTime == std::chrono::nanoseconds::zero())
+        Duration remainingTime = partitionTracker.remaining();
+        if(remainingTime == Duration::zero())
             break;
 
         TaskRequest::ProcessResult response = task.process(remainingTime);  //  TODO: move to partition
@@ -77,7 +77,7 @@ bool Partition::processActiveTasks(std::chrono::nanoseconds maxPartitionTime)  /
                 return false;
 
             default:
-                ASSERT(false);
+                assert(false);
         }
     }
 

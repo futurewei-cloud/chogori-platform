@@ -21,7 +21,7 @@ TaskRequest::ProcessResult MessageInitiatedTaskRequest::moduleResponseToProcessR
         case ModuleResponse::Postpone: {
             if (response.postponeDelayUs)  //  If delay time if specified, let sleep for that time
             {
-                getNodePool().getScheduingPlatform().delay(std::chrono::microseconds(response.postponeDelayUs), [&] {
+                getNodePool().getSchedulingPlatform().delay(std::chrono::microseconds(response.postponeDelayUs), [&] {
                     //  TODO: fix case when task got cancelled before timer fired
                     awake();
                 });
@@ -32,7 +32,7 @@ TaskRequest::ProcessResult MessageInitiatedTaskRequest::moduleResponseToProcessR
         }
 
         default:
-            ASSERT(false);
+            assert(false);
             return TaskRequest::ProcessResult::Done;
     }
 }

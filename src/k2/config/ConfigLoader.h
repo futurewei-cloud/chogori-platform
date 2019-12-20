@@ -74,7 +74,7 @@ public:
         const size_t masSize = 512;
         char hostname[masSize];
         const int result = gethostname(hostname, masSize);
-        ASSERT(!result);
+        assert(!result);
 
         return std::move(std::string(hostname));
     }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <k2/common/PartitionMessage.h>
+#include <k2/k2types/PartitionMessage.h>
 #include "BoostTransport.h"
 
 namespace k2
@@ -27,7 +27,7 @@ std::unique_ptr<ResponseMessage> sendPartitionMessage(
     if(!message->payload.getReader().read(header))
         throw std::exception();
 
-    TIF(header.status);
+    THROW_IF_BAD(header.status);
     auto response = std::make_unique<ResponseMessage>(header);
 
     if(!header.messageSize)

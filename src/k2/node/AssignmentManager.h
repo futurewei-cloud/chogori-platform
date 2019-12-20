@@ -1,7 +1,8 @@
 #pragma once
 
-#include <k2/common/Status.h>
+#include <k2/transport/Status.h>
 #include <k2/common/Log.h>
+#include <k2/k2types/Constants.h>
 #include "NodeConfig.h"
 #include "NodePool.h"
 #include "PoolMonitor.h"
@@ -32,9 +33,9 @@ protected:
 
     Status _processMessage(PartitionRequest& request);
 
-    std::chrono::steady_clock::time_point lastTaskProcessingCall ;
-    std::chrono::steady_clock::time_point lastPoolMonitorSessionCheckTime;
-    std::chrono::steady_clock::time_point lastPoolMonitorSessionCheckValue;
+    TimePoint lastTaskProcessingCall ;
+    TimePoint lastPoolMonitorSessionCheckTime;
+    TimePoint lastPoolMonitorSessionCheckValue;
 
     void checkStateConsistency();
     void updateLiveness();

@@ -2,8 +2,6 @@
 #    (C)opyright Futurewei Technologies Inc, 2019
 #-->
 
-project(k2executor VERSION 1.0.0 DESCRIPTION "k2 executor")
-
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 

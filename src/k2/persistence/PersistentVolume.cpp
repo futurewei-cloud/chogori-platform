@@ -317,7 +317,7 @@ bool PersistentVolume::_Iterator::isEnd() const {
 }
 
 ChunkInfo PersistentVolume::_Iterator::getCurrent() const {
-    ASSERT(!_isEnd());
+    assert(!_isEnd());
     return parent.m_chunkList[m_chunkIndex];
 }
 
@@ -329,7 +329,7 @@ bool PersistentVolume::_Iterator::equal(const k2::IIterator<ChunkInfo>* it) cons
         return _isEnd();
 
     auto other = dynamic_cast<const _Iterator*>(it);
-    ASSERT(other);
+    assert(other);
 
     return &parent == &other->parent && m_chunkIndex == other->m_chunkIndex;
 }

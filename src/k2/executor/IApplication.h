@@ -12,7 +12,7 @@ template <class T>
 class IApplication
 {
 public:
-    virtual uint64_t eventLoop()= 0;
+    virtual Duration eventLoop()= 0;
     virtual void onInit(std::unique_ptr<T>)= 0;
     virtual void onStart()= 0;
     virtual void onStop()= 0;

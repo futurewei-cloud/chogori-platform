@@ -1,6 +1,6 @@
 #pragma once
 
-#include <k2/common/PartitionMessage.h>
+#include <k2/k2types/PartitionMessage.h>
 #include <k2/indexer/IndexerInterface.h>
 #include <k2/indexer/MapIndexer.h>
 #include <k2/node/Module.h>
@@ -135,7 +135,7 @@ public:
     //
     ModuleResponse onAssign(AssignmentTask& task) override
     {
-        ASSERT(task.getPartition().moduleData == nullptr);
+        assert(task.getPartition().moduleData == nullptr);
         task.getPartition().moduleData = new PartitionContext();
         return ModuleResponse::Ok;
     }

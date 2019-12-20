@@ -70,7 +70,7 @@ seastar::future<std::vector<PlogId>> PlogMock::create(uint plogCount)
                                     return plogFileDescriptor->ssfile.flush();
                                 })
                                 .then([&plogIds, plogId, plogFileDescriptor, this]() mutable {
-                                    ASSERT(m_plogFileDescriptors.find(plogId) == m_plogFileDescriptors.end());
+                                    assert(m_plogFileDescriptors.find(plogId) == m_plogFileDescriptors.end());
                                     m_plogFileDescriptors[plogId] = std::move(*(plogFileDescriptor.release()));
                                     plogIds.push_back(std::move(plogId));
                                     return seastar::stop_iteration::no;
@@ -180,7 +180,7 @@ seastar::future<uint32_t> PlogMock::append(const PlogId& plogId, Binary bin)
                 })
                 .then([rightTailSize, leftTailSize, bin = std::move(bin), remainingWriteSize, descr](size_t writtenSize)
                 {
-                    ASSERT(writtenSize == remainingWriteSize);
+                    assert(writtenSize == remainingWriteSize);
 
                     if(!rightTailSize)
                         return seastar::make_ready_future<size_t>(0);
@@ -204,8 +204,8 @@ seastar::future<uint32_t> PlogMock::append(const PlogId& plogId, Binary bin)
 
 seastar::future<> readFull(seastar::file& f, size_t position, char* buffer, size_t size)
 {
-    ASSERT((position % DMA_ALIGNMENT) == 0);
-    ASSERT((size % DMA_ALIGNMENT) == 0);
+    assert((position % DMA_ALIGNMENT) == 0);
+    assert((size % DMA_ALIGNMENT) == 0);
 
     return seastar::do_with(size, position, buffer, [&f](size_t& size, size_t& position, char* &buffer) mutable
     {
@@ -220,7 +220,7 @@ seastar::future<> readFull(seastar::file& f, size_t position, char* buffer, size
                     if(!readSize)
                         return seastar::make_exception_future<seastar::stop_iteration>(PlogException("Read failure: dma_read=0", P_ERROR));
 
-                    ASSERT(size >= readSize);
+                    assert(size >= readSize);
                     size -= readSize;
                     position += readSize;
                     buffer += readSize;
@@ -234,7 +234,7 @@ seastar::future<> readFull(seastar::file& f, size_t position, char* buffer, size
 
 seastar::future<ReadRegion> PlogMock::read(const PlogId& plogId, ReadRegion region)
 {
-    ASSERT(region.size && (!region.buffer || region.buffer.size() >= region.size));
+    assert(region.size && (!region.buffer || region.buffer.size() >= region.size));
 
     return getDescriptor(plogId)
         .then([region = std::move(region), plogId] (PlogFileDescriptor* descr) mutable

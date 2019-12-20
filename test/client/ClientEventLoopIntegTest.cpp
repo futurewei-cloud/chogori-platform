@@ -5,7 +5,7 @@
 // catch
 #include "catch2/catch.hpp"
 // k2
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
 #include <k2/client/Client.h>
 #include <k2/modules/memkv/server/MemKVModule.h>
@@ -31,7 +31,7 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
 
             K2INFO("set value: " << value << " for key: " << key << " response: " << k2::getStatusText(result._responses[0].status));
             (void)rClient;
-            ASSERT(result._responses[0].status == Status::Ok);
+            assert(result._responses[0].status == Status::Ok);
 
             // get the key
             rClient.createPayload(
@@ -43,14 +43,14 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
                     (void)rClient;
 
                     // assert
-                    ASSERT(result._responses[0].status == Status::Ok);
-                    ASSERT(result._responses.size() == 1)
-                    ASSERT(0 == result._responses[0].moduleCode);
+                    assert(result._responses[0].status == Status::Ok);
+                    assert(result._responses.size() == 1);
+                    assert(0 == result._responses[0].moduleCode);
                     // extract value
                     MemKVModule<>::GetResponse getResponse;
                     result._responses[0].payload.getReader().read(getResponse);
                     K2INFO("received value: " << getResponse.value << " for key: " << key);
-                    ASSERT(value==getResponse.value);
+                    assert(value==getResponse.value);
 
                     onCompleted();
                 });
@@ -105,18 +105,18 @@ SCENARIO("Client in a thread pool")
             // empty
         }
 
-        virtual uint64_t eventLoop()
+        virtual Duration eventLoop()
         {
             count++;
             if(done || count > 5000)
             {
                  // verify
-                ASSERT(done);
+                assert(done);
                 // stop client
                _pContext->_rClient.stop();
             }
             if(count > 1) {
-                return 1000;
+                return 1000us;
             }
 
             TestFactory::assignPartitionAsync(_pContext->_rExecutor, _pContext->_endpoint, partitionId, PartitionRange("a", "d"),
@@ -127,7 +127,7 @@ SCENARIO("Client in a thread pool")
                 });
             });
 
-            return 1000;
+            return 1000us;
         }
 
         virtual void onInit(std::unique_ptr<TestContext> pContext)

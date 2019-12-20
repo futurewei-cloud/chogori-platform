@@ -15,7 +15,7 @@ public:
     //
     //  Execute callback after some delay
     //
-    virtual void delay(std::chrono::microseconds delayTime, std::function<void()>&& callback) = 0;
+    virtual void delay(Duration delayTime, std::function<void()>&& callback) = 0;
 };
 
 }   //  namespace k2

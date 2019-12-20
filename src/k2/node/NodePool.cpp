@@ -44,20 +44,20 @@ Status INodePool::_internalizeCollection(CollectionMetadata&& metadata, Collecti
 
 Status INodePool::internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)
 {
-    RET(_internalizeCollection(std::move(metadata), ptr));
+    return _internalizeCollection(std::move(metadata), ptr);
 }
 
 size_t INodePool::getNodesCount() const { return nodes.size(); }
 
 Node& INodePool::getNode(size_t nodeId)
 {
-    ASSERT(nodeId < getNodesCount());
+    assert(nodeId < getNodesCount());
     return *nodes[nodeId];
 }
 
-ISchedulingPlatform& INodePool::getScheduingPlatform() { return *schedulingPlatform; }
+ISchedulingPlatform& INodePool::getSchedulingPlatform() { return *schedulingPlatform; }
 
-Node& INodePool::getCurrentNode() { return getNode(getScheduingPlatform().getCurrentNodeId()); }
+Node& INodePool::getCurrentNode() { return getNode(getSchedulingPlatform().getCurrentNodeId()); }
 
 const NodePoolConfig& INodePool::getConfig() const { return config; }
 

@@ -25,7 +25,7 @@ public:
         YAML::Node valueNode = node[name];
         if(!valueNode) {
             K2ERROR("Config; missing config value:" << name);
-            ASSERT(valueNode);
+            assert(valueNode);
         }
 
         return getOptionalValue(valueNode, dataType);

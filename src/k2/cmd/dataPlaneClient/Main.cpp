@@ -4,7 +4,7 @@
 #include <boost/filesystem.hpp>
 
 #include <k2/modules/memkv/server/MemKVModule.h>
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 #include <k2/common/TimeMeasure.h>
 
 #include <k2/client/PartitionMessageTransport.h>
@@ -18,7 +18,7 @@ void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
 
-    Stopwatch<> stopWatch;
+    Stopwatch stopWatch;
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest));
 
@@ -33,7 +33,7 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
 {
     MemKVModule<>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
 
-    Stopwatch<> stopWatch;
+    Stopwatch stopWatch;
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest));
 

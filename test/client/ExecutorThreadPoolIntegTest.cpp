@@ -4,7 +4,7 @@
 // catch
 #include "catch2/catch.hpp"
 // k2
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
 #include <k2/client/IClient.h>
 #include <k2/executor/Executor.h>
@@ -41,23 +41,23 @@ SCENARIO("Executor in thread pool mode")
         }
     );
     // wait until the payload is created
-    _conditional.wait_for(_lock, std::chrono::seconds(6));
+    _conditional.wait_for(_lock, 6s);
     // verify the payload was created
-    ASSERT(nullptr != pPayload.get())
+    assert(nullptr != pPayload.get());
 
     // send the payload
     bool flag = false;
-    executor.execute(endpointUrl, std::chrono::seconds(4), std::move(pPayload),
+    executor.execute(endpointUrl, 4s, std::move(pPayload),
     [&] (std::unique_ptr<ResponseMessage> response) {
         K2INFO("response from payload1:" << k2::getStatusText(response->status));
-        ASSERT(response->status == Status::Ok)
+        assert(response->status == Status::Ok);
         flag = true;
         _conditional.notify_one();
     });
-    _conditional.wait_for(_lock, std::chrono::seconds(6));
+    _conditional.wait_for(_lock, 6s);
 
     executor.stop();
 
     // verify the callback was invoked
-    ASSERT(flag == true)
+    assert(flag == true);
 }

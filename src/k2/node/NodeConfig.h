@@ -25,11 +25,11 @@ public:
     std::string rdmaNicId;
     std::string memorySizeStr;
 
-    std::chrono::nanoseconds getTaskProcessingIterationMaxExecutionTime() const { return std::chrono::nanoseconds(10000); }
+    Duration getTaskProcessingIterationMaxExecutionTime() const { return 10000ns; }
 
-    std::chrono::microseconds getMonitorSleepTime() const { return std::chrono::milliseconds(5); }
+    Duration getMonitorSleepTime() const { return 5ms; }
 
-    std::chrono::microseconds getNoHeartbeatGracefullPeriod() const { return std::chrono::milliseconds(30); }
+    Duration getNoHeartbeatGracefullPeriod() const { return 30ms; }
 
     bool isMonitorEnabled() const { return monitorEnabled; }
     bool isRDMAEnabled() const { return rdmaEnabled; }

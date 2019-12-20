@@ -1,6 +1,6 @@
 #pragma once
 
-#include <k2/common/CollectionMetadata.h>
+#include <k2/k2types/CollectionMetadata.h>
 #include "Module.h"
 
 namespace k2

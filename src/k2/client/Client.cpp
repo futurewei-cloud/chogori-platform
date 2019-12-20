@@ -1,6 +1,7 @@
 // k2
 #include "Client.h"
 #include <k2/executor/Executor.h>
+#include <k2/common/Log.h>
 
 namespace k2
 {
@@ -20,7 +21,7 @@ Client::~Client()
 
 void Client::init(const ClientSettings& settings)
 {
-    ASSERT(!settings.networkProtocol.empty())
+    K2ASSERT(!settings.networkProtocol.empty(), "network protocol cannot be empty");
     _settings = settings;
     _executor.init(settings);
     _executor.start();
@@ -28,7 +29,7 @@ void Client::init(const ClientSettings& settings)
 
 void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Config> pConfig)
 {
-    ASSERT(!settings.networkProtocol.empty())
+    K2ASSERT(!settings.networkProtocol.empty(), "network protocol cannot be empty");
 
     for(auto pNodeConfig : pConfig->getClusterNodes()) {
         for(auto pPartitionConfig : pNodeConfig->getPartitions()) {
@@ -69,7 +70,7 @@ void Client::createPayload(std::function<void(IClient&, Payload&&)> onCompleted)
     _executor.execute(endpoint, [pClient, onCompleted] (std::unique_ptr<k2::Payload> pPayload) mutable {
         PartitionMessage::Header* header;
         bool ret = pPayload->getWriter().reserveContiguousStructure(header);
-        ASSERT(ret);
+        K2ASSERT(ret, "unable to reserve space in payload");
         onCompleted(*pClient, std::move(*pPayload.release()));
     });
 }
@@ -77,14 +78,14 @@ void Client::createPayload(std::function<void(IClient&, Payload&&)> onCompleted)
 void Client::execute(Operation&& operation, std::function<void(IClient&, OperationResult&&)> onCompleted)
 {
     // we expect at least one message
-    ASSERT(!operation.messages.empty());
+    K2ASSERT(!operation.messages.empty(), "operation message cannot be empty");
     // find all the endpoints for the range
     // TODO: iterate through all the messages
     Range& range = *(operation.messages.begin()->ranges.begin());
     std::unique_ptr<Payload> pSourcePayload = std::make_unique<Payload>(std::move(operation.messages.begin()->content));
 
     auto it = _partitionMap.find(range);
-    ASSERT(it != _partitionMap.end());
+    K2ASSERT(it != _partitionMap.end(), "range does not exist in partition map");
 
     // keep a reference to the first partiton since it will be send last; we are doing this to prevent from copying the original message
     PartitionDescription& firstPartition = *it;
@@ -160,7 +161,7 @@ void Client::sendPayload(const std::string& endpoint, std::unique_ptr<Payload> p
 void Client::copyPayload(Payload& sourcePayload, Payload& destinationPayload)
 {
     const size_t headerSize = txconstants::MAX_HEADER_SIZE + sizeof(PartitionMessage::Header);
-    ASSERT(sourcePayload.getSize() >= headerSize);
+    K2ASSERT(sourcePayload.getSize() >= headerSize, "");
     const size_t payloadSize = sourcePayload.getSize() - headerSize;
     auto reader = sourcePayload.getReader(headerSize);
     auto writer = destinationPayload.getWriter();
@@ -190,7 +191,7 @@ std::unique_ptr<Payload> Client::createPayload(const std::string& endpoint)
     // reserve space for the partition header
     PartitionMessage::Header* header;
     bool ret = pPayload->getWriter().reserveContiguousStructure(header);
-    ASSERT(ret);
+    assert(ret);
 
     return std::move(pPayload);
 }

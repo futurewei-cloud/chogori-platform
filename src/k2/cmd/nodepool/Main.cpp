@@ -14,7 +14,7 @@ void setupNodesInPool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfi
         // fallback to the default nodepool configuration
         nodePoolConfigVector = pConfig->getNodePools();
     }
-    ASSERT(!nodePoolConfigVector.empty());
+    assert(!nodePoolConfigVector.empty());
     auto pNodePoolConfig = nodePoolConfigVector[0];
 
     for(auto pNode : pNodePoolConfig->getNodes()) {
@@ -27,7 +27,7 @@ void setupNodesInPool(NodePoolImpl& pool, std::shared_ptr<config::Config> pConfi
             nodeConfig.ipv4.port = pTransport->getTcpPort();
         }
 
-        TIF(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
+        THROW_IF_BAD(pool.registerNode(std::make_unique<Node>(pool, std::move(nodeConfig))));
     }
 
     const auto pConfigManager = pConfig->getPartitionManager();
@@ -65,7 +65,7 @@ int main(int argc, char** argv)
         bpo::store(bpo::parse_command_line(argc, argv, k2Options), variablesMap);
 
         k2::NodePoolImpl pool;
-        TIF(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
+        THROW_IF_BAD(pool.registerModule(ModuleId::Default, std::make_unique<k2::MemKVModule<MapIndexer>>()));
         std::shared_ptr<config::Config> pConfig = variablesMap.count("k2config")
             ? config::ConfigLoader::loadConfig(variablesMap["k2config"].as<std::string>())
             : config::ConfigLoader::loadDefaultConfig();
@@ -75,26 +75,26 @@ int main(int argc, char** argv)
 
         K2TXPlatform platform;
         pool.setScheduingPlatform(&platform);
-        TIF(platform.run(pool));
+        THROW_IF_BAD(platform.run(pool));
     }
     catch(const Status& status)
     {
-        LOG_ERROR(status);
+        K2ERROR("Bad status: " << status);
         return (int)status;
     }
     catch(const std::runtime_error& re)
     {
-        std::cerr << "Runtime error: " << re.what() << std::endl;
+        K2ERROR(re.what());
         return 1;
     }
     catch(const std::exception& ex)
     {
-        std::cerr << "Error occurred: " << ex.what() << std::endl;
+        K2ERROR("Error occurred: " << ex.what());
         return 1;
     }
     catch(...)
     {
-        std::cerr << "Unknown exception is thrown." << std::endl;
+        K2ERROR("Unknown exception is thrown.");
         return 1;
     }
 

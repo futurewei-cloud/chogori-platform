@@ -4,7 +4,7 @@
 #pragma once
 
 #include <k2/common/Common.h>
-#include <k2/common/Payload.h>
+#include "Payload.h"
 #include "RPCHeader.h"
 
 namespace k2 {

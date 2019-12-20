@@ -5,7 +5,7 @@
 #include <map>
 #include <mutex>
 // k2
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:config
 #include <k2/config/Config.h>
 // k2:executor
@@ -53,7 +53,7 @@ private:
 
 protected:
     // TODO: make the timeout configurable
-    const k2::Duration _defaultTimeout = std::chrono::milliseconds(10000);
+    const k2::Duration _defaultTimeout = 10000ms;
     Executor _executor;
     PartitionMap _partitionMap;
     ClientSettings _settings;

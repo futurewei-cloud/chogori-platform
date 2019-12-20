@@ -5,8 +5,8 @@
 #include <cassert>
 #include <limits>
 
-#include "Common.h"
-#include <seastar/net/packet.hh>
+#include <k2/common/Common.h>
+#include <k2/common/Log.h>
 
 namespace k2
 {
@@ -33,7 +33,7 @@ template<typename T>
 struct IsPayloadCopyableTypeTrait<T, typename enable_if_type<typename T::__K2PayloadCopyableTraitTag__>::type> : std::true_type { };
 
 template<typename T> //  Type that can be just copy to/from payload, though may not have reference
-constexpr bool isNumbericType() { return std::is_arithmetic<T>::value || std::is_enum<T>::value; }
+constexpr bool isNumericType() { return std::is_arithmetic<T>::value || std::is_enum<T>::value; }
 
 template<typename T> //  Type that can be just copy to/from payload (e.g. integers, enums, etc.)
 constexpr bool isPayloadCopyableType() { return IsPayloadCopyableTypeTrait<T>::value; }
@@ -86,7 +86,7 @@ protected:
 
     bool allocateBuffer()
     {
-        ASSERT(allocator);
+        K2ASSERT(allocator, "cannot allocate buffer without allocator");
         Binary buf = allocator();
         if (!buf) {
             return false;
@@ -345,7 +345,7 @@ public:
     }
 
     template<typename T>    //  Read for primitive types
-    std::enable_if_t<isPayloadCopyableType<T>() || isNumbericType<T>(), bool> read(T& value)
+    std::enable_if_t<isPayloadCopyableType<T>() || isNumericType<T>(), bool> read(T& value)
     {
         return read((void*)&value, sizeof(value));
     }
@@ -633,7 +633,7 @@ public:
     template<typename ValueT>
     bool write(const std::vector<ValueT>& list)
     {
-        ASSERT(list.size() < std::numeric_limits<uint32_t>::max());
+        K2ASSERT(list.size() < std::numeric_limits<uint32_t>::max(), "list is too long to write out");
         if(!write((uint32_t)list.size()))
             return false;
 
@@ -662,7 +662,7 @@ public:
     }
 
     template<typename T>    //  Read for primitive types - need copy here to get address
-    std::enable_if_t<isNumbericType<T>(), bool> write(const T value)
+    std::enable_if_t<isNumericType<T>(), bool> write(const T value)
     {
         return write((const void*)&value, sizeof(value));
     }

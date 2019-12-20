@@ -8,11 +8,11 @@ namespace k2 {
 ExponentialBackoffStrategy::ExponentialBackoffStrategy() : _retries(3),
                                                            _try(0),
                                                            _rate(5),
-                                                           _currentTimeout(std::chrono::microseconds(1)),
+                                                           _currentTimeout(1us),
                                                            _success(false),
                                                            _used(false) {
     K2DEBUG("ctor retries " << _retries << ", rate " << _rate << ", startTimeout "
-                            << std::chrono::duration_cast<std::chrono::milliseconds>(_currentTimeout).count() << "ms");
+                            << k2::usec(_currentTimeout).count() << "ms");
 }
 
 // destructor
@@ -36,7 +36,7 @@ ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRate(int rate) {
 
 // Set the desired starting value
 ExponentialBackoffStrategy& ExponentialBackoffStrategy::withStartTimeout(Duration startTimeout) {
-    K2DEBUG("startTimeout: " << std::chrono::duration_cast<std::chrono::milliseconds>(startTimeout).count() << "ms");
+    K2DEBUG("startTimeout: " << k2::msec(startTimeout).count() << "ms");
     _currentTimeout = startTimeout;
     return *this;
 }

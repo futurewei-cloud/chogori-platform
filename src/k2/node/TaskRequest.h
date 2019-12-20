@@ -1,6 +1,6 @@
 #pragma once
 
-#include <k2/common/PartitionMessage.h>
+#include <k2/k2types/PartitionMessage.h>
 #include <k2/common/IntrusiveLinkedList.h>
 #include <k2/common/MemoryArena.h>
 #include <k2/common/TimeMeasure.h>
@@ -76,7 +76,7 @@ protected:
         DropPartition
     };
 
-    ProcessResult process(std::chrono::nanoseconds maxExecutionTime);
+    ProcessResult process(Duration maxExecutionTime);
 
     virtual ProcessResult process() = 0;
     virtual void cancel();
@@ -103,7 +103,7 @@ public:
     //
     // Return the elapsed time since the task was created.
     //
-    std::chrono::nanoseconds getElapsedTime();
+    Duration getElapsedTime();
 
     //
     //  Task has it's own associated memory arena. TODO: use Folly Memory Arena

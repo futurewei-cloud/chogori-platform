@@ -11,7 +11,7 @@
 #include <seastar/core/metrics_registration.hh>
 #include <seastar/core/metrics.hh>
 // k2
-#include <k2/common/Payload.h>
+#include <k2/transport/Payload.h>
 // k2:transport
 #include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/TCPRPCProtocol.h>
@@ -75,7 +75,7 @@ public:
 
     void init(const Settings& settings)
     {
-        ASSERT(!_initFlag);
+        assert(!_initFlag);
 
         _settings = settings;
         _useUserThread = _settings._useUserThread;
@@ -98,8 +98,8 @@ public:
 
     void start()
     {
-        ASSERT(_initFlag);
-        ASSERT(!_stopFlag);
+        assert(_initFlag);
+        assert(!_stopFlag);
 
         // if client initialized, run the transport platform in the client's thread
         if(_useUserThread) {
@@ -117,7 +117,7 @@ public:
         // wait for the service to start before returning
         std::unique_lock<std::mutex> lock(_mutex);
         int counter = 5;
-        _conditional.wait_for(lock, std::chrono::seconds(1), [&counter] {
+        _conditional.wait_for(lock, 1s, [&counter] {
             counter--;
 
             if(counter <= 0) {
@@ -149,7 +149,7 @@ public:
             // wait for the service to stop before unblocking
             std::unique_lock<std::mutex> lock(_mutex);
             int counter = 5;
-            _conditional.wait_for(lock, std::chrono::seconds(1), [&counter] {
+            _conditional.wait_for(lock, 1s, [&counter] {
                 counter--;
 
                 if(counter <= 0) {
@@ -252,7 +252,7 @@ protected:
 
             // keep polling the stop flag to stop the service
             auto future1 = seastar::do_until([&] { return _stopFlag.load(); }, [&] {
-                return seastar::sleep(std::chrono::seconds(1));
+                return seastar::sleep(1s);
             })
             .then([&] {
                 // at times it is required to hit ctrl-c to stop the engine; explicitly stop the engine to prevent this

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <k2/common/seastar/SeastarApp.h>
+#include "SeastarApp.h"
 #include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RRDMARPCProtocol.h>
 #include <k2/transport/TCPRPCProtocol.h>
@@ -17,7 +17,7 @@ class TransportConfig
 public:
     TransportConfig(bool tcpEnabled = true, bool rdmaEnabled = false) : tcpEnabled(tcpEnabled), rdmaEnabled(rdmaEnabled)
     {
-        ASSERT(tcpEnabled || rdmaEnabled);
+        assert(tcpEnabled || rdmaEnabled);
     }
 
     TransportConfig(std::unique_ptr<IAddressProvider>&& tcpAddrProvider, bool rdmaEnabled = false) :
@@ -29,7 +29,7 @@ public:
 
     IAddressProvider& getTCPAddressProvider() const
     {
-        ASSERT(isTCPServer());
+        assert(isTCPServer());
         return *tcpAddrProvider;
     }
 

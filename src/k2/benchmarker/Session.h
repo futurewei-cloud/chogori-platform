@@ -3,12 +3,12 @@
 // std
 #include <random>
 #include <string>
-#include <chrono>
 #include <ctime>
 #include <unordered_map>
 // k2
 #include <k2/transport/Prometheus.h>
 #include <k2/benchmarker/generator/Generator.h>
+#include <k2/common/Common.h>
 #include "KeySpace.h"
 
 namespace k2
@@ -28,9 +28,9 @@ protected:
     volatile uint64_t _pendingCounter = 0;
     volatile uint64_t _retryCounter = 0;
     metrics::metric_groups _metricGroups;
-    std::chrono::time_point<std::chrono::system_clock> _startTime;
-    std::chrono::time_point<std::chrono::system_clock> _endTime;
-    std::unordered_map<std::string, std::chrono::time_point<std::chrono::steady_clock>> _timestampMap;
+    k2::TimePoint _startTime;
+    k2::TimePoint _endTime;
+    std::unordered_map<std::string, k2::TimePoint> _timestampMap;
     k2::ExponentialHistogram _latency;
     // arguments
     const std::string _sessionId;
@@ -45,7 +45,7 @@ public:
     , _keySpace(std::forward<KeySpace>(keySpace))
     , _it(_keySpace.begin())
     {
-        _startTime = std::chrono::system_clock::now();
+        _startTime = k2::Clock::now();
         _endTime = _startTime;
 
         std::vector<metrics::label_instance> labels;
@@ -97,12 +97,12 @@ public:
         return _failedKeys;
     }
 
-    std::chrono::time_point<std::chrono::system_clock> getStartTime() const
+    k2::TimePoint getStartTime() const
     {
         return _startTime;
     }
 
-    std::chrono::time_point<std::chrono::system_clock> getEndTime() const
+    k2::TimePoint getEndTime() const
     {
         return _endTime;
     }
@@ -123,7 +123,7 @@ public:
 
         bool doneFlag =  _ackCounter >= _targetCount;
         if(doneFlag) {
-            _endTime = std::chrono::system_clock::now();
+            _endTime = k2::Clock::now();
         }
 
         return doneFlag;
@@ -208,7 +208,7 @@ public:
 protected:
     void _recordTime(const std::string& key)
     {
-        _timestampMap.insert(std::pair<std::string, std::chrono::time_point<std::chrono::steady_clock>>(key, std::chrono::steady_clock::now()));
+        _timestampMap.insert(std::pair<std::string, k2::TimePoint>(key, k2::Clock::now()));
     }
 
     void _deleteTime(const std::string& key)
@@ -228,7 +228,7 @@ protected:
             return;
         }
 
-        auto duration = std::chrono::steady_clock::now() - it->second;
+        auto duration = k2::Clock::now() - it->second;
         _timestampMap.erase(it);
         _latency.add(std::move(duration));
     }

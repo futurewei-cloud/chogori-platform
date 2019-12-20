@@ -2,7 +2,7 @@
 
 #include <k2/common/IntrusiveLinkedList.h>
 #include <k2/common/Log.h>
-#include <k2/common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 #include <k2/persistence/IPersistentLog.h>
 #include <seastar/core/metrics.hh>
 #include "Collection.h"
@@ -73,7 +73,7 @@ protected:
 
     bool haveTasksToRun() { return !getTaskList(TaskListType::Active).isEmpty(); }
 
-    bool processActiveTasks(std::chrono::nanoseconds maxPartitionTime);  //  When return false, partition is deleted
+    bool processActiveTasks(Duration maxPartitionTime);  //  When return false, partition is deleted
 
 public:
     Partition(INodePool& pool, PartitionMetadata&& metadata, Collection& collection, PartitionVersion version) :
