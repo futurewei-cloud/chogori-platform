@@ -79,7 +79,7 @@ public:
      // Starts all registered schedulers.
      //
      seastar::future<> start() {
-          std::cout << "Starting root scheduler..." << std::endl;
+          K2INFO("Starting root scheduler...");
 
           for(auto& scheduler : _schedulers) {
                _futures.push_back(scheduler->start());
@@ -93,7 +93,7 @@ public:
      // Stops all registered Schedulers.
      //
      void stop() {
-          std::cout << "Stopping root scheduler..." << std::endl;
+          K2INFO("Stopping root scheduler...");
 
           for(auto& scheduler : _schedulers) {
                scheduler->stop();
@@ -106,7 +106,7 @@ public:
      // Invoked when the service is terminated. Once closed, the RootScheduler cannot be restarted.
      //
      seastar::future<> close() {
-          std::cout << "Closing root scheduler..." << std::endl;
+          K2INFO("Closing root scheduler...");
           stop();
 
           return _gatePtr->close();

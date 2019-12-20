@@ -11,8 +11,6 @@ namespace k2 {
 
     void TaskRequest::cancel() {}
 
-    std::ostream& TaskRequest::logger() { return std::cerr; }  //  Change to something more appropriate
-
     Partition& TaskRequest::getPartition() { return partition; }
 
     bool TaskRequest::canContinue() { return !timeTracker.exceeded(); }

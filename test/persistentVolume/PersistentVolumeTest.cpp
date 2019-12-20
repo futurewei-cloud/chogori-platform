@@ -18,7 +18,7 @@ seastar::future<std::shared_ptr<PersistentVolume>> createVolume(std::string test
 
 seastar::future<std::shared_ptr<PersistentVolume>> initVolumeTest(std::string test_name)
 {
-    std::cout << test_name << "...... " << std::flush;
+    K2INFO(test_name << "...... ");
     return createVolume(std::move(test_name));
 }
 
@@ -35,7 +35,7 @@ SEASTAR_TEST_CASE(test_addNewChunk)
                 BOOST_REQUIRE(chunkInfo.chunkId == 1);
                 BOOST_REQUIRE(chunkInfo.size == 0);
                 BOOST_REQUIRE(chunkInfo.actualSize == 0);
-                std::cout << "done." << std::endl;
+                K2INFO("done");
                 return seastar::make_ready_future<>();  // reach here
             })
             .finally([persistentVolume]() mutable {
@@ -48,7 +48,7 @@ SEASTAR_TEST_CASE(test_addNewChunk)
 
 SEASTAR_TEST_CASE(test_getInfo)
 {
-    std::cout << get_name() << "...... " << std::flush;
+    K2INFO(get_name() << "...... ");
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<5; i++){
@@ -66,13 +66,13 @@ SEASTAR_TEST_CASE(test_getInfo)
         BOOST_REQUIRE(chunkInfo.actualSize == i );
     }
 
-    std::cout << "done." << std::endl;
+    K2INFO("done");
     return persistentVolume->close().then([persistentVolume]() {});
 }
 
 SEASTAR_TEST_CASE(test_getInfo_ChunkIdNotFound)
 {
-    std::cout << get_name() << "...... " << std::flush;
+    K2INFO(get_name() << "...... ");
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<5; i++){
@@ -88,7 +88,7 @@ SEASTAR_TEST_CASE(test_getInfo_ChunkIdNotFound)
         BOOST_FAIL("Expected exception.");
     }catch(ChunkException& e){
         BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId+1);
-        std::cout << "done." << std::endl;    // reach here
+        K2INFO("done");
     }catch (...) {
         BOOST_FAIL("Incorrect exception type.");
     }
@@ -98,7 +98,7 @@ SEASTAR_TEST_CASE(test_getInfo_ChunkIdNotFound)
 
 SEASTAR_TEST_CASE(test_decreaseUsage_ChunkIdNotFound)
 {
-    std::cout << get_name() << "...... " << std::flush;
+    K2INFO(get_name() << "...... ");
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<2; i++){
@@ -114,7 +114,7 @@ SEASTAR_TEST_CASE(test_decreaseUsage_ChunkIdNotFound)
         BOOST_FAIL("Expected exception.");
     }catch(ChunkException& e){
         BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId+1);
-        std::cout << "done." << std::endl; // reach here
+        K2INFO("done");
     }catch (...) {
         BOOST_FAIL("Incorrect exception type.");
     }
@@ -124,7 +124,7 @@ SEASTAR_TEST_CASE(test_decreaseUsage_ChunkIdNotFound)
 
 SEASTAR_TEST_CASE(test_totaUsage)
 {
-    std::cout << get_name() << "...... " << std::flush;
+    K2INFO(get_name() << "...... ");
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     uint64_t sum = 0;
@@ -139,13 +139,13 @@ SEASTAR_TEST_CASE(test_totaUsage)
 
      BOOST_REQUIRE(persistentVolume->totalUsage() == sum);
 
-    std::cout << "done." << std::endl;
+    K2INFO("done");
     return persistentVolume->close().then([persistentVolume]() {});
 }
 
 SEASTAR_TEST_CASE(test_totaSize)
 {
-    std::cout << get_name() << "...... " << std::flush;
+    K2INFO(get_name() << "...... ");
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     uint64_t sum = 0;
@@ -160,13 +160,13 @@ SEASTAR_TEST_CASE(test_totaSize)
 
     BOOST_REQUIRE(persistentVolume->totalSize() == sum);
 
-    std::cout << "done." << std::endl;
+    K2INFO("done");
     return persistentVolume->close().then([persistentVolume]() {});
 }
 
 SEASTAR_TEST_CASE(test_getChunks)
 {
-    std::cout << get_name() << "...... " << std::flush;
+    K2INFO(get_name() << "...... ");
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     for (size_t i=0; i<10; i++){
@@ -190,19 +190,19 @@ SEASTAR_TEST_CASE(test_getChunks)
 
     BOOST_REQUIRE(i==10);
 
-    std::cout << "done." << std::endl;
+    K2INFO("done");
     return persistentVolume->close().then([persistentVolume]() {});
 }
 
 SEASTAR_TEST_CASE(test_getChunks_EmptyChunkSet)
 {
-    std::cout << get_name() << "...... " << std::flush;
+    K2INFO(get_name() << "...... ");
     auto persistentVolume = seastar::make_lw_shared<PersistentVolume>(plogBaseDir + get_name());
 
     auto iter = persistentVolume->getChunks();
     BOOST_REQUIRE(iter->isEnd());
 
-    std::cout << "done." << std::endl;
+    K2INFO("done");
     return persistentVolume->close().then([persistentVolume]() {});
 }
 
@@ -245,7 +245,7 @@ SEASTAR_TEST_CASE(test_append)
                            });
                    })
                 .finally([persistentVolume] {
-                    std::cout << "done." << std::endl;
+                    K2INFO("done");
                     return persistentVolume->close();
                 })
                 .then([persistentVolume]() {});
@@ -282,7 +282,7 @@ SEASTAR_TEST_CASE(test_read)
                                            BOOST_REQUIRE(readSize == BUFFERSIZE);
                                            BOOST_REQUIRE(std::all_of(buffer->begin(), buffer->end(), [expectedValue{uint8_t(i % 256)}](auto& value) {
                                                if (value != expectedValue)
-                                                   std::cout << (uint32_t)value << ":" << (uint32_t)expectedValue << std::endl;
+                                                   K2INFO((uint32_t)value << ":" << (uint32_t)expectedValue);
                                                return value == expectedValue;
                                            }));
                                            return seastar::make_ready_future<>();
@@ -291,7 +291,7 @@ SEASTAR_TEST_CASE(test_read)
                            });
                    })
                 .finally([persistentVolume] {
-                    std::cout << "done." << std::endl;
+                    K2INFO("done");
                     return persistentVolume->close();
                 })
                 .then([persistentVolume]() {});
@@ -328,7 +328,7 @@ SEASTAR_TEST_CASE(test_read_ActualSize_LT_ExpectedSize)
                            });
                    })
                 .finally([persistentVolume] {
-                    std::cout << "done." << std::endl;
+                    K2INFO("done");
                     return persistentVolume->close();
                 })
                 .then([persistentVolume]() {});
@@ -366,7 +366,7 @@ SEASTAR_TEST_CASE(test_read_ChunkIdNotFound)
                                 std::rethrow_exception(e);
                             } catch (ChunkException& e) {
                                 BOOST_REQUIRE(e.chunkId() == recordPosition.chunkId);
-                                std::cout << "done." << std::endl;  // reach here
+                                K2INFO("done");
                             } catch (...) {
                                 BOOST_FAIL("Incorrect exception type.");
                             }
@@ -410,7 +410,7 @@ SEASTAR_TEST_CASE(test_drop)
                         });
                 })
                 .finally([persistentVolume] {
-                    std::cout << "done." << std::endl;
+                    K2INFO("done");
                     return persistentVolume->close();
                 })
                 .then([persistentVolume]() {});
@@ -439,7 +439,7 @@ SEASTAR_TEST_CASE(test_drop_ChunkIdNotFound)
                         std::rethrow_exception(e);
                     } catch (ChunkException& e) {
                         BOOST_REQUIRE(e.chunkId() == persistentVolume->m_chunkList.back().chunkId+1);
-                        std::cout << "done." << std::endl;  // reach here
+                        K2INFO("done");
                     } catch (...) {
                         BOOST_FAIL("Incorrect exception type.");
                     }
@@ -453,8 +453,8 @@ SEASTAR_TEST_CASE(test_drop_ChunkIdNotFound)
 
 SEASTAR_TEST_CASE(Remove_test_folders)
 {
-    std::cout << get_name() << std::endl;
-    std::cout << "Remove folder " << plogBaseDir << std::endl;
+    K2INFO(get_name());
+    K2INFO("Remove folder " << plogBaseDir);
 
     if(std::filesystem::exists(plogBaseDir)){
         std::filesystem::remove_all(plogBaseDir);

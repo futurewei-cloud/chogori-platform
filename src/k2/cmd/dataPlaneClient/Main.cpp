@@ -22,11 +22,11 @@ void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(setRequest));
 
-    std::cout << "moduleSet:" << stopWatch.elapsedUS()  << "us" << std::endl;
+    K2INFO("moduleSet:" << stopWatch.elapsedUS()  << "us");
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        std::cerr << "Set failed: " << getStatusText(response->getStatus()) << std::endl << std::flush;
+        K2ERROR("Set failed: " << getStatusText(response->getStatus()));
 }
 
 void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port, std::string&& key)
@@ -37,15 +37,15 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
     std::unique_ptr<ResponseMessage> response = sendPartitionMessage(ip, port,
         k2::MessageType::ClientRequest, partitionId, MemKVModule<>::RequestWithType(getRequest));
 
-    std::cout << "moduleGet:" << stopWatch.elapsedUS()  << "us" << std::endl;
+    K2INFO("moduleGet:" << stopWatch.elapsedUS()  << "us");
 
     assert(response);
     if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        std::cerr << "Get failed" << getStatusText(response->getStatus()) << std::endl << std::flush;
+        K2ERROR("Get failed" << getStatusText(response->getStatus()));
 
     MemKVModule<>::GetResponse getResponse;
     response->payload.getReader().read(getResponse);
-    std::cout << "Gotten: value: " << getResponse.value << " version: " << getResponse.version << std::endl << std::flush;
+    K2INFO("Gotten: value: " << getResponse.value << " version: " << getResponse.version);
 }
 
 }
@@ -54,8 +54,8 @@ namespace bpo = boost::program_options;
 
 void printHelp(bpo::options_description& desc, std::string& appName)
 {
-    std::cout << "Usage: " << appName << " (assign|offload|get|set) [options]" << std::endl;
-    std::cout << desc << std::endl;
+    K2INFO("Usage: " << appName << " (assign|offload|get|set) [options]");
+    K2INFO(desc);
 }
 
 int main(int argc, char** argv)
@@ -92,17 +92,17 @@ int main(int argc, char** argv)
 
         bpo::notify(arguments); // Throws exception if there are any problems
 
-        std::cout << "Executing command " << command << " for Node:" << nodeIP << ":" << nodePort << " Partition:" << partition << std::endl << std::flush;
+        K2INFO("Executing command " << command << " for Node:" << nodeIP << ":" << nodePort << " Partition:");
 
         if(!partitionId.parse(partition.c_str()))
         {
-            std::cerr << "Cannot parse partition id" << std::endl;
+            K2ERROR("Cannot parse partition id");
             return 1;
         }
     }
     catch(std::exception& e)
     {
-        std::cerr << "Unhandled exception while parsing arguments: " << e.what() << ". " << std::endl;
+        K2ERROR("Unhandled exception while parsing arguments: " << e.what());
         printHelp(desc, appName);
         return 1;
     }
@@ -115,21 +115,21 @@ int main(int argc, char** argv)
             k2::moduleGet(partitionId, nodeIP.c_str(), nodePort, std::move(key));
         else
         {
-            std::cerr << "Unknown command: " << command << std::endl;
+            K2ERROR("Unknown command: " << command);
             printHelp(desc, appName);
             return 1;
         }
 
-        std::cout << "Command \"" << command << "\" successfully executed."  << std::endl;
+        K2INFO("Command \"" << command << "\" successfully executed.");
     }
     catch(std::exception& e)
     {
-        std::cerr << "Unhandled exception while executing command: " << e.what() << ". " << std::endl;
+        K2ERROR("Unhandled exception while executing command: " << e.what());
         return 1;
     }
     catch(...)
     {
-        std::cerr << "Unhandled exception while executing command" << std::endl;
+        K2ERROR("Unhandled exception while executing command");
         return 1;
     }
 

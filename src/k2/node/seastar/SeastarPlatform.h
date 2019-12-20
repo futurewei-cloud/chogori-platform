@@ -16,8 +16,6 @@
 using namespace seastar;
 using namespace seastar::net;
 
-#define TRACE() { std::cout << __FUNCTION__ << ":" << __LINE__ << std::endl << std::flush; }
-
 namespace k2
 {
 
@@ -134,18 +132,16 @@ protected:
             lo.reuse_address = true;
             _listener = seastar::engine().listen(make_ipv4_address(nodeConfig.ipv4.address, nodeConfig.ipv4.port), lo);
 
-            std::cout << "Start transport for shard #" << engine().cpu_id() << " on endpoint {ipv4:"
+            K2INFO("Start transport for shard #" << engine().cpu_id() << " on endpoint {ipv4:"
                 << (((nodeConfig.ipv4.address)>>24)&0xFF) << "." << (((nodeConfig.ipv4.address)>>16)&0xFF)
                 << "." << (((nodeConfig.ipv4.address)>>8)&0xFF) << "." << ((nodeConfig.ipv4.address)&0xFF)
-                << " port:" << nodeConfig.ipv4.port << "}" << std::endl << std::flush;
+                << " port:" << nodeConfig.ipv4.port << "}");
 
             seastar::keep_doing([this]
             {
-                TRACE();
                 return _listener->accept()
                     .then([this] (connected_socket fd, socket_address addr) mutable
                     {
-                        TRACE();
                         seastar::lw_shared_ptr<Connection> connection = seastar::make_lw_shared<Connection>(std::move(fd), addr);
                         processMessage(connection).then([connection] { return connection->finishRound(); })
                         //
@@ -159,7 +155,7 @@ protected:
                         //        return processMessage(connection).then([connection] { return connection->finishRound(); });
                         //    }
                         //)
-                        .finally([connection] { TRACE(); return connection->_out.close().finally([connection]{}); });
+                        .finally([connection] { return connection->_out.close().finally([connection]{}); });
                     })
                     .handle_exception([] (std::exception_ptr ep)
                     {
@@ -168,13 +164,11 @@ protected:
                             std::rethrow_exception(ep);
                         } catch(const std::exception& e)
                         {
-                            std::cout << "Caught exception " << e.what() << std::endl << std::flush;
+                            K2ERROR("Caught exception " << e.what());
                             throw e;
                         }
                     });
             }).or_terminate();
-
-            TRACE();
         }
 
         void startTaskProcessor()

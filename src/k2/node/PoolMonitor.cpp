@@ -27,11 +27,11 @@ Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            K2ERROR(e.what());
         }
         catch(...)
         {
-            std::cerr << "error\n";
+            K2ERROR("error");
         }
 
         result = Status::FailedToConnectToPartitionManager;
@@ -59,7 +59,7 @@ void PoolMonitor::run()
     catch(const std::exception& e)
     {
         state = State::failure;
-        std::cerr << e.what() << '\n';
+        K2ERROR(e.what());
         assert(false);
     }
     catch(...)
