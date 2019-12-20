@@ -1,6 +1,6 @@
 #!/bin/bash
 topname=$(dirname "$0")
-cd ${topname}/..
+cd ${topname}/../..
 set -e
 
 
