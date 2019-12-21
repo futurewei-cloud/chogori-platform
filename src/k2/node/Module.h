@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Partition.h"
-#include <seastar/core/temporary_buffer.hh>
 
 namespace k2
 {
@@ -13,16 +12,11 @@ class ClientTask;
 class MaintainenceTask;
 
 //
-//  Value of the shared state of distributed transaction
-//
-typedef seastar::temporary_buffer<char> ShareStateValue;
-
-//
 //  Represent transaction shared state calculate for particular partition
 //
 struct PartitionSharedState
 {
-    std::vector<ShareStateValue> state;
+    std::vector<Binary> state;
 };
 
 

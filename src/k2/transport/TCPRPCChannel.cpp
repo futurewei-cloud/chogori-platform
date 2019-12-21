@@ -131,7 +131,7 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
                 return seastar::make_ready_future<>();
             }
             return chan->_in.read().
-                then([chan=chan->weak_from_this()](seastar::temporary_buffer<char> packet) {
+                then([chan=chan->weak_from_this()](Binary packet) {
                     if (chan) {
                         if (packet.empty()) {
                             K2DEBUG("remote end closed connection");

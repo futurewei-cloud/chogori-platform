@@ -56,11 +56,6 @@ typedef seastar::sstring String;
 typedef seastar::temporary_buffer<char> Binary;
 
 //
-//  Slice represents referenced (not owned) binary data
-//
-typedef seastar::temporary_buffer<char> Slice;
-
-//
 // The type for a function which can allocate Binary
 //
 typedef std::function<Binary()> BinaryAllocatorFunctor;

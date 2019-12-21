@@ -98,12 +98,12 @@ protected:
         seastar::future<> processMessage(lw_shared_ptr<Connection> connection)
         {
             return connection->_in.read_exactly(sizeof(PartitionMessage::Header))
-                .then([this, connection] (temporary_buffer<char>&& headerBuffer)
+                .then([this, connection] (Binary&& headerBuffer)
                 {
                     connection->_headerBuffer = moveBinary(headerBuffer);
                     return connection->_in.read_exactly(connection->getHeader().messageSize);
                 })
-                .then([this, connection] (temporary_buffer<char>&& data)
+                .then([this, connection] (Binary&& data)
                 {
                     std::vector<Binary> buffers;
                     buffers.push_back(moveBinary(data));
