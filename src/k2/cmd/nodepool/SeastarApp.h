@@ -61,7 +61,7 @@ class SeastarApp {
 
     SeastarApp& registerInfoLog(std::string logMessage) {
         return registerInitializer([logMessage = std::move(logMessage)]() mutable {
-            K2INFO(std::move(logMessage));
+            K2INFO(logMessage);
             return seastar::make_ready_future<>();
         });
     }

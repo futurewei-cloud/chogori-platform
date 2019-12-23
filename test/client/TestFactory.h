@@ -107,7 +107,7 @@ public:
            callbackInvoked = true;
            K2INFO("callback invoked: " << getStatusText(result._responses[0].status));
            assert(result._responses[0].status == Status::Ok);
-           pOperationResult = std::move(std::make_unique<OperationResult>(std::move(result)));
+           pOperationResult = std::make_unique<OperationResult>(std::move(result));
            conditional.notify_one();
        });
 
@@ -124,9 +124,9 @@ public:
         id.parse(partitionId.c_str());
         desc.nodeEndpoint = endpointUrl;
         desc.id = id;
-        desc.range = std::move(PartitionRange(range));
+        desc.range = PartitionRange(range);
 
-        return std::move(desc);
+        return desc;
     }
 
     static Operation createOperation(const client::Range& rRange, Payload&& rrPayload)
@@ -137,7 +137,7 @@ public:
         message.ranges.push_back(rRange);
         operation.messages.push_back(std::move(message));
 
-        return std::move(operation);
+        return operation;
     }
 };
 
@@ -190,7 +190,7 @@ class MockClient: public k2::client::Client
 
     virtual k2::Payload createPayload()
     {
-        return std::move(Payload());
+        return Payload();
     }
 
     virtual void createPayload(std::function<void(IClient&, Payload&&)> onCompleted)

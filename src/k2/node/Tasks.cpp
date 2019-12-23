@@ -84,7 +84,10 @@ TaskRequest::ProcessResult ClientTask::onApply() {
     return TaskRequest::ProcessResult::Done;
 }
 
-ClientTask::ClientTask(Partition& partition, std::unique_ptr<IClientConnection>&& client, Payload&& requestPayload) : MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)), responseWriter(getClient().getResponseWriter()), state(State::Prepare) {}
+ClientTask::ClientTask(Partition& partition, std::unique_ptr<IClientConnection> client, Payload&& requestPayload) :
+  MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)),
+    responseWriter(getClient().getResponseWriter()), state(State::Prepare) {
+}
 
 TaskType ClientTask::getType() const { return TaskType::ClientRequest; }
 

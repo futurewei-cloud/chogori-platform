@@ -34,7 +34,7 @@ SCENARIO("Executor in thread pool mode")
     std::unique_ptr<Payload> pPayload;
     executor.execute(endpointUrl,
     [&] (std::unique_ptr<k2::Payload> payload) {
-        TestFactory::makePartitionPayload(*(payload.get()), partitionId,  std::move(k2::PartitionRange("j", "")), MessageType::PartitionAssign);
+        TestFactory::makePartitionPayload(*(payload.get()), partitionId, PartitionRange("j", ""), MessageType::PartitionAssign);
         pPayload = std::move(payload);
         K2INFO("payload1 created");
         _conditional.notify_one();

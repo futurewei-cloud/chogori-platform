@@ -299,7 +299,7 @@ private:
             std::move(pTask->_pPlatformData->_pPayload),
             *pTask->_pPlatformData->_pEndpoint,
             pTask->getTimeout())
-        .then([this, startTime = std::move(startTime)](std::unique_ptr<k2::Payload> payload) {
+        .then([this, startTime](std::unique_ptr<k2::Payload> payload) {
             _sendMessageLatency.add(Clock::now() - startTime);
             // parse a ResponseMessage from the received payload
             auto readBytes = payload->getSize();

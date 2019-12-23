@@ -132,14 +132,15 @@ public:
 
         if(_callback)
         {
-            _callback = [oldCallback = std::move(_callback), newCallback = std::move(_callback)](const Ptr& self)
+            _callback = [oldCallback = std::move(_callback), newCallback = std::move(callback)](const Ptr& self)
             {
                 oldCallback(self);
                 newCallback(self);
             };
         }
-        else
+        else {
             _callback = std::move(callback);
+        }
     }
 };
 

@@ -62,7 +62,7 @@ public:
     // For performance reasons, you should only feed more data once all current data has been processed
     // this method will assert that it is not being called when CanDispatch() is true
     // see usage in TCPRPCChannel.cpp for example on how to setup a processing loop
-    inline void feed(Binary binary);
+    inline void feed(Binary&& binary);
 
     // Use to determine if this parser could potentially dispatch some messages. It is possible that
     // in some cases no messages will be dispatched if DispatchSome() is called
@@ -251,7 +251,7 @@ void RPCParser::registerParserFailureObserver(ParserFailureObserver_t parserFail
 }
 
 inline
-void RPCParser::feed(Binary binary) {
+void RPCParser::feed(Binary&& binary) {
     K2DEBUG("feed bytes" << binary.size());
     assert(_currentBinary.empty());
 

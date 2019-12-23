@@ -29,7 +29,7 @@ SCENARIO("Executor with event loop")
 
         std::unique_ptr<Context> newInstance()
         {
-            return std::move(std::make_unique<Context>(_rExecutor));
+            return std::make_unique<Context>(_rExecutor);
         }
     };
 
@@ -63,7 +63,7 @@ SCENARIO("Executor with event loop")
             K2INFO("Creating partition: " << partitionId);
             _pContext->_rExecutor.execute(endpointUrl,
             [&] (std::unique_ptr<k2::Payload> payload) {
-                TestFactory::makePartitionPayload(*(payload.get()), partitionId, std::move(k2::PartitionRange("g", "j")), MessageType::PartitionAssign);
+                TestFactory::makePartitionPayload(*(payload.get()), partitionId, PartitionRange("g", "j"), MessageType::PartitionAssign);
                 K2INFO("payload created");
 
                 // send the payload

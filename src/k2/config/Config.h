@@ -38,7 +38,7 @@ public:
         // empty
     }
 
-    const std::vector<std::shared_ptr<NodePoolConfig>> getNodePools() const
+    std::vector<std::shared_ptr<NodePoolConfig>> getNodePools() const
     {
         std::vector<std::shared_ptr<NodePoolConfig>> nodePools;
         std::transform(
@@ -50,7 +50,7 @@ public:
             }
         );
 
-        return std::move(nodePools);
+        return nodePools;
     }
 
     const std::shared_ptr<NodePoolConfig> getNodePool(const std::string& id) const
@@ -60,7 +60,7 @@ public:
         return (pair!=_nodePoolMap.end()) ? pair->second : nullptr;
     }
 
-    const std::vector<std::shared_ptr<PartitionConfig>> getPartitions() const
+    std::vector<std::shared_ptr<PartitionConfig>> getPartitions() const
     {
         std::vector<std::shared_ptr<PartitionConfig>> partitions;
 
@@ -71,29 +71,29 @@ public:
             }
         }
 
-        return std::move(partitions);
+        return partitions;
     }
 
-    const std::vector<std::shared_ptr<NodeConfig>> getClusterNodes() const
+    std::vector<std::shared_ptr<NodeConfig>> getClusterNodes() const
     {
-        std::vector<std::shared_ptr<NodeConfig>> vector;
+        std::vector<std::shared_ptr<NodeConfig>> configs;
 
         for(auto pair : _clusterMap) {
             for(auto pNodePoolConfig : pair.second) {
                 for(auto pNodeConfig : pNodePoolConfig->getNodes()) {
-                    vector.push_back(pNodeConfig);
+                    configs.push_back(pNodeConfig);
                 }
             }
         }
 
-        return std::move(vector);
+        return configs;
     }
 
-    const std::vector<std::shared_ptr<NodePoolConfig>> getNodePoolsForHost(const std::string& hostname)
+    std::vector<std::shared_ptr<NodePoolConfig>> getNodePoolsForHost(const std::string& hostname)
     {
         auto it = _clusterMap.find(hostname);
         if(it==_clusterMap.end()) {
-            return std::move(std::vector<std::shared_ptr<NodePoolConfig>>());
+            return std::vector<std::shared_ptr<NodePoolConfig>>();
         }
 
         return it->second;

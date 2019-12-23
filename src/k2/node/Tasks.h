@@ -58,7 +58,7 @@ protected:
     ProcessResult onApply();
 
 public:
-    ClientTask(Partition& partition, std::unique_ptr<IClientConnection>&& client, Payload&& requestPayload);
+    ClientTask(Partition& partition, std::unique_ptr<IClientConnection> client, Payload&& requestPayload);
 
     TaskType getType() const override;
 

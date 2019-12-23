@@ -55,10 +55,7 @@ public:
         std::unique_ptr<IConfigParser> pParser = std::make_unique<ConfigParserLegacy>();
         std::shared_ptr<Config> pConfig;
         if(schema=="2019-07") {
-            pParser = std::move(std::make_unique<ConfigParser201907>());
-        }
-        else {
-            pParser = std::move(std::make_unique<ConfigParserLegacy>());
+            pParser = std::make_unique<ConfigParser201907>();
         }
 
         return pParser->parseConfig(node);
@@ -66,7 +63,7 @@ public:
 
     static std::vector<std::shared_ptr<NodePoolConfig>> getHostNodePools(std::shared_ptr<Config> pConfig)
     {
-        return std::move(pConfig->getNodePoolsForHost(getHostname()));
+        return pConfig->getNodePoolsForHost(getHostname());
     }
 
     static std::string getHostname()
@@ -76,7 +73,7 @@ public:
         const int result = gethostname(hostname, masSize);
         assert(!result);
 
-        return std::move(std::string(hostname));
+        return hostname;
     }
 
 }; // class ConfigLoader

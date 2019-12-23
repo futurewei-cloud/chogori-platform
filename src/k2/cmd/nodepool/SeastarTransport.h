@@ -20,7 +20,7 @@ public:
         assert(tcpEnabled || rdmaEnabled);
     }
 
-    TransportConfig(std::unique_ptr<IAddressProvider>&& tcpAddrProvider, bool rdmaEnabled = false) :
+    TransportConfig(std::unique_ptr<IAddressProvider> tcpAddrProvider, bool rdmaEnabled = false) :
         tcpAddrProvider(std::move(tcpAddrProvider)), tcpEnabled(true), rdmaEnabled(rdmaEnabled) { }
 
     bool isTCPEnabled() const { return tcpEnabled; }

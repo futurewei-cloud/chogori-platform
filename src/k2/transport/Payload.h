@@ -100,7 +100,7 @@ protected:
 
 public:
     Payload(BinaryAllocatorFunctor allocator=DefaultAllocator, String creatorID={}) : size(0), allocator(allocator), creatorID(creatorID) { }
-    Payload(std::vector<Binary> externallyAllocatedBuffers, size_t containedDataSize) :
+    Payload(std::vector<Binary>&& externallyAllocatedBuffers, size_t containedDataSize) :
         buffers(std::move(externallyAllocatedBuffers)),
         size(containedDataSize),
         allocator(nullptr),
@@ -724,7 +724,7 @@ protected:
 public:
     PayloadReader getReader() const { return PayloadReader(payload, position); }
 
-    ReadOnlyPayload(Payload payload, const PayloadReader& currentReader)    //  TODO: need to make position public and use instead of reader
+    ReadOnlyPayload(Payload&& payload, const PayloadReader& currentReader)    //  TODO: need to make position public and use instead of reader
         : payload(std::move(payload)), position(currentReader.position) {}
 };
 

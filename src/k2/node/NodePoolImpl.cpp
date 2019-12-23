@@ -7,7 +7,7 @@ NodePoolImpl::NodePoolImpl() : monitor(*this)
     name = "K2Pool_" + std::to_string(getpid()); //  TODO: add ip and some randomization
 }
 
-Status NodePoolImpl::registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module)
+Status NodePoolImpl::registerModule(ModuleId moduleId, std::unique_ptr<IModule> module)
 {
     auto emplaceResult = modules.try_emplace(moduleId, std::move(module));
     return emplaceResult.second ? Status::Ok : Status::ModuleWithSuchIdAlreadyRegistered;

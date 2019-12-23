@@ -47,7 +47,7 @@ std::vector<PartitionDescription> getPartitionsForRange(const Range& range, clie
         partitions.push_back(*it);
     }
 
-    return std::move(partitions);
+    return partitions;
 }
 
 SCENARIO("Iterator", "[partitionMap]")

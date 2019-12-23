@@ -18,10 +18,10 @@ SCENARIO("Client in a thread pool")
 {
     const k2::String endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     std::vector<PartitionDescription> partitions;
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "3.1.1", PartitionRange("g", "j"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "4.1.1", PartitionRange("j", "")))); // empty high key terminates the range
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "3.1.1", PartitionRange("g", "j")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "4.1.1", PartitionRange("j", ""))); // empty high key terminates the range
     TestClient client(partitions);
     ClientSettings settings;
     settings.networkProtocol = "tcp+k2rpc";
@@ -49,15 +49,15 @@ SCENARIO("Client in a thread pool")
 
     // set key
     // create payload: the range is required since we need to find the endpoint; different type of endpoint have different payloads
-    Payload payload = std::move(client.createPayload());
+    Payload payload = client.createPayload();
     TestFactory::makeSetMessage(payload, key, value);
     // execute operation: the Operation needs to be updated such that there's a separate payload for each range
-    TestFactory::invokeOperationSync(client, std::move(TestFactory::createOperation(range, std::move(payload))));
+    TestFactory::invokeOperationSync(client, TestFactory::createOperation(range, std::move(payload)));
 
     // get the key
-    payload = std::move(client.createPayload());
+    payload = client.createPayload();
     TestFactory::makeGetMessage(payload);
-    auto result = std::move(TestFactory::invokeOperationSync(client, std::move(TestFactory::createOperation(range, std::move(payload)))));
+    auto result = TestFactory::invokeOperationSync(client, TestFactory::createOperation(range, std::move(payload)));
 
     // assert
     assert(result->_responses.size() == 1);

@@ -18,7 +18,7 @@ namespace k2 {
 // must have: protocol(group1), ip(group2==ipv4, group3==ipv6), port(group4)
 const static std::regex urlregex("(.+)://(?:([^:\\[\\]]+)|\\[(.+)\\]):(\\d+)");
 
-std::unique_ptr<TXEndpoint> TXEndpoint::fromURL(String url, BinaryAllocatorFunctor allocator) {
+std::unique_ptr<TXEndpoint> TXEndpoint::fromURL(const String& url, BinaryAllocatorFunctor&& allocator) {
     K2DEBUG("Parsing url " << url);
     std::cmatch matches;
     if (!std::regex_match(url.c_str(), matches, urlregex)) {
@@ -53,14 +53,14 @@ std::unique_ptr<TXEndpoint> TXEndpoint::fromURL(String url, BinaryAllocatorFunct
         ip = seastar::rdma::EndPoint::GIDToString(tmpip6);
     }
     K2DEBUG("Parsed url " << url << ", into: proto=" << protocol << ", ip=" << ip  << ", port=" << port);
-    return std::make_unique<TXEndpoint>(protocol, ip, port, std::move(allocator));
+    return std::make_unique<TXEndpoint>(std::move(protocol), std::move(ip), port, std::move(allocator));
 }
 
 TXEndpoint::~TXEndpoint() {
     K2DEBUG("dtor");
 }
 
-TXEndpoint::TXEndpoint(String protocol, String ip, uint32_t port, BinaryAllocatorFunctor allocator):
+TXEndpoint::TXEndpoint(String&& protocol, String&& ip, uint32_t port, BinaryAllocatorFunctor&& allocator):
     _protocol(std::move(protocol)),
     _ip(std::move(ip)),
     _port(port),

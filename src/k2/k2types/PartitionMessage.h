@@ -87,7 +87,7 @@ public:
     std::unique_ptr<PartitionMessage> message;
     std::unique_ptr<IClientConnection> client;
 
-    PartitionRequest(std::unique_ptr<PartitionMessage>&& message, std::unique_ptr<IClientConnection>&& client)
+    PartitionRequest(std::unique_ptr<PartitionMessage> message, std::unique_ptr<IClientConnection> client)
         : message(std::move(message)), client(std::move(client)) {}
 
     PartitionRequest() {}

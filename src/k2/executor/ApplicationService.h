@@ -30,7 +30,7 @@ public:
     public:
         Launcher(IApplication<T>& rApplication, T& rContext)
         : _rApplication(rApplication)
-        , _pContext(std::move(rContext.newInstance()))
+        , _pContext(rContext.newInstance())
         {
             // EMPTY
         }
@@ -75,9 +75,9 @@ public:
     ApplicationService(IApplication<T>& rApplication, T& rContext)
     : _minDelay(5us)
     , _sempahore(seastar::semaphore(1))
-    , _pApplication(std::move(rApplication.newInstance()))
+    , _pApplication(rApplication.newInstance())
     {
-        _pApplication->onInit(std::move(rContext.newInstance()));
+        _pApplication->onInit(rContext.newInstance());
     }
 
     virtual seastar::future<> start()
@@ -90,7 +90,7 @@ public:
                 const auto timeslice = _pApplication->eventLoop();
                 auto delay = (timeslice < _minDelay) ? _minDelay : timeslice;
 
-                return seastar::sleep(std::move(delay));
+                return seastar::sleep(delay);
             });
         })
         .or_terminate();

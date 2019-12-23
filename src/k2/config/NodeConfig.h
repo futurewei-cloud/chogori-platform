@@ -35,7 +35,7 @@ public:
         return _pTransport;
     }
 
-    const std::vector<std::shared_ptr<PartitionConfig>> getPartitions() const
+    std::vector<std::shared_ptr<PartitionConfig>> getPartitions() const
     {
         std::vector<std::shared_ptr<PartitionConfig>> partitions;
 
@@ -48,7 +48,7 @@ public:
             }
         );
 
-        return std::move(partitions);
+        return partitions;
     }
 
     const std::shared_ptr<PartitionConfig> getPartition(const std::string& id)

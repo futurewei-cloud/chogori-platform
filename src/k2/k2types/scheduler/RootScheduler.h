@@ -69,7 +69,7 @@ public:
           return seastar::create_scheduling_group(name, shares).then([this, name] (seastar::scheduling_group sg) {
                seastar::shared_ptr<SchedulingGroup> sgPtr = seastar::make_shared<SchedulingGroup>(name);
                sgPtr->_schedulingGroup = sg;
-               _schedulingGroups.insert(std::pair(std::move(name), sgPtr));
+               _schedulingGroups.emplace(std::move(name), sgPtr);
 
                return seastar::make_ready_future<>();
           });

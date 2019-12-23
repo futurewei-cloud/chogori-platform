@@ -66,7 +66,7 @@ public:
             }
         }
 
-        return std::move(merged);
+        return merged;
     }
 
 }; // struct YamlUtils

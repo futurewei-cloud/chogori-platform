@@ -18,7 +18,7 @@ class NodePoolImpl : public INodePool
 public:
     NodePoolImpl();
 
-    Status registerModule(ModuleId moduleId, std::unique_ptr<IModule>&& module);
+    Status registerModule(ModuleId moduleId, std::unique_ptr<IModule> module);
 
     Status registerNode(std::unique_ptr<Node> node);
 

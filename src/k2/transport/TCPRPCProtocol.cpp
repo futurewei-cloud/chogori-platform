@@ -232,7 +232,7 @@ TXEndpoint TCPRPCProtocol::_endpointFromAddress(SocketAddress addr) {
     char buffer[bufsize];
     auto inetaddr=addr.addr();
     String ip(::inet_ntop(int(inetaddr.in_family()), inetaddr.data(), buffer, bufsize));
-    return TXEndpoint(proto, std::move(ip), addr.port(), _vnet.local().getTCPAllocator());
+    return TXEndpoint(String(proto), std::move(ip), addr.port(), _vnet.local().getTCPAllocator());
 }
 
 } // namespace k2

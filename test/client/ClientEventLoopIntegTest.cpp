@@ -26,7 +26,7 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
     [key, value, range, onCompleted] (IClient& rClient, k2::Payload&& payload) {
         // execute operation: the Operation needs to be updated such that there's a separate payload for each range
         TestFactory::makeSetMessage(payload, key, value);
-        rClient.execute(std::move(TestFactory::createOperation(range, std::move(payload))),
+        rClient.execute(TestFactory::createOperation(range, std::move(payload)),
         [key, value, range, onCompleted] (IClient& rClient, OperationResult&& result) {
 
             K2INFO("set value: " << value << " for key: " << key << " response: " << k2::getStatusText(result._responses[0].status));
@@ -38,7 +38,7 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
             [key, value, range, onCompleted] (IClient& rClient, k2::Payload&& payload) {
 
                 TestFactory::makeGetMessage(payload);
-                rClient.execute(std::move(TestFactory::createOperation(range, std::move(payload))),
+                rClient.execute(TestFactory::createOperation(range, std::move(payload)),
                 [key, value, onCompleted] (IClient& rClient, OperationResult&& result) {
                     (void)rClient;
 
@@ -64,10 +64,10 @@ SCENARIO("Client in a thread pool")
 {
     const k2::String endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     std::vector<PartitionDescription> partitions;
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "3.1.1", PartitionRange("g", "j"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "4.1.1", PartitionRange("j", "")))); // empty high key terminates the range
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "3.1.1", PartitionRange("g", "j")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "4.1.1", PartitionRange("j", ""))); // empty high key terminates the range
 
     class TestContext: public IApplicationContext
     {
@@ -86,7 +86,7 @@ SCENARIO("Client in a thread pool")
 
         std::unique_ptr<TestContext> newInstance()
         {
-            return std::move(std::make_unique<TestContext>(_rClient, _rExecutor, _endpoint));
+            return std::make_unique<TestContext>(_rClient, _rExecutor, _endpoint);
         }
     };
 

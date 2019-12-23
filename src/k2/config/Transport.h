@@ -82,12 +82,12 @@ public:
         if(isRdmaEnabled()) {
             formatStr = "rrdma" + formatStr;
 
-            return std::move(boost::str(boost::format(formatStr) % _rdmaAddress % _rdmaPort));
+            return boost::str(boost::format(formatStr) % _rdmaAddress % _rdmaPort);
         }
 
         formatStr = "tcp" + formatStr;
 
-        return std::move(boost::str(boost::format(formatStr) % _tcpAddress % _tcpPort));
+        return boost::str(boost::format(formatStr) % _tcpAddress % _tcpPort);
     }
 
 }; // class Transport

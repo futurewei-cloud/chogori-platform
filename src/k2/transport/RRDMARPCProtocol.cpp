@@ -187,7 +187,7 @@ RRDMARPCProtocol::_handleNewChannel(std::unique_ptr<seastar::rdma::RDMAConnectio
 }
 
 TXEndpoint RRDMARPCProtocol::_endpointFromAddress(seastar::rdma::EndPoint addr) {
-    return TXEndpoint(proto, seastar::rdma::EndPoint::GIDToString(addr.GID), addr.UDQP, _vnet.local().getRRDMAAllocator());
+    return TXEndpoint(String(proto), seastar::rdma::EndPoint::GIDToString(addr.GID), addr.UDQP, _vnet.local().getRRDMAAllocator());
 }
 
 } // namespace k2

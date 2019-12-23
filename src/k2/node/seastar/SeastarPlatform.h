@@ -100,13 +100,13 @@ protected:
             return connection->_in.read_exactly(sizeof(PartitionMessage::Header))
                 .then([this, connection] (Binary&& headerBuffer)
                 {
-                    connection->_headerBuffer = moveBinary(headerBuffer);
+                    connection->_headerBuffer = std::move(headerBuffer);
                     return connection->_in.read_exactly(connection->getHeader().messageSize);
                 })
                 .then([this, connection] (Binary&& data)
                 {
                     std::vector<Binary> buffers;
-                    buffers.push_back(moveBinary(data));
+                    buffers.push_back(std::move(data));
 
                     PartitionRequest request;
                     request.message = std::make_unique<PartitionMessage>(

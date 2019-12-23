@@ -15,7 +15,7 @@ void Executor::init(const client::ClientSettings& settings)
 
     _queues.reserve(settings.networkThreadCount);
     for(int i=0; i<settings.networkThreadCount; i++) {
-        _queues.push_back(std::move(std::make_unique<ExecutorQueue>(platformSettings._useUserThread)));
+        _queues.push_back(std::make_unique<ExecutorQueue>(platformSettings._useUserThread));
     }
 
     auto pLauncher = std::unique_ptr<IServiceLauncher>(new MessageService::Launcher(_queues));

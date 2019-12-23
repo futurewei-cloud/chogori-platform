@@ -87,7 +87,7 @@ void RRDMARPCChannel::run() {
                 return seastar::make_ready_future<>();
             }
             return chan->_rconn->recv().
-                then([chan=chan->weak_from_this()](Binary packet) {
+                then([chan=chan->weak_from_this()](Binary&& packet) {
                     if (chan) {
                         if (packet.empty()) {
                             K2DEBUG("remote end closed connection");

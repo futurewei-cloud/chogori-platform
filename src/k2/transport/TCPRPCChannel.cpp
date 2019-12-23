@@ -131,21 +131,21 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
                 return seastar::make_ready_future<>();
             }
             return chan->_in.read().
-                then([chan=chan->weak_from_this()](Binary packet) {
-                    if (chan) {
-                        if (packet.empty()) {
-                            K2DEBUG("remote end closed connection");
-                            return; // just say we're done so the loop can evaluate the end condition
-                        }
-                        K2DEBUG("Read "<< packet.size());
-                        chan->_rpcParser.feed(std::move(packet));
-                        // process some messages from the packet
-                        chan->_rpcParser.dispatchSome();
-                    }
+                then([chan=chan->weak_from_this()](Binary&& packet) {
+                                       if (chan) {
+                                           if (packet.empty()) {
+                                               K2DEBUG("remote end closed connection");
+                                               return; // just say we're done so the loop can evaluate the end condition
+                                           }
+                                           K2DEBUG("Read "<< packet.size());
+                                           chan->_rpcParser.feed(std::move(packet));
+                                           // process some messages from the packet
+                                           chan->_rpcParser.dispatchSome();
+                                       }
                 }).
                 handle_exception([chan=chan->weak_from_this()] (auto) {
                     return seastar::make_ready_future<>();
-            });
+                });
         }
     )
     .finally([chan=weak_from_this()] {

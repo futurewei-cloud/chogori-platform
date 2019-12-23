@@ -36,7 +36,7 @@ void Client::init(client::ClientSettings& settings, std::shared_ptr<config::Conf
             PartitionDescription desc;
             PartitionAssignmentId id;
             id.parse(pPartitionConfig->getId().c_str());
-            desc.nodeEndpoint = std::move(pNodeConfig->getTransport()->getEndpoint());
+            desc.nodeEndpoint = pNodeConfig->getTransport()->getEndpoint();
             desc.id = id;
             PartitionRange partitionRange;
             partitionRange.lowKey = pPartitionConfig->getRange()._lowerBound;
@@ -193,7 +193,7 @@ std::unique_ptr<Payload> Client::createPayload(const std::string& endpoint)
     bool ret = pPayload->getWriter().reserveContiguousStructure(header);
     assert(ret);
 
-    return std::move(pPayload);
+    return pPayload;
 }
 
 std::vector<PartitionDescription> Client::getPartitions(Range& range)
@@ -205,7 +205,7 @@ std::vector<PartitionDescription> Client::getPartitions(Range& range)
         ++it;
     }
 
-    return std::move(partitions);
+    return partitions;
 }
 
 

@@ -309,7 +309,7 @@ PlogId PlogMock::generatePlogId()
         plogId.id[i] = '0' + m_distribution(m_generator);
     }
 
-    return std::move(plogId);
+    return plogId;
 }
 
 

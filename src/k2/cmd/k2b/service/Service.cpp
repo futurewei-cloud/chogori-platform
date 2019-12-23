@@ -98,7 +98,7 @@ public:
                 std::string sessionId = std::to_string(request.sequenceid());
                 SessionPtr pSession = std::make_shared<Session>(sessionId, k2bdto::Request_Operation_Type_Name(request.operation().type()), KeySpace(std::unique_ptr<Generator>(new RandomNumberGenerator()), count));
                 pSession->setTargetCount(request.operation().load().count());
-                _readySessions.insert(std::move(std::pair<std::string, SessionPtr>(sessionId, pSession)));
+                _readySessions.emplace(sessionId, pSession);
                 response.set_uuid(sessionId);
                 response.set_status(k2bdto::Response_Status_OK);
 
@@ -113,7 +113,7 @@ public:
         response.set_sequenceid(request.sequenceid());
         response.SerializeToString(&tmp);
 
-        return std::move(response);
+        return response;
     }
 
     client::Operation createClientOperation(client::Range range, Payload payload)
@@ -124,7 +124,7 @@ public:
         message.ranges.push_back(std::move(range));
         operation.messages.push_back(std::move(message));
 
-        return std::move(operation);
+        return operation;
     }
 
     //
@@ -142,7 +142,7 @@ public:
             }
 
             const int delay = (pipeline-i) * penalty;
-            const std::string key = std::move(pSession->next());
+            const std::string key = pSession->next();
 
             try {
                 if(key.empty()) {
@@ -168,7 +168,7 @@ public:
         if(!_readySessions.empty()) {
             SessionPtr pSession = _readySessions.begin()->second;
             _readySessions.erase(_readySessions.begin());
-            _runningSessions.insert(std::move(std::pair<std::string, SessionPtr>(pSession->getSessionId(), pSession)));
+            _runningSessions.emplace(pSession->getSessionId(), pSession);
         }
 
         if(!_runningSessions.empty()) {
@@ -179,7 +179,7 @@ public:
                 if(it!=_runningSessions.end()) {
                     _runningSessions.erase(it);
                 }
-                _compleatedSessions.insert(std::move(std::pair<std::string, SessionPtr>(pSession->getSessionId(), pSession)));
+                _compleatedSessions.emplace(pSession->getSessionId(), pSession);
                 printReport(pSession);
             }
             else
@@ -264,7 +264,7 @@ public:
            std::string inputString(readBuffer.data());
 	       k2bdto::Request request;
 	       request.ParseFromString(inputString);
-	       response = std::move(handleRequest(request));
+	       response = handleRequest(request);
        }
        catch(...) {
 	       K2ERROR("Exception thrown!");
@@ -312,7 +312,7 @@ public:
             }
         }
 
-        return std::move(vector);
+        return vector;
     }
 
     void registerMetrics()
@@ -347,7 +347,7 @@ public:
 
     void sendKeyOneShot(const std::string& key, SessionPtr pSession) {
         client::Range range = client::Range::singleKey(key);
-        auto partitions = std::move(_pContext->_rClient.getPartitions(range));
+        auto partitions = _pContext->_rClient.getPartitions(range);
 
         _pContext->_rClient.execute(partitions[0],
             [this, key] (Payload& payload) mutable {
@@ -376,7 +376,7 @@ public:
                 makeSetMessage(payload, key, key);
                 // create operation
                 client::Range range = client::Range::singleKey(key);
-                client::Operation operation = std::move(createClientOperation(std::move(range), std::move(payload)));
+                client::Operation operation = createClientOperation(std::move(range), std::move(payload));
                 // execute operation
                 rClient.execute(std::move(operation), [pSession, key](client::IClient& client, client::OperationResult&& result) {
                     // prevent compilation warnings
