@@ -21,6 +21,15 @@ These are not limits of the system, but we design the system to operate under th
 - We prioritize performance for DC-local operations but remain correct in mixed usage
 - Single-threaded, concurrent architecture. This allows us not to worry about multi-threaded side-effects during tight sequence of operations on any node.
 
+# High-level overiew
+## Architecture
+![Architecture](./images/TxnArchitecture.png)
+
+## Transaction flow
+![TxnFlow](./images/HighLevelTxn.png)
+
+Our transaction flow is pretty standard from high-level. Users begin() a transaction, and then commit() after some number of read() and write() operations. Note how we obtain a timestamp for the transaction only once since all operations will be recorded to have occurred at that time.
+
 # Definitions
 
 ### Isolation levels:

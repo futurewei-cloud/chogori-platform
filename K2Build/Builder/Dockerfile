@@ -1,4 +1,4 @@
 ARG DOCKER_REGISTRY
 FROM ${DOCKER_REGISTRY}/k2builder:latest
 ARG USE_PROXY
-RUN proxy apt update && proxy apt install -y libseastar-k2=1.0.9 libhot-k2=0.4 protobuf-compiler
+RUN proxy apt update && proxy apt install -y libseastar-k2=1.0.10 libhot-k2=0.4 libfmt-k2=6.1.2 protobuf-compiler

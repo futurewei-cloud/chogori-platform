@@ -5,10 +5,10 @@
 // catch
 #include "catch2/catch.hpp"
 // k2
-#include <common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
-#include <client/Client.h>
-#include "modules/memkv/server/MemKVModule.h"
+#include <k2/client/Client.h>
+#include <k2/modules/memkv/server/MemKVModule.h>
 // test
 #include "TestFactory.h"
 
@@ -26,31 +26,31 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
     [key, value, range, onCompleted] (IClient& rClient, k2::Payload&& payload) {
         // execute operation: the Operation needs to be updated such that there's a separate payload for each range
         TestFactory::makeSetMessage(payload, key, value);
-        rClient.execute(std::move(TestFactory::createOperation(range, std::move(payload))),
+        rClient.execute(TestFactory::createOperation(range, std::move(payload)),
         [key, value, range, onCompleted] (IClient& rClient, OperationResult&& result) {
 
             K2INFO("set value: " << value << " for key: " << key << " response: " << k2::getStatusText(result._responses[0].status));
             (void)rClient;
-            ASSERT(result._responses[0].status == Status::Ok);
+            assert(result._responses[0].status == Status::Ok);
 
             // get the key
             rClient.createPayload(
             [key, value, range, onCompleted] (IClient& rClient, k2::Payload&& payload) {
 
                 TestFactory::makeGetMessage(payload);
-                rClient.execute(std::move(TestFactory::createOperation(range, std::move(payload))),
+                rClient.execute(TestFactory::createOperation(range, std::move(payload)),
                 [key, value, onCompleted] (IClient& rClient, OperationResult&& result) {
                     (void)rClient;
 
                     // assert
-                    ASSERT(result._responses[0].status == Status::Ok);
-                    ASSERT(result._responses.size() == 1)
-                    ASSERT(0 == result._responses[0].moduleCode);
+                    assert(result._responses[0].status == Status::Ok);
+                    assert(result._responses.size() == 1);
+                    assert(0 == result._responses[0].moduleCode);
                     // extract value
                     MemKVModule<>::GetResponse getResponse;
                     result._responses[0].payload.getReader().read(getResponse);
                     K2INFO("received value: " << getResponse.value << " for key: " << key);
-                    ASSERT(value==getResponse.value);
+                    assert(value==getResponse.value);
 
                     onCompleted();
                 });
@@ -64,10 +64,10 @@ SCENARIO("Client in a thread pool")
 {
     const k2::String endpointUrl = "tcp+k2rpc://127.0.0.1:11311";
     std::vector<PartitionDescription> partitions;
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "3.1.1", PartitionRange("g", "j"))));
-    partitions.push_back(std::move(TestFactory::createPartitionDescription(endpointUrl, "4.1.1", PartitionRange("j", "")))); // empty high key terminates the range
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "1.1.1", PartitionRange("a", "d")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "2.1.1", PartitionRange("d", "g")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "3.1.1", PartitionRange("g", "j")));
+    partitions.push_back(TestFactory::createPartitionDescription(endpointUrl, "4.1.1", PartitionRange("j", ""))); // empty high key terminates the range
 
     class TestContext: public IApplicationContext
     {
@@ -86,7 +86,7 @@ SCENARIO("Client in a thread pool")
 
         std::unique_ptr<TestContext> newInstance()
         {
-            return std::move(std::make_unique<TestContext>(_rClient, _rExecutor, _endpoint));
+            return std::make_unique<TestContext>(_rClient, _rExecutor, _endpoint);
         }
     };
 
@@ -105,18 +105,18 @@ SCENARIO("Client in a thread pool")
             // empty
         }
 
-        virtual uint64_t eventLoop()
+        virtual Duration eventLoop()
         {
             count++;
             if(done || count > 5000)
             {
                  // verify
-                ASSERT(done);
+                assert(done);
                 // stop client
                _pContext->_rClient.stop();
             }
             if(count > 1) {
-                return 1000;
+                return 1000us;
             }
 
             TestFactory::assignPartitionAsync(_pContext->_rExecutor, _pContext->_endpoint, partitionId, PartitionRange("a", "d"),
@@ -127,7 +127,7 @@ SCENARIO("Client in a thread pool")
                 });
             });
 
-            return 1000;
+            return 1000us;
         }
 
         virtual void onInit(std::unique_ptr<TestContext> pContext)

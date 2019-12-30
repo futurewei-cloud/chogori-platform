@@ -4,10 +4,10 @@
 // catch
 #include <catch2/catch.hpp>
 // k2
-#include <common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
-#include <client/IClient.h>
-#include <client/PartitionMap.h>
+#include <k2/client/IClient.h>
+#include <k2/client/PartitionMap.h>
 
 using namespace k2;
 using namespace k2::client;
@@ -47,7 +47,7 @@ std::vector<PartitionDescription> getPartitionsForRange(const Range& range, clie
         partitions.push_back(*it);
     }
 
-    return std::move(partitions);
+    return partitions;
 }
 
 SCENARIO("Iterator", "[partitionMap]")

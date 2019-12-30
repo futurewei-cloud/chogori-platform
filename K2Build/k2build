@@ -13,4 +13,4 @@ if [ -t 1 ] ; then IT=-it; else IT=; fi
 echo ">>> Pulling latest builder image: ${FULL_IMG_NAME}"
 docker pull ${FULL_IMG_NAME}
 echo ">>> Executing command \"$*\" in the build container"
-docker run --init --rm ${IT} -v "${PWD}:/build" --cap-add=SYS_PTRACE --security-opt seccomp=unconfined ${FULL_IMG_NAME} $*;
+docker run --init --rm ${IT} -v "${PWD}:/build" --cap-add=SYS_PTRACE --cap-add=sys_nice --ulimit rtprio=99 --security-opt seccomp=unconfined ${FULL_IMG_NAME} $*;

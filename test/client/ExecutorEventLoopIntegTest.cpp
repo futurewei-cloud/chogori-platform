@@ -4,10 +4,10 @@
 // catch
 #include "catch2/catch.hpp"
 // k2
-#include <common/PartitionMetadata.h>
+#include <k2/k2types/PartitionMetadata.h>
 // k2:client
-#include <client/IClient.h>
-#include <executor/Executor.h>
+#include <k2/client/IClient.h>
+#include <k2/executor/Executor.h>
 // test
 #include "TestFactory.h"
 
@@ -29,7 +29,7 @@ SCENARIO("Executor with event loop")
 
         std::unique_ptr<Context> newInstance()
         {
-            return std::move(std::make_unique<Context>(_rExecutor));
+            return std::make_unique<Context>(_rExecutor);
         }
     };
 
@@ -43,18 +43,18 @@ SCENARIO("Executor with event loop")
         bool done = false;
 
     public:
-        virtual uint64_t eventLoop()
+        virtual Duration eventLoop()
         {
             count++;
             if(done || count > 4000)
             {
                  // verify
-                ASSERT(done);
+                assert(done);
                 // stop executor
                 _pContext->_rExecutor.stop();
             }
             if(count > 1) {
-                return 1000;
+                return 1000us;
             }
 
             K2INFO("executing loop once");
@@ -63,19 +63,19 @@ SCENARIO("Executor with event loop")
             K2INFO("Creating partition: " << partitionId);
             _pContext->_rExecutor.execute(endpointUrl,
             [&] (std::unique_ptr<k2::Payload> payload) {
-                TestFactory::makePartitionPayload(*(payload.get()), partitionId, std::move(k2::PartitionRange("g", "j")), MessageType::PartitionAssign);
+                TestFactory::makePartitionPayload(*(payload.get()), partitionId, PartitionRange("g", "j"), MessageType::PartitionAssign);
                 K2INFO("payload created");
 
                 // send the payload
-                _pContext->_rExecutor.execute(endpointUrl, std::chrono::seconds(5), std::move(payload),
+                _pContext->_rExecutor.execute(endpointUrl, 5s, std::move(payload),
                 [&] (std::unique_ptr<ResponseMessage> response) {
                     K2INFO("response from execute:" << k2::getStatusText(response->status));
-                    ASSERT(response->status == Status::Ok)
+                    assert(response->status == Status::Ok);
                     done = true;
                 });
             });
 
-            return 1000;
+            return 1000us;
         }
 
         virtual void onInit(std::unique_ptr<Context> pContext)

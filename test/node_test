@@ -1,11 +1,11 @@
 #!/bin/bash
 
-./build/src/cmd/controlPlaneClient/controlPlaneClient assign -p 1.1.1
-./build/src/cmd/dataPlaneClient/dataPlaneClient set -p 1.1.1 -k 1 -v One
+./build/src/k2/cmd/controlPlaneClient/controlPlaneClient assign -p 1.1.1
+./build/src/k2/cmd/dataPlaneClient/dataPlaneClient set -p 1.1.1 -k 1 -v One
 
-./build/src/cmd/controlPlaneClient/controlPlaneClient assign -p 2.1.1
-./build/src/cmd/dataPlaneClient/dataPlaneClient set -p 2.1.1 -k 2 -v Two
+./build/src/k2/cmd/controlPlaneClient/controlPlaneClient assign -p 2.1.1
+./build/src/k2/cmd/dataPlaneClient/dataPlaneClient set -p 2.1.1 -k 2 -v Two
 
-./build/src/cmd/dataPlaneClient/dataPlaneClient get -p 1.1.1 -k 1
-./build/src/cmd/dataPlaneClient/dataPlaneClient get -p 2.1.1 -k 2
+./build/src/k2/cmd/dataPlaneClient/dataPlaneClient get -p 1.1.1 -k 1
+./build/src/k2/cmd/dataPlaneClient/dataPlaneClient get -p 2.1.1 -k 2
 

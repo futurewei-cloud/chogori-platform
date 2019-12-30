@@ -36,7 +36,7 @@ test: test_node test_client test_plog test_volume test_config
 
 integrate: build
 	@echo ">>> Running integration test"
-	@../integration/run.sh && testReturnCode=$? && exit $(testReturnCode)
+	@../test/integration/run.sh && testReturnCode=$? && exit $(testReturnCode)
 
 install: build
 	@echo ">>> Installing"
