@@ -16,19 +16,9 @@ namespace k2 {
 //
 typedef uint8_t Verb;
 
-//
-//  Verbs that K2 is using internally
-//
-class KnownVerbs
-{
-public:
-    enum Verbs : Verb
-    {
-        None = 0,               //  Currently is used with responses
-        ZEROVERB = None,        //  Transport naming for None
-        PartitionMessages = 1,  //  K2 Partition management service
-        PartitionManager = 2
-    };
+// Verbs used by K2 internally
+enum InternalVerbs : k2::Verb {
+    NIL = 0 // used for messages where the verb doesn't matter
 };
 
 } // namespace k2

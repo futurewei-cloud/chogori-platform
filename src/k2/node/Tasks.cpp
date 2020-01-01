@@ -49,7 +49,7 @@ MessageInitiatedTaskRequest::MessageInitiatedTaskRequest(Partition& partition, s
 
 void ClientTask::respondToSender(Status status, uint32_t moduleCode) {
     if (status != Status::Ok)
-        getClient().getResponseWriter().truncateToCurrent();
+        getSendPayload().truncateToCurrent();
     client->sendResponse(status, moduleCode);
 }
 
@@ -84,16 +84,14 @@ TaskRequest::ProcessResult ClientTask::onApply() {
     return TaskRequest::ProcessResult::Done;
 }
 
-ClientTask::ClientTask(Partition& partition, std::unique_ptr<IClientConnection> client, Payload&& requestPayload) :
-  MessageInitiatedTaskRequest(partition, std::move(client)), requestPayload(std::move(requestPayload)),
-    responseWriter(getClient().getResponseWriter()), state(State::Prepare) {
+ClientTask::ClientTask(Partition& partition, std::unique_ptr<IClientConnection> client, Payload&& receivedPayload) :
+  MessageInitiatedTaskRequest(partition, std::move(client)), receivedPayload(std::move(receivedPayload)), state(State::Prepare) {
 }
 
 TaskType ClientTask::getType() const { return TaskType::ClientRequest; }
 
-const Payload& ClientTask::getRequestPayload() const { return requestPayload; }
-
-PayloadWriter& ClientTask::getResponseWriter() { return responseWriter; }
+Payload& ClientTask::getReceivedPayload() { return receivedPayload; }
+Payload& ClientTask::getSendPayload() { return client->getResponsePayload(); }
 
 TaskRequest::ProcessResult ClientTask::process() {
     switch (state) {
@@ -112,8 +110,8 @@ TaskRequest::ProcessResult ClientTask::process() {
     }
 }
 
-void ClientTask::releaseRequestPayload() {
-    requestPayload.clear();
+void ClientTask::releaseReceivedPayload() {
+    receivedPayload.clear();
 }
 
 AssignmentTask::AssignmentTask(Partition& partition, std::unique_ptr<IClientConnection> client) : MessageInitiatedTaskRequest(partition, std::move(client)) {}

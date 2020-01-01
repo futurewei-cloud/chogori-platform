@@ -8,8 +8,9 @@
 // seastar
 #include <seastar/core/reactor.hh>
 // k2:transport
-#include <k2/transport/RPCDispatcher.h>
+#include <k2/k2types/MessageVerbs.h>
 #include <k2/transport/BaseTypes.h>
+#include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RPCProtocolFactory.h>
 #include <k2/transport/RetryStrategy.h>
 // k2:client
@@ -268,7 +269,7 @@ private:
                 return seastar::make_ready_future<>();
             })
             .handle_exception([&, pTask](std::exception_ptr eptr) {
-                pTask->_pPlatformData->_pResponse.reset(new ResponseMessage());
+                pTask->_pPlatformData->_pResponse.reset();
                 try {
                     std::rethrow_exception(eptr);
                 }
@@ -294,27 +295,25 @@ private:
     seastar::future<std::unique_ptr<ResponseMessage>> sendMessage(ExecutorTaskPtr pTask)
     {
         const auto startTime = Clock::now();
-
-        return _dispatcher.local().sendRequest(KnownVerbs::PartitionMessages,
+        return _dispatcher.local().sendRequest(K2Verbs::PartitionMessages,
             std::move(pTask->_pPlatformData->_pPayload),
             *pTask->_pPlatformData->_pEndpoint,
             pTask->getTimeout())
-        .then([this, startTime](std::unique_ptr<k2::Payload> payload) {
+        .then([this, startTime, ep=std::move(pTask->_pPlatformData->_pEndpoint)](std::unique_ptr<k2::Payload> payload) mutable{
             _sendMessageLatency.add(Clock::now() - startTime);
             // parse a ResponseMessage from the received payload
             auto readBytes = payload->getSize();
             auto hdrSize = sizeof(ResponseMessage::Header);
             ResponseMessage::Header header;
-            payload->getReader().read(&header, hdrSize);
+            payload->seek(0);
+            payload->read(&header, hdrSize);
 
             if(Status::Ok != header.status) {
                 throw ExecutionException(header.status, "Error status");
             }
 
-            auto response = std::make_unique<ResponseMessage>(header);
-
             if(!header.messageSize) {
-                return seastar::make_ready_future<std::unique_ptr<ResponseMessage>>(std::move(response));
+                return seastar::make_ready_future<std::unique_ptr<ResponseMessage>>(std::make_unique<ResponseMessage>(Endpoint(ep->getURL()), std::move(*ep->newPayload().release()), header));
             }
 
             auto&& buffers = payload->release();
@@ -323,10 +322,7 @@ private:
             if(header.messageSize != readBytes - hdrSize) {
                 throw ExecutionException(Status::MessageParsingError, "Invalid message size");
             }
-
-            response->payload = Payload(std::move(buffers), readBytes - hdrSize);
-
-            return seastar::make_ready_future<std::unique_ptr<ResponseMessage>>(std::move(response));
+            return seastar::make_ready_future<std::unique_ptr<ResponseMessage>>(std::make_unique<ResponseMessage>(Endpoint(ep->getURL()), Payload(std::move(buffers), readBytes - hdrSize), header));
          });
     }
 

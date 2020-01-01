@@ -50,7 +50,7 @@ public:
     // a MessageMetadata, and then use the API from MessageMetadata to determine what fields are set and
     // what their values are
     uint8_t features = 0x0;
-    Verb verb = KnownVerbs::None;
+    Verb verb = InternalVerbs::NIL;
 };
 
 // The variable message header. Fields here are only valid if set in the Features bitmap above
@@ -103,41 +103,5 @@ public: // fields
     uint32_t requestID = 0;
     uint32_t responseID = 0;
     // MAYBE TODO CRC, crypto, sender endpoint
-
-    static MessageMetadata createResponse(const MessageMetadata& originalRequest)
-    {
-        return originalRequest.createResponse();
-    }
-
-    MessageMetadata createResponse() const
-    {
-        MessageMetadata result;
-        result.setResponseID(requestID);
-        return result;
-    }
-
-    static MessageMetadata newRequest()
-    {
-        MessageMetadata metadata;
-        metadata.setRequestID(uint64_t(std::rand()));
-
-        return metadata;
-    }
 };
-
-//
-//  Describes received messsage
-//
-struct MessageDescription
-{
-    Verb verb;
-    MessageMetadata metadata;
-    Payload payload;
-
-    MessageDescription() : verb(KnownVerbs::None) {}
-
-    MessageDescription(Verb verb, MessageMetadata metadata, Payload payload) :
-        verb(verb), metadata(std::move(metadata)), payload(std::move(payload)) { }
-};
-
 } // k2

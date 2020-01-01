@@ -67,10 +67,8 @@ void Client::createPayload(std::function<void(IClient&, Payload&&)> onCompleted)
 
     IClient* pClient = this;
 
-    _executor.execute(endpoint, [pClient, onCompleted] (std::unique_ptr<k2::Payload> pPayload) mutable {
-        PartitionMessage::Header* header;
-        bool ret = pPayload->getWriter().reserveContiguousStructure(header);
-        K2ASSERT(ret, "unable to reserve space in payload");
+    _executor.execute(endpoint, [pClient, onCompleted](std::unique_ptr<k2::Payload> pPayload) mutable {
+        pPayload->skip(sizeof(PartitionMessage::Header));
         onCompleted(*pClient, std::move(*pPayload.release()));
     });
 }
@@ -142,8 +140,8 @@ void Client::writePartitionHeader(Payload& payload, PartitionDescription& partit
     header.messageType = MessageType::ClientRequest;
     header.partition = partition.id;
     header.messageSize = payload.getSize() - txconstants::MAX_HEADER_SIZE - sizeof(PartitionMessage::Header);
-    auto writer = payload.getWriter(txconstants::MAX_HEADER_SIZE);
-    writer.write(header);
+    payload.seek(txconstants::MAX_HEADER_SIZE);
+    payload.write(header);
 }
 
 void Client::sendPayload(const std::string& endpoint, std::unique_ptr<Payload> pPayload, std::shared_ptr<ResultCollector> pCollector)
@@ -163,9 +161,8 @@ void Client::copyPayload(Payload& sourcePayload, Payload& destinationPayload)
     const size_t headerSize = txconstants::MAX_HEADER_SIZE + sizeof(PartitionMessage::Header);
     K2ASSERT(sourcePayload.getSize() >= headerSize, "");
     const size_t payloadSize = sourcePayload.getSize() - headerSize;
-    auto reader = sourcePayload.getReader(headerSize);
-    auto writer = destinationPayload.getWriter();
-    writer.write(reader, payloadSize);
+    sourcePayload.seek(headerSize);
+    destinationPayload.copyFromPayload(sourcePayload, payloadSize);
 }
 
 std::unique_ptr<Payload> Client::createPayload(const std::string& endpoint)
@@ -189,10 +186,7 @@ std::unique_ptr<Payload> Client::createPayload(const std::string& endpoint)
     }
 
     // reserve space for the partition header
-    PartitionMessage::Header* header;
-    bool ret = pPayload->getWriter().reserveContiguousStructure(header);
-    assert(ret);
-
+    pPayload->skip(sizeof(PartitionMessage::Header));
     return pPayload;
 }
 

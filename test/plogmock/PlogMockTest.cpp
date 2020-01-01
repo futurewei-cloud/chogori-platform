@@ -237,8 +237,9 @@ SEASTAR_TEST_CASE(test_read)
         {
             writeBufferList.push_back(Binary(sizes[i]));
             totalSize += sizes[i];
-            std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), i);
+            std::fill(writeBufferList[i].get_write(), writeBufferList[i].get_write()+writeBufferList[i].size(), (char)i);
         }
+        K2INFO("Total size=" << totalSize);
 
         return plogMock->appendMany(plogId, std::move(writeBufferList))
             .then([plogMock, plogId, totalSize](auto startPos)
@@ -280,16 +281,15 @@ SEASTAR_TEST_CASE(test_read)
                         }
 
                         return plogMock->readAll(plogId)
-                            .then([sizes = std::move(sizes), plogMock](Payload payload)
-                            {
-                                PayloadReader reader = payload.getReader();
+                            .then([sizes = std::move(sizes), plogMock](Payload payload) {
+                                payload.seek(0);
                                 size_t totalSize = 0;
                                 for(size_t i = 0; i < sizes.size(); i++)
                                 {
                                     for(size_t j = 0; j < sizes[i]; j++)
                                     {
                                         char b;
-                                        BOOST_REQUIRE(reader.read(b));
+                                        BOOST_REQUIRE(payload.read(b));
                                         BOOST_REQUIRE((size_t)b == i);
                                     }
 

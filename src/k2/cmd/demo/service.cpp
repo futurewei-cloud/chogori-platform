@@ -92,7 +92,7 @@ public: // Work generators
             msg += std::to_string(_msgCount++);
 
             std::unique_ptr<Payload> request = _heartbeatTXEndpoint->newPayload();
-            request->getWriter().write(msg.c_str(), msg.size()+1);
+            request->write(msg.c_str(), msg.size()+1);
             // straight Send sends requests without any form of retry. Underlying transport may or may not
             // attempt redelivery (e.g. TCP packet reliability)
             RPC().send(GET, std::move(request), *_heartbeatTXEndpoint);
@@ -125,7 +125,7 @@ public: // Work generators
                 // e.g. one we place the packets into the DPDK mem queue, we might not be able to obtain the
                 // exact same packets back unless we do some cooperative refcounting with the dpdk internals
                 std::unique_ptr<Payload> msg = self->_heartbeatTXEndpoint->newPayload();
-                msg->getWriter().write(msgData.c_str(), msgData.size()+1);
+                msg->write(msgData.c_str(), msgData.size()+1);
 
                 // send a request with expected reply. Since we expect a reply, we must specify a timeout
                 return RPC().sendRequest(POST, std::move(msg), *self->_heartbeatTXEndpoint, timeout)
@@ -167,7 +167,7 @@ public:
         msgData += std::to_string(_msgCount++);
 
         std::unique_ptr<Payload> msg = request.endpoint.newPayload();
-        msg->getWriter().write(msgData.c_str(), msgData.size()+1);
+        msg->write(msgData.c_str(), msgData.size()+1);
         // respond to the client's request
         RPC().sendReply(std::move(msg), request);
     }
@@ -180,7 +180,7 @@ public:
         msgData += std::to_string(_msgCount++);
 
         std::unique_ptr<Payload> msg = request.endpoint.newPayload();
-        msg->getWriter().write(msgData.c_str(), msgData.size()+1);
+        msg->write(msgData.c_str(), msgData.size()+1);
 
         // Here we just forward the message using a straight Send and we don't expect any responses to our forward
         RPC().send(ACK, std::move(msg), request.endpoint);

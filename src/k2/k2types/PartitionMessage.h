@@ -53,27 +53,20 @@ public:
     };
 
     template<class MessageT>
-    static void serializeMessage(PayloadWriter& writer, MessageType messageType, PartitionAssignmentId partition, const MessageT& messageContent)
+    static void serializeMessage(Payload& payload, MessageType messageType, PartitionAssignmentId partition, const MessageT& messageContent)
     {
-        Header* header;
-        auto rcode = writer.reserveContiguousStructure(header);
-        assert(rcode);
+        auto cursor = payload.getCurrentPosition();
+        Header header{
+            .messageType = messageType,
+            .partition = partition,
+            .messageSize = 1};
+        payload.write(header);
+        auto msgCursor = payload.getCurrentPosition();
+        payload.write(messageContent);
 
-        header->messageType = messageType;
-        header->partition = partition;
-
-        auto contentPos = writer.getCurrent();
-        rcode = writer.write(messageContent);
-        assert(rcode);
-        header->messageSize = writer.getCurrent() - contentPos; //  TODO: consider drop messageSize
-    }
-
-    template<class MessageT>
-    static Payload serializeMessage(MessageType messageType, PartitionAssignmentId partition, const MessageT& messageContent)
-    {
-        Payload result;
-        serializeMessage(result.getWriter(), messageType, partition, messageContent);
-        return result;
+        header.messageSize = payload.getCurrentPosition().offset - msgCursor.offset;
+        payload.seek(cursor);
+        payload.write(header);
     }
 };
 
@@ -115,8 +108,10 @@ public:
     Status status;
     uint32_t moduleCode;
 
-    ResponseMessage() {}
-    ResponseMessage(const Header& header) : status(header.status), moduleCode(header.moduleCode) {}
+    ResponseMessage(Endpoint&& remote, Payload&& payload, const Header& header) :
+        Message(std::move(remote), std::move(payload)),
+        status(header.status),
+        moduleCode(header.moduleCode) {}
 
     Status getStatus() const { return status; }
     uint32_t getModuleCode() const { return moduleCode;}
@@ -138,12 +133,10 @@ public:
         return PartitionAssignmentId(partitionMetadata.getId(), partitionVersion);
     }
 
-    AssignmentMessage() {}
 
-    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver)
+    std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver, Payload&& payload)
     {
-        Payload payload;
-        payload.getWriter().write(*this);
+        payload.write(*this);
 
         return std::make_unique<PartitionMessage>(MessageType::PartitionAssign, getPartitionAssignmentId(),
             std::move(receiver), std::move(payload));
@@ -158,11 +151,10 @@ public:
 class OffloadMessage
 {
 public:
-    OffloadMessage() {}
 
-    static std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver, const PartitionAssignmentId& partitionId)
+    static std::unique_ptr<PartitionMessage> createMessage(Endpoint&& receiver, const PartitionAssignmentId& partitionId, Payload&& payload)
     {
-        return std::make_unique<PartitionMessage>(MessageType::PartitionOffload, partitionId, std::move(receiver), Payload());
+        return std::make_unique<PartitionMessage>(MessageType::PartitionOffload, partitionId, std::move(receiver), std::move(payload));
     }
 };
 

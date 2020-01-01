@@ -15,7 +15,6 @@ class Message {
    public:
     Payload payload;
 
-    Message() {}
     Message(Endpoint&& sender, Payload&& payload) : sender(std::move(sender)), payload(std::move(payload)) {}
 };
 
@@ -30,7 +29,7 @@ class IClientConnection {
     //
     //  Send reponse to sender
     //
-    virtual PayloadWriter getResponseWriter() = 0;
+    virtual Payload& getResponsePayload() = 0;
 
     //
     //  Send error to sender

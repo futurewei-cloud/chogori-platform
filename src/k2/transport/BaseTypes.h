@@ -3,6 +3,9 @@
 //-->
 
 #pragma once
+#include <memory>
+#include <functional>
+
 #include <seastar/net/socket_defs.hh> // for socket_address
 
 #include "Payload.h"

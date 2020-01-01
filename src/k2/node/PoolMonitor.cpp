@@ -1,12 +1,21 @@
 #include "PoolMonitor.h"
-#include "Node.h"
-#include <boost/asio.hpp>
-#include <boost/array.hpp>
 #include <k2/client/BoostTransport.h>
 #include <k2/common/Chrono.h>
+#include <k2/k2types/MessageVerbs.h>
+#include <k2/k2types/PartitionManagerMessage.h>
+#include <boost/array.hpp>
+#include <boost/asio.hpp>
+#include "Node.h"
 
 namespace k2
 {
+
+Payload newPayload() {
+    return Payload([]() {
+        return Binary(1000);
+    });
+}
+
 template<typename RequestT, typename ResponseT>
 Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
 {
@@ -19,7 +28,7 @@ Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
         try
         {
             //  TODO: Partition Manager can switch to different instance and let is know which is that. Also need to set time out
-            BoostTransport::messageExchange(pm.c_str(), KnownVerbs::PartitionManager, makeMessageWithType(request), response);
+            BoostTransport::messageExchange(pm.c_str(), K2Verbs::PartitionManager, makeMessageWithType(request), response, newPayload());
             if(response.status != Status::Ok)
                 continue;
 

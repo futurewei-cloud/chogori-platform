@@ -58,7 +58,7 @@ private:
                            k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
                            k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
                 K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
-                response->getWriter().write((void*)ep->getURL().c_str(), ep->getURL().size());
+                response->write((void*)ep->getURL().c_str(), ep->getURL().size());
                 k2::RPC().sendReply(std::move(response), request);
             });
     }
@@ -67,9 +67,8 @@ private:
         k2::RPC().registerMessageObserver(START_SESSION, [this](k2::Request&& request) mutable {
             auto sid = uint64_t(std::rand());
             if (request.payload) {
-                auto rdr = request.payload->getReader();
                 SessionConfig config{};
-                rdr.read((void*)&config, sizeof(config));
+                request.payload->read((void*)&config, sizeof(config));
 
                 BenchSession session(request.endpoint, sid, config);
                 auto result = _sessions.try_emplace(sid, std::move(session));
@@ -77,7 +76,7 @@ private:
                 K2INFO("Starting new session: " << sid);
                 auto resp = request.endpoint.newPayload();
                 SessionAck ack{.sessionID=sid};
-                resp->getWriter().write((void*)&ack, sizeof(ack));
+                resp->write((void*)&ack, sizeof(ack));
                 k2::RPC().sendReply(std::move(resp), request);
             }
         });
@@ -86,11 +85,10 @@ private:
     void _registerREQUEST() {
         k2::RPC().registerMessageObserver(REQUEST, [this](k2::Request&& request) mutable {
             if (request.payload) {
-                auto rdr = request.payload->getReader();
                 uint64_t sid = 0;
                 uint64_t reqId = 0;
-                rdr.read((void*)&sid, sizeof(sid));
-                rdr.read((void*)&reqId, sizeof(reqId));
+                request.payload->read((void*)&sid, sizeof(sid));
+                request.payload->read((void*)&reqId, sizeof(reqId));
 
                 auto siditer = _sessions.find(sid);
                 if (siditer != _sessions.end()) {
@@ -107,10 +105,10 @@ private:
                     if (session.unackedCount >= session.config.ackCount) {
                         auto response = request.endpoint.newPayload();
                         Ack ack{.sessionID=sid, .totalCount=session.totalCount, .totalSize=session.totalSize, .checksum=session.runningSum};
-                        response->getWriter().write((void*)&ack, sizeof(ack));
+                        response->write((void*)&ack, sizeof(ack));
                         if (session.config.echoMode) {
                             for (auto&& buf: _data) {
-                                response->getWriter().write(buf.get(), buf.size());
+                                response->write(buf.get(), buf.size());
                             }
                             _data.clear();
                         }

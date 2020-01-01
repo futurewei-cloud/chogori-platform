@@ -2,12 +2,13 @@
 //    (C)opyright Futurewei Technologies Inc, 2019
 //-->
 #include "K2TXPlatform.h"
-#include <seastar/core/app-template.hh> // for app_template
 #include <k2/common/Log.h>
-#include <k2/k2types/Constants.h>
 #include <k2/common/TimeMeasure.h>
+#include <k2/k2types/Constants.h>
+#include <k2/k2types/MessageVerbs.h>
 #include <k2/transport/IRPCProtocol.h>
 #include <sched.h>
+#include <seastar/core/app-template.hh>  // for app_template
 #include "SeastarApp.h"
 #include "SeastarTransport.h"
 
@@ -26,12 +27,11 @@ public:
     AMClientConnection(k2::Request&& request, k2::RPCDispatcher& disp):
     _responded(false),
     _outPayload(request.endpoint.newPayload()),
-    _header(0),
+    _headerPos(_outPayload->getCurrentPosition()),
     _request(std::move(request)),
     _disp(disp)
     {
-        bool ret = _outPayload->getWriter().reserveContiguousStructure(_header);
-        assert(ret); //  Always must have space for a response header
+        _outPayload->skip(sizeof(ResponseMessage::Header));
     }
 
     ~AMClientConnection() {}
@@ -39,9 +39,9 @@ public:
     //
     //  Send reponse to sender
     //
-    PayloadWriter getResponseWriter() override {
+    Payload& getResponsePayload() override {
         assert(!_responded);
-        return _outPayload->getWriter();
+        return *_outPayload.get();
     }
 
     //
@@ -49,19 +49,20 @@ public:
     //
     void sendResponse(Status status, uint32_t code = 0) override {
         assert(!_responded);
-
-        _header->status = status;
-        _header->moduleCode = code;
-        _header->messageSize = _outPayload->getSize() - txconstants::MAX_HEADER_SIZE - sizeof(ResponseMessage::Header);
+        _outPayload->seek(_headerPos);
+        _header.status = status;
+        _header.moduleCode = code;
+        _header.messageSize = _outPayload->getSize() - txconstants::MAX_HEADER_SIZE - sizeof(ResponseMessage::Header);
         _responded = true;
-
+        _outPayload->write(_header);
         _disp.sendReply(std::move(_outPayload), _request);
     }
 
 private:
     bool _responded;
     std::unique_ptr<Payload> _outPayload;
-    ResponseMessage::Header* _header;
+    Payload::PayloadPosition _headerPos;
+    ResponseMessage::Header _header;
     k2::Request _request;
     k2::RPCDispatcher& _disp;
 };
@@ -75,7 +76,8 @@ std::unique_ptr<PartitionMessage> createPartitionMessage(std::unique_ptr<Payload
     }
 
     PartitionMessage::Header header;
-    inPayload->getReader().read(header);
+    inPayload->seek(0);
+    inPayload->read(header);
     auto readOffset = sizeof(header);
     auto remainingBytes = header.messageSize;
     assert(readOffset + remainingBytes == inPayload->getSize());
@@ -125,7 +127,7 @@ public: // distributed<> interface
         _stopped = false;
 
         _dispatcher.local().registerMessageObserver(
-                KnownVerbs::PartitionMessages,
+                K2Verbs::PartitionMessages,
                 [this](k2::Request&& request) mutable
                 {
                     K2DEBUG("Dispatching message to AssignmentManager");
@@ -154,7 +156,7 @@ public: // distributed<> interface
         K2INFO("NodePoolService stopping");
         _stopped = true;
         // unregister all observers
-        _dispatcher.local().registerMessageObserver(KnownVerbs::PartitionMessages, nullptr);
+        _dispatcher.local().registerMessageObserver(K2Verbs::PartitionMessages, nullptr);
         _dispatcher.local().registerLowTransportMemoryObserver(nullptr);
         return seastar::make_ready_future<>();
     }

@@ -1,11 +1,25 @@
 #pragma once
 
-#include <k2/transport/Serialization.h>
+#include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 #include "PartitionMetadata.h"
 
 namespace k2
 {
+
+template <typename MessageType, typename RequestType>
+class MessageWithType {
+   public:
+    MessageType type;
+    RequestType& request;
+
+    MessageWithType(RequestType& request) : type(RequestType::getMessageType()), request(request) {}
+
+    K2_PAYLOAD_FIELDS(type, request);
+};
+
+template <typename RequestType>
+static auto makeMessageWithType(RequestType& request) { return MessageWithType<decltype(RequestType::getMessageType()), RequestType>(request); }
 
 namespace manager
 {

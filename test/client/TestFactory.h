@@ -16,14 +16,14 @@ public:
     {
          MemKVModule<>::SetRequest setRequest { key, value };
          auto request = MemKVModule<>::RequestWithType(setRequest);
-         payload.getWriter().write(request);
+         payload.write(request);
     }
 
     static void makeGetMessage(k2::Payload& payload)
     {
          MemKVModule<>::GetRequest getRequest { "key", std::numeric_limits<uint64_t>::max() };
          auto request = MemKVModule<>::RequestWithType(getRequest);
-         payload.getWriter().write(request);
+         payload.write(request);
     }
 
     static void makePartitionPayload(k2::Payload& payload, const std::string& id, const k2::PartitionRange& range, MessageType messageType)
@@ -39,13 +39,16 @@ public:
         assignmentMessage.partitionMetadata = k2::PartitionMetadata(partitionId.id, k2::PartitionRange(range), collectionId);
         assignmentMessage.partitionVersion = partitionId.version;
 
-        PartitionMessage::Header* header;
-        bool ret = payload.getWriter().reserveContiguousStructure(header);
-        assert(ret);
-        header->messageType = messageType;
-        header->partition = partitionId;
-        payload.getWriter().write(assignmentMessage);
-        header->messageSize = payload.getSize() - txconstants::MAX_HEADER_SIZE - sizeof(PartitionMessage::Header);
+        PartitionMessage::Header header;
+        header.messageType = messageType;
+        header.partition = partitionId;
+        header.messageSize = 1;
+        auto hpos = payload.getCurrentPosition();
+        payload.write(header);
+        payload.write(assignmentMessage);
+        header.messageSize = payload.getSize() - txconstants::MAX_HEADER_SIZE - sizeof(PartitionMessage::Header);
+        payload.seek(hpos);
+        payload.write(header);
     }
 
     static void offloadPartitionAsync(Executor& rExecutor, const std::string& partition, const k2::PartitionRange& range, std::function<void()> callback)

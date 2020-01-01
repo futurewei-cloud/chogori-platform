@@ -44,7 +44,7 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
         K2ERROR("Get failed" << getStatusText(response->getStatus()));
 
     MemKVModule<>::GetResponse getResponse;
-    response->payload.getReader().read(getResponse);
+    response->payload.read(getResponse);
     K2INFO("Gotten: value: " << getResponse.value << " version: " << getResponse.version);
 }
 

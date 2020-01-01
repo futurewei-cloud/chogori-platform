@@ -2,8 +2,9 @@
 //    (C)opyright Futurewei Technologies Inc, 2019
 //-->
 #pragma once
-
+#include <memory>
 #include <k2/common/Common.h>
+#include <k2/common/Log.h>
 #include "Payload.h"
 #include "RPCHeader.h"
 
@@ -69,10 +70,10 @@ public: // API
     // This method should be used to create new payloads. The payloads are allocated in a manner consistent
     // with the transport for the protocol of this endpoint
     std::unique_ptr<Payload> newPayload() {
-        K2ASSERT(_allocator, "asked to create payload from non-allocating endpoint");
-        auto result = std::make_unique<Payload>(_allocator, _protocol);
+        K2ASSERT(_allocator!=nullptr, "asked to create payload from non-allocating endpoint");
+        auto result = std::make_unique<Payload>(_allocator);
         // rewind enough bytes to write out a header when we're sending
-        result->getWriter().skip(txconstants::MAX_HEADER_SIZE);
+        result->skip(txconstants::MAX_HEADER_SIZE);
         return result;
     }
 

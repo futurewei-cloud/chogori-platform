@@ -1,6 +1,6 @@
 #pragma once
 
-#include <k2/transport/Serialization.h>
+#include <k2/transport/PayloadSerialization.h>
 #include "plog_client.h"
 #include <seastar/core/sharded.hh>
 #include <k2/transport/Payload.h>
@@ -248,11 +248,10 @@ public:
         });
     }
 
-    seastar::future<Payload> readAll(const PlogId& plogId)
-    {
-        return seastar::do_with(Payload(nullptr), [this, plogId] (auto& payload) mutable
-        {
-            return readAll(plogId, payload).then([&payload] { return seastar::make_ready_future<Payload>(std::move(payload)); });
+    seastar::future<Payload> readAll(const PlogId& plogId) {
+        return seastar::do_with(Payload(), [this, plogId](auto& payload) mutable {
+            return readAll(plogId, payload)
+                .then([&payload] { return seastar::make_ready_future<Payload>(std::move(payload)); });
         });
     }
 

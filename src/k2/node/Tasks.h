@@ -37,8 +37,7 @@ public:
 class ClientTask : public MessageInitiatedTaskRequest
 {
 protected:
-    Payload requestPayload;
-    PayloadWriter responseWriter;
+    Payload receivedPayload;
 
     enum class State
     {
@@ -58,17 +57,16 @@ protected:
     ProcessResult onApply();
 
 public:
-    ClientTask(Partition& partition, std::unique_ptr<IClientConnection> client, Payload&& requestPayload);
+    ClientTask(Partition& partition, std::unique_ptr<IClientConnection> client, Payload&& receivedPayload);
 
     TaskType getType() const override;
 
-    const Payload& getRequestPayload() const;
-
-    PayloadWriter& getResponseWriter();
+    Payload& getReceivedPayload();
+    Payload& getSendPayload();
 
     ProcessResult process() override;
 
-    void releaseRequestPayload();
+    void releaseReceivedPayload();
 };  //  class ClientTask
 
 

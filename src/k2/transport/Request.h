@@ -3,6 +3,7 @@
 //-->
 
 #pragma once
+#include <memory>
 
 #include <k2/common/Common.h>
 #include "RPCHeader.h"

@@ -65,27 +65,6 @@ typedef std::function<Binary()> BinaryAllocatorFunctor;
 //
 typedef String Endpoint;
 
-//
-//  Hold the reference to buffer containing class
-//
-template<typename T>
-class Holder
-{
-protected:
-    Binary data;
-public:
-    Holder(Binary&& binary):data(std::move(binary))
-    {
-        assert(data.size() >= sizeof(T));
-    }
-
-    Holder(Holder&& binary) = default;
-    Holder& operator=(Holder&& other) = default;
-
-    T& operator*() { return *(T*)data.get_write(); }
-    T* operator->() { return (T*)data.get_write(); }
-};
-
 //  Binary which just reference some data. Owner of the data needs to make sure that when it delete the data
 //  nobody has the reference to it
 inline Binary binaryReference(void* data, size_t size)
@@ -98,21 +77,6 @@ inline Binary binaryReference(seastar::temporary_buffer<CharT>& buffer, size_t o
 {
     assert(offset + size <= buffer.size());
     return binaryReference(buffer.get_write()+offset, size);
-}
-
-inline bool append(Binary& binary, size_t& writeOffset, const void* data, size_t size)
-{
-    if(binary.size() < writeOffset + size)
-        return false;
-    std::memcpy(binary.get_write() + writeOffset, data, size);
-    writeOffset += size;
-    return true;
-}
-
-template<typename T>
-inline bool appendRaw(Binary& binary, size_t& writeOffset, const T& data)
-{
-    return append(binary, writeOffset, &data, sizeof(T));
 }
 
 }   //  namespace k2

@@ -6,6 +6,12 @@
 namespace k2
 {
 
+Payload newPayload() {
+    return Payload([]() {
+        return Binary(1000);
+    });
+}
+
 template<typename MessageT>
 std::unique_ptr<ResponseMessage> sendPartitionMessage(
                                                     const char* ip,
@@ -15,31 +21,31 @@ std::unique_ptr<ResponseMessage> sendPartitionMessage(
                                                     const MessageT& messageContent
                                                     )
 {
-    MessageBuilder messageBuilder = MessageBuilder::request(KnownVerbs::PartitionMessages);
+    MessageBuilder messageBuilder = MessageBuilder::request(K2Verbs::PartitionMessages, newPayload());
 
-    PayloadWriter writer = messageBuilder.getWriter();
-    PartitionMessage::serializeMessage(writer, messageType, partition, messageContent);
+    PartitionMessage::serializeMessage(messageBuilder.message.payload, messageType, partition, messageContent);
 
     BoostTransport transport(ip, port);
     std::unique_ptr<MessageDescription> message = transport.messageExchange(messageBuilder.build());
 
     ResponseMessage::Header header;
-    if(!message->payload.getReader().read(header))
+    message->payload.seek(0);
+    if(!message->payload.read(header))
         throw std::exception();
 
     THROW_IF_BAD(header.status);
-    auto response = std::make_unique<ResponseMessage>(header);
-
-    if(!header.messageSize)
-        return response;
 
     size_t readBytes = message->payload.getSize();
     size_t hdrSize = sizeof(ResponseMessage::Header);
-
     auto&& buffers = message->payload.release();
-    buffers[0].trim_front(hdrSize);
     assert(header.messageSize == readBytes - hdrSize);
-    response->payload = Payload(std::move(buffers), readBytes - hdrSize);
+
+    buffers[0].trim_front(hdrSize);
+
+    auto response = std::make_unique<ResponseMessage>(
+        std::string(ip)+ ":" + std::to_string(port),
+        Payload(std::move(buffers), readBytes - hdrSize),
+        header);
 
     return response;
 }

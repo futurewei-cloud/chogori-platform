@@ -9,7 +9,7 @@
 #include <sstream>
 #include "Chrono.h"
 namespace k2{
-namespace log {
+namespace logging {
 class LogEntry {
 public:
     std::ostringstream out;
@@ -60,7 +60,7 @@ inline LogEntry StartLogStream() {
 // TODO hook this up into proper logging
 
 #define K2LOG(level, msg) { \
-    k2::log::StartLogStream() << "[" << level << "] [" << __FILE__ << ":" << __LINE__ << " @" << __FUNCTION__ << "]" << msg << std::endl; \
+    k2::logging::StartLogStream() << "[" << level << "] [" << __FILE__ << ":" << __LINE__ << " @" << __FUNCTION__ << "]" << msg << std::endl; \
     }
 
 #if K2_DEBUG_LOGGING == 1

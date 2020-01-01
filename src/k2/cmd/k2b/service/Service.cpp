@@ -38,7 +38,7 @@ static void makeSetMessage(k2::Payload& payload, std::string key, std::string va
 {
      MemKVModule<>::SetRequest setRequest { std::move(key), std::move(value) };
      auto request = MemKVModule<>::RequestWithType(setRequest);
-     payload.getWriter().write(request);
+     payload.write(request);
 }
 
 class Context

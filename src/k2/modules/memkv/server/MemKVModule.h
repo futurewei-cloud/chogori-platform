@@ -117,15 +117,15 @@ public:
     };
 
     template<typename T>
-    static bool writeRequest(PayloadWriter& writer, const T& request) { return writer.write(T::getType()) && writer.write(request); }
+    static void writeRequest(Payload& payload, const T& request) {
+        payload.write(T::getType());
+        payload.write(request);
+    }
 
     template<typename T>
-    static std::unique_ptr<PartitionMessage> createMessage(const T& request, PartitionAssignmentId partitionId)
+    static std::unique_ptr<PartitionMessage> createMessage(const T& request, PartitionAssignmentId partitionId, Payload&& payload)
     {
-        Payload payload;
-        PayloadWriter writer = payload.getWriter();
-        if(!writeRequest(writer, request))
-            return nullptr;
+        writeRequest(payload, request);
 
         return std::make_unique<PartitionMessage>(MessageType::ClientRequest, partitionId, Endpoint(""), std::move(payload));
     }
@@ -164,12 +164,12 @@ public:
     ModuleResponse onPrepare(ClientTask& task, IOOperations& ioOperations) override
     {
         (void) ioOperations; // TODO use me
-        const Payload& payload = task.getRequestPayload();
-        PayloadReader reader = payload.getReader();
+        Payload& payload = task.getReceivedPayload();
         PartitionContext* context = getPartitionContext(task);
 
         RequestType requestType;
-        MemKVModule_PARSE_RIF(reader.read(requestType));
+        payload.seek(0);
+        MemKVModule_PARSE_RIF(payload.read(requestType));
 
         DerivedIndexer& memTable = context->memTable;
 
@@ -178,8 +178,8 @@ public:
             case RequestType::Get:
             {
                 GetRequest request;
-                MemKVModule_PARSE_RIF(reader.read(request));
-                task.releaseRequestPayload();
+                MemKVModule_PARSE_RIF(payload.read(request));
+                task.releaseReceivedPayload();
 
                 VersionedTreeNode* node = memTable.find(request.key, request.snapshotId);
 
@@ -187,7 +187,7 @@ public:
                     return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::NoSuchKey);
 
                 GetResponse response { node->value, node->version };
-                task.getResponseWriter().write(response);
+                task.getSendPayload().write(response);
 
                 return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
             }
@@ -195,12 +195,12 @@ public:
             case RequestType::Set:
             {
                 SetRequest request;
-                MemKVModule_PARSE_RIF(reader.read(request));
-                task.releaseRequestPayload();
+                MemKVModule_PARSE_RIF(payload.read(request));
+                task.releaseReceivedPayload();
 
                 uint64_t version = getPartitionContext(task)->getNewVersion();
                 memTable.insert(std::move(request.key), std::move(request.value), version);
-                task.getResponseWriter().write(version);
+                task.getSendPayload().write(version);
 
                 return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
             }
@@ -208,8 +208,8 @@ public:
             case RequestType::Delete:
             {
                 DeleteRequest request;
-                MemKVModule_PARSE_RIF(reader.read(request));
-                task.releaseRequestPayload();
+                MemKVModule_PARSE_RIF(payload.read(request));
+                task.releaseReceivedPayload();
 
                 memTable.trim(request.key, std::numeric_limits<uint64_t>::max());
 

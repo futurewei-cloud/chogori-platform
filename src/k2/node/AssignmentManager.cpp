@@ -24,9 +24,11 @@ Status AssignmentManager::processPartitionAssignmentMessage(PartitionRequest& re
         return Status::PartitionAlreadyAssigned;
 
     AssignmentMessage assignMessage;
-    if(!request.message->getPayload().getReader().read(assignMessage))  //  TODO: allocate under partition memory arena
+    request.message->getPayload().seek(0);
+    if(!request.message->getPayload().read(assignMessage)) {  //  TODO: allocate under partition memory arena
+        K2ERROR("Unable to parse message");
         return Status::MessageParsingError;
-
+    }
     Collection* collection = nullptr;
     RET_IF_BAD(pool.internalizeCollection(std::move(assignMessage.collectionMetadata), collection));
 
@@ -127,6 +129,7 @@ void AssignmentManager::processMessage(PartitionRequest& request)
         request.client->sendResponse(status);
     else
     {
+        K2ERROR("no message or no client");
         //  TODO: log error here
     }
 }

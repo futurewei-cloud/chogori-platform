@@ -164,7 +164,7 @@ private:
         registerMetrics();
 
         auto req = _session.client.newPayload();
-        req->getWriter().write((void*)&_session.config, sizeof(_session.config));
+        req->write((void*)&_session.config, sizeof(_session.config));
         return k2::RPC().sendRequest(START_SESSION, std::move(req), _session.client, 1s).
         then([this](std::unique_ptr<k2::Payload> payload) {
             if (_stopped) return seastar::make_ready_future<>();
@@ -173,7 +173,7 @@ private:
                 return seastar::make_exception_future<>(std::runtime_error("no remote session"));
             }
             SessionAck ack{};
-            payload->getReader().read((void*)&ack, sizeof(ack));
+            payload->read((void*)&ack, sizeof(ack));
             _session.sessionID = ack.sessionID;
             K2INFO("Starting session id=" << _session.sessionID);
             return seastar::make_ready_future<>();
@@ -197,8 +197,7 @@ private:
             auto now = k2::Clock::now(); // to compute reqest latencies
             if (request.payload) {
                 Ack ack{};
-                auto rdr = request.payload->getReader();
-                rdr.read((void*)&ack, sizeof(ack));
+                request.payload->read((void*)&ack, sizeof(ack));
                 if (ack.sessionID != _session.sessionID) {
                     K2WARN("Received ack for unknown session: have=" << _session.sessionID
                            << ", recv=" << ack.sessionID);
@@ -272,9 +271,9 @@ private:
         _session.unackedSize += _session.config.responseSize;
         _session.unackedCount += 1;
 
-        payload->getWriter().write((void*)&_session.sessionID, sizeof(_session.sessionID));
-        payload->getWriter().write((void*)&_session.totalCount, sizeof(_session.totalCount));
-        payload->getWriter().write(_data, _session.config.responseSize - padding );
+        payload->write((void*)&_session.sessionID, sizeof(_session.sessionID));
+        payload->write((void*)&_session.totalCount, sizeof(_session.totalCount));
+        payload->write(_data, _session.config.responseSize - padding );
         _requestIssueTimes[_session.totalCount % _session.config.pipelineCount] = k2::Clock::now();
         k2::RPC().send(REQUEST, std::move(payload), _session.client);
     }

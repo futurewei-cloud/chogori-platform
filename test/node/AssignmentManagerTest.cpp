@@ -27,6 +27,11 @@ bool checkStatus(Status actual, Status expected) { return actual == expected; }
 
 bool checkValue(const std::pair<Status, String>& st, String str) { return st.first == Status::Ok && st.second == str; }
 
+Payload newPayload() {
+    return Payload([]() {
+        return Binary(1000);
+    });
+}
 
 class FakeTransport
 {
@@ -36,7 +41,8 @@ protected:
     struct FakeConnectionState
     {
         bool responded = false;
-        std::unique_ptr<ResponseMessage> message = std::make_unique<ResponseMessage>();
+        std::unique_ptr<ResponseMessage> message = std::make_unique<ResponseMessage>(
+            "fake_endpoint:1234", newPayload(), ResponseMessage::Header());
     };
 
     class FakeClientConnection : public IClientConnection
@@ -46,9 +52,9 @@ protected:
 
         FakeClientConnection(FakeConnectionState& state) : state(state) { }
 
-        PayloadWriter getResponseWriter() override
+        Payload& getResponsePayload() override
         {
-            return state.message->payload.getWriter();
+            return state.message->payload;
         }
 
         void sendResponse(Status status, uint32_t code) override
@@ -91,33 +97,35 @@ public:
     std::pair<Status, uint64_t> set(PartitionAssignmentId partitionId, String key, String value)
     {
         typename MemKVModule<DerivedIndexer>::SetRequest setRequest { std::move(key), std::move(value) };
-        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(setRequest, partitionId));
-        if(result->getStatus() != Status::Ok)
+        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(setRequest, partitionId, newPayload()));
+        if (result->getStatus() != Status::Ok)
             return {result->getStatus(), 0};
 
         typename MemKVModule<DerivedIndexer>::SetResponse setResponse;
-        result->payload.getReader().read(setResponse);
-        return {result->getStatus(),setResponse.version};
+        result->payload.seek(0);
+        result->payload.read(setResponse);
+        return {result->getStatus(), setResponse.version};
     }
 
     std::pair<Status, String>  get(PartitionAssignmentId partitionId, String key)
     {
         typename MemKVModule<DerivedIndexer>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
-        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(getRequest, partitionId));
+        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(getRequest, partitionId, newPayload()));
         if(result->getStatus() != Status::Ok)
             return { result->getStatus(), {} };
         if(result->getModuleCode() != ErrorCode::None)
             return { Status::UnknownError, {} };
 
         typename MemKVModule<DerivedIndexer>::GetResponse getResponse;
-        result->payload.getReader().read(getResponse);
+        result->payload.seek(0);
+        result->payload.read(getResponse);
         return { result->getStatus(), getResponse.value};
     }
 
     std::pair<Status, String> remove(PartitionAssignmentId partitionId, String key)
     {
         typename MemKVModule<DerivedIndexer>::DeleteRequest deleteRequest { std::move(key) };
-        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(deleteRequest, partitionId));
+        auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(deleteRequest, partitionId, newPayload()));
         return {result->getStatus(), {}};
     }
 };
@@ -139,7 +147,7 @@ TEMPLATE_TEST_CASE("Single Partitions Assignment/Offload", "[SinglePartitions_As
     assignmentMessage.partitionMetadata = PartitionMetadata(partitionId, PartitionRange("A", "C"), collectionId);
     assignmentMessage.partitionVersion = partitionVersion;
 
-    REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1")))->getStatus());
+    REQUIRE_OK(transport.send(assignmentMessage.createMessage(Endpoint("1"), newPayload()))->getStatus());
     PartitionAssignmentId assignmentId(partitionId, partitionVersion);
     MemKVClient<TestType> client(transport);
 
@@ -158,7 +166,7 @@ TEMPLATE_TEST_CASE("Single Partitions Assignment/Offload", "[SinglePartitions_As
         REQUIRE_OK(client.remove(assignmentId, "Valentin"));
     }
 
-    REQUIRE_OK(transport.send(OffloadMessage::createMessage(Endpoint("1"), assignmentMessage.getPartitionAssignmentId()))->getStatus());
+    REQUIRE_OK(transport.send(OffloadMessage::createMessage(Endpoint("1"), assignmentMessage.getPartitionAssignmentId(), newPayload()))->getStatus());
 
     SECTION("Partition Offload: client KV get and set")
     {
@@ -208,7 +216,7 @@ TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartition
 
     for(int i=0; i<num; i++)
     {
-        auto resp = transport.send(assignmentMessages[ids[i]].createMessage(Endpoint("1")));
+        auto resp = transport.send(assignmentMessages[ids[i]].createMessage(Endpoint("1"), newPayload()));
         REQUIRE(resp != nullptr);
         REQUIRE_OK(resp->getStatus());
     }
@@ -230,7 +238,7 @@ TEMPLATE_TEST_CASE("Multiple Partitions Assignment/Offload", "[MultiplePartition
     {
         for(int i=0; i<num; i++)
         {
-            REQUIRE_OK(transport.send(OffloadMessage::createMessage(Endpoint("1"), assignmentMessages[i].getPartitionAssignmentId()))->getStatus());
+            REQUIRE_OK(transport.send(OffloadMessage::createMessage(Endpoint("1"), assignmentMessages[i].getPartitionAssignmentId(), newPayload()))->getStatus());
             for(int j=0; j<=i; j++)
             {
                 String section{"Partition Offload:"+to_string(i)+to_string(j)};

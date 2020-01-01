@@ -1,14 +1,185 @@
 #pragma once
 
-#include <boost/asio.hpp>
-#include <boost/array.hpp>
+#include <k2/common/Log.h>
+#include <k2/k2types/MessageVerbs.h>
 #include <k2/transport/RPCParser.h>
 #include <k2/transport/Status.h>
-#include <k2/common/Log.h>
-
+#include <boost/array.hpp>
+#include <boost/asio.hpp>
 
 namespace k2
 {
+
+static MessageMetadata newRequest() {
+    MessageMetadata metadata;
+    metadata.setRequestID(uint64_t(std::rand()));
+
+    return metadata;
+}
+
+static MessageMetadata createResponse(const MessageMetadata& originalRequest) {
+    MessageMetadata metadata = newRequest();
+    metadata.setResponseID(originalRequest.requestID);
+    return metadata;
+}
+//
+//  Describes received messsage
+//
+struct MessageDescription {
+    Verb verb;
+    MessageMetadata metadata;
+    Payload payload;
+
+    MessageDescription() : verb(InternalVerbs::NIL) {}
+
+    MessageDescription(Verb verb, MessageMetadata metadata, Payload payload) :
+        verb(verb), metadata(std::move(metadata)), payload(std::move(payload)) {}
+};
+
+//
+//  TODO: below given simple interface to do message reading and writting. Implementation are not efficient, since parser
+//  currently is not based on streaming (PayloadWriter/PayloadReader) interfaces. We need to change parser to make it more
+//  simple, so we can integrate it with MessageReader/Builder in more efficient way.
+//
+
+//
+//  Simple message reader, which works as sink-source pattern for buffers-messages.
+//  Customer of MessageReaders provides incoming data buffers using putBuffer function and collect
+//  parsed messages using getMessage function.
+//
+class MessageReader {
+   protected:
+    std::queue<Binary> inBuffers;
+    std::queue<MessageDescription> outMessages;
+    RPCParser parser;
+    Status status = Status::Ok;
+
+   public:
+    MessageReader() : parser([] { return false; }) {
+        parser.registerMessageObserver([this](Verb verb, MessageMetadata metadata, std::unique_ptr<Payload> payload) {
+            MessageDescription msg;
+            msg.verb = verb;
+            msg.metadata = metadata;
+            if (payload) {
+                msg.payload = std::move(*payload);
+            }
+            outMessages.push(std::move(msg));
+        });
+
+        parser.registerParserFailureObserver([this](std::exception_ptr) {
+            status = Status::MessageParsingError;
+        });
+    }
+
+    Status getStatus() { return status; }
+
+    bool putBuffer(Binary binary) {
+        if (status != Status::Ok)
+            return false;
+
+        inBuffers.push(std::move(binary));
+        return true;
+    }
+
+    bool getMessage(MessageDescription& outMessage) {
+        while (true) {
+            if (!outMessages.empty()) {
+                outMessage = std::move(outMessages.front());
+                outMessages.pop();
+                return true;
+            }
+
+            if (status != Status::Ok || inBuffers.empty()) {
+                return false;
+            }
+            parser.feed(std::move(inBuffers.front()));
+            inBuffers.pop();
+            parser.dispatchSome();
+        }
+
+        return false;
+    }
+
+    Status readMessage(MessageDescription& outMessage, std::function<Status(Binary& outBuffer)> bufferSource) {
+        while (true) {
+            Binary buffer;
+            RET_IF_BAD(bufferSource(buffer));
+
+            putBuffer(std::move(buffer));
+            if (getMessage(outMessage))
+                return Status::Ok;
+
+            RET_IF_BAD(status);
+        }
+    }
+
+    static Status readSingleMessage(MessageDescription& outMessage, std::function<Status(Binary& outBuffer)> bufferSource) {
+        MessageReader reader;
+        return reader.readMessage(outMessage, std::move(bufferSource));
+    }
+};
+
+//
+//  Create messages to send
+//
+class MessageBuilder {
+public:
+    MessageDescription message;
+protected:
+    Payload::PayloadPosition headerPosition;
+    size_t headerSize;
+
+    void writeHeader() {
+        Binary header(txconstants::MAX_HEADER_SIZE);
+        headerSize = RPCParser::serializeHeader(header, message.verb, message.metadata);
+
+        message.payload.seek(headerPosition);
+        message.payload.write(header.get(), header.size());
+    }
+
+    MessageBuilder(Verb verb, MessageMetadata metadata, Payload payload) :
+        message(verb, metadata, std::move(payload)),
+        headerPosition(message.payload.getCurrentPosition()) {
+        //  Write header just to estimate it's size and skip it
+        message.metadata.setPayloadSize(1);  //  TODO: if we don't set size, RPCParser will not allocate enough space for it - we need to make this field static later
+        writeHeader();
+    }
+
+public:
+    static MessageBuilder request(Verb verb, MessageMetadata metadata, Payload payload) {
+        return MessageBuilder(verb, std::move(metadata), std::move(payload));
+    }
+
+    static MessageBuilder request(Verb verb, Payload payload) {
+        return MessageBuilder(verb, newRequest(), std::move(payload));
+    }
+
+    static MessageBuilder response(Payload newMessagePayload, const MessageMetadata& originalRequestMessageMetadata) {
+        return MessageBuilder(InternalVerbs::NIL, createResponse(originalRequestMessageMetadata), std::move(newMessagePayload));
+    }
+
+    static MessageBuilder response(const MessageMetadata& originalRequestMessageMetadata) {
+        return response(Payload(), originalRequestMessageMetadata);
+    }
+
+    static MessageBuilder response(Payload newMessagePayload, const MessageDescription& originalRequestMessage) {
+        return response(std::move(newMessagePayload), originalRequestMessage.metadata);
+    }
+
+    template <typename... ArgsT>
+    MessageBuilder& write(ArgsT&... args) {
+        message.payload.writeMany(args...);
+        return *this;
+    }
+
+    Payload&& build() {
+        int64_t payloadSize = message.payload.getSize() - headerSize;
+        assert(payloadSize > 0);
+        message.metadata.payloadSize = payloadSize;
+        writeHeader();  //  Write header one more time now with updated size
+        return std::move(message.payload);
+    }
+};
 
 //
 //  BoostTranport serializes messages into K2 format and send them through the wire using Boost.Asio tranport.
@@ -56,7 +227,7 @@ public:
     {
         boost::asio::socket_base::message_flags flags{};
         boost::system::error_code error;
-        socket.send(shared_const_buffer(std::forward<Payload>(sendPayload)), flags, error);
+        socket.send(shared_const_buffer(std::move(sendPayload)), flags, error);
         if(error)
         {
             K2ERROR("Error while sending message:" << error);
@@ -91,30 +262,29 @@ public:
     }
 
     template<typename RequestT>
-    std::unique_ptr<MessageDescription> messageExchange(Verb verb, const RequestT& request)
+    std::unique_ptr<MessageDescription> messageExchange(Verb verb, const RequestT& request, Payload&& payload)
     {
-        return messageExchange(MessageBuilder::request(verb).write(request).build());
+        return messageExchange(MessageBuilder::request(verb, std::move(payload)).write(request).build());
     }
 
     template<typename RequestT, typename ResponseT>
-    void messageExchange(Verb verb, const RequestT& request, ResponseT& response)
+    void messageExchange(Verb verb, const RequestT& request, ResponseT& response, Payload&& payload)
     {
-        std::unique_ptr<MessageDescription> messageDescription = messageExchange(verb, request);
-
-        PayloadReader reader = messageDescription->payload.getReader();
-        if(!reader.read(response))
+        std::unique_ptr<MessageDescription> messageDescription = messageExchange(verb, request, std::move(payload));
+        messageDescription->payload.seek(0);
+        if (!messageDescription->payload.read(response))
             throw std::exception();
     }
 
     template<typename RequestT, typename ResponseT>
-    static void messageExchange(const char* ip, uint16_t port, Verb verb, const RequestT& request, ResponseT& response)
+    static void messageExchange(const char* ip, uint16_t port, Verb verb, const RequestT& request, ResponseT& response, Payload&& payload)
     {
         BoostTransport transport(ip, port);
-        transport.messageExchange(verb, request, response);
+        transport.messageExchange(verb, request, response, std::move(payload));
     }
 
     template<typename RequestT, typename ResponseT>
-    static void messageExchange(const char* address, Verb verb, const RequestT& request, ResponseT& response)
+    static void messageExchange(const char* address, Verb verb, const RequestT& request, ResponseT& response, Payload&& payload)
     {
         constexpr size_t maxHostSize = 1024;
 
@@ -125,7 +295,7 @@ public:
         auto rcode = sscanf(address, "%[^:]:%d", host, &port) == 2;
         K2ASSERT(rcode, "unable to parse address");
 
-        BoostTransport::messageExchange(host, port, verb, request, response);
+        BoostTransport::messageExchange(host, port, verb, request, response, std::move(payload));
     }
 
     static std::unique_ptr<Payload> envelopeTransportPayload(Payload&& userData)
@@ -134,7 +304,7 @@ public:
         metadata.setRequestID(uint64_t(std::rand()));
         metadata.setPayloadSize(userData.getSize());
 
-        return RPCParser::serializeMessage(std::move(userData), KnownVerbs::PartitionMessages, std::move(metadata));
+        return RPCParser::serializeMessage(std::move(userData), K2Verbs::PartitionMessages, std::move(metadata));
     }
 };  //  class BoostTransport
 

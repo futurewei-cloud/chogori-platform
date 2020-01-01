@@ -28,8 +28,8 @@ protected:
 
     bool parse(Payload& payload, std::vector<EntryRecord>& records)
     {
-        PayloadReader reader = payload.getReader();
-        return reader.read(records);
+        payload.seek(0);
+        return payload.read(records);
     }
 
     seastar::future<> append(Binary& bin)
