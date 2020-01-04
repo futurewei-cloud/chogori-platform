@@ -56,7 +56,7 @@ public: // distributed<> interface
     // Should be called by user when all distributed objects have been created
     void start();
 
-public: // API
+public: // message-oriented API
     // This method is used to register protocols with the dispatcher.
     // we don't allow replacing providers for protocols. If a provider already exists, a
     // DuplicateRegistrationException exception will be raised
@@ -93,12 +93,12 @@ public: // API
     //  List all server endpoint supported by this dispatcher
     std::vector<seastar::lw_shared_ptr<TXEndpoint>> getServerEndpoints() const;
 
-    // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
+    // Invokes the remote rpc for the given verb with the given payload. This is an asynchronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
     // This is a lower-level API which is useful for sending messages that do not expect replies.
     void send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint);
 
-    // Invokes the remote rpc for the given verb with the given payload. This is an asyncronous API. No guarantees
+    // Invokes the remote rpc for the given verb with the given payload. This is an asynchronous API. No guarantees
     // are made on the delivery of the payload.
     // This API is provided to allow users to send requests which expect replies (as opposed to send() above).
     // The method provides a future<> based callback support via the return value.
@@ -111,14 +111,53 @@ public: // API
     // in message observers to respond to clients.
     void sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
 
-public: // RPC-oriented interface
+public: // RPC-oriented interface. Small convenience so that users don't have to deal with Payloads directly
+    // Same as sendRequest but for RPC types, not raw payloads
     template<class Request_t, class Response_t>
-    seastar::future<std::tuple<k2::Status, Response_t>>  callRPC(Request_t&& request);
+    seastar::future<std::tuple<k2::Status, Response_t>> callRPC(Verb verb, Request_t&& request, TXEndpoint& endpoint, Duration timeout) {
+        auto payload = endpoint.newPayload();
+        payload->write(request);
+        K2DEBUG("RPC Request call");
 
+        return sendRequest(verb, std::move(payload), endpoint, timeout)
+            .then([](std::unique_ptr<Payload> responsePayload) {
+                // parse status
+                auto result = std::make_tuple<Status, Response_t>(Status::UnknownError, Response_t());
+                // read the status (may not succeed but that's ok since above we set it to Error)
+                responsePayload->read(std::get<0>(result));
+                // read the Response_t (may not succeed in which case we set an error if one isn't coming in)
+                if (!responsePayload->read(std::get<1>(result)) && std::get<0>(result) == Status::Ok) {
+                    // We got status OK but we failed to parse a Request_t
+                    std::get<0>(result) = Status::UnknownError;
+                }
+                return result;
+            });
+    }
+
+    // Register a handler for requests of type Request_t. You are required to respond with an object of type Response_t
+    // and a Status for your request
     template <class Request_t, class Response_t>
-    void registerRPCObserver(Verb verb, RPCRequestObserver_t<Request_t, Response_t> observer);
+    void registerRPCObserver(Verb verb, RPCRequestObserver_t<Request_t, Response_t> observer) {
+        // wrap the RPC observer into a message observer
+        registerMessageObserver(verb, [this, observer=std::move(observer)](Request&& request) mutable {
+            auto reply = request.endpoint.newPayload();
+            // parse the incoming request
+            Request_t rpcRequest;
+            if (!request.payload->read(rpcRequest)) {
+                reply->write(Status::UnknownError);
+            }
+            else {
+                auto rpcResult = observer(std::move(rpcRequest));
+                // write out the status first
+                reply->write(std::get<0>(rpcResult));
+                // write out the Response_t
+                reply->write(std::get<1>(rpcResult));
+            }
+            sendReply(std::move(reply), request);
+        });
+    }
 
-   private:  // methods
+private:  // methods
     // Process new messages received from protocols
     void _handleNewMessage(Request&& request);
 

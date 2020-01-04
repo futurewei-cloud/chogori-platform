@@ -102,6 +102,7 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
         auto nodei = _rrPromises.find(request.metadata.responseID);
         if (nodei == _rrPromises.end()) {
             K2DEBUG("no handler for response for msgid: " << request.metadata.responseID )
+            // TODO emit metric for RR without msid
             return;
         }
         // we have a response
@@ -113,10 +114,12 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
     auto iter = _observers.find(request.verb);
     if (iter != _observers.end()) {
         K2DEBUG("Dispatching request for verb="<< request.verb <<", from ep="<< request.endpoint.getURL());
+        // TODO emit verb-dimension metric for duration of handling
         iter->second(std::move(request));
     }
     else {
         K2DEBUG("no observer for verb " << request.verb << ", from " << request.endpoint.getURL());
+        // TODO emit metric
     }
 }
 
@@ -160,6 +163,7 @@ RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoi
     seastar::timer<> timer([this, msgid] {
         // raise an exception in the promise for this request.
         K2DEBUG("send request timed out for msgid=" << msgid);
+        // TODO emit metric for timeout
         auto iter = this->_rrPromises.find(msgid);
         assert(iter != this->_rrPromises.end());
         iter->second.promise.set_exception(RequestTimeoutException());
