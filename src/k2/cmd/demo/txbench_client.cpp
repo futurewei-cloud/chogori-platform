@@ -9,9 +9,11 @@
 
 #include "txbench_common.h"
 
-class Client : public seastar::weakly_referencable<Client> {
+class Client {
 public:  // application lifespan
     Client():
+        _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<std::string>>()),
+        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _data(0),
         _stopped(true),
         _haveSendPromise(false),
@@ -23,6 +25,12 @@ public:  // application lifespan
             }
         })),
         _lastAckedTotal(0) {
+        _session.config = SessionConfig{.echoMode=k2::Config()["echo_mode"].as<bool>(),
+                                        .responseSize=k2::Config()["request_size"].as<uint32_t>(),
+                                        .pipelineSize=k2::Config()["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
+                                        .pipelineCount=k2::Config()["pipeline_depth_count"].as<uint32_t>(),
+                                        .ackCount=k2::Config()["ack_count"].as<uint32_t>()};
+        _data = (char*)malloc(_session.config.responseSize);
         K2INFO("ctor");
     };
 
@@ -67,15 +75,6 @@ public:  // application lifespan
     }
 
     seastar::future<> start() {
-        _tcpRemotes = k2::Config()["tcp_remotes"].as<std::vector<std::string>>();
-        _testDuration = k2::Config()["test_duration_s"].as<uint32_t>()*1s;
-        _session.config = SessionConfig{.echoMode=k2::Config()["echo_mode"].as<bool>(),
-                                        .responseSize=k2::Config()["request_size"].as<uint32_t>(),
-                                        .pipelineSize=k2::Config()["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
-                                        .pipelineCount=k2::Config()["pipeline_depth_count"].as<uint32_t>(),
-                                        .ackCount=k2::Config()["ack_count"].as<uint32_t>()};
-        _data = (char*)malloc(_session.config.responseSize);
-
         _stopped = false;
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
@@ -299,14 +298,14 @@ private:
 
 int main(int argc, char** argv) {
     k2::App app;
+    app.addApplet<Client>();
     app.addOptions()
         ("request_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to send with each request")
         ("ack_count", bpo::value<uint32_t>()->default_value(5), "How many messages do we ack at once")
         ("pipeline_depth_mbytes", bpo::value<uint32_t>()->default_value(200), "How much data do we allow to go un-ACK-ed")
         ("pipeline_depth_count", bpo::value<uint32_t>()->default_value(10), "How many requests do we allow to go un-ACK-ed")
         ("echo_mode", bpo::value<bool>()->default_value(false), "Should we echo all data in requests when we ACK. ")
-	("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken(), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run");
-    app.addApplet<Client>();
     return app.start(argc, argv);
 }
