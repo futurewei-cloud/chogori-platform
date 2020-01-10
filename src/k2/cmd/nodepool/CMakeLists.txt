@@ -1,9 +1,9 @@
 #<!--
 #    (C)opyright Futurewei Technologies Inc, 2019
 #-->
-file(GLOB HEADERS "*.h")
-file(GLOB SOURCES "*.cpp")
 
-add_executable (node_pool ${HEADERS} ${SOURCES})
-target_link_libraries (node_pool PRIVATE k2transport k2node k2common k2indexer k2memkv_module_server Seastar::seastar)
-install (TARGETS node_pool DESTINATION bin)
+add_executable (nodepool nodepool_main.cpp)
+
+target_link_libraries (nodepool PRIVATE k2appbase k2common k2transport Seastar::seastar)
+
+install (TARGETS nodepool DESTINATION bin)
