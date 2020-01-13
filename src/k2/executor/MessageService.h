@@ -277,10 +277,10 @@ private:
                     pTask->_pPlatformData->_pResponse->status = e.getStatus();
                 }
                 catch (RPCDispatcher::RequestTimeoutException& e) {
-                    pTask->_pPlatformData->_pResponse->status =  Status::TimedOut;
+                    pTask->_pPlatformData->_pResponse->status =  Status::S503_Service_Unavailable("timeout while running task");
                 }
                 catch(...) {
-                   pTask->_pPlatformData->_pResponse->status =  Status::UnknownError;
+                   pTask->_pPlatformData->_pResponse->status =  Status::S500_Internal_Server_Error("Unknown error while running task");
                 }
 
                 return seastar::make_ready_future<>();
@@ -308,7 +308,7 @@ private:
             payload->seek(0);
             payload->read(&header, hdrSize);
 
-            if(Status::Ok != header.status) {
+            if(!header.status.is2xxOK()) {
                 throw ExecutionException(header.status, "Error status");
             }
 
@@ -320,7 +320,7 @@ private:
             buffers[0].trim_front(hdrSize);
 
             if(header.messageSize != readBytes - hdrSize) {
-                throw ExecutionException(Status::MessageParsingError, "Invalid message size");
+                throw ExecutionException(Status::S400_Bad_Request("Unable to parse message"), "Invalid message size");
             }
             return seastar::make_ready_future<std::unique_ptr<ResponseMessage>>(std::make_unique<ResponseMessage>(Endpoint(ep->getURL()), Payload(std::move(buffers), readBytes - hdrSize), header));
          });

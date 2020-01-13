@@ -241,7 +241,7 @@ Status K2TXPlatform::run(NodePoolImpl& pool)
     int result = app.run(argv.size()-1, argv.data());
 
     K2INFO("Shutdown was successful!");
-    return result == 0 ? Status::Ok : Status::SchedulerPlatformStartingFailure;
+    return result == 0 ? Status::S200_OK() : Status::S500_Internal_Server_Error("Error running node pool");
 }
 
 

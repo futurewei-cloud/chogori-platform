@@ -7,3 +7,6 @@ add_subdirectory(k2b)
 add_subdirectory(nodepool_deprecated)
 add_subdirectory(dataPlaneClient)
 add_subdirectory(controlPlaneClient)
+
+add_subdirectory(controlPlaneOracle)
+add_subdirectory(nodepool)

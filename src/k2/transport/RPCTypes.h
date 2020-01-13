@@ -18,7 +18,8 @@ typedef uint8_t Verb;
 
 // Verbs used by K2 internally
 enum InternalVerbs : k2::Verb {
-    NIL = 0 // used for messages where the verb doesn't matter
+    MAX_VERB = 200,  // something we can use to prevent override of internal verbs.
+    NIL = 201        // used for messages where the verb doesn't matter
 };
 
 } // namespace k2

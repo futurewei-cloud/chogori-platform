@@ -24,22 +24,22 @@ Status INodePool::_internalizeCollection(CollectionMetadata&& metadata, Collecti
     if(colIt != collections.end())
     {
         ptr = colIt->second.get();
-        return Status::Ok;
+        return Status::S200_OK();
     }
 
     auto moduleIt = modules.find(metadata.getModuleId());
     if(moduleIt == modules.end())
-        return Status::ModuleIsNotRegistered;
+        return Status::S404_Not_Found("Request to assign partition to node which doesn't have requested module registered");
 
     CollectionPtr newCollection(std::move(metadata), *moduleIt->second);
     ModuleResponse moduleResponse = moduleIt->second->onNewCollection(*newCollection.get());   //  Minimal work should be done here to prevent deadlocks
     if(moduleResponse.type != ModuleResponse::Ok)
-        return Status::ModuleRejectedCollection;
+        return Status::S400_Bad_Request("Module responded with failure on initializing collection");
 
     ptr = newCollection.get();
     collections[newCollection.get()->getId()] = std::move(newCollection);
 
-    return Status::Ok;
+    return Status::S200_OK();
 }
 
 Status INodePool::internalizeCollection(CollectionMetadata&& metadata, Collection*& ptr)

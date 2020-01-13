@@ -358,8 +358,8 @@ public:
             [pSession, key](client::IClient& client, client::OperationResult&& result) {
                 // prevent compilation warnings
                 (void)client;
-                if(result._responses[0].status != Status::Ok) {
-                    K2INFO("client response: " << getStatusText(result._responses[0].status) << ", key:" << key);
+                if(!result._responses[0].status.is2xxOK()) {
+                    K2INFO("client response: " << result._responses[0].status << ", key:" << key);
                     pSession->failed(key);
                 }
                 else {
@@ -381,8 +381,8 @@ public:
                 rClient.execute(std::move(operation), [pSession, key](client::IClient& client, client::OperationResult&& result) {
                     // prevent compilation warnings
                     (void)client;
-                    if(result._responses[0].status != Status::Ok) {
-                        K2INFO("client response: " << getStatusText(result._responses[0].status) << ", key:" << key);
+                    if(!result._responses[0].status.is2xxOK()) {
+                        K2INFO("client response: " << result._responses[0].status << ", key:" << key);
                         pSession->failed(key);
                     }
                     else {

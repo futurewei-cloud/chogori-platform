@@ -61,9 +61,9 @@ void RPCDispatcher::registerMessageObserver(Verb verb, RequestObserver_t observe
         K2DEBUG("Removing message observer for verb: " << verb);
         return;
     }
-    if (verb == InternalVerbs::NIL) {
+    if (verb >= InternalVerbs::MAX_VERB) {
         // can't allow registration of the NIL verb
-        throw DuplicateRegistrationException();
+        throw SystemVerbRegistrationNotAllowedException();
     }
     // we don't allow replacing verb observers. Raise an exception if there is an observer already
     auto emplace_pair = _observers.try_emplace(verb, observer);

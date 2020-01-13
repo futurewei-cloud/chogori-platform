@@ -1,6 +1,8 @@
 #pragma once
 
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <set>
 #include <limits>
 
@@ -139,6 +141,26 @@ public: // Read API
         return true;
     }
 
+    // read an unordered_map
+    template <typename KeyT, typename ValueT>
+    bool read(std::unordered_map<KeyT, ValueT>& m) {
+        _Size size;
+        if (!read(size))
+            return false;
+
+        for (_Size i = 0; i < size; i++) {
+            KeyT key;
+            ValueT value;
+
+            if (!read(key) || !read(value))
+                return false;
+
+            m[std::move(key)] = std::move(value);
+        }
+
+        return true;
+    }
+
     // read a vector
     template <typename ValueT>
     bool read(std::vector<ValueT>& vec) {
@@ -176,6 +198,25 @@ public: // Read API
         return true;
     }
 
+    // read an unordered set
+    template <typename T>
+    bool read(std::unordered_set<T>& s) {
+        _Size size;
+        if (!read(size))
+            return false;
+
+        for (_Size i = 0; i < size; i++) {
+            T key;
+
+            if (!read(key))
+                return false;
+
+            s.insert(std::move(key));
+        }
+
+        return true;
+    }
+
     // primitive type read
     template <typename T>
     std::enable_if_t<isPayloadCopyableType<T>() || isNumericType<T>(), bool> read(T& value) {
@@ -185,7 +226,7 @@ public: // Read API
     // serializable type read
     template <typename T>
     std::enable_if_t<isPayloadSerializableType<T>(), bool> read(T& value) {
-        return value.readFields(*this);
+        return value.__readFields(*this);
     }
 
     // read many values in series
@@ -228,6 +269,17 @@ public: // Write API
         }
     }
 
+    // write an unordered_map
+    template <typename KeyT, typename ValueT>
+    void write(const std::unordered_map<KeyT, ValueT>& m) {
+        K2ASSERT(m.size() < std::numeric_limits<_Size>::max(), "map is too long to write out");
+        write((_Size)m.size());
+
+        for (auto& kvp : m) {
+            write(kvp.first);
+            write(kvp.second);
+        }
+    }
     // write a vector
     template <typename ValueT>
     void write(const std::vector<ValueT>& vec) {
@@ -242,6 +294,17 @@ public: // Write API
     // write a set
     template <typename T>
     void write(const std::set<T>& s) {
+        K2ASSERT(s.size() < std::numeric_limits<_Size>::max(), "set is too long to write out");
+        write((_Size)s.size());
+
+        for (auto& key : s) {
+            write(key);
+        }
+    }
+
+    // write a set
+    template <typename T>
+    void write(const std::unordered_set<T>& s) {
         K2ASSERT(s.size() < std::numeric_limits<_Size>::max(), "set is too long to write out");
         write((_Size)s.size());
 
@@ -265,7 +328,7 @@ public: // Write API
     // write for serializable types
     template <typename T>
     std::enable_if_t<isPayloadSerializableType<T>(), void> write(const T& value) {
-        value.writeFields(*this);
+        value.__writeFields(*this);
     }
 
     // write out many fields at once

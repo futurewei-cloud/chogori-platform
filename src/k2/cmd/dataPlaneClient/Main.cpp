@@ -25,8 +25,8 @@ void moduleSet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
     K2INFO("moduleSet:" << stopWatch.elapsedUS()  << "us");
 
     assert(response);
-    if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        K2ERROR("Set failed: " << getStatusText(response->getStatus()));
+    if(!response->getStatus().is2xxOK() || response->moduleCode != 0)
+        K2ERROR("Set failed: " << response->getStatus());
 }
 
 void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t port, std::string&& key)
@@ -40,8 +40,8 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
     K2INFO("moduleGet:" << stopWatch.elapsedUS()  << "us");
 
     assert(response);
-    if(response->getStatus() != Status::Ok || response->moduleCode != 0)
-        K2ERROR("Get failed" << getStatusText(response->getStatus()));
+    if(!response->getStatus().is2xxOK() || response->moduleCode != 0)
+        K2ERROR("Get failed: " << response->getStatus());
 
     MemKVModule<>::GetResponse getResponse;
     response->payload.read(getResponse);

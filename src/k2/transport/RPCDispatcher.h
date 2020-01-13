@@ -32,6 +32,7 @@ public: // types
 
     // thrown when you attempt to register something more than once
     class DuplicateRegistrationException : public std::exception {};
+    class SystemVerbRegistrationNotAllowedException : public std::exception {};
 
     // deliverd to promises when dispatcher is shutting down
     class DispatcherShutdown : public std::exception {};
@@ -122,13 +123,15 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
         return sendRequest(verb, std::move(payload), endpoint, timeout)
             .then([](std::unique_ptr<Payload> responsePayload) {
                 // parse status
-                auto result = std::make_tuple<Status, Response_t>(Status::UnknownError, Response_t());
-                // read the status (may not succeed but that's ok since above we set it to Error)
-                responsePayload->read(std::get<0>(result));
-                // read the Response_t (may not succeed in which case we set an error if one isn't coming in)
-                if (!responsePayload->read(std::get<1>(result)) && std::get<0>(result) == Status::Ok) {
-                    // We got status OK but we failed to parse a Request_t
-                    std::get<0>(result) = Status::UnknownError;
+                auto result = std::make_tuple<Status, Response_t>(Status(), Response_t());
+                if (!responsePayload->read(std::get<0>(result))) {
+                    std::get<0>(result) = Status::S500_Internal_Server_Error("Unable to parse status from response");
+                }
+                else {
+                    if (!responsePayload->read(std::get<1>(result))) {
+                        // failed to parse a Response_t
+                        std::get<0>(result) = Status::S500_Internal_Server_Error("Unable to parse response object");
+                    }
                 }
                 return result;
             });
@@ -144,7 +147,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
             // parse the incoming request
             Request_t rpcRequest;
             if (!request.payload->read(rpcRequest)) {
-                reply->write(Status::UnknownError);
+                reply->write(Status::S400_Bad_Request("Unable to parse incoming request"));
             }
             else {
                 auto rpcResult = observer(std::move(rpcRequest));
