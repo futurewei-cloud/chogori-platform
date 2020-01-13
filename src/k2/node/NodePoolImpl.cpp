@@ -10,13 +10,13 @@ NodePoolImpl::NodePoolImpl() : monitor(*this)
 Status NodePoolImpl::registerModule(ModuleId moduleId, std::unique_ptr<IModule> module)
 {
     auto emplaceResult = modules.try_emplace(moduleId, std::move(module));
-    return emplaceResult.second ? Status::Ok : Status::ModuleWithSuchIdAlreadyRegistered;
+    return emplaceResult.second ? Status::S200_OK() : Status::S422_Unprocessable_Entity("Attempt to register the module with duplicated id");
 }
 
 Status NodePoolImpl::registerNode(std::unique_ptr<Node> node)
 {
     nodes.push_back(node.release());
-    return Status::Ok;
+    return Status::S200_OK();
 }
 
 void NodePoolImpl::setCurrentNodeLocationInfo(std::vector<String> endpoints, int coreId)

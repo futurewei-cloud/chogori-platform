@@ -18,16 +18,16 @@ Partition* AssignmentManager::getPartition(PartitionId id) {
 Status AssignmentManager::processPartitionAssignmentMessage(PartitionRequest& request)
 {
     if(partitionCount >= Constants::MaxCountOfPartitionsPerNode)
-        return Status::TooManyPartitionsAlready;
+        return Status::S422_Unprocessable_Entity("Partition cannot be assigned to the shard due exceeding the limit of partitions");
 
     if(hasPartition(request.message->getPartition().id))
-        return Status::PartitionAlreadyAssigned;
+        return Status::S422_Unprocessable_Entity("Attempt to assign partition which is already assigned");
 
     AssignmentMessage assignMessage;
     request.message->getPayload().seek(0);
     if(!request.message->getPayload().read(assignMessage)) {  //  TODO: allocate under partition memory arena
         K2ERROR("Unable to parse message");
-        return Status::MessageParsingError;
+        return Status::S400_Bad_Request("Unable to parse request");
     }
     Collection* collection = nullptr;
     RET_IF_BAD(pool.internalizeCollection(std::move(assignMessage.collectionMetadata), collection));
@@ -39,19 +39,19 @@ Status AssignmentManager::processPartitionAssignmentMessage(PartitionRequest& re
 
     partition.createAndActivateTask<AssignmentTask>(std::move(request.client));
 
-    return Status::Ok;
+    return Status::S200_OK();
 }
 
 Status AssignmentManager::getAndCheckPartition(std::unique_ptr<PartitionMessage>& message, Partition*& partition)
 {
     partition = getPartition(message->getPartition().id);
     if(!partition)
-        return Status::NodeNotServicePartition;
+        return Status::S416_Range_Not_Satisfiable("Request for partition that is not served by current Node");
 
     if(partition->getVersion() != message->getPartition().version)
-        return Status::PartitionVersionMismatch;
+        return Status::S416_Range_Not_Satisfiable("Partition version in request doesn't match served partition version");
 
-    return Status::Ok;
+    return Status::S200_OK();
 }
 
 Status AssignmentManager::processPartitionOffloadMessage(PartitionRequest& request)
@@ -62,7 +62,7 @@ Status AssignmentManager::processPartitionOffloadMessage(PartitionRequest& reque
     partition->state = Partition::State::Offloading;
     partition->createAndActivateTask<OffloadTask>(std::move(request.client));
 
-    return Status::Ok;
+    return Status::S200_OK();
 }
 
 Status AssignmentManager::processClientRequestMessage(PartitionRequest& request)
@@ -72,13 +72,13 @@ Status AssignmentManager::processClientRequestMessage(PartitionRequest& request)
 
     partition->createAndActivateTask<ClientTask>(std::move(request.client), std::move(request.message->getPayload()));
 
-    return Status::Ok;
+    return Status::S200_OK();
 }
 
 Status AssignmentManager::_processMessage(PartitionRequest& request)
 {
     if(pool.getMonitor().getState() == PoolMonitor::State::waitingForInitialization)
-        return Status::NodePoolHasNotYetBeenInitialized;
+        return Status::S503_Service_Unavailable("Node pool has not been yet initialized");
 
     switch(request.message->getMessageType())
     {
@@ -92,7 +92,7 @@ Status AssignmentManager::_processMessage(PartitionRequest& request)
             return processClientRequestMessage(request);
 
         default:
-            return Status::UnkownMessageType;
+            return Status::S404_Not_Found("Unknown message type");
     }
 }
 
@@ -121,7 +121,7 @@ void AssignmentManager::updateLiveness()
 void AssignmentManager::processMessage(PartitionRequest& request)
 {
     Status status = _processMessage(request);
-    if(status == Status::Ok)
+    if(status.is2xxOK())
         return;
 
     //  Some failure

@@ -49,8 +49,8 @@ SCENARIO("Executor in thread pool mode")
     bool flag = false;
     executor.execute(endpointUrl, 4s, std::move(pPayload),
     [&] (std::unique_ptr<ResponseMessage> response) {
-        K2INFO("response from payload1:" << k2::getStatusText(response->status));
-        assert(response->status == Status::Ok);
+        K2INFO("response from payload1:" << response->status);
+        assert(response->status.is2xxOK());
         flag = true;
         _conditional.notify_one();
     });

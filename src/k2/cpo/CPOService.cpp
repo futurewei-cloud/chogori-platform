@@ -24,7 +24,7 @@ seastar::future<> CPOService::start() {
     K2INFO("Registering message handlers");
     RPC().registerRPCObserver<dto::CollectionCreateRequest, dto::CollectionCreateRequest>(dto::Verbs::CPO_COLLECTION_CREATE, [this](dto::CollectionCreateRequest&& request) {
         K2INFO("Received collection create request for " << request.metadata.name);
-        return std::make_tuple(Status::Ok, dto::CollectionCreateRequest());
+        return std::make_tuple(Status(), dto::CollectionCreateRequest());
     });
     return seastar::make_ready_future<>();
 }

@@ -69,8 +69,8 @@ SCENARIO("Executor with event loop")
                 // send the payload
                 _pContext->_rExecutor.execute(endpointUrl, 5s, std::move(payload),
                 [&] (std::unique_ptr<ResponseMessage> response) {
-                    K2INFO("response from execute:" << k2::getStatusText(response->status));
-                    assert(response->status == Status::Ok);
+                    K2INFO("response from execute:" << response->status);
+                    assert(response->status.is2xxOK());
                     done = true;
                 });
             });

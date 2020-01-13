@@ -11,8 +11,8 @@
 
 #include <catch2/catch.hpp>
 
-#define REQUIRE_OK(status_pair) REQUIRE(checkStatus(status_pair,Status::Ok))
-#define REQUIRE_NODENOTSERVICEPARTITION(status_pair) REQUIRE(checkStatus(status_pair, Status::NodeNotServicePartition))
+#define REQUIRE_OK(status_pair) REQUIRE(checkStatus(status_pair,k2::Status::S200_OK()))
+#define REQUIRE_NODENOTSERVICEPARTITION(status_pair) REQUIRE(checkStatus(status_pair, k2::Status::S416_Range_Not_Satisfiable()))
 
 #define REQUIRE_VALUE(status_pair, value) REQUIRE(checkValue(status_pair,value))
 
@@ -21,11 +21,11 @@ using namespace std;
 
 
 template<typename V>
-bool checkStatus(const std::pair<Status, V>& st, Status status) { return st.first == status; }
+bool checkStatus(const std::pair<Status, V>& st, Status status) { return st.first.code == status.code; }
 
-bool checkStatus(Status actual, Status expected) { return actual == expected; }
+bool checkStatus(Status actual, Status expected) { return actual.code == expected.code; }
 
-bool checkValue(const std::pair<Status, String>& st, String str) { return st.first == Status::Ok && st.second == str; }
+bool checkValue(const std::pair<Status, String>& st, String str) { return st.first.is2xxOK() && st.second == str; }
 
 Payload newPayload() {
     return Payload([]() {
@@ -98,7 +98,7 @@ public:
     {
         typename MemKVModule<DerivedIndexer>::SetRequest setRequest { std::move(key), std::move(value) };
         auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(setRequest, partitionId, newPayload()));
-        if (result->getStatus() != Status::Ok)
+        if (!result->getStatus().is2xxOK())
             return {result->getStatus(), 0};
 
         typename MemKVModule<DerivedIndexer>::SetResponse setResponse;
@@ -111,10 +111,10 @@ public:
     {
         typename MemKVModule<DerivedIndexer>::GetRequest getRequest { std::move(key), std::numeric_limits<uint64_t>::max() };
         auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(getRequest, partitionId, newPayload()));
-        if(result->getStatus() != Status::Ok)
+        if(!result->getStatus().is2xxOK())
             return { result->getStatus(), {} };
         if(result->getModuleCode() != ErrorCode::None)
-            return { Status::UnknownError, {} };
+            return { Status::S500_Internal_Server_Error(), {} };
 
         typename MemKVModule<DerivedIndexer>::GetResponse getResponse;
         result->payload.seek(0);

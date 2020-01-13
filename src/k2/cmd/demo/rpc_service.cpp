@@ -51,7 +51,7 @@ public:  // application lifespan
             K2INFO("Received put for key: " << request.key);
             _cache[request.key] = request.value;
             PUT_Response response{.key=std::move(request.key)};
-            return std::make_tuple(Status::Ok, std::move(response));
+            return std::make_tuple(Status::S200_OK(), std::move(response));
         });
 
         RPC().registerRPCObserver<GET_Request, GET_Response>(MessageVerbs::GET, [this](GET_Request&& request) {
@@ -62,7 +62,7 @@ public:  // application lifespan
             if (iter != _cache.end()) {
                 response.value = iter->second;
             }
-            return std::make_tuple(Status::Ok, std::move(response));
+            return std::make_tuple(Status::S200_OK(), std::move(response));
         });
     }
 private:

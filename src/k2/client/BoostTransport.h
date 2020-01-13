@@ -52,7 +52,7 @@ class MessageReader {
     std::queue<Binary> inBuffers;
     std::queue<MessageDescription> outMessages;
     RPCParser parser;
-    Status status = Status::Ok;
+    Status status = Status::S200_OK();
 
    public:
     MessageReader() : parser([] { return false; }) {
@@ -67,14 +67,14 @@ class MessageReader {
         });
 
         parser.registerParserFailureObserver([this](std::exception_ptr) {
-            status = Status::MessageParsingError;
+            status = Status::S400_Bad_Request("Unable to parse message");
         });
     }
 
     Status getStatus() { return status; }
 
     bool putBuffer(Binary binary) {
-        if (status != Status::Ok)
+        if (!status.is2xxOK())
             return false;
 
         inBuffers.push(std::move(binary));
@@ -89,7 +89,7 @@ class MessageReader {
                 return true;
             }
 
-            if (status != Status::Ok || inBuffers.empty()) {
+            if (!status.is2xxOK() || inBuffers.empty()) {
                 return false;
             }
             parser.feed(std::move(inBuffers.front()));
@@ -107,7 +107,7 @@ class MessageReader {
 
             putBuffer(std::move(buffer));
             if (getMessage(outMessage))
-                return Status::Ok;
+                return Status::S200_OK();
 
             RET_IF_BAD(status);
         }
@@ -249,7 +249,7 @@ public:
                 K2ASSERT(readBytes > 0, "unable to read bytes from socket");
                 buffer = Binary(boostBuf.data(), readBytes);
 
-                return Status::Ok;
+                return Status::S200_OK();
             }));
 
         return message;

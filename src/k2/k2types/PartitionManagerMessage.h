@@ -62,7 +62,7 @@ public:
     class Response
     {
     public:
-        Status status = Status::Ok;
+        Status status = Status::S200_OK();
         long sessionId;
         std::vector<String> nodeIds;
 
@@ -88,7 +88,7 @@ public:
     class Response
     {
     public:
-        Status status = Status::Ok;
+        Status status = Status::S200_OK();
         long sessionId;
 
         K2_PAYLOAD_FIELDS(sessionId);
@@ -112,7 +112,7 @@ public:
     class Response
     {
     public:
-        Status status = Status::Ok;
+        Status status = Status::S200_OK();
         CollectionId collectionId;
         PartitionMap partitionMap;
         std::map<String, std::vector<String>> shardEndpoints;    //  ShardId -> [endpoints]
