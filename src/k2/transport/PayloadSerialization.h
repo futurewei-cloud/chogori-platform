@@ -8,11 +8,11 @@
 // on a field-by-field basis so it may be less efficient than the one-shot macro below
 #define K2_PAYLOAD_FIELDS(...)                        \
         struct __K2PayloadSerializableTraitTag__ {};  \
-        void writeFields(Payload& payload) const \
+        void __writeFields(Payload& payload) const \
         {                                             \
             payload.writeMany(__VA_ARGS__);     \
         }                                             \
-        bool readFields(Payload& payload)        \
+        bool __readFields(Payload& payload)        \
         {                                             \
             return payload.readMany(__VA_ARGS__);      \
         }                                             \

@@ -58,7 +58,7 @@ public:
             TestFactory::makePartitionPayload(payload, partition, k2::PartitionRange(range), MessageType::PartitionOffload);
         },
         [&rExecutor, range, callback, partition] (std::unique_ptr<ResponseMessage> response) {
-            K2INFO("offloaded partition:" << partition << "; " << k2::getStatusText(response->status));
+            K2INFO("offloaded partition:" << partition << "; " << response->status);
 
             callback();
         });
@@ -71,7 +71,7 @@ public:
             TestFactory::makePartitionPayload(payload, partition, k2::PartitionRange(range), MessageType::PartitionAssign);
         },
         [&rExecutor, range, callback, partition] (std::unique_ptr<ResponseMessage> response) {
-            K2INFO("assigned partition:" << partition << "; " << k2::getStatusText(response->status));
+            K2INFO("assigned partition:" << partition << "; " << response->status);
 
             callback();
         });
@@ -91,7 +91,7 @@ public:
                 TestFactory::makePartitionPayload(payload, partition, k2::PartitionRange(range), MessageType::PartitionAssign);
             },
             [&rExecutor, range, callback, partition] (std::unique_ptr<ResponseMessage> response) {
-                K2INFO("assigned :" << partition << "; " << k2::getStatusText(response->status));
+                K2INFO("assigned :" << partition << "; " << response->status);
                 callback();
             });
         });
@@ -108,8 +108,8 @@ public:
            // prevent compilation warnings
            (void)client;
            callbackInvoked = true;
-           K2INFO("callback invoked: " << getStatusText(result._responses[0].status));
-           assert(result._responses[0].status == Status::Ok);
+           K2INFO("callback invoked: " << result._responses[0].status);
+           assert(result._responses[0].status.is2xxOK());
            pOperationResult = std::make_unique<OperationResult>(std::move(result));
            conditional.notify_one();
        });

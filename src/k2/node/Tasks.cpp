@@ -48,7 +48,7 @@ MessageInitiatedTaskRequest::MessageInitiatedTaskRequest(Partition& partition, s
 }
 
 void ClientTask::respondToSender(Status status, uint32_t moduleCode) {
-    if (status != Status::Ok)
+    if (!status.is2xxOK())
         getSendPayload().truncateToCurrent();
     client->sendResponse(status, moduleCode);
 }
@@ -65,7 +65,7 @@ TaskRequest::ProcessResult ClientTask::onPrepare() {
         }
 
         case ModuleResponse::ReturnToClient: {
-            respondToSender(Status::Ok, response.resultCode);
+            respondToSender(Status::S200_OK(), response.resultCode);
             return TaskRequest::ProcessResult::Done;
         }
 
@@ -120,14 +120,14 @@ TaskType AssignmentTask::getType() const { return TaskType::PartitionAssign; }
 
 TaskRequest::ProcessResult AssignmentTask::process() {
     if (partition.getState() == Partition::State::Offloading) {
-        respondToSender(Status::AssignOperationIsBrokenByOffload);
+        respondToSender(Status::S503_Service_Unavailable("Offload command received during assign process"));
         return TaskRequest::ProcessResult::Done;
     }
 
     ModuleResponse response = getModule().onAssign(*this);
     if (response.type == ModuleResponse::Ok) {
         partition.transitionToRunningState();
-        respondToSender(Status::Ok);
+        respondToSender(Status::S200_OK());
         return TaskRequest::ProcessResult::Done;
     }
 
@@ -142,7 +142,7 @@ TaskType OffloadTask::getType() const { return TaskType::PartitionOffload; }
 TaskRequest::ProcessResult OffloadTask::process() {
     ModuleResponse response = getModule().onOffload(*this);
     if (response.type == ModuleResponse::Ok) {
-        respondToSender(Status::Ok);
+        respondToSender(Status::S200_OK());
         return TaskRequest::ProcessResult::DropPartition;
     }
 

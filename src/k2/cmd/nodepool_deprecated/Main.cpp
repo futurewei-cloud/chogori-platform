@@ -80,7 +80,7 @@ int main(int argc, char** argv)
     catch(const Status& status)
     {
         K2ERROR("Bad status: " << status);
-        return (int)status;
+        return status.code;
     }
     catch(const std::runtime_error& re)
     {

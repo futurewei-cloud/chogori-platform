@@ -20,7 +20,7 @@ template<typename RequestT, typename ResponseT>
 Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
 {
     if(pool.getConfig().getPartitionManagerSet().empty())
-        return Status::NoPartitionManagerSetup;
+        return Status::S500_Internal_Server_Error("No partition manager settings");
 
     Status result;
     for(const auto& pm : pool.getConfig().getPartitionManagerSet())
@@ -29,10 +29,10 @@ Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
         {
             //  TODO: Partition Manager can switch to different instance and let is know which is that. Also need to set time out
             BoostTransport::messageExchange(pm.c_str(), K2Verbs::PartitionManager, makeMessageWithType(request), response, newPayload());
-            if(response.status != Status::Ok)
+            if(!response.status.is2xxOK())
                 continue;
 
-            return Status::Ok;
+            return Status::S200_OK();
         }
         catch(const std::exception& e)
         {
@@ -43,7 +43,7 @@ Status PoolMonitor::sendMessage(const RequestT& request, ResponseT& response)
             K2ERROR("error");
         }
 
-        result = Status::FailedToConnectToPartitionManager;
+        result = Status::S503_Service_Unavailable("Connection to partition manager failed");
     }
 
     return result;

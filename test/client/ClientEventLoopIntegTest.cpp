@@ -29,9 +29,9 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
         rClient.execute(TestFactory::createOperation(range, std::move(payload)),
         [key, value, range, onCompleted] (IClient& rClient, OperationResult&& result) {
 
-            K2INFO("set value: " << value << " for key: " << key << " response: " << k2::getStatusText(result._responses[0].status));
+            K2INFO("set value: " << value << " for key: " << key << " response: " << result._responses[0].status);
             (void)rClient;
-            assert(result._responses[0].status == Status::Ok);
+            assert(result._responses[0].status.is2xxOK());
 
             // get the key
             rClient.createPayload(
@@ -43,7 +43,7 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
                     (void)rClient;
 
                     // assert
-                    assert(result._responses[0].status == Status::Ok);
+                    assert(result._responses[0].status.is2xxOK());
                     assert(result._responses.size() == 1);
                     assert(0 == result._responses[0].moduleCode);
                     // extract value
