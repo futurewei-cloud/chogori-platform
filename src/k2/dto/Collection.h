@@ -1,3 +1,4 @@
+#pragma once
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <set>

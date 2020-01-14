@@ -1,3 +1,4 @@
+#pragma once
 #include "Collection.h"
 // This file contains DTOs for K2 ControlPlaneOracle
 

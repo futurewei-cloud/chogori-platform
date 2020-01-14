@@ -18,8 +18,15 @@
 #include <k2/common/Common.h>
 #include "RPCProtocolFactory.h"
 #include "Request.h"
+#include "Status.h"
 
 namespace k2 {
+
+// Utility function which helps RPC users create responses without spelling out nested template arguments
+template <typename T>
+inline seastar::future<std::tuple<Status, T>> RPCResponse(Status&& s, T&& r) {
+    return seastar::make_ready_future<std::tuple<Status, T>>(std::tuple<Status, T>(std::forward<Status>(s), std::forward<T>(r)));
+}
 
 // An RPC dispatcher is the interaction point between a service application and underlying transport.
 // It dispatches incoming RPC messages to message observers, and provides RPC channels for sending
@@ -115,7 +122,7 @@ public: // message-oriented API
 public: // RPC-oriented interface. Small convenience so that users don't have to deal with Payloads directly
     // Same as sendRequest but for RPC types, not raw payloads
     template<class Request_t, class Response_t>
-    seastar::future<std::tuple<k2::Status, Response_t>> callRPC(Verb verb, Request_t&& request, TXEndpoint& endpoint, Duration timeout) {
+    seastar::future<std::tuple<Status, Response_t>> callRPC(Verb verb, Request_t&& request, TXEndpoint& endpoint, Duration timeout) {
         auto payload = endpoint.newPayload();
         payload->write(request);
         K2DEBUG("RPC Request call");
@@ -148,15 +155,16 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
             Request_t rpcRequest;
             if (!request.payload->read(rpcRequest)) {
                 reply->write(Status::S400_Bad_Request("Unable to parse incoming request"));
+                sendReply(std::move(reply), request);
             }
-            else {
-                auto rpcResult = observer(std::move(rpcRequest));
+            (void)observer(std::move(rpcRequest))
+            .then([this, reply=std::move(reply), request=std::move(request)](auto result) mutable {
                 // write out the status first
-                reply->write(std::get<0>(rpcResult));
+                reply->write(std::get<0>(result));
                 // write out the Response_t
-                reply->write(std::get<1>(rpcResult));
-            }
-            sendReply(std::move(reply), request);
+                reply->write(std::get<1>(result));
+                sendReply(std::move(reply), request);
+            });
         });
     }
 
