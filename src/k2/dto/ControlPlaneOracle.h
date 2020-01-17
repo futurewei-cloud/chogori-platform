@@ -42,6 +42,16 @@ struct AssignmentReportResponse {
     K2_PAYLOAD_COPYABLE;
 };
 
+// Request to report a partition offload
+struct AssignmentOffloadReportRequest {
+    String name;
+    K2_PAYLOAD_FIELDS(name);
+};
+
+// Response to AssignmentOffloadReportRequest
+struct AssignmentOffloadReportResponse {
+    K2_PAYLOAD_COPYABLE;
+};
 
 }  // namespace dto
 }  // namespace k2

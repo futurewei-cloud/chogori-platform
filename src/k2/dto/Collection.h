@@ -50,10 +50,10 @@ struct PartitionMap {
 };
 
 struct CollectionCapacity {
-    uint64_t dataCapacityBytes;
+    uint64_t dataCapacityMegaBytes;
     uint64_t readIOPs;
     uint64_t writeIOPs;
-    K2_PAYLOAD_FIELDS(dataCapacityBytes, readIOPs, writeIOPs);
+    K2_PAYLOAD_FIELDS(dataCapacityMegaBytes, readIOPs, writeIOPs);
 };
 
 struct CollectionMetadata {

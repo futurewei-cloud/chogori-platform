@@ -13,6 +13,8 @@ class CPOService {
 private:
     typedef std::function<seastar::distributed<CPOService>&()> DistGetter;
     DistGetter _dist;
+    String _dataDir;
+    String _getCollectionPath(String name);
 
 public:  // application lifespan
     CPOService(DistGetter distGetter);
