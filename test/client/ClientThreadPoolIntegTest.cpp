@@ -61,11 +61,11 @@ SCENARIO("Client in a thread pool")
 
     // assert
     assert(result->_responses.size() == 1);
-    assert(0 == result->_responses[0].moduleCode);
+    K2ASSERT(0 == result->_responses[0].moduleCode, "module code was: " << result->_responses[0].moduleCode);
     // extract value
     MemKVModule<>::GetResponse getResponse;
     result->_responses[0].payload.seek(0);
-    result->_responses[0].payload.read(getResponse);
+    K2ASSERT(result->_responses[0].payload.read(getResponse), "unable to parse response");
     K2INFO("received value: " << getResponse.value << " for key: " << key);
     assert(value==getResponse.value);
 }

@@ -55,7 +55,7 @@ class MessageReader {
     Status status = Status::S200_OK();
 
    public:
-    MessageReader() : parser([] { return false; }) {
+    MessageReader() : parser([] { return false; }, true) {
         parser.registerMessageObserver([this](Verb verb, MessageMetadata metadata, std::unique_ptr<Payload> payload) {
             MessageDescription msg;
             msg.verb = verb;
@@ -273,7 +273,7 @@ public:
         std::unique_ptr<MessageDescription> messageDescription = messageExchange(verb, request, std::move(payload));
         messageDescription->payload.seek(0);
         if (!messageDescription->payload.read(response))
-            throw std::exception();
+            throw std::runtime_error("unable to read boost response");
     }
 
     template<typename RequestT, typename ResponseT>

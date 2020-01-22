@@ -306,7 +306,9 @@ private:
             auto hdrSize = sizeof(ResponseMessage::Header);
             ResponseMessage::Header header;
             payload->seek(0);
-            payload->read(&header, hdrSize);
+            if (!payload->read(header)) {
+                throw std::runtime_error("unable to read header in sendMessage");
+            }
 
             if(!header.status.is2xxOK()) {
                 throw ExecutionException(header.status, "Error status");

@@ -1,12 +1,15 @@
 #include "Payload.h"
+#include <crc32c/crc32c.h>
 
 namespace k2 {
-
 Payload::PayloadPosition::PayloadPosition():PayloadPosition(0, 0, 0) {
 }
 
 Payload::PayloadPosition::PayloadPosition(_Size bIdx, _Size bOff, size_t offset):
     bufferIndex(bIdx), bufferOffset(bOff), offset(offset) {
+    // By convention, a position pointing to a non-existent location will point
+    // to a bufferIndex which doesn't exist.
+    // Empty payload will have position of (bidx=0, boff=0, off=0)
 }
 
 Payload::Payload(BinaryAllocatorFunctor allocator):
@@ -39,10 +42,13 @@ size_t Payload::getCapacity() const {
 }
 
 void Payload::ensureCapacity(size_t totalCapacity) {
-    while (getCapacity() < totalCapacity) {
+    if (totalCapacity <= _capacity) return;
+    // we're asked to make sure there is certain total capacity. Make sure we have it allocated
+    while (_capacity < totalCapacity) {
         bool canAllocate = _allocateBuffer();
         K2ASSERT(canAllocate, "unable to increase capacity");
     }
+    // NB, if our cursor was past the end of the payload before this call, it will now be valid
 }
 
 std::vector<Binary> Payload::release() {
@@ -141,8 +147,30 @@ bool Payload::read(char& b) {
 bool Payload::read(String& value) {
     _Size size;
     if (!read(size)) return false;
-    value.resize(size);
+    value.resize(size - 1);  // the resulting string's size will be one less than what we read since '\0' doesn't count
     return read((void*)value.data(), size);
+}
+
+bool Payload::read(Payload& other) {
+    size_t size;
+    if (!read(size) || getDataRemaining() < size) return false;
+    other.clear();
+    other._size = size;
+    other._capacity = size;
+    other._allocator = nullptr;
+    other._currentPosition = PayloadPosition();
+    while(size > 0) {
+        auto shared = _buffers[_currentPosition.bufferIndex].share();
+        shared.trim_front(_currentPosition.bufferOffset);
+        size_t currentBufferRemaining = shared.size();
+        size_t trimSize = std::min(size, currentBufferRemaining);
+
+        shared.trim(trimSize);
+        other._buffers.push_back(std::move(shared));
+        size -= trimSize;
+        _advancePosition(trimSize);
+    }
+    return true;
 }
 
 bool Payload::readMany() {
@@ -175,7 +203,22 @@ void Payload::skip(size_t advance) {
 }
 
 void Payload::truncateToCurrent() {
-    _size = _currentPosition.offset + 1;
+    if (_size == 0) return; // nothing to do
+    _size = _currentPosition.offset;
+
+    if (_currentPosition.bufferIndex == _buffers.size()) return; // we're past the end already
+
+    // make the current position the end, and place our cursor just past the end
+
+    // drop any extra buffers we might have
+    _buffers.resize(_currentPosition.bufferIndex + 1);
+    // we want our capacity to be now exactly the same as our size
+    _capacity = _size;
+    // trim the last buffer to contain exactly the data we have so far
+    _buffers[_currentPosition.bufferIndex].trim(_currentPosition.bufferOffset);
+    // finally, adjust our cursor so that it points correctly past the end of the payload
+    ++_currentPosition.bufferIndex;
+    _currentPosition.bufferOffset = 0;
 }
 
 void Payload::write(char b) {
@@ -200,12 +243,35 @@ void Payload::write(const void* data, size_t size) {
 }
 
 void Payload::write(const String& value) {
-    _Size size = value.size();
+    _Size size = value.size() + 1; // count the null character too
     write(size);
-    write(value.data(), value.size());
+    write(value.data(), size);
+}
+
+void Payload::write(const Payload& other) {
+    // we only support this write at the end of an existing payload (append)
+    K2ASSERT(getDataRemaining() == 0, "cannot write a payload in the middle of another payload");
+
+    // write out how many bytes are following
+    write(other.getSize());
+
+    // reset ourselves so that we are exactly as big as the data we're currently holding
+    // truncate to the current cursor
+    truncateToCurrent();
+
+    // now we can extend our buffer list with shared buffers from the other payload
+    for (auto& buf : const_cast<Payload*>(&other)->share()._buffers) {
+        auto sz = buf.size();
+        if (sz == 0) continue;
+        _buffers.push_back(std::move(buf));
+        _size += sz;
+        _capacity += sz;
+        _advancePosition(sz);
+    }
 }
 
 void Payload::writeMany() {
+    // this is needed for the base case of the recursive template version
 }
 
 bool Payload::_allocateBuffer() {
@@ -214,7 +280,7 @@ bool Payload::_allocateBuffer() {
     if (!buf) {
         return false;
     }
-    assert(buf.size() <= std::numeric_limits<_Size>::max());
+    assert(buf.size() <= std::numeric_limits<_Size>::max() && buf.size() > 0);
     // we're about to add one more in. Make sure we have room to add it
     assert(_buffers.size() < std::numeric_limits<_Size>::max());
 
@@ -226,6 +292,7 @@ bool Payload::_allocateBuffer() {
 void Payload::_advancePosition(size_t advance) {
     auto newOffset = advance + _currentPosition.offset;
     K2ASSERT(newOffset <= _capacity, "offset must be within the existing payload");
+
     _size = std::max(_size, newOffset);
     if (newOffset == _capacity) {
         // append use case when we don't have the actual buffer allocated yet
@@ -249,6 +316,65 @@ void Payload::_advancePosition(size_t advance) {
         }
         advance -= canAdvance;
     }
+}
+
+uint32_t Payload::computeCrc32c() {
+    // remember where we started
+    auto curpos = getCurrentPosition();
+
+    uint32_t checksum = 0;
+    size_t size = getSize() - curpos.offset;
+
+    while (size > 0) {
+        const Binary& buffer = _buffers[_currentPosition.bufferIndex];
+        size_t currentBufferRemaining = buffer.size() - _currentPosition.bufferOffset;
+        size_t needToCopySize = std::min(size, currentBufferRemaining);
+
+        checksum = crc32c::Extend(checksum, reinterpret_cast<const uint8_t*>(buffer.get() + _currentPosition.bufferOffset), needToCopySize);
+
+        size -= needToCopySize;
+        _advancePosition(needToCopySize);
+    }
+
+    // put the cursor back where it was before we started
+    seek(curpos);
+    return checksum;
+}
+
+Payload Payload::share() {
+    Payload shared(_allocator);
+    shared._size = _size;
+    shared._capacity = _size; // the capacity of the new payload stops with the current data written
+
+    // share exactly the data we need
+    size_t toShare = _size;
+    size_t curBufIndex =0;
+    while(toShare > 0) {
+        auto& curBuf = _buffers[curBufIndex];
+        auto shareSizeFromCurBuf = std::min(toShare, curBuf.size());
+        auto fullSharedBuf = curBuf.share();
+
+        // only share exactly what we need for the new payload
+        fullSharedBuf.trim(shareSizeFromCurBuf);
+        shared._buffers.push_back(std::move(fullSharedBuf));
+        toShare -= shareSizeFromCurBuf;
+        curBufIndex++;
+    }
+    return shared;
+}
+
+bool Payload::operator==(const Payload& o) const {
+    Payload* me = const_cast<Payload*>(this);
+    Payload* they = const_cast<Payload*>(&o);
+    auto myPos = me->getCurrentPosition();
+    auto theirPos = they->getCurrentPosition();
+    me->seek(0);
+    they->seek(0);
+    auto mychksum = me->computeCrc32c();
+    auto otherchksum = they->computeCrc32c();
+    me->seek(myPos);
+    they->seek(theirPos);
+    return mychksum == otherchksum;
 }
 
 } // namespace k2

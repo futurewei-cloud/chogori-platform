@@ -7,6 +7,7 @@
 #include <seastar/net/api.hh> // seastar's network stuff
 #include <seastar/core/weak_ptr.hh> // weak ptr
 #include <seastar/util/std-compat.hh>
+#include <seastar/net/packet.hh>
 
 // k2
 #include <k2/common/Common.h>
@@ -62,6 +63,9 @@ private: // methods
     // helper method to setup an incoming connected socket
     void _setConnectedSocket(seastar::connected_socket sock);
 
+    // helper method used to send a packet
+    void _sendPacket(seastar::net::packet&& packet);
+
 private: // fields
     // this is the RPC message parser
     RPCParser _rpcParser;
@@ -92,13 +96,8 @@ private: // fields
     // the output stream from our socket
     seastar::output_stream<char> _out;
 
-    // a place to store pending writes while we're connecting
-    struct _BufferedWrite {
-        Verb verb;
-        std::unique_ptr<Payload> payload;
-        MessageMetadata meta;
-    };
-    std::vector<_BufferedWrite> _pendingWrites;
+    // store writes while connection is being initialized
+    std::vector<seastar::net::packet> _pendingWrites;
 
     // flag to determine if we're running
     bool _running;

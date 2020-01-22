@@ -49,7 +49,7 @@ static void setGetKeyScenario(IClient& rClient, const Range& range, std::functio
                     // extract value
                     MemKVModule<>::GetResponse getResponse;
                     result._responses[0].payload.seek(0);
-                    result._responses[0].payload.read(getResponse);
+                    K2ASSERT(result._responses[0].payload.read(getResponse), "unable to read response");
                     K2INFO("received value: " << getResponse.value << " for key: " << key);
                     assert(value==getResponse.value);
 

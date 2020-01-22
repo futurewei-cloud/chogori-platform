@@ -98,12 +98,13 @@ public:
     {
         typename MemKVModule<DerivedIndexer>::SetRequest setRequest { std::move(key), std::move(value) };
         auto result = transport.send(MemKVModule<DerivedIndexer>::createMessage(setRequest, partitionId, newPayload()));
-        if (!result->getStatus().is2xxOK())
+        K2INFO("Received response with status: " << result->getStatus() << ", payloadsize=" << result->payload.getSize() << ", data=" << result->payload.getDataRemaining());
+        if (!result->getStatus().is2xxOK()) {
             return {result->getStatus(), 0};
-
+        }
         typename MemKVModule<DerivedIndexer>::SetResponse setResponse;
         result->payload.seek(0);
-        result->payload.read(setResponse);
+        REQUIRE(result->payload.read(setResponse));
         return {result->getStatus(), setResponse.version};
     }
 
@@ -118,7 +119,7 @@ public:
 
         typename MemKVModule<DerivedIndexer>::GetResponse getResponse;
         result->payload.seek(0);
-        result->payload.read(getResponse);
+        REQUIRE(result->payload.read(getResponse));
         return { result->getStatus(), getResponse.value};
     }
 

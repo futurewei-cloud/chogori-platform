@@ -31,7 +31,7 @@ std::unique_ptr<ResponseMessage> sendPartitionMessage(
     ResponseMessage::Header header;
     message->payload.seek(0);
     if(!message->payload.read(header))
-        throw std::exception();
+        throw std::runtime_error("unable to send partition message");
 
     THROW_IF_BAD(header.status);
 

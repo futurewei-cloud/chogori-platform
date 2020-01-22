@@ -3,6 +3,8 @@
 //-->
 #include "TCPRPCChannel.h"
 
+#include <k2/config/Config.h>
+
 // third-party
 #include <seastar/net/inet_address.hh>
 
@@ -10,7 +12,7 @@ namespace k2 {
 
 TCPRPCChannel::TCPRPCChannel(seastar::future<seastar::connected_socket> futureSocket, TXEndpoint endpoint,
                   RequestObserver_t requestObserver, FailureObserver_t failureObserver):
-    _rpcParser([]{return seastar::need_preempt();}),
+    _rpcParser([]{return seastar::need_preempt();}, Config()["enable_tx_checksum"].as<bool>()),
     _endpoint(std::move(endpoint)),
     _fdIsSet(false),
     _closingInProgress(false),
@@ -51,42 +53,28 @@ void TCPRPCChannel::run() {
 
 void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata) {
     assert(_running);
-    assert(payload->getSize() >= txconstants::MAX_HEADER_SIZE);
-    auto dataSize = payload->getSize() - txconstants::MAX_HEADER_SIZE;
-    if (dataSize > 0) {
-        metadata.setPayloadSize(dataSize);
-    }
-    K2DEBUG("send: verb=" << verb << ", payloadSize="<< dataSize);
-
+    K2DEBUG("send: verb=" << verb);
     if (_closingInProgress) {
         K2WARN("channel is going down. ignoring send");
         return;
     }
+    seastar::net::packet packet;
+    for (auto& buf : _rpcParser.prepareForSend(verb, std::move(payload), std::move(metadata))) {
+        packet = seastar::net::packet(std::move(packet), std::move(buf));
+    }
     if (!_fdIsSet) {
         // we don't have a connected socket yet. Queue up the request
         K2DEBUG("send: not connected yet. Buffering the write, have buffered already " << _pendingWrites.size());
-        _pendingWrites.emplace_back(_BufferedWrite{verb, std::move(payload), std::move(metadata)});
+        _pendingWrites.push_back(std::move(packet));
         return;
     }
-    // disassemble the payload so that we can write the header in the first binary
-    auto&& buffers = payload->release();
-    // write the header into the headroom of the first binary and remember to send the extra bytes
-    dataSize += RPCParser::serializeHeader(buffers[0], verb, std::move(metadata));
-    // write out the header and data
-    K2DEBUG("writing message: verb=" << verb << ", messageSize="<< dataSize);
+    _sendPacket(std::move(packet));
+}
 
-    _sendFuture = _sendFuture->then([buffers = std::move(buffers), dataSize, chan=weak_from_this()]() mutable {
+void TCPRPCChannel::_sendPacket(seastar::net::packet&& packet) {
+    _sendFuture = _sendFuture->then([packet = std::move(packet), chan=weak_from_this()]() mutable {
         if (chan) {
-            return seastar::do_for_each(buffers, [dataSize, chan=chan->weak_from_this()](auto& buf) mutable {
-                if (chan) {
-                    if (buf.size() > dataSize) {
-                        buf.trim(dataSize);
-                    }
-                    dataSize -= buf.size();
-                    return chan->_out.write(std::move(buf));
-                }
-                return seastar::make_ready_future<>();
-            });
+            return chan->_out.write(std::move(packet));
         }
         return seastar::make_ready_future<>();
     }).then([chan=weak_from_this()]() {
@@ -190,8 +178,8 @@ void TCPRPCChannel::registerFailureObserver(FailureObserver_t observer) {
 
 void TCPRPCChannel::_processQueuedWrites() {
     K2DEBUG("pending writes: " << _pendingWrites.size());
-    for(auto& write: _pendingWrites) {
-        send(write.verb, std::move(write.payload), std::move(write.meta));
+    for(auto& packet: _pendingWrites) {
+        _sendPacket(std::move(packet));
     }
     _pendingWrites.resize(0); // reclaim any memory used by the vector
 }

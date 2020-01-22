@@ -41,16 +41,20 @@ public: // types
     // indicates the message failed to validate magic bits
     class MagicMismatchException : public std::exception {};
 
+    // indicates that checksum validation has failed
+    class ChecksumValidationException : public std::exception {};
+
     // indicates that we expected to receive the second segment for partial header, but
     // the segment we received did not have enough data.
     class NonContinuationSegmentException : public std::exception {};
 
-public:
-    // creates an RPC parser with the given preemptor function
-    inline RPCParser(std::function<bool()> preemptor);
+   public:
+    // creates an RPC parser with the given preemptor function. Users can request that we validate/generate checksums
+    // at the expense of extra read pass over the data
+    RPCParser(std::function<bool()> preemptor, bool useChecksum);
 
     // destructor. Any incomplete messages are dropped
-    inline ~RPCParser();
+    ~RPCParser();
 
     // Utility method used to create a header for an outgoing message
     // the incoming binary must have exactly txconstants::MAX_HEADER_SIZE bytes
@@ -58,40 +62,44 @@ public:
     // the incoming binary is is populated with the header and trimmed from the front to the first
     // byte of the header
     // returns the number of bytes written as header
-    inline static size_t serializeHeader(Binary& binary, Verb verb, MessageMetadata metadata);
+    static size_t serializeHeader(Binary& binary, Verb verb, MessageMetadata metadata);
 
     //
     //  Write transport header to the binary. Return false, if not enough space in binary.
     //
-    inline static bool writeHeader(Binary& binary, Verb verb, MessageMetadata meta);
+    static bool writeHeader(Binary& binary, Verb verb, MessageMetadata meta);
 
     // Utility method used to serialize the given user message into a transport message, expressed as a Payload.
     // The user can also provide features via the metadata field
-    inline static std::unique_ptr<Payload> serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata);
+    static std::unique_ptr<Payload> serializeMessage(Payload&& message, Verb verb, MessageMetadata metadata);
+
+    // This method is used to prepare a given mesage for sending. The resulting iovec can be passed to lower-level
+    // transport as packets to send.
+    std::vector<Binary> prepareForSend(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata);
 
     // This method should be called with the binary in a stream of messages.
-    // we handle messages which can span multiple binarys in this class.
+    // we handle messages which can span multiple binaries in this class.
     // The user should use the methods CanDispatch() to determine if it should call DispatchSome()
     // For performance reasons, you should only feed more data once all current data has been processed
     // this method will assert that it is not being called when CanDispatch() is true
     // see usage in TCPRPCChannel.cpp for example on how to setup a processing loop
-    inline void feed(Binary&& binary);
+    void feed(Binary&& binary);
 
     // Use to determine if this parser could potentially dispatch some messages. It is possible that
     // in some cases no messages will be dispatched if DispatchSome() is called
-    inline bool canDispatch() { return _shouldParse;}
+    bool canDispatch() { return _shouldParse;}
 
     // Ask the parser to process data in the incoming binarys and dispatch some messages. This method
     // dispatches 0 or more messages.
     // Under the covers, we consult the preemptor function to stop dispatching even if we have more messages
     // so the user should keep calling DispatchSome until CanDispatch returns false
-    inline void dispatchSome();
+    void dispatchSome();
 
     // Call this method with a callback to observe incoming RPC messages
-    inline void registerMessageObserver(MessageObserver_t messageObserver);
+    void registerMessageObserver(MessageObserver_t messageObserver);
 
     // Call this method with a callback to observe parsing failure
-    inline void registerParserFailureObserver(ParserFailureObserver_t parserFailureObserver);
+    void registerParserFailureObserver(ParserFailureObserver_t parserFailureObserver);
 
 private: // types
     enum ParseState: uint8_t {
@@ -106,17 +114,18 @@ private: // types
 
 private: // methods
     // parses and dispatches one message if possible
-    inline void _parseAndDispatchOne();
+    void _parseAndDispatchOne();
 
     // state machine handlers
-    inline void _stWAIT_FOR_FIXED_HEADER();
-    inline void _stIN_PARTIAL_FIXED_HEADER();
-    inline void _stWAIT_FOR_VARIABLE_HEADER();
-    inline void _stIN_PARTIAL_VARIABLE_HEADER();
-    inline void _stWAIT_FOR_PAYLOAD();
-    inline void _stREADY_TO_DISPATCH();
-    inline void _stFAILED_STREAM();
+    void _stWAIT_FOR_FIXED_HEADER();
+    void _stIN_PARTIAL_FIXED_HEADER();
+    void _stWAIT_FOR_VARIABLE_HEADER();
+    void _stIN_PARTIAL_VARIABLE_HEADER();
+    void _stWAIT_FOR_PAYLOAD();
+    void _stREADY_TO_DISPATCH();
+    void _stFAILED_STREAM();
 
+    void _setParserFailure(std::exception&& exc);
 private: // fields
     // message observer
     MessageObserver_t _messageObserver;
@@ -131,6 +140,9 @@ private: // fields
     // Usually we stop parsing once we dispatch a whole message,
     // or if we need more data to be fed to assemble a whole message
     bool _shouldParse;
+
+    // flag used to determine if we should compute/validate checksums
+    bool _useChecksum;
 
     // the parser state
     ParseState _pState;
@@ -159,9 +171,15 @@ private: // don't need
     RPCParser& operator=(RPCParser&& o) = delete;
 }; // class RPCParser
 
+inline void RPCParser::_setParserFailure(std::exception&& exc) {
+    _pState = ParseState::FAILED_STREAM;
+    _parserFailureException = std::move(exc);
+}
+
 inline
-RPCParser::RPCParser(std::function<bool()> preemptor):
+RPCParser::RPCParser(std::function<bool()> preemptor, bool useChecksum):
     _shouldParse(false),
+    _useChecksum(useChecksum),
     _pState(ParseState::WAIT_FOR_FIXED_HEADER),
     _preemptor(preemptor) {
     K2DEBUG("ctor");
@@ -359,13 +377,11 @@ void RPCParser::_stWAIT_FOR_FIXED_HEADER() {
     // check if message is valid
     if (_fixedHeader.magic != txconstants::K2RPCMAGIC) {
         K2WARN("Received message with magic bit mismatch: " << _fixedHeader.magic << ", vs: " << txconstants::K2RPCMAGIC);
-        _pState = ParseState::FAILED_STREAM;
-        _parserFailureException = MagicMismatchException();
+        _setParserFailure(MagicMismatchException());
+        return;
     }
-    else {
-        _pState = ParseState::WAIT_FOR_VARIABLE_HEADER; // onto getting the variable header
-        K2DEBUG("wait_for_fixed_header: parsed");
-    }
+    _pState = ParseState::WAIT_FOR_VARIABLE_HEADER; // onto getting the variable header
+    K2DEBUG("wait_for_fixed_header: parsed");
 }
 
 inline
@@ -394,8 +410,7 @@ void RPCParser::_stIN_PARTIAL_FIXED_HEADER() {
     if (curSize < totalNeed - partSize) {
         K2WARN("Received continuation segment which doesn't have enough data: " << curSize
                << ", total: " << totalNeed <<", have: " << partSize);
-        _pState = ParseState::FAILED_STREAM; // state machine will continue parsing and end up in failed state
-        _parserFailureException = NonContinuationSegmentException();
+        _setParserFailure(NonContinuationSegmentException());
         return;
     }
 
@@ -475,8 +490,7 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
     if (totalNeed > partSize + curSize) {
         K2WARN("Received partial variable header continuation segment which doesn't have enough data: " << curSize
                << ", total: " << totalNeed <<", have: " << partSize);
-        _pState = ParseState::FAILED_STREAM; // state machine will keep going and end up in Failed state
-        _parserFailureException = NonContinuationSegmentException();
+        _setParserFailure(NonContinuationSegmentException());
         return;
     }
 
@@ -556,7 +570,16 @@ void RPCParser::_stWAIT_FOR_PAYLOAD() {
 inline
 void RPCParser::_stREADY_TO_DISPATCH() {
     K2DEBUG("ready_to_dispatch: cursize=" << _currentBinary.size());
-
+    if (_useChecksum && _payload) {
+        if (!_metadata.isChecksumSet()) {
+            _setParserFailure(ChecksumValidationException());
+            return;
+        }
+        if (_payload->computeCrc32c() != _metadata.checksum) {
+            _setParserFailure(ChecksumValidationException());
+            return;
+        }
+    }
     _messageObserver(_fixedHeader.verb, std::move(_metadata), std::move(_payload));
 
     // only now we're ready to process the next message
@@ -592,4 +615,36 @@ RPCParser::serializeMessage(Payload&& message, Verb verb, MessageMetadata metada
     auto headerSize = RPCParser::serializeHeader(buffers[0], verb, std::move(metadata));
     return std::make_unique<Payload>(std::move(buffers), headerSize + metaPayloadSize);
 }
+
+inline
+std::vector<Binary>
+RPCParser::prepareForSend(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata) {
+    assert(payload->getSize() >= txconstants::MAX_HEADER_SIZE);
+    auto dataSize = payload->getSize() - txconstants::MAX_HEADER_SIZE;
+    metadata.setPayloadSize(dataSize);
+    K2DEBUG("send: verb=" << verb << ", payloadSize=" << dataSize);
+    if (_useChecksum) {
+        // compute checksum starting at MAX_HEADER_SIZE until end of payload
+        payload->seek(txconstants::MAX_HEADER_SIZE);
+            metadata.setChecksum(payload->computeCrc32c());
+    }
+    // disassemble the payload so that we can write the header in the first binary
+    auto buffers = payload->release();
+    // write the header into the headroom of the first binary and remember to send the extra bytes
+    dataSize += RPCParser::serializeHeader(buffers[0], verb, std::move(metadata));
+    // write out the header and data
+    K2DEBUG("writing message: verb=" << verb << ", messageSize=" << dataSize);
+    size_t bufIdx = 0;
+    while (bufIdx < buffers.size() && dataSize > 0) {
+        auto& buf = buffers[bufIdx];
+        if (buf.size() > dataSize) {
+            buf.trim(dataSize);
+        }
+        dataSize -= buf.size();
+        ++bufIdx;
+    }
+    buffers.resize(std::min(buffers.size(), bufIdx));  // remove any unneeded binaries
+    return std::move(buffers);
+}
+
 } // namespace k2

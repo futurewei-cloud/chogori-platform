@@ -6,17 +6,14 @@
 // You have to pass your fields here in order for them to be (de)serialized. This macro works for any
 // field types (both primitive/simple as well as nested/complex) but it does the (de)serialization
 // on a field-by-field basis so it may be less efficient than the one-shot macro below
-#define K2_PAYLOAD_FIELDS(...)                        \
-        struct __K2PayloadSerializableTraitTag__ {};  \
-        void __writeFields(Payload& payload) const \
-        {                                             \
-            payload.writeMany(__VA_ARGS__);     \
-        }                                             \
-        bool __readFields(Payload& payload)        \
-        {                                             \
-            return payload.readMany(__VA_ARGS__);      \
-        }                                             \
-
+#define K2_PAYLOAD_FIELDS(...)                     \
+    struct __K2PayloadSerializableTraitTag__ {};   \
+    void __writeFields(Payload& payload) const {   \
+        payload.writeMany(__VA_ARGS__);            \
+    }                                              \
+    bool __readFields(Payload& payload) {          \
+        return payload.readMany(__VA_ARGS__);      \
+    }
 
 // This is a macro which can be put on structures which are directly copyable
 // i.e. structures which can be copied by just casting the struct instance to a void* and

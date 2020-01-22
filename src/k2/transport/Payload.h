@@ -49,6 +49,8 @@ private: // types
     typedef uint32_t _Size;
 
 public: // types
+    // We use this class to represent a position/cursor in this payload.
+    // Positions are never invalid but it is possible that they point to buffer not yet allocated
     struct PayloadPosition {
         PayloadPosition();
         PayloadPosition(_Size bIdx, _Size bOff, size_t offset);
@@ -79,6 +81,13 @@ public: // memory management
     // release the underlying buffers
     std::vector<Binary> release();
 
+    // Returns a ref-counted shared view of the payload. The new payload will have its own cursor and will
+    // share the data which was present here at time of share.
+    // - any new data appended to either payload will not be visible to any other payload
+    // - any changes on the common data will be visible to both
+    // the underlying data will not be destroyed until all shared payloads are destroyed.
+    Payload share();
+
     // clear this payload
     void clear();
 
@@ -105,7 +114,13 @@ public: // API
     // returns the total bytes left for reading in this payload
     size_t getDataRemaining() const;
 
-public: // Read API
+    // This method computes crc32c over the remaining data in the buffer
+    uint32_t computeCrc32c();
+
+    // compare with the given payload. linear in complexity of number of bytes stored in the payload
+    bool operator==(const Payload& o) const;
+
+   public:  // Read API
     // Copy raw bytes from the payload into the given pointer. The pointer data must point to
     // location with allocated at least *size* bytes.
     // returns true if we were able to copy all of the requested bytes
@@ -120,6 +135,9 @@ public: // Read API
 
     // read a string
     bool read(String& value);
+
+    // read into a payload
+    bool read(Payload& other);
 
     // read a map
     template <typename KeyT, typename ValueT>
@@ -256,6 +274,9 @@ public: // Write API
 
     // write a string
     void write(const String& value);
+
+    // write another Payload
+    void write(const Payload& other);
 
     // write a map
     template <typename KeyT, typename ValueT>

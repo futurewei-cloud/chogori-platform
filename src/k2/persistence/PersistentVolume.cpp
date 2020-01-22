@@ -84,8 +84,10 @@ public:
                     Payload& payload = payloads[i];
                     if(payload.getSize() > 0)
                     {
-                        if(!parse(payload, records))
+                        if(!parse(payload, records)) {
+                            K2ERROR("Unable to parse records");
                             throw std::move(payload);
+                        }
                         activePlog = i;
                     }
                     sizes.push_back(payload.getSize());

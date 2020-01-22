@@ -37,6 +37,7 @@ static const uint8_t MAX_HEADER_SIZE = 128;
 // | 4          | Payload Size    | Determines how many following bytes belong to payload
 // | 4          | RequestID       | The request message ID - short-term unique number
 // | 4          | ResponseID      | The response message ID - repeat from a previous msg.RequestID
+// | 8          | Checksum        | The optional checksum for the message
 //
 // Note that since the message is likely to be binaried, the payload will be stored and presented as
 // a Payload, which is basically an iovec which exposes the binaries for the payload.
@@ -56,45 +57,58 @@ public:
 // The variable message header. Fields here are only valid if set in the Features bitmap above
 class MessageMetadata {
 public: // API
-    // RequestID at position 0
-    void setRequestID(uint32_t requestID) {
-        K2DEBUG("Set request id=" << requestID);
-        this->requestID = requestID;
-        this->features |= (1<<0); // bit0
-    }
-    bool isRequestIDSet() const {
-        K2DEBUG("is request id set=" << (this->features & (1<<0)) );
-        return this->features & (1<<0); // bit0
-    }
-
-    // ResponseID at position 1
-    void setResponseID(uint32_t responseID) {
-        K2DEBUG("Set response id=" << responseID);
-        this->responseID = responseID;
-        this->features |= (1<<1); // bit1
-    }
-    bool isResponseIDSet() const {
-        K2DEBUG("is response id set=" << (this->features & (1<<1)) );
-        return this->features & (1<<1); // bit1
-    }
-
-    // PayloadSize at position 2
+    // PayloadSize at position 0
     void setPayloadSize(uint32_t payloadSize) {
+        K2DEBUG("Set payload size=" << payloadSize);
         if (payloadSize > 0) {
             this->payloadSize = payloadSize;
-            this->features |= (1<<2); // bit2
+            this->features |= (1<<0); // bit0
         }
     }
     bool isPayloadSizeSet() const {
         K2DEBUG("is payloadSize set=" << (this->features & (1<<2)) );
+        return this->features & (1<<0); // bit0
+    }
+
+    // RequestID at position 1
+    void setRequestID(uint32_t requestID) {
+        K2DEBUG("Set request id=" << requestID);
+        this->requestID = requestID;
+        this->features |= (1<<1); // bit1
+    }
+    bool isRequestIDSet() const {
+        K2DEBUG("is request id set=" << (this->features & (1<<0)) );
+        return this->features & (1<<1); // bit1
+    }
+
+    // ResponseID at position 2
+    void setResponseID(uint32_t responseID) {
+        K2DEBUG("Set response id=" << responseID);
+        this->responseID = responseID;
+        this->features |= (1<<2); // bit2
+    }
+    bool isResponseIDSet() const {
+        K2DEBUG("is response id set=" << (this->features & (1<<1)) );
         return this->features & (1<<2); // bit2
+    }
+
+    // checksum at position 3
+    void setChecksum(uint32_t checksum) {
+        K2DEBUG("Set checksum size=" << checksum);
+        this->checksum = checksum;
+        this->features |= (1 << 3);  // bit3
+    }
+    bool isChecksumSet() const {
+        K2DEBUG("is checksum set=" << (this->features & (1 << 3)));
+        return this->features & (1 << 3);  // bit3
     }
 
     // this method is used to determine how many wire bytes are needed given the set features
     size_t wireByteCount() {
         return isPayloadSizeSet()*sizeof(payloadSize) +
                isRequestIDSet()*sizeof(requestID) +
-               isResponseIDSet()*sizeof(responseID);
+               isResponseIDSet()*sizeof(responseID) +
+               isChecksumSet()*sizeof(checksum);
     }
 
 public: // fields
@@ -102,6 +116,7 @@ public: // fields
     uint32_t payloadSize = 0;
     uint32_t requestID = 0;
     uint32_t responseID = 0;
+    uint32_t checksum = 0;
     // MAYBE TODO CRC, crypto, sender endpoint
 };
 } // k2

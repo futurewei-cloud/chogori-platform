@@ -150,7 +150,12 @@ public:
         return ModuleResponse::Ok;
     }
 
-#define MemKVModule_PARSE_RIF(res) { if(!res) return ModuleResponse(ModuleResponse::Error, ErrorCode::ParingError); }
+#define MemKVModule_PARSE_RIF(res) { \
+    if(!res) { \
+        K2ERROR("Unable to parse"); \
+        return ModuleResponse(ModuleResponse::Error, ErrorCode::ParingError); \
+    } \
+} \
 
     //
     //  Called when client request is received. In this function Module can check whether operation can be completed,
@@ -200,7 +205,7 @@ public:
 
                 uint64_t version = getPartitionContext(task)->getNewVersion();
                 memTable.insert(std::move(request.key), std::move(request.value), version);
-                task.getSendPayload().write(version);
+                task.getSendPayload().write(SetResponse{.version=version});
 
                 return ModuleResponse(ModuleResponse::ReturnToClient, ErrorCode::None);
             }

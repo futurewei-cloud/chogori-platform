@@ -77,7 +77,9 @@ std::unique_ptr<PartitionMessage> createPartitionMessage(std::unique_ptr<Payload
 
     PartitionMessage::Header header;
     inPayload->seek(0);
-    inPayload->read(header);
+    if (!inPayload->read(header)) {
+        throw std::runtime_error("unable to parse message header");
+    };
     auto readOffset = sizeof(header);
     auto remainingBytes = header.messageSize;
     assert(readOffset + remainingBytes == inPayload->getSize());

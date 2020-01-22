@@ -40,11 +40,14 @@ void moduleGet(k2::PartitionAssignmentId partitionId, const char* ip, uint16_t p
     K2INFO("moduleGet:" << stopWatch.elapsedUS()  << "us");
 
     assert(response);
-    if(!response->getStatus().is2xxOK() || response->moduleCode != 0)
+    if(!response->getStatus().is2xxOK() || response->moduleCode != 0) {
         K2ERROR("Get failed: " << response->getStatus());
-
+        return;
+    }
     MemKVModule<>::GetResponse getResponse;
-    response->payload.read(getResponse);
+    if (!response->payload.read(getResponse)) {
+        throw std::runtime_error("unable to read response in module");
+    }
     K2INFO("Gotten: value: " << getResponse.value << " version: " << getResponse.version);
 }
 

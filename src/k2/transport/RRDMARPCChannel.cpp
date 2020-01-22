@@ -3,11 +3,13 @@
 //-->
 #include "RRDMARPCChannel.h"
 
+#include <k2/config/Config.h>
+
 namespace k2 {
 
 RRDMARPCChannel::RRDMARPCChannel(std::unique_ptr<seastar::rdma::RDMAConnection> rconn, TXEndpoint endpoint,
                   RequestObserver_t requestObserver, FailureObserver_t failureObserver):
-    _rpcParser([]{return seastar::need_preempt();}),
+    _rpcParser([]{return seastar::need_preempt();}, Config()["enable_tx_checksum"].as<bool>()),
     _endpoint(std::move(endpoint)),
     _rconn(std::move(rconn)),
     _closingInProgress(false),
@@ -26,35 +28,11 @@ RRDMARPCChannel::~RRDMARPCChannel(){
 
 void RRDMARPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata) {
     assert(_running);
-    assert(payload->getSize() >= txconstants::MAX_HEADER_SIZE);
-    auto dataSize = payload->getSize() - txconstants::MAX_HEADER_SIZE;
-    if (dataSize > 0) {
-        metadata.setPayloadSize(dataSize);
-    }
-    K2DEBUG("send: verb=" << verb << ", payloadSize="<< dataSize);
-
     if (_closingInProgress) {
         K2WARN("channel is going down. ignoring send");
         return;
     }
-
-    // disassemble the payload so that we can write the header in the first binary
-    auto&& buffers = payload->release();
-    // write the header into the headroom of the first binary and remember to send the extra bytes
-    dataSize += RPCParser::serializeHeader(buffers[0], verb, std::move(metadata));
-    // write out the header and data
-    K2DEBUG("writing message: verb=" << verb << ", messageSize="<< dataSize);
-    size_t bufIdx = 0;
-    while(bufIdx < buffers.size() && dataSize > 0) {
-        auto& buf = buffers[bufIdx];
-        if (buf.size() > dataSize) {
-            buf.trim(dataSize);
-        }
-        dataSize -= buf.size();
-        ++bufIdx;
-    }
-    buffers.resize(std::min(buffers.size(), bufIdx)); // remove any unneeded binaries
-    _rconn->send(std::move(buffers));
+    _rconn->send(_rpcParser.prepareForSend(verb, std::move(payload), std::move(metadata)));
 }
 
 void RRDMARPCChannel::run() {

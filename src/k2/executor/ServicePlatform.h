@@ -21,6 +21,7 @@
 #include <k2/transport/VirtualNetworkStack.h>
 #include <k2/transport/RetryStrategy.h>
 #include <k2/transport/Prometheus.h>
+#include <k2/config/Config.h>
 // k2:service
 #include "IServiceLauncher.h"
 
@@ -176,6 +177,7 @@ protected:
     int runService() {
         namespace bpo = boost::program_options;
 
+
         k2::VirtualNetworkStack::Dist_t virtualNetwork;
         k2::RPCProtocolFactory::Dist_t tcpproto;
 	    k2::RPCProtocolFactory::Dist_t rdmaproto;
@@ -197,10 +199,19 @@ protected:
         K2INFO("Command arguments: " << argString);
 
         seastar::app_template app;
-        int result = app.run_deprecated(_argv.size()-1, (char**)_argv.data(), [&] {
+        app.add_options()
+            ("enable_tx_checksum", bpo::value<bool>()->default_value(true), "enables transport-level checksums (and validation) on all messages. it incurs double - read penalty(data is read separately to compute checksum)")
+        ;
+        int result = app.run_deprecated(_argv.size() - 1, (char**)_argv.data(), [&] {
+            auto& config = app.configuration();
+
             seastar::engine()
             .at_exit([&] {
                 return seastar::make_ready_future<>()
+                    .then([&] {
+                        K2INFO("stop config");
+                        return ConfigDist().stop();
+                    })
                     .then([&] {
                         K2INFO("Stopping services...");
 
@@ -263,6 +274,10 @@ protected:
 
             K2INFO("Starting service platform...");
             auto future2 = seastar::make_ready_future<>()
+                .then([&] {
+                    K2INFO("create config");
+                    return ConfigDist().start(config);  // initialize global config
+                })
                 .then([&] {
                     if(_settings._prometheusTcpPort > 0) {
 
@@ -346,10 +361,10 @@ protected:
                 })
                 .or_terminate();
 
-                futures.push_back(std::move(future2));
+            futures.push_back(std::move(future2));
 
-                return seastar::when_all_succeed(futures.begin(), futures.end())
-                .handle_exception([] (std::exception_ptr eptr) {
+            return seastar::when_all_succeed(futures.begin(), futures.end())
+                .handle_exception([](std::exception_ptr eptr) {
                     K2ERROR("Service platform: exception: " << eptr);
 
                     return seastar::make_ready_future<>();
@@ -360,7 +375,8 @@ protected:
                     seastar::engine().exit(0);
 
                     return seastar::make_ready_future<>();
-                }).or_terminate();
+                })
+                .or_terminate();
         });
 
         return result;

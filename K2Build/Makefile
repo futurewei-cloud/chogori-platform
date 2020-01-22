@@ -32,7 +32,11 @@ test_config: build
 	@echo ">>> Testing config"
 	@../$(BUILD_DIR)/test/config/config_test && testReturnCode=$? && exit $(testReturnCode)
 
-test: test_node test_client test_plog test_volume test_config
+test_transport: build
+	@echo ">>> Testing transport"
+	@../$(BUILD_DIR)/test/transport/payload_test && testReturnCode=$? && exit $(testReturnCode)
+
+test: test_node test_client test_plog test_volume test_config test_transport
 
 integrate: build
 	@echo ">>> Running integration test"
