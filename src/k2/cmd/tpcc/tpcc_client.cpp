@@ -17,6 +17,7 @@ using namespace k2;
 class Client {
 public:  // application lifespan
     Client():
+        _client(K23SIClient(K23SIClientConfig())),
         _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<std::string>>()),
         _stopped(true),
         _haveSendPromise(false),
@@ -145,7 +146,7 @@ private:
         .then ([this] {
             K2TxnOptions options;
             return _client.beginTxn(options);
-        }
+        })
         .then([this] (K2TxnHandle txn) {
             RandomContext random(0);
             Warehouse warehouse(random, 1);
@@ -154,10 +155,11 @@ private:
             Record request = {};
             request.key.partition_key = warehouse.getPartitionKey();
             request.key.row_key = warehouse.getRowKey();
-            request.value = warehouse.getData();
+            request.value = _remote_endpoint.newPayload();
+            warehouse.writeData(request.value);
 
             return txn.write(std::move(request))
-            .then([this](auto resp) {
+            .then([this, &txn](auto resp) {
                 K2INFO("Received write response with status: " << resp);
 
                 K2INFO("getting record");
@@ -166,14 +168,15 @@ private:
                 request.row_key = "test2";
                 return txn.read(std::move(request));
             })
-            .then([this](ReadResult resp) {
+            .then([this, &txn](ReadResult resp) {
                 //K2INFO("Received GET response value=" << resp.value);
                 return txn.end(true);
             })
-        })
+        });
+    }
 
 private:
-    K2Client _client;
+    K23SIClient _client;
     std::vector<std::string> _tcpRemotes;
     k2::TXEndpoint _remote_endpoint;
     bool _stopped;
