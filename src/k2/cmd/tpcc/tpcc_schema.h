@@ -6,15 +6,16 @@
 #include <string>
 
 #include <k2/common/Common.h>
+#include <k2/transport/Payload.h>
 #include <k2/transport/PayloadSerialization.h>
 
 #include "tpcc_rand.h"
 
 class SchemaType {
 public:
-    virtual String getPartitionKey() = 0;
-    virtual String getRowKey() = 0;
-    virtual Payload getData() = 0;
+    virtual k2::String getPartitionKey() = 0;
+    virtual k2::String getRowKey() = 0;
+    virtual void writeData(k2::Payload& payload) = 0;
 };
 
 class Warehouse : public SchemaType {
@@ -30,9 +31,9 @@ public:
         data.YTD = 300000.0f;
     }
 
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return ""; }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return ""; }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     struct Data {
@@ -49,9 +50,9 @@ public:
 };
 
 class District : public SchemaType {
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return "DIST:" + std::to_string(DistrictID); }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return "DIST:" + std::to_string(DistrictID); }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     uint16_t DistrictID;
@@ -70,9 +71,9 @@ class District : public SchemaType {
 };
 
 class Customer : public SchemaType {
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     uint16_t DistrictID;
@@ -101,9 +102,9 @@ class Customer : public SchemaType {
 };
 
 class History : public SchemaType {
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return "HIST:" + std::to_string(data.Date); }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return "HIST:" + std::to_string(data.Date); }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     struct Data {
@@ -119,9 +120,9 @@ class History : public SchemaType {
 };
 
 class NewOrder : public SchemaType {
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return "NEW:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return "NEW:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
+    void writeData(k2::Payload& payload) { (void) payload; }
 
     uint32_t WarehouseID;
     uint32_t OrderID;
@@ -129,9 +130,9 @@ class NewOrder : public SchemaType {
 };
 
 class Order : public SchemaType {
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return "ORDER:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return "ORDER:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     uint32_t OrderID;
@@ -148,9 +149,9 @@ class Order : public SchemaType {
 };
 
 class OrderLine : public SchemaType {
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return "ORDERLINE:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID) + ":" + std::to_string(OrderLineNumber); }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return "ORDERLINE:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID) + ":" + std::to_string(OrderLineNumber); }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     uint32_t OrderID;
@@ -169,9 +170,9 @@ class OrderLine : public SchemaType {
 };
 
 class Item : public SchemaType {
-     String getPartitionKey() { return std::to_string(ItemID); }
-     String getRowKey() { return ""; }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(ItemID); }
+    k2::String getRowKey() { return ""; }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t ItemID;
 
@@ -185,9 +186,9 @@ class Item : public SchemaType {
 };
 
 class Stock : public SchemaType {
-     String getPartitionKey() { return std::to_string(WarehouseID); }
-     String getRowKey() { return "STOCK:" + std::to_string(ItemID); }
-     Payload getData() { return Payload().write(data); }
+    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
+    k2::String getRowKey() { return "STOCK:" + std::to_string(ItemID); }
+    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     uint32_t ItemID;

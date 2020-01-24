@@ -9,11 +9,11 @@ class RandomContext {
 public:
     RandomContext(int seed) : _generator(seed) {
         std::uniform_int_distribution<> dist255(0, 255);
-        C_A255 = dist(_generator);
+        _C_A255 = dist255(_generator);
         std::uniform_int_distribution<> dist1023(0, 1023);
-        C_A1023 = dist(_generator);
-        std::uniform_int_distribution<> dist255(0, 8191);
-        C_A8191 = dist(_generator);
+        _C_A1023 = dist1023(_generator);
+        std::uniform_int_distribution<> dist8191(0, 8191);
+        _C_A8191 = dist8191(_generator);
     }
 
     uint32_t UniformRandom(uint32_t min, uint32_t max)
@@ -42,7 +42,7 @@ public:
         } else if (A == 1023) {
             C = _C_A1023;
         } else if (A == 8191) {
-            C = _C_8191;
+            C = _C_A8191;
         } else {
             throw 0;
         }
@@ -55,7 +55,7 @@ public:
         uint32_t length = UniformRandom(min, max);
         bzero(str, length+1);
 
-        for (int i=0; i<length; ++i) {
+        for (uint32_t i=0; i<length; ++i) {
             str[i] = (char)UniformRandom(33, 126); // Non-whitespace and non-control ASCII characters
         }
     }
@@ -65,7 +65,7 @@ public:
         uint32_t length = UniformRandom(min, max);
         memset(str, 0, length+1);
 
-        for (int i=0; i<length; ++i) {
+        for (uint32_t i=0; i<length; ++i) {
             str[i] = (char)UniformRandom(48, 57); // 0-9 ASCII
         }
     }

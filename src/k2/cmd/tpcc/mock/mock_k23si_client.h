@@ -9,8 +9,6 @@ using namespace seastar;
 
 namespace k2 {
 
-typedef String Value;
-
 class Timestamp {
 public:
     int64_t getSequence(){ return 0;};
@@ -86,7 +84,9 @@ class EndResult{};
 
 class K2TxnHandle {
 public:
-    K2TxnHandle(TXEndpoint endpoint) : _endpoint(endpoint) {}
+    K2TxnHandle(TXEndpoint endpoint) noexcept : _endpoint(endpoint) {}
+    K2TxnHandle(K2TxnHandle&& from) noexcept : _endpoint(std::move(from._endpoint)) {}
+    ~K2TxnHandle() noexcept {}
 
     future<ReadResult> read(Key& key) {
         GET_Request request = {.key = key};
@@ -115,62 +115,14 @@ public:
 
 class K23SIClient {
 public:
-    K23SIClient(K23SIClientConfig &, TXEndpoint endpoint): _remote_endpoint(endpoint){};
+    K23SIClient(const K23SIClientConfig &) {};
+    K23SIClient(const K23SIClientConfig &, TXEndpoint endpoint): _remote_endpoint(endpoint){};
     TXEndpoint _remote_endpoint;
 
-    future<K2TxnHandle> beginTxn(const K2TxnOptions&) {
+    future<K2TxnHandle> beginTxn(const K2TxnOptions& options) {
+        (void) options;
         return make_ready_future<K2TxnHandle>(K2TxnHandle(_remote_endpoint));
     };
 };
 
 } // namespace k2
-
-/*
-int main(int argc, char **argv) {
-    (void) argv;
-    (void) argc;
-    K2ClientConfig clientConfig;
-    K2Client k2client(clientConfig);
-    K2TxnLib txnlib(k2client);
-    K2TxnOptions opts;
-
-    Key keyFrom("Account-from"), keyTo("Account-to");
-    double amount = 100;
-
-    txnlib.begin(opts)
-    .then([&](K2TxnHandle t) {
-        return
-        when_all(t.read(keyFrom), t.read(keyTo))
-        .then([&](auto results) {
-            Account aFrom(std::get<0>(results).get0().record);
-            Account aTo(std::get<1>(results).get0().record);
-
-            aFrom.balance -= amount;
-            aTo.balance += amount;
-            return when_all(t.write(aFrom.toRecord()), t.write(aTo.toRecord()));
-        })
-        .then([&](auto results) {
-            if (std::get<0>(results).get0().status.ok() &&
-                std::get<1>(results).get0().status.ok()) {
-                K2INFO("Committing transaction since all operations succeeded");
-                return t.end(true);
-            }
-            K2ERROR("Aborting transaction due to write failure");
-            return t.end(false);
-        });
-    })
-    .then([&](EndResult) {
-        K2INFO("Transaction has completed");
-    })
-    .handle_exception([](auto&& exc){
-        // not able to start a transaction
-        try {
-            std::rethrow_exception(exc);
-        } catch (const std::exception &e) {
-            K2ERROR("Transaction failed: " << e.what());
-        }
-    })
-    .wait(); // make sure we complete.
-    return 0;
-}
-*/
