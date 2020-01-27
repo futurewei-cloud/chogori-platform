@@ -59,7 +59,12 @@ struct GET_Response {
     K2_PAYLOAD_FIELDS(key, value, meta);
 };
 
-typedef GET_Response ReadResult;
+struct ReadResult {
+    Key key;
+    Payload value;
+    Metadata meta;
+    Status status;
+};
 
 enum MessageVerbs : Verb {
     PUT = 100,
@@ -88,11 +93,15 @@ public:
     K2TxnHandle(K2TxnHandle&& from) noexcept : _endpoint(std::move(from._endpoint)) {}
     ~K2TxnHandle() noexcept {}
 
-    future<ReadResult> read(Key& key) {
-        GET_Request request = {.key = key};
-        return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, std::move(request), _endpoint, 1s).
+    future<ReadResult> read(Key&& key) {
+        return RPC().callRPC<Key, GET_Response>(MessageVerbs::GET, std::move(key), _endpoint, 1s).
         then([] (auto response) {
-            return make_ready_future<ReadResult>(std::move(std::get<1>(response)));
+            struct ReadResult userResponse = {};
+            userResponse.key = std::move(std::get<1>(response).key);
+            userResponse.value = std::move(std::get<1>(response).value);
+            userResponse.meta = std::move(std::get<1>(response).meta);
+            userResponse.status = std::move(std::get<0>(response));
+            return make_ready_future<ReadResult>(std::move(userResponse));
         });
     }
 
