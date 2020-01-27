@@ -156,8 +156,10 @@ private:
                 Record request = {};
                 request.key.partition_key = warehouse.getPartitionKey();
                 request.key.row_key = warehouse.getRowKey();
-                request.value = Payload([] () { return Binary(4096); });
-                warehouse.writeData(request.value);
+                //request.value = Payload([] () { return Binary(4096); });
+                auto payload = _remote_endpoint.NewPayload();
+                warehouse.writeData(*payload);
+                request.value = payload->share();
 
                 return txn.write(std::move(request))
                 .then([this, &txn](auto resp) {
