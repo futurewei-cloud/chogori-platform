@@ -94,7 +94,7 @@ public: // API
 
     // checksum at position 3
     void setChecksum(uint32_t checksum) {
-        K2DEBUG("Set checksum size=" << checksum);
+        K2DEBUG("Set checksum=" << checksum);
         this->checksum = checksum;
         this->features |= (1 << 3);  // bit3
     }

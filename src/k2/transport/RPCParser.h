@@ -240,7 +240,11 @@ bool RPCParser::writeHeader(Binary& binary, Verb verb, MessageMetadata meta) {
         if(!appendRaw(binary, writeOffset, meta.responseID))
             return false;
     }
-
+    if (meta.isChecksumSet()) {
+        K2DEBUG("have checksum " << meta.checksum);
+        if (!appendRaw(binary, writeOffset, meta.checksum))
+            return false;
+    }
     // all done.
     K2DEBUG("Write offset after writing header: " << writeOffset);
 
@@ -466,7 +470,11 @@ void RPCParser::_stWAIT_FOR_VARIABLE_HEADER() {
         K2DEBUG("wait_for_var_header: have response id: " << _metadata.responseID);
         _currentBinary.trim_front(sizeof(_metadata.responseID));
     }
-
+    if (_metadata.isChecksumSet()) {
+        std::memcpy((char*)&_metadata.checksum, _currentBinary.get_write(), sizeof(_metadata.checksum));
+        K2DEBUG("wait_for_var_header: have checksum: " << _metadata.checksum);
+        _currentBinary.trim_front(sizeof(_metadata.checksum));
+    }
     _pState = ParseState::WAIT_FOR_PAYLOAD; // onto getting the payload
     K2DEBUG("wait_for_var_header: parsed");
 }
@@ -522,7 +530,11 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
         K2DEBUG("partial_var_header: have response id: " << _metadata.responseID);
         data += sizeof(_metadata.responseID);
     }
-
+    if (_metadata.isChecksumSet()) {
+        std::memcpy((char*)&_metadata.checksum, data, sizeof(_metadata.checksum));
+        K2DEBUG("partial_var_header: have checksum: " << _metadata.checksum);
+        data += sizeof(_metadata.checksum);
+    }
     _pState = ParseState::WAIT_FOR_PAYLOAD; // onto getting the payload
     K2DEBUG("partial_var_header: parsed");
 }
@@ -572,10 +584,13 @@ void RPCParser::_stREADY_TO_DISPATCH() {
     K2DEBUG("ready_to_dispatch: cursize=" << _currentBinary.size());
     if (_useChecksum && _payload) {
         if (!_metadata.isChecksumSet()) {
+            K2DEBUG("metadate doesn't have crc checksum");
             _setParserFailure(ChecksumValidationException());
             return;
         }
-        if (_payload->computeCrc32c() != _metadata.checksum) {
+        auto checksum = _payload->computeCrc32c();
+        if (checksum != _metadata.checksum) {
+            K2DEBUG("checksum doesnt match: have=" << _metadata.checksum << ", received=" << checksum);
             _setParserFailure(ChecksumValidationException());
             return;
         }
@@ -626,7 +641,9 @@ RPCParser::prepareForSend(Verb verb, std::unique_ptr<Payload> payload, MessageMe
     if (_useChecksum) {
         // compute checksum starting at MAX_HEADER_SIZE until end of payload
         payload->seek(txconstants::MAX_HEADER_SIZE);
-            metadata.setChecksum(payload->computeCrc32c());
+        auto checksum = payload->computeCrc32c();
+        K2DEBUG("Sending with checksum=" << checksum);
+        metadata.setChecksum(payload->computeCrc32c());
     }
     // disassemble the payload so that we can write the header in the first binary
     auto buffers = payload->release();
