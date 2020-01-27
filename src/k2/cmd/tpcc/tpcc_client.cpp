@@ -147,31 +147,37 @@ private:
             K2TxnOptions options;
             return _client.beginTxn(options);
         })
-        .then([this] (K2TxnHandle txn) {
-            RandomContext random(0);
-            Warehouse warehouse(random, 1);
+        .then([this] (K2TxnHandle t) {
+            return do_with(std::move(t), [this] (K2TxnHandle& txn) {
+                RandomContext random(0);
+                Warehouse warehouse(random, 1);
 
-            K2INFO("putting record");
-            Record request = {};
-            request.key.partition_key = warehouse.getPartitionKey();
-            request.key.row_key = warehouse.getRowKey();
-            request.value = _remote_endpoint.newPayload();
-            warehouse.writeData(request.value);
+                K2INFO("putting record");
+                Record request = {};
+                request.key.partition_key = warehouse.getPartitionKey();
+                request.key.row_key = warehouse.getRowKey();
+                request.value = Payload([] () { return Binary(4096); });
+                warehouse.writeData(request.value);
 
-            return txn.write(std::move(request))
-            .then([this, &txn](auto resp) {
-                K2INFO("Received write response with status: " << resp);
+                return txn.write(std::move(request))
+                .then([this, &txn](auto resp) {
+                    K2INFO("Received write response with status: " << resp.status);
 
-                K2INFO("getting record");
-                Key request = {};
-                request.partition_key = "test1:";
-                request.row_key = "test2";
-                return txn.read(std::move(request));
-            })
-            .then([this, &txn](ReadResult resp) {
-                //K2INFO("Received GET response value=" << resp.value);
-                return txn.end(true);
-            })
+                    K2INFO("getting record");
+                    Key request = {};
+                    request.partition_key = "test1:";
+                    request.row_key = "test2";
+                    return txn.read(std::move(request));
+                })
+                .then([this, &txn](ReadResult resp) {
+                    K2INFO("Received GET response status=" << resp.status);
+                    return txn.end(true);
+                });
+            });
+        })
+        .then([] (auto t) {
+            (void) t;
+            return;
         });
     }
 

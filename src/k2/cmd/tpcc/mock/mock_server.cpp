@@ -50,12 +50,13 @@ public:  // application lifespan
             return RPCResponse(Status::S200_OK(), std::move(response));
         });
 
-        RPC().registerRPCObserver<GET_Request, GET_Response>(MessageVerbs::GET, [this](GET_Request&& request) {
-            K2INFO("Received get for key: " << request.key);
-            GET_Response response;
-            response.key=std::move(request.key);
+        RPC().registerRPCObserver<Key, GET_Response>(MessageVerbs::GET, [this](Key&& key) {
+            K2INFO("Received get for key: " << key);
+            String hash_key = key.partition_key + key.row_key;
 
-            String hash_key = request.key.partition_key + request.key.row_key;
+            GET_Response response = {};
+            key=std::move(key);
+
             auto iter = _data.find(hash_key);
             if (iter != _data.end()) {
                 response.value = iter->second.share();
