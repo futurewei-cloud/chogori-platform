@@ -143,6 +143,17 @@ SCENARIO("test multi-buffer serialization") {
     REQUIRE(pa == pb);
 }
 
+void checkSize(Payload& p) {
+    p.seek(p.getSize());
+    p.truncateToCurrent();
+    size_t ss = 0;
+    auto exp = p.getSize();
+    for (auto& b: p.release()) {
+        ss += b.size();
+    }
+    REQUIRE(ss == exp);
+}
+
 SCENARIO("test empty payload serialization after some data") {
     std::vector<data> testCases;
     String s(100000, 'x');
@@ -166,5 +177,8 @@ SCENARIO("test empty payload serialization after some data") {
         dst2.write(parsed);
         dst2.seek(0);
         REQUIRE(chksum == dst2.computeCrc32c());
+
+        checkSize(dst);
+        checkSize(dst2);
     }
 }

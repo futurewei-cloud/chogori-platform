@@ -37,7 +37,7 @@ static const uint8_t MAX_HEADER_SIZE = 128;
 // | 4          | Payload Size    | Determines how many following bytes belong to payload
 // | 4          | RequestID       | The request message ID - short-term unique number
 // | 4          | ResponseID      | The response message ID - repeat from a previous msg.RequestID
-// | 8          | Checksum        | The optional checksum for the message
+// | 4          | Checksum        | The optional checksum for the message
 //
 // Note that since the message is likely to be binaried, the payload will be stored and presented as
 // a Payload, which is basically an iovec which exposes the binaries for the payload.
@@ -66,7 +66,7 @@ public: // API
         }
     }
     bool isPayloadSizeSet() const {
-        K2DEBUG("is payloadSize set=" << (this->features & (1<<2)) );
+        K2DEBUG("is payloadSize set=" << (this->features & (1<<0)) );
         return this->features & (1<<0); // bit0
     }
 
@@ -77,7 +77,7 @@ public: // API
         this->features |= (1<<1); // bit1
     }
     bool isRequestIDSet() const {
-        K2DEBUG("is request id set=" << (this->features & (1<<0)) );
+        K2DEBUG("is request id set=" << (this->features & (1<<1)) );
         return this->features & (1<<1); // bit1
     }
 
@@ -88,7 +88,7 @@ public: // API
         this->features |= (1<<2); // bit2
     }
     bool isResponseIDSet() const {
-        K2DEBUG("is response id set=" << (this->features & (1<<1)) );
+        K2DEBUG("is response id set=" << (this->features & (1<<2)) );
         return this->features & (1<<2); // bit2
     }
 
