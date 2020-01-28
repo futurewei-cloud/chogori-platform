@@ -36,7 +36,7 @@ public: // lifecycle
 
 public: // interface
     // Obtain the IRPCProtocol instance
-    seastar::shared_ptr<IRPCProtocol> instance() { return _instance;}
+    seastar::shared_ptr<IRPCProtocol> instance();
 
 public: // distributed<> interface
     // called by seastar's distributed mechanism when stop() is invoked on the distributed container.

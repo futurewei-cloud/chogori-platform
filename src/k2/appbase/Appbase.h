@@ -206,7 +206,7 @@ class App {
                 for (auto& stopper : _stoppers) {
                     stopFutures.push_back(stopper());
                 }
-                return seastar::when_all(stopFutures.begin(), stopFutures.end()).then([](auto) { return seastar::make_ready_future(); });
+                return seastar::when_all(stopFutures.begin(), stopFutures.end()).discard_result();
             });
 
             return
@@ -241,7 +241,7 @@ class App {
                         for (auto& ctor : _ctors) {
                             ctorFutures.push_back(ctor());
                         }
-                        return seastar::when_all(ctorFutures.begin(), ctorFutures.end()).then([](auto) { return seastar::make_ready_future(); });
+                        return seastar::when_all(ctorFutures.begin(), ctorFutures.end()).discard_result();
                     })
                     // STARTUP LOGIC
                     .then([&]() {
@@ -276,8 +276,7 @@ class App {
                         for (auto& starter : _starters) {
                             startFutures.push_back(starter());
                         }
-                        return seastar::when_all(startFutures.begin(), startFutures.end())
-                            .then([](auto) { return seastar::make_ready_future(); });
+                        return seastar::when_all(startFutures.begin(), startFutures.end()).discard_result();
                     });
         });
         K2INFO("Shutdown was successful!");

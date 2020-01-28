@@ -53,42 +53,43 @@ void RRDMARPCChannel::run() {
     );
 
     // setup read loop
-    (void) seastar::do_until(
-        [chan=weak_from_this()] { return !chan || chan->_rconn->closed(); }, // end condition for loop
-        [chan=weak_from_this()] { // body of loop
-            if (!chan) {
-                return seastar::make_ready_future<>();
-            }
-            if (chan->_rpcParser.canDispatch()) {
+    _loopDoneFuture = seastar::do_until(
+        [this] { return _rconn->closed(); }, // end condition for loop
+        [this] () mutable { // body of loop
+            if (_rpcParser.canDispatch()) {
                 K2DEBUG("RPC parser can dispatch more messages as-is. not reading from socket this round");
-                chan->_rpcParser.dispatchSome();
-                return seastar::make_ready_future<>();
+                _rpcParser.dispatchSome();
+                return seastar::make_ready_future();
             }
-            return chan->_rconn->recv().
-                then([chan=chan->weak_from_this()](Binary&& packet) {
-                    if (chan) {
-                        if (packet.empty()) {
-                            K2DEBUG("remote end closed connection");
-                            return; // just say we're done so the loop can evaluate the end condition
-                        }
-                        K2DEBUG("Read "<< packet.size());
-                        chan->_rpcParser.feed(std::move(packet));
-                        // process some messages from the packet
-                        chan->_rpcParser.dispatchSome();
+            return _rconn->recv().
+                then([this](Binary&& packet) mutable {
+                    if (packet.empty()) {
+                        K2DEBUG("remote end closed connection");
+                        return; // just say we're done so the loop can evaluate the end condition
                     }
+                    K2DEBUG("Read "<< packet.size());
+                    _rpcParser.feed(std::move(packet));
+                    // process some messages from the packet
+                    _rpcParser.dispatchSome();
                 }).
-                handle_exception([chan=chan->weak_from_this()] (auto) {
-                    return seastar::make_ready_future<>();
-            });
+                handle_exception([] (auto&& exc_ptr) {
+                    // let the loop go and check the condition above. Upon exception, the connection should be closed
+                    try {
+                        std::rethrow_exception(exc_ptr);
+                    }
+                    catch(std::exception& exc) {
+                        K2WARN("Exception while reading connection: " << exc.what());
+                    }
+                    catch(...) {
+                        K2WARN("unknown exception while reading connection");
+                    }
+                    return seastar::make_ready_future();
+                });
         }
-    )
-    .finally([chan=weak_from_this()] {
-        K2DEBUG("do_until is done");
-        if (chan) {
-            chan->_closerFuture = chan->gracefulClose();
-        }
-        return seastar::make_ready_future<>();
-    }); // finally
+    ).finally([this]() {
+        // close the connection if it wasn't closed already
+        _closeRconn();
+    });
 }
 
 void RRDMARPCChannel::registerMessageObserver(RequestObserver_t observer) {
@@ -125,14 +126,21 @@ void RRDMARPCChannel::registerFailureObserver(FailureObserver_t observer) {
 seastar::future<> RRDMARPCChannel::gracefulClose(Duration timeout) {
     // TODO, setup a timer for shutting down
     (void) timeout;
-    K2DEBUG("graceful close")
-    if (_closingInProgress) {
-        K2DEBUG("already closing...no-op");
-        return std::move(_closerFuture);
-    }
-    _closingInProgress = true;
+    K2DEBUG("graceful close");
+    // close the connection if it wasn't closed already
+    _closeRconn();
 
-    return _rconn->close();
+    return seastar::when_all(std::move(_closeDoneFuture), std::move(_loopDoneFuture)).discard_result();
 }
+
+void RRDMARPCChannel::_closeRconn() {
+    K2DEBUG("Closing socket: " << _closingInProgress);
+    if (!_closingInProgress) {
+        _closingInProgress = true;
+        _closeDoneFuture = _rconn->close();
+    }
+}
+
+TXEndpoint& RRDMARPCChannel::getTXEndpoint() { return _endpoint; }
 
 } // k2

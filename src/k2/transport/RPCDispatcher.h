@@ -157,13 +157,20 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                 reply->write(Status::S400_Bad_Request("Unable to parse incoming request"));
                 sendReply(std::move(reply), request);
             }
+            // we're ignoring the returned future here so we can't wait for it before the rpc dispatcher exits
+            // to guard against segv on shutdown, obtain a weak pointer
             (void)observer(std::move(rpcRequest))
-            .then([this, reply=std::move(reply), request=std::move(request)](auto result) mutable {
-                // write out the status first
-                reply->write(std::get<0>(result));
-                // write out the Response_t
-                reply->write(std::get<1>(result));
-                sendReply(std::move(reply), request);
+            .then([disp=weak_from_this(), reply=std::move(reply), request=std::move(request)](auto result) mutable {
+                if (disp) {
+                    // write out the status first
+                    reply->write(std::get<0>(result));
+                    // write out the Response_t
+                    reply->write(std::get<1>(result));
+                    disp->sendReply(std::move(reply), request);
+                }
+                else {
+                    K2WARN("dispatcher is going down: unable to send response to " << request.endpoint.getURL());
+                }
             });
         });
     }

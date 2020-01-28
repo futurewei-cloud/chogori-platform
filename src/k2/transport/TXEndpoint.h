@@ -48,39 +48,29 @@ public: // lifecycle
 
 public: // API
     // get the URL for this endpoint
-    const String& getURL() const { return _url;}
+    const String& getURL() const;
 
     // get the protocol for this endpoint
-    const String& getProtocol() const { return _protocol;}
+    const String& getProtocol() const;
 
     // get the IP for this endpoint
-    const String& getIP() const { return _ip;}
+    const String& getIP() const;
 
     // get the port for this endpoint
-    uint32_t getPort() const { return _port;}
+    uint32_t getPort() const;
 
     // Comparison. Two endpoints are the same if their hashes are the same
-    bool operator==(const TXEndpoint &other) const {
-        return _hash == other._hash;
-    }
+    bool operator==(const TXEndpoint &other) const;
 
     // the stored hash value for this endpoint.
-    size_t hash() const { return _hash; }
+    size_t hash() const;
 
     // This method should be used to create new payloads. The payloads are allocated in a manner consistent
     // with the transport for the protocol of this endpoint
-    std::unique_ptr<Payload> newPayload() {
-        K2ASSERT(_allocator!=nullptr, "asked to create payload from non-allocating endpoint");
-        auto result = std::make_unique<Payload>(_allocator);
-        // rewind enough bytes to write out a header when we're sending
-        result->skip(txconstants::MAX_HEADER_SIZE);
-        return result;
-    }
+    std::unique_ptr<Payload> newPayload();
 
     // Use to determine if this endpoint can allocate
-    bool canAllocate() const {
-        return _allocator != nullptr;
-    }
+    bool canAllocate() const;
 
 private: // fields
     String _url;

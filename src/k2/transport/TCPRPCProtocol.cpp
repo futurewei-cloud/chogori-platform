@@ -49,7 +49,7 @@ void TCPRPCProtocol::start() {
             K2INFO("Effective listening TCP Proto on: " << _svrEndpoint->getURL());
         }
 
-        (void) seastar::do_until(
+        _listenerClosed = seastar::do_until(
             [this] { return _stopped;},
             [this] {
             return _listen_socket->accept().then(
@@ -110,7 +110,7 @@ seastar::future<> TCPRPCProtocol::stop() {
     // immediately prevent accepting further read/write work
     _stopped = true;
     if (_listen_socket) {
-        _listen_socket->abort_accept();
+        _listen_socket.release();
     }
 
     // place all channels in a list so that we can clear the map
@@ -122,6 +122,7 @@ seastar::future<> TCPRPCProtocol::stop() {
 
     // now schedule futures for graceful close of all channels
     std::vector<seastar::future<>> futs;
+    futs.push_back(std::move(_listenerClosed));
     for (auto chan: channels) {
         // schedule a graceful close. Note the empty continuation which captures the shared pointer to the channel
         // by copy so that the channel isn't going to get destroyed mid-sentence
@@ -133,10 +134,7 @@ seastar::future<> TCPRPCProtocol::stop() {
     }
 
     // here we return a future which completes once all GracefulClose futures complete.
-    return seastar::when_all(futs.begin(), futs.end()).
-        then([] (std::vector<seastar::future<>>) {
-            return seastar::make_ready_future();
-        });
+    return seastar::when_all(futs.begin(), futs.end()).discard_result();
 }
 
 std::unique_ptr<TXEndpoint> TCPRPCProtocol::getTXEndpoint(String url) {
@@ -199,23 +197,21 @@ seastar::lw_shared_ptr<TCPRPCChannel>
 TCPRPCProtocol::_handleNewChannel(seastar::future<seastar::connected_socket> futureSocket, const TXEndpoint& endpoint) {
     K2DEBUG("processing channel: "<< endpoint.getURL());
     auto chan = seastar::make_lw_shared<TCPRPCChannel>(std::move(futureSocket), endpoint,
-        [shptr=seastar::make_lw_shared<>(weak_from_this())] (Request&& request) {
+        [this] (Request&& request) {
             K2DEBUG("Message " << request.verb << " received from " << request.endpoint.getURL());
-            seastar::weak_ptr<TCPRPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
-            if (weakP && !weakP->_stopped) {
-                weakP->_messageObserver(std::move(request));
+            if (!_stopped) {
+                _messageObserver(std::move(request));
             }
         },
-        [shptr=seastar::make_lw_shared<>(weak_from_this())] (TXEndpoint& endpoint, auto exc) {
-            seastar::weak_ptr<TCPRPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
-            if (weakP && !weakP->_stopped) {
+        [this] (TXEndpoint& endpoint, auto exc) {
+            if (!_stopped) {
                 if (exc) {
                     K2WARN("Channel " << endpoint.getURL() << ", failed due to " << exc);
                 }
-                auto chanIter = weakP->_channels.find(endpoint);
-                if (chanIter != weakP->_channels.end()) {
+                auto chanIter = _channels.find(endpoint);
+                if (chanIter != _channels.end()) {
                     auto chan = chanIter->second;
-                    weakP->_channels.erase(chanIter);
+                    _channels.erase(chanIter);
                     return chan->gracefulClose().then([chan] {});
                 }
             }

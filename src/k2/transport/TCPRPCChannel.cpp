@@ -34,20 +34,17 @@ TCPRPCChannel::~TCPRPCChannel(){
 void TCPRPCChannel::run() {
     assert(!_running);
     _running = true;
-    (void) _futureSocket.then([chan=weak_from_this()](seastar::connected_socket fd) {
-        if (chan) {
-            K2DEBUG("future channel connected successfully");
-            if (chan->_closingInProgress) {
-                K2WARN("channel is going down. ignoring completed connect");
-                return;
-            }
-            chan->_setConnectedSocket(std::move(fd));
+    _loopDoneFuture = _futureSocket.then([this](seastar::connected_socket fd) {
+        K2DEBUG("future channel connected successfully");
+        if (_closingInProgress) {
+            K2WARN("channel is going down. ignoring completed connect");
+            return seastar::make_ready_future();
         }
-    }).handle_exception([chan=weak_from_this()](auto exc) {
-        if (chan) {
-            K2WARN("future channel failed connecting");
-            chan->_failureObserver(chan->_endpoint, exc);
-        }
+        return _setConnectedSocket(std::move(fd));
+    }).handle_exception([this](auto exc) {
+        K2WARN("future channel failed connecting");
+        _failureObserver(_endpoint, exc);
+        return seastar::make_ready_future();
     });
 }
 
@@ -72,20 +69,14 @@ void TCPRPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMet
 }
 
 void TCPRPCChannel::_sendPacket(seastar::net::packet&& packet) {
-    _sendFuture = _sendFuture->then([packet = std::move(packet), chan=weak_from_this()]() mutable {
-        if (chan) {
-            return chan->_out.write(std::move(packet));
-        }
-        return seastar::make_ready_future<>();
-    }).then([chan=weak_from_this()]() {
-        if (chan) {
-            return chan->_out.flush();
-        }
-        return seastar::make_ready_future<>();
+    _sendFuture = _sendFuture->then([packet = std::move(packet), this]() mutable {
+        return _out.write(std::move(packet));
+    }).then([this]() {
+        return _out.flush();
     });
 }
 
-void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
+seastar::future<> TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
     K2DEBUG("Setting connected socket")
     assert(!_fdIsSet);
     _fdIsSet = true;
@@ -107,42 +98,36 @@ void TCPRPCChannel::_setConnectedSocket(seastar::connected_socket sock) {
     _processQueuedWrites();
 
     // setup read loop
-    (void) seastar::do_until(
-        [chan=weak_from_this()] { return !chan || chan->_in.eof(); }, // end condition for loop
-        [chan=weak_from_this()] { // body of loop
-            if (!chan) {
-                return seastar::make_ready_future<>();
-            }
-            if (chan->_rpcParser.canDispatch()) {
+    return seastar::do_until(
+        [this] { return _in.eof(); }, // end condition for loop
+        [this] { // body of loop
+            if (_rpcParser.canDispatch()) {
                 K2DEBUG("RPC parser can dispatch more messages as-is. not reading from socket this round");
-                chan->_rpcParser.dispatchSome();
+                _rpcParser.dispatchSome();
                 return seastar::make_ready_future<>();
             }
-            return chan->_in.read().
-                then([chan=chan->weak_from_this()](Binary&& packet) {
-                                       if (chan) {
-                                           if (packet.empty()) {
-                                               K2DEBUG("remote end closed connection");
-                                               return; // just say we're done so the loop can evaluate the end condition
-                                           }
-                                           K2DEBUG("Read "<< packet.size());
-                                           chan->_rpcParser.feed(std::move(packet));
-                                           // process some messages from the packet
-                                           chan->_rpcParser.dispatchSome();
-                                       }
+            return _in.read().
+                then([this](Binary&& packet) {
+                    if (packet.empty()) {
+                        K2DEBUG("remote end closed connection");
+                        return; // just say we're done so the loop can evaluate the end condition
+                    }
+                    K2DEBUG("Read "<< packet.size());
+                    _rpcParser.feed(std::move(packet));
+                    // process some messages from the packet
+                    _rpcParser.dispatchSome();
                 }).
-                handle_exception([chan=chan->weak_from_this()] (auto) {
+                handle_exception([this] (auto) {
+                    K2DEBUG("ignoring exception");
+                    // ignore the incoming exception as the input stream.eof() should indicate it's closed
                     return seastar::make_ready_future<>();
                 });
         }
-    )
-    .finally([chan=weak_from_this()] {
-        K2DEBUG("do_until is done");
-        if (chan) {
-            chan->_closerFuture = chan->gracefulClose();
-        }
-        return seastar::make_ready_future<>();
-    }); // finally
+    ).finally([this]() {
+        // close the socket
+        K2DEBUG("loop ended");
+        _closeSocket();
+    });
 }
 
 void TCPRPCChannel::registerMessageObserver(RequestObserver_t observer) {
@@ -150,7 +135,7 @@ void TCPRPCChannel::registerMessageObserver(RequestObserver_t observer) {
     if (observer == nullptr) {
         K2DEBUG("Setting default message observer");
         _messageObserver = [this](Request&& request) {
-            if (!this->_closingInProgress) {
+            if (!_closingInProgress) {
                 K2WARN("Message: " << request.verb
                 << " ignored since there is no message observer registered...");
             }
@@ -166,7 +151,7 @@ void TCPRPCChannel::registerFailureObserver(FailureObserver_t observer) {
     if (observer == nullptr) {
         K2DEBUG("Setting default failure observer");
         _failureObserver = [this](TXEndpoint&, std::exception_ptr) {
-            if (!this->_closingInProgress) {
+            if (!_closingInProgress) {
                 K2WARN("Ignoring failure, since there is no failure observer registered...");
             }
         };
@@ -188,54 +173,57 @@ seastar::future<> TCPRPCChannel::gracefulClose(Duration timeout) {
     // TODO, setup a timer for shutting down
     (void) timeout;
     K2DEBUG("graceful close")
-    if (_closingInProgress) {
-        K2DEBUG("already closing...no-op");
-        return std::move(_closerFuture);
-    }
-    _closingInProgress = true;
-    if (!_fdIsSet) {
-        K2DEBUG("we aren't connected anyway so nothing to do...")
-        return seastar::make_ready_future<>();
-    }
+    _closeSocket();
 
-    // shutdown protocol
-    // 1. close input sink (to break any potential read promises)
-    return _sendFuture->then([chan=weak_from_this()]() {
-        if (chan) {
-            return chan->_in.close();
-        }
-        return seastar::make_ready_future<>();
-    })
-    .then_wrapped([chan=weak_from_this()](auto&& fut) {
-        K2DEBUG("input close completed");
-        // ignore any flushing issues
-        fut.ignore_ready_future();
-        // 2. tell poller to stop polling for input
-        if (chan) {
-            // this may throw and we need to make sure we close below
-            try {chan->_fd.shutdown_input();}catch(...){}
-            // 3. flush & close the output close() flushes before closing
-            return chan->_out.close();
-        }
-        K2WARN("graceful sequence failed: object got deleted at step 2");
-        return seastar::make_ready_future<>();
-    })
-    .then_wrapped([chan=weak_from_this()](auto&& fut){
-        K2DEBUG("output close completed");
-        // ignore any closing issues
-        fut.ignore_ready_future();
-        if (chan) {
-            // 5. tell poller we're done sending data. it may throw but we don't care
-            try {chan->_fd.shutdown_output();}catch(...){}
-            // 6. this always succeeds!
-            chan->_failureObserver(chan->_endpoint, nullptr);
-
-        }
-        else {
-            K2WARN("graceful sequence failed: object got deleted at step 5");
-        }
-        return seastar::make_ready_future<>();
-    });
+    return seastar::when_all(std::move(_closeDoneFuture), std::move(_loopDoneFuture)).discard_result();
 }
+
+void TCPRPCChannel::_closeSocket() {
+    K2DEBUG("Closing socket: ipr=" << _closingInProgress <<", fdIsSet=" << _fdIsSet);
+    if (!_closingInProgress) {
+        _closingInProgress = true;
+
+        // shutdown protocol
+        // 1. close input sink (to break any potential read promises)
+        _closeDoneFuture = _sendFuture->
+        then([this]() {
+            K2DEBUG("closing input");
+            if (_fdIsSet) {
+                return _in.close();
+            }
+            return seastar::make_ready_future();
+        })
+        .then_wrapped([this](auto&& fut) {
+            K2DEBUG("input close completed");
+            if (_fdIsSet) {
+                // ignore any flushing issues
+                fut.ignore_ready_future();
+                // 2. tell poller to stop polling for input
+                // this may throw and we need to make sure we close below
+                try {_fd.shutdown_input();}catch(...){}
+                // 3. flush & close the output close() flushes before closing
+                return _out.close();
+            }
+            return seastar::make_ready_future();
+        })
+        .then_wrapped([this](auto&& fut){
+            K2DEBUG("output close completed");
+            if (_fdIsSet) {
+                // ignore any closing issues
+                fut.ignore_ready_future();
+                // 5. tell poller we're done sending data. it may throw but we don't care
+                try {
+                    _fd.shutdown_output();
+                } catch (...) {
+                }
+                // 6. this always succeeds!
+                _failureObserver(_endpoint, nullptr);
+            }
+            return seastar::make_ready_future<>();
+        });
+    }
+}
+
+TXEndpoint& TCPRPCChannel::getTXEndpoint() { return _endpoint;}
 
 } // k2

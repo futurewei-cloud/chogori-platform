@@ -5,7 +5,6 @@
 
 // third-party
 #include <seastar/net/api.hh> // seastar's network stuff
-#include <seastar/core/weak_ptr.hh> // weak ptr
 #include <seastar/net/rdma.hh>
 
 // k2
@@ -22,7 +21,7 @@ namespace k2 {
 // A RRDMA channel wraps a seastar connected_socket with an RPCParser to enable sending and receiving
 // RPC messages over a RRDMA connection
 // The class provides Observer interface to allow for user to observe RPC messages coming over this channel
-class RRDMARPCChannel: public seastar::weakly_referencable<RRDMARPCChannel> {
+class RRDMARPCChannel {
 public: // lifecycle
     // Construct a new channel, wrapping an existing rdma connection to a client at the given address
     RRDMARPCChannel(std::unique_ptr<seastar::rdma::RDMAConnection> rconn, TXEndpoint endpoint,
@@ -49,7 +48,7 @@ public: // API
     void registerFailureObserver(FailureObserver_t observer);
 
     // Obtain the endpoint for this channel
-    TXEndpoint& getTXEndpoint() { return _endpoint;}
+    TXEndpoint& getTXEndpoint();
 
     // This method needs to be called so that the channel can begin processing messages
     void run();
@@ -70,11 +69,16 @@ private: // fields
     // this holds the underlying rdma connection
     std::unique_ptr<seastar::rdma::RDMAConnection> _rconn;
 
+    // helper method used to close the rconnection
+    void _closeRconn();
+
     // flag to tell if the channel is closing
     bool _closingInProgress;
 
-    // we return this future when we were in the the middle of closing down and someone calls gracefulClose()
-    seastar::future<> _closerFuture = seastar::make_ready_future<>();
+    // this future tells us if the close sequence has completed
+    seastar::future<> _closeDoneFuture = seastar::make_ready_future();
+    // this future tells us if the read loop has completed
+    seastar::future<> _loopDoneFuture = seastar::make_ready_future();
 
     // flag to determine if we're running
     bool _running;

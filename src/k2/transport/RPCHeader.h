@@ -58,58 +58,23 @@ public:
 class MessageMetadata {
 public: // API
     // PayloadSize at position 0
-    void setPayloadSize(uint32_t payloadSize) {
-        K2DEBUG("Set payload size=" << payloadSize);
-        if (payloadSize > 0) {
-            this->payloadSize = payloadSize;
-            this->features |= (1<<0); // bit0
-        }
-    }
-    bool isPayloadSizeSet() const {
-        K2DEBUG("is payloadSize set=" << (this->features & (1<<0)) );
-        return this->features & (1<<0); // bit0
-    }
+    void setPayloadSize(uint32_t payloadSize);
+    bool isPayloadSizeSet() const;
 
     // RequestID at position 1
-    void setRequestID(uint32_t requestID) {
-        K2DEBUG("Set request id=" << requestID);
-        this->requestID = requestID;
-        this->features |= (1<<1); // bit1
-    }
-    bool isRequestIDSet() const {
-        K2DEBUG("is request id set=" << (this->features & (1<<1)) );
-        return this->features & (1<<1); // bit1
-    }
+    void setRequestID(uint32_t requestID);
+    bool isRequestIDSet() const;
 
     // ResponseID at position 2
-    void setResponseID(uint32_t responseID) {
-        K2DEBUG("Set response id=" << responseID);
-        this->responseID = responseID;
-        this->features |= (1<<2); // bit2
-    }
-    bool isResponseIDSet() const {
-        K2DEBUG("is response id set=" << (this->features & (1<<2)) );
-        return this->features & (1<<2); // bit2
-    }
+    void setResponseID(uint32_t responseID);
+    bool isResponseIDSet() const;
 
     // checksum at position 3
-    void setChecksum(uint32_t checksum) {
-        K2DEBUG("Set checksum=" << checksum);
-        this->checksum = checksum;
-        this->features |= (1 << 3);  // bit3
-    }
-    bool isChecksumSet() const {
-        K2DEBUG("is checksum set=" << (this->features & (1 << 3)));
-        return this->features & (1 << 3);  // bit3
-    }
+    void setChecksum(uint32_t checksum);
+    bool isChecksumSet() const;
 
     // this method is used to determine how many wire bytes are needed given the set features
-    size_t wireByteCount() {
-        return isPayloadSizeSet()*sizeof(payloadSize) +
-               isRequestIDSet()*sizeof(requestID) +
-               isResponseIDSet()*sizeof(responseID) +
-               isChecksumSet()*sizeof(checksum);
-    }
+    size_t wireByteCount();
 
 public: // fields
     uint8_t features = 0x0;

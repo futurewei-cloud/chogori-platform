@@ -3,9 +3,6 @@
 //-->
 #pragma once
 // third-party
-#include <seastar/core/distributed.hh> // distributed stuff
-#include <seastar/core/shared_ptr.hh> // pointers (shared/lw)
-#include <seastar/core/weak_ptr.hh> // pointers (weak)
 #include <seastar/net/rdma.hh>
 
 // k2
@@ -22,7 +19,7 @@ namespace k2 {
 // - create outgoing RRDMA connections when asked to send messages
 // - receive incoming messages and pass them on to the message observer for the protocol
 // NB, the class is meant to be used as a distributed<> container
-class RRDMARPCProtocol: public IRPCProtocol, public seastar::weakly_referencable<RRDMARPCProtocol> {
+class RRDMARPCProtocol: public IRPCProtocol {
 public: // types
     // Convenience builder which opens an RRDMA listener across all cores
     static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet);
@@ -78,6 +75,8 @@ private: // fields
     bool _stopped;
     // our listener
     seastar::rdma::RDMAListener _listener;
+    seastar::future<> _listenerClosed = seastar::make_ready_future();
+
     // the endpoint version of the address we're listening on
     seastar::lw_shared_ptr<TXEndpoint> _svrEndpoint;
     // the underlying RRDMA channels we're dealing with

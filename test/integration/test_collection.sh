@@ -27,6 +27,6 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
+sleep 1
 
-./build/test/cpo/cpo_test --cpo_endpoint tcp+k2rpc://0.0.0.0:9000 --enable_tx_checksum true
+./build/test/cpo/cpo_test --cpo_endpoint tcp+k2rpc://0.0.0.0:9001 --enable_tx_checksum true

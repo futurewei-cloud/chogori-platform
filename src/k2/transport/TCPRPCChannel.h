@@ -5,7 +5,6 @@
 
 // third-party
 #include <seastar/net/api.hh> // seastar's network stuff
-#include <seastar/core/weak_ptr.hh> // weak ptr
 #include <seastar/util/std-compat.hh>
 #include <seastar/net/packet.hh>
 
@@ -22,7 +21,7 @@ namespace k2 {
 // A TCP channel wraps a seastar connected_socket with an RPCParser to enable sending and receiving
 // RPC messages over a TCP connection
 // The class provides Observer interface to allow for user to observe RPC messages coming over this channel
-class TCPRPCChannel: public seastar::weakly_referencable<TCPRPCChannel> {
+class TCPRPCChannel {
 
 public: // lifecycle
     // Construct a new channel, wrapping a future connected socket to a client at the given address
@@ -50,7 +49,7 @@ public: // API
     void registerFailureObserver(FailureObserver_t observer);
 
     // Obtain the endpoint for this channel
-    TXEndpoint& getTXEndpoint() { return _endpoint;}
+    TXEndpoint& getTXEndpoint();
 
     // This method needs to be called so that the channel can begin processing messages
     void run();
@@ -61,7 +60,7 @@ private: // methods
     void _processQueuedWrites();
 
     // helper method to setup an incoming connected socket
-    void _setConnectedSocket(seastar::connected_socket sock);
+    seastar::future<> _setConnectedSocket(seastar::connected_socket sock);
 
     // helper method used to send a packet
     void _sendPacket(seastar::net::packet&& packet);
@@ -85,10 +84,17 @@ private: // fields
     // flag we use to tell if the _fd is set
     bool _fdIsSet;
 
+    // helper method used to close down the underlying socket
+    void _closeSocket();
+
     // flag to tell if the channel is closing
     bool _closingInProgress;
 
-    seastar::future<> _closerFuture = seastar::make_ready_future<>();
+    // to tell if the close process has completed
+    seastar::future<> _closeDoneFuture = seastar::make_ready_future();
+
+    // to tell if the read loop has completed
+    seastar::future<> _loopDoneFuture = seastar::make_ready_future();
 
     // the input stream from our socket
     seastar::input_stream<char> _in;

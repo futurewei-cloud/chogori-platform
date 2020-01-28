@@ -35,4 +35,6 @@ seastar::future<> RPCProtocolFactory::stop() {
     return seastar::make_ready_future<>();
 }
 
+seastar::shared_ptr<IRPCProtocol> RPCProtocolFactory::instance() { return _instance; }
+
 } // k2

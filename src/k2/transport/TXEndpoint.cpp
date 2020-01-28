@@ -101,4 +101,30 @@ TXEndpoint::TXEndpoint(TXEndpoint&& o) {
     K2DEBUG("move ctor done");
 }
 
+const String& TXEndpoint::getURL() const { return _url; }
+
+const String& TXEndpoint::getProtocol() const { return _protocol; }
+
+const String& TXEndpoint::getIP() const { return _ip; }
+
+uint32_t TXEndpoint::getPort() const { return _port; }
+
+bool TXEndpoint::operator==(const TXEndpoint& other) const {
+    return _hash == other._hash;
+}
+
+size_t TXEndpoint::hash() const { return _hash; }
+
+std::unique_ptr<Payload> TXEndpoint::newPayload() {
+    K2ASSERT(_allocator != nullptr, "asked to create payload from non-allocating endpoint");
+    auto result = std::make_unique<Payload>(_allocator);
+    // rewind enough bytes to write out a header when we're sending
+    result->skip(txconstants::MAX_HEADER_SIZE);
+    return result;
+}
+
+bool TXEndpoint::canAllocate() const {
+    return _allocator != nullptr;
+}
+
 }

@@ -35,7 +35,7 @@ void RRDMARPCProtocol::start() {
 
         _stopped = false;
 
-        (void) seastar::do_until(
+        _listenerClosed = seastar::do_until(
             [this] { return _stopped;},
             [this] {
             return _listener.accept().then(
@@ -84,6 +84,7 @@ seastar::future<> RRDMARPCProtocol::stop() {
     // now schedule futures for graceful close of all channels
     std::vector<seastar::future<>> futs;
     futs.push_back(_listener.close());
+    futs.push_back(std::move(_listenerClosed));
 
     for (auto chan: channels) {
         // schedule a graceful close. Note the empty continuation which captures the shared pointer to the channel
@@ -96,10 +97,7 @@ seastar::future<> RRDMARPCProtocol::stop() {
     }
 
     // here we return a future which completes once all GracefulClose futures complete.
-    return seastar::when_all(futs.begin(), futs.end()).
-        then([] (std::vector<seastar::future<>>) {
-            return seastar::make_ready_future();
-        });
+    return seastar::when_all(futs.begin(), futs.end()).discard_result();
 }
 
 std::unique_ptr<TXEndpoint> RRDMARPCProtocol::getTXEndpoint(String url) {
@@ -158,23 +156,21 @@ seastar::lw_shared_ptr<RRDMARPCChannel>
 RRDMARPCProtocol::_handleNewChannel(std::unique_ptr<seastar::rdma::RDMAConnection> rconn, TXEndpoint endpoint) {
     K2DEBUG("processing channel: "<< endpoint.getURL());
     auto chan = seastar::make_lw_shared<RRDMARPCChannel>(std::move(rconn), std::move(endpoint),
-        [shptr=seastar::make_lw_shared<>(weak_from_this())] (Request&& request) {
+        [this] (Request&& request) {
             K2DEBUG("Message " << request.verb << " received from " << request.endpoint.getURL());
-            seastar::weak_ptr<RRDMARPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
-            if (weakP && !weakP->_stopped) {
-                weakP->_messageObserver(std::move(request));
+            if (!_stopped) {
+                _messageObserver(std::move(request));
             }
         },
-        [shptr=seastar::make_lw_shared<>(weak_from_this())] (TXEndpoint& endpoint, auto exc) {
-            seastar::weak_ptr<RRDMARPCProtocol>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
-            if (weakP && !weakP->_stopped) {
+        [this] (TXEndpoint& endpoint, auto exc) {
+            if (!_stopped) {
                 if (exc) {
                     K2WARN("Channel " << endpoint.getURL() << ", failed due to " << exc);
                 }
-                auto chanIter = weakP->_channels.find(endpoint);
-                if (chanIter != weakP->_channels.end()) {
+                auto chanIter = _channels.find(endpoint);
+                if (chanIter != _channels.end()) {
                     auto chan = chanIter->second;
-                    weakP->_channels.erase(chanIter);
+                    _channels.erase(chanIter);
                     return chan->gracefulClose().then([chan] {});
                 }
             }
