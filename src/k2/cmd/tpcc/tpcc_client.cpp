@@ -157,7 +157,7 @@ private:
                 request.key.partition_key = warehouse.getPartitionKey();
                 request.key.row_key = warehouse.getRowKey();
                 //request.value = Payload([] () { return Binary(4096); });
-                auto payload = _remote_endpoint.NewPayload();
+                auto payload = _remote_endpoint.newPayload();
                 warehouse.writeData(*payload);
                 request.value = payload->share();
 
