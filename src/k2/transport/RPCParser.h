@@ -165,5 +165,4 @@ private: // don't need
     RPCParser& operator=(const RPCParser& o) = delete;
     RPCParser& operator=(RPCParser&& o) = delete;
 }; // class RPCParser
-
 } // namespace k2

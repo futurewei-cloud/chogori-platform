@@ -10,7 +10,8 @@
 
 #include "mock/mock_k23si_client.h"
 #include "tpcc_rand.h"
-#include "tpcc_schema.h"
+#include "schema.h"
+#include "datagen.h"
 
 using namespace k2;
 
@@ -144,6 +145,13 @@ private:
 
         return seastar::sleep(1s)
         .then ([this] {
+            auto start = std::chrono::steady_clock::now();
+            WarehouseData data = generateWarehouseData(1, 101);
+            auto end = std::chrono::steady_clock::now();
+
+            uint64_t total_usec = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+            K2INFO("Created " << 100 << " WHs with average time of " << total_usec / (double)count << " usec");
+
             K2TxnOptions options;
             return _client.beginTxn(options);
         })
@@ -152,11 +160,10 @@ private:
                 RandomContext random(0);
                 Warehouse warehouse(random, 1);
 
-                K2INFO("putting record");
-                Record request = {};
+                K2INFO("putting record, w_name: " << warehouse.data.Name);
+                WriteRequest request = {};
                 request.key.partition_key = warehouse.getPartitionKey();
                 request.key.row_key = warehouse.getRowKey();
-                //request.value = Payload([] () { return Binary(4096); });
                 auto payload = _remote_endpoint.newPayload();
                 warehouse.writeData(*payload);
                 request.value = payload->share();
@@ -167,12 +174,14 @@ private:
 
                     K2INFO("getting record");
                     Key request = {};
-                    request.partition_key = "test1:";
-                    request.row_key = "test2";
+                    request.partition_key = "1";
+                    request.row_key = "";
                     return txn.read(std::move(request));
                 })
                 .then([this, &txn](ReadResult resp) {
                     K2INFO("Received GET response status=" << resp.status);
+                    Warehouse warehouse(resp, 1);
+                    K2INFO("got record, w_name: " << warehouse.data.Name);
                     return txn.end(true);
                 });
             });
