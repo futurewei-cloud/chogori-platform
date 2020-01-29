@@ -1,3 +1,8 @@
+//<!--
+//    (C)opyright Futurewei Technologies Inc, 2019
+//-->
+#pragma once
+
 #include <seastar/core/future.hh>
 #include <seastar/core/future-util.hh>
 #include <k2/common/Log.h>
@@ -41,7 +46,7 @@ struct PUT_Request {
     K2_PAYLOAD_FIELDS(key, value);
 };
 
-typedef PUT_Request Record;
+typedef PUT_Request WriteRequest;
 
 struct PUT_Response {
     Key key;
@@ -105,8 +110,8 @@ public:
         });
     }
 
-    future<WriteResult> write(Record && record) { 
-        return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, std::move(record), _endpoint, 1s).
+    future<WriteResult> write(WriteRequest && request) { 
+        return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, std::move(request), _endpoint, 1s).
         then([] (auto response) {
             return make_ready_future<WriteResult>(std::get<0>(response));
         });
