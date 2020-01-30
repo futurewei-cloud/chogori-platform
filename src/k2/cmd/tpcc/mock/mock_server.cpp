@@ -43,10 +43,14 @@ public:  // application lifespan
         _registerDATA_URL();
 
         RPC().registerRPCObserver<PUT_Request, PUT_Response>(MessageVerbs::PUT, [this](PUT_Request&& request) {
-            K2INFO("Received put for key: " << request.key);
+            //K2INFO("Received put for key: " << request.key);
             String hash_key = request.key.partition_key + request.key.row_key;
             _data[hash_key] = std::move(request.value);
             PUT_Response response{.key=std::move(request.key)};
+            ++total;
+            if (total % 1000 == 0) {
+                K2INFO("Wrote " << total << " records");
+            }
             return RPCResponse(Status::S200_OK(), std::move(response));
         });
 
@@ -88,6 +92,7 @@ private:
 private:
     // flag we need to tell if we've been stopped
     bool _stopped;
+    uint64_t total=0;
     std::unordered_map<String, Payload> _data;
 }; // class Service
 

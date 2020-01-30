@@ -20,6 +20,7 @@ public:
 };
 
 struct Address {
+    Address () = default;
     Address (RandomContext& random) {
         random.RandomString(10, 20, Street_1);
         random.RandomString(10, 20, Street_2);
@@ -43,9 +44,9 @@ public:
         data.YTD = 300000.0f;
     }
 
-    Warehouse(const k2::ReadResult& KV, uint32_t id) : WarehouseID(id) {
-        KV.value.read(data);
-    }
+    //Warehouse(const k2::ReadResult& KV, uint32_t id) : WarehouseID(id) {
+    //    KV.value.read(data);
+    //}
 
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
     k2::String getRowKey() { return ""; }
@@ -63,17 +64,17 @@ public:
 
 class District : public SchemaType {
 public:
-    District(RandomContext& random, uint32_t w_id, uint16_t, id) : WarehouseID(w_id), DistrictID(id) {
+    District(RandomContext& random, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
         random.RandomString(6, 10, data.Name);
         data.address = Address(random);
         data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
         data.YTD = 30000.0f;
-        NextOID = 3001;
+        data.NextOID = 3001;
     }
 
-    Warehouse(const k2::ReadResult& KV, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
-        KV.value.read(data);
-    }
+    //Warehouse(const k2::ReadResult& KV, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
+    //    KV.value.read(data);
+    //}
 
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
     k2::String getRowKey() { return "DIST:" + std::to_string(DistrictID); }
@@ -100,7 +101,7 @@ public:
         random.RandomString(8, 16, data.FirstName);
         data.address = Address(random);
         random.RandomNumericString(16, 16, data.Phone);
-        data.Date = std::duration_cast<std::microseconds>(std::steady_clock::now().time_since_epoch()).count();
+        data.SinceDate = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
         uint32_t creditRoll = random.UniformRandom(1, 10);
         if (creditRoll == 1) {
@@ -150,7 +151,7 @@ public:
         data.CustomerID = c_id;
         data.CustomerWarehouseID = w_id;
         data.CustomerDistrictID = d_id;
-        data.Date = std::duration_cast<std::microseconds>(std::steady_clock::now().time_since_epoch()).count();
+        data.Date = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         data.Amount = 10.0f;
         random.RandomString(12, 24, data.Info);
     }
@@ -174,8 +175,9 @@ public:
 };
 
 class Order : public SchemaType {
+public:
     Order(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t id) :
-            WarehouseID(w_id), DistrictID(d_id), OrderID(id) {
+            WarehouseID(w_id), OrderID(id), DistrictID(d_id) {
         data.CustomerID = c_id; // Note that this should be from a random permutation
         data.EntryDate = 0; // TODO
         if (id < 2101) {
@@ -206,6 +208,7 @@ class Order : public SchemaType {
 };
 
 class NewOrder : public SchemaType {
+public:
     NewOrder(const Order& order) : WarehouseID(order.WarehouseID), OrderID(order.OrderID), DistrictID(order.DistrictID) {}
 
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
@@ -219,6 +222,7 @@ class NewOrder : public SchemaType {
 
 
 class OrderLine : public SchemaType {
+public:
     // For initial population
     OrderLine(RandomContext& random, const Order& order, uint16_t line_num) :
             WarehouseID(order.WarehouseID), OrderID(order.OrderID), DistrictID(order.DistrictID), OrderLineNumber(line_num) {
@@ -226,11 +230,11 @@ class OrderLine : public SchemaType {
         data.SupplyWarehouseID = WarehouseID;
 
         if (order.OrderID < 2101) {
-            data.DeliveryDate = order.EntryDate;
+            data.DeliveryDate = order.data.EntryDate;
             data.Amount = 0.0f;
         } else {
             data.DeliveryDate = 0;
-            data.Amount = data.UniformRandom(1, 999999) / 100.0f;
+            data.Amount = random.UniformRandom(1, 999999) / 100.0f;
         }
 
         data.Quantity = 5;
@@ -309,6 +313,7 @@ public:
 };
 
 class Stock : public SchemaType {
+public:
     Stock(RandomContext& random, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
         data.Quantity = random.UniformRandom(10, 100);
         random.RandomString(24, 24, data.Dist_01);
