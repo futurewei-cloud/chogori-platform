@@ -3,15 +3,17 @@
 //-->
 
 // stl
+#include <chrono>
+
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/transport/RetryStrategy.h>
 #include <seastar/core/sleep.hh>
 
 #include "mock/mock_k23si_client.h"
-#include "tpcc_rand.h"
 #include "schema.h"
 #include "datagen.h"
+#include "dataload.h"
 
 using namespace k2;
 
@@ -73,6 +75,8 @@ public:  // application lifespan
     }
 
     seastar::future<> start() {
+
+
         _stopped = false;
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
@@ -142,25 +146,18 @@ private:
 
     seastar::future<> _benchmark() {
         _client._remote_endpoint = _remote_endpoint;
+        _loader = DataLoader(generateWarehouseData(1, 2));
+        auto start = std::chrono::steady_clock::now();
 
         return seastar::sleep(1s)
         .then ([this] {
-            auto start = std::chrono::steady_clock::now();
-            WarehouseData data = generateWarehouseData(1, 101);
-            auto end = std::chrono::steady_clock::now();
-
-            uint64_t total_usec = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-            K2INFO("Created " << 100 << " WHs with average time of " << total_usec / (double)count << " usec");
-
-            K2TxnOptions options;
-            return _client.beginTxn(options);
+            //K2TxnOptions options;
+            //return _client.beginTxn(options);
+            return _loader.loadData(_client, 32);
         })
+/*
         .then([this] (K2TxnHandle t) {
             return do_with(std::move(t), [this] (K2TxnHandle& txn) {
-                RandomContext random(0);
-                Warehouse warehouse(random, 1);
-
-                K2INFO("putting record, w_name: " << warehouse.data.Name);
                 WriteRequest request = {};
                 request.key.partition_key = warehouse.getPartitionKey();
                 request.key.row_key = warehouse.getRowKey();
@@ -180,14 +177,17 @@ private:
                 })
                 .then([this, &txn](ReadResult resp) {
                     K2INFO("Received GET response status=" << resp.status);
-                    Warehouse warehouse(resp, 1);
-                    K2INFO("got record, w_name: " << warehouse.data.Name);
+                    //Warehouse warehouse(resp, 1);
+                    //K2INFO("got record, w_name: " << warehouse.data.Name);
                     return txn.end(true);
                 });
             });
         })
-        .then([] (auto t) {
-            (void) t;
+*/
+        .then([start] () {
+            auto end = std::chrono::steady_clock::now();
+            uint64_t total_usec = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+            K2INFO("Usecs: " << total_usec);
             return;
         });
     }
@@ -199,6 +199,7 @@ private:
     bool _stopped;
     seastar::promise<> _sendProm;
     seastar::promise<> _stopPromise;
+    DataLoader _loader;
     bool _haveSendPromise;
     k2::TimePoint _start;
     seastar::timer<> _timer;
@@ -207,7 +208,7 @@ private:
     std::vector<k2::TimePoint> _requestIssueTimes;
 }; // class Client
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) {;
     k2::App app;
     app.addApplet<Client>();
     app.addOptions()

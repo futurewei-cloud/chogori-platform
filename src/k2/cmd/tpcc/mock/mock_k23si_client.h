@@ -90,7 +90,11 @@ public:
     WriteResult(Status s) : status(s) {}
     Status status;
 };
-class EndResult{};
+class EndResult{
+public:
+    EndResult(Status s) : status(s) {}
+    Status status;
+};
 
 class K2TxnHandle {
 public:
@@ -117,7 +121,7 @@ public:
         });
     }
 
-    future<EndResult> end(bool shouldCommit) { (void) shouldCommit; return make_ready_future<EndResult>(); };
+    future<EndResult> end(bool shouldCommit) { (void) shouldCommit; return make_ready_future<EndResult>(EndResult(Status::S200_OK())); };
 private:
     TXEndpoint _endpoint;
 };
