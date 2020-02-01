@@ -14,6 +14,7 @@
 #include "schema.h"
 #include "datagen.h"
 #include "dataload.h"
+#include "transactions.h"
 
 using namespace k2;
 

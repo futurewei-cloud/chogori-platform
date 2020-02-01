@@ -19,6 +19,26 @@ public:
     virtual void writeData(k2::Payload& payload) = 0;
 };
 
+future<k2::WriteResult> writeRow(SchemaType& row, k2::K2TxnHandle& txn)
+{
+    k2::WriteRequest request {
+        .key { .partition_key = row.getPartitionKey(),
+                 .row_key = row.getRowKey()
+             },
+        .value = k2::Payload( [] { return k2::Binary(8192); })
+    };
+    row.writeData(request.value);
+
+    return txn.write(std::move(request)).then([] (k2::WriteResult result) {
+        if (!result.status.is2xxOK()) {
+            K2WARN("writeRow failed!");
+            return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
+        }
+
+        return make_ready_future<k2::WriteResult>(std::move(result));
+    });
+}
+
 struct Address {
     Address () = default;
     Address (RandomContext& random) {
@@ -35,6 +55,11 @@ struct Address {
     char Zip[10];
 };
 
+uint64_t getDate()
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 class Warehouse : public SchemaType {
 public:
     Warehouse(RandomContext& random, uint32_t id) : WarehouseID(id) {
@@ -44,13 +69,23 @@ public:
         data.YTD = 300000.0f;
     }
 
-    //Warehouse(const k2::ReadResult& KV, uint32_t id) : WarehouseID(id) {
-    //    KV.value.read(data);
-    //}
+    Warehouse(k2::ReadResult& KV, uint32_t id) : WarehouseID(id) {
+        KV.value.read(data);
+    }
+    Warehouse(k2::ReadResult&& KV, uint32_t id) : WarehouseID(id) {
+        KV.value.read(data);
+    }
 
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
     k2::String getRowKey() { return ""; }
     void writeData(k2::Payload& payload) { payload.write(data); }
+    static k2::Key getKey(uint32_t w_id) {
+        k2::Key key = {
+            .partition_key = std::to_string(w_id),
+            .row_key = ""
+        };
+        return key;
+    }
 
     uint32_t WarehouseID;
     struct Data {
@@ -69,23 +104,33 @@ public:
         data.address = Address(random);
         data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
         data.YTD = 30000.0f;
-        data.NextOID = 3001;
+        data.NextOrderID = 3001;
     }
 
-    //Warehouse(const k2::ReadResult& KV, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
-    //    KV.value.read(data);
-    //}
+   District(k2::ReadResult& KV, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
+       KV.value.read(data);
+   }
+   District(k2::ReadResult&& KV, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
+       KV.value.read(data);
+   }
 
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
     k2::String getRowKey() { return "DIST:" + std::to_string(DistrictID); }
     void writeData(k2::Payload& payload) { payload.write(data); }
+    static k2::Key getKey(uint32_t w_id, uint16_t id) {
+        k2::Key key = {
+            .partition_key = std::to_string(w_id),
+            .row_key = "DIST:" + std::to_string(id)
+        };
+        return key;
+    }
 
     uint32_t WarehouseID;
     uint16_t DistrictID;
     struct Data {
         float Tax; // TODO Needs to be fixed point to be in spec
         float YTD; // TODO Needs to be fixed point to be in spec
-        uint32_t NextOID;
+        uint32_t NextOrderID;
         char Name[11];
         Address address;
         K2_PAYLOAD_COPYABLE;
@@ -101,7 +146,7 @@ public:
         random.RandomString(8, 16, data.FirstName);
         data.address = Address(random);
         random.RandomNumericString(16, 16, data.Phone);
-        data.SinceDate = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        data.SinceDate = getDate();
 
         uint32_t creditRoll = random.UniformRandom(1, 10);
         if (creditRoll == 1) {
@@ -119,9 +164,23 @@ public:
         random.RandomString(300, 500, data.Info);
     }
 
+    Customer(k2::ReadResult& KV, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
+        KV.value.read(data);
+    }
+    Customer(k2::ReadResult&& KV, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
+        KV.value.read(data);
+    }
+
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
     k2::String getRowKey() { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
     void writeData(k2::Payload& payload) { payload.write(data); }
+    static k2::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t c_id) {
+        k2::Key key = {
+            .partition_key = std::to_string(w_id),
+            .row_key = "CUST:" + std::to_string(d_id) + ":" + std::to_string(c_id)
+        };
+        return key;
+    }
 
     uint32_t WarehouseID;
     uint16_t DistrictID;
@@ -151,7 +210,7 @@ public:
         data.CustomerID = c_id;
         data.CustomerWarehouseID = w_id;
         data.CustomerDistrictID = d_id;
-        data.Date = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        data.Date = getDate();
         data.Amount = 10.0f;
         random.RandomString(12, 24, data.Info);
     }
@@ -176,17 +235,28 @@ public:
 
 class Order : public SchemaType {
 public:
+    // For initial population
     Order(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t id) :
             WarehouseID(w_id), OrderID(id), DistrictID(d_id) {
-        data.CustomerID = c_id; // Note that this should be from a random permutation
+        data.CustomerID = c_id;
         data.EntryDate = 0; // TODO
         if (id < 2101) {
             data.CarrierID = random.UniformRandom(1, 10);
         } else {
             data.CarrierID = 0;
         }
-        data.OrderLineCount = random.UniformRandom(5, 15);
+        OrderLineCount = random.UniformRandom(5, 15);
         data.AllLocal = true;
+    }
+
+    // For NewOrder transaction
+    Order(RandomContext& random, uint32_t w_id) : WarehouseID(w_id) {
+        DistrictID = random.UniformRandom(1, 10);
+        data.CustomerID = random.NonUniformRandom(1023, 1, 3000);
+        OrderLineCount = random.UniformRandom(5, 15);
+        data.EntryDate = getDate();
+        data.CarrierID = 0;
+        // OrderID and AllLocal to be filled in by the transaction
     }
 
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
@@ -196,12 +266,12 @@ public:
     uint32_t WarehouseID;
     uint32_t OrderID;
     uint16_t DistrictID;
+    uint16_t OrderLineCount;
 
     struct Data {
         uint64_t EntryDate;
         uint32_t CustomerID;
         uint16_t CarrierID;
-        uint16_t OrderLineCount;
         bool AllLocal;
         K2_PAYLOAD_COPYABLE;
     } data;
@@ -283,6 +353,8 @@ public:
 
 class Item : public SchemaType {
 public:
+    static const uint32_t InvalidID = 99999;
+
     Item(RandomContext& random, uint32_t id) : ItemID(id) {
         data.ImageID = random.UniformRandom(1, 10000);
         random.RandomString(14, 24, data.Name);
@@ -297,9 +369,20 @@ public:
         }
     }
 
+    Item(k2::ReadResult& KV, uint32_t id) : ItemID(id) {
+        KV.value.read(data);
+    }
+
     k2::String getPartitionKey() { return "ITEM:" + std::to_string(ItemID); }
     k2::String getRowKey() { return ""; }
     void writeData(k2::Payload& payload) { payload.write(data); }
+    static k2::Key getKey(uint32_t id) {
+        k2::Key key = {
+            .partition_key = "ITEM:" + std::to_string(id),
+            .row_key = ""
+        };
+        return key;
+    }
 
     uint32_t ItemID;
 
@@ -339,9 +422,47 @@ public:
         }
     }
 
+    Stock(k2::ReadResult& KV, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
+        KV.value.read(data);
+    }
+
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
     k2::String getRowKey() { return "STOCK:" + std::to_string(ItemID); }
     void writeData(k2::Payload& payload) { payload.write(data); }
+    static k2::Key getKey(uint32_t w_id, uint32_t i_id) {
+        k2::Key key = {
+            .partition_key = std::to_string(w_id),
+            .row_key = "STOCK:" + std::to_string(i_id)
+        };
+        return key;
+    }
+
+    const char* getDistInfo(uint16_t d_id) {
+        switch(d_id) {
+            case 1:
+                return data.Dist_01;
+            case 2:
+                return data.Dist_02;
+            case 3:
+                return data.Dist_03;
+            case 4:
+                return data.Dist_04;
+            case 5:
+                return data.Dist_05;
+            case 6:
+                return data.Dist_06;
+            case 7:
+                return data.Dist_07;
+            case 8:
+                return data.Dist_08;
+            case 9:
+                return data.Dist_09;
+            case 10:
+                return data.Dist_10;
+            default:
+                throw 0;
+        }
+    }
 
     uint32_t WarehouseID;
     uint32_t ItemID;

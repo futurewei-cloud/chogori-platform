@@ -33,7 +33,7 @@ void generateOrderData(WarehouseData& data, RandomContext& random, uint32_t w_id
         data.push_back(std::make_unique<Order>(random, w_id, d_id, c_id, i));
         Order& order = dynamic_cast<Order&>(*data.back());
         
-        for (int j=1; j<=order.data.OrderLineCount; ++j) {
+        for (int j=1; j<=order.OrderLineCount; ++j) {
             data.push_back(std::make_unique<OrderLine>(random, order, j));
         }
 
