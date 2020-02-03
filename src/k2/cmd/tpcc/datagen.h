@@ -8,9 +8,22 @@
 #include "schema.h"
 #include "tpcc_rand.h"
 
-typedef std::vector<std::unique_ptr<SchemaType>> WarehouseData;
+typedef std::vector<std::unique_ptr<SchemaType>> TPCCData;
 
-void generateCustomerData(WarehouseData& data, RandomContext& random, uint32_t w_id, uint16_t d_id)
+TPCCData generateItemData()
+{
+    TPCCData data;
+    data.reserve(100000);
+    RandomContext random(0);
+
+    for (int i=1; i<=100000; ++i) {
+        data.push_back(std::make_unique<Item>(random, i));
+    }
+
+    return data;
+}
+
+void generateCustomerData(TPCCData& data, RandomContext& random, uint32_t w_id, uint16_t d_id)
 {
     for (int i=1; i<3001; ++i) {
         data.push_back(std::make_unique<Customer>(random, w_id, d_id, i));
@@ -18,7 +31,7 @@ void generateCustomerData(WarehouseData& data, RandomContext& random, uint32_t w
     }
 }
 
-void generateOrderData(WarehouseData& data, RandomContext& random, uint32_t w_id, uint16_t d_id)
+void generateOrderData(TPCCData& data, RandomContext& random, uint32_t w_id, uint16_t d_id)
 {
     std::deque<uint32_t> permutationQueue(3000);
     for (int i=0; i<3000; ++i) {
@@ -43,9 +56,9 @@ void generateOrderData(WarehouseData& data, RandomContext& random, uint32_t w_id
     }
 }
 
-std::vector<std::unique_ptr<SchemaType>> generateWarehouseData(uint32_t id_start, uint32_t id_end)
+TPCCData generateWarehouseData(uint32_t id_start, uint32_t id_end)
 {
-    std::vector<std::unique_ptr<SchemaType>> data;
+    TPCCData data;
 
     uint32_t num_warehouses = id_end - id_start;
     size_t reserve_space = 0;

@@ -98,11 +98,17 @@ public:
 
 class K2TxnHandle {
 public:
-    K2TxnHandle(TXEndpoint endpoint) noexcept : _endpoint(endpoint) {}
-    K2TxnHandle(K2TxnHandle&& from) noexcept : _endpoint(std::move(from._endpoint)) {}
+    K2TxnHandle(TXEndpoint endpoint) noexcept : _endpoint(endpoint), _started(true) {}
+    K2TxnHandle() noexcept : _endpoint(), _started(false) {}
+    K2TxnHandle(K2TxnHandle&& from) noexcept : _endpoint(std::move(from._endpoint)), _started(from._started) {}
+    K2TxnHandle& operator=(K2TxnHandle&& from) = default;
     ~K2TxnHandle() noexcept {}
 
     future<ReadResult> read(Key&& key) {
+        if (!_started) {
+            return make_exception_future<ReadResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+        }
+
         return RPC().callRPC<Key, GET_Response>(MessageVerbs::GET, std::move(key), _endpoint, 1s).
         then([] (auto response) {
             struct ReadResult userResponse = {};
@@ -115,6 +121,10 @@ public:
     }
 
     future<WriteResult> write(WriteRequest && request) { 
+        if (!_started) {
+            return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+        }
+
         return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, std::move(request), _endpoint, 1s).
         then([] (auto response) {
             return make_ready_future<WriteResult>(std::get<0>(response));
@@ -124,6 +134,7 @@ public:
     future<EndResult> end(bool shouldCommit) { (void) shouldCommit; return make_ready_future<EndResult>(EndResult(Status::S200_OK())); };
 private:
     TXEndpoint _endpoint;
+    bool _started;
 };
 
 class K23SIClientConfig {

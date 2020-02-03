@@ -76,8 +76,6 @@ public:  // application lifespan
     }
 
     seastar::future<> start() {
-
-
         _stopped = false;
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
@@ -152,43 +150,24 @@ private:
 
         return seastar::sleep(1s)
         .then ([this] {
-            //K2TxnOptions options;
-            //return _client.beginTxn(options);
             return _loader.loadData(_client, 32);
-        })
-/*
-        .then([this] (K2TxnHandle t) {
-            return do_with(std::move(t), [this] (K2TxnHandle& txn) {
-                WriteRequest request = {};
-                request.key.partition_key = warehouse.getPartitionKey();
-                request.key.row_key = warehouse.getRowKey();
-                auto payload = _remote_endpoint.newPayload();
-                warehouse.writeData(*payload);
-                request.value = payload->share();
-
-                return txn.write(std::move(request))
-                .then([this, &txn](auto resp) {
-                    K2INFO("Received write response with status: " << resp.status);
-
-                    K2INFO("getting record");
-                    Key request = {};
-                    request.partition_key = "1";
-                    request.row_key = "";
-                    return txn.read(std::move(request));
-                })
-                .then([this, &txn](ReadResult resp) {
-                    K2INFO("Received GET response status=" << resp.status);
-                    //Warehouse warehouse(resp, 1);
-                    //K2INFO("got record, w_name: " << warehouse.data.Name);
-                    return txn.end(true);
-                });
+        }).then([this] {
+            K2INFO("Warehouse data load done, starting item data load");
+            _loader = DataLoader(generateItemData());
+            return _loader.loadData(_client, 32);
+        }).then([this] {
+            K2INFO("Item load data done, starting txns");
+            _random = RandomContext(0);
+            NewOrderT no(_random, _client, 1, 2);
+            PaymentT p(_random, _client, 1, 2);
+            return do_with(std::move(no), std::move(p), [this] (NewOrderT& new_order, PaymentT& payment) {
+                return when_all(new_order.run(), payment.run()).discard_result();
             });
         })
-*/
         .then([start] () {
             auto end = std::chrono::steady_clock::now();
-            uint64_t total_usec = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-            K2INFO("Usecs: " << total_usec);
+            uint64_t total_msec = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            K2INFO("Done, total time (ms): " << total_msec);
             return;
         });
     }
@@ -201,6 +180,7 @@ private:
     seastar::promise<> _sendProm;
     seastar::promise<> _stopPromise;
     DataLoader _loader;
+    RandomContext _random;
     bool _haveSendPromise;
     k2::TimePoint _start;
     seastar::timer<> _timer;

@@ -17,7 +17,17 @@ public:
     virtual k2::String getPartitionKey() = 0;
     virtual k2::String getRowKey() = 0;
     virtual void writeData(k2::Payload& payload) = 0;
+    virtual ~SchemaType() {}
 };
+
+#define CHECK_READ_STATUS(read_result) \
+    do { \
+        if (!(read_result).status.is2xxOK()) { \
+            K2WARN("TPC-C failed to read rows!"); \
+            return make_exception_future(std::runtime_error("TPC-C failed to read rows!")); \
+        } \
+    } \
+    while (0) \
 
 future<k2::WriteResult> writeRow(SchemaType& row, k2::K2TxnHandle& txn)
 {
@@ -206,6 +216,7 @@ public:
 
 class History : public SchemaType {
 public:
+    // For initial population
     History(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id) {
         data.CustomerID = c_id;
         data.CustomerWarehouseID = w_id;
@@ -215,6 +226,24 @@ public:
         random.RandomString(12, 24, data.Info);
     }
 
+    // For payment transaction
+    History(uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t c_w_id, uint16_t c_d_id, float amount, 
+                const char w_name[], const char d_name[]) : WarehouseID(w_id) {
+
+        data.Date = getDate();
+        data.CustomerID = c_id; 
+        data.CustomerWarehouseID = c_w_id; 
+        data.Amount = amount;
+        data.CustomerDistrictID = c_d_id; 
+        data.DistrictID = d_id;
+
+        strcpy(data.Info, w_name);
+        uint32_t offset = strlen(w_name);
+        const char separator[] = "    ";
+        strcpy(data.Info+offset, separator);
+        offset += strlen(separator);
+        strcpy(data.Info+offset, d_name);
+    }
 
     k2::String getPartitionKey() { return std::to_string(WarehouseID); }
     k2::String getRowKey() { return "HIST:" + std::to_string(data.Date); }
@@ -353,7 +382,7 @@ public:
 
 class Item : public SchemaType {
 public:
-    static const uint32_t InvalidID = 99999;
+    static const uint32_t InvalidID = 999999;
 
     Item(RandomContext& random, uint32_t id) : ItemID(id) {
         data.ImageID = random.UniformRandom(1, 10000);
