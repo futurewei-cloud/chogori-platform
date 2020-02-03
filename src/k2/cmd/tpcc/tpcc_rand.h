@@ -7,7 +7,7 @@
 
 class RandomContext {
 public:
-    RandomContext(int seed) : _generator(seed) {
+    RandomContext(int seed=0) : _generator(seed) {
         std::uniform_int_distribution<> dist255(0, 255);
         _C_A255 = dist255(_generator);
         std::uniform_int_distribution<> dist1023(0, 1023);
