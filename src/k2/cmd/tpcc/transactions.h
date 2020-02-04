@@ -16,7 +16,13 @@
 using namespace seastar;
 using namespace k2;
 
-class PaymentT
+class TPCCTxn {
+public:
+    virtual future<> run() = 0;
+    virtual ~TPCCTxn() = default;
+};
+
+class PaymentT : public TPCCTxn
 {
 public:
     PaymentT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) :
@@ -38,7 +44,7 @@ public:
         _amount = random.UniformRandom(100, 500000) / 100.0f;
     }
 
-    future<> run() {
+    future<> run() override {
         K2TxnOptions options;
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle txn) {
@@ -65,7 +71,7 @@ private:
                 return _txn.end(false);
             }
 
-            K2INFO("Payment txn finished");
+            K2DEBUG("Payment txn finished");
 
             return _txn.end(true);         
         }).discard_result();
@@ -140,13 +146,13 @@ private:
     char _d_name[11];
 };
 
-class NewOrderT
+class NewOrderT : public TPCCTxn
 {
 public:
     NewOrderT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) : 
                         _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), _order(random, w_id) {}
 
-    future<> run() {
+    future<> run() override {
         K2TxnOptions options;
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle txn) {
@@ -210,7 +216,7 @@ private:
                         return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), Stock(result, supply_id, item.ItemID)));
                     });
 
-                }).then([this, &line] (std::pair<Item, Stock> pair) {
+                }).then([this, line] (std::pair<Item, Stock> pair) mutable {
                     auto& [item, stock] = pair;
                     line.data.Amount = item.data.Price * line.data.Quantity;
                     _total_amount += line.data.Amount;
@@ -220,21 +226,24 @@ private:
                     updateStockRow(stock, line);
                     auto stock_update = writeRow(stock, _txn);
 
-                    return when_all(std::move(line_update), std::move(stock_update)).discard_result();
+                    return when_all_succeed(std::move(line_update), std::move(stock_update)).discard_result();
                 });
             });
 
-            return when_all(std::move(line_updates), std::move(order_update), std::move(new_order_update), std::move(district_update)).discard_result();
+            return when_all_succeed(std::move(line_updates), std::move(order_update), std::move(new_order_update), std::move(district_update)).discard_result();
         });
 
-        return when_all(std::move(main_f), std::move(customer_f), std::move(warehouse_f))
+        return when_all_succeed(std::move(main_f), std::move(customer_f), std::move(warehouse_f))
         .then_wrapped([this] (auto&& fut) {
             if (fut.failed()) {
+                fut.ignore_ready_future();
                 return _txn.end(false);
             }
 
+            fut.ignore_ready_future();
             _total_amount *= (1 - _c_discount) * (1 + _w_tax + _d_tax);
-            K2INFO("NewOrder _total_amount: " << _total_amount);
+            (void) _total_amount;
+            K2DEBUG("NewOrder _total_amount: " << _total_amount);
 
             return _txn.end(true);
         }).discard_result();
