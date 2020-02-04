@@ -24,19 +24,23 @@ public:
     do { \
         if (!(read_result).status.is2xxOK()) { \
             K2WARN("TPC-C failed to read rows!"); \
-            return make_exception_future(std::runtime_error("TPC-C failed to read rows!")); \
+            return make_exception_future(std::runtime_error(std::string("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
         } \
     } \
     while (0) \
 
 future<k2::WriteResult> writeRow(SchemaType& row, k2::K2TxnHandle& txn)
 {
-    k2::WriteRequest request {
-        .key { .partition_key = row.getPartitionKey(),
-                 .row_key = row.getRowKey()
-             },
-        .value = k2::Payload( [] { return k2::Binary(8192); })
-    };
+    //k2::WriteRequest request {
+    //    .key { .partition_key = row.getPartitionKey(),
+    //           .row_key = row.getRowKey()
+    //         },
+    //    .value = k2::Payload( [] { return k2::Binary(8192); })
+    //};
+    k2::WriteRequest request;
+    request.key.partition_key = row.getPartitionKey();
+    request.key.row_key = row.getRowKey();
+    request.value = k2::Payload( [] { return k2::Binary(8192); });
     row.writeData(request.value);
 
     return txn.write(std::move(request)).then([] (k2::WriteResult result) {

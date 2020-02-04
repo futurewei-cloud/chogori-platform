@@ -23,14 +23,10 @@ public:  // application lifespan
     Client():
         _client(K23SIClient(K23SIClientConfig())),
         _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<std::string>>()),
+        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _stopped(true),
-        _haveSendPromise(false),
         _timer(seastar::timer<>([this] {
             _stopped = true;
-            if (_haveSendPromise) {
-                _haveSendPromise = false;
-                _sendProm.set_value();
-            }
         })) {
         K2INFO("ctor");
     };
@@ -48,9 +44,7 @@ public:  // application lifespan
         _stopped = true;
         // unregister all observers
         k2::RPC().registerLowTransportMemoryObserver(nullptr);
-        if (_haveSendPromise) {
-            _sendProm.set_value();
-        }
+
         return _stopPromise.get_future();
     }
 
@@ -59,26 +53,18 @@ public:  // application lifespan
         std::vector<sm::label_instance> labels;
         labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
         labels.push_back(sm::label_instance("active_cores", std::min(_tcpRemotes.size(), size_t(seastar::smp::count))));
-/*
-        _metric_groups.add_group("session", {
-            sm::make_gauge("ack_batch_size", _session.config.ackCount, sm::description("How many messages we ack at once"), labels),
-            sm::make_gauge("session_id", _session.sessionID, sm::description("Session ID"), labels),
-            sm::make_counter("total_count", _session.totalCount, sm::description("Total number of requests"), labels),
-            sm::make_counter("total_bytes", _session.totalSize, sm::description("Total data bytes sent"), labels),
-            sm::make_gauge("pipeline_depth", [this]{ return _session.config.pipelineCount  - _session.unackedCount;},
-                    sm::description("Available pipeline depth"), labels),
-            sm::make_gauge("pipeline_bytes", [this]{ return _session.config.pipelineSize  - _session.unackedSize;},
-                    sm::description("Available pipeline bytes"), labels),
+
+        _metric_groups.add_group("TPC-C", {
+            sm::make_counter("total_count", _totalCount, sm::description("Total number of TPC-C transactions"), labels),
             sm::make_histogram("request_latency", [this]{ return _requestLatency.getHistogram();},
-                    sm::description("Latency of acks"), labels)
+                    sm::description("Latency of TPC-C transactions"), labels)
         });
-*/
     }
 
     seastar::future<> start() {
         _stopped = false;
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
-            K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
+            K2WARN("We're low on memory in transport: " << ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
         return _discovery().then([this](){
             if (_stopped) return seastar::make_ready_future<>();
@@ -127,7 +113,7 @@ private:
                     remoteURL.append((char*)buf.get_write(), buf.size());
                 }
                 K2INFO("Found remote data endpoint: " << remoteURL);
-                _remote_endpoint = *(k2::RPC().getTXEndpoint(remoteURL));
+                _remoteEndpoint = *(k2::RPC().getTXEndpoint(remoteURL));
                 return seastar::make_ready_future<>();
             })
             .then_wrapped([this](auto&& fut) {
@@ -144,9 +130,8 @@ private:
     }
 
     seastar::future<> _benchmark() {
-        _client._remote_endpoint = _remote_endpoint;
-        _loader = DataLoader(generateWarehouseData(1, 2));
-        auto start = std::chrono::steady_clock::now();
+        _client._remote_endpoint = _remoteEndpoint;
+        _loader = DataLoader(generateWarehouseData(1, 3));
 
         return seastar::sleep(1s)
         .then ([this] {
@@ -156,43 +141,55 @@ private:
             _loader = DataLoader(generateItemData());
             return _loader.loadData(_client, 32);
         }).then([this] {
-            K2INFO("Item load data done, starting txns");
+            K2INFO("Starting transactins...");
+
+            _timer.arm(_testDuration);
+            _start = k2::Clock::now();
             _random = RandomContext(0);
-            NewOrderT no(_random, _client, 1, 2);
-            PaymentT p(_random, _client, 1, 2);
-            return do_with(std::move(no), std::move(p), [this] (NewOrderT& new_order, PaymentT& payment) {
-                return when_all(new_order.run(), payment.run()).discard_result();
-            });
+
+            return seastar::do_until(
+                [this] { return _stopped; },
+                [this] {
+                    _totalCount++;
+                    uint32_t txn_type = _random.UniformRandom(1, 100);
+                    TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, 1, 2)
+                                                     : (TPCCTxn*) new NewOrderT(_random, _client, 1, 2);
+                    return curTxn->run().finally([curTxn] () { delete curTxn; });
+                }
+            );
         })
-        .then([start] () {
-            auto end = std::chrono::steady_clock::now();
-            uint64_t total_msec = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-            K2INFO("Done, total time (ms): " << total_msec);
-            return;
+        .finally([this] () {            
+            auto duration = k2::Clock::now() - _start;
+            auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
+            auto cntpsec = (double)_totalCount/totalsecs;
+            K2INFO("totalCount=" << _totalCount << "(" << cntpsec << " per sec)" );
+            return make_ready_future();
         });
     }
 
 private:
     K23SIClient _client;
     std::vector<std::string> _tcpRemotes;
-    k2::TXEndpoint _remote_endpoint;
+    k2::TXEndpoint _remoteEndpoint;
+    k2::Duration _testDuration;
     bool _stopped;
-    seastar::promise<> _sendProm;
     seastar::promise<> _stopPromise;
     DataLoader _loader;
     RandomContext _random;
-    bool _haveSendPromise;
     k2::TimePoint _start;
     seastar::timer<> _timer;
+
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _requestLatency;
     std::vector<k2::TimePoint> _requestIssueTimes;
+    uint32_t _totalCount = 0;
 }; // class Client
 
 int main(int argc, char** argv) {;
     k2::App app;
     app.addApplet<Client>();
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'");
+        ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run");
     return app.start(argc, argv);
 }

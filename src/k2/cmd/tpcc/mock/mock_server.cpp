@@ -32,6 +32,8 @@ public:  // application lifespan
         _stopped = true;
         // unregistar all observers
         k2::RPC().registerMessageObserver(MessageVerbs::GET_DATA_URL, nullptr);
+        k2::RPC().registerMessageObserver(MessageVerbs::GET, nullptr);
+        k2::RPC().registerMessageObserver(MessageVerbs::PUT, nullptr);
         k2::RPC().registerLowTransportMemoryObserver(nullptr);
         return seastar::make_ready_future<>();
     }
@@ -49,13 +51,13 @@ public:  // application lifespan
             PUT_Response response{.key=std::move(request.key)};
             ++total;
             if (total % 1000 == 0) {
-                K2INFO("Wrote " << total << " records");
+                K2DEBUG("Wrote " << total << " records");
             }
             return RPCResponse(Status::S200_OK(), std::move(response));
         });
 
         RPC().registerRPCObserver<Key, GET_Response>(MessageVerbs::GET, [this](Key&& key) {
-            K2INFO("Received get for key: " << key);
+            K2DEBUG("Received get for key: " << key);
             String hash_key = key.partition_key + key.row_key;
 
             GET_Response response = {};
