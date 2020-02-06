@@ -1,10 +1,11 @@
 #include "CPOService.h"
-#include <k2/appbase/AppEssentials.h>
 #include <k2/transport/Payload.h>  // for payload construction
 #include <k2/transport/Status.h>  // for RPC
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include <k2/dto/ControlPlaneOracle.h> // our DTO
+#include <k2/dto/AssignmentManager.h> // our DTO
 #include <k2/dto/MessageVerbs.h> // our DTO
+#include <k2/transport/PayloadFileUtil.h>
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -23,7 +24,12 @@ CPOService::~CPOService() {
 
 seastar::future<> CPOService::stop() {
     K2INFO("stop");
-    return seastar::make_ready_future<>();
+    std::vector<seastar::future<>> futs;
+    for (auto& [k,v]: _assignments) {
+        futs.push_back(std::move(v));
+    }
+    _assignments.clear();
+    return seastar::when_all(futs.begin(), futs.end()).discard_result();
 }
 
 seastar::future<> CPOService::start() {
@@ -36,18 +42,15 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::AssignmentReportRequest, dto::AssignmentReportResponse>(dto::Verbs::CPO_REPORT_PARTITION_ASSIGNMENT, [this](dto::AssignmentReportRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleReportAssignment, std::move(request));
+    });
+
     _dataDir = Config()["data_dir"].as<std::string>();
     if (seastar::engine().cpu_id() == 0) {
         // only core 0 handles CPO business
-        if (mkdir(_dataDir.c_str(), 0777 != 0)) {
-            if (errno != EEXIST) {
-                K2ERROR("Unable to create data directory: " << strerror(errno));
-                throw std::runtime_error("unable to create data directory");
-            }
-            K2INFO("Using existing data directory: " << _dataDir);
-        }
-        else {
-            K2INFO("Using data directory: " << _dataDir);
+        if (!fileutil::makeDir(_dataDir)) {
+            throw std::runtime_error("unable to create data directory");
         }
     }
     return seastar::make_ready_future<>();
@@ -56,80 +59,137 @@ seastar::future<> CPOService::start() {
 seastar::future<std::tuple<Status, dto::CollectionCreateResponse>>
 CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     K2INFO("Received collection create request for " << request.metadata.name);
-
     auto cpath = _getCollectionPath(request.metadata.name);
-    { // see if file is there.
-        int fd = ::open(cpath.c_str(), O_RDONLY);
-        if (fd >= 0) {
-            ::close(fd);
-            return RPCResponse(Status::S403_Forbidden("Collection already exists"), dto::CollectionCreateResponse());
-        }
+    if (fileutil::fileExists(cpath)) {
+        return RPCResponse(Status::S403_Forbidden("Collection already exists"), dto::CollectionCreateResponse());
     }
     // create a collection from the incoming request
-    auto collection = dto::Collection();
+    dto::Collection collection;
     collection.metadata = request.metadata;
-    Payload p([] { return Binary(4096); });
-    p.write(collection);
-    p.truncateToCurrent();
-    auto leftBytes = p.getSize();
+    auto& eps = request.clusterEndpoints;
+    const uint64_t max = std::numeric_limits<uint64_t>::max();
 
-    int fd = ::open(cpath.c_str(), O_CREAT | O_WRONLY);
-    if (fd < 0) {
-        K2ERROR("Unable to open collection for writing: name=" << cpath << ", err=" << strerror(errno));
-        throw std::runtime_error("unable to create collection");
+    uint64_t partSize = (eps.size() > 0) ? (max / eps.size()) : (max);
+    for (uint64_t i =0; i < eps.size(); ++i) {
+        uint64_t start = i*partSize;
+        uint64_t end = (i == eps.size() -1) ? (max) : ((i+1)*partSize - 1);
+
+        dto::Partition part{
+            .rangeVersion=1,
+            .assignmentVersion=1,
+            .startKey=std::to_string(start),
+            .endKey=std::to_string(end),
+            .endpoint=eps[i],
+            .astate=dto::AssignmentState::PendingAssignment
+        };
+        collection.partitionMap.partitions.push_back(std::move(part));
+        collection.partitionMap.version++;
+    }
+    auto status = _saveCollection(collection);
+    if (!status.is2xxOK()) {
+        return RPCResponse(std::move(status), dto::CollectionCreateResponse());
     }
 
-    for(auto&&buf: p.release()) {
-        auto towrite = std::min(buf.size(), leftBytes);
-        size_t written = ::write(fd, buf.get(), towrite);
-        if (written != towrite) {
-            ::close(fd);
-            throw std::runtime_error("unable to write collection");
-        }
-        leftBytes -= written;
-        if (leftBytes == 0) break;
-    }
-    ::close(fd);
     K2INFO("Created collection: " << cpath);
-    return RPCResponse(Status::S201_Created(), dto::CollectionCreateResponse());
+    _assignCollection(collection);
+    return RPCResponse(std::move(status), dto::CollectionCreateResponse());
 }
 
 seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
 CPOService::handleGet(dto::CollectionGetRequest&& request) {
     K2INFO("Received collection get request for " << request.name);
-    auto cpath = _getCollectionPath(request.name);
-    int fd = ::open(cpath.c_str(), O_RDONLY);
-    if (fd < 0) {
-        if (errno == ENOENT) {
-            return RPCResponse(Status::S404_Not_Found("Collection not found"), dto::CollectionGetResponse());
-        }
-        K2ERROR("problem opening collection: name= " << cpath << ":: " << strerror(errno));
-        throw std::runtime_error("unable to open collection file");
-    }
+    auto [status, collection] = _getCollection(request.name);
 
-    Payload p;
-    while (1) {
-        Binary buf(4096);
-        auto rd = ::read(fd, buf.get_write(), buf.size());
-        if (rd < 0) {
-            K2ERROR("problem reading collection: name= " << cpath << ":: " << strerror(errno));
-            throw std::runtime_error("unable to read collection file");
-        }
-        buf.trim(rd);
-        p.appendBinary(std::move(buf));
-        if (rd == 0) break;
+    dto::CollectionGetResponse response;
+    if (status.is2xxOK()) {
+        response.collection = std::move(collection);
     }
-    ::close(fd);
-    dto::CollectionGetResponse result;
-    if (!p.read(result.collection)) {
-        return RPCResponse(Status::S500_Internal_Server_Error("Unable to read collection data"), dto::CollectionGetResponse());
-    };
-    K2INFO("Found collection in: " << cpath);
-    return RPCResponse(Status::S200_OK(), std::move(result));
+    return RPCResponse(std::move(status), std::move(response));
 }
 
 String CPOService::_getCollectionPath(String name) {
     return _dataDir + "/" + name + ".collection";
+}
+
+void CPOService::_assignCollection(dto::Collection& collection) {
+    auto &name = collection.metadata.name;
+    K2INFO("Assigning collection " << name << ", to " << collection.partitionMap.partitions.size() << " nodes");
+    std::vector<seastar::future<>> futs;
+    for (auto& part : collection.partitionMap.partitions) {
+        K2INFO("Assigning collection " << name << ", to " << part.endpoint);
+        auto txep = RPC().getTXEndpoint(part.endpoint);
+        if (!txep) {
+            K2WARN("unable to obtain endpoint for " << part.endpoint);
+            continue;
+        }
+        dto::AssignmentCreateRequest request;
+        request.collectionName = name;
+        request.partition = part;
+        futs.push_back(
+        RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
+                (dto::K2_ASSIGNMENT_CREATE, std::move(request), *txep, _assignTimeout())
+        .then([name, ep=part.endpoint ](auto result) {
+            auto& [status, resp] = result;
+            (void) resp;
+            // The node refused to accept the assignment. For now, just ignore this
+            K2WARN("assignment for collection " << name << " was refused by " << ep << ", due to: " << status);
+            return seastar::make_ready_future();
+        })
+        );
+    }
+    _assignments.emplace(name, seastar::when_all(futs.begin(), futs.end()).discard_result()
+        .then([this, name] {
+            _assignments.erase(name);
+            return seastar::make_ready_future();
+        }));
+}
+
+seastar::future<std::tuple<Status, dto::AssignmentReportResponse>>
+CPOService::handleReportAssignment(dto::AssignmentReportRequest&& request) {
+    auto [status, haveCollection] = _getCollection(request.collectionName);
+    if (!status.is2xxOK()) {
+        return RPCResponse(Status::S404_Not_Found("assignment completion for non-existent collection"), dto::AssignmentReportResponse());
+    }
+    for (auto& part: haveCollection.partitionMap.partitions) {
+        if (part.startKey == request.assignedPartition.startKey &&
+            part.endKey == request.assignedPartition.endKey &&
+            part.assignmentVersion == request.assignedPartition.assignmentVersion &&
+            part.rangeVersion == request.assignedPartition.rangeVersion) {
+                K2INFO("Assignment received for active partition " << request.assignedPartition);
+                part.astate = request.assignedPartition.astate;
+                return RPCResponse(_saveCollection(haveCollection), dto::AssignmentReportResponse());
+        }
+    }
+    return RPCResponse(Status::S404_Not_Found("assignment completion does not match stored partition"), dto::AssignmentReportResponse());
+}
+
+std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
+    auto cpath = _getCollectionPath(name);
+    std::tuple<Status, dto::Collection> result;
+    Payload p;
+    if (!fileutil::readFile(p, cpath)) {
+        std::get<0>(result) = Status::S404_Not_Found("Collection not found");
+        return result;
+    }
+    if (!p.read(std::get<1>(result))) {
+        std::get<0>(result) = Status::S500_Internal_Server_Error("Unable to read collection data");
+        return result;
+    };
+    K2INFO("Found collection in: " << cpath);
+    std::get<0>(result) = Status::S200_OK();
+    return result;
+}
+
+Status CPOService::_saveCollection(dto::Collection& collection) {
+    auto cpath = _getCollectionPath(collection.metadata.name);
+    Payload p([] { return Binary(4096); });
+    p.write(collection);
+    if (!fileutil::writeFile(std::move(p), cpath)) {
+        return Status::S500_Internal_Server_Error("Unable to write collection data");
+    }
+
+    K2DEBUG("saved collection: " << cpath);
+    return Status::S201_Created();
 }
 
 } // namespace k2

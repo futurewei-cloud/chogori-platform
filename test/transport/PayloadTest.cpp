@@ -59,6 +59,7 @@ data makeData(uint32_t a, uint64_t b, char x, int ya, char yb, size_t yc, String
 
 SCENARIO("test empty payload serialization") {
     Payload src;
+    REQUIRE(src.copy() == src);
     REQUIRE(src.getCurrentPosition().bufferIndex == 0);
     REQUIRE(src.getCurrentPosition().bufferOffset == 0);
     REQUIRE(src.getCurrentPosition().offset == 0);
@@ -180,5 +181,7 @@ SCENARIO("test empty payload serialization after some data") {
 
         checkSize(dst);
         checkSize(dst2);
+        REQUIRE(dst.copy() == dst);
+        REQUIRE(dst2.copy() == dst2);
     }
 }

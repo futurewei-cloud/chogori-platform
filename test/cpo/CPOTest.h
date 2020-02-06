@@ -15,7 +15,9 @@ public:  // application lifespan
     seastar::future<> runTest2();
     seastar::future<> runTest3();
     seastar::future<> runTest4();
+    seastar::future<> runTest5();
 
-   private:
+private:
     int exitcode;
+    std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 };

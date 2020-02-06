@@ -1,3 +1,5 @@
+#include "Collection.h"
+
 #pragma once
 // This file contains DTOs for K2 AssignmentManager
 
@@ -6,8 +8,9 @@ namespace dto {
 
 // Request to create a collection
 struct AssignmentCreateRequest {
-    String name;
-    K2_PAYLOAD_FIELDS(name);
+    String collectionName;
+    Partition partition;
+    K2_PAYLOAD_FIELDS(collectionName);
 };
 
 // Response to AssignmentCreateRequest
@@ -17,8 +20,8 @@ struct AssignmentCreateResponse {
 
 // Request to offload a collection
 struct AssignmentOffloadRequest {
-    String name;
-    K2_PAYLOAD_FIELDS(name);
+    String collectionName;
+    K2_PAYLOAD_FIELDS(collectionName);
 };
 
 // Response to AssignmentOffloadRequest

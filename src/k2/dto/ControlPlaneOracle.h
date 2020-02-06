@@ -9,7 +9,9 @@ namespace dto {
 struct CollectionCreateRequest {
     // The metadata which describes the collection K2 should create
     CollectionMetadata metadata;
-    K2_PAYLOAD_FIELDS(metadata);
+    // the endpoints of the k2 cluster to use for setting up this collection
+    std::vector<String> clusterEndpoints;
+    K2_PAYLOAD_FIELDS(metadata, clusterEndpoints);
 };
 
 // Response to CollectionCreateRequest
@@ -33,23 +35,13 @@ struct CollectionGetResponse {
 
 // Request to report a partition assignment
 struct AssignmentReportRequest {
-    String name;
-    K2_PAYLOAD_FIELDS(name);
+    String collectionName;
+    Partition assignedPartition;
+    K2_PAYLOAD_FIELDS(collectionName, assignedPartition);
 };
 
 // Response to AssignmentReportRequest
 struct AssignmentReportResponse {
-    K2_PAYLOAD_COPYABLE;
-};
-
-// Request to report a partition offload
-struct AssignmentOffloadReportRequest {
-    String name;
-    K2_PAYLOAD_FIELDS(name);
-};
-
-// Response to AssignmentOffloadReportRequest
-struct AssignmentOffloadReportResponse {
     K2_PAYLOAD_COPYABLE;
 };
 

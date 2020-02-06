@@ -363,6 +363,25 @@ Payload Payload::share() {
     return shared;
 }
 
+Payload Payload::copy() {
+    Payload copied;
+    Binary b(_size); // allocate a single binary for all the data we need to copy
+
+    // copy exactly the data we need
+    size_t toCopy = _size;
+    size_t curBufIndex = 0;
+    while (toCopy > 0) {
+        auto& curBuf = _buffers[curBufIndex];
+        auto copySizeFromCurBuf = std::min(toCopy, curBuf.size());
+
+        std::memcpy(b.get_write() + (b.size() - toCopy), curBuf.get(), copySizeFromCurBuf);
+        toCopy -= copySizeFromCurBuf;
+        curBufIndex++;
+    }
+    copied.appendBinary(std::move(b));
+    return copied;
+}
+
 bool Payload::operator==(const Payload& o) const {
     Payload* me = const_cast<Payload*>(this);
     Payload* they = const_cast<Payload*>(&o);

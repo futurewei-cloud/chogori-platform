@@ -12,13 +12,15 @@ public:
     Defer(Func&& func) : _func(std::forward<Func>(func)) {}
     ~Defer() {
         try {
-            (void) _func();
-        }
-        catch(...) {
-            K2ERROR("deferred func threw exception");
+            (void)_func();
+        } catch (std::exception& exc) {
+            K2ERROR("deferred func threw exception: " << exc.what());
+        } catch (...) {
+            K2ERROR("deferred func threw unknown exception");
         }
     }
-private:
+
+   private:
     Func _func;
 };
 

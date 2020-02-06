@@ -88,6 +88,9 @@ public: // memory management
     // the underlying data will not be destroyed until all shared payloads are destroyed.
     Payload share();
 
+    // Creates a new payload as a copy of this payload. The underlying data is copied over to the new payload
+    Payload copy();
+
     // clear this payload
     void clear();
 
