@@ -24,16 +24,6 @@
 
 namespace k2
 {
-/**
- *  16MB is the default limit set by K2 project, not general PLog which can be up to 2GB
- *  it can be changed by the method setPlogMaxSize(uint32_t plogMaxSize)
-*/
-constexpr uint32_t PLOG_MAX_SIZE = 2*1024*1024;
-
-constexpr uint32_t DMA_ALIGNMENT = 4096;
-
-constexpr uint32_t plogInfoSize = sizeof(PlogInfo);
-
 
 struct PlogIdComp {
     bool operator() (const PlogId& lhs, const PlogId& rhs) const
@@ -70,29 +60,6 @@ struct PlogFileDescriptor
 
     DEFAULT_MOVE(PlogFileDescriptor);
     seastar::future<> close();
-};
-
-class PlogException : public std::exception {
-public:
-    virtual const char* what() const noexcept {
-        return  _msg.c_str();
-    }
-
-    PlogException(const String& msg, plog_ret_code status)
-            : _msg(msg), _status(status) {
-    }
-
-    plog_ret_code status() const {
-        return _status;
-    }
-
-    virtual const std::string& str() const {
-        return _msg;
-    }
-
-private:
-    std::string  _msg;
-    plog_ret_code _status;
 };
 
 class PlogMock : public IPlog {

@@ -10,12 +10,13 @@ namespace dto {
 struct AssignmentCreateRequest {
     String collectionName;
     Partition partition;
-    K2_PAYLOAD_FIELDS(collectionName);
+    K2_PAYLOAD_FIELDS(collectionName, partition);
 };
 
 // Response to AssignmentCreateRequest
 struct AssignmentCreateResponse {
-    K2_PAYLOAD_COPYABLE;
+    Partition assignedPartition;
+    K2_PAYLOAD_FIELDS(assignedPartition);
 };
 
 // Request to offload a collection

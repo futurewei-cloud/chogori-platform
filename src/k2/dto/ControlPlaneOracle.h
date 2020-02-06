@@ -33,17 +33,5 @@ struct CollectionGetResponse {
     K2_PAYLOAD_FIELDS(collection);
 };
 
-// Request to report a partition assignment
-struct AssignmentReportRequest {
-    String collectionName;
-    Partition assignedPartition;
-    K2_PAYLOAD_FIELDS(collectionName, assignedPartition);
-};
-
-// Response to AssignmentReportRequest
-struct AssignmentReportResponse {
-    K2_PAYLOAD_COPYABLE;
-};
-
 }  // namespace dto
 }  // namespace k2

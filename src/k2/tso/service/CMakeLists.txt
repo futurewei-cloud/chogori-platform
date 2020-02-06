@@ -13,6 +13,3 @@ set_target_properties(k2tso_service PROPERTIES
 )
 
 target_link_libraries (k2tso_service PRIVATE k2common k2transport Seastar::seastar )
-
-install(TARGETS k2tso_service DESTINATION lib/k2)
-install(FILES ${HEADERS} DESTINATION include/k2/tso)

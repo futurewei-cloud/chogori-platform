@@ -14,12 +14,6 @@ struct PlogId : plog_id_t
     K2_PAYLOAD_COPYABLE;
 };
 
-struct PlogInfo
-{
-    uint32_t size;
-    bool sealed;
-};
-
 class RefCountable
 {
 protected:

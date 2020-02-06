@@ -12,14 +12,6 @@ build:
 	@cmake -B../$(BUILD_DIR) -H../ -DCMAKE_INSTALL_PREFIX=../$(INSTALL_DIR)/$(INSTALL_PFX)
 	@$(MAKE) -C../$(BUILD_DIR)
 
-test_node: build
-	@echo ">>> Testing node"
-	@../$(BUILD_DIR)/test/node/node_test && testReturnCode=$? && exit $(testReturnCode)
-
-test_client: build
-	@echo ">>> Testing client"
-	@../$(BUILD_DIR)/test/client/partitionmap_test && testReturnCode=$? && exit $(testReturnCode)
-
 test_plog: build
 	@echo ">>> Testing plogmock"
 	@../$(BUILD_DIR)/test/plogmock/plogmock_test && testReturnCode=$? && exit $(testReturnCode)
@@ -28,15 +20,11 @@ test_volume: build
 	@echo ">>> Testing PersistentVolume"
 	@../$(BUILD_DIR)/test/persistentVolume/persistent_volume_test && testReturnCode=$? && exit $(testReturnCode)
 
-test_config: build
-	@echo ">>> Testing config"
-	@../$(BUILD_DIR)/test/config/config_test && testReturnCode=$? && exit $(testReturnCode)
-
 test_transport: build
 	@echo ">>> Testing transport"
 	@../$(BUILD_DIR)/test/transport/payload_test && testReturnCode=$? && exit $(testReturnCode)
 
-test: test_node test_client test_plog test_volume test_config test_transport
+test: test_plog test_volume test_transport
 
 integrate: build
 	@echo ">>> Running integration test"

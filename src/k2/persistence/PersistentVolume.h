@@ -1,6 +1,5 @@
 #pragma once
 
-#include <k2/k2types/plog/PlogMock.h>
 #include <algorithm>
 #include <numeric>
 #include "IPersistentVolume.h"

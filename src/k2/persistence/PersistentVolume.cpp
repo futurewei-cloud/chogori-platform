@@ -1,4 +1,5 @@
 #include "PersistentVolume.h"
+#include <k2/persistence/plog/PlogMock.h>
 
 namespace k2
 {

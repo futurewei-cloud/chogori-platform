@@ -10,8 +10,6 @@ enum Verbs : k2::Verb {
     CPO_COLLECTION_CREATE = 100,
     // ControlPlaneOracle: asked to return an existing collection
     CPO_COLLECTION_GET,
-    // ControlPlaneOracle: a K2 node reports the results of partition assignment
-    CPO_REPORT_PARTITION_ASSIGNMENT,
     // K2Assignment: CPO asks K2 to assign a partition
     K2_ASSIGNMENT_CREATE,
     // K2Assignment: CPO asks K2 to offload a partition

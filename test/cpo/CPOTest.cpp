@@ -174,20 +174,21 @@ seastar::future<> CPOTest::runTest5() {
             K2EXPECT(resp.collection.metadata.capacity.writeIOPs, 100000);
             K2EXPECT(resp.collection.partitionMap.version, 3);
             K2EXPECT(resp.collection.partitionMap.partitions.size(), 3);
-            int pid = 0;
-            // how many virtual partitions can we have
-            uint64_t numparts = std::numeric_limits<uint64_t>::max() / std::numeric_limits<uint32_t>::max();
+
+            // how many partitions we have
+            uint64_t numparts = eps.size();
+            auto max = std::numeric_limits<uint64_t>::max();
             // how big is each one
-            uint64_t partSize = std::numeric_limits<uint64_t>::max() / numparts;
-            for (auto& p : resp.collection.partitionMap.partitions) {
-                continue;
+            uint64_t partSize = max / numparts;
+
+            for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
+                auto& p = resp.collection.partitionMap.partitions[i];
                 K2EXPECT(p.rangeVersion, 1);
                 K2EXPECT(p.astate, dto::AssignmentState::Assigned);
                 K2EXPECT(p.assignmentVersion, 1);
-                K2EXPECT(p.startKey, std::to_string(pid * partSize));
-                K2EXPECT(p.endKey, std::to_string((pid + 1) * partSize - 1));
-                K2EXPECT(p.endpoint, eps[pid]);
-                pid++;
+                K2EXPECT(p.startKey, std::to_string(i * partSize));
+                K2EXPECT(p.endKey, std::to_string(i == eps.size() -1 ? max : (i + 1) * partSize - 1));
+                K2EXPECT(p.endpoint, eps[i]);
             }
         });
 }

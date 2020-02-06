@@ -14,3 +14,6 @@ set_target_properties(k2config PROPERTIES
 )
 
 target_link_libraries (k2config PRIVATE k2common)
+
+install(TARGETS k2config DESTINATION lib/k2)
+install(FILES ${HEADERS} DESTINATION include/k2/config)

@@ -13,6 +13,3 @@ set_target_properties(k2appbase PROPERTIES
 )
 
 target_link_libraries (k2appbase PRIVATE k2config k2common k2transport Seastar::seastar )
-
-install(TARGETS k2appbase DESTINATION lib/k2)
-install(FILES ${HEADERS} DESTINATION include/k2/appbase)

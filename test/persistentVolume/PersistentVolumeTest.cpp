@@ -3,6 +3,7 @@
 #include <TestUtil.h>
 
 #include <k2/persistence/PersistentVolume.h>
+#include <k2/persistence/plog/PlogMock.h>
 #include <iostream>
 
 using namespace k2;

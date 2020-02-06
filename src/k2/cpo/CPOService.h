@@ -6,6 +6,7 @@
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/ControlPlaneOracle.h>
+#include <k2/dto/AssignmentManager.h>
 #include <k2/transport/Status.h>
 
 namespace k2 {
@@ -21,6 +22,7 @@ private:
     std::unordered_map<String, seastar::future<>> _assignments;
     std::tuple<Status, dto::Collection> _getCollection(String name);
     Status _saveCollection(dto::Collection& collection);
+    void _handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request);
 
    public:  // application lifespan
     CPOService(DistGetter distGetter);
@@ -35,9 +37,6 @@ private:
 
     seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
     handleGet(dto::CollectionGetRequest&& request);
-
-    seastar::future<std::tuple<Status, dto::AssignmentReportResponse>>
-    handleReportAssignment(dto::AssignmentReportRequest&& request);
 };  // class CPOService
 
 } // namespace k2

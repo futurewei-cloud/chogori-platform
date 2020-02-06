@@ -1,15 +1,15 @@
-#ifndef __PLOG_CLIENT_COMMON_H__
-#define __PLOG_CLIENT_COMMON_H__
-
+#pragma once
 
 #include <stdint.h>
-
-#ifdef __cplusplus
-extern "C"{
-#endif
-
+#include <k2/common/Common.h>
 
 #define MAX_AFFINIY_SRV_ID (2)                           /* max affinity srv id */
+namespace k2 {
+
+struct PlogInfo {
+    uint32_t size;
+    bool sealed;
+};
 
 /**
 *   just for SGL
@@ -471,10 +471,37 @@ int libclient_exit(void);
 *******************************************************************************/
 int query_capacity(const plog_perf_type_e type, const plog_durability_e durability, void* trace_info, uint64_t* total_capacity, uint64_t* used_capacity);
 
-#ifdef __cplusplus
-}
-#endif
+class PlogException : public std::exception {
+   public:
+    virtual const char* what() const noexcept {
+        return _msg.c_str();
+    }
 
-#endif
+    PlogException(const String& msg, plog_ret_code status)
+        : _msg(msg), _status(status) {
+    }
 
+    plog_ret_code status() const {
+        return _status;
+    }
 
+    virtual const std::string& str() const {
+        return _msg;
+    }
+
+   private:
+    std::string _msg;
+    plog_ret_code _status;
+};
+
+/**
+ *  16MB is the default limit set by K2 project, not general PLog which can be up to 2GB
+ *  it can be changed by the method setPlogMaxSize(uint32_t plogMaxSize)
+*/
+constexpr uint32_t PLOG_MAX_SIZE = 2 * 1024 * 1024;
+
+constexpr uint32_t DMA_ALIGNMENT = 4096;
+
+constexpr uint32_t plogInfoSize = sizeof(PlogInfo);
+
+} // ns k2

@@ -42,10 +42,6 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::AssignmentReportRequest, dto::AssignmentReportResponse>(dto::Verbs::CPO_REPORT_PARTITION_ASSIGNMENT, [this](dto::AssignmentReportRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleReportAssignment, std::move(request));
-    });
-
     _dataDir = Config()["data_dir"].as<std::string>();
     if (seastar::engine().cpu_id() == 0) {
         // only core 0 handles CPO business
@@ -125,14 +121,20 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         dto::AssignmentCreateRequest request;
         request.collectionName = name;
         request.partition = part;
+        K2INFO("Sending assignment for partition: " << request.partition);
         futs.push_back(
         RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
                 (dto::K2_ASSIGNMENT_CREATE, std::move(request), *txep, _assignTimeout())
-        .then([name, ep=part.endpoint ](auto result) {
+        .then([this, name, ep=part.endpoint ](auto result) {
             auto& [status, resp] = result;
-            (void) resp;
-            // The node refused to accept the assignment. For now, just ignore this
-            K2WARN("assignment for collection " << name << " was refused by " << ep << ", due to: " << status);
+            if (status.is2xxOK()) {
+                K2INFO("assignment successful for collection " << name << ", for partition " << resp.assignedPartition);
+                _handleCompletedAssignment(name, std::move(resp));
+            }
+            else {
+                // The node refused to accept the assignment. For now, just ignore this
+                K2WARN("assignment for collection " << name << " was refused by " << ep << ", due to: " << status);
+            }
             return seastar::make_ready_future();
         })
         );
@@ -144,11 +146,11 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         }));
 }
 
-seastar::future<std::tuple<Status, dto::AssignmentReportResponse>>
-CPOService::handleReportAssignment(dto::AssignmentReportRequest&& request) {
-    auto [status, haveCollection] = _getCollection(request.collectionName);
+void CPOService::_handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request) {
+    auto [status, haveCollection] = _getCollection(cname);
     if (!status.is2xxOK()) {
-        return RPCResponse(Status::S404_Not_Found("assignment completion for non-existent collection"), dto::AssignmentReportResponse());
+        K2ERROR("unable to find collection which reported assignment " << cname);
+        return;
     }
     for (auto& part: haveCollection.partitionMap.partitions) {
         if (part.startKey == request.assignedPartition.startKey &&
@@ -157,10 +159,11 @@ CPOService::handleReportAssignment(dto::AssignmentReportRequest&& request) {
             part.rangeVersion == request.assignedPartition.rangeVersion) {
                 K2INFO("Assignment received for active partition " << request.assignedPartition);
                 part.astate = request.assignedPartition.astate;
-                return RPCResponse(_saveCollection(haveCollection), dto::AssignmentReportResponse());
+                _saveCollection(haveCollection);
+                return;
         }
     }
-    return RPCResponse(Status::S404_Not_Found("assignment completion does not match stored partition"), dto::AssignmentReportResponse());
+    K2ERROR("assignment completion does not match any stored partitions: " << request.assignedPartition);
 }
 
 std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
