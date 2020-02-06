@@ -63,7 +63,6 @@ pipeline {
             steps {
                 echo "\u2600 Package"
                 sh "./K2Build/k2build make -C K2Build package_deb"
-                sh "./K2Build/k2build make -C K2Build package_rpm"
             }
         }
         stage('Upload artifacts') {
@@ -72,7 +71,6 @@ pipeline {
             steps {
                 echo "\u2600 Uploading artifacts"
                 sh "./K2Build/k2build make -C K2Build package_push_deb"
-                sh "./K2Build/k2build make -C K2Build package_push_rpm"
             }
         }
     }

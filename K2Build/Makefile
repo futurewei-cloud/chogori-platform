@@ -42,10 +42,6 @@ package_deb: install
 	@echo ">>> Packaging deb"
 	@cd ../ && fpm --depends "libseastar-k2 = 1.0.7" -s dir -t deb --deb-generate-changes -n k2platform -f -m k2 -a amd64 -v $(package_version) --deb-dist stable --description "K2 Platform Applications https://gitlab.futurewei.com/k2/dfv_k2_platform" -C $(INSTALL_DIR)
 
-package_rpm: install
-	@echo ">>> Packaging rpm"
-	@cd ../ && fpm --depends "libseastar-k2 = 1.0.7" -s dir -t rpm -n k2platform -f -m k2 -a amd64 -v $(package_version) --rpm-dist stable --description "K2 Platform Applications https://gitlab.futurewei.com/k2/dfv_k2_platform" -C $(INSTALL_DIR)
-
 package_push_deb:
 	@$(eval DEB_NAME := $(wildcard ../k2platform_*.deb))
 	@$(eval DEB_CH_NAME := $(wildcard ../k2platform_*.changes))
@@ -53,13 +49,6 @@ package_push_deb:
 	@$(shell curl -s http://k2-bvu-10001.huawei.com:10080/incoming/ --upload-file $(DEB_NAME))
 	@echo ">>> Pushing package: $(DEB_CH_NAME)"
 	@$(shell curl -s http://k2-bvu-10001.huawei.com:10080/incoming/ --upload-file $(DEB_CH_NAME))
-
-package_push_rpm:
-	@$(eval RPM_NAME := $(wildcard ../k2platform-*.rpm))
-	@echo ">>> Pushing package: $(RPM_NAME)"
-	@$(shell curl -s http://k2-bvu-10001.huawei.com:10070/ --upload-file $(RPM_NAME))
-	@echo ">>> Committing pushed packages"
-	@$(shell curl -s http://k2-bvu-10001.huawei.com:10070/commit)
 
 builder_img_build:
 	@$(MAKE) -C Builder
