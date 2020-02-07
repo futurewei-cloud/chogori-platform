@@ -45,13 +45,17 @@ public:  // application lifespan
         _registerDATA_URL();
 
         RPC().registerRPCObserver<PUT_Request, PUT_Response>(MessageVerbs::PUT, [this](PUT_Request&& request) {
-            //K2INFO("Received put for key: " << request.key);
+            K2DEBUG("Received put for key: " << request.key);
             String hash_key = request.key.partition_key + request.key.row_key;
-            _data[hash_key] = std::move(request.value);
+
+            total += hash_key.size() + request.value.getCapacity() + sizeof(request.value);
+
+            _data[hash_key] = request.value.copy();
             PUT_Response response{.key=std::move(request.key)};
-            ++total;
-            if (total % 1000 == 0) {
-                K2DEBUG("Wrote " << total << " records");
+
+            if (total % 100000 == 0) {
+                K2INFO("Wrote " << total / 1024.0 << " KB");
+                K2INFO(_data.size() << " records in _data, load factor: " << _data.load_factor());
             }
             return RPCResponse(Status::S200_OK(), std::move(response));
         });
