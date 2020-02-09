@@ -32,20 +32,26 @@ enum AssignmentState: uint8_t {
 // Partition in a K2 Collection. By default, the key-range type is String (for range-based partitioning)
 // but it can also be an integral type for hash-based partitioning
 struct Partition {
-    // version incremented each time we change the range that this partition owns
-    uint64_t rangeVersion = 0;
-    // version incremented each time we assign the partition to different K2 node
-    uint64_t assignmentVersion = 0;
+    // the partition version
+    struct PVersion {
+        // the partition id
+        uint64_t id = 0;
+        // version incremented each time we change the range that this partition owns
+        uint64_t rangeVersion = 0;
+        // version incremented each time we assign the partition to different K2 node
+        uint64_t assignmentVersion = 0;
+        K2_PAYLOAD_COPYABLE;
+    } pid;
     // the starting key for the partition
     String startKey;
     // the ending key for the partition
     String endKey;
-    // the endpoint which is currently assigned to this partition(version)
-    String endpoint;
+    // the endpoints for the node which is currently assigned to this partition(version)
+    std::set<String> endpoints;
     // the current assignment state of the partition
     AssignmentState astate = AssignmentState::NotAssigned;
 
-    K2_PAYLOAD_FIELDS(rangeVersion, assignmentVersion, startKey, endKey, endpoint, astate);
+    K2_PAYLOAD_FIELDS(pid, startKey, endKey, endpoints, astate);
 
     // Partitions are ordered based on the ordering of their start keys
     bool operator<(const Partition& other) const noexcept {
@@ -55,12 +61,16 @@ struct Partition {
     // for debug printing
     friend std::ostream& operator<<(std::ostream& os, const Partition& part) {
         os << "("
-        << "rVersion=" << part.rangeVersion
-        << ", aVersion=" << part.assignmentVersion
-        << ", sKey=" << part.startKey
-        << ", eKey=" << part.endKey
-        << ", ep=" << part.endpoint
-        << ", astate=" << part.astate
+           << "rVersion=" << part.pid.rangeVersion
+           << ", aVersion=" << part.pid.assignmentVersion
+           << ", id=" << part.pid.id
+           << ", sKey=" << part.startKey
+           << ", eKey=" << part.endKey
+           << ", eps=[";
+        for (auto& ep: part.endpoints) {
+            os << ep << ", ";
+        }
+        os << "], astate=" << part.astate
         << ")";
         return os;
     }

@@ -11,6 +11,14 @@
 
 namespace k2 {
 
+// Serialize-helper class which allows the user to serialize a custom type as a Payload type.
+// This allows any reader to read this field as a Payload, and deserialize a custom type from
+// it at a later point. In particular, we use this to send/receive generic records in K2.
+template <typename T>
+struct SerializeAsPayload {
+    T val;
+};
+
 //
 //  Serialization traits
 //
@@ -141,6 +149,16 @@ public: // API
 
     // read into a payload
     bool read(Payload& other);
+
+    template<typename T>
+    bool read(SerializeAsPayload<T>& value) {
+        // if the embedded type is a Payload, then just use the payload write to write it directly
+        if (std::is_same<T, Payload>::value) {
+            return read(value.val);
+        }
+        uint64_t size = 0;
+        return read(size) && read(value.val);
+    }
 
     // read a map
     template <typename KeyT, typename ValueT>
@@ -335,6 +353,32 @@ public: // Write API
         for (auto& key : s) {
             write(key);
         }
+    }
+
+    // write the special SerializeAsPayload type
+    template<typename T>
+    void write(const SerializeAsPayload<T>& value) {
+        // if the embedded type is a Payload, then just use the payload write to write it directly
+        if (std::is_same<T, Payload>::value || std::is_same<T, const Payload>::value) {
+            write(value.val);
+            return;
+        }
+        // 1. write out a dummy size now
+        auto sizePos = getCurrentPosition();
+        uint64_t size = 0;
+        write(size);
+
+        // 2. write the actual value
+        auto valPos = getCurrentPosition();
+        write(value.val);
+
+        // 3. calculate how much data we wrote and update the size we wrote in step1
+        auto nowPos = getCurrentPosition();
+        size = nowPos.offset - valPos.offset;
+        seek(sizePos);
+        write(size);
+        // make sure to place the cursor at end of all the written data
+        seek(nowPos);
     }
 
     // write for primitive types by copy

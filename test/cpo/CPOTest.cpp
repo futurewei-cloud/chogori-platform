@@ -183,12 +183,13 @@ seastar::future<> CPOTest::runTest5() {
 
             for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
                 auto& p = resp.collection.partitionMap.partitions[i];
-                K2EXPECT(p.rangeVersion, 1);
+                K2EXPECT(p.pid.rangeVersion, 1);
                 K2EXPECT(p.astate, dto::AssignmentState::Assigned);
-                K2EXPECT(p.assignmentVersion, 1);
+                K2EXPECT(p.pid.assignmentVersion, 1);
+                K2EXPECT(p.pid.id, i);
                 K2EXPECT(p.startKey, std::to_string(i * partSize));
                 K2EXPECT(p.endKey, std::to_string(i == eps.size() -1 ? max : (i + 1) * partSize - 1));
-                K2EXPECT(p.endpoint, eps[i]);
+                K2EXPECT(*p.endpoints.begin(), eps[i]);
             }
         });
 }

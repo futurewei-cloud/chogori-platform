@@ -1,9 +1,11 @@
 #pragma once
 
 // third-party
-#include <seastar/core/future.hh>  // for future stuff
-#include <seastar/core/distributed.hh>  // for dist stuff
+#include <k2/common/Common.h>
 #include <k2/dto/Collection.h>
+#include <k2/module/k23si/module.h>
+#include <seastar/core/distributed.hh>  // for dist stuff
+#include <seastar/core/future.hh>       // for future stuff
 
 namespace k2 {
 
@@ -16,6 +18,9 @@ public: // application lifespan
     // required for seastar::distributed interface
     seastar::future<> stop();
     seastar::future<> start();
+
+private:
+    std::unique_ptr<K23SIPartitionModule> _pmodule;
 }; // class PartitionManager
 
 // per-thread/reactor instance of the partition manager

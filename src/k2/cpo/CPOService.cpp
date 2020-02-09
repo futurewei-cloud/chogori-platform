@@ -71,11 +71,14 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
         uint64_t end = (i == eps.size() -1) ? (max) : ((i+1)*partSize - 1);
 
         dto::Partition part{
-            .rangeVersion=1,
-            .assignmentVersion=1,
+            .pid{
+                .id = i,
+                .rangeVersion=1,
+                .assignmentVersion=1
+            },
             .startKey=std::to_string(start),
             .endKey=std::to_string(end),
-            .endpoint=eps[i],
+            .endpoints={eps[i]},
             .astate=dto::AssignmentState::PendingAssignment
         };
         collection.partitionMap.partitions.push_back(std::move(part));
@@ -112,10 +115,15 @@ void CPOService::_assignCollection(dto::Collection& collection) {
     K2INFO("Assigning collection " << name << ", to " << collection.partitionMap.partitions.size() << " nodes");
     std::vector<seastar::future<>> futs;
     for (auto& part : collection.partitionMap.partitions) {
-        K2INFO("Assigning collection " << name << ", to " << part.endpoint);
-        auto txep = RPC().getTXEndpoint(part.endpoint);
+        if (part.endpoints.size() == 0) {
+            K2ERROR("empty endpoint for partition assignment: " << part);
+            continue;
+        }
+        auto ep = *part.endpoints.begin();
+        K2INFO("Assigning collection " << name << ", to " << part);
+        auto txep = RPC().getTXEndpoint(ep);
         if (!txep) {
-            K2WARN("unable to obtain endpoint for " << part.endpoint);
+            K2WARN("unable to obtain endpoint for " << ep);
             continue;
         }
         dto::AssignmentCreateRequest request;
@@ -125,7 +133,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         futs.push_back(
         RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
                 (dto::K2_ASSIGNMENT_CREATE, std::move(request), *txep, _assignTimeout())
-        .then([this, name, ep=part.endpoint ](auto result) {
+        .then([this, name, ep](auto result) {
             auto& [status, resp] = result;
             if (status.is2xxOK()) {
                 K2INFO("assignment successful for collection " << name << ", for partition " << resp.assignedPartition);
@@ -155,8 +163,9 @@ void CPOService::_handleCompletedAssignment(const String& cname, dto::Assignment
     for (auto& part: haveCollection.partitionMap.partitions) {
         if (part.startKey == request.assignedPartition.startKey &&
             part.endKey == request.assignedPartition.endKey &&
-            part.assignmentVersion == request.assignedPartition.assignmentVersion &&
-            part.rangeVersion == request.assignedPartition.rangeVersion) {
+            part.pid.id == request.assignedPartition.pid.id &&
+            part.pid.assignmentVersion == request.assignedPartition.pid.assignmentVersion &&
+            part.pid.rangeVersion == request.assignedPartition.pid.rangeVersion) {
                 K2INFO("Assignment received for active partition " << request.assignedPartition);
                 part.astate = request.assignedPartition.astate;
                 _saveCollection(haveCollection);

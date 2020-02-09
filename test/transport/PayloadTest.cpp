@@ -27,24 +27,27 @@ struct embeddedComplex {
     }
 };
 
+template<typename T>
 struct data {
     uint32_t a;
     uint64_t b;
+    SerializeAsPayload<T> w;
     char x;
     embeddedSimple y;
     embeddedComplex z;
     Payload c;
     String d;
-    K2_PAYLOAD_FIELDS(a, b, x, y, z, c, d);
-    bool operator==(const data& o) const {
-        return a == o.a && b==o.b && x == o.x && y==o.y && z==o.z && c==o.c && d==o.d;
+    K2_PAYLOAD_FIELDS(a, b, w, x, y, z, c, d);
+    bool operator==(const data<T>& o) const {
+        return a == o.a && b==o.b && w.val == o.w.val && x == o.x && y==o.y && z==o.z && c==o.c && d==o.d;
     }
 };
 
-data makeData(uint32_t a, uint64_t b, char x, int ya, char yb, size_t yc, String za, int zb, char zc, const char* pdata, String d, int allocSize) {
-    data result;
+data<embeddedComplex> makeData(uint32_t a, uint64_t b, char x, int ya, char yb, size_t yc, String za, int zb, char zc, const char* pdata, String d, int allocSize) {
+    data<embeddedComplex> result;
     result.a = a;
     result.b = b;
+    result.w.val = embeddedComplex{.a=za, .b=zb, .c=zc};
     result.x = x;
     result.y = embeddedSimple{.a=ya, .b=yb, .c=yc};
     result.z = embeddedComplex{.a=std::move(za), .b=zb, .c=zc};
@@ -156,7 +159,7 @@ void checkSize(Payload& p) {
 }
 
 SCENARIO("test empty payload serialization after some data") {
-    std::vector<data> testCases;
+    std::vector<data<embeddedComplex>> testCases;
     String s(100000, 'x');
     testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11));
     testCases.push_back(makeData(11,22,'b', 444, 'g', 1231234, "hya", 1241234, 's', "1", "", 101));
@@ -169,9 +172,18 @@ SCENARIO("test empty payload serialization after some data") {
         dst.seek(0);
         auto chksum = dst.computeCrc32c();
 
-        data parsed;
+        data<embeddedComplex> parsed;
         REQUIRE(dst.read(parsed));
         REQUIRE(parsed == d);
+
+        // try same with embedded type of Payload
+        dst.seek(0);
+        data<Payload> parsedAsPayload;
+        REQUIRE(dst.read(parsedAsPayload));
+        REQUIRE((parsedAsPayload.a == d.a && parsedAsPayload.b == d.b && parsedAsPayload.x == d.x && parsedAsPayload.y == d.y && parsedAsPayload.z == d.z && parsedAsPayload.c == d.c && parsedAsPayload.d == d.d));
+        embeddedComplex cmplx;
+        REQUIRE(parsedAsPayload.w.val.read(cmplx));
+        REQUIRE(cmplx == d.w.val);
 
         // write the parsed data back and make sure checksum remains the same
         Payload dst2([] { return Binary(110); });
