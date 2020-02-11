@@ -41,7 +41,7 @@ public:
             _lru.erase(found->value.it);
             _lru.emplace_front(std::move(low), std::move(high), timestamp);
             found->value.it = _lru.begin();
-            found->value.timestamp = timestamp;
+            found->value.timestamp = std::max(timestamp, found->value.timestamp);
             return;
         }
 

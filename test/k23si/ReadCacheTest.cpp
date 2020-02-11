@@ -58,5 +58,10 @@ SCENARIO("Basic read cache tests") {
     cache.insertInterval(90, 92, 35);
     t = cache.checkInterval(150, 150);
     REQUIRE(t == 18);
+
+    // Add exact interval with lower timestamp
+    cache.insertInterval(90, 92, 32);
+    t = cache.checkInterval(90, 90);
+    REQUIRE(t == 35);
 }
 
