@@ -28,7 +28,7 @@ public:
 
         TimestampT most_recent = _min;
         for (auto it = overlapping.begin(); it != overlapping.end(); ++it) {
-            most_recent = std::max(most_recent, it->value.timestamp);
+            most_recent = do_max(most_recent, it->value.timestamp);
         }
 
         return most_recent;
@@ -41,7 +41,7 @@ public:
             _lru.erase(found->value.it);
             _lru.emplace_front(std::move(low), std::move(high), timestamp);
             found->value.it = _lru.begin();
-            found->value.timestamp = std::max(timestamp, found->value.timestamp);
+            found->value.timestamp = do_max(timestamp, found->value.timestamp);
             return;
         }
 
@@ -54,12 +54,18 @@ public:
         if (_lru.size() > _max_size) {
             Interval<KeyT, TimestampT>& to_remove = _lru.back();
             _tree.remove(Interval<KeyT, TreeValue>(to_remove.low, to_remove.high));
-            _min = std::max(_min, to_remove.value);
+            _min = do_max(_min, to_remove.value);
             _lru.pop_back();
         }
     }
 
 private:
+    static TimestampT do_max(const TimestampT& x, const TimestampT& y)
+    {
+        using std::max;
+        return max(x, y);
+    }
+
     struct TreeValue {
         typename std::list<Interval<KeyT, TimestampT>>::iterator it;
         TimestampT timestamp;
