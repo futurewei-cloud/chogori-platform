@@ -8,7 +8,7 @@
 #include <list>
 #include <iostream>
 
-#include <k2/module/k23si/IntervalTree/include/intervaltree.hpp>
+#include <k2/common/dfv_k2_os_intervaltree/include/intervaltree.hpp>
 
 using namespace Intervals;
 

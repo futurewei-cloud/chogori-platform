@@ -1,3 +1,6 @@
 [submodule "K2Build/dfv_k2_build_deps"]
 	path = K2Build/dfv_k2_build_deps
 	url = ssh://git@ssh-gitlab.futurewei.com:30022/k2/dfv_k2_build_deps.git
+[submodule "src/k2/common/dfv_k2_os_intervaltree"]
+	path = src/k2/common/dfv_k2_os_intervaltree
+	url = ssh://git@ssh-gitlab.futurewei.com:30022/k2/dfv_k2_os_intervaltree.git
