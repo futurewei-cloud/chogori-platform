@@ -1,19 +1,19 @@
 [-UP-](./README.md)
 
 # Goals
-- Benchmark based on YCSB+T and [Harding's](./papers/harding.pdf) TPCC 80% coverage.
+- Benchmark based on YCSB+T and TPCC.
 - Support serializable isolation level
 - Support sequential consistency level
 - Support global transactions - transactions spanning multiple geographical regions
-- Support single-master architecture. We may have standby replicas for recovery optimization but transaction execution can only occur at the data masters.
+- Support Multi-writer, Multi-reader architecture with single hot replicas(single master). We may have standby replicas for recovery optimization but transaction execution can only occur at the data masters.
 
-#### DC-local datasets
-- Latency: 20us avg
-- Throughput: 100K/sec per CPU core
+## DC-local datasets
+- Operation Latency: 20us avg
+- Operation Throughput: 100K/sec per CPU core
 
-#### mixed DC-local/global datasets
-- Latency: ~ order of cross-dc ping(could be 100s ms)
-- Throughput: ?? We think we should be able to achieve similar throughput as in DC-local datasets. Potential issue here is increased conflict probability due to increased transaction latency which may reduce the throughput depending on how contentious is the traffic.
+## mixed DC-local/global datasets
+- Operation Latency: ~ order of cross-dc ping(could be 100s ms)
+- Operation Throughput: ?? We think we should be able to achieve similar throughput as in DC-local datasets. Potential issue here is increased conflict probability due to increased transaction latency which may reduce the throughput depending on how contentious is the traffic.
 
 # Targeted assumptions
 These are not limits of the system, but we design the system to operate under these conditions:
@@ -21,7 +21,7 @@ These are not limits of the system, but we design the system to operate under th
 - We prioritize performance for DC-local operations but remain correct in mixed usage
 - Single-threaded, concurrent architecture. This allows us not to worry about multi-threaded side-effects during tight sequence of operations on any node.
 
-# High-level overiew
+# High-level overview
 ## Architecture
 ![Architecture](./images/TxnArchitecture.png)
 
@@ -32,29 +32,25 @@ Our transaction flow is pretty standard from high-level. Users begin() a transac
 
 # Definitions
 
-### Isolation levels:
+## Isolation levels:
 - ReadUncommitted: a read may see value currently part of an open transaction. The value may actually be rolled back
 - ReadCommitted: a read will only see values committed by other transactions. It may be possible to see different values in your own txn if another txn commits.
 - ReadRepeatable: all reads during a txn will return the same value even if there are other commits.
 - SnapshotIsolation: Snapshot isolation is a mechanism for providing ReadRepeatable isolation level. It provides an immutable snapshot-in-time view of the entire database. The database guarantees that reads against this snapshot will always return the same values. SI by itself does not provide any form of serialization among transactions. As we will discuss further in this document, we are providing a solution to achieve serializable SI. Susceptible to write skew anomaly
-- Serializable: all transactions are ordered and will never be observed in different order by different users. The order however may be observed to be different compared to the actual order in which the txns executed, provided the end result(consistency!) is the same. E.g. `-$50` followed by `+$100`
-- Externally Serializable(serializable + linearizable): all txns are observed in the real-time order they were executed by all observers.
+- Serializable: all transactions are ordered and will never be observed in different order by different users. The order however may be observed to be different compared to the actual order in which the transactions executed, provided the end result(consistency!) is the same. E.g. `-$50` followed by `+$100`
+- Externally Serializable(serializable + linearizable): all transactions are observed in the real-time order they were executed by all observers.
 
-### Consistency levels
+## Consistency levels
 - Internally Causal: Transactions are ordered in the system so that if `e->f`, then `e` is before `f`. If we have another transaction `g` with also `e->g`, there are no guarantees on `f` and `g` ordering, not even the order in which multiple observers see `f` and `g`.
 - Convergent/Sequential Causal: `f` and `g` are placed in some order and everyone observes this order. (essentially serializable causal). Neither causal, nor sequential consistency talk about the time at which transactions are recorded in the system. The system is free to choose any timestamp for these transactions, as long as it maintains the causal/sequential property.
 - Linearizable: all events are ordered based on the real-time at which they occurred.
 
-### Time
+## Time
+### UniversalTime
+This is a globally agreed-upon time. We obtain this from dedicated atomic hardware clocks deployed with the TSO.
 
-##### TimeValue
-Time value is a single 64-bit number with sufficient resolution(e.g. pico-seconds) which represents time since epoch
-
-##### UniversalTime
-This is the TimeValue which is universally accepted to be the correct time. In our desired deployment, the source for UT is an atomic clock hardware present near the timestamp generator and exposed over NTP interface.
-
-##### Timestamp
-In this document, a Timestamp is a window of time with some bounded uncertainty from UniversalTime. This is equivalent to TrueTime in [Spanner's TrueTime](https://cloud.google.com/spanner/docs/true-time-external-consistency). For optimization purposes, a Timestamp also communicates the identity of the TSO which issued it. The information conveyed can be thought of as the tuple `(int64 start, int64 end, int64 tsoid)`, where `end` is a strictly-increasing number and the window `[start:end]` represents the 100% confidence interval of the TSO wrt UT.
+### Timestamp
+In this document, a Timestamp is a window of time with some bounded uncertainty from Universal Time. This is equivalent to TrueTime in [Spanner's TrueTime](https://cloud.google.com/spanner/docs/true-time-external-consistency). For optimization purposes, a Timestamp also communicates the identity of the TSO which issued it. The information conveyed can be thought of as the tuple `(int64 start, int64 end, int64 tsoid)`, where `end` is a strictly-increasing number and the window `[start:end]` represents the 100% confidence interval of the TSO wrt UT.
 Timestamps are compared as in Spanner by `CompareResult compare(t1, t2)` method which returns
 >`CompareResult.LT` if t1 is guaranteed to be before t2
 >`CompareResult.GT` if t2 is guaranteed to be before t1
@@ -66,20 +62,20 @@ Other timestamp API:
 >int64 endTime(): // strictly-increasing TimeValue - the end time of the timestamp window
 >int64 tsoid(); // identity of the TSO service
 
-##### TSO (TimeStampOracle)
-TSO is a separate service whose job is to provide a global clock. The design and scalability of this component is addressed in a [separate document](./TSO.md). For the purposes of this document it is sufficient to understand that the TSO service:
+### TSO (TimeStampOracle)
+TSO is a separate service whose job is to provide Timestamps. The design and scalability of this component is addressed in a [separate document](./TSO.md). For the purposes of this document it is sufficient to understand that the TSO service:
 - syncs itself to UniversalTime and can emit Timestamps as described above
-- guarantees strictly increasing endTime in timestamps, which is important to efficiently sequence TSO-local events (that is events which use the same TSO to produce timestamps)
+- guarantees strictly increasing endTime in timestamps, which is important to efficiently sequence TSO-local events (that is events which use the same TSO for their clock source)
 - Can provide throughput of 20MM ts/sec, with latency of 10usec.
 
 In our architecture we support multiple configurations, but our reference architecture has one TSO per region, where DC-local operations always use their DC-local TSO.
 
 - Additional requirement:
     In order to satisfy some use cases (e.g guaranteed read-only snapshot reads in the past), we require that if a cluster mixes multiple TSOs, then the TSOs are sufficiently far from each other so that the time of flight of a message from TSO1 to TSO2 is greater than any possible error either of the TSOs can observe from its true source.
-    A bit more formally, this restriction guarantees that if there is a causal relationship between two transactions T1,T2, then `T2 is a causal successor of T1` implies that `T2.timestamp is strictly greater than T1.timestamp`. As a shorthand: `T1<-T2 ==> T1.ts < T2.ts`.
-    This is trivially true if T1 and T2 come through the same TSO. if T1 and T2 come via different TSOs though, we need the guarantee that if T2 is a successor (i.e. it observed the effect of T1), then T2's timestamp is strictly ordered after T1's timestamp. If time-of-flight between the TSOs is greater than the error in the timestamp, then we know that by the time T2 wants to generate a timestamp for its transaction the time at T2's TSO has advanced past the error window in T1's timestamp and therefore T2's timestamp will be greater than T1's timestamp.
+    A bit more formally, this restriction guarantees that if there is a causal relationship between two transactions T1,T2, then `T2 is a causal successor of T1` implies that `T2.timestamp is strictly greater than T1.timestamp`. As a shorthand: `T1->T2 ==> T1.ts < T2.ts`.
+    This is trivially true if T1 and T2 come through the same TSO. However, if T1 and T2 come via different TSOs, we need the guarantee that if T2 is a successor (i.e. it observed the effect of T1), then T2's timestamp is strictly ordered after T1's timestamp. If time-of-flight between the TSOs is greater than the error in the timestamp, then we know that by the time T2 wants to generate a timestamp for its transaction the time at T2's TSO has advanced past the error window in T1's timestamp and therefore T2's timestamp will be greater than T1's timestamp.
 
-This requirement combined with physical limit of speed of electricity over copper puts the minimum distance between geo-TSOs to .6KM for each 1usec of clock error. Correspondingly, the max limit is that if you have a clock source which cannot guarantee error of 65ms or less, then we cannot support global transactions.
+This requirement combined with physical limit of speed of electricity over copper puts the minimum distance between geo-TSOs to .6KM for each 1usec of clock error. Correspondingly, if the available clock source cannot guarantee error of 65ms or less, then we cannot support global transactions.
 
 Commercially available atomic clocks (rack-mountable; ~$7000) can allow our TSO to produce timestamps with interval of 3usecs (limited by the sample rate of 0.75MHz). This makes the global-TSO deployment restriction be ~2KM physical distance between TSOs.
 
@@ -87,29 +83,82 @@ As an example, if we have one AZ on US east coast, and another in Ireland, (5000
 
 Our [reference deployment architecture](#reference-architecture) uses geo-local TSO with atomic clock access and synchronous timestamp generation over fast RDMA network.
 
-
-### Operations
+## Operations
 Operations are executed in the context of a transaction (using the TxnHandle returned by begin()). The operations are generally either constant(e.g. read-only) or mutating(e.g. writes). The operations are not limited to simple KV read/write and can be extended to allow any advanced single-node operations such as atomic ops(e.g. CAS) or even stored procedures. For simplified explanations, we use constant<->read and mutating<->write interchangeably in this document.
 
-### Minimum Transaction Record (MTR)
+## Minimum Transaction Record (MTR)
 This is a small tuple of metadata which must be specified with every operation issued by the client. This tuple conveys `(TxnID, Timestamp, Priority)`, and we use this to perform snapshot reads, associate writes with transactions, and resolve conflicts.
 
-### Transaction Record Holder (TRH)
-Any transaction which performs a write requires a central coordinator for the transaction. This coordinator is just one of the write participants in the transaction and it maintains a Transaction Record for each transaction that designated it to be the coordinator. We call this coordinator the Transaction Record Holder (TRH). Note that we do not require central transaction knowledge across different transactions and so the transaction records in the system are uniformly distributed across the entire cluster.
-The Client decides who the TRH will be for a given transaction, and sends a message to it to let it know that it is responsible for the coordination tasks. For performance reasons, the client lazily waits for its first write, and piggy-backs the TRH-assignment message onto this first write. Read-only transactions do not create a transaction record as it is not needed. We'll provide more details on how the TRH is used in each individual operation further in the document.
+## TransactionRecordKey(TRKey) and TransactionRecordHolder(TRH)
+We require mutating transactions to have a coordinator node which can keep track of the `TransactionRecord`. To achieve this, we use a scheme where we assign a key to the `TransactionRecord` and use our standard partitioning scheme to select the owner for the `TransactionRecord`. We call this key the `TransactionRecordKey (TRKey)`. Anyone at anytime (even after failures or cluster maintenance) can correctly find the owner of a given transaction if they have this key. We call this owner the `TRH: Transaction Record Holder`
 
-The TRH maintains a record for each transaction which it tracks. The record is stored in mapping `{txnId -> TxnRecord}`. The transaction record contains metadata about the transaction which we need to resolve PUSH operations, as well as detect abandoned transactions:
-- priority
-- timestamp
-- state (COMMITTED|ABORTED|IN_PROGRESS)
-- last_heartbeat_time
-- txn_id
-- client_address
+Note that we do not require central transaction knowledge across different transactions and so the transaction records in the system are uniformly distributed across the entire cluster. Moreover, read-only transactions do not create a transaction record as it is not needed for them.
 
-### Write Intent (WI)
-In order to detect potential conflicts, we use Write Intents(WI). WIs are the same as any other record in the system. They correspond to a version for some key, and are our way of keeping track of uncommitted writes. In other words, we call a standard record which has the "uncommitted" flag to ON a "Write Intent".
+## Write Intent (WI)
+In order to detect potential conflicts, we use Write Intents(WI) - essentially pending/uncommitted writes. WIs are the same as any other record in the system. They correspond to a version for some key, and are our way of keeping track of uncommitted writes. In other words, we call a standard record which has the "uncommitted" flag to ON a `Write Intent`.
 When the post-commit(i.e. finalize) phase of a mutating transaction goes through, the flag is cleared (set to false) making the record a committed value.
-In the WI we also remember the MTR and TRH for the transaction which created the intent in the node. So given a WI, we can find out the MTR(transaction ID, timestamp, priority), as well as the TRH(the participant which is responsible for maintaining the TXN state)
+In the WI we also remember the MTR and TRKey for the transaction which created the intent in the node. So given a WI, we can find out the MTR(transaction ID, timestamp, priority), as well as the TRKey and thus the Transaction Record, after a remote message.
+
+## Transaction Record Lifecycle
+As a reminder, TRs are only needed for mutating transactions.
+
+### Transaction Record
+The transaction record contains metadata about the transaction which we need to resolve PUSH operations, as well as detect abandoned transactions:
+``` c++
+struct TransactionRecord {
+    Key trkey;
+    uint64_t priority;
+    K2Timestamp timestamp;
+    TxnState state; // `InProgress` | `ForceAbort` | `Committed` | `Aborted`| `Finalizing`
+    K2Timestamp lastHeartbeatTime;
+    uint64_t txnId;
+    ClientID client; // information about the client (accountID, IP address, appname)
+}
+```
+
+Transaction records are records stored in the system similarly to user records. The records are keyed so that they have the same partitioningKey as the first write in a transaction. All WIs in this transaction are then annotated with this TRKey as their TRH pointer. This helps us find the TR across failures if we need to perform PUSH operations as the TR is now a routable record.
+
+### Transaction Heartbeat
+There is a server-side timeout of 100ms per transaction, maintained at the TRH for the transaction. The client is required to emit a heartbeat to the TRH to make sure the transaction is not marked as abandoned and thus aborted (`ForcedAbort` state) by the server automatically. The heartbeat is a K2Timestamp.
+
+### Transaction states
+Here is the TR state machine. we cover each state below
+![TxnStates](./images/TxnStates.png)
+
+#### Transitions
+- onCreate: Client is attempting to create a TransactionRecord
+- onPushAbort: the TRH receives a PUSH operation and decides to abort the sitting transaction.
+- onHBTimeout: TRH did not receive heartbeat for a transaction in time.
+- onRWE: (on retention window expiry) The TR has been in the system longer than our retention window
+- onEnd(A|C): the client is signalling that they want to end the transaction with either an Abort(A) or Commit(C) action
+- onTimer: this means that we will perform the state transition asynchronously after some time
+- onFinalizeDone: The transaction has been successfully finalized. All participants have been contacted and they have converted all of their write intents.
+
+### Creation of a TR
+The Client decides who the TRH will be for a given transaction and sends a message to it to let it know that it is responsible for the coordination tasks. For performance reasons, the client lazily waits for its first write, and piggy-backs the TRH-assignment message onto this first write, thus designating the first write participant as the TRH. A `TransactionRecord(TR)` is created at the TRH for the transaction as a regular write - it has a key and a value. The key has the same partitionKey as this first write but has a range key which is created as to not conflict with any user data (e.g.  txn timestamp + random()). It is by this key that anyone can find the TR for a transaction in the cluster, even across failures or partition maintenance(merge/split).
+
+- Happy case: The TRH receives the create TR request and creates a new TR in the `InProgress` state.
+- Failure Case 1: Upon attempting to create a TR, the TRH has an existing record in state `InProgress`. This can happen if the create message times out and client retries to create the TR. The resolution is to return a 201_CREATED status to signal that the record has been created.
+    - Resolution: Client can proceed as normal.
+- Failure Case 2: Upon attempting to create a TR, the TRH has an existing record in state `ForcedAbort`. This can happen if there was a race condition where this transaction was able to place a WI on another partition but hasn't been able to create the TR yet (e.g. timeout). Another txn can encounter the WI, perform a PUSH which discovers no TR. This causes the PUSH to create a TR in the `ForcedAbort` state. Our txn now comes in to create its TR but it sees this `ForcedAbort`.
+    - Resolution: The client will receive a response signalling that the TR create has been denied. The client has to issue a transactionEnd(Abort) operation so that the transaction is properly cleaned up.
+
+### Transaction Finalization
+If a transaction commits or aborts, we record this fact in the TR and have to perform finalization. This is the step where we ask all write participants to convert their write intents into proper records (committed or aborted). Once all of this cleanup work is done, we can delete the TR from the system as it is no longer needed.
+
+* it is possible to get a race scenario where a write encounters a WI and does a PUSH. Meanwhile, the TRH issues the cleanup, converts the WI into persisted value, and then removes the TR. By the time the PUSH comes to resolve it finds no record of the transaction and will create a ForcedAbort record for it since we will pick the Pushing transaction as the winner. This is fine as this ForcedAbort record is never consulted for any reason - it is just garbage which we'll collect at the end of the retention window. When the pushing transaction comes back to the node, we re-run the local operation once more as if we just got it so that we cover this race condition:
+    - If the record is still a WI, we convert it to aborted and proceed as if we found an aborted record in the first place. Note that the scenario "find WI -> perform PUSH -> find no TR -> forceAbort -> find WI" cannot be racing with a fast "commit TR -> finalize TR -> delete TR" scenario since if there was a successful finalization performed while we were trying to push, then by the time we get back the record cannot be in WI state. Therefore it is safe to simply abort the WI.
+    - If the record is committed/aborted, proceed as if we found a committed/aborted record in the first place
+
+## Data Retention
+Our system is fundamentally MVCC-based. In order to satisfy concurrent transactions correctly, we require that multiple versions of records are present to cover the span of these transactions in time. Moreover, we alow users to perform snapshot reads (reads from a snapshot of the data at a particular point in time) which means that we need to have data retention for the record versions in order to allow those reads.
+
+To remain correct, we allow the users to specify the data retention window. Nodes use their local TSOs to obtain a current timestamp and using this retentionWindow, perform a few tasks and impose some restrictions:
+1. The retentionWindow has minimum value sufficient to cover the node-local TSO uncertainty window + polling interval. Typically, we obtain a fresh TIME_NOW from the TSO every 1min so the minimum retention period in this scenario would be ~20us + 2min
+1. We keep around the latest version of a record for as long as needed(until user deletes it). Previous versions of the record (including potential deletes) are kept around for the retention window, i.e. as long as their record timestamps are newer than `TIME_NOW - retentionWindow`
+1. Any operation issued with `ts < time.NOW - retentionWindow` will be automatically aborted.
+1. Any transaction commit with `ts < time.NOW - retentionWindow` will be aborted
+1. Any in-progress transactions running longer than the retentionWindow will be aborted (`ForcedAbort`)
 
 # Outline of approach
 We've chosen a modified Serializable Snapshot Isolation approach, modified to execute in a NO-WAIT fashion - that is, we abort transactions as soon as possible in cases of potential conflict. Roughly, we use MVCC to achieve snapshot isolation, and we enhance the server-side handling and book-keeping to make it serializable, as described in the paper by [Serializable SI - CockroachDB](https://www.cockroachlabs.com/blog/serializable-lockless-distributed-isolation-cockroachdb/) and  [Serializable Isolation for Snapshot Databases](./papers/SerializableSnapshotIsolation-fekete-sigmod2008.pdf). Causality is guaranteed by our approach to timestamp generation (see TSO above). The following sections dive in each aspect of performing transactions.
@@ -258,16 +307,6 @@ The commit step is rather simple once we realize that if the client application 
 ## Abort
 Abort is performed identically to the commit - we send a message to the TRH, setting the state of the transaction to `Aborted`. The TRH then has to go and perform asynchronous cleanup of write intents (if any) at the transaction participants
 
-## Transaction Heartbeat
-There is a server-side timeout of 100ms per transaction, maintained at the TRH. The client is required to emit a heartbeat to the TRH to make sure the transaction is not marked as abandoned and thus aborted by the server automatically.
-This heartbeat is also used by all of the participants in the transaction. They periodically check with the TRH to make sure the txn is still alive
-
-## Transaction Finalization
-This is an asynchronous process which is driven by the TRH to handle the transaction state in the entire system after the transaction is committed/aborted. This process involves communicating with all transaction write participants in order to commit/abort the WIs present in these participants.
-The process is always driven by the client application since without a commit/abort message from the client, the TRH does not know what are all of the write participants - this information is sent to the TRH in the commit/abort message from the application.
-For internally-driven abort (e.g. as a result of a PUSH), we simply mark the TRH state as aborted but we still do not kickoff the finalization process. We initiate the process when the client comes to commit/abort.
-In the case when the client abandons a transaction, the heartbeat to the TRH will cease and the TRH will self-mark the transaction as aborted. Each participant independently will discover that it has WIs which are too old (>heartbeat_interval), and will contact the TRH to make sure the TXN is alive. They will discover that the transaction has been aborted due to the missing heartbeat and will cleanup their write intents. A good place to maintain this information at each participant is the `MTR->[WI]` cache as an LRU list.
-
 ## Recovery process
 <mark>TODO</mark> describe handling of failures of TRH, Read participant, Write participant
 
@@ -277,8 +316,14 @@ In the case when the client abandons a transaction, the heartbeat to the TRH wil
 ## GC process
 <mark>TODO</mark> give details on GC for WALs
 
+### GC for user records
+### GC for txn records
+probably match the user-records design above
+### GC for WAL
+
+
 ## Other ideas
-- It may be helpful to allow appications to execute operations in batches so that we can group operations to the same node into single message
+- It may be helpful to allow applications to execute operations in batches so that we can group operations to the same node into single message
 - Allow WI to be placed at any point in the history as long as they don't conflict with the read cache.
 - Consider using separate WAL for intents. Potentially cheaper to GC since we can just maintain a watermarm and drop the tail past the watermark once WIs are finalized. May cause write amplification though
 - provide atomic higher-level operations (sinfonia style):
@@ -306,3 +351,4 @@ It is possible to reduce total transaction execution time by as much as 50% in c
 # Benchmark
 - [UW YCSB-T repo - requires account](https://syslab.cs.washington.edu/research/transtorm/)
 - [UW YCSB-T paper](./papers/YCSB+T.pdf)
+- [Harding's](./papers/harding.pdf)
