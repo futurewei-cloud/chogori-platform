@@ -24,7 +24,11 @@ test_transport: build
 	@echo ">>> Testing transport"
 	@../$(BUILD_DIR)/test/transport/payload_test && testReturnCode=$? && exit $(testReturnCode)
 
-test: test_plog test_volume test_transport
+test_k23si: build
+	@echo ">>> Testing k23si"
+	@../$(BUILD_DIR)/test/k23si/read_cache_test && testReturnCode=$? && exit $(testReturnCode)
+
+test: test_plog test_volume test_transport test_k23si
 
 integrate: build
 	@echo ">>> Running integration test"

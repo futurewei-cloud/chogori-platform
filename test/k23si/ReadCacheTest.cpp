@@ -4,7 +4,7 @@
 
 #define CATCH_CONFIG_MAIN
 
-#include <k2/module/k23si/read_cache.h>
+#include <k2/module/k23si/ReadCache.h>
 #include "catch2/catch.hpp"
 
 SCENARIO("Basic read cache tests") {
