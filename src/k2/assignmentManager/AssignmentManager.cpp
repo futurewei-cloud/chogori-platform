@@ -37,14 +37,15 @@ seastar::future<> AssignmentManager::start() {
 
 seastar::future<std::tuple<Status, dto::AssignmentCreateResponse>>
 AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
-    K2INFO("Received request to create assignment in collection " << request.collectionName
+    K2INFO("Received request to create assignment in collection " << request.collectionMeta.name
            << ", for partition " << request.partition);
     // TODO, consider current load on all cores and potentially re-route the assignment to a different core
     // for now, simply pass it onto local handler
-    return PManager().assignPartition(request.collectionName, std::move(request.partition))
+    return PManager().assignPartition(std::move(request.collectionMeta), std::move(request.partition))
         .then([](auto partition) {
+            auto status = (partition.astate == dto::AssignmentState::Assigned) ? Status::S201_Created() : Status::S403_Forbidden("partition assignment was not allowed");
             dto::AssignmentCreateResponse resp{.assignedPartition = std::move(partition)};
-            return RPCResponse(Status::S201_Created(), std::move(resp));
+            return RPCResponse(std::move(status), std::move(resp));
         });
 }
 

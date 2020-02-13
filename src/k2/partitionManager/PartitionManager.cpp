@@ -29,15 +29,22 @@ seastar::future<> PartitionManager::start() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<dto::Partition> PartitionManager::assignPartition(const String& cname, dto::Partition partition) {
-    partition.astate = dto::AssignmentState::Assigned;
-    partition.endpoints.insert(RPC().getServerEndpoint(TCPRPCProtocol::proto)->getURL());
-    if (seastar::engine()._rdma_stack) {
-        partition.endpoints.insert(RPC().getServerEndpoint(RRDMARPCProtocol::proto)->getURL());
+seastar::future<dto::Partition>
+PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition partition) {
+    if (meta.storageDriver == "k23si") {
+        partition.astate = dto::AssignmentState::Assigned;
+        partition.endpoints.insert(RPC().getServerEndpoint(TCPRPCProtocol::proto)->getURL());
+        if (seastar::engine()._rdma_stack) {
+            partition.endpoints.insert(RPC().getServerEndpoint(RRDMARPCProtocol::proto)->getURL());
+        }
+
+        _pmodule = std::make_unique<K23SIPartitionModule>(meta.name, partition);
+        K2INFO("Assigned partition for driver k23si");
     }
-
-    _pmodule = std::make_unique<K23SIPartitionModule>(cname, partition);
-
+    else {
+        K2WARN("Storage driver not supported: " << meta.storageDriver);
+        partition.astate = dto::AssignmentState::FailedAssignment;
+    }
     return seastar::make_ready_future<dto::Partition>(std::move(partition));
 }
 

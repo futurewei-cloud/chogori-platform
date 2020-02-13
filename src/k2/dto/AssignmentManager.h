@@ -8,9 +8,9 @@ namespace dto {
 
 // Request to create a collection
 struct AssignmentCreateRequest {
-    String collectionName;
+    CollectionMetadata collectionMeta;
     Partition partition;
-    K2_PAYLOAD_FIELDS(collectionName, partition);
+    K2_PAYLOAD_FIELDS(collectionMeta, partition);
 };
 
 // Response to AssignmentCreateRequest

@@ -3,7 +3,7 @@
 // third-party
 #include <k2/common/Common.h>
 #include <k2/dto/Collection.h>
-#include <k2/module/k23si/module.h>
+#include <k2/module/k23si/Module.h>
 #include <seastar/core/distributed.hh>  // for dist stuff
 #include <seastar/core/future.hh>       // for future stuff
 
@@ -13,7 +13,7 @@ class PartitionManager {
 public: // application lifespan
     PartitionManager();
     ~PartitionManager();
-    seastar::future<dto::Partition> assignPartition(const String& cname, dto::Partition partition);
+    seastar::future<dto::Partition> assignPartition(dto::CollectionMetadata meta, dto::Partition partition);
 
     // required for seastar::distributed interface
     seastar::future<> stop();

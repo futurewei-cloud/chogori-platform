@@ -127,7 +127,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
             continue;
         }
         dto::AssignmentCreateRequest request;
-        request.collectionName = name;
+        request.collectionMeta = collection.metadata;
         request.partition = part;
         K2INFO("Sending assignment for partition: " << request.partition);
         futs.push_back(
