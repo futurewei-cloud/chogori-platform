@@ -38,7 +38,7 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
             partition.endpoints.insert(RPC().getServerEndpoint(RRDMARPCProtocol::proto)->getURL());
         }
 
-        _pmodule = std::make_unique<K23SIPartitionModule>(meta.name, partition);
+        _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);
         K2INFO("Assigned partition for driver k23si");
     }
     else {
