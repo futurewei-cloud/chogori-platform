@@ -59,10 +59,10 @@ public :  // application lifespan
 
     // worker public APIs
     // worker API updating the controlInfo, triggered from controller through SS cross-core communication
-    seastar::future<> UpdateWorkerControlInfo(TSOWorkerControlInfo controlInfo);
+    void UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo);
 
     // worker API to provide its URLs
-    seastar::future<std::vector<std::vector<k2::String>>> GetWorkerURLs();
+    std::vector<k2::String> GetWorkerURLs();
 
     // controller public APIs
 
@@ -297,7 +297,7 @@ class TSOService::TSOWorker
     DISABLE_COPY_MOVE(TSOWorker);
 
     // get updated controlInfo from controller and update local copy
-    seastar::future<> UpdateWorkerControlInfo(TSOWorkerControlInfo controlInfo);
+    void UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo);
 
     // periodical task to send statistics to controller core
     seastar::future<> SendWorkderStatistics() {return seastar::make_ready_future<>();};

@@ -1,11 +1,10 @@
 #include "seastar/core/sleep.hh"
 
 #include <k2/common/Log.h>
+#include <k2/dto/MessageVerbs.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 
 #include "TSOService.h"
-#include "MessageVerbs.h"
-
 
 namespace k2 {
 
