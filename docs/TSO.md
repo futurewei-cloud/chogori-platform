@@ -128,7 +128,12 @@ The reason that TbeNanoSecStep is not 1 (thus can be ignored) is related with th
 
 K2 TSO server is a K2 server application which is based on SeaStar platform. Each core is dedicated to its own task/role. On TSO Server (master instance), which is a multi core system(we do not need multi-socket system, as cross socket synchronization is too expensive), cores are split into two roles, one is control core, and the rest are worker cores. 
 
-#### workder cores
+#### worker cores
+If current TSO instance is not master, there is nothing much for worker core to do. If it is a master, worker core key responsibility is to
+1. handle TSO client request, issuing time stamp (batch). This is a normal priority task.
+2. handle config data(TSOWorkerControlInfo below) update task issued from the control core. This is a high priority task.
+3. collect and aggregate statistics data of this core for control core to collect. This is a low priority task.
+
 Each worker core has following local config data needed to generate batch, all are set by the control core.
 ```
 struct TSOWorkerControlInfo
@@ -141,11 +146,6 @@ struct TSOWorkerControlInfo
     uint8_t  TTLus                  - TTL of batch on the client side in microseconds
 }   
 ```
-
-There are three type of tasks each worker core handles and they are on (High, Normal, Low) priority schduling groups
-- High Priority - config data update task issued from the control core
-- Normal - TSO client request processing
-- Low - periodically send aggregated statistics data of this core to control core (Todo: more detail design)
 
 A worker core doesn't coordinate with other worker core, as cross-core communication is expensive(>0.5 microsecond in SeaStar), so we need to make sure different work core will issue batch of different timestamp (even at the same nano second). Thus, for each work core, it will use its SeaStar core ID as starting base of nano second value in the TbeTSEBase and each timeStamp in the batch will be number of work core, i.e. TbeNanoSecStep away from each other. For example, say we have 20 worker cores and their id are 0, 1, ... 19, then for core 0, the nano second value in the starting batch (of the microsecond) will be 0, 20, 40, ... and core 1 will be 1, 21, 41, ... etc. For each microsecond, each worker core can issue at most 1000/number or work core time stamps.  
 

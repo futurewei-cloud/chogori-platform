@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Chrono.h"
-#include <k2/transport/Serialization.h>
+#include <k2/transport/PayloadSerialization.h>
 
 namespace k2
-{    
+{
     enum TimeStampComparisonResult : int8_t {
         UN = -2,    // Unknown      - when compare TimeStamp from different TSO and uncertainty window overlaps
         LT = -1,    // Less than    - if two K2TimeStamp are of same TSOId,  this.Te < other.Te. If different TSOId, this.Te < other.Ts 
@@ -22,9 +22,9 @@ namespace k2
         inline constexpr SysTimePt TEnd()  { return SysTimePt_FromNanoTSE(_tEndTSECount); } ;     
         // start time of uncertainty window;
         inline constexpr uint64_t TStartTSECount()  {return _tEndTSECount - _tStartDelta; } ;
-        inline constexpr SysTimePt TStart()  { return SysTimePt_FromNanoTSE(TStartTSECount()); };   
+        inline constexpr SysTimePt TStart()  { return SysTimePt_FromNanoTSE(TStartTSECount()); };
         // global unique Id of the TSO issuing this TS
-        inline constexpr uint32_t TSOId() { return _tsoId; };                     
+        inline constexpr uint32_t TSOId() { return _tsoId; };
 
         constexpr TimeStampComparisonResult Compare(TimeStamp& other) 
         {
@@ -44,7 +44,7 @@ namespace k2
             _tEndTSECount(tEndTSECount), _tsoId(tsoId), _tStartDelta(tStartDelta) {};
 
         private:
-        
+
         uint64_t _tEndTSECount;         // nanosec count of tEnd's TSE
         uint32_t _tsoId;
         uint16_t _tStartDelta;          // TStart delta from TEnd in nanoseconds, 64K nanoseconds max
