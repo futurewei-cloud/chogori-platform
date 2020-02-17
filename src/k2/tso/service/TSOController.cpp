@@ -87,24 +87,29 @@ void TSOService::TSOController::InitWorkerControlInfo()
 
 seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
 {
-    std::vector<std::vector<k2::String>> result;
     return seastar::map_reduce(boost::irange(1u, seastar::smp::count),   // all worker cores, starting from 1
-        [this] (unsigned cpuId) mutable {
-            return _outer._baseApp.getDist<k2::TSOService>().invoke_on(cpuId, &TSOService::GetWorkerURLs());
+        [this] (unsigned cpuId) {
+            return _outer._baseApp.getDist<k2::TSOService>().invoke_on(cpuId, &TSOService::GetWorkerURLs)
+            .then([] (std::vector<k2::String>&& urls) {
+                std::vector<std::vector<k2::String>> wrapped_urls;
+                wrapped_urls.emplace_back(std::move(urls));
+                return seastar::make_ready_future<std::vector<std::vector<k2::String>>>(std::move(wrapped_urls));
+            });
         },
-        result,
-        [this] (std::vector<std::vector<k2::String>>&& singleRes, std::vector<std::vector<k2::String>> result) mutable {
+        std::vector<std::vector<k2::String>>(),
+        [] (std::vector<std::vector<k2::String>>&& singleRes, std::vector<std::vector<k2::String>>&& result) {
             if (singleRes.size() != 0)
             {
-                K2ASSERT(singleRes.size() == 1 && singleRes[0].size() > 0, "Invalid worker URLs");
-                result.emplace_back(std::move(signalRes[0]));
+                K2ASSERT(singleRes[0].size() > 0 && singleRes.size() == 1, "Invalid worker URLs");
+                result.insert(result.end(), singleRes.begin(), singleRes.end());
             }
+            return result;
         })
-        .then([this] (std::vector<std::vector<k2::String>> res = std::move(result)) mutable 
-        {
-            _workersURLs = std::move(res);
-            return seastar::make_ready_future<>();
-        });
+    .then([this] (std::vector<std::vector<k2::String>>&& result) mutable 
+    {
+        _workersURLs = std::move(result);
+        return seastar::make_ready_future<>();
+    });
 }
 
 seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold) 
@@ -334,9 +339,11 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
     _lastSentControlInfo = _controlInfoToSend;
 
     // step 3/3 submit to workers
-    seastar::distributed<k2::TSOService>& dist = _outer._baseApp.getDist<k2::TSOService>();
+    auto& dist = _outer._baseApp.getDist<k2::TSOService>();
     return dist.invoke_on_others(
-        [_controlInfoToSend] (auto& dist) mutable {return dist.local().UpdateWorkerControlInfo(controlInfo);});
+        [info=_controlInfoToSend] (auto& worker) {
+            worker.UpdateWorkerControlInfo(info);
+        });
 }
 
 void TSOService::TSOController::Suicide()

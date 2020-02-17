@@ -4,10 +4,10 @@
 #include <k2/common/Log.h>
 #include <k2/common/Chrono.h>
 #include <k2/config/Config.h>
+#include <k2/dto/MessageVerbs.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 
 #include "TSOService.h"
-#include "MessageVerbs.h"
 
 namespace k2 
 {
@@ -27,20 +27,20 @@ seastar::future<> TSOService::TSOWorker::stop()
     return seastar::make_ready_future<>();
 }
 
-void RegisterGetTSOTimeStampBatch();
+void TSOService::TSOWorker::RegisterGetTSOTimeStampBatch()
 {
     k2::RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable 
     {
         // TODO: handle exceptions
         auto response = request.endpoint.newPayload();
-        auto timeStampBatch = GetTimeStampFromTSO();
+        auto timeStampBatch = GetTimeStampFromTSO(1); // TODO get batch size from request
         //K2INFO("time stamp batch returned is: " << timeStampBatch);
         response->write(timeStampBatch);
         k2::RPC().sendReply(std::move(response), request);
     });
 }
 
-seastar::future<> TSOService::TSOWorker::UpdateWorkerControlInfo(TSOWorkerControlInfo controlInfo)
+void TSOService::TSOWorker::UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo)
 {
     if (_curControlInfo.IsReadyToIssueTS && controlInfo.IsReadyToIssueTS)
     {
@@ -74,8 +74,6 @@ seastar::future<> TSOService::TSOWorker::UpdateWorkerControlInfo(TSOWorkerContro
         K2ASSERT(!_curControlInfo.IsReadyToIssueTS && !controlInfo.IsReadyToIssueTS, "Noop update!");
         K2ASSERT(false, "!_curControlInfo.IsReadyToIssueTS && !controlInfo.IsReadyToIssueTS");
     }
-
-    return seastar::make_ready_future<>(); 
 }
 
 void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo)
