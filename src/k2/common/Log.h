@@ -87,3 +87,11 @@ inline LogEntry StartLogStream() {
 #else
 #define K2ASSERT(cond, msg)
 #endif
+
+#define K2EXPECT(actual, exp) { \
+    if (!((actual) == (exp))) { \
+        K2ERROR((#actual) << " == " << (#exp)); \
+        K2ERROR("+++++++++++++++++++++ Expectation failed ++++++++++++++++( actual=" << actual <<", exp="<< exp<< ")"); \
+        throw std::runtime_error("test failed"); \
+    } \
+}

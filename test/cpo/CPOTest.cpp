@@ -6,13 +6,6 @@
 #include <k2/appbase/AppEssentials.h>
 
 using namespace k2;
-#define K2EXPECT(actual, exp) { \
-    if (!((actual) == (exp))) { \
-        K2ERROR((#actual) << " == " << (#exp)); \
-        K2ERROR("+++++++++++++++++++++ Test FAIL ++++++++++++++++( actual=" << actual <<", exp="<< exp<< ")"); \
-        throw std::runtime_error("test failed"); \
-    } \
-}
 
 CPOTest::CPOTest():exitcode(0) {
     K2INFO("ctor");
@@ -24,15 +17,16 @@ CPOTest::~CPOTest() {
 
 seastar::future<> CPOTest::stop() {
     K2INFO("stop");
-    return seastar::make_ready_future<>();
+    return std::move(_testFuture);
 }
 
 seastar::future<> CPOTest::start() {
+    K2INFO("start");
     ConfigVar<std::string> configEp("cpo_endpoint");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
     // let start() finish and then run the tests
-    (void)seastar::sleep(1ms)
+    _testFuture = seastar::sleep(1ms)
         .then([this] { return runTest1(); })
         .then([this] { return runTest2(); })
         .then([this] { return runTest3(); })
@@ -135,7 +129,7 @@ seastar::future<> CPOTest::runTest4() {
 
 seastar::future<> CPOTest::runTest5() {
     K2INFO(">>> Test5: create a collection with assignments");
-    std::vector<String> eps{ "tcp+k2rpc://0.0.0.0:10000", "tcp+k2rpc://0.0.0.0:10001", "tcp+k2rpc://0.0.0.0:10002" };
+
     auto request = dto::CollectionCreateRequest{
         .metadata{
             .name = "collectionAssign",
@@ -144,8 +138,11 @@ seastar::future<> CPOTest::runTest5() {
             .capacity{
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
-                .writeIOPs = 100000}},
-        .clusterEndpoints = eps};
+                .writeIOPs = 100000
+            }
+        },
+        .clusterEndpoints = _k2ConfigEps()
+    };
     return RPC()
         .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, std::move(request), *_cpoEndpoint, 1s)
         .then([](auto response) {
@@ -163,7 +160,7 @@ seastar::future<> CPOTest::runTest5() {
             return RPC()
                 .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, std::move(request), *_cpoEndpoint, 100ms);
         })
-        .then([eps](auto response) {
+        .then([this](auto response) {
             auto& [status, resp] = response;
             K2EXPECT(status, Status::S200_OK());
             K2EXPECT(resp.collection.metadata.name, "collectionAssign");
@@ -176,7 +173,7 @@ seastar::future<> CPOTest::runTest5() {
             K2EXPECT(resp.collection.partitionMap.partitions.size(), 3);
 
             // how many partitions we have
-            uint64_t numparts = eps.size();
+            uint64_t numparts = _k2ConfigEps().size();
             auto max = std::numeric_limits<uint64_t>::max();
             // how big is each one
             uint64_t partSize = max / numparts;
@@ -188,8 +185,8 @@ seastar::future<> CPOTest::runTest5() {
                 K2EXPECT(p.pid.assignmentVersion, 1);
                 K2EXPECT(p.pid.id, i);
                 K2EXPECT(p.startKey, std::to_string(i * partSize));
-                K2EXPECT(p.endKey, std::to_string(i == eps.size() -1 ? max : (i + 1) * partSize - 1));
-                K2EXPECT(*p.endpoints.begin(), eps[i]);
+                K2EXPECT(p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
+                K2EXPECT(*p.endpoints.begin(), _k2ConfigEps()[i]);
             }
         });
 }
