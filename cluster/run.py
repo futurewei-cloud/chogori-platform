@@ -1,5 +1,29 @@
-import parse
+#!/usr/bin/env python3
 
-runnables = parse.parseConfig("configs/tpcc_cluster.cfg")
+import parse
+import argparse
+from fabric import Connection
+
+parser = argparse.ArgumentParser(description="Utility script to start/stop/kill cluster components")
+parser.add_argument("--config_file", help="Top-level config file that specifices a cluster")
+parser.add_argument("--start", nargs="*", default="", help="List of component names (from config_file) to be started")
+parser.add_argument("--stop", nargs="*", default="", help="List of component names (from config_file) to be stopped")
+args = parser.parse_args()
+
+print(args.config_file)
+runnables = parse.parseConfig(args.config_file)
 for r in runnables:
-    print(r)
+    if r.name in args.start or "all" in args.start:
+        print("Starting:")
+        print(r)
+        conn = Connection(r.host, user="user")
+        pull = conn.run(r.getDockerPull())
+        print(pull)
+        start = conn.run(r.getDockerRun())
+        print(start)
+    if r.name in args.stop or "all" in args.stop:
+        print("Stopping:")
+        print(r)
+        conn = Connection(r.host, user="user")
+        start = conn.run(r.getDockerStop())
+        print(start)
