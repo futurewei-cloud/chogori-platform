@@ -18,6 +18,15 @@ struct Key {
 
     // the range key used to uniquely identify a record in the owner partition
     String rangeKey;
+
+    int compare(const Key& o) const noexcept;
+    bool operator<(const Key& o) const noexcept;
+    bool operator<=(const Key& o) const noexcept;
+    bool operator>(const Key& o) const noexcept;
+    bool operator>=(const Key& o) const noexcept;
+    bool operator==(const Key& o) const noexcept;
+
+    size_t hash() const noexcept;
     K2_PAYLOAD_FIELDS(partitionKey, rangeKey);
 };
 
@@ -33,15 +42,18 @@ enum AssignmentState: uint8_t {
 // but it can also be an integral type for hash-based partitioning
 struct Partition {
     // the partition version
-    struct PVersion {
+    struct PVID {
         // the partition id
         uint64_t id = 0;
         // version incremented each time we change the range that this partition owns
         uint64_t rangeVersion = 0;
         // version incremented each time we assign the partition to different K2 node
         uint64_t assignmentVersion = 0;
+        bool operator==(const PVID& o) const {
+            return id == o.id && rangeVersion == o.rangeVersion && assignmentVersion == o.assignmentVersion;
+        }
         K2_PAYLOAD_COPYABLE;
-    } pid;
+    } pvid;
     // the starting key for the partition
     String startKey;
     // the ending key for the partition
@@ -51,7 +63,7 @@ struct Partition {
     // the current assignment state of the partition
     AssignmentState astate = AssignmentState::NotAssigned;
 
-    K2_PAYLOAD_FIELDS(pid, startKey, endKey, endpoints, astate);
+    K2_PAYLOAD_FIELDS(pvid, startKey, endKey, endpoints, astate);
 
     // Partitions are ordered based on the ordering of their start keys
     bool operator<(const Partition& other) const noexcept {
@@ -61,9 +73,9 @@ struct Partition {
     // for debug printing
     friend std::ostream& operator<<(std::ostream& os, const Partition& part) {
         os << "("
-           << "rVersion=" << part.pid.rangeVersion
-           << ", aVersion=" << part.pid.assignmentVersion
-           << ", id=" << part.pid.id
+           << "rVersion=" << part.pvid.rangeVersion
+           << ", aVersion=" << part.pvid.assignmentVersion
+           << ", id=" << part.pvid.id
            << ", sKey=" << part.startKey
            << ", eKey=" << part.endKey
            << ", eps=[";
@@ -131,14 +143,14 @@ public:
     // code which attempts to use a method not overridden by an implementation will not compile
 
     // Returns the partition for the given key
-    virtual const Partition& getPartitionForKey(Key key);
+    virtual const Partition& getPartitionForKey(Key key)=0;
 
     // Returns the partition for the given hash value. If the collection doesn't use hashing,
     // the given hvalue is converted to a string and used to find the partition with the range that
     // covers this hvalue
-    virtual const Partition& getPartitionForHash(uint64_t hvalue);
+    virtual const Partition& getPartitionForHash(uint64_t hvalue)=0;
     // same as above, but the argument is first converted to uint64_t
-    virtual const Partition& getPartitionForHash(String hvalue);
+    virtual const Partition& getPartitionForHash(String hvalue)=0;
 
     // the collection we're wrapping
     Collection coll;
@@ -161,7 +173,19 @@ class RangePartitionGetter : public PartitionGetter {
 public:
     RangePartitionGetter(Collection&& coll);
     virtual ~RangePartitionGetter();
+    virtual const Partition& getPartitionForKey(Key key) override;
+    virtual const Partition& getPartitionForHash(uint64_t hvalue) override;
+    virtual const Partition& getPartitionForHash(String hvalue) override;
 };  // class RangePartitionGetter
 
 } // namespace dto
 } // namespace k2
+
+namespace std {
+template <>
+struct hash<k2::dto::Key> {
+    size_t operator()(const k2::dto::Key& key) const {
+        return key.hash();
+   }
+}; // hash
+} // ns std

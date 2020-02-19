@@ -16,18 +16,28 @@ public:
     };
 
 public:
+    // default ctor
+    Timestamp() = default;
+
+    // ctor
+    Timestamp(uint64_t tEndTSECount, uint32_t tsoId, uint32_t tStartDelta);
+
     // end time of uncertainty window;
-    uint64_t TEndTSECount() const;
+    uint64_t tEndTSECount() const;
 
     // start time of uncertainty window;
-    uint64_t TStartTSECount() const;
+    uint64_t tStartTSECount() const;
 
     // global unique Id of the TSO issuing this TS
-    uint32_t TSOId() const;
+    uint32_t tsoId() const;
 
     // Uncertainty-compatible comparison
-    CompareResult Compare(const Timestamp& other) const;
+    CompareResult compare(const Timestamp& other) const;
 
+    // provides orderable comparison between timestamps. It returns LT, EQ, or GT - never UN
+    // Two timestamps are EQ if they are from same TSO and their start/end times are identical
+    // This is useful for comparisons which want to ignore potential uncertainty.
+    CompareResult compareCertain(const Timestamp& other) const;
 private:
     uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE
     uint32_t _tsoId = 0;

@@ -4,6 +4,13 @@
 namespace k2
 {
 
+//  Binary which just reference some data. Owner of the data needs to make sure that when it delete the data
+//  nobody has the reference to it
+Binary binaryReference(void* data, size_t size)
+{
+    return Binary((char*)data, size, seastar::deleter());
+}
+
 enum class LogType : uint8_t
 {
     Add,

@@ -180,7 +180,6 @@ seastar::lw_shared_ptr<TCPRPCChannel> TCPRPCProtocol::_getOrMakeChannel(TXEndpoi
     K2DEBUG("creating new channel");
 
     // TODO support for IPv6?
-    // TODO support for binding to local port
     auto address = seastar::make_ipv4_address({endpoint.getIP().c_str(), uint16_t(endpoint.getPort())});
 
     // we can only get a future for a connection at some point.

@@ -186,6 +186,7 @@ public: // API
         _Size size;
         if (!read(size))
             return false;
+        m.reserve(size);
 
         for (_Size i = 0; i < size; i++) {
             KeyT key;
@@ -206,10 +207,11 @@ public: // API
         _Size size;
         if (!read(size))
             return false;
+        vec.reserve(size);
 
         for (_Size i = 0; i < size; i++) {
             ValueT value;
-            if (!read(value))  //  TODO: read directly into array
+            if (!read(value))
                 return false;
 
             vec.push_back(std::move(value));
@@ -243,6 +245,7 @@ public: // API
         _Size size;
         if (!read(size))
             return false;
+        s.reserve(size);
 
         for (_Size i = 0; i < size; i++) {
             T key;

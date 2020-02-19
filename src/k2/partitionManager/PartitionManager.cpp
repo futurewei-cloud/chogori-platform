@@ -32,19 +32,29 @@ seastar::future<> PartitionManager::start() {
 seastar::future<dto::Partition>
 PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition partition) {
     if (meta.storageDriver == "k23si") {
-        partition.astate = dto::AssignmentState::Assigned;
-        partition.endpoints.insert(RPC().getServerEndpoint(TCPRPCProtocol::proto)->getURL());
-        if (seastar::engine()._rdma_stack) {
-            partition.endpoints.insert(RPC().getServerEndpoint(RRDMARPCProtocol::proto)->getURL());
-        }
-
         _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);
-        K2INFO("Assigned partition for driver k23si");
+        return _pmodule->start().then([partition = std::move(partition)] () mutable {
+            auto tcpep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
+            if (tcpep) {
+                partition.endpoints.insert(tcpep->getURL());
+            }
+            auto rdmaep = RPC().getServerEndpoint(RRDMARPCProtocol::proto);
+            if (rdmaep) {
+                partition.endpoints.insert(rdmaep->getURL());
+            }
+            if (partition.endpoints.size() > 0) {
+                partition.astate = dto::AssignmentState::Assigned;
+                K2INFO("Assigned partition for driver k23si");
+            }
+            else {
+                K2ERROR("Server not configured correctly. there were no listening protocols configured");
+            }
+            return seastar::make_ready_future<dto::Partition>(std::move(partition));
+        });
     }
-    else {
-        K2WARN("Storage driver not supported: " << meta.storageDriver);
-        partition.astate = dto::AssignmentState::FailedAssignment;
-    }
+
+    K2WARN("Storage driver not supported: " << meta.storageDriver);
+    partition.astate = dto::AssignmentState::FailedAssignment;
     return seastar::make_ready_future<dto::Partition>(std::move(partition));
 }
 

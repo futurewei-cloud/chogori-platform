@@ -71,7 +71,7 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
         uint64_t end = (i == eps.size() -1) ? (max) : ((i+1)*partSize - 1);
 
         dto::Partition part{
-            .pid{
+            .pvid{
                 .id = i,
                 .rangeVersion=1,
                 .assignmentVersion=1
@@ -129,6 +129,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         dto::AssignmentCreateRequest request;
         request.collectionMeta = collection.metadata;
         request.partition = part;
+
         K2INFO("Sending assignment for partition: " << request.partition);
         futs.push_back(
         RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
@@ -163,9 +164,9 @@ void CPOService::_handleCompletedAssignment(const String& cname, dto::Assignment
     for (auto& part: haveCollection.partitionMap.partitions) {
         if (part.startKey == request.assignedPartition.startKey &&
             part.endKey == request.assignedPartition.endKey &&
-            part.pid.id == request.assignedPartition.pid.id &&
-            part.pid.assignmentVersion == request.assignedPartition.pid.assignmentVersion &&
-            part.pid.rangeVersion == request.assignedPartition.pid.rangeVersion) {
+            part.pvid.id == request.assignedPartition.pvid.id &&
+            part.pvid.assignmentVersion == request.assignedPartition.pvid.assignmentVersion &&
+            part.pvid.rangeVersion == request.assignedPartition.pvid.rangeVersion) {
                 K2INFO("Assignment received for active partition " << request.assignedPartition);
                 part.astate = request.assignedPartition.astate;
                 _saveCollection(haveCollection);

@@ -6,6 +6,7 @@
 
 #include <k2/transport/Status.h>
 #include <k2/dto/AssignmentManager.h>
+#include <k2/dto/TSO.h>
 
 namespace k2 {
 

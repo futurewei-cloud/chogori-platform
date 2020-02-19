@@ -82,6 +82,6 @@ public: // fields
     uint32_t requestID = 0;
     uint32_t responseID = 0;
     uint32_t checksum = 0;
-    // MAYBE TODO CRC, crypto, sender endpoint
+    // MAYBE TODO  crypto, sender endpoint
 };
 } // k2

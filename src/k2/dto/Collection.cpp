@@ -5,6 +5,34 @@
 namespace k2 {
 namespace dto {
 
+int Key::compare(const Key& o) const noexcept {
+    auto pkcomp = partitionKey.compare(o.partitionKey);
+    if (pkcomp == 0) {
+        // if the partition keys are equal, return the comparison of the range keys
+        return rangeKey.compare(o.rangeKey);
+    }
+    return pkcomp;
+}
+
+bool Key::operator<(const Key& o) const noexcept {
+    return compare(o) < 0;
+}
+bool Key::operator<=(const Key& o) const noexcept {
+    return compare(o) <= 0;
+}
+bool Key::operator>(const Key& o) const noexcept {
+    return compare(o) > 0;
+}
+bool Key::operator>=(const Key& o) const noexcept {
+    return compare(o) >= 0;
+}
+bool Key::operator==(const Key& o) const noexcept {
+    return compare(o) == 0;
+}
+size_t Key::hash() const noexcept {
+    return std::hash<k2::String>()(partitionKey) + std::hash<k2::String>()(rangeKey);
+}
+
 std::unique_ptr<PartitionGetter> PartitionGetter::Wrap(Collection&& coll) {
     if (coll.metadata.hashScheme == "hash-crc32") {
         K2DEBUG("Constructing hash-crc32 partition getter for collection: " << coll.metadata.name);
@@ -20,6 +48,7 @@ std::unique_ptr<PartitionGetter> PartitionGetter::Wrap(Collection&& coll) {
 
 PartitionGetter::PartitionGetter(Collection && coll): coll(std::move(coll)){}
 PartitionGetter::~PartitionGetter() {}
+
 HashCRC32CPartitionGetter::HashCRC32CPartitionGetter(Collection&& coll): PartitionGetter(std::move(coll)){
     for (auto& part: coll.partitionMap.partitions) {
         // create a vector of pointers to partitions so that we can do binary search faster
@@ -27,8 +56,6 @@ HashCRC32CPartitionGetter::HashCRC32CPartitionGetter(Collection&& coll): Partiti
     }
 }
 HashCRC32CPartitionGetter::~HashCRC32CPartitionGetter(){}
-RangePartitionGetter::RangePartitionGetter(Collection&& coll) : PartitionGetter(std::move(coll)) {}
-RangePartitionGetter::~RangePartitionGetter() {}
 
 const Partition& HashCRC32CPartitionGetter::getPartitionForKey(Key key) {
     uint32_t c32c = crc32c::Crc32c(key.partitionKey.c_str(), key.partitionKey.size());
@@ -48,6 +75,23 @@ const Partition& HashCRC32CPartitionGetter::getPartitionForHash(uint64_t hvalue)
 
 const Partition& HashCRC32CPartitionGetter::getPartitionForHash(String hvalue) {
     return getPartitionForHash(std::stoull(hvalue.c_str()));
+}
+
+RangePartitionGetter::RangePartitionGetter(Collection&& coll) : PartitionGetter(std::move(coll)) {}
+RangePartitionGetter::~RangePartitionGetter() {}
+const Partition& RangePartitionGetter::getPartitionForKey(Key key) {
+    (void) key;
+    throw std::runtime_error("not implemented");
+}
+
+const Partition& RangePartitionGetter::getPartitionForHash(uint64_t hvalue) {
+    (void) hvalue;
+    throw std::runtime_error("not implemented");
+}
+
+const Partition& RangePartitionGetter::getPartitionForHash(String hvalue) {
+    (void) hvalue;
+    throw std::runtime_error("not implemented");
 }
 
 }  // namespace dto
