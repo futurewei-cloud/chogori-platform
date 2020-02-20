@@ -55,8 +55,6 @@ public :  // application lifespan
     //TODO: implement this
     uint32_t TSOId() {return 1;};
 
-    // todel: seastar::future<> msgReceiver();
-
     // worker public APIs
     // worker API updating the controlInfo, triggered from controller through SS cross-core communication
     void UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo);
@@ -295,6 +293,9 @@ class TSOService::TSOWorker
     seastar::future<> start();
 
     DISABLE_COPY_MOVE(TSOWorker);
+
+    // get worker endpoint URLs of all transport stack, TCP/IP, RDMA, etc.
+    std::vector<k2::String> GetWorkerURLs();
 
     // get updated controlInfo from controller and update local copy
     void UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo);
