@@ -433,7 +433,7 @@ void TSOService::TSOController::CollectAndReportStats()
     return;
 }
 
-seastar::future<> DoCollectAndReportStats()
+seastar::future<> TSOService::TSOController::DoCollectAndReportStats()
 {
     return seastar::make_ready_future<>();
 }

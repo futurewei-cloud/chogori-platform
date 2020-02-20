@@ -70,6 +70,21 @@ seastar::future<> TSOService::start()
         _worker = std::make_unique<TSOService::TSOWorker>(*this);
         return _worker->start();
     }
+}
+
+void TSOService::UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo)
+{
+    K2ASSERT(seastar::engine().cpu_id() != 0 && _worker != nullptr, "UpdateWorkerControlInfo should be on worker core only!");
+
+    return _worker->UpdateWorkerControlInfo(controlInfo);
+}
+
+std::vector<k2::String> TSOService::GetWorkerURLs()
+{
+    K2ASSERT(seastar::engine().cpu_id() != 0 && _worker != nullptr, "GetWorkerURLs should be on worker core only!");
+
+    return _worker->GetWorkerURLs();
+}
 
     /*
     K2INFO("Registering message handlers");
@@ -82,16 +97,18 @@ seastar::future<> TSOService::start()
 
     // call msgReceiver method on core#0
     return _baseApp.getDist<k2::TSOService>().invoke_on(0, &TSOService::msgReceiver);
-    */
+    
 }
 
-/*
+
 seastar::future<> TSOService::msgReceiver() 
 {
     K2INFO("Message received");
     K2INFO("Core 0 Id:" << seastar::engine().cpu_id());
     return seastar::make_ready_future<>();
 } */
+
+
 
 } // namespace k2
 

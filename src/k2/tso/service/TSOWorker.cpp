@@ -27,6 +27,20 @@ seastar::future<> TSOService::TSOWorker::stop()
     return seastar::make_ready_future<>();
 }
 
+std::vector<k2::String> TSOService::TSOWorker::GetWorkerURLs()
+{
+    std::vector<k2::String> result;
+
+    // return all endpoint URLs of various transport type, currently, we must have TCP and RDMA
+    result.emplace_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
+
+    K2ASSERT(seastar::engine()._rdma_stack, "TSOWorker should have RDMA transport.");
+
+    result.emplace_back(k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto)->getURL());
+
+    return result;
+}
+
 void TSOService::TSOWorker::RegisterGetTSOTimeStampBatch()
 {
     k2::RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable 
