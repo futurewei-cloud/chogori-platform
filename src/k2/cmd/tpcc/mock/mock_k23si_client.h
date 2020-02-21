@@ -64,6 +64,7 @@ public:
 private:
     dto::K23SIWriteResponse response;
 };
+
 class EndResult{
 public:
     EndResult(Status s) : status(s) {}
@@ -96,7 +97,7 @@ public:
     }
 
     template <typename ValueType>
-    future<WriteResult> write(dto::Key&& key, String&& collection, ValueType&& value) { 
+    future<WriteResult> write(dto::Key&& key, String&& collection, ValueType&& value) {
         if (!_started) {
             return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
