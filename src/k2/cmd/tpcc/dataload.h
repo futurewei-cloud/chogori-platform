@@ -20,7 +20,7 @@ using namespace k2;
 class DataLoader {
 public:
     DataLoader() = default;
-    DataLoader(std::vector<std::unique_ptr<SchemaType>>&& data) : _data(std::move(data)) {}
+    DataLoader(TPCCData&& data) : _data(std::move(data)) {}
 
     future<> loadData(K23SIClient& client, int pipeline_depth)
     {
@@ -44,22 +44,13 @@ private:
         return do_until(
             [this] { return _data.size() == 0; },
             [this, &txn] () {
-            std::unique_ptr<SchemaType>& row = _data.back();
-            WriteRequest request = {};
-
-            request.key.partition_key = row->getPartitionKey();
-            request.key.row_key = row->getRowKey();
-            request.value = Payload( [] { return Binary(8192); });
-            row->writeData(request.value);
-
+            auto& write_func = _data.back();
             _data.pop_back();
 
-            return txn.write(std::move(request)).then([] (WriteResult result) {
-                if (!result.status.is2xxOK()) {
-                    return make_exception_future<>(std::runtime_error("Write failed during bulk data load"));
-                }
-                return make_ready_future<>();
-            });
+            return write_func(txn)
+            .finally([this] () {
+                _data.pop_back();
+            }).discard_result();
         }).then([&txn] () {
             return txn.end(true);
         }).then([] (EndResult result) {
@@ -71,6 +62,6 @@ private:
         });
     }
 
-    std::vector<std::unique_ptr<SchemaType>> _data;
+    TPCCData _data;
 };
 

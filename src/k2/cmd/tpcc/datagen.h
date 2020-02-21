@@ -3,12 +3,15 @@
 //-->
 #pragma once
 
+#include <seastar/core/future.hh>
+
 #include <vector>
 
+#include "mock/mock_k23si_client.h"
 #include "schema.h"
 #include "tpcc_rand.h"
 
-typedef std::vector<std::unique_ptr<SchemaType>> TPCCData;
+typedef std::vector<std::function<seastar::future<k2::WriteResult>(k2::K2TxnHandle&)>> TPCCData;
 
 TPCCData generateItemData()
 {
@@ -17,7 +20,10 @@ TPCCData generateItemData()
     RandomContext random(0);
 
     for (int i=1; i<=100000; ++i) {
-        data.push_back(std::make_unique<Item>(random, i));
+        auto item = Item(random, i);
+        data.push_back([_item=std::move(item)] (k2::K2TxnHandle& txn) {
+            return writeRow<Item>(std::move(_item), txn);
+        });
     }
 
     return data;
@@ -26,8 +32,15 @@ TPCCData generateItemData()
 void generateCustomerData(TPCCData& data, RandomContext& random, uint32_t w_id, uint16_t d_id)
 {
     for (int i=1; i<3001; ++i) {
-        data.push_back(std::make_unique<Customer>(random, w_id, d_id, i));
-        data.push_back(std::make_unique<History>(random, w_id, d_id, i));
+        auto customer = Customer(random, w_id, d_id, i);
+        data.push_back([_customer=std::move(customer)] (k2::K2TxnHandle& txn) {
+            return writeRow<Customer>(std::move(_customer), txn);
+        });
+
+        auto history = History(random, w_id, d_id, i);
+        data.push_back([_history=std::move(history)] (k2::K2TxnHandle& txn) {
+            return writeRow<History>(std::move(_history), txn);
+        });
     }
 }
 
@@ -43,16 +56,25 @@ void generateOrderData(TPCCData& data, RandomContext& random, uint32_t w_id, uin
         uint32_t c_id = permutationQueue[permutationIdx];
         permutationQueue.erase(permutationQueue.begin()+permutationIdx);
 
-        data.push_back(std::make_unique<Order>(random, w_id, d_id, c_id, i));
-        Order& order = dynamic_cast<Order&>(*data.back());
+        auto order = Order(random, w_id, d_id, c_id, i);
         
         for (int j=1; j<=order.OrderLineCount; ++j) {
-            data.push_back(std::make_unique<OrderLine>(random, order, j));
+            auto order_line = OrderLine(random, order, j);
+            data.push_back([_order_line=std::move(order_line)] (k2::K2TxnHandle& txn) {
+                return writeRow<OrderLine>(std::move(_order_line), txn);
+            });
         }
 
         if (i >= 2101) {
-            data.push_back(std::make_unique<NewOrder>(order));
+            auto new_order = NewOrder(order);
+            data.push_back([_new_order=std::move(new_order)] (k2::K2TxnHandle& txn) {
+                return writeRow<NewOrder>(std::move(_new_order), txn);
+            });
         }
+
+        data.push_back([_order=std::move(order)] (k2::K2TxnHandle& txn) {
+            return writeRow<Order>(std::move(_order), txn);
+        });
     }
 }
 
@@ -74,14 +96,25 @@ TPCCData generateWarehouseData(uint32_t id_start, uint32_t id_end)
     RandomContext random(0);
 
     for (uint32_t i=id_start; i < id_end; ++i) {
-        data.push_back(std::make_unique<Warehouse>(random, i));
+        auto warehouse = Warehouse(random, i);
+
+        data.push_back([_warehouse=std::move(warehouse)] (k2::K2TxnHandle& txn) {
+            return writeRow<Warehouse>(std::move(_warehouse), txn);
+        });
         
         for (uint32_t j=1; j<100001; ++j) {
-            data.push_back(std::make_unique<Stock>(random, i, j));
+            auto stock = Stock(random, i, j);
+            data.push_back([_stock=std::move(stock)] (k2::K2TxnHandle& txn) {
+                return writeRow<Stock>(std::move(_stock), txn);
+            });
         }
 
         for (uint16_t j=1; j<11; ++j) {
-            data.push_back(std::make_unique<District>(random, i, j));
+            auto district = District(random, i, j);
+            data.push_back([_district=std::move(district)] (k2::K2TxnHandle& txn) {
+                return writeRow<District>(std::move(_district), txn);
+            });
+
             generateCustomerData(data, random, i, j);
             generateOrderData(data, random, i, j);
         }

@@ -7,6 +7,8 @@
 #include <seastar/core/future-util.hh>
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
+#include <k2/dto/K23SI.h>
+#include <k2/dto/Collection.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 
@@ -14,62 +16,9 @@ using namespace seastar;
 
 namespace k2 {
 
-class Timestamp {
-public:
-    int64_t getSequence(){ return 0;};
-    int64_t getStart() { return 0; };
-    int64_t getEnd() { return 0; };
-    int64_t getTSOID() { return 0; };
-};
-
-class Metadata {
-public:
-    Timestamp last_updated;
-    int64_t version;
-    K2_PAYLOAD_FIELDS(version);
-};
-
-class Key {
-public:
-    String partition_key;
-    String row_key;
-    K2_PAYLOAD_FIELDS(partition_key, row_key);
-};
-
-std::ostream& operator<<(std::ostream& os, const Key& key) {
-    return os << key.partition_key << key.row_key;
+std::ostream& operator<<(std::ostream& os, const dto::Key& key) {
+    return os << key.partitionKey << key.rangeKey;
 }
-
-struct PUT_Request {
-    Key key;
-    Payload value;
-    K2_PAYLOAD_FIELDS(key, value);
-};
-
-typedef PUT_Request WriteRequest;
-
-struct PUT_Response {
-    Key key;
-    K2_PAYLOAD_FIELDS(key);
-};
-struct GET_Request {
-    Key key;
-    K2_PAYLOAD_FIELDS(key);
-};
-
-struct GET_Response {
-    Key key;
-    Payload value;
-    Metadata meta;
-    K2_PAYLOAD_FIELDS(key, value, meta);
-};
-
-struct ReadResult {
-    Key key;
-    Payload value;
-    Metadata meta;
-    Status status;
-};
 
 enum MessageVerbs : Verb {
     PUT = 100,
@@ -80,15 +29,40 @@ enum MessageVerbs : Verb {
 class K2TxnOptions{
 public:
     int64_t timeout_usecs;
-    Timestamp timestamp;
+    //Timestamp timestamp;
     int64_t priority;
     // auto-retry policy...
 };
 
+template<typename ValueType>
+class ReadResult {
+public:
+    ReadResult(Status&& s, dto::K23SIReadResponse<ValueType>&& r) : status(std::move(s)), response(std::move(r)) {}
+
+    ValueType& getValue() {
+        return response.value.val;
+    }
+
+    uint64_t getAbortPriority() {
+        return response.abortPriority;
+    }
+    
+    Status status;
+private:
+    dto::K23SIReadResponse<ValueType> response;
+};
+
 class WriteResult{
 public:
-    WriteResult(Status s) : status(s) {}
+    WriteResult(Status&& s, dto::K23SIWriteResponse&& r) : status(std::move(s)), response(std::move(r)) {}
     Status status;
+
+    uint64_t getAbortPriority() {
+        return response.abortPriority;
+    }
+
+private:
+    dto::K23SIWriteResponse response;
 };
 class EndResult{
 public:
@@ -104,30 +78,54 @@ public:
     K2TxnHandle& operator=(K2TxnHandle&& from) = default;
     ~K2TxnHandle() noexcept {}
 
-    future<ReadResult> read(Key&& key) {
+    template <typename ValueType>
+    future<ReadResult<ValueType>> read(dto::Key&& key, String&& collection) {
         if (!_started) {
-            return make_exception_future<ReadResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return make_exception_future<ReadResult<ValueType>>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
 
-        return RPC().callRPC<Key, GET_Response>(MessageVerbs::GET, std::move(key), _endpoint, 1s).
+        dto::K23SIReadRequest request = {};
+        request.key = std::move(key);
+        request.collectionName = std::move(collection);
+
+        return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<ValueType>>(MessageVerbs::GET, std::move(request), _endpoint, 1s).
         then([] (auto response) {
-            struct ReadResult userResponse = {};
-            userResponse.key = std::move(std::get<1>(response).key);
-            userResponse.value = std::move(std::get<1>(response).value);
-            userResponse.meta = std::move(std::get<1>(response).meta);
-            userResponse.status = std::move(std::get<0>(response));
-            return make_ready_future<ReadResult>(std::move(userResponse));
+            auto userResponse = ReadResult<ValueType>(std::move(std::get<0>(response)), std::move(std::get<1>(response)));
+            return make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
         });
     }
 
-    future<WriteResult> write(WriteRequest && request) { 
+    template <typename ValueType>
+    future<WriteResult> write(dto::Key&& key, String&& collection, ValueType&& value) { 
         if (!_started) {
             return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
 
-        return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, std::move(request), _endpoint, 1s).
+        dto::K23SIWriteRequest<ValueType> request = {};
+        request.key = std::move(key);
+        request.collectionName = std::move(collection);
+        request.value.val = std::move(value);
+
+        return RPC().callRPC<dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse>(MessageVerbs::PUT, std::move(request), _endpoint, 1s).
         then([] (auto response) {
-            return make_ready_future<WriteResult>(std::get<0>(response));
+            return make_ready_future<WriteResult>(WriteResult(std::move(std::get<0>(response)), std::move(std::get<1>(response))));
+        });
+    }
+
+    template <typename ValueType>
+    future<WriteResult> write(dto::Key&& key, String&& collection, const ValueType& value) { 
+        if (!_started) {
+            return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+        }
+
+        dto::K23SIWriteRequest<ValueType> request = {};
+        request.key = std::move(key);
+        request.collectionName = std::move(collection);
+        request.value.val = value;
+
+        return RPC().callRPC<dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse>(MessageVerbs::PUT, std::move(request), _endpoint, 1s).
+        then([] (auto response) {
+            return make_ready_future<WriteResult>(WriteResult(std::move(std::get<0>(response)), std::move(std::get<1>(response))));
         });
     }
 
