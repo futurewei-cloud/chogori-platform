@@ -23,7 +23,10 @@ class Runnable:
 
     def getDockerStop(self):
         return "sudo docker stop -t 30 " + self.name
-        
+
+    def getDockerLogs(self):
+        return "sudo docker logs " + self.name
+       
 
 def parseRunnableConfig(runnable, config_files, cpus):
     binary = ""

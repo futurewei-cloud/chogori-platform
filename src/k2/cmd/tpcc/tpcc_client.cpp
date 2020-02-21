@@ -135,6 +135,7 @@ private:
 
         return seastar::sleep(1s)
         .then ([this] {
+            K2INFO("Starting load to server");
             return _loader.loadData(_client, 32);
         }).then([this] {
             K2INFO("Warehouse data load done, starting item data load");
