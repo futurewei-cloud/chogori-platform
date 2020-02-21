@@ -87,7 +87,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return ""; }
-    void writeData(k2::Payload& payload) { payload.write(data); }
     static k2::dto::Key getKey(uint32_t w_id) {
         k2::dto::Key key = {
             .partitionKey = std::to_string(w_id),
@@ -122,7 +121,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return "DIST:" + std::to_string(DistrictID); }
-    void writeData(k2::Payload& payload) { payload.write(data); }
     static k2::dto::Key getKey(uint32_t w_id, uint16_t id) {
         k2::dto::Key key = {
             .partitionKey = std::to_string(w_id),
@@ -176,7 +174,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
-    void writeData(k2::Payload& payload) { payload.write(data); }
     static k2::dto::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t c_id) {
         k2::dto::Key key = {
             .partitionKey = std::to_string(w_id),
@@ -244,7 +241,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return "HIST:" + std::to_string(data.Date); }
-    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     struct Data {
@@ -287,7 +283,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return "ORDER:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
-    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     uint32_t OrderID;
@@ -309,7 +304,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return "NEW:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
-    void writeData(k2::Payload& payload) { (void) payload; }
 
     uint32_t WarehouseID;
     uint32_t OrderID;
@@ -377,7 +371,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return "ORDERLINE:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID) + ":" + std::to_string(OrderLineNumber); }
-    void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
     uint32_t OrderID;
@@ -415,7 +408,6 @@ public:
 
     k2::String getPartitionKey() const { return "ITEM:" + std::to_string(ItemID); }
     k2::String getRowKey() const { return ""; }
-    void writeData(k2::Payload& payload) { payload.write(data); }
     static k2::dto::Key getKey(uint32_t id) {
         k2::dto::Key key = {
             .partitionKey = "ITEM:" + std::to_string(id),
@@ -468,7 +460,6 @@ public:
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
     k2::String getRowKey() const { return "STOCK:" + std::to_string(ItemID); }
-    void writeData(k2::Payload& payload) { payload.write(data); }
     static k2::dto::Key getKey(uint32_t w_id, uint32_t i_id) {
         k2::dto::Key key = {
             .partitionKey = std::to_string(w_id),
