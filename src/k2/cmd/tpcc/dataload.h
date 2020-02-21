@@ -44,13 +44,10 @@ private:
         return do_until(
             [this] { return _data.size() == 0; },
             [this, &txn] () {
-            auto& write_func = _data.back();
+            auto write_func = std::move(_data.back());
             _data.pop_back();
 
-            return write_func(txn)
-            .finally([this] () {
-                _data.pop_back();
-            }).discard_result();
+            return write_func(txn).discard_result();
         }).then([&txn] () {
             return txn.end(true);
         }).then([] (EndResult result) {
