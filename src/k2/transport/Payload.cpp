@@ -396,4 +396,19 @@ bool Payload::operator==(const Payload& o) const {
     return mychksum == otherchksum;
 }
 
+
+bool Payload::read(Duration& dur) {
+    if (typeid(std::remove_reference<decltype(dur)>::type::rep) != typeid(long int)) {
+        return false;
+    }
+    long int ticks = 0;
+    if (!read(ticks)) return false;
+    dur = Duration(ticks);
+    return true;
+}
+
+void Payload::write(const Duration& dur) {
+    write(dur.count());                 // write the tick count
+}
+
 } // namespace k2

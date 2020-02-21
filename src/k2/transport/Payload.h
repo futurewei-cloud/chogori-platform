@@ -131,7 +131,7 @@ public: // API
     // compare with the given payload. linear in complexity of number of bytes stored in the payload
     bool operator==(const Payload& o) const;
 
-   public:  // Read API
+public:  // Read API
     // Copy raw bytes from the payload into the given pointer. The pointer data must point to
     // location with allocated at least *size* bytes.
     // returns true if we were able to copy all of the requested bytes
@@ -149,6 +149,9 @@ public: // API
 
     // read into a payload
     bool read(Payload& other);
+
+    // read a duration value
+    bool read(Duration& dur);
 
     template<typename T>
     bool read(SerializeAsPayload<T>& value) {
@@ -301,6 +304,9 @@ public: // Write API
 
     // write another Payload
     void write(const Payload& other);
+
+    // Write a duration value
+    void write(const Duration& dur);
 
     // write a map
     template <typename KeyT, typename ValueT>

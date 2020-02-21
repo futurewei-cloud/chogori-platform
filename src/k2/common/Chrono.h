@@ -1,5 +1,6 @@
 #pragma once
 #include <chrono>
+#include <iostream>
 //
 // duration used in a few places to specify timeouts and such
 //
@@ -24,4 +25,11 @@ inline std::chrono::seconds sec(const Duration& dur) {
     return std::chrono::duration_cast<std::chrono::seconds>(dur);
 }
 
+}
+
+namespace std {
+    inline std::ostream& operator<<(std::ostream& os, const k2::Duration& dur) {
+        os << dur.count() << "ns";
+        return os;
+    }
 }

@@ -36,14 +36,15 @@ struct data {
     embeddedSimple y;
     embeddedComplex z;
     Payload c;
+    Duration dur{0};
     String d;
-    K2_PAYLOAD_FIELDS(a, b, w, x, y, z, c, d);
+    K2_PAYLOAD_FIELDS(a, b, w, x, y, z, c, dur, d);
     bool operator==(const data<T>& o) const {
-        return a == o.a && b==o.b && w.val == o.w.val && x == o.x && y==o.y && z==o.z && c==o.c && d==o.d;
+        return a == o.a && b==o.b && w.val == o.w.val && x == o.x && y==o.y && z==o.z && c==o.c && d==o.d && dur == o.dur;
     }
 };
 
-data<embeddedComplex> makeData(uint32_t a, uint64_t b, char x, int ya, char yb, size_t yc, String za, int zb, char zc, const char* pdata, String d, int allocSize) {
+data<embeddedComplex> makeData(uint32_t a, uint64_t b, char x, int ya, char yb, size_t yc, String za, int zb, char zc, const char* pdata, String d, int allocSize, Duration dur) {
     data<embeddedComplex> result;
     result.a = a;
     result.b = b;
@@ -56,6 +57,7 @@ data<embeddedComplex> makeData(uint32_t a, uint64_t b, char x, int ya, char yb, 
         result.c = Payload([allocSize]{return Binary(allocSize);});
         result.c.write(pp);
     }
+    result.dur = dur;
     result.d = std::move(d);
     return result;
 }
@@ -161,11 +163,11 @@ void checkSize(Payload& p) {
 SCENARIO("test empty payload serialization after some data") {
     std::vector<data<embeddedComplex>> testCases;
     String s(100000, 'x');
-    testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11));
-    testCases.push_back(makeData(11,22,'b', 444, 'g', 1231234, "hya", 1241234, 's', "1", "", 101));
-    testCases.push_back(makeData(111,2222,'c', 4444, 'h', 12312345, "hya", 1241245, 's', s.c_str(), "", 107));
-    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109));
-    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203));
+    testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11, Duration(10ms)));
+    testCases.push_back(makeData(11,22,'b', 444, 'g', 1231234, "hya", 1241234, 's', "1", "", 101, Duration(11us)));
+    testCases.push_back(makeData(111,2222,'c', 4444, 'h', 12312345, "hya", 1241245, 's', s.c_str(), "", 107, Duration(13ns)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
     for (auto& d: testCases) {
         Payload dst([] { return Binary(111); });
         dst.write(d);
@@ -174,6 +176,8 @@ SCENARIO("test empty payload serialization after some data") {
 
         data<embeddedComplex> parsed;
         REQUIRE(dst.read(parsed));
+        K2INFO(parsed.dur);
+        K2INFO(d.dur);
         REQUIRE(parsed == d);
 
         // try same with embedded type of Payload
