@@ -78,32 +78,32 @@ private:
     }
 
     future<> warehouseUpdate() {
-        return _txn.read(Warehouse::getKey(_w_id))
-        .then([this] (ReadResult result) {
+        return _txn.read<Warehouse::Data>(Warehouse::getKey(_w_id), "TPCC")
+        .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            Warehouse warehouse(result, _w_id);
+            Warehouse warehouse(result.getValue(), _w_id);
             warehouse.data.YTD += _amount;
             strcpy(_w_name, warehouse.data.Name);
-            return writeRow(warehouse, _txn).discard_result();
+            return writeRow<Warehouse>(std::move(warehouse), _txn).discard_result();
         });
     }
 
     future<> districtUpdate() {
-        return _txn.read(District::getKey(_w_id, _d_id))
-        .then([this] (ReadResult result) {
+        return _txn.read<District::Data>(District::getKey(_w_id, _d_id), "TPCC")
+        .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            District district(result, _w_id, _d_id);
+            District district(result.getValue(), _w_id, _d_id);
             district.data.YTD += _amount;
             strcpy(_d_name, district.data.Name);
-            return writeRow(district, _txn).discard_result();
+            return writeRow<District>(std::move(district), _txn).discard_result();
         });
     }
 
     future<> customerUpdate() {
-        return _txn.read(Customer::getKey(_c_w_id, _c_d_id, _c_id))
-        .then([this] (ReadResult result) {
+        return _txn.read<Customer::Data>(Customer::getKey(_c_w_id, _c_d_id, _c_id), "TPCC")
+        .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            Customer customer(result, _c_w_id, _c_d_id, _c_id);
+            Customer customer(result.getValue(), _c_w_id, _c_d_id, _c_id);
 
             customer.data.Balance -= _amount;
             customer.data.YTDPayment += _amount;
@@ -125,13 +125,13 @@ private:
                 memcpy(customer.data.Info+offset, &_amount, sizeof(_amount));
             }
 
-            return writeRow(customer, _txn).discard_result();
+            return writeRow<Customer>(std::move(customer), _txn).discard_result();
         });
     }
 
     future<> historyUpdate() {
         History history(_w_id, _d_id, _c_id, _c_w_id, _c_d_id, _amount, _w_name, _d_name);
-        return writeRow(history, _txn).discard_result();
+        return writeRow<History>(std::move(history), _txn).discard_result();
     }
 
     K23SIClient& _client;
@@ -164,67 +164,65 @@ public:
 private:
     future<> runWithTxn() {
         // Get warehouse row, only used for tax rate in total amount calculation
-        future<> warehouse_f = _txn.read(Warehouse::getKey(_w_id))
-        .then([this] (ReadResult result) {
+        future<> warehouse_f = _txn.read<Warehouse::Data>(Warehouse::getKey(_w_id), "TPCC")
+        .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            Warehouse warehouse(result, _w_id);
-            _w_tax = warehouse.data.Tax;
+            _w_tax = result.getValue().Tax;
             return make_ready_future();
         });
 
         // Get customer row, only used for discount rate in total amount calculation
-        future<> customer_f = _txn.read(Customer::getKey(_w_id, _order.DistrictID, _order.data.CustomerID))
-        .then([this] (ReadResult result) {
+        future<> customer_f = _txn.read<Customer::Data>(Customer::getKey(_w_id, _order.DistrictID, _order.data.CustomerID), "TPCC")
+        .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            Customer customer(result, _w_id, _order.DistrictID, _order.data.CustomerID);
-            _c_discount = customer.data.Discount;
+            _c_discount = result.getValue().Discount;
             return make_ready_future();
         });
 
-         future<> main_f = _txn.read(District::getKey(_w_id, _order.DistrictID))
-        .then([this] (ReadResult result) {
+         future<> main_f = _txn.read<District::Data>(District::getKey(_w_id, _order.DistrictID), "TPCC")
+        .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
 
             // Get and write NextOrderID in district row
-            District district(result, _w_id, _order.DistrictID);
+            District district(result.getValue(), _w_id, _order.DistrictID);
             _order.OrderID = district.data.NextOrderID;
             _d_tax = district.data.Tax;
             district.data.NextOrderID++;
-            future<WriteResult> district_update = writeRow(district, _txn);
+            future<WriteResult> district_update = writeRow<District>(district, _txn);
 
             // Write NewOrder row
             NewOrder new_order(_order);
-            future<WriteResult> new_order_update = writeRow(new_order, _txn);
+            future<WriteResult> new_order_update = writeRow<NewOrder>(new_order, _txn);
 
             makeOrderLines();
 
             // Write Order row
-            future<WriteResult> order_update = writeRow(_order, _txn);
+            future<WriteResult> order_update = writeRow<Order>(_order, _txn);
 
             future<> line_updates = parallel_for_each(_lines.begin(), _lines.end(), [this] (OrderLine& line) {
-                return _txn.read(Item::getKey(line.data.ItemID))
-                .then([this, i_id=line.data.ItemID] (ReadResult result) {
+                return _txn.read<Item::Data>(Item::getKey(line.data.ItemID), "TPCC")
+                .then([this, i_id=line.data.ItemID] (auto&& result) {
                     if (!result.status.is2xxOK()) {
                         return _txn.end(false).then([] (EndResult result) { (void) result; return make_exception_future<Item>(std::runtime_error("Bad ItemID")); });
                     }
 
-                    return make_ready_future<Item>(Item(result, i_id));
+                    return make_ready_future<Item>(Item(result.getValue(), i_id));
 
-                }).then([this, supply_id=line.data.SupplyWarehouseID] (Item item) {
-                    return _txn.read(Stock::getKey(supply_id, item.ItemID))
-                    .then([item, supply_id] (ReadResult result) {
-                        return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), Stock(result, supply_id, item.ItemID)));
+                }).then([this, supply_id=line.data.SupplyWarehouseID] (Item&& item) {
+                    return _txn.read<Stock::Data>(Stock::getKey(supply_id, item.ItemID), "TPCC")
+                    .then([item, supply_id] (auto result) {
+                        return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), Stock(result.getValue(), supply_id, item.ItemID)));
                     });
 
-                }).then([this, line] (std::pair<Item, Stock> pair) mutable {
+                }).then([this, line] (std::pair<Item, Stock>&& pair) mutable {
                     auto& [item, stock] = pair;
                     line.data.Amount = item.data.Price * line.data.Quantity;
                     _total_amount += line.data.Amount;
                     strcpy(line.data.DistInfo, stock.getDistInfo(line.DistrictID));
-                    auto line_update = writeRow(line, _txn);
-
                     updateStockRow(stock, line);
-                    auto stock_update = writeRow(stock, _txn);
+
+                    auto line_update = writeRow<OrderLine>(std::move(line), _txn);
+                    auto stock_update = writeRow<Stock>(std::move(stock), _txn);
 
                     return when_all_succeed(std::move(line_update), std::move(stock_update)).discard_result();
                 });

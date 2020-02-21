@@ -12,14 +12,6 @@
 #include "tpcc_rand.h"
 #include "mock/mock_k23si_client.h"
 
-class SchemaType {
-public:
-    virtual k2::String getPartitionKey() = 0;
-    virtual k2::String getRowKey() = 0;
-    virtual void writeData(k2::Payload& payload) = 0;
-    virtual ~SchemaType() {}
-};
-
 #define CHECK_READ_STATUS(read_result) \
     do { \
         if (!(read_result).status.is2xxOK()) { \
@@ -29,21 +21,31 @@ public:
     } \
     while (0) \
 
-future<k2::WriteResult> writeRow(SchemaType& row, k2::K2TxnHandle& txn)
+template<typename ValueType>
+future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
 {
-    //k2::WriteRequest request {
-    //    .key { .partition_key = row.getPartitionKey(),
-    //           .row_key = row.getRowKey()
-    //         },
-    //    .value = k2::Payload( [] { return k2::Binary(8192); })
-    //};
-    k2::WriteRequest request;
-    request.key.partition_key = row.getPartitionKey();
-    request.key.row_key = row.getRowKey();
-    request.value = k2::Payload( [] { return k2::Binary(8192); });
-    row.writeData(request.value);
+    k2::dto::Key key = {};
+    key.partitionKey = row.getPartitionKey();
+    key.rangeKey = row.getRowKey();
 
-    return txn.write(std::move(request)).then([] (k2::WriteResult result) {
+    return txn.write(std::move(key), "TPCC", row.data).then([] (k2::WriteResult result) {
+        if (!result.status.is2xxOK()) {
+            K2WARN("writeRow failed!");
+            return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
+        }
+
+        return make_ready_future<k2::WriteResult>(std::move(result));
+    });
+}
+
+template<typename ValueType>
+future<k2::WriteResult> writeRow(ValueType&& row, k2::K2TxnHandle& txn)
+{
+    k2::dto::Key key = {};
+    key.partitionKey = row.getPartitionKey();
+    key.rangeKey = row.getRowKey();
+
+    return txn.write(std::move(key), "TPCC", std::move(row.data)).then([] (k2::WriteResult result) {
         if (!result.status.is2xxOK()) {
             K2WARN("writeRow failed!");
             return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
@@ -74,7 +76,7 @@ uint64_t getDate()
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-class Warehouse : public SchemaType {
+class Warehouse {
 public:
     Warehouse(RandomContext& random, uint32_t id) : WarehouseID(id) {
         random.RandomString(6, 10, data.Name);
@@ -83,20 +85,13 @@ public:
         data.YTD = 300000.0f;
     }
 
-    Warehouse(k2::ReadResult& KV, uint32_t id) : WarehouseID(id) {
-        KV.value.read(data);
-    }
-    Warehouse(k2::ReadResult&& KV, uint32_t id) : WarehouseID(id) {
-        KV.value.read(data);
-    }
-
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return ""; }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return ""; }
     void writeData(k2::Payload& payload) { payload.write(data); }
-    static k2::Key getKey(uint32_t w_id) {
-        k2::Key key = {
-            .partition_key = std::to_string(w_id),
-            .row_key = ""
+    static k2::dto::Key getKey(uint32_t w_id) {
+        k2::dto::Key key = {
+            .partitionKey = std::to_string(w_id),
+            .rangeKey = ""
         };
         return key;
     }
@@ -109,9 +104,13 @@ public:
         Address address;
         K2_PAYLOAD_COPYABLE;
     } data;
+
+    Warehouse(const Warehouse::Data& d, uint32_t id) : WarehouseID(id) {
+        data = d;
+    }
 };
 
-class District : public SchemaType {
+class District {
 public:
     District(RandomContext& random, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
         random.RandomString(6, 10, data.Name);
@@ -121,20 +120,13 @@ public:
         data.NextOrderID = 3001;
     }
 
-   District(k2::ReadResult& KV, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
-       KV.value.read(data);
-   }
-   District(k2::ReadResult&& KV, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
-       KV.value.read(data);
-   }
-
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return "DIST:" + std::to_string(DistrictID); }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return "DIST:" + std::to_string(DistrictID); }
     void writeData(k2::Payload& payload) { payload.write(data); }
-    static k2::Key getKey(uint32_t w_id, uint16_t id) {
-        k2::Key key = {
-            .partition_key = std::to_string(w_id),
-            .row_key = "DIST:" + std::to_string(id)
+    static k2::dto::Key getKey(uint32_t w_id, uint16_t id) {
+        k2::dto::Key key = {
+            .partitionKey = std::to_string(w_id),
+            .rangeKey = "DIST:" + std::to_string(id)
         };
         return key;
     }
@@ -149,9 +141,13 @@ public:
         Address address;
         K2_PAYLOAD_COPYABLE;
     } data;
+
+   District(const District::Data& d, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
+       data = d;
+   }
 };
 
-class Customer : public SchemaType {
+class Customer {
 public:
     Customer(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) :
             WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
@@ -178,20 +174,13 @@ public:
         random.RandomString(300, 500, data.Info);
     }
 
-    Customer(k2::ReadResult& KV, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        KV.value.read(data);
-    }
-    Customer(k2::ReadResult&& KV, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        KV.value.read(data);
-    }
-
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
     void writeData(k2::Payload& payload) { payload.write(data); }
-    static k2::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t c_id) {
-        k2::Key key = {
-            .partition_key = std::to_string(w_id),
-            .row_key = "CUST:" + std::to_string(d_id) + ":" + std::to_string(c_id)
+    static k2::dto::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t c_id) {
+        k2::dto::Key key = {
+            .partitionKey = std::to_string(w_id),
+            .rangeKey = "CUST:" + std::to_string(d_id) + ":" + std::to_string(c_id)
         };
         return key;
     }
@@ -216,9 +205,13 @@ public:
         char Info[501];
         K2_PAYLOAD_COPYABLE;
     } data;
+
+    Customer(const Customer::Data& d, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
+        data = d;
+    }
 };
 
-class History : public SchemaType {
+class History {
 public:
     // For initial population
     History(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id) {
@@ -249,8 +242,8 @@ public:
         strcpy(data.Info+offset, d_name);
     }
 
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return "HIST:" + std::to_string(data.Date); }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return "HIST:" + std::to_string(data.Date); }
     void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
@@ -266,7 +259,7 @@ public:
     } data;
 };
 
-class Order : public SchemaType {
+class Order {
 public:
     // For initial population
     Order(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t id) :
@@ -292,8 +285,8 @@ public:
         // OrderID and AllLocal to be filled in by the transaction
     }
 
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return "ORDER:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return "ORDER:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
     void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
@@ -310,12 +303,12 @@ public:
     } data;
 };
 
-class NewOrder : public SchemaType {
+class NewOrder {
 public:
     NewOrder(const Order& order) : WarehouseID(order.WarehouseID), OrderID(order.OrderID), DistrictID(order.DistrictID) {}
 
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return "NEW:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return "NEW:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
     void writeData(k2::Payload& payload) { (void) payload; }
 
     uint32_t WarehouseID;
@@ -323,8 +316,26 @@ public:
     uint16_t DistrictID;
 };
 
+// NewOrder does not have data, so specialize and write an empty Payload
+template<>
+future<k2::WriteResult> writeRow<NewOrder>(const NewOrder& row, k2::K2TxnHandle& txn)
+{
+    k2::dto::Key key = {};
+    key.partitionKey = row.getPartitionKey();
+    key.rangeKey = row.getRowKey();
 
-class OrderLine : public SchemaType {
+    return txn.write(std::move(key), "TPCC", k2::Payload()).then([] (k2::WriteResult result) {
+        if (!result.status.is2xxOK()) {
+            K2WARN("writeRow failed!");
+            return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
+        }
+
+        return make_ready_future<k2::WriteResult>(std::move(result));
+    });
+}
+
+
+class OrderLine {
 public:
     // For initial population
     OrderLine(RandomContext& random, const Order& order, uint16_t line_num) :
@@ -364,8 +375,8 @@ public:
         data.Amount = 0.0f;
     }
 
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return "ORDERLINE:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID) + ":" + std::to_string(OrderLineNumber); }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return "ORDERLINE:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID) + ":" + std::to_string(OrderLineNumber); }
     void writeData(k2::Payload& payload) { payload.write(data); }
 
     uint32_t WarehouseID;
@@ -384,7 +395,7 @@ public:
     } data;
 };
 
-class Item : public SchemaType {
+class Item {
 public:
     static const uint32_t InvalidID = 999999;
 
@@ -402,17 +413,13 @@ public:
         }
     }
 
-    Item(k2::ReadResult& KV, uint32_t id) : ItemID(id) {
-        KV.value.read(data);
-    }
-
-    k2::String getPartitionKey() { return "ITEM:" + std::to_string(ItemID); }
-    k2::String getRowKey() { return ""; }
+    k2::String getPartitionKey() const { return "ITEM:" + std::to_string(ItemID); }
+    k2::String getRowKey() const { return ""; }
     void writeData(k2::Payload& payload) { payload.write(data); }
-    static k2::Key getKey(uint32_t id) {
-        k2::Key key = {
-            .partition_key = "ITEM:" + std::to_string(id),
-            .row_key = ""
+    static k2::dto::Key getKey(uint32_t id) {
+        k2::dto::Key key = {
+            .partitionKey = "ITEM:" + std::to_string(id),
+            .rangeKey = ""
         };
         return key;
     }
@@ -426,9 +433,13 @@ public:
         char Info[51];
         K2_PAYLOAD_COPYABLE;
     } data;
+
+    Item(const Item::Data& d, uint32_t id) : ItemID(id) {
+        data = d;
+    }
 };
 
-class Stock : public SchemaType {
+class Stock {
 public:
     Stock(RandomContext& random, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
         data.Quantity = random.UniformRandom(10, 100);
@@ -455,17 +466,13 @@ public:
         }
     }
 
-    Stock(k2::ReadResult& KV, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
-        KV.value.read(data);
-    }
-
-    k2::String getPartitionKey() { return std::to_string(WarehouseID); }
-    k2::String getRowKey() { return "STOCK:" + std::to_string(ItemID); }
+    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getRowKey() const { return "STOCK:" + std::to_string(ItemID); }
     void writeData(k2::Payload& payload) { payload.write(data); }
-    static k2::Key getKey(uint32_t w_id, uint32_t i_id) {
-        k2::Key key = {
-            .partition_key = std::to_string(w_id),
-            .row_key = "STOCK:" + std::to_string(i_id)
+    static k2::dto::Key getKey(uint32_t w_id, uint32_t i_id) {
+        k2::dto::Key key = {
+            .partitionKey = std::to_string(w_id),
+            .rangeKey = "STOCK:" + std::to_string(i_id)
         };
         return key;
     }
@@ -518,4 +525,8 @@ public:
         char Info[51];
         K2_PAYLOAD_COPYABLE;
     } data;
+
+    Stock(const Stock::Data& d, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
+        data = d;
+    }
 };

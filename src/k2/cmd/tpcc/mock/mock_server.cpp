@@ -9,6 +9,8 @@
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
+#include <k2/dto/K23SI.h>
+#include <k2/dto/Collection.h>
 #include <k2/transport/Status.h>
 
 #include "mock_k23si_client.h"
@@ -44,14 +46,14 @@ public:  // application lifespan
         K2INFO("Registering message handlers");
         _registerDATA_URL();
 
-        RPC().registerRPCObserver<PUT_Request, PUT_Response>(MessageVerbs::PUT, [this](PUT_Request&& request) {
+        RPC().registerRPCObserver<dto::K23SIWriteRequest<Payload>, dto::K23SIWriteResponse>(MessageVerbs::PUT, [this](dto::K23SIWriteRequest<Payload>&& request) {
             K2DEBUG("Received put for key: " << request.key);
-            String hash_key = request.key.partition_key + request.key.row_key;
+            String hash_key = request.key.partitionKey + request.key.rangeKey;
 
-            total += hash_key.size() + request.value.getCapacity() + sizeof(request.value);
+            total += hash_key.size() + request.value.val.getCapacity() + sizeof(request.value);
 
-            _data[hash_key] = request.value.copy();
-            PUT_Response response{.key=std::move(request.key)};
+            _data[hash_key] = request.value.val.copy();
+            dto::K23SIWriteResponse response{.abortPriority=0};
 
             if (total % 100000 == 0) {
                 K2INFO("Wrote " << total / 1024.0 << " KB");
@@ -60,16 +62,16 @@ public:  // application lifespan
             return RPCResponse(Status::S200_OK(), std::move(response));
         });
 
-        RPC().registerRPCObserver<Key, GET_Response>(MessageVerbs::GET, [this](Key&& key) {
+        RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(MessageVerbs::GET, [this](dto::K23SIReadRequest&& request) {
             K2DEBUG("Received get for key: " << key);
-            String hash_key = key.partition_key + key.row_key;
+            String hash_key = request.key.partitionKey + request.key.rangeKey;
 
-            GET_Response response = {};
-            key=std::move(key);
+            dto::K23SIReadResponse<Payload> response = {};
+            response.key = std::move(request.key);
 
             auto iter = _data.find(hash_key);
             if (iter != _data.end()) {
-                response.value = iter->second.share();
+                response.value.val = iter->second.share();
             }
             return RPCResponse(iter != _data.end() ? Status::S200_OK() : Status::S404_Not_Found(), std::move(response));
         });
