@@ -11,6 +11,7 @@
 #include <k2/appbase/Appbase.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/Collection.h>
+#include <k2/dto/MessageVerbs.h>
 #include <k2/transport/Status.h>
 
 #include "mock_k23si_client.h"
@@ -33,9 +34,9 @@ public:  // application lifespan
         K2INFO("stop");
         _stopped = true;
         // unregistar all observers
-        k2::RPC().registerMessageObserver(MessageVerbs::GET_DATA_URL, nullptr);
-        k2::RPC().registerMessageObserver(MessageVerbs::GET, nullptr);
-        k2::RPC().registerMessageObserver(MessageVerbs::PUT, nullptr);
+        k2::RPC().registerMessageObserver(MockMessageVerbs::GET_DATA_URL, nullptr);
+        k2::RPC().registerMessageObserver(dto::Verbs::K23SI_READ, nullptr);
+        k2::RPC().registerMessageObserver(dto::Verbs::K23SI_WRITE, nullptr);
         k2::RPC().registerLowTransportMemoryObserver(nullptr);
         return seastar::make_ready_future<>();
     }
@@ -46,7 +47,7 @@ public:  // application lifespan
         K2INFO("Registering message handlers");
         _registerDATA_URL();
 
-        RPC().registerRPCObserver<dto::K23SIWriteRequest<Payload>, dto::K23SIWriteResponse>(MessageVerbs::PUT, [this](dto::K23SIWriteRequest<Payload>&& request) {
+        RPC().registerRPCObserver<dto::K23SIWriteRequest<Payload>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest<Payload>&& request) {
             K2DEBUG("Received put for key: " << request.key);
             String hash_key = request.key.partitionKey + request.key.rangeKey;
 
@@ -62,7 +63,7 @@ public:  // application lifespan
             return RPCResponse(Status::S200_OK(), std::move(response));
         });
 
-        RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(MessageVerbs::GET, [this](dto::K23SIReadRequest&& request) {
+        RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
             K2DEBUG("Received get for key: " << key);
             String hash_key = request.key.partitionKey + request.key.rangeKey;
 
@@ -85,7 +86,7 @@ public:  // application lifespan
 private:
     void _registerDATA_URL() {
         K2INFO("TCP endpoint is: " << k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
-        k2::RPC().registerMessageObserver(MessageVerbs::GET_DATA_URL,
+        k2::RPC().registerMessageObserver(MockMessageVerbs::GET_DATA_URL,
             [this](k2::Request&& request) mutable {
                 auto response = request.endpoint.newPayload();
                 auto ep = (seastar::engine()._rdma_stack?
