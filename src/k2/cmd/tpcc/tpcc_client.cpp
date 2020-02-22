@@ -101,7 +101,7 @@ private:
                 K2INFO("Stopping retry since we were stopped");
                 return seastar::make_exception_future<>(std::runtime_error("we were stopped"));
             }
-            return k2::RPC().sendRequest(k2::MessageVerbs::GET_DATA_URL, myRemote->newPayload(), *myRemote, timeout)
+            return k2::RPC().sendRequest(k2::MockMessageVerbs::GET_DATA_URL, myRemote->newPayload(), *myRemote, timeout)
             .then([this](std::unique_ptr<k2::Payload> payload) {
                 if (_stopped) return seastar::make_ready_future<>();
                 if (!payload || payload->getSize() == 0) {
