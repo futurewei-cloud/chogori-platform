@@ -49,10 +49,11 @@ struct Partition {
         uint64_t rangeVersion = 0;
         // version incremented each time we assign the partition to different K2 node
         uint64_t assignmentVersion = 0;
-        bool operator==(const PVID& o) const {
-            return id == o.id && rangeVersion == o.rangeVersion && assignmentVersion == o.assignmentVersion;
-        }
         K2_PAYLOAD_COPYABLE;
+
+        // operators
+        bool operator==(const PVID& o) const;
+        bool operator!=(const PVID& o) const;
     } pvid;
     // the starting key for the partition
     String startKey;
@@ -118,7 +119,8 @@ struct CollectionMetadata {
     String hashScheme; // e.g. "hash-crc32c"
     String storageDriver; // e.g. "k23si"
     CollectionCapacity capacity;
-    K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity);
+    Duration retentionPeriod{0};
+    K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod);
 };
 
 struct Collection {
@@ -181,6 +183,7 @@ public:
 } // namespace dto
 } // namespace k2
 
+// Define std::hash for Keys so that we can use them in hash maps/sets
 namespace std {
 template <>
 struct hash<k2::dto::Key> {

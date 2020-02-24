@@ -45,7 +45,8 @@ public:  // application lifespan
                             .dataCapacityMegaBytes = 1000,
                             .readIOPs = 100000,
                             .writeIOPs = 100000
-                        }
+                        },
+                        .retentionPeriod = Duration(1h)*90*24
                     },
                     .clusterEndpoints = _k2ConfigEps()
                 };
@@ -119,12 +120,12 @@ seastar::future<> runScenario01() {
         auto& part = _pgetter->getPartitionForKey(dto::Key{.partitionKey="Key1", .rangeKey="rKey1"});
         // read wrong collection
         dto::K23SIReadRequest request {
-            .partitionVID = part.pvid,
+            .pvid = part.pvid,
             .collectionName = "somebadcoll",
             .mtr {
                 .txnid = txnids++,
                 .timestamp = dto::Timestamp(100000, 1, 1000),
-                .priority = 10
+                .priority = dto::TxnPriority::Medium
             },
             .key{
                 .partitionKey = "key1",

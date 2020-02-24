@@ -61,7 +61,7 @@ private:
     // helper method used to clean up WI which have been removed
     void _queueWICleanup(DataRecord rec);
 
-   private:
+private:
     dto::CollectionMetadata _cmeta;
     dto::Partition _partition;
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
@@ -73,10 +73,28 @@ private:
     // read cache for keeping track of latest reads
     std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;
 
+    // the timestamp of the end of the retention window. We do not allow operations to occur before this timestamp
+    dto::Timestamp _retentionTimestamp;
+
+    // the minimum retention window we can support.
+    // Governs how often we refresh the retention timestamp and also minimum limit on how long transactions can run
+    ConfigDuration _minimumRetentionPeriod{"retention_minimum", 1h};
+
+    // timer used to refresh the retention timestamp from the TSO
+    seastar::timer<> _retentionUpdateTimer;
+
+    // used to tell if there is a refresh in progress so that we don't stop() too early
+    seastar::future<> _retentionRefresh = seastar::make_ready_future();
+
     // validate requests are coming to the correct partition
     template<typename RequestT>
-    bool _validateRequestPartition(RequestT& r) {
-        return r.collectionName == _cmeta.name && r.partitionVID == _partition.pvid;
+    bool _validateRequestPartition(const RequestT& r) const {
+        return r.collectionName == _cmeta.name && r.pvid == _partition.pvid;
+    }
+
+    template <typename RequestT>
+    bool _validateRetentionWindow(const RequestT& r) const {
+        return r.mtr.timestamp.compareCertain(_retentionTimestamp) >= 0;
     }
 };
 

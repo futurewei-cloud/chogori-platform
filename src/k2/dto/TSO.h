@@ -1,6 +1,7 @@
 #pragma once
 
 #include <k2/transport/PayloadSerialization.h>
+#include <k2/common/Chrono.h>
 
 namespace k2 {
 namespace dto {
@@ -32,12 +33,21 @@ public:
     uint32_t tsoId() const;
 
     // Uncertainty-compatible comparison
-    CompareResult compare(const Timestamp& other) const;
+    // this should be used when the user cares if due to uncertainty, two timestamps may not be orderable
+    CompareResult compareUncertain(const Timestamp& other) const;
 
     // provides orderable comparison between timestamps. It returns LT, EQ, or GT - never UN
     // Two timestamps are EQ if they are from same TSO and their start/end times are identical
-    // This is useful for comparisons which want to ignore potential uncertainty.
+    // Normally we do certain ordering just based on the END value. In cases of different TSO
+    // issuing timestamps with exact same END value, we order based on the TSO id
+    // this should be used when the user does not care about potential uncertainty in the ordering and
+    // just wants some consistent(to any observer) ordering among all timestamps even from different TSOs
     CompareResult compareCertain(const Timestamp& other) const;
+
+    // returns a timestamp shifted with the given duration
+    Timestamp operator-(const Duration d) const;
+    Timestamp operator+(const Duration d) const;
+
 private:
     uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE
     uint32_t _tsoId = 0;

@@ -20,7 +20,7 @@ uint32_t Timestamp::tsoId() const {
     return _tsoId;
 }
 
-Timestamp::CompareResult Timestamp::compare(const Timestamp& other) const {
+Timestamp::CompareResult Timestamp::compareUncertain(const Timestamp& other) const {
     if (tsoId() == other.tsoId()) {
         return tEndTSECount() < other.tEndTSECount() ? LT :
         (tEndTSECount() > other.tEndTSECount() ? GT : EQ);
@@ -32,11 +32,21 @@ Timestamp::CompareResult Timestamp::compare(const Timestamp& other) const {
 }
 
 Timestamp::CompareResult Timestamp::compareCertain(const Timestamp& other) const {
-    auto result = compare(other);
+    // do standard comparison
+    auto result = compareUncertain(other);
     if (result == UN) {
+        // but if it turns out to be uncertain, provide ordering based on the TSO id
         result = _tsoId < other._tsoId ? LT : GT;
     }
     return result;
+}
+
+Timestamp Timestamp::operator-(const Duration d) const {
+    return Timestamp(_tEndTSECount - nsec(d).count(), _tsoId, _tStartDelta);
+}
+
+Timestamp Timestamp::operator+(const Duration d) const {
+    return Timestamp(_tEndTSECount + nsec(d).count(), _tsoId, _tStartDelta);
 }
 
 } // ns dto

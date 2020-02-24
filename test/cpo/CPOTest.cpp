@@ -75,7 +75,8 @@ seastar::future<> CPOTest::runTest2() {
                 .dataCapacityMegaBytes=1,
                 .readIOPs=100,
                 .writeIOPs=200
-            }
+            },
+            .retentionPeriod = 1h*90*24
         },
         .clusterEndpoints{}
     };
@@ -97,10 +98,11 @@ seastar::future<> CPOTest::runTest3() {
             .capacity{
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
-                .writeIOPs = 100000}
+                .writeIOPs = 100000
+            },
+            .retentionPeriod = 1h
         },
-        .clusterEndpoints{}
-    };
+        .clusterEndpoints{}};
     return RPC()
         .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, std::move(request), *_cpoEndpoint, 1s)
         .then([](auto response) {
@@ -121,6 +123,7 @@ seastar::future<> CPOTest::runTest4() {
             K2EXPECT(md.name, "collection2");
             K2EXPECT(md.hashScheme, "hash-crc32c");
             K2EXPECT(md.storageDriver, "k23si");
+            K2EXPECT(md.retentionPeriod, 1h*90*24);
             K2EXPECT(md.capacity.dataCapacityMegaBytes, 1);
             K2EXPECT(md.capacity.readIOPs, 100);
             K2EXPECT(md.capacity.writeIOPs, 200);
@@ -139,7 +142,8 @@ seastar::future<> CPOTest::runTest5() {
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
                 .writeIOPs = 100000
-            }
+            },
+            .retentionPeriod = 5h
         },
         .clusterEndpoints = _k2ConfigEps()
     };
@@ -166,6 +170,7 @@ seastar::future<> CPOTest::runTest5() {
             K2EXPECT(resp.collection.metadata.name, "collectionAssign");
             K2EXPECT(resp.collection.metadata.hashScheme, "hash-crc32c");
             K2EXPECT(resp.collection.metadata.storageDriver, "k23si");
+            K2EXPECT(resp.collection.metadata.retentionPeriod, 5h);
             K2EXPECT(resp.collection.metadata.capacity.dataCapacityMegaBytes, 1000);
             K2EXPECT(resp.collection.metadata.capacity.readIOPs, 100000);
             K2EXPECT(resp.collection.metadata.capacity.writeIOPs, 100000);

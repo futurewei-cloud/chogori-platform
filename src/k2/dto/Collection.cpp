@@ -33,6 +33,14 @@ size_t Key::hash() const noexcept {
     return std::hash<k2::String>()(partitionKey) + std::hash<k2::String>()(rangeKey);
 }
 
+bool Partition::PVID::operator==(const Partition::PVID& o) const {
+    return id == o.id && rangeVersion == o.rangeVersion && assignmentVersion == o.assignmentVersion;
+}
+
+bool Partition::PVID::operator!=(const Partition::PVID& o) const {
+    return !operator==(o);
+}
+
 std::unique_ptr<PartitionGetter> PartitionGetter::Wrap(Collection&& coll) {
     if (coll.metadata.hashScheme == "hash-crc32") {
         K2DEBUG("Constructing hash-crc32 partition getter for collection: " << coll.metadata.name);

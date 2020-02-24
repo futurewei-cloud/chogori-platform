@@ -28,7 +28,10 @@ enum Verbs : k2::Verb {
     // K23SI end transaction
     K23SI_TXN_END,
     // K23SI finalize transaction
-    K23SI_TXN_FINALIZE
+    K23SI_TXN_FINALIZE,
+
+    /************ END OF RESERVED BLOCK *****************/
+    END=200
 };
 
 } // namespace dto

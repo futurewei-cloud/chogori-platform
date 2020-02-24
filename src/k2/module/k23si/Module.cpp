@@ -10,7 +10,25 @@ namespace dto {
     }
 } // ns dto
 
-K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) : _cmeta(std::move(cmeta)), _partition(std::move(partition)) {
+seastar::future<dto::Timestamp> getTimeNow() {
+    // TODO call TSO service
+    return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp());
+}
+
+K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
+    _cmeta(std::move(cmeta)),
+    _partition(std::move(partition)),
+    _retentionUpdateTimer([this] {
+        // TODO call TSO to get timestamp here
+        _retentionRefresh = _retentionRefresh.then([]{
+            return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp());
+        })
+        .then([this](dto::Timestamp ts) {
+            _retentionTimestamp = ts - _cmeta.retentionPeriod;
+            // run again
+            _retentionUpdateTimer.arm(_minimumRetentionPeriod());
+        });
+    }) {
     K2INFO("ctor for cname=" << _cmeta.name <<", part=" << _partition);
 }
 
@@ -18,7 +36,11 @@ seastar::future<> K23SIPartitionModule::start() {
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
         if (!_validateRequestPartition(request)) {
             // tell client their collection partition is gone
-            return RPCResponse(Status::S410_Gone(),dto::K23SIReadResponse<Payload>());
+            return RPCResponse(dto::K23SIReadStatus::RefreshCollection(), dto::K23SIReadResponse<Payload>());
+        }
+        if (!_validateRetentionWindow(request)) {
+            // the request is outside the retention window
+            return RPCResponse(dto::K23SIReadStatus::AbortRequestTooOld(), dto::K23SIReadResponse<Payload>());
         }
         return handleRead(std::move(request), dto::K23SI_MTR_ZERO);
     });
@@ -44,10 +66,17 @@ seastar::future<> K23SIPartitionModule::start() {
     });
 
     // todo call TSO to get a timestamp
-    return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp())
+    return getTimeNow()
         .then([this](dto::Timestamp watermark) {
+            if (_cmeta.retentionPeriod < _minimumRetentionPeriod()) {
+                K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
+                       << _minimumRetentionPeriod() << "). Extending retention to minimum");
+                _cmeta.retentionPeriod = _minimumRetentionPeriod();
+            }
+            _retentionTimestamp = watermark - _cmeta.retentionPeriod;
             ConfigVar<uint64_t> readCacheSize("k23si_read_cache_size", 10000);
             _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, readCacheSize());
+            _retentionUpdateTimer.arm(_minimumRetentionPeriod());
             return seastar::make_ready_future();
         });
 }
@@ -58,7 +87,8 @@ K23SIPartitionModule::~K23SIPartitionModule() {
 
 seastar::future<> K23SIPartitionModule::stop() {
     K2INFO("stop for cname=" << _cmeta.name << ", part=" << _partition);
-    return seastar::make_ready_future();
+    _retentionUpdateTimer.cancel();
+    return std::move(_retentionRefresh);
 }
 
 seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
@@ -99,7 +129,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
                     // sitting transaction won. Abort the incoming request
                     auto resp = dto::K23SIReadResponse<Payload>();
                     resp.abortPriority = sitMTR.priority;
-                    return RPCResponse(Status::S409_Conflict(), std::move(resp));
+                    return RPCResponse(dto::K23SIReadStatus::AbortConflict(), std::move(resp));
                 }
                 // incoming request won. re-run read logic to get
                 return handleRead(std::move(request), sitMTR);
@@ -116,13 +146,13 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
 seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
 K23SIPartitionModule::_makeReadResponse(DataRecord* rec) const {
     if (rec == nullptr || rec->isTombstone) {
-        return RPCResponse(Status::S404_Not_Found(), dto::K23SIReadResponse<Payload>());
+        return RPCResponse(dto::K23SIReadStatus::KeyNotFound(), dto::K23SIReadResponse<Payload>());
     }
 
     auto response = dto::K23SIReadResponse<Payload>();
     response.key = rec->key;
     response.value.val = rec->value.val.share();
-    return RPCResponse(Status::S200_OK(""), std::move(response));
+    return RPCResponse(dto::K23SIReadStatus::OK(), std::move(response));
 }
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
