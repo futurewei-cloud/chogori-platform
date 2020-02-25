@@ -7,18 +7,35 @@ K2 Project is a platform for building low-latency (μs) in-memory distributed pe
 
 This repository contains implementations for K2 core services (Application Server, Partition Server, Monitor, Client) and subsystems (transport, persistence, etc.).
 
-## Build
+## Build instructions
 
-Requirements:
- * docker
+### Install requirements (windows/linux/mac)
+ * docker: standard installation. Setup insecure registry for k2:
+    ```
+    {
+        "insecure-registries": [
+            "k2-bvu-10001.huawei.com"
+        ]
+    }
+    ```
+    - mac: `Docker->Preferences->Docker Engine`
+    - linux: edit `/etc/docker/daemon.json`
+    - windows: somewhere in docker preferences
  * git
+    install git in order to get access to source code
  * shell
+    need some shell in order to run commands (docker and some shell scripts)
+
+### Get source code
+- git clone this repo
+- get submodules: `git submodule update --init`
 
 ### Build code
 
 ```
 ./K2Build/k2build make -C K2Build
 ```
+
 ### Create a .deb package
 
 ```
