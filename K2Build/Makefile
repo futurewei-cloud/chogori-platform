@@ -59,3 +59,9 @@ builder_img_build:
 
 builder_img_push:
 	@$(MAKE) -C Builder -s push
+
+tpcc_img_build:
+	@cd ../ && $(MAKE) -f K2Build/TPCC/Makefile
+
+tpcc_img_push:
+	@cd ../ && $(MAKE) -f K2Build/TPCC/Makefile -s push
