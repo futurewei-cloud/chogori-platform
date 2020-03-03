@@ -61,9 +61,7 @@ builder_img_push:
 	@$(MAKE) -C Builder -s push
 
 tpcc_img_build:
-	@cp ../build/src/k2/cmd/tpcc/tpcc_client TPCC/
-	@cp ../build/src/k2/cmd/tpcc/mock/mock_server TPCC/
-	@$(MAKE) -C TPCC
+	@cd ../ && $(MAKE) -f K2Build/TPCC/Makefile
 
 tpcc_img_push:
-	@$(MAKE) -C TPCC -s push
+	@cd ../ && $(MAKE) -f K2Build/TPCC/Makefile -s push

@@ -6,3 +6,4 @@ build/
 *.deb
 *.changes
 *.iml
+cluster/__pycache__/

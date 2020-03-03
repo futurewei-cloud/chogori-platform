@@ -27,9 +27,9 @@ enum MockMessageVerbs : Verb {
 
 class K2TxnOptions{
 public:
-    k2::Duration timeout;
+    Duration timeout;
     //Timestamp timestamp;
-    int64_t priority;
+    dto::TxnPriority priority;
     // auto-retry policy...
 };
 
