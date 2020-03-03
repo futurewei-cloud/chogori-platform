@@ -1,0 +1,3 @@
+Requires passwordless ssh between machine running script and target machines
+Requires passwordless sudo on target machines
+Requires python fabric library, e.g. "sudo apt install python3-pip && pip3 install fabric"
