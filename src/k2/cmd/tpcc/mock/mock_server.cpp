@@ -54,7 +54,7 @@ public:  // application lifespan
             total += hash_key.size() + request.value.val.getCapacity() + sizeof(request.value);
 
             _data[hash_key] = request.value.val.copy();
-            dto::K23SIWriteResponse response{.abortPriority=0};
+            dto::K23SIWriteResponse response = {};
 
             if (total % 100000 == 0) {
                 K2INFO("Wrote " << total / 1024.0 << " KB");

@@ -39,8 +39,8 @@ public:  // application lifespan
                 auto request = dto::CollectionCreateRequest{
                     .metadata{
                         .name = collname,
-                        .hashScheme = "hash-crc32c",
-                        .storageDriver = "k23si",
+                        .hashScheme = dto::HashScheme::HashCRC32C,
+                        .storageDriver = dto::StorageDriver::K23SI,
                         .capacity{
                             .dataCapacityMegaBytes = 1000,
                             .readIOPs = 100000,
@@ -70,7 +70,7 @@ public:  // application lifespan
                 // check collection was assigned
                 auto& [status, resp] = response;
                 K2EXPECT(status, Status::S200_OK());
-                _pgetter = dto::PartitionGetter::Wrap(std::move(resp.collection));
+                _pgetter = dto::PartitionGetter(std::move(resp.collection));
             })
             .then([this] { return runScenario01(); })
             .then([this] { return runScenario02(); })
@@ -109,7 +109,7 @@ private:
 
     seastar::future<> _testFuture = seastar::make_ready_future();
 
-    std::unique_ptr<dto::PartitionGetter> _pgetter;
+    dto::PartitionGetter _pgetter;
     uint64_t txnids = 10000;
 public: // tests
 
@@ -117,10 +117,10 @@ seastar::future<> runScenario01() {
     K2INFO("Scenario 01: empty node");
     return seastar::make_ready_future()
     .then([this] {
-        auto& part = _pgetter->getPartitionForKey(dto::Key{.partitionKey="Key1", .rangeKey="rKey1"});
+        dto::Partition* part = _pgetter.getPartitionForKey(dto::Key{.partitionKey="Key1", .rangeKey="rKey1"});
         // read wrong collection
         dto::K23SIReadRequest request {
-            .pvid = part.pvid,
+            .pvid = part->pvid,
             .collectionName = "somebadcoll",
             .mtr {
                 .txnid = txnids++,

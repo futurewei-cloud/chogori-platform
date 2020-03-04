@@ -69,8 +69,8 @@ seastar::future<> CPOTest::runTest2() {
     auto request = dto::CollectionCreateRequest{
         .metadata{
             .name="collection2",
-            .hashScheme="hash-crc32c",
-            .storageDriver="k23si",
+            .hashScheme=dto::HashScheme::HashCRC32C,
+            .storageDriver=dto::StorageDriver::K23SI,
             .capacity{
                 .dataCapacityMegaBytes=1,
                 .readIOPs=100,
@@ -93,8 +93,8 @@ seastar::future<> CPOTest::runTest3() {
     auto request = dto::CollectionCreateRequest{
         .metadata{
             .name = "collection2",
-            .hashScheme = "hash-crc32c",
-            .storageDriver = "k23siBAD",
+            .hashScheme=dto::HashScheme::HashCRC32C,
+            .storageDriver=dto::StorageDriver::K23SI,
             .capacity{
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
@@ -121,8 +121,8 @@ seastar::future<> CPOTest::runTest4() {
             K2EXPECT(status, Status::S200_OK());
             auto& md = resp.collection.metadata;
             K2EXPECT(md.name, "collection2");
-            K2EXPECT(md.hashScheme, "hash-crc32c");
-            K2EXPECT(md.storageDriver, "k23si");
+            K2EXPECT((int)md.hashScheme, (int)dto::HashScheme::HashCRC32C);
+            K2EXPECT((int)md.storageDriver, (int)dto::StorageDriver::K23SI);
             K2EXPECT(md.retentionPeriod, 1h*90*24);
             K2EXPECT(md.capacity.dataCapacityMegaBytes, 1);
             K2EXPECT(md.capacity.readIOPs, 100);
@@ -136,8 +136,8 @@ seastar::future<> CPOTest::runTest5() {
     auto request = dto::CollectionCreateRequest{
         .metadata{
             .name = "collectionAssign",
-            .hashScheme = "hash-crc32c",
-            .storageDriver = "k23si",
+            .hashScheme=dto::HashScheme::HashCRC32C,
+            .storageDriver=dto::StorageDriver::K23SI,
             .capacity{
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
@@ -168,8 +168,8 @@ seastar::future<> CPOTest::runTest5() {
             auto& [status, resp] = response;
             K2EXPECT(status, Status::S200_OK());
             K2EXPECT(resp.collection.metadata.name, "collectionAssign");
-            K2EXPECT(resp.collection.metadata.hashScheme, "hash-crc32c");
-            K2EXPECT(resp.collection.metadata.storageDriver, "k23si");
+            K2EXPECT((int)resp.collection.metadata.hashScheme, (int)dto::HashScheme::HashCRC32C);
+            K2EXPECT((int)resp.collection.metadata.storageDriver, (int)dto::StorageDriver::K23SI);
             K2EXPECT(resp.collection.metadata.retentionPeriod, 5h);
             K2EXPECT(resp.collection.metadata.capacity.dataCapacityMegaBytes, 1000);
             K2EXPECT(resp.collection.metadata.capacity.readIOPs, 100000);
