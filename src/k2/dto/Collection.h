@@ -119,9 +119,29 @@ enum struct HashScheme {
     HashCRC32C
 };
 
+inline std::ostream& operator<<(std::ostream& os, const HashScheme& scheme) {
+    switch (scheme) {
+        case HashScheme::Range:
+            return os << "Range";
+        case HashScheme::HashCRC32C:
+            return os << "Hash-CRC32C";
+        default:
+            return os << "Unknown hash scheme";
+    }
+}
+
 enum struct StorageDriver {
     K23SI
 };
+
+inline std::ostream& operator<<(std::ostream& os, const StorageDriver& driver) {
+    switch (driver) {
+        case StorageDriver::K23SI:
+            return os << "K23SI";
+        default:
+            return os << "Unknown storage driver";
+    }
+}
 
 struct CollectionMetadata {
     String name;
@@ -147,11 +167,6 @@ public:
 
     // Returns the partition for the given key. Hashes key if hashScheme is not range
     Partition* getPartitionForKey(Key key);
-
-    // Returns the partition for the given hash value. If the collection doesn't use hashing,
-    // a nullptr is returned
-    Partition* getPartitionForHash(uint64_t hvalue);
-    Partition* getPartitionForHash(String hvalue);
 
     Collection collection;
 

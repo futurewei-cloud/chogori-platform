@@ -53,7 +53,7 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
         });
     }
 
-    K2WARN("Storage driver not supported: " << (int)meta.storageDriver);
+    K2WARN("Storage driver not supported: " << meta.storageDriver);
     partition.astate = dto::AssignmentState::FailedAssignment;
     return seastar::make_ready_future<dto::Partition>(std::move(partition));
 }

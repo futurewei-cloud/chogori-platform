@@ -44,10 +44,12 @@ bool Partition::PVID::operator!=(const Partition::PVID& o) const {
 
 PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) {
     if (collection.metadata.hashScheme == HashScheme::Range) {
+        _rangePartitionMap.reserve(collection.partitionMap.partitions.size());
+
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            RangeMapElement e = {.key = it->startKey, .partition = &(*it)};
+            RangeMapElement e{.key = it->startKey, .partition = &(*it)};
             _rangePartitionMap.push_back(std::move(e));
         }
 
@@ -55,10 +57,12 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
     }
 
     if (collection.metadata.hashScheme == HashScheme::HashCRC32C) {
+        _hashPartitionMap.reserve(collection.partitionMap.partitions.size());
+
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            HashMapElement e = {.hvalue = std::stoull(it->startKey), .partition = &(*it)};
+            HashMapElement e{.hvalue = std::stoull(it->startKey), .partition = &(*it)};
             _hashPartitionMap.push_back(std::move(e));
         }
 
@@ -67,43 +71,35 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
 }
 
 Partition* PartitionGetter::getPartitionForKey(Key key) {
-    if (collection.metadata.hashScheme == HashScheme::Range) {
-        RangeMapElement to_find = {.key = std::move(key.partitionKey), .partition = nullptr};
-        auto it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
-        if (it != _rangePartitionMap.end()) {
-            return it->partition;
+    switch (collection.metadata.hashScheme) {
+        case HashScheme::Range:
+        {
+            RangeMapElement to_find{.key = std::move(key.partitionKey), .partition = nullptr};
+            auto it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
+            if (it != _rangePartitionMap.end()) {
+                return it->partition;
+            }
+
+            return nullptr;
         }
+        case HashScheme::HashCRC32C:
+        {
+            uint32_t c32c = crc32c::Crc32c(key.partitionKey.c_str(), key.partitionKey.size());
+            uint64_t hash = c32c;
+            // shift the existing hash over to the high 32 bits and add it in to get a 64bit hash
+            hash += hash << 32;
 
-        return nullptr;
+            HashMapElement to_find{.hvalue = hash, .partition = nullptr};
+            auto it = std::lower_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
+            if (it != _hashPartitionMap.end()) {
+                return it->partition;
+            }
+
+            return nullptr;
+        }
+        default:
+            return nullptr;
     }
-
-    if (collection.metadata.hashScheme == HashScheme::HashCRC32C) {
-        uint32_t c32c = crc32c::Crc32c(key.partitionKey.c_str(), key.partitionKey.size());
-        uint64_t hash = c32c;
-        // shift the existing hash over to the high 32 bits and add it in to get a 64bit hash
-        hash += hash << 32;
-        return getPartitionForHash(hash);
-    }
-
-    return nullptr;
-}
-
-Partition* PartitionGetter::getPartitionForHash(uint64_t hvalue) {
-    if (collection.metadata.hashScheme != HashScheme::HashCRC32C) {
-        return nullptr;
-    }
-
-    HashMapElement to_find = {.hvalue = hvalue, .partition = nullptr};
-    auto it = std::lower_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
-    if (it != _hashPartitionMap.end()) {
-        return it->partition;
-    }
-
-    return nullptr;
-}
-
-Partition* PartitionGetter::getPartitionForHash(String hvalue) {
-    return getPartitionForHash(std::stoull(hvalue));
 }
 
 }  // namespace dto
