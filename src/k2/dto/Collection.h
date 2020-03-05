@@ -4,6 +4,7 @@
 #include <set>
 #include <iostream>
 #include <unordered_map>
+#include <functional>
 // Collection-related DTOs
 
 namespace k2 {
@@ -114,10 +115,39 @@ struct CollectionCapacity {
     K2_PAYLOAD_FIELDS(dataCapacityMegaBytes, readIOPs, writeIOPs);
 };
 
+enum struct HashScheme {
+    Range,
+    HashCRC32C
+};
+
+inline std::ostream& operator<<(std::ostream& os, const HashScheme& scheme) {
+    switch (scheme) {
+        case HashScheme::Range:
+            return os << "Range";
+        case HashScheme::HashCRC32C:
+            return os << "Hash-CRC32C";
+        default:
+            return os << "Unknown hash scheme";
+    }
+}
+
+enum struct StorageDriver {
+    K23SI
+};
+
+inline std::ostream& operator<<(std::ostream& os, const StorageDriver& driver) {
+    switch (driver) {
+        case StorageDriver::K23SI:
+            return os << "K23SI";
+        default:
+            return os << "Unknown storage driver";
+    }
+}
+
 struct CollectionMetadata {
     String name;
-    String hashScheme; // e.g. "hash-crc32c"
-    String storageDriver; // e.g. "k23si"
+    HashScheme hashScheme;
+    StorageDriver storageDriver;
     CollectionCapacity capacity;
     Duration retentionPeriod{0};
     K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod);
@@ -127,58 +157,43 @@ struct Collection {
     PartitionMap partitionMap;
     std::unordered_map<String, String> userMetadata;
     CollectionMetadata metadata;
+
     K2_PAYLOAD_FIELDS(partitionMap, userMetadata, metadata);
 };
 
-// This is base class for partition getters. Partition getters wrap a Collection object
-// and are used to find partitions based on hash/key, depending on the collection type
-// Most users should simply use the Wrap builder method
 class PartitionGetter {
 public:
-    // wrap the given collection into a proper PartitionGetter
-    static std::unique_ptr<PartitionGetter> Wrap(Collection&& coll);
-public:
-    PartitionGetter(Collection&& coll);
-    virtual ~PartitionGetter();
+    PartitionGetter(Collection&& collection);
+    PartitionGetter() = default;
 
-    // these getters are left without implementation but not declared pure virtual so that
-    // code which attempts to use a method not overridden by an implementation will not compile
+    // Returns the partition for the given key. Hashes key if hashScheme is not range
+    Partition* getPartitionForKey(const Key& key);
 
-    // Returns the partition for the given key
-    virtual const Partition& getPartitionForKey(Key key)=0;
+    Collection collection;
 
-    // Returns the partition for the given hash value. If the collection doesn't use hashing,
-    // the given hvalue is converted to a string and used to find the partition with the range that
-    // covers this hvalue
-    virtual const Partition& getPartitionForHash(uint64_t hvalue)=0;
-    // same as above, but the argument is first converted to uint64_t
-    virtual const Partition& getPartitionForHash(String hvalue)=0;
-
-    // the collection we're wrapping
-    Collection coll;
-}; // class PartitionGetter
-
-// This getter uses crc32c-based hashing to determine key distribution
-class HashCRC32CPartitionGetter: public PartitionGetter {
-public:
-    HashCRC32CPartitionGetter(Collection&& coll);
-    virtual ~HashCRC32CPartitionGetter();
-    virtual const Partition& getPartitionForKey(Key key) override;
-    virtual const Partition& getPartitionForHash(uint64_t hvalue) override;
-    virtual const Partition& getPartitionForHash(String hvalue) override;
 private:
-    std::map<uint64_t, const Partition*> _partitions;
-};  // class HashCRC32CPartitionGetter
+    struct RangeMapElement {
+        RangeMapElement(const String& k, Partition* part) : key(k), partition(part) {}
 
-// This getter uses lexicographical ordering to determine where keys belong
-class RangePartitionGetter : public PartitionGetter {
-public:
-    RangePartitionGetter(Collection&& coll);
-    virtual ~RangePartitionGetter();
-    virtual const Partition& getPartitionForKey(Key key) override;
-    virtual const Partition& getPartitionForHash(uint64_t hvalue) override;
-    virtual const Partition& getPartitionForHash(String hvalue) override;
-};  // class RangePartitionGetter
+        std::reference_wrapper<const String> key;
+        Partition* partition;
+
+        bool operator<(const RangeMapElement& other) const noexcept {
+            return key.get() < other.key.get();
+        }
+    };
+
+    struct HashMapElement {
+        uint64_t hvalue;
+        Partition* partition;
+        bool operator<(const HashMapElement& other) const noexcept {
+            return hvalue < other.hvalue;
+        }
+    };
+
+    std::vector<RangeMapElement> _rangePartitionMap;
+    std::vector<HashMapElement> _hashPartitionMap;
+};
 
 } // namespace dto
 } // namespace k2
