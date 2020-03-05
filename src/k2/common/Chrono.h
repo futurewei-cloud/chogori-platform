@@ -25,11 +25,49 @@ inline std::chrono::seconds sec(const Duration& dur) {
     return std::chrono::duration_cast<std::chrono::seconds>(dur);
 }
 
-}
+// this clock source should be used when you don't care just how precise you are with timing
+// and you want to avoid a lot of calls to system's clock.
+// It provides monotonically increasing, thread-local sequence of values and refreshes the
+// system clock when asked.
+struct CachedSteadyClock {
+    typedef Duration duration;
+    typedef Duration::rep rep;
+    typedef Duration::period period;
+    typedef TimePoint time_point;
+    static const bool is_steady = true;
+
+    static time_point now(bool refresh=false) noexcept;
+private:
+    static thread_local TimePoint _now;
+};
+
+// Utility class to keep track of a deadline. Useful for nested requests
+template<typename ClockT=Clock>
+class Deadline {
+public:
+    Deadline(typename ClockT::duration dur) : _deadline(typename ClockT::now() + dur) {}
+
+    typename ClockT::duration getRemaining() const {
+        auto now = typename ClockT::now();
+        if (now >= _deadline) {
+            return typename ClockT::duration(0);
+        }
+        return _deadline - now;
+    }
+
+    bool isOver() const {
+        return typename ClockT::now() >= _deadline;
+    }
+
+   private:
+    typename ClockT::time_point _deadline;
+}; // class Deadline
+
+} // ns k2
 
 namespace std {
     inline std::ostream& operator<<(std::ostream& os, const k2::Duration& dur) {
-        os << dur.count() << "ns";
+        os << k2::nsec(dur).count() << "ns";
         return os;
     }
-}
+} // ns std
