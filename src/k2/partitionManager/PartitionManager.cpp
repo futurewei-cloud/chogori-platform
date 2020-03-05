@@ -31,7 +31,7 @@ seastar::future<> PartitionManager::start() {
 
 seastar::future<dto::Partition>
 PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition partition) {
-    if (meta.storageDriver == "k23si") {
+    if (meta.storageDriver == dto::StorageDriver::K23SI) {
         _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);
         return _pmodule->start().then([partition = std::move(partition)] () mutable {
             auto tcpep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
