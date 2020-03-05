@@ -128,7 +128,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
         K2DEBUG("RPC Request call");
 
         return sendRequest(verb, std::move(payload), endpoint, timeout)
-            .then([](std::unique_ptr<Payload> responsePayload) {
+            .then([](std::unique_ptr<Payload>&& responsePayload) {
                 // parse status
                 auto result = std::make_tuple<Status, Response_t>(Status(), Response_t());
                 if (!responsePayload->read(std::get<0>(result))) {
@@ -141,6 +141,22 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     }
                 }
                 return result;
+            })
+            .handle_exception([](auto&& exc) {
+                try {
+                    std::rethrow_exception(exc);
+                }
+                catch (const RPCDispatcher::RequestTimeoutException&) {
+                    return std::make_tuple<Status, Response_t>(Status::S503_Service_Unavailable(), Response_t());
+                }
+                catch (const std::exception &e) {
+                    K2ERROR("RPC send failed with uncaught exception: " << e.what());
+                }
+                catch (...) {
+                    K2ERROR("RPC send failed with unknown exception");
+                }
+
+                return std::make_tuple<Status, Response_t>(Status::S500_Internal_Server_Error(), Response_t());
             });
     }
 
@@ -160,7 +176,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
             // we're ignoring the returned future here so we can't wait for it before the rpc dispatcher exits
             // to guard against segv on shutdown, obtain a weak pointer
             (void)observer(std::move(rpcRequest))
-            .then([disp=weak_from_this(), reply=std::move(reply), request=std::move(request)](auto result) mutable {
+            .then([disp=weak_from_this(), reply=std::move(reply), request=std::move(request)](auto&& result) mutable {
                 if (disp) {
                     // write out the status first
                     reply->write(std::get<0>(result));
@@ -170,6 +186,21 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                 }
                 else {
                     K2WARN("dispatcher is going down: unable to send response to " << request.endpoint.getURL());
+                }
+            })
+            .handle_exception([disp=weak_from_this(), request=std::move(request), reply=std::move(reply)](auto&& exc) mutable {
+                try {
+                    std::rethrow_exception(exc);
+                }
+                catch (const std::exception &e) {
+                    K2ERROR("RPC handler failed with uncaught exception: " << e.what());
+                }
+                catch (...) {
+                    K2ERROR("RPC handler failed with unknown exception");
+                }
+                if (disp) {
+                    reply->write(Status::S500_Internal_Server_Error());
+                    disp->sendReply(std::move(reply), request);
                 }
             });
         });

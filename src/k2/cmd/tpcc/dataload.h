@@ -28,7 +28,7 @@ public:
         std::vector<future<>> futures;
 
         for (int i=0; i < pipeline_depth; ++i) {
-            futures.push_back(client.beginTxn(options).then([this] (K2TxnHandle t) {
+            futures.push_back(client.beginTxn(options).then([this] (K2TxnHandle&& t) {
                     return do_with(std::move(t), [this] (K2TxnHandle& txn) {
                         return insertDataLoop(txn);
                 });
@@ -50,7 +50,7 @@ private:
             return write_func(txn).discard_result();
         }).then([&txn] () {
             return txn.end(true);
-        }).then([] (EndResult result) {
+        }).then([] (EndResult&& result) {
             if (!result.status.is2xxOK()) {
                 return make_exception_future<>(std::runtime_error("Commit failed during bulk data load"));
             }

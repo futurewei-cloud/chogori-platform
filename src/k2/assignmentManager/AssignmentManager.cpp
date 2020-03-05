@@ -42,7 +42,7 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
     // TODO, consider current load on all cores and potentially re-route the assignment to a different core
     // for now, simply pass it onto local handler
     return PManager().assignPartition(std::move(request.collectionMeta), std::move(request.partition))
-        .then([](auto partition) {
+        .then([](auto&& partition) {
             auto status = (partition.astate == dto::AssignmentState::Assigned) ? Status::S201_Created() : Status::S403_Forbidden("partition assignment was not allowed");
             dto::AssignmentCreateResponse resp{.assignedPartition = std::move(partition)};
             return RPCResponse(std::move(status), std::move(resp));

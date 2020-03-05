@@ -129,7 +129,7 @@ public: // Work generators
 
                 // send a request with expected reply. Since we expect a reply, we must specify a timeout
                 return RPC().sendRequest(POST, std::move(msg), *self->_heartbeatTXEndpoint, timeout)
-                .then([msground](std::unique_ptr<Payload> payload) {
+                .then([msground](std::unique_ptr<Payload>&& payload) {
                     // happy case is chained right onto the dispatcher Send call
                     auto received = getPayloadString(payload.get());
                     K2INFO("Received reply for reqid=" << msground << " : " << received);

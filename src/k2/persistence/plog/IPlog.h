@@ -198,7 +198,7 @@ public:
     //
     seastar::future<Binary> read(const PlogId& plogId, uint32_t offset, uint32_t size)
     {
-        return read(plogId, ReadRegion(offset, size, Binary(size))).then([](ReadRegion region)
+        return read(plogId, ReadRegion(offset, size, Binary(size))).then([](ReadRegion&& region)
         {
             return std::move(region.buffer);
         });
@@ -211,7 +211,7 @@ public:
             readFutures.push_back(read(plogId, std::move(region)));
 
         return seastar::when_all_succeed(readFutures.begin(), readFutures.end())
-            .then([this](std::vector<ReadRegion> regions) mutable { return regions; });
+            .then([this](std::vector<ReadRegion>&& regions) mutable { return std::move(regions); });
     }
 
     //
@@ -219,7 +219,7 @@ public:
     //
     seastar::future<> readAll(const PlogId& plogId, Payload& payload)
     {
-        return getInfo(plogId).then([&payload, plogId, this](PlogInfo info) mutable
+        return getInfo(plogId).then([&payload, plogId, this](PlogInfo&& info) mutable
         {
             if(!info.size)
                 return seastar::make_ready_future<>();
@@ -231,7 +231,7 @@ public:
                     if(offset >= size)
                         return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::yes);
 
-                    return read(plogId, offset, std::min(size - offset, (uint32_t)8*1024)).then([&payload, &offset](Binary bin)
+                    return read(plogId, offset, std::min(size - offset, (uint32_t)8*1024)).then([&payload, &offset](Binary&& bin)
                     {
                         offset += bin.size();
                         payload.appendBinary(std::move(bin));
@@ -271,12 +271,12 @@ public:
         return append(plogId, Binary((const char*)buffer, bufferSize));
     }
 
-    seastar::future<uint32_t> getSize(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.size; }); }
-    seastar::future<bool> isSealed(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo info) { return info.sealed; }); }
+    seastar::future<uint32_t> getSize(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo&& info) { return info.size; }); }
+    seastar::future<bool> isSealed(const PlogId& plogId) { return getInfo(plogId).then([this](PlogInfo&& info) { return info.sealed; }); }
 
     seastar::future<PlogId> createOne()
     {
-        return create(1).then([this](std::vector<PlogId> plogIds) { return plogIds[0]; });
+        return create(1).then([this](std::vector<PlogId>&& plogIds) { return std::move(plogIds[0]); });
     }
 
 };  //  class IPlog

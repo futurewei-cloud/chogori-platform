@@ -130,7 +130,7 @@ private:
                 return seastar::make_exception_future<>(std::runtime_error("we were stopped"));
             }
             return k2::RPC().sendRequest(GET_DATA_URL, myRemote->newPayload(), *myRemote, timeout)
-            .then([this](std::unique_ptr<k2::Payload> payload) {
+            .then([this](std::unique_ptr<k2::Payload>&& payload) {
                 if (_stopped) return seastar::make_ready_future<>();
                 if (!payload || payload->getSize() == 0) {
                     K2ERROR("Remote end did not provide a data endpoint. Giving up");
@@ -166,7 +166,7 @@ private:
         auto req = _session.client.newPayload();
         req->write((void*)&_session.config, sizeof(_session.config));
         return k2::RPC().sendRequest(START_SESSION, std::move(req), _session.client, 1s).
-        then([this](std::unique_ptr<k2::Payload> payload) {
+        then([this](std::unique_ptr<k2::Payload>&& payload) {
             if (_stopped) return seastar::make_ready_future<>();
             if (!payload || payload->getSize() == 0) {
                 K2ERROR("Remote end did not start a session. Giving up");

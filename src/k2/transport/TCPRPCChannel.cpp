@@ -34,7 +34,7 @@ TCPRPCChannel::~TCPRPCChannel(){
 void TCPRPCChannel::run() {
     assert(!_running);
     _running = true;
-    _loopDoneFuture = _futureSocket.then([this](seastar::connected_socket fd) {
+    _loopDoneFuture = _futureSocket.then([this](seastar::connected_socket&& fd) {
         K2DEBUG("future channel connected successfully");
         if (_closingInProgress) {
             K2WARN("channel is going down. ignoring completed connect");

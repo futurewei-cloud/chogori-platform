@@ -84,7 +84,7 @@ public:
             loadPlogFutures.push_back(plogService->readAll(plogId));
 
         return seastar::when_all_succeed(loadPlogFutures.begin(), loadPlogFutures.end())
-            .then([this](std::vector<Payload> payloads) mutable
+            .then([this](std::vector<Payload>&& payloads) mutable
             {
                 std::vector<EntryRecord> records;
                 for(size_t i = 0; i < plogs.size(); i++)
@@ -124,7 +124,7 @@ seastar::future<RecordPosition> PersistentVolume::append(Binary binary)
             // retrieve last chunk information
             auto& plogId = m_chunkList.back().plogId;
             return m_plog->getInfo(plogId)
-            .then([&plogId, appendSize, this](auto plogInfo){
+            .then([&plogId, appendSize, this](auto&& plogInfo){
                 if(plogInfo.sealed || plogInfo.size+appendSize > MaxPlogSize)
                     // current chunk doesn't have enough space, need a new chunk to append
                     return m_plog->seal(plogId).then([this]{ return addNewChunk(); });
@@ -134,7 +134,7 @@ seastar::future<RecordPosition> PersistentVolume::append(Binary binary)
             });
         }
     }()
-    .then([appendSize, binary{std::move(binary)}, this] () mutable {
+    .then([appendSize, binary=std::move(binary), this] () mutable {
         if(appendSize+plogInfoSize > MaxPlogSize)
         {
             // the binary buffer is too large to append to plog, throw a ChunkException.
@@ -144,7 +144,7 @@ seastar::future<RecordPosition> PersistentVolume::append(Binary binary)
         }else
             return m_plog->append(m_chunkList.back().plogId, std::move(binary));
     })
-    .then([appendSize, this](auto offset) {
+    .then([appendSize, this](auto&& offset) {
         // update chunk Information
         auto& chunkInfo = m_chunkList.back();
         chunkInfo.size += appendSize;
@@ -169,7 +169,7 @@ seastar::future<uint32_t> PersistentVolume::read(const RecordPosition& position,
     // determine the actual size to read
     auto readSize = std::min(sizeToRead, plogInfoSize+chunkInfo.size-position.offset);
     return m_plog->read(chunkInfo.plogId, ReadRegion{position.offset, readSize})
-    .then([&buffer](auto region) {
+    .then([&buffer](auto&& region) {
         buffer = std::move(region.buffer);
         return seastar::make_ready_future<uint32_t>(buffer.size());
     });
@@ -251,7 +251,7 @@ std::unique_ptr<IPersistentVolume::IIterator> PersistentVolume::getChunks()
 seastar::future<> PersistentVolume::addNewChunk()
 {
     return m_plog->create(1)
-        .then([this](std::vector<PlogId> plogIds)
+        .then([this](std::vector<PlogId>&& plogIds)
         {
             EntryRecord record;
             record.plogId = plogIds[0];
@@ -281,12 +281,12 @@ struct PersistentVolumeWithConstructorAccess : public PersistentVolume
 seastar::future<std::shared_ptr<PersistentVolume>> PersistentVolume::create(std::shared_ptr<IPlog> plogService)
 {
     return plogService->create(16)
-        .then([plogService](std::vector<PlogId> plogIds)
+        .then([plogService](std::vector<PlogId>&& plogIds)
         {
             auto volume = std::make_shared<PersistentVolumeWithConstructorAccess>(plogService);
             volume->entryService = std::make_unique<EntryService>(plogService, std::move(plogIds));
 
-            return volume->entryService->init().then([volume](std::vector<EntryRecord>)
+            return volume->entryService->init().then([volume](std::vector<EntryRecord>&&)
             {
                 return std::dynamic_pointer_cast<PersistentVolume>(volume);
             });
@@ -297,7 +297,7 @@ seastar::future<std::shared_ptr<PersistentVolume>> PersistentVolume::open(std::s
 {
     auto volume = std::make_shared<PersistentVolumeWithConstructorAccess>(plogService);
     volume->entryService = std::make_unique<EntryService>(plogService, std::move(entryPlogs));
-    return volume->entryService->init().then([volume = std::move(volume)](std::vector<EntryRecord> records) mutable
+    return volume->entryService->init().then([volume = std::move(volume)](std::vector<EntryRecord>&& records) mutable
         {
             for(auto& record : records)
             {
