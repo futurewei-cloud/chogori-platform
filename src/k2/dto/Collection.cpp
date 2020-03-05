@@ -49,7 +49,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            RangeMapElement e{.key = it->startKey, .partition = &(*it)};
+            RangeMapElement e(it->startKey, &(*it));
             _rangePartitionMap.push_back(std::move(e));
         }
 
@@ -70,11 +70,11 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
     }
 }
 
-Partition* PartitionGetter::getPartitionForKey(Key key) {
+Partition* PartitionGetter::getPartitionForKey(const Key& key) {
     switch (collection.metadata.hashScheme) {
         case HashScheme::Range:
         {
-            RangeMapElement to_find{.key = std::move(key.partitionKey), .partition = nullptr};
+            RangeMapElement to_find(key.partitionKey, nullptr);
             auto it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
             if (it != _rangePartitionMap.end()) {
                 return it->partition;

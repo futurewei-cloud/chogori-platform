@@ -4,6 +4,7 @@
 #include <set>
 #include <iostream>
 #include <unordered_map>
+#include <functional>
 // Collection-related DTOs
 
 namespace k2 {
@@ -166,16 +167,19 @@ public:
     PartitionGetter() = default;
 
     // Returns the partition for the given key. Hashes key if hashScheme is not range
-    Partition* getPartitionForKey(Key key);
+    Partition* getPartitionForKey(const Key& key);
 
     Collection collection;
 
 private:
     struct RangeMapElement {
-        String key;
+        RangeMapElement(const String& k, Partition* part) : key(k), partition(part) {}
+
+        std::reference_wrapper<const String> key;
         Partition* partition;
+
         bool operator<(const RangeMapElement& other) const noexcept {
-            return key < other.key;
+            return key.get() < other.key.get();
         }
     };
 
