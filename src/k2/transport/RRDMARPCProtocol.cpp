@@ -39,7 +39,7 @@ void RRDMARPCProtocol::start() {
             [this] { return _stopped;},
             [this] {
             return _listener.accept().then(
-                [this] (std::unique_ptr<seastar::rdma::RDMAConnection> rconn) {
+                [this] (std::unique_ptr<seastar::rdma::RDMAConnection>&& rconn) {
                     auto && ep = _endpointFromAddress(rconn->getAddr());
                     K2DEBUG("Accepted connection from " << ep.getURL());
                     _handleNewChannel(std::move(rconn), std::move(ep));

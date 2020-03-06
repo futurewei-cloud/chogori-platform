@@ -28,7 +28,7 @@ future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
     key.partitionKey = row.getPartitionKey();
     key.rangeKey = row.getRowKey();
 
-    return txn.write(std::move(key), "TPCC", row.data).then([] (k2::WriteResult result) {
+    return txn.write(std::move(key), "TPCC", row.data).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2WARN("writeRow failed!");
             return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
@@ -45,7 +45,7 @@ future<k2::WriteResult> writeRow(ValueType&& row, k2::K2TxnHandle& txn)
     key.partitionKey = row.getPartitionKey();
     key.rangeKey = row.getRowKey();
 
-    return txn.write(std::move(key), "TPCC", std::move(row.data)).then([] (k2::WriteResult result) {
+    return txn.write(std::move(key), "TPCC", std::move(row.data)).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2WARN("writeRow failed!");
             return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
@@ -221,14 +221,14 @@ public:
     }
 
     // For payment transaction
-    History(uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t c_w_id, uint16_t c_d_id, float amount, 
+    History(uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t c_w_id, uint16_t c_d_id, float amount,
                 const char w_name[], const char d_name[]) : WarehouseID(w_id) {
 
         data.Date = getDate();
-        data.CustomerID = c_id; 
-        data.CustomerWarehouseID = c_w_id; 
+        data.CustomerID = c_id;
+        data.CustomerWarehouseID = c_w_id;
         data.Amount = amount;
-        data.CustomerDistrictID = c_d_id; 
+        data.CustomerDistrictID = c_d_id;
         data.DistrictID = d_id;
 
         strcpy(data.Info, w_name);
@@ -318,7 +318,7 @@ future<k2::WriteResult> writeRow<NewOrder>(const NewOrder& row, k2::K2TxnHandle&
     key.partitionKey = row.getPartitionKey();
     key.rangeKey = row.getRowKey();
 
-    return txn.write(std::move(key), "TPCC", k2::Payload()).then([] (k2::WriteResult result) {
+    return txn.write(std::move(key), "TPCC", k2::Payload()).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2WARN("writeRow failed!");
             return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));

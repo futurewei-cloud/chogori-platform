@@ -53,7 +53,7 @@ public:  // application lifespan
                 return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
                         (dto::Verbs::CPO_COLLECTION_CREATE, std::move(request), *_cpoEndpoint, 1s);
             })
-            .then([](auto response) {
+            .then([](auto&& response) {
                 // response for collection create
                 auto& [status, resp] = response;
                 K2EXPECT(status, Status::S201_Created());
@@ -66,7 +66,7 @@ public:  // application lifespan
                 return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
                     (dto::Verbs::CPO_COLLECTION_GET, std::move(request), *_cpoEndpoint, 100ms);
             })
-            .then([this](auto response) {
+            .then([this](auto&& response) {
                 // check collection was assigned
                 auto& [status, resp] = response;
                 K2EXPECT(status, Status::S200_OK());
@@ -134,7 +134,7 @@ seastar::future<> runScenario01() {
         };
         return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>
             (dto::Verbs::K23SI_READ, std::move(request), *_k2Endpoints[0], 100ms)
-        .then([](auto response) {
+        .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(status, Status::S410_Gone());
         });
@@ -202,6 +202,10 @@ cases requiring client to refresh collection pmap
         - read ("pkey1", "", v9)
             expect 404 not found
 
+
+    write:
+        - write inside an already read history
+            expect S403_Forbidden
     */
     return seastar::make_ready_future();
 }

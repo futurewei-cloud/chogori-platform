@@ -85,14 +85,14 @@ public:
             K2INFO("found endpoint: " << ep->getURL());
             return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, std::move(request), *ep, 1s);
         })
-        .then([](auto resp) {
+        .then([](auto&& resp) {
             K2INFO("Received PUT response with status: " << std::get<0>(resp));
 
             K2INFO("getting record");
             GET_Request request{.key = "Key1"};
             return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, std::move(request), *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s);
         })
-        .then([](auto resp) {
+        .then([](auto&& resp) {
             K2INFO("Received GET response with status: " << std::get<0>(resp) << ", value=" << std::get<1>(resp).value);
         });
     }

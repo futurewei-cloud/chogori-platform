@@ -100,10 +100,10 @@ int main(int argc, char **argv) {
     double amount = 100;
 
     txnlib.begin(opts)
-    .then([&](K2TxnHandle t) {
+    .then([&](K2TxnHandle&& t) {
         return
         when_all(t.read(keyFrom), t.read(keyTo))
-        .then([&](auto results) {
+        .then([&](auto&& results) {
             Account aFrom(std::get<0>(results).get0().record);
             Account aTo(std::get<1>(results).get0().record);
 
@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
             aTo.balance += amount;
             return when_all(t.write(aFrom.toRecord()), t.write(aTo.toRecord()));
         })
-        .then([&](auto results) {
+        .then([&](auto&& results) {
             if (std::get<0>(results).get0().status.ok() &&
                 std::get<1>(results).get0().status.ok()) {
                 K2INFO("Committing transaction since all operations succeeded");
@@ -121,7 +121,7 @@ int main(int argc, char **argv) {
             return t.end(false);
         });
     })
-    .then([&](EndResult) {
+    .then([&](EndResult&&) {
         K2INFO("Transaction has completed");
     })
     .handle_exception([](auto&& exc){

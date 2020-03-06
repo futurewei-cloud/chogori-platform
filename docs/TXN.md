@@ -299,6 +299,9 @@ By construction then, there can only be one WI present in the version history an
 
 The algorithm is identical to performing a `R->W` [PUSH operation](#push-operation), where the existing WI corresponds to the `Write`, and the incoming write corresponds to the `Read`.
 
+##### Client error handling
+Our design requires a cooperating client. We will signal to the client when we determine that it should abort, however we will not set any server-side state to ensure they behave correctly. If a client chooses to commit after their write fails, they will be able to commit successfully and end up with potentially inconsistent data.
+
 ## Commit
 The commit step is rather simple once we realize that if the client application has successfully performed all of its operations thus far, then it can just tell the TRH to finalize the transaction. There is a potential for discovering that the state of the transaction at the TRH is `Aborted`, in which case the application simply has to retry the transaction.
 

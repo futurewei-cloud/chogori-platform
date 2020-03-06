@@ -60,13 +60,13 @@ seastar::future<std::vector<PlogId>> PlogMock::create(uint plogCount)
                         return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
 
                     return seastar::open_file_dma(plogFileName, seastar::open_flags::rw | seastar::open_flags::create)
-                        .then([&plogIds, plogId, this](seastar::file new_ssfile) {
+                        .then([&plogIds, plogId, this](seastar::file&& new_ssfile) {
                             auto plogFileDescriptor = seastar::make_lw_shared<PlogFileDescriptor>();
                             plogFileDescriptor->ssfile = std::move(new_ssfile);
 
                             // write head information (plogInfo) to plog file
                             return plogFileDescriptor->ssfile.dma_write(0, plogFileDescriptor->headBuffer.get(), DMA_ALIGNMENT)
-                                .then([&plogIds, plogId, plogFileDescriptor, this](auto) mutable {
+                                .then([&plogIds, plogId, plogFileDescriptor, this](auto&&) mutable {
                                     return plogFileDescriptor->ssfile.flush();
                                 })
                                 .then([&plogIds, plogId, plogFileDescriptor, this]() mutable {
@@ -103,12 +103,12 @@ seastar::future<PlogFileDescriptor*> PlogMock::getDescriptor(const PlogId& plogI
 
             // load plog info from the plog file, then return the plog info
             return seastar::open_file_dma(plogFileName, seastar::open_flags::rw)
-                .then([plogId{std::move(plogId)}, this](seastar::file new_ssfile) mutable {
+                .then([plogId{std::move(plogId)}, this](seastar::file&& new_ssfile) mutable {
                     auto plogFileDescriptor = seastar::make_lw_shared<PlogFileDescriptor>();
 
                     // read header
                     return new_ssfile.dma_read(0, plogFileDescriptor->headBuffer.get_write(), DMA_ALIGNMENT)
-                        .then([plogId{std::move(plogId)}, new_ssfile, plogFileDescriptor, this](auto) mutable {
+                        .then([plogId{std::move(plogId)}, new_ssfile, plogFileDescriptor, this](auto&&) mutable {
                             if(!plogFileDescriptor->getInfo().size)
                                 return seastar::make_ready_future<>();
 
@@ -172,7 +172,7 @@ seastar::future<uint32_t> PlogMock::append(const PlogId& plogId, Binary bin)
                 seastar::make_ready_future<size_t>(0);
 
             return writeTail
-                .then([remainingWriteSize, buf = bin.get()+leftTailSize, descr](auto)
+                .then([remainingWriteSize, buf = bin.get()+leftTailSize, descr](auto&&)
                 {
                     return remainingWriteSize ?
                         descr->ssfile.dma_write(descr->getTailOffsetInFile()+DMA_ALIGNMENT, buf, remainingWriteSize) :
@@ -189,7 +189,7 @@ seastar::future<uint32_t> PlogMock::append(const PlogId& plogId, Binary bin)
 
                     return descr->ssfile.dma_write(descr->getTailOffsetInFile()+DMA_ALIGNMENT+remainingWriteSize, descr->tailBuffer.get(), DMA_ALIGNMENT);
                 })
-                .then([descr, size](auto)
+                .then([descr, size](auto&&)
                 {
                     descr->getInfo().size += size;
                     return descr->ssfile.dma_write(0, descr->headBuffer.get(), DMA_ALIGNMENT).discard_result();
@@ -275,11 +275,11 @@ seastar::future<ReadRegion> PlogMock::read(const PlogId& plogId, ReadRegion regi
 seastar::future<>  PlogMock::seal(const PlogId& plogId)
 {
     return getInfo(plogId)
-    .then([plogId, this] (auto) mutable {
+    .then([plogId, this] (auto&&) mutable {
         auto ptr = reinterpret_cast<PlogInfo*>(m_plogFileDescriptors[plogId].headBuffer.get_write());
         ptr->sealed = true;
 
-        return m_plogFileDescriptors[plogId].ssfile.dma_write(0, m_plogFileDescriptors[plogId].headBuffer.get(), DMA_ALIGNMENT).then([plogId, this](auto) mutable {
+        return m_plogFileDescriptors[plogId].ssfile.dma_write(0, m_plogFileDescriptors[plogId].headBuffer.get(), DMA_ALIGNMENT).then([plogId, this](auto&&) mutable {
             return m_plogFileDescriptors[plogId].ssfile.flush();
         });
     });
@@ -288,7 +288,7 @@ seastar::future<>  PlogMock::seal(const PlogId& plogId)
 seastar::future<>  PlogMock::drop(const PlogId& plogId)
 {
     return getInfo(plogId)
-        .then([plogId, this](auto) mutable {
+        .then([plogId, this](auto&&) mutable {
             return m_plogFileDescriptors[plogId].close();
         })
         .then([plogId, this] {

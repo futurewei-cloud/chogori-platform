@@ -47,7 +47,7 @@ public:
     future<> run() override {
         K2TxnOptions options;
         return _client.beginTxn(options)
-        .then([this] (K2TxnHandle txn) {
+        .then([this] (K2TxnHandle&& txn) {
             _txn = std::move(txn);
             return runWithTxn();
         });
@@ -73,7 +73,7 @@ private:
 
             K2DEBUG("Payment txn finished");
 
-            return _txn.end(true);         
+            return _txn.end(true);
         }).discard_result();
     }
 
@@ -149,13 +149,13 @@ private:
 class NewOrderT : public TPCCTxn
 {
 public:
-    NewOrderT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) : 
+    NewOrderT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) :
                         _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), _order(random, w_id) {}
 
     future<> run() override {
         K2TxnOptions options;
         return _client.beginTxn(options)
-        .then([this] (K2TxnHandle txn) {
+        .then([this] (K2TxnHandle&& txn) {
             _txn = std::move(txn);
             return runWithTxn();
         });
@@ -203,14 +203,14 @@ private:
                 return _txn.read<Item::Data>(Item::getKey(line.data.ItemID), "TPCC")
                 .then([this, i_id=line.data.ItemID] (auto&& result) {
                     if (!result.status.is2xxOK()) {
-                        return _txn.end(false).then([] (EndResult result) { (void) result; return make_exception_future<Item>(std::runtime_error("Bad ItemID")); });
+                        return _txn.end(false).then([] (EndResult&& result) { (void) result; return make_exception_future<Item>(std::runtime_error("Bad ItemID")); });
                     }
 
                     return make_ready_future<Item>(Item(result.getValue(), i_id));
 
                 }).then([this, supply_id=line.data.SupplyWarehouseID] (Item&& item) {
                     return _txn.read<Stock::Data>(Stock::getKey(supply_id, item.ItemID), "TPCC")
-                    .then([item, supply_id] (auto result) {
+                    .then([item, supply_id] (auto&& result) {
                         return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), Stock(result.getValue(), supply_id, item.ItemID)));
                     });
 
