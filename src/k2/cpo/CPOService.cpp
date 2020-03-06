@@ -134,7 +134,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         futs.push_back(
         RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
                 (dto::K2_ASSIGNMENT_CREATE, std::move(request), *txep, _assignTimeout())
-        .then([this, name, ep](auto result) {
+        .then([this, name, ep](auto&& result) {
             auto& [status, resp] = result;
             if (status.is2xxOK()) {
                 K2INFO("assignment successful for collection " << name << ", for partition " << resp.assignedPartition);

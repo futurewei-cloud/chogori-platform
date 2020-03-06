@@ -45,7 +45,7 @@ public:
     uint64_t getAbortPriority() {
         return response.abortPriority;
     }
-    
+
     Status status;
 private:
     dto::K23SIReadResponse<ValueType> response;
@@ -89,7 +89,7 @@ public:
         request.collectionName = std::move(collection);
 
         return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<ValueType>>(dto::Verbs::K23SI_READ, std::move(request), _endpoint, 1s).
-        then([] (auto response) {
+        then([] (auto&& response) {
             auto& [status, k2response] = response;
             auto userResponse = ReadResult<ValueType>(std::move(status), std::move(k2response));
             return make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
@@ -108,14 +108,14 @@ public:
         request.value.val = std::move(value);
 
         return RPC().callRPC<dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, std::move(request), _endpoint, 1s).
-        then([] (auto response) {
+        then([] (auto&& response) {
             auto& [status, k2response] = response;
             return make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
         });
     }
 
     template <typename ValueType>
-    future<WriteResult> write(dto::Key key, const String& collection, const ValueType& value) { 
+    future<WriteResult> write(dto::Key key, const String& collection, const ValueType& value) {
         if (!_started) {
             return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
@@ -126,7 +126,7 @@ public:
         request.value.val = value;
 
         return RPC().callRPC<dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, std::move(request), _endpoint, 1s).
-        then([] (auto response) {
+        then([] (auto&& response) {
             auto& [status, k2response] = response;
             return make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
         });

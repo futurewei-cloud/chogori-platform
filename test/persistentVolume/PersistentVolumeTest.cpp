@@ -210,7 +210,7 @@ SEASTAR_TEST_CASE(test_getChunks_EmptyChunkSet)
 SEASTAR_TEST_CASE(test_append)
 {
     return INIT_TEST()
-        .then([](auto persistentVolume) {
+        .then([](auto&& persistentVolume) {
             return seastar::do_with(std::vector<RecordPosition>{}, [persistentVolume](auto& recordPositions) mutable {
                        return seastar::repeat([&recordPositions, persistentVolume]() mutable {
                                   if (persistentVolume->m_chunkList.size() >= 5) {
@@ -220,7 +220,7 @@ SEASTAR_TEST_CASE(test_append)
                                       std::fill(binary->get_write(), binary->get_write() + binary->size(), (uint8_t)(recordPositions.size() % 256));
 
                                       return persistentVolume->append(std::move(*binary))
-                                          .then([&recordPositions](auto recordPosition) {
+                                          .then([&recordPositions](auto&& recordPosition) {
                                               recordPositions.push_back(recordPosition);
                                               return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
                                           });
@@ -256,7 +256,7 @@ SEASTAR_TEST_CASE(test_append)
 SEASTAR_TEST_CASE(test_read)
 {
     return INIT_TEST()
-        .then([](auto persistentVolume) {
+        .then([](auto&& persistentVolume) {
             return seastar::do_with(std::vector<RecordPosition>{}, [persistentVolume](auto& recordPositions) mutable {
                        return seastar::repeat([&recordPositions, persistentVolume]() mutable {
                                   if (recordPositions.size() >= 30) {
@@ -265,7 +265,7 @@ SEASTAR_TEST_CASE(test_read)
                                       auto binary = std::make_unique<Binary>(Binary{BUFFERSIZE});
                                       std::fill(binary->get_write(), binary->get_write() + binary->size(), (uint8_t)(recordPositions.size() % 256));
                                       return persistentVolume->append(std::move(*binary))
-                                          .then([&recordPositions](auto recordPosition) {
+                                          .then([&recordPositions](auto&& recordPosition) {
                                               recordPositions.push_back(recordPosition);
                                               return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
                                           });
@@ -279,7 +279,7 @@ SEASTAR_TEST_CASE(test_read)
                                return seastar::do_for_each(range_ptr->begin(), range_ptr->end(), [&recordPositions, persistentVolume, range_ptr](auto i) {
                                    auto buffer = seastar::make_lw_shared<Binary>();
                                    return persistentVolume->read(recordPositions[i], BUFFERSIZE, *buffer)
-                                       .then([buffer, i](auto readSize) {
+                                       .then([buffer, i](auto&& readSize) {
                                            BOOST_REQUIRE(readSize == BUFFERSIZE);
                                            BOOST_REQUIRE(std::all_of(buffer->begin(), buffer->end(), [expectedValue{uint8_t(i % 256)}](auto& value) {
                                                if (value != expectedValue)
@@ -302,7 +302,7 @@ SEASTAR_TEST_CASE(test_read)
 SEASTAR_TEST_CASE(test_read_ActualSize_LT_ExpectedSize)
 {
     return INIT_TEST()
-        .then([](auto persistentVolume) {
+        .then([](auto&& persistentVolume) {
             return seastar::do_with(std::vector<RecordPosition>{}, [persistentVolume](auto& recordPositions) mutable {
                        return seastar::repeat([persistentVolume, &recordPositions]() mutable {
                                   if (persistentVolume->m_chunkList.size() >= 5)
@@ -311,7 +311,7 @@ SEASTAR_TEST_CASE(test_read_ActualSize_LT_ExpectedSize)
                                   Binary binary(BUFFERSIZE);
                                   std::fill(binary.get_write(), binary.get_write() + binary.size(), (uint8_t)(recordPositions.size() % 256));
                                   return persistentVolume->append(std::move(binary))
-                                      .then([&recordPositions](auto recordPosition) {
+                                      .then([&recordPositions](auto&& recordPosition) {
                                           recordPositions.push_back(recordPosition);
                                           return seastar::stop_iteration::no;
                                       });
@@ -319,7 +319,7 @@ SEASTAR_TEST_CASE(test_read_ActualSize_LT_ExpectedSize)
                            .then([persistentVolume, &recordPositions] {
                                auto buffer = seastar::make_lw_shared<Binary>();
                                return persistentVolume->read(recordPositions.back(), BUFFERSIZE + 1, *buffer)
-                                   .then([buffer, expectedValue = (uint8_t)((recordPositions.size() - 1) % 256)](auto readSize) {
+                                   .then([buffer, expectedValue = (uint8_t)((recordPositions.size() - 1) % 256)](auto&& readSize) {
                                        BOOST_REQUIRE(readSize == BUFFERSIZE);  // actually read size is smaller than expected read size
                                        BOOST_REQUIRE(std::all_of(buffer->begin(), buffer->end(), [expectedValue](auto& value) {
                                            return value == expectedValue;
@@ -339,7 +339,7 @@ SEASTAR_TEST_CASE(test_read_ActualSize_LT_ExpectedSize)
 SEASTAR_TEST_CASE(test_read_ChunkIdNotFound)
 {
     return INIT_TEST()
-        .then([](auto persistentVolume) {
+        .then([](auto&& persistentVolume) {
             return seastar::do_with(std::vector<RecordPosition>{}, [persistentVolume](auto& recordPositions) mutable {
                        return seastar::repeat([&recordPositions, persistentVolume]() mutable {
                            if (persistentVolume->m_chunkList.size() >= 5) {
@@ -348,7 +348,7 @@ SEASTAR_TEST_CASE(test_read_ChunkIdNotFound)
                                auto binary = std::make_unique<Binary>(Binary{BUFFERSIZE});
                                std::fill(binary->get_write(), binary->get_write() + binary->size(), (uint8_t)(recordPositions.size() % 256));
                                return persistentVolume->append(std::move(*binary))
-                                   .then([&recordPositions](auto recordPosition) {
+                                   .then([&recordPositions](auto&& recordPosition) {
                                        recordPositions.push_back(recordPosition);
                                        return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
                                    });
@@ -359,7 +359,7 @@ SEASTAR_TEST_CASE(test_read_ChunkIdNotFound)
                     RecordPosition recordPosition{persistentVolume->m_chunkList.back().chunkId + 1, 0};
                     auto buffer = seastar::make_lw_shared<Binary>();
                     return persistentVolume->read(recordPosition, BUFFERSIZE, *buffer)
-                        .then([](auto) {
+                        .then([](auto&&) {
                             BOOST_FAIL("Expected exception.");
                         })
                         .handle_exception([recordPosition, persistentVolume](auto e) {
@@ -383,7 +383,7 @@ SEASTAR_TEST_CASE(test_read_ChunkIdNotFound)
 SEASTAR_TEST_CASE(test_drop)
 {
     return INIT_TEST()
-        .then([](auto persistentVolume) {
+        .then([](auto&& persistentVolume) {
             return seastar::do_with(std::vector<RecordPosition>{}, [persistentVolume](auto& recordPositions) mutable {
                        return seastar::repeat([&recordPositions, persistentVolume]() mutable {
                            if (persistentVolume->m_chunkList.size() >= 5) {
@@ -392,7 +392,7 @@ SEASTAR_TEST_CASE(test_drop)
                                auto binary = std::make_unique<Binary>(Binary{BUFFERSIZE});
                                std::fill(binary->get_write(), binary->get_write() + binary->size(), (uint8_t)(recordPositions.size() % 256));
                                return persistentVolume->append(std::move(*binary))
-                                   .then([&recordPositions](auto recordPosition) {
+                                   .then([&recordPositions](auto&& recordPosition) {
                                        recordPositions.push_back(recordPosition);
                                        return seastar::make_ready_future<seastar::stop_iteration>(seastar::stop_iteration::no);
                                    });
@@ -421,7 +421,7 @@ SEASTAR_TEST_CASE(test_drop)
 SEASTAR_TEST_CASE(test_drop_ChunkIdNotFound)
 {
     return INIT_TEST()
-        .then([](auto persistentVolume)
+        .then([](auto&& persistentVolume)
         {
             for (size_t i=0; i<2; i++){
                 ChunkInfo chunkInfo;
