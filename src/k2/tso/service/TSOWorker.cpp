@@ -45,12 +45,23 @@ void TSOService::TSOWorker::RegisterGetTSOTimeStampBatch()
 {
     k2::RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable 
     {
-        // TODO: handle exceptions
-        auto response = request.endpoint.newPayload();
-        auto timeStampBatch = GetTimeStampFromTSO(1); // TODO get batch size from request
-        //K2INFO("time stamp batch returned is: " << timeStampBatch);
-        response->write(timeStampBatch);
-        k2::RPC().sendReply(std::move(response), request);
+        if (request.payload)
+        {
+            uint16_t batchSize;
+            request.payload->read((void*)&batchSize, sizeof(batchSize));
+
+            // TODO: handle exceptions
+            auto response = request.endpoint.newPayload();
+            auto timeStampBatch = GetTimeStampFromTSO(batchSize); 
+            //K2INFO("time stamp batch returned is: " << timeStampBatch);
+            response->write(timeStampBatch);
+            k2::RPC().sendReply(std::move(response), request);
+        }
+        else
+        {
+            K2ERROR("GetTSOTimeStampBatch comes in without request payload.");
+        }
+        
     });
 }
 
