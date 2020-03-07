@@ -58,7 +58,7 @@ public: // API
             seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException()));
         return seastar::do_until(
             [this] { return _success || this->_try >= this->_retries; },
-            [this, func=std::move(func), resultPtr] {
+            [this, func=std::move(func), resultPtr] ()mutable{
                 this->_try++;
                 this->_currentTimeout*=this->_try;
                 K2DEBUG("running try " << this->_try << ", with timeout "
@@ -98,13 +98,6 @@ private: // fields
     bool _success;
     // indicate if this strategy has been used already so that we can reject duplicate attempts to use it
     bool _used;
-
-private: // don't need
-    ExponentialBackoffStrategy(const ExponentialBackoffStrategy& o) = delete;
-    ExponentialBackoffStrategy(ExponentialBackoffStrategy&& o) = delete;
-    ExponentialBackoffStrategy& operator=(const ExponentialBackoffStrategy& o) = delete;
-    ExponentialBackoffStrategy& operator=(ExponentialBackoffStrategy&& o) = delete;
-
 }; // ExponentialBackoffStrategy
 
 } // k2
