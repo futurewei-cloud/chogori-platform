@@ -45,7 +45,7 @@ private:
 template<typename ClockT=Clock>
 class Deadline {
 public:
-    Deadline(typename ClockT::duration dur) : _deadline(typename ClockT::now() + dur) {}
+    Deadline(typename ClockT::duration dur) : _deadline(ClockT::now() + dur) {}
 
     typename ClockT::duration getRemaining() const {
         auto now = ClockT::now();

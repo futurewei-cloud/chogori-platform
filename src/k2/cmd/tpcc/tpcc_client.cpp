@@ -22,7 +22,8 @@ class Client {
 public:  // application lifespan
     Client():
         _client(K23SIClient(K23SIClientConfig())),
-        _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<std::string>>()),
+        _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<String>>()),
+        _cpo(k2::Config()["cpo"].as<String>()),
         _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _stopped(true),
         _timer(seastar::timer<>([this] {
@@ -130,10 +131,13 @@ private:
     }
 
     seastar::future<> _benchmark() {
-        _client._remote_endpoint = _remoteEndpoint;
+        _client = K23SIClient(K23SIClientConfig(), _tcpRemotes, _cpo);
         _loader = DataLoader(generateWarehouseData(1, 3));
 
         return seastar::sleep(1s)
+        .then ([this] {
+            return _client.makeCollection("TPCC");
+        }).discard_result()
         .then ([this] {
             K2INFO("Starting load to server");
             return _loader.loadData(_client, 32);
@@ -170,7 +174,8 @@ private:
 
 private:
     K23SIClient _client;
-    std::vector<std::string> _tcpRemotes;
+    std::vector<String> _tcpRemotes;
+    String _cpo;
     k2::TXEndpoint _remoteEndpoint;
     k2::Duration _testDuration;
     bool _stopped;
@@ -191,6 +196,7 @@ int main(int argc, char** argv) {;
     app.addApplet<Client>();
     app.addOptions()
         ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("cpo", bpo::value<std::string>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run");
     return app.start(argc, argv);
 }
