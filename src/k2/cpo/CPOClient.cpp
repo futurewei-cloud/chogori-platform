@@ -125,36 +125,26 @@ seastar::future<std::tuple<Status, ResponseT>> CPOClient::PartitionRequest(Deadl
         }
     }
 
-    return f.then([this, deadline, &request] (Status&& status) {
-        // Get partition info for request
-
+    return f.then([this, deadline, &request, retries] (Status&& status) {
         if (deadline.isOver()) {
             status = Status::S408_Request_Timeout("Deadline exceeded");
-            return seastar::make_ready_future<std::tuple<Status, dto::Partition*>>(
-                        std::make_tuple(std::move(status), nullptr));
+            return seastar::make_ready_future<std::tuple<Status, ResponseT>>(
+                        std::make_tuple(std::move(status), ResponseT()));
         }
 
         auto it = collections.find(request.collectionName);
+
         if (it == collections.end()) {
-            return seastar::make_ready_future<std::tuple<Status, dto::Partition*>>(
-                        std::make_tuple(std::move(status), nullptr));
+            // Failed to get collection
+            return seastar::make_ready_future<std::tuple<Status, ResponseT>>(
+                        std::make_tuple(std::move(status), ResponseT()));
         }
 
+        // Try to get partition info
         dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key);
         if (!partition || partition->astate != dto::AssignmentState::Assigned) {
+            // Partition is still not assigned after refresh attempts
             status = Status::S503_Service_Unavailable("Partition not assigned");
-            return seastar::make_ready_future<std::tuple<Status, dto::Partition*>>(
-                        std::make_tuple(std::move(status), nullptr));
-        }
-
-        return seastar::make_ready_future<std::tuple<Status, dto::Partition*>>(
-                    std::make_tuple(std::move(status), partition));
-
-    }).then([this, deadline, &request, retries] (auto&& status_partition) {
-        auto& [status, partition] = status_partition;
-
-        // Partition is still not assigned after two refresh attempts
-        if (!partition) {
             return seastar::make_ready_future<std::tuple<Status, ResponseT>>(
                         std::make_tuple(std::move(status), ResponseT()));
         }
@@ -164,6 +154,7 @@ seastar::future<std::tuple<Status, ResponseT>> CPOClient::PartitionRequest(Deadl
         request.pvid = partition->pvid;
 
         // Attempt the request RPC
+        // TODO remove std::move on request
         return RPC().callRPC<RequestT, ResponseT>(verb, std::move(request), std::move(k2node), timeout).
         then([this, &request, deadline, retries] (auto&& result) {
             auto& [status, k2response] = result;
