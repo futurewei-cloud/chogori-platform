@@ -1,3 +1,6 @@
+#include <random>
+#include <algorithm>
+
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include <k2/transport/RetryStrategy.h>
 
@@ -67,6 +70,7 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const std::string
 
             std::vector<std::vector<k2::String>> workerURLs;
             payload->read(workerURLs);
+            K2ASSERT(!workerURLs.empty(), "TSO server should have workers");
 
             _curTSOServerWorkerEndPoints.clear();
             // each worker may have mulitple endPoints URLs, we only pick the fastest supported one, currently RDMA, if no RDMA, pick TCPIP
@@ -91,6 +95,15 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const std::string
                 }
                 _curTSOServerWorkerEndPoints.emplace_back(endPointToAdd);
             }
+
+            K2ASSERT(!_curTSOServerWorkerEndPoints.empty(), "workers should property configured")
+
+            // to reduce run-time computation, we shuffle the _curTSOServerWorkerEndPoints here
+            // to simulate random pick of workers(load balance) in run time by increment a moded index
+            std::random_device rd;
+            std::mt19937 ranAlg(rd());
+
+            std::shuffle(_curTSOServerWorkerEndPoints.begin(), _curTSOServerWorkerEndPoints.end(), ranAlg);
 
             return seastar::make_ready_future<>();
         })
@@ -393,66 +406,6 @@ void TSO_ClientLib::ProcessReturnedBatch(TimeStampBatch batch, TimePoint batchTr
     }
 }
 
-/*
-seastar::future<TimeStampBatch> TSO_ClientLib::GetTimeStampBatch(uint16_t batchSize)
-{
-    auto retryStrategy = seastar::make_lw_shared<k2::ExponentialBackoffStrategy>();
-    //TODO: need to find out if the TSO is local or remote and get the timeout config accordingly
-    retryStrategy->withRetries(3).withStartTimeout(100us).withRate(5);
-
-    // TODO: currently we just retry with different worker cores of the same TSO server, need to add more retry logic on different TSO server
-    //       if current TSO server is not available
-    return retryStrategy->run([this, batchSize](size_t retriesLeft, k2::Duration timeout)
-    {
-        if (_stopped)
-        {
-            K2INFO("Stopping retry since we were stopped");
-            return seastar::make_exception_future<>(std::runtime_error("we were stopped"));
-        }
-
-        K2ASSERT(!_curTSOServerWorkerEndPoints.empty(), "we should have workers");
-        // randomly pick one of workers (bias in below ramdom code is fine)
-        std::srand(std::time(0)); //use current time as seed for random generator
-        int randWorker = 1 + std::rand() %  _curTSOServerWorkerEndPoints.size();
-
-        auto myRemote = _curTSOServerWorkerEndPoints[randWorker];
-        std::unique_ptr<Payload> payload = myRemote.newPayload();
-        payload->write(batchSize);
-
-        K2INFO("Requesting timeStampBatch with retriesLeft=" << retriesLeft << ", and timeout=" << k2::usec(timeout).count()
-                    << "us, with worker " << randWorker);
-
-        return k2::RPC().sendRequest(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, payload, myRemote, timeout)
-        .then([this](std::unique_ptr<k2::Payload> replyPayload) {
-            if (_stopped) return seastar::make_ready_future<>();
-
-            if (!replyPayload || replyPayload->getSize() == 0)
-            {
-                K2ERROR("TSO worker remote end did not provide a data. Giving up");
-                return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
-            }
-
-            TimeStampBatch result;
-            replyPayload->read(result);
-
-            return seastar::make_ready_future<TimeStampBatch>(result);
-        })
-        .then_wrapped([this](auto&& fut) {
-            if (_stopped)
-            {
-                fut.ignore_ready_future();
-                TimeStampBatch batch;
-                return seastar::make_ready_future<TimeStampBatch>(batch);
-            }
-            return std::move(fut);
-        });
-    })
-    .finally([retryStrategy]()
-    {
-        K2INFO("Finished getting timeStamp batch");
-    });
-}
-*/
 seastar::future<TimeStampBatch> TSO_ClientLib::GetTimeStampBatch(uint16_t batchSize)
 {
     auto retryStrategy = k2::ExponentialBackoffStrategy();
@@ -471,9 +424,8 @@ seastar::future<TimeStampBatch> TSO_ClientLib::GetTimeStampBatch(uint16_t batchS
             }
 
             K2ASSERT(!_curTSOServerWorkerEndPoints.empty(), "we should have workers");
-            // randomly pick one of workers (bias in below ramdom code is fine)
-            std::srand(std::time(0)); //use current time as seed for random generator
-            int randWorker = 1 + std::rand() %  _curTSOServerWorkerEndPoints.size();
+            // pick next worker (effecitvely random one, as _curTSOServerWorkerEndPoints is shuffled already when it is populated)
+            int randWorker = (_curWorkerIdx++) %  _curTSOServerWorkerEndPoints.size();
 
             auto myRemote = _curTSOServerWorkerEndPoints[randWorker];
             std::unique_ptr<Payload> payload = myRemote.newPayload();
