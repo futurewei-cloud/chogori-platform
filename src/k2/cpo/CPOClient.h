@@ -10,7 +10,9 @@
 #include <seastar/core/future.hh>  // for future stuff
 
 #include <k2/common/Chrono.h>
+#include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
+#include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RPCTypes.h>
 #include <k2/transport/Status.h>
 #include <k2/transport/TXEndpoint.h>
@@ -50,30 +52,21 @@ public:
         }
 
         return f.then([this, deadline, &request, retries] (Status&& status) {
-            if (deadline.isOver()) {
-                status = Status::S408_Request_Timeout("Deadline exceeded");
-                return seastar::make_ready_future<std::tuple<Status, ResponseT>>(
-                            std::make_tuple(std::move(status), ResponseT()));
-            }
-
             auto it = collections.find(request.collectionName);
 
             if (it == collections.end()) {
-                // Failed to get collection
-                return seastar::make_ready_future<std::tuple<Status, ResponseT>>(
-                            std::make_tuple(std::move(status), ResponseT()));
+                // Failed to get collection, returning status from GetAssignedPartitionWithRetry
+                return RPCResponse(std::move(status), ResponseT());
             }
 
             // Try to get partition info
             dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key);
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
-                status = Status::S503_Service_Unavailable("Partition not assigned");
-                return seastar::make_ready_future<std::tuple<Status, ResponseT>>(
-                            std::make_tuple(std::move(status), ResponseT()));
+                return RPCResponse(Status::S503_Service_Unavailable("Partition not assigned"), ResponseT());
             }
 
-            Duration timeout = std::min(deadline.getRemaining(), Duration(1ms));
+            Duration timeout = std::min(deadline.getRemaining(), partition_request_timeout());
             auto k2node = RPC().getTXEndpoint(*(partition->endpoints.begin()));
             request.pvid = partition->pvid;
 
@@ -84,20 +77,17 @@ public:
                 auto& [status, k2response] = result;
 
                 // Success or unrecoverable error
-                if (status != Status::S410_Gone() && (status.is2xxOK() || !status.is5xxRetryable())) {
-                    return seastar::make_ready_future<std::tuple<Status, ResponseT>>(std::make_tuple(
-                        std::move(status), std::move(k2response)));
+                if (status != Status::S410_Gone() && !status.is5xxRetryable()) {
+                    return RPCResponse(std::move(status), std::move(k2response));
                 }
 
                 if (deadline.isOver()) {
                     status = Status::S408_Request_Timeout("Deadline exceeded");
-                    return seastar::make_ready_future<std::tuple<Status, ResponseT>>(
-                                std::make_tuple(std::move(status), ResponseT()));
+                    return RPCResponse(std::move(status), ResponseT());
                 }
 
                 if (retries == 0) {
-                    return seastar::make_ready_future<std::tuple<Status, ResponseT>>(std::make_tuple(
-                            Status::S408_Request_Timeout("Retries exceeded"), ResponseT()));
+                    return RPCResponse(Status::S408_Request_Timeout("Retries exceeded"), ResponseT());
                 }
 
                 // S410_Gone (refresh partition map) or retryable error
@@ -113,6 +103,9 @@ public:
     std::unique_ptr<TXEndpoint> cpo;
     std::unordered_map<String, dto::PartitionGetter> collections;
 
+    ConfigDuration partition_request_timeout{"partition_request_timeout", 1ms};
+    ConfigDuration cpo_request_timeout{"cpo_request_timeout", 100ms};
+    ConfigDuration cpo_request_backoff{"cpo_request_backoff", 500ms};
 private:
     void FulfillWaiters(const String& name, const Status& status);
     std::unordered_map<String, std::vector<seastar::promise<Status>>> requestWaiters;

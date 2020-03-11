@@ -34,13 +34,28 @@ seastar::future<Status> CPOClient::GetAssignedPartitionWithRetry(Deadline<> dead
     auto it = requestWaiters.find(name);
     if (it != requestWaiters.end()) {
         it->second.emplace_back(seastar::promise<Status>());
-        return it->second.back().get_future();
+        return it->second.back().get_future()
+        .then([this, deadline, name, key, retries] (Status&& status) {
+            if (status.is2xxOK()) {
+                dto::Partition* partition = collections[name].getPartitionForKey(key);
+                if (partition && partition->astate == dto::AssignmentState::Assigned) {
+                    return seastar::make_ready_future<Status>(std::move(status));
+                }
+            }
+
+            if (!retries) {
+                status = Status::S408_Request_Timeout("Retries exceeded");
+                return seastar::make_ready_future<Status>(std::move(status));
+            }
+
+            return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), retries-1);
+        });
     }
 
     // Register the ongoing request
     requestWaiters[name] = std::vector<seastar::promise<Status>>();
 
-    Duration timeout = std::min(deadline.getRemaining(), Duration(100ms));
+    Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
     dto::CollectionGetRequest request{.name = std::move(name)};
 
     return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET,                 std::move(request), *cpo, timeout).
@@ -80,10 +95,11 @@ seastar::future<Status> CPOClient::GetAssignedPartitionWithRetry(Deadline<> dead
     
         if (!retries) {
             FulfillWaiters(name, status);
+            status = Status::S408_Request_Timeout("Retries exceeded");
             return seastar::make_ready_future<Status>(std::move(status));
         }
 
-        Duration s = std::min(deadline.getRemaining(), Duration(500ms));
+        Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
         return seastar::sleep(s).
         then([this, name, key, deadline, retries] () -> seastar::future<Status> {
             return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), retries-1);
@@ -97,7 +113,7 @@ seastar::future<Status> CPOClient::CreateAndWaitForCollection(Deadline<> deadlin
     dto::CollectionCreateRequest request{.metadata = std::move(metadata), 
                                          .clusterEndpoints = std::move(clusterEndpoints)};
 
-    Duration timeout = std::min(deadline.getRemaining(), Duration(100ms));
+    Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
     return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE , std::move(request), *cpo, timeout).
     then([this, name=request.metadata.name, deadline] (auto&& response) {
         auto& [status, k2response] = response;
