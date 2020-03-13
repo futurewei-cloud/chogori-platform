@@ -35,7 +35,6 @@ public:  // application lifespan
         K2INFO("stop");
         _stopped = true;
         // unregistar all observers
-        k2::RPC().registerMessageObserver(MockMessageVerbs::GET_DATA_URL, nullptr);
         k2::RPC().registerMessageObserver(dto::Verbs::K23SI_READ, nullptr);
         k2::RPC().registerMessageObserver(dto::Verbs::K23SI_WRITE, nullptr);
         k2::RPC().registerLowTransportMemoryObserver(nullptr);
