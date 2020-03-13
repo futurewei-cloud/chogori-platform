@@ -18,7 +18,7 @@ using namespace k2;
 
 class TPCCTxn {
 public:
-    virtual future<> run() = 0;
+    virtual future<bool> run() = 0;
     virtual ~TPCCTxn() = default;
 };
 
@@ -42,10 +42,13 @@ public:
         }
 
         _amount = random.UniformRandom(100, 500000) / 100.0f;
+        
+        _failed = false;
     }
 
-    future<> run() override {
-        K2TxnOptions options;
+    future<bool> run() override {
+        K2TxnOptions options{};
+        options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
             _txn = std::move(txn);
@@ -54,7 +57,7 @@ public:
     }
 
 private:
-    future<> runWithTxn() {
+    future<bool> runWithTxn() {
         future<> warehouse_update = warehouseUpdate();
         future<> district_update = districtUpdate();
         future<> customer_update = customerUpdate();
@@ -68,13 +71,22 @@ private:
         return when_all(std::move(customer_update), std::move(history_update))
         .then_wrapped([this] (auto&& fut) {
             if (fut.failed()) {
+                _failed = true;
+                fut.ignore_ready_future();
                 return _txn.end(false);
             }
 
+            fut.ignore_ready_future();
             K2DEBUG("Payment txn finished");
 
             return _txn.end(true);
-        }).discard_result();
+        }).then([this] (EndResult&& result) {
+            if (result.status.is2xxOK() && ! _failed) {
+                return make_ready_future<bool>(true);
+            }
+
+            return make_ready_future<bool>(false);
+        });
     }
 
     future<> warehouseUpdate() {
@@ -144,16 +156,18 @@ private:
     float _amount;
     char _w_name[11];
     char _d_name[11];
+    bool _failed;
 };
 
 class NewOrderT : public TPCCTxn
 {
 public:
     NewOrderT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) :
-                        _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), _order(random, w_id) {}
+                        _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), _failed(false), _order(random, w_id) {}
 
-    future<> run() override {
-        K2TxnOptions options;
+    future<bool> run() override {
+        K2TxnOptions options{};
+        options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
             _txn = std::move(txn);
@@ -162,7 +176,7 @@ public:
     }
 
 private:
-    future<> runWithTxn() {
+    future<bool> runWithTxn() {
         // Get warehouse row, only used for tax rate in total amount calculation
         future<> warehouse_f = _txn.read<Warehouse::Data>(Warehouse::getKey(_w_id), "TPCC")
         .then([this] (auto&& result) {
@@ -241,6 +255,7 @@ private:
         return when_all_succeed(std::move(main_f), std::move(customer_f), std::move(warehouse_f))
         .then_wrapped([this] (auto&& fut) {
             if (fut.failed()) {
+                _failed = true;
                 fut.ignore_ready_future();
                 return _txn.end(false);
             }
@@ -251,7 +266,13 @@ private:
             K2DEBUG("NewOrder _total_amount: " << _total_amount);
 
             return _txn.end(true);
-        }).discard_result();
+        }).then([this] (EndResult&& result) {
+            if (result.status.is2xxOK() && ! _failed) {
+                return make_ready_future<bool>(true);
+            }
+
+            return make_ready_future<bool>(false);
+        });
     }
 
     static void updateStockRow(Stock& stock, const OrderLine& line) {
@@ -287,6 +308,7 @@ private:
     K2TxnHandle _txn;
     uint32_t _w_id;
     uint32_t _max_w_id;
+    bool _failed;
     Order _order;
     std::vector<OrderLine> _lines;
     // The below variables are needed to "display" the order total amount,

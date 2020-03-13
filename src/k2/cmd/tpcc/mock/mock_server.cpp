@@ -15,8 +15,6 @@
 #include <k2/dto/MessageVerbs.h>
 #include <k2/transport/Status.h>
 
-#include "mock_k23si_client.h"
-
 using namespace k2;
 
 class Service : public seastar::weakly_referencable<Service> {

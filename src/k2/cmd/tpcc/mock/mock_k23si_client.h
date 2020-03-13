@@ -25,7 +25,7 @@ std::ostream& operator<<(std::ostream& os, const dto::Key& key) {
 class K2TxnOptions{
 public:
     K2TxnOptions() noexcept :
-        deadline(Duration(600s)), 
+        deadline(Duration(1s)), 
         priority(dto::TxnPriority::Medium) {}
 
     Deadline<> deadline;

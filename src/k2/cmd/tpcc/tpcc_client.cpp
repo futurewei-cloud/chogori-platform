@@ -105,11 +105,16 @@ private:
             return seastar::do_until(
                 [this] { return _stopped; },
                 [this] {
-                    _totalCount++;
                     uint32_t txn_type = _random.UniformRandom(1, 100);
                     TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, 1, 2)
                                                      : (TPCCTxn*) new NewOrderT(_random, _client, 1, 2);
-                    return curTxn->run().finally([curTxn] () { delete curTxn; });
+                    return curTxn->run()
+                    .then([this] (bool success) {
+                        if (success) {
+                            _totalCount++;
+                        }
+                    })
+                    .finally([curTxn] () { delete curTxn; });
                 }
             );
         })
@@ -145,7 +150,8 @@ int main(int argc, char** argv) {;
     app.addOptions()
         ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<std::string>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run");
+        ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
+        ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals");
     app.addApplet<Client>();
     return app.start(argc, argv);
 }

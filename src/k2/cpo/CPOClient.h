@@ -106,7 +106,7 @@ public:
     std::unique_ptr<TXEndpoint> cpo;
     std::unordered_map<String, dto::PartitionGetter> collections;
 
-    ConfigDuration partition_request_timeout{"partition_request_timeout", 5s};
+    ConfigDuration partition_request_timeout{"partition_request_timeout", 100ms};
     ConfigDuration cpo_request_timeout{"cpo_request_timeout", 100ms};
     ConfigDuration cpo_request_backoff{"cpo_request_backoff", 500ms};
 private:
