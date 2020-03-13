@@ -56,6 +56,7 @@ public:
 
             if (it == collections.end()) {
                 // Failed to get collection, returning status from GetAssignedPartitionWithRetry
+                K2DEBUG("Failed to get collection: " << status);
                 return RPCResponse(std::move(status), ResponseT());
             }
 
@@ -63,6 +64,7 @@ public:
             dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key);
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
+                K2DEBUG("Failed to get assigned partition");
                 return RPCResponse(Status::S503_Service_Unavailable("Partition not assigned"), ResponseT());
             }
 
@@ -71,8 +73,7 @@ public:
             request.pvid = partition->pvid;
 
             // Attempt the request RPC
-            // TODO remove std::move on request
-            return RPC().callRPC<RequestT, ResponseT>(verb, std::move(request), *k2node, timeout).
+            return RPC().callRPC<RequestT, ResponseT>(verb, request, *k2node, timeout).
             then([this, &request, deadline, retries] (auto&& result) {
                 auto& [status, k2response] = result;
 
@@ -82,11 +83,13 @@ public:
                 }
 
                 if (deadline.isOver()) {
+                    K2DEBUG("Deadline exceeded");
                     status = Status::S408_Request_Timeout("Deadline exceeded");
                     return RPCResponse(std::move(status), ResponseT());
                 }
 
                 if (retries == 0) {
+                    K2DEBUG("Retries exceeded, status: " << status);
                     return RPCResponse(Status::S408_Request_Timeout("Retries exceeded"), ResponseT());
                 }
 
@@ -103,7 +106,7 @@ public:
     std::unique_ptr<TXEndpoint> cpo;
     std::unordered_map<String, dto::PartitionGetter> collections;
 
-    ConfigDuration partition_request_timeout{"partition_request_timeout", 1ms};
+    ConfigDuration partition_request_timeout{"partition_request_timeout", 5s};
     ConfigDuration cpo_request_timeout{"cpo_request_timeout", 100ms};
     ConfigDuration cpo_request_backoff{"cpo_request_backoff", 500ms};
 private:

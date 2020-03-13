@@ -49,7 +49,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            RangeMapElement e(it->startKey, &(*it));
+            RangeMapElement e(it->endKey, &(*it));
             _rangePartitionMap.push_back(std::move(e));
         }
 
@@ -62,7 +62,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            HashMapElement e{.hvalue = std::stoull(it->startKey), .partition = &(*it)};
+            HashMapElement e{.hvalue = std::stoull(it->endKey), .partition = &(*it)};
             _hashPartitionMap.push_back(std::move(e));
         }
 

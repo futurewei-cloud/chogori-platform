@@ -22,14 +22,10 @@ std::ostream& operator<<(std::ostream& os, const dto::Key& key) {
     return os << key.partitionKey << key.rangeKey;
 }
 
-enum MockMessageVerbs : Verb {
-    GET_DATA_URL = 102
-};
-
 class K2TxnOptions{
 public:
     K2TxnOptions() noexcept :
-        deadline(Duration(1s)), 
+        deadline(Duration(600s)), 
         priority(dto::TxnPriority::Medium) {}
 
     Deadline<> deadline;
@@ -162,9 +158,11 @@ public:
 class K23SIClient {
 public:
     K23SIClient(const K23SIClientConfig &) {};
-    K23SIClient(const K23SIClientConfig &, const std::vector<String>& _endpoints, String _cpo): 
-        _k2endpoints(_endpoints) {
-        _cpo_client = CPOClient(_cpo);
+    K23SIClient(const K23SIClientConfig &, const std::vector<std::string>& _endpoints, std::string _cpo) {
+        for (auto it = _endpoints.begin(); it != _endpoints.end(); ++it) {
+            _k2endpoints.push_back(String(*it));
+        }
+        _cpo_client = CPOClient(String(_cpo));
     };
     std::vector<String> _k2endpoints;
     CPOClient _cpo_client;
@@ -174,10 +172,10 @@ public:
 
         dto::CollectionMetadata metadata{
             .name = collection,
-            .hashScheme = dto::HashScheme::Range,
+            .hashScheme = dto::HashScheme::HashCRC32C,
             .storageDriver = dto::StorageDriver::K23SI,
             .capacity = {},
-            .retentionPeriod = Duration(5s)
+            .retentionPeriod = Duration(600s)
         };
  
         return _cpo_client.CreateAndWaitForCollection(Deadline<>(5s), std::move(metadata), std::move(endpoints));

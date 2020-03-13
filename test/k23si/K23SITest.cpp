@@ -51,7 +51,7 @@ public:  // application lifespan
                     .clusterEndpoints = _k2ConfigEps()
                 };
                 return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
-                        (dto::Verbs::CPO_COLLECTION_CREATE, std::move(request), *_cpoEndpoint, 1s);
+                        (dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s);
             })
             .then([](auto&& response) {
                 // response for collection create
@@ -64,7 +64,7 @@ public:  // application lifespan
                 // check to make sure the collection is assigned
                 auto request = dto::CollectionGetRequest{.name = collname};
                 return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
-                    (dto::Verbs::CPO_COLLECTION_GET, std::move(request), *_cpoEndpoint, 100ms);
+                    (dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
             })
             .then([this](auto&& response) {
                 // check collection was assigned
@@ -133,7 +133,7 @@ seastar::future<> runScenario01() {
             }
         };
         return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>
-            (dto::Verbs::K23SI_READ, std::move(request), *_k2Endpoints[0], 100ms)
+            (dto::Verbs::K23SI_READ, request, *_k2Endpoints[0], 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(status, Status::S410_Gone());

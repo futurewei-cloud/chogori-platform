@@ -24,7 +24,7 @@ public:
 
     future<> loadData(K23SIClient& client, int pipeline_depth)
     {
-        K2TxnOptions options;
+        K2TxnOptions options{};
         std::vector<future<>> futures;
 
         for (int i=0; i < pipeline_depth; ++i) {

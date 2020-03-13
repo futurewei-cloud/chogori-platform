@@ -64,7 +64,7 @@ public:  // application lifespan
         });
 
         RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
-            K2DEBUG("Received get for key: " << key);
+            K2DEBUG("Received get for key: " << request.key);
             String hash_key = request.key.partitionKey + request.key.rangeKey;
 
             dto::K23SIReadResponse<Payload> response = {};
@@ -82,9 +82,11 @@ public:  // application lifespan
             auto ep = (seastar::engine()._rdma_stack?
                        k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
                        k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
+            request.partition.endpoints.clear();
             request.partition.endpoints.insert(ep->getURL());
 
             dto::AssignmentCreateResponse response{.assignedPartition = std::move(request.partition)};
+            response.assignedPartition.astate = dto::AssignmentState::Assigned;
 
             return RPCResponse(Status::S200_OK(), std::move(response));
         });

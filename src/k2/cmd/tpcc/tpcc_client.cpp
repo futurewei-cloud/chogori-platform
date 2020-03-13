@@ -51,7 +51,6 @@ public:  // application lifespan
         _metric_groups.clear();
         std::vector<sm::label_instance> labels;
         labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
-        labels.push_back(sm::label_instance("active_cores", std::min(_tcpRemotes().size(), size_t(seastar::smp::count))));
 
         _metric_groups.add_group("TPC-C", {
             sm::make_counter("total_count", _totalCount, sm::description("Total number of TPC-C transactions"), labels),
@@ -125,7 +124,6 @@ private:
 
 private:
     K23SIClient _client;
-    k2::TXEndpoint _remoteEndpoint;
     k2::Duration _testDuration;
     bool _stopped;
     seastar::promise<> _stopPromise;
@@ -133,8 +131,8 @@ private:
     RandomContext _random;
     k2::TimePoint _start;
     seastar::timer<> _timer;
-    ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
-    ConfigVar<String> _cpo{"cpo"};
+    ConfigVar<std::vector<std::string>> _tcpRemotes{"tcp_remotes"};
+    ConfigVar<std::string> _cpo{"cpo"};
 
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _requestLatency;

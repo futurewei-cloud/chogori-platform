@@ -202,8 +202,11 @@ private:
             future<> line_updates = parallel_for_each(_lines.begin(), _lines.end(), [this] (OrderLine& line) {
                 return _txn.read<Item::Data>(Item::getKey(line.data.ItemID), "TPCC")
                 .then([this, i_id=line.data.ItemID] (auto&& result) {
-                    if (!result.status.is2xxOK()) {
+                    if (result.status == Status::S404_Not_Found()) {
                         return _txn.end(false).then([] (EndResult&& result) { (void) result; return make_exception_future<Item>(std::runtime_error("Bad ItemID")); });
+                    } else if (!result.status.is2xxOK()) {
+                        K2WARN("Bad read status: " << result.status);
+                        return make_exception_future<Item>(std::runtime_error("Bad read status"));
                     }
 
                     return make_ready_future<Item>(Item(result.getValue(), i_id));
@@ -211,6 +214,10 @@ private:
                 }).then([this, supply_id=line.data.SupplyWarehouseID] (Item&& item) {
                     return _txn.read<Stock::Data>(Stock::getKey(supply_id, item.ItemID), "TPCC")
                     .then([item, supply_id] (auto&& result) {
+                        if (!result.status.is2xxOK()) {
+                            K2WARN("Bad read status: " << result.status);
+                            return make_exception_future<std::pair<Item, Stock>>(std::runtime_error("Bad read status"));
+                        }
                         return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), Stock(result.getValue(), supply_id, item.ItemID)));
                     });
 

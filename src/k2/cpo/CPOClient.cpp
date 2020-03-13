@@ -56,9 +56,9 @@ seastar::future<Status> CPOClient::GetAssignedPartitionWithRetry(Deadline<> dead
     requestWaiters[name] = std::vector<seastar::promise<Status>>();
 
     Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-    dto::CollectionGetRequest request{.name = std::move(name)};
+    dto::CollectionGetRequest request{.name = name};
 
-    return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET,                 std::move(request), *cpo, timeout).
+    return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET,                 request, *cpo, timeout).
     then([this, name=request.name, key, deadline, retries] (auto&& response) {
         auto& [status, coll_response] = response;
         bool retry = false;
@@ -68,6 +68,7 @@ seastar::future<Status> CPOClient::GetAssignedPartitionWithRetry(Deadline<> dead
             dto::Partition* partition = collections[name].getPartitionForKey(key);
             FulfillWaiters(name, status);
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
+                K2DEBUG("No partition or not assigned: " << partition);
                 retry = true;
             }
         } else if (status.is5xxRetryable()) {
@@ -114,12 +115,17 @@ seastar::future<Status> CPOClient::CreateAndWaitForCollection(Deadline<> deadlin
                                          .clusterEndpoints = std::move(clusterEndpoints)};
 
     Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-    return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE , std::move(request), *cpo, timeout).
+    return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE , request, *cpo, timeout).
     then([this, name=request.metadata.name, deadline] (auto&& response) {
         auto& [status, k2response] = response;
 
         if (status == Status::S403_Forbidden() || status.is2xxOK()) {
-            return GetAssignedPartitionWithRetry(deadline, name, dto::Key{.partitionKey="", .rangeKey=""});
+            Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
+            return seastar::sleep(s).
+            then([this, name, deadline] () -> seastar::future<Status> {
+                return GetAssignedPartitionWithRetry(deadline, name, dto::Key{.partitionKey="", .rangeKey=""});
+            });
+
         }
 
         return seastar::make_ready_future<Status>(std::move(status));
