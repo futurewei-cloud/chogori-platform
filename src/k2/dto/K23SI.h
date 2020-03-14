@@ -17,7 +17,7 @@ enum class TxnPriority : uint8_t {
     Lowest = 255
 };
 
-std::ostream& operator<<(std::ostream& os, const TxnPriority& pri) {
+inline std::ostream& operator<<(std::ostream& os, const TxnPriority& pri) {
     const char* strpri = "bad priority";
     switch (pri) {
         case TxnPriority::Highest: strpri= "highest"; break;

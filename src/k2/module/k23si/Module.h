@@ -39,9 +39,6 @@ public:
     seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
     handleTxnEnd(dto::K23SITxnEndRequest&& request);
 
-    seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
-    handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request);
-
 private:
     // this method executes a push operation at the given TRH in order to
     // select a winner between the sitting transaction's mtr (sitMTR)
@@ -52,7 +49,7 @@ private:
     // In cases where the pusing txn is to be aborted, whoever calls _doPush() has to signal
     // the client that they must issue an onEnd(Abort).
     seastar::future<dto::K23SI_MTR>
-    _doPush(dto::K23SI_TRH_ID trh, dto::K23SI_MTR sitMTR, dto::K23SI_MTR pushMTR);
+    _doPush(dto::Key trh, dto::K23SI_MTR sitMTR, dto::K23SI_MTR pushMTR);
 
     // helper method to convert a DataRecord into a read response with appropriate code
     seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>

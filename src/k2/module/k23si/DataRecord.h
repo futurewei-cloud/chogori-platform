@@ -13,7 +13,7 @@ struct DataRecord {
     bool isTombstone = false;
     dto::Timestamp timestamp;
     dto::K23SI_MTR mtr;
-    dto::K23SI_TRH_ID trh;
+    dto::Key trh;
     enum Status {
         WriteIntent, // the record hasn't been committed/aborted yet
         Committed // the record has been committed and we should use the key/value
