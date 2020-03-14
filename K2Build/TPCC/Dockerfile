@@ -6,3 +6,4 @@ RUN proxy apt update && proxy apt install -y libcrypto++6 libprotobuf10 libyaml-
 RUN proxy apt update && proxy apt-get install -t unstable -y libibverbs-dev=22.1-1
 COPY build/src/k2/cmd/tpcc/tpcc_client /usr/local/bin/
 COPY build/src/k2/cmd/tpcc/mock/mock_server /usr/local/bin/
+COPY build/src/k2/cmd/controlPlaneOracle/cpo_main /usr/local/bin/

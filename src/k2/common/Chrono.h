@@ -45,10 +45,10 @@ private:
 template<typename ClockT=Clock>
 class Deadline {
 public:
-    Deadline(typename ClockT::duration dur) : _deadline(typename ClockT::now() + dur) {}
+    Deadline(typename ClockT::duration dur) : _deadline(ClockT::now() + dur) {}
 
     typename ClockT::duration getRemaining() const {
-        auto now = typename ClockT::now();
+        auto now = ClockT::now();
         if (now >= _deadline) {
             return typename ClockT::duration(0);
         }
@@ -56,7 +56,7 @@ public:
     }
 
     bool isOver() const {
-        return typename ClockT::now() >= _deadline;
+        return ClockT::now() >= _deadline;
     }
 
    private:

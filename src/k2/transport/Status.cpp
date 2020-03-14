@@ -3,6 +3,8 @@ namespace k2 {
 
 bool Status::operator==(const Status& o) { return code == o.code; }
 
+bool Status::operator!=(const Status& o) { return !(code == o.code); }
+
 bool Status::is1xxInProgress() const { return code >= 100 && code <= 199; }
 
 bool Status::is2xxOK() const { return code >= 200 && code <= 299; }

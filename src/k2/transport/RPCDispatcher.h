@@ -122,7 +122,7 @@ public: // message-oriented API
 public: // RPC-oriented interface. Small convenience so that users don't have to deal with Payloads directly
     // Same as sendRequest but for RPC types, not raw payloads
     template<class Request_t, class Response_t>
-    seastar::future<std::tuple<Status, Response_t>> callRPC(Verb verb, Request_t&& request, TXEndpoint& endpoint, Duration timeout) {
+    seastar::future<std::tuple<Status, Response_t>> callRPC(Verb verb, Request_t& request, TXEndpoint& endpoint, Duration timeout) {
         auto payload = endpoint.newPayload();
         payload->write(request);
         K2DEBUG("RPC Request call");

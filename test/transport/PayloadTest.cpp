@@ -160,6 +160,22 @@ void checkSize(Payload& p) {
     REQUIRE(ss == exp);
 }
 
+SCENARIO("Serialize/deserialze empty SerializeAsPayload<T>") {
+    data<Payload> d{};
+    d.a = 100;
+    d.b = 200;
+    d.x = '!';
+    Payload dst([] { return Binary(1500); });
+    dst.write(d);
+    dst.seek(0);
+
+    data<embeddedSimple> parsed;
+    REQUIRE(dst.read(parsed));
+    REQUIRE(parsed.a == 100);
+    REQUIRE(parsed.b == 200);
+    REQUIRE(parsed.x == '!');
+}
+
 SCENARIO("test empty payload serialization after some data") {
     std::vector<data<embeddedComplex>> testCases;
     String s(100000, 'x');

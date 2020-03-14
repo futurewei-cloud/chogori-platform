@@ -9,12 +9,11 @@
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
+#include <k2/dto/AssignmentManager.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/transport/Status.h>
-
-#include "mock_k23si_client.h"
 
 using namespace k2;
 
@@ -34,7 +33,6 @@ public:  // application lifespan
         K2INFO("stop");
         _stopped = true;
         // unregistar all observers
-        k2::RPC().registerMessageObserver(MockMessageVerbs::GET_DATA_URL, nullptr);
         k2::RPC().registerMessageObserver(dto::Verbs::K23SI_READ, nullptr);
         k2::RPC().registerMessageObserver(dto::Verbs::K23SI_WRITE, nullptr);
         k2::RPC().registerLowTransportMemoryObserver(nullptr);
@@ -45,7 +43,6 @@ public:  // application lifespan
         _stopped = false;
 
         K2INFO("Registering message handlers");
-        _registerDATA_URL();
 
         RPC().registerRPCObserver<dto::K23SIWriteRequest<Payload>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest<Payload>&& request) {
             K2DEBUG("Received put for key: " << request.key);
@@ -64,7 +61,7 @@ public:  // application lifespan
         });
 
         RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
-            K2DEBUG("Received get for key: " << key);
+            K2DEBUG("Received get for key: " << request.key);
             String hash_key = request.key.partitionKey + request.key.rangeKey;
 
             dto::K23SIReadResponse<Payload> response = {};
@@ -77,25 +74,24 @@ public:  // application lifespan
             return RPCResponse(iter != _data.end() ? Status::S200_OK() : Status::S404_Not_Found(), std::move(response));
         });
 
+        RPC().registerRPCObserver<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>(dto::Verbs::K2_ASSIGNMENT_CREATE, 
+        [this] (dto::AssignmentCreateRequest&& request) {
+            auto ep = (seastar::engine()._rdma_stack?
+                       k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
+                       k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
+            request.partition.endpoints.clear();
+            request.partition.endpoints.insert(ep->getURL());
+
+            dto::AssignmentCreateResponse response{.assignedPartition = std::move(request.partition)};
+            response.assignedPartition.astate = dto::AssignmentState::Assigned;
+
+            return RPCResponse(Status::S200_OK(), std::move(response));
+        });
+
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
         return seastar::make_ready_future<>();
-    }
-
-private:
-    void _registerDATA_URL() {
-        K2INFO("TCP endpoint is: " << k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
-        k2::RPC().registerMessageObserver(MockMessageVerbs::GET_DATA_URL,
-            [this](k2::Request&& request) mutable {
-                auto response = request.endpoint.newPayload();
-                auto ep = (seastar::engine()._rdma_stack?
-                           k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
-                           k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
-                K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
-                response->write((void*)ep->getURL().c_str(), ep->getURL().size());
-                k2::RPC().sendReply(std::move(response), request);
-            });
     }
 
 private:
