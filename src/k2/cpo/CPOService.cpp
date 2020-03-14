@@ -133,7 +133,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         K2INFO("Sending assignment for partition: " << request.partition);
         futs.push_back(
         RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
-                (dto::K2_ASSIGNMENT_CREATE, std::move(request), *txep, _assignTimeout())
+                (dto::K2_ASSIGNMENT_CREATE, request, *txep, _assignTimeout())
         .then([this, name, ep](auto&& result) {
             auto& [status, resp] = result;
             if (status.is2xxOK()) {
@@ -169,6 +169,7 @@ void CPOService::_handleCompletedAssignment(const String& cname, dto::Assignment
             part.pvid.rangeVersion == request.assignedPartition.pvid.rangeVersion) {
                 K2INFO("Assignment received for active partition " << request.assignedPartition);
                 part.astate = request.assignedPartition.astate;
+                part.endpoints = std::move(request.assignedPartition.endpoints);
                 _saveCollection(haveCollection);
                 return;
         }

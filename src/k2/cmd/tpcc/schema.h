@@ -14,7 +14,7 @@
 
 #define CHECK_READ_STATUS(read_result) \
     do { \
-        if (!(read_result).status.is2xxOK()) { \
+        if (!((read_result).status.is2xxOK())) { \
             K2WARN("TPC-C failed to read rows!"); \
             return make_exception_future(std::runtime_error(std::string("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
         } \
@@ -357,9 +357,9 @@ public:
         data.ItemID = random.NonUniformRandom(8191, 1, 100000);
 
         uint32_t homeRoll = random.UniformRandom(1, 100);
-        if (homeRoll == 1) {
+        if (homeRoll == 1 && max_warehouse_id > 1) {
             do {
-                data.SupplyWarehouseID = random.UniformRandom(0, max_warehouse_id);
+                data.SupplyWarehouseID = random.UniformRandom(1, max_warehouse_id);
             } while (data.SupplyWarehouseID == WarehouseID);
         } else {
             data.SupplyWarehouseID = WarehouseID;

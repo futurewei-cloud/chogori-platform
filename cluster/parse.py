@@ -25,7 +25,7 @@ class Runnable:
         return "sudo docker stop -t 30 " + self.name
 
     def getDockerLogs(self):
-        return "sudo docker logs " + self.name
+        return "sudo docker logs --tail 500000 " + self.name
        
 
 def parseRunnableConfig(runnable, config_files, cpus):

@@ -57,7 +57,7 @@ seastar::future<> CPOTest::runTest1() {
     K2INFO(">>> Test1: get non-existent collection");
     auto request = dto::CollectionGetRequest{.name="collection1"};
     return RPC()
-    .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, std::move(request), *_cpoEndpoint, 100ms)
+    .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms)
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Status::S404_Not_Found());
@@ -81,7 +81,7 @@ seastar::future<> CPOTest::runTest2() {
         .clusterEndpoints{}
     };
     return RPC()
-    .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, std::move(request), *_cpoEndpoint, 1s)
+    .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Status::S201_Created());
@@ -104,7 +104,7 @@ seastar::future<> CPOTest::runTest3() {
         },
         .clusterEndpoints{}};
     return RPC()
-        .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, std::move(request), *_cpoEndpoint, 1s)
+        .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(status, Status::S403_Forbidden());
@@ -115,7 +115,7 @@ seastar::future<> CPOTest::runTest4() {
     K2INFO(">>> Test4: read the collection we created in test2");
     auto request = dto::CollectionGetRequest{.name = "collection2"};
     return RPC()
-        .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, std::move(request), *_cpoEndpoint, 100ms)
+        .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(status, Status::S200_OK());
@@ -148,7 +148,7 @@ seastar::future<> CPOTest::runTest5() {
         .clusterEndpoints = _k2ConfigEps()
     };
     return RPC()
-        .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, std::move(request), *_cpoEndpoint, 1s)
+        .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
         .then([](auto&& response) {
             // create the collection
             auto& [status, resp] = response;
@@ -162,7 +162,7 @@ seastar::future<> CPOTest::runTest5() {
             // check to make sure the collection is assigned
             auto request = dto::CollectionGetRequest{.name = "collectionAssign"};
             return RPC()
-                .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, std::move(request), *_cpoEndpoint, 100ms);
+                .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
         })
         .then([this](auto&& response) {
             auto& [status, resp] = response;
