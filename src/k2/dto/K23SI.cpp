@@ -10,5 +10,9 @@ bool K23SI_MTR::operator!=(const K23SI_MTR& o) const {
     return !(operator==(o));
 }
 
+size_t K23SI_MTR::hash() const {
+    return std::hash<decltype(txnid)>{}(txnid) + std::hash<decltype(priority)>{}(priority) + timestamp.hash();
+}
+
 } // ns dto
 } // ns k2

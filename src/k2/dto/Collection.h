@@ -29,6 +29,10 @@ struct Key {
 
     size_t hash() const noexcept;
     K2_PAYLOAD_FIELDS(partitionKey, rangeKey);
+
+    friend std::ostream& operator<<(std::ostream& os, const Key& key) {
+        return os << "pkey=" << key.partitionKey << ", rkey=" << key.rangeKey;
+    }
 };
 
 // the assignment state of a partition

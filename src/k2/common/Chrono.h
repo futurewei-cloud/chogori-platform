@@ -59,7 +59,7 @@ public:
         return ClockT::now() >= _deadline;
     }
 
-   private:
+private:
     typename ClockT::time_point _deadline;
 }; // class Deadline
 

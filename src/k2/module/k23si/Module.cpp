@@ -36,11 +36,11 @@ seastar::future<> K23SIPartitionModule::start() {
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
         if (!_validateRequestPartition(request)) {
             // tell client their collection partition is gone
-            return RPCResponse(dto::K23SIReadStatus::RefreshCollection(), dto::K23SIReadResponse<Payload>());
+            return RPCResponse(dto::K23SIStatus::RefreshCollection(), dto::K23SIReadResponse<Payload>());
         }
         if (!_validateRetentionWindow(request)) {
             // the request is outside the retention window
-            return RPCResponse(dto::K23SIReadStatus::AbortRequestTooOld(), dto::K23SIReadResponse<Payload>());
+            return RPCResponse(dto::K23SIStatus::AbortRequestTooOld(), dto::K23SIReadResponse<Payload>());
         }
         return handleRead(std::move(request), dto::K23SI_MTR_ZERO);
     });
@@ -58,11 +58,6 @@ seastar::future<> K23SIPartitionModule::start() {
     RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
     (dto::Verbs::K23SI_TXN_END, [this](dto::K23SITxnEndRequest&& request) {
         return handleTxnEnd(std::move(request));
-    });
-
-    RPC().registerRPCObserver<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
-    (dto::Verbs::K23SI_TXN_FINALIZE, [this](dto::K23SITxnFinalizeRequest&& request) {
-        return handleTxnFinalize(std::move(request));
     });
 
     // todo call TSO to get a timestamp
@@ -128,8 +123,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
                 if (winnerMTR == sitMTR) {
                     // sitting transaction won. Abort the incoming request
                     auto resp = dto::K23SIReadResponse<Payload>();
-                    resp.abortPriority = sitMTR.priority;
-                    return RPCResponse(dto::K23SIReadStatus::AbortConflict(), std::move(resp));
+                    return RPCResponse(dto::K23SIStatus::AbortConflict(), std::move(resp));
                 }
                 // incoming request won. re-run read logic to get
                 return handleRead(std::move(request), sitMTR);
@@ -146,13 +140,13 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
 seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
 K23SIPartitionModule::_makeReadResponse(DataRecord* rec) const {
     if (rec == nullptr || rec->isTombstone) {
-        return RPCResponse(dto::K23SIReadStatus::KeyNotFound(), dto::K23SIReadResponse<Payload>());
+        return RPCResponse(dto::K23SIStatus::KeyNotFound(), dto::K23SIReadResponse<Payload>());
     }
 
     auto response = dto::K23SIReadResponse<Payload>();
     response.key = rec->key;
     response.value.val = rec->value.val.share();
-    return RPCResponse(dto::K23SIReadStatus::OK(), std::move(response));
+    return RPCResponse(dto::K23SIStatus::OK(), std::move(response));
 }
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
@@ -175,14 +169,8 @@ K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
     return RPCResponse(Status::S501_Not_Implemented("Not implemented"), dto::K23SITxnEndResponse());
 }
 
-seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
-K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) {
-    (void)request;
-    return RPCResponse(Status::S501_Not_Implemented("Not implemented"), dto::K23SITxnFinalizeResponse());
-}
-
 seastar::future<dto::K23SI_MTR>
-K23SIPartitionModule::_doPush(dto::K23SI_TRH_ID trh, dto::K23SI_MTR sitMTR, dto::K23SI_MTR pushMTR) {
+K23SIPartitionModule::_doPush(dto::Key trh, dto::K23SI_MTR sitMTR, dto::K23SI_MTR pushMTR) {
     (void) trh;
     (void) pushMTR;
     return seastar::make_ready_future<dto::K23SI_MTR>(std::move(sitMTR));

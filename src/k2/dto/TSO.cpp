@@ -49,5 +49,17 @@ Timestamp Timestamp::operator+(const Duration d) const {
     return Timestamp(_tEndTSECount + nsec(d).count(), _tsoId, _tStartDelta);
 }
 
+size_t Timestamp::hash() const {
+    return std::hash<decltype(_tEndTSECount)>{}(_tEndTSECount) +
+           std::hash<decltype(_tStartDelta)>{}(_tStartDelta) +
+           std::hash<decltype(_tsoId)>{}(_tsoId);
+}
+
+TimePoint Timestamp::toTimePoint() const {
+    TimePoint result{};
+    result += std::chrono::nanoseconds(_tEndTSECount);
+    return result;
+}
+
 } // ns dto
 } // ns k2
