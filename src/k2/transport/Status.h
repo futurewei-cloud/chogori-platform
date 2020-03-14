@@ -16,6 +16,7 @@ struct Status {
     K2_PAYLOAD_FIELDS(code, message);
     // two Statuses are equal if they have the same code
     bool operator==(const Status& o);
+    bool operator!=(const Status& o);
 
     // 1xx series codes for in-progress work
     bool is1xxInProgress() const;

@@ -66,13 +66,13 @@ struct K23SIReadStatus {
 
 template <typename ValueType>
 struct K23SIWriteRequest {
-    Partition::PVID partitionVID;
+    Partition::PVID pvid;
     String collectionName;
     K23SI_MTR mtr;
     K23SI_TRH_ID trh;
     Key key;
     SerializeAsPayload<ValueType> value;
-    K2_PAYLOAD_FIELDS(partitionVID, collectionName, mtr, trh, key, value);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, key, value);
 };
 
 struct K23SIWriteResponse {

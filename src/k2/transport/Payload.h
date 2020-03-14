@@ -160,7 +160,14 @@ public:  // Read API
             return read(value.val);
         }
         uint64_t size = 0;
-        return read(size) && read(value.val);
+        if (!read(size)) {
+            return false;
+        }
+        if (size == 0) {
+            return true;
+        }
+
+        return read(value.val);
     }
 
     // read a map
