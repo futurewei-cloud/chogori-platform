@@ -115,7 +115,13 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
     if (iter != _observers.end()) {
         K2DEBUG("Dispatching request for verb="<< request.verb <<", from ep="<< request.endpoint.getURL());
         // TODO emit verb-dimension metric for duration of handling
-        iter->second(std::move(request));
+        try {
+            iter->second(std::move(request));
+        } catch (std::exception& exc) {
+            K2ERROR("Caught exception while dispatching request: " << exc.what());
+        } catch (...) {
+            K2ERROR("Caught unknown exception while dispatching request");
+        }
     }
     else {
         K2DEBUG("no observer for verb " << request.verb << ", from " << request.endpoint.getURL());

@@ -48,7 +48,16 @@ public:
     Timestamp operator-(const Duration d) const;
     Timestamp operator+(const Duration d) const;
 
-private:
+    // Creates a clock TimePoint from the timestamp. The timepoint is set to be at the end of this timestamp
+    TimePoint toTimePoint() const;
+
+    size_t hash() const;
+
+    friend std::ostream& operator<<(std::ostream& os, const Timestamp& ts) {
+        return os << "tsoId=" << ts._tsoId << ", endCount=" << ts._tEndTSECount << ", delta=" << ts._tStartDelta;
+    }
+
+   private:
     uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE
     uint32_t _tsoId = 0;
     uint32_t _tStartDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max

@@ -42,10 +42,6 @@ public:
         return response.value.val;
     }
 
-    uint64_t getAbortPriority() {
-        return response.abortPriority;
-    }
-
     Status status;
 private:
     dto::K23SIReadResponse<ValueType> response;
@@ -55,10 +51,6 @@ class WriteResult{
 public:
     WriteResult(Status&& s, dto::K23SIWriteResponse&& r) : status(std::move(s)), response(std::move(r)) {}
     Status status;
-
-    uint64_t getAbortPriority() {
-        return response.abortPriority;
-    }
 
 private:
     dto::K23SIWriteResponse response;
