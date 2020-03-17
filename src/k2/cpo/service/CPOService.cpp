@@ -59,6 +59,7 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     if (fileutil::fileExists(cpath)) {
         return RPCResponse(Status::S403_Forbidden("Collection already exists"), dto::CollectionCreateResponse());
     }
+    request.metadata.heartbeatDeadline = _collectionHeartbeatDeadline();
     // create a collection from the incoming request
     dto::Collection collection;
     collection.metadata = request.metadata;

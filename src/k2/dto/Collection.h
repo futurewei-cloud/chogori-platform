@@ -154,7 +154,8 @@ struct CollectionMetadata {
     StorageDriver storageDriver;
     CollectionCapacity capacity;
     Duration retentionPeriod{0};
-    K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod);
+    Duration heartbeatDeadline{0}; // set by the CPO
+    K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
 };
 
 struct Collection {

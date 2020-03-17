@@ -124,13 +124,9 @@ int main(int argc, char **argv) {
     .then([&](EndResult&&) {
         K2INFO("Transaction has completed");
     })
-    .handle_exception([](auto&& exc){
+    .handle_exception([](auto exc){
         // not able to start a transaction
-        try {
-            std::rethrow_exception(exc);
-        } catch (const std::exception &e) {
-            K2ERROR("Transaction failed: " << e.what());
-        }
+        K2ERROR_EXC("Transaction failed", exc);
     })
     .wait(); // make sure we complete.
     return 0;

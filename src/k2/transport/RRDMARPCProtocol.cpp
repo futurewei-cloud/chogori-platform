@@ -48,7 +48,7 @@ void RRDMARPCProtocol::start() {
             )
             .handle_exception([this] (auto exc) {
                 if (!_stopped) {
-                    K2WARN("Accept received exception(ignoring): " << exc);
+                    K2WARN_EXC("Accept received exception(ignoring)", exc);
                 }
                 else {
                     // let the loop keep going. The _stopped flag above will cause it to break

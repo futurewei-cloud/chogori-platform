@@ -60,4 +60,9 @@ typedef seastar::temporary_buffer<char> Binary;
 //
 typedef std::function<Binary()> BinaryAllocatorFunctor;
 
+// helper function for converting enum class into an integral type
+// e.g. usage: auto integralColor = to_integral(MyEnum::Red);
+// or  std::array<MyEnum, to_integral(MyEnum::Red)>;
+template <typename T>
+auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e); }
 }   //  namespace k2
