@@ -74,7 +74,26 @@ inline LogEntry StartLogStream() {
 #define K2WARN(msg) K2LOG("WARN", msg)
 #define K2ERROR(msg) K2LOG("ERROR", msg)
 
-#define K2LOG_EXCEPTION(exc) {try { std::rethrow_exception((exc));} catch (const std::exception &e) { K2WARN("Caught exception " << e.what());}}
+#define K2WARN_EXC(msg, exc)                                    \
+    {                                                           \
+        try {                                                   \
+            std::rethrow_exception((exc));                      \
+        } catch (const std::exception& e) {                     \
+            K2WARN(msg << ": caught exception " << e.what());   \
+        } catch (...) {                                         \
+            K2WARN(msg << ": caught unknown exception");        \
+        }                                                       \
+    }
+#define K2ERROR_EXC(msg, exc)                                    \
+    {                                                            \
+        try {                                                    \
+            std::rethrow_exception((exc));                       \
+        } catch (const std::exception& e) {                      \
+            K2ERROR(msg << ": caught exception " << e.what());   \
+        } catch (...) {                                          \
+            K2ERROR(msg << ": caught unknown exception");        \
+        }                                                        \
+    }
 
 #ifndef NDEBUG
 #define K2ASSERT(cond, msg) \

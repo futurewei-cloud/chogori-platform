@@ -3,7 +3,7 @@
 //-->
 
 #include <k2/appbase/Appbase.h>
-#include <k2/cpo/CPOService.h>
+#include <k2/cpo/service/CPOService.h>
 
 int main(int argc, char** argv) {
     k2::App app;

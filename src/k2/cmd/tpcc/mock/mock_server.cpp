@@ -64,8 +64,7 @@ public:  // application lifespan
             K2DEBUG("Received get for key: " << request.key);
             String hash_key = request.key.partitionKey + request.key.rangeKey;
 
-            dto::K23SIReadResponse<Payload> response = {};
-            response.key = std::move(request.key);
+            dto::K23SIReadResponse<Payload> response{};
 
             auto iter = _data.find(hash_key);
             if (iter != _data.end()) {
@@ -74,7 +73,7 @@ public:  // application lifespan
             return RPCResponse(iter != _data.end() ? Status::S200_OK() : Status::S404_Not_Found(), std::move(response));
         });
 
-        RPC().registerRPCObserver<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>(dto::Verbs::K2_ASSIGNMENT_CREATE, 
+        RPC().registerRPCObserver<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>(dto::Verbs::K2_ASSIGNMENT_CREATE,
         [this] (dto::AssignmentCreateRequest&& request) {
             auto ep = (seastar::engine()._rdma_stack?
                        k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):

@@ -144,7 +144,7 @@ public: // Work generators
             .handle_exception([msground](auto exc){
                 // here we handle the exception case (e.g. timeout, unable to connect, invalid endpoint, etc)
                 // this is the handler which handles the exception AFTER the retry strategy is exhausted
-                K2ERROR("Failed to get response for message reqid=" << msground << " : " << exc);
+                K2ERROR_EXC("Failed to get response for message reqid=" << msground, exc);
             }).finally([self=weak_from_this(), retryStrategy, msground](){
                 // to keep the retry strategy around while we're working on it, use a shared ptr and capture it
                 // here by copy so that it is only released after Do completes.

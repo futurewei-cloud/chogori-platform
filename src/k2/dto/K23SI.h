@@ -58,9 +58,8 @@ struct K23SIReadRequest {
 // The response for READs
 template<typename ValueType>
 struct K23SIReadResponse {
-    Key key; // the key of the record. TODO maybe this isn't needed?
     SerializeAsPayload<ValueType> value; // the value we found
-    K2_PAYLOAD_FIELDS(key, value);
+    K2_PAYLOAD_FIELDS(value);
 };
 
 // status codes for reads
@@ -86,14 +85,13 @@ struct K23SIWriteRequest {
     Key trh;
     bool isDelete = false; // is this a delete write?
     bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
-    Key key; // the key for the write
+    Key key; // the key for the write. The request is routed based on this key
     SerializeAsPayload<ValueType> value; // the value of the write
-    K2_PAYLOAD_FIELDS(pvid, mtr, trh, value, collectionName, isDelete, designateTRH, key);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
 };
 
 struct K23SIWriteResponse {
-    Key key;  // the key for the write. TODO maybe this isn't needed?
-    K2_PAYLOAD_FIELDS(key);
+    K2_PAYLOAD_COPYABLE;
 };
 
 struct K23SITxnHeartbeatRequest {
@@ -101,12 +99,12 @@ struct K23SITxnHeartbeatRequest {
     Partition::PVID pvid;
     // the name of the collection
     String collectionName;
-    // trh of the transaction we want to heartbeat
-    Key trh;
+    // trh of the transaction we want to heartbeat. The request is routed based on this key
+    Key key;
     // the MTR for the transaction we want to heartbeat
     K23SI_MTR mtr;
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, trh, mtr);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
 };
 
 struct K23SITxnHeartbeatResponse {
@@ -127,14 +125,14 @@ struct K23SITxnPushRequest {
     Partition::PVID pvid;
     // the name of the collection
     String collectionName;
-    // trh of the incumbent
-    Key incumbentTrh;
+    // trh of the incumbent. The request is routed based on this key
+    Key key;
     // the MTR for the incumbent transaction
     K23SI_MTR incumbentMTR;
     // the MTR for the challenger transaction
     K23SI_MTR challengerMTR;
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, incumbentTrh, incumbentMTR, challengerMTR);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, incumbentMTR, challengerMTR);
 };
 
 // Response for PUSH operation
@@ -154,23 +152,42 @@ struct K23SITxnEndRequest {
     Partition::PVID pvid;
     // the name of the collection
     String collectionName;
-    // trh of the transaction to end
-    Key trh;
+    // trh of the transaction to end. The request is routed based on this key
+    Key key;
     // the MTR for the transaction to end
     K23SI_MTR mtr;
     // the end action (Abort|Commit)
     EndAction action;
+    // the keys this transaction wrote. We need to finalize these by converting write
+    // intents to committed/aborted versions)
+    std::vector<Key> writeKeys;
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, trh, mtr, action);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys);
 };
 
 struct K23SITxnEndResponse {
-    // As a response to ending a transaction, we will notify what is the suggested minimum priority to use
-    // if the user wants to retry the transaction
-    TxnPriority minRetryPriority = TxnPriority::Lowest;
-
-    K2_PAYLOAD_FIELDS(minRetryPriority);
+    K2_PAYLOAD_COPYABLE;
 };
 
+struct K23SITxnFinalizeRequest {
+    // the partition version ID for the TRH. Should be coming from an up-to-date partition map
+    Partition::PVID pvid;
+    // the name of the collection
+    String collectionName;
+    // trh of the transaction
+    Key trh;
+    // the MTR for the transaction
+    K23SI_MTR mtr;
+    // the key to finalize. The request is routed based on this key
+    Key key;
+    // should we abort or commit
+    EndAction action;
+
+    K2_PAYLOAD_FIELDS(pvid, collectionName, trh, mtr, key, action);
+};
+
+struct K23SITxnFinalizeResponse {
+    K2_PAYLOAD_COPYABLE;
+};
 } // ns dto
 } // ns k2

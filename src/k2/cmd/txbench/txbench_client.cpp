@@ -90,7 +90,7 @@ public:  // application lifespan
             return _benchmark();
         }).
         handle_exception([this](auto exc) {
-            K2ERROR("Unable to execute benchmark. " << exc);
+            K2ERROR_EXC("Unable to execute benchmark", exc);
             _stopped = true;
             return seastar::make_ready_future<>();
         }).finally([this]() {
@@ -179,7 +179,7 @@ private:
             return seastar::make_ready_future<>();
         }).
         handle_exception([](auto exc) {
-            K2ERROR("Unable to start session: " << exc);
+            K2ERROR_EXC("Unable to start session", exc);
             return seastar::make_exception_future<>(exc);
         });
     }
