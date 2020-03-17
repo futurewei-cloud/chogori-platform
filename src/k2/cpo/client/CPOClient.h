@@ -60,7 +60,7 @@ public:
             it->second.emplace_back(seastar::promise<Status>());
             return it->second.back().get_future().then([this, deadline, name, key, retries](Status&& status) {
                 if (status.is2xxOK()) {
-                    dto::Partition* partition = collections[name].getPartitionForKey(key);
+                    dto::Partition* partition = collections[name].getPartitionForKey(key).partition;
                     if (partition && partition->astate == dto::AssignmentState::Assigned) {
                         return seastar::make_ready_future<Status>(std::move(status));
                     }
@@ -87,7 +87,7 @@ public:
 
             if (status.is2xxOK()) {
                 collections[name] = dto::PartitionGetter(std::move(coll_response.collection));
-                dto::Partition* partition = collections[name].getPartitionForKey(key);
+                dto::Partition* partition = collections[name].getPartitionForKey(key).partition;
                 FulfillWaiters(name, status);
                 if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                     K2DEBUG("No partition or not assigned: " << partition);
@@ -141,7 +141,7 @@ public:
         if (it == collections.end()) {
             f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key);
         } else {
-            dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key);
+            dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key).partition;
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                 f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key);
             }
@@ -157,19 +157,18 @@ public:
             }
 
             // Try to get partition info
-            dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key);
-            if (!partition || partition->astate != dto::AssignmentState::Assigned) {
+            dto::PartitionGetter::PartitionWithEndpoint partition = collections[request.collectionName].getPartitionForKey(request.key);
+            if (!partition.partition || partition.partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
                 K2DEBUG("Failed to get assigned partition");
                 return RPCResponse(Status::S503_Service_Unavailable("Partition not assigned"), ResponseT());
             }
 
             Duration timeout = std::min(deadline.getRemaining(), partition_request_timeout());
-            auto k2node = RPC().getTXEndpoint(*(partition->endpoints.begin()));
-            request.pvid = partition->pvid;
+            request.pvid = partition.partition->pvid;
 
             // Attempt the request RPC
-            return RPC().callRPC<RequestT, ResponseT>(verb, request, *k2node, timeout).
+            return RPC().callRPC<RequestT, ResponseT>(verb, request, partition.preferredEndpoint, timeout).
             then([this, &request, deadline, retries] (auto&& result) {
                 auto& [status, k2response] = result;
 
