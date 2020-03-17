@@ -73,6 +73,12 @@ public:  // application lifespan
             return RPCResponse(iter != _data.end() ? Status::S200_OK() : Status::S404_Not_Found(), std::move(response));
         });
 
+        RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(dto::Verbs::K23SI_TXN_END,
+        [this] (dto::K23SITxnEndRequest&& request) {
+            (void) request;
+            return RPCResponse(Status::S200_OK(), dto::K23SITxnEndResponse());
+        });
+
         RPC().registerRPCObserver<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>(dto::Verbs::K2_ASSIGNMENT_CREATE,
         [this] (dto::AssignmentCreateRequest&& request) {
             auto ep = (seastar::engine()._rdma_stack?

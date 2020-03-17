@@ -114,7 +114,11 @@ private:
                             _totalCount++;
                         }
                     })
-                    .finally([curTxn] () { delete curTxn; });
+                    .finally([this, curTxn] () {
+                        _readOps += curTxn->read_ops;
+                        _writeOps += curTxn->write_ops;
+                        delete curTxn; 
+                    });
                 }
             );
         })
@@ -122,7 +126,11 @@ private:
             auto duration = k2::Clock::now() - _start;
             auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
             auto cntpsec = (double)_totalCount/totalsecs;
+            auto readpsec = (double)_readOps/totalsecs;
+            auto writepsec = (double)_writeOps/totalsecs;
             K2INFO("totalCount=" << _totalCount << "(" << cntpsec << " per sec)" );
+            K2INFO("read ops " << readpsec << " per sec)" );
+            K2INFO("write ops " << writepsec << " per sec)" );
             return make_ready_future();
         });
     }
@@ -142,7 +150,9 @@ private:
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _requestLatency;
     std::vector<k2::TimePoint> _requestIssueTimes;
-    uint32_t _totalCount = 0;
+    uint32_t _totalCount{0};
+    uint64_t _readOps{0};
+    uint64_t _writeOps{0};
 }; // class Client
 
 int main(int argc, char** argv) {;
