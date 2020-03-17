@@ -66,7 +66,7 @@ public:  // application lifespan
         });
         return _benchmark()
         .handle_exception([this](auto exc) {
-            K2ERROR("Unable to execute benchmark. " << exc);
+            K2ERROR_EXC("Unable to execute benchmark", exc);
             _stopped = true;
             return seastar::make_ready_future<>();
         }).finally([this]() {

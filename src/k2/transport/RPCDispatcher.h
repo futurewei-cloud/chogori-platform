@@ -142,7 +142,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                 }
                 return result;
             })
-            .handle_exception([](auto&& exc) {
+            .handle_exception([](auto exc) {
                 try {
                     std::rethrow_exception(exc);
                 }
@@ -188,16 +188,8 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     K2WARN("dispatcher is going down: unable to send response to " << request.endpoint.getURL());
                 }
             })
-            .handle_exception([disp=weak_from_this(), request=std::move(request), reply=std::move(reply)](auto&& exc) mutable {
-                try {
-                    std::rethrow_exception(exc);
-                }
-                catch (const std::exception &e) {
-                    K2ERROR("RPC handler failed with uncaught exception: " << e.what());
-                }
-                catch (...) {
-                    K2ERROR("RPC handler failed with unknown exception");
-                }
+            .handle_exception([disp=weak_from_this(), request=std::move(request), reply=std::move(reply)](auto exc) mutable {
+                K2ERROR_EXC("RPC handler failed with uncaught exception", exc);
                 if (disp) {
                     reply->write(Status::S500_Internal_Server_Error());
                     disp->sendReply(std::move(reply), request);

@@ -172,7 +172,7 @@ SEASTAR_TEST_CASE(test_append_plogId_not_exist)
         .then([plogMock, plogId](auto&&) {
             BOOST_FAIL("Expected exception");
         })
-        .handle_exception([](auto&& e) {
+        .handle_exception([](auto e) {
             try {
                 std::rethrow_exception(e);
             } catch (PlogException& e) {
@@ -203,7 +203,7 @@ SEASTAR_TEST_CASE(test_append_exceed_plog_limit)
             .then([plogMock, plogId](auto&&){
                 BOOST_FAIL("Expected exception");
             })
-            .handle_exception([](auto&& e){
+            .handle_exception([](auto e){
                 try{
                     std::rethrow_exception(e);
                 } catch (PlogException& e) {

@@ -7,7 +7,7 @@
 #include <seastar/core/future-util.hh>
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
-#include <k2/cpo/CPOClient.h>
+#include <k2/cpo/client/CPOClient.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/Collection.h>
@@ -25,7 +25,7 @@ std::ostream& operator<<(std::ostream& os, const dto::Key& key) {
 class K2TxnOptions{
 public:
     K2TxnOptions() noexcept :
-        deadline(Duration(1s)), 
+        deadline(Duration(1s)),
         priority(dto::TxnPriority::Medium) {}
 
     Deadline<> deadline;
@@ -66,7 +66,7 @@ public:
 class K2TxnHandle {
 public:
     K2TxnHandle() = default;
-    K2TxnHandle(const K2TxnOptions& options, CPOClient* cpo) noexcept : 
+    K2TxnHandle(const K2TxnOptions& options, CPOClient* cpo) noexcept :
         _options(options), _cpo_client(cpo), _started(true)  {}
 
     template <typename ValueType>
@@ -169,7 +169,7 @@ public:
             .capacity = {},
             .retentionPeriod = Duration(600s)
         };
- 
+
         return _cpo_client.CreateAndWaitForCollection(Deadline<>(5s), std::move(metadata), std::move(endpoints));
     }
 

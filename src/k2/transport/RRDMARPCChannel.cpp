@@ -72,17 +72,9 @@ void RRDMARPCChannel::run() {
                     // process some messages from the packet
                     _rpcParser.dispatchSome();
                 }).
-                handle_exception([] (auto&& exc_ptr) {
+                handle_exception([] (auto exc) {
                     // let the loop go and check the condition above. Upon exception, the connection should be closed
-                    try {
-                        std::rethrow_exception(exc_ptr);
-                    }
-                    catch(std::exception& exc) {
-                        K2WARN("Exception while reading connection: " << exc.what());
-                    }
-                    catch(...) {
-                        K2WARN("unknown exception while reading connection");
-                    }
+                    K2WARN_EXC("Exception while reading connection", exc);
                     return seastar::make_ready_future();
                 });
         }

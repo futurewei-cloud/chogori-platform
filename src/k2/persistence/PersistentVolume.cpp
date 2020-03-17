@@ -53,7 +53,7 @@ protected:
 
         return plogService->append(plogs[activePlog], binaryReference(bin.get_write(), bin.size()))
             .discard_result()
-            .handle_exception([this, &bin](std::exception_ptr)
+            .handle_exception([this, &bin](auto)
             {
                 activePlog++;   //  Plog failure - switch to next one
                 return append(bin);

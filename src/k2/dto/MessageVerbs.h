@@ -29,6 +29,8 @@ enum Verbs : k2::Verb {
     K23SI_TXN_END,
     // K23SI heartbeat transaction
     K23SI_TXN_HEARTBEAT,
+    // sent to finalize a K23SI write
+    K23SI_TXN_FINALIZE,
 
     /************ K23SI Persistence *****************/
     K23SI_Persist = 40,
