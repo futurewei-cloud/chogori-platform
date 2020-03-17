@@ -38,23 +38,6 @@ future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
     });
 }
 
-template<typename ValueType>
-future<k2::WriteResult> writeRow(ValueType&& row, k2::K2TxnHandle& txn)
-{
-    k2::dto::Key key = {};
-    key.partitionKey = row.getPartitionKey();
-    key.rangeKey = row.getRowKey();
-
-    return txn.write(std::move(key), "TPCC", std::move(row.data)).then([] (k2::WriteResult&& result) {
-        if (!result.status.is2xxOK()) {
-            K2WARN("writeRow failed!");
-            return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
-        }
-
-        return make_ready_future<k2::WriteResult>(std::move(result));
-    });
-}
-
 struct Address {
     Address () = default;
     Address (RandomContext& random) {
@@ -318,7 +301,7 @@ future<k2::WriteResult> writeRow<NewOrder>(const NewOrder& row, k2::K2TxnHandle&
     key.partitionKey = row.getPartitionKey();
     key.rangeKey = row.getRowKey();
 
-    return txn.write(std::move(key), "TPCC", k2::Payload()).then([] (k2::WriteResult&& result) {
+    return txn.write(std::move(key), "TPCC", 0).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2WARN("writeRow failed!");
             return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));

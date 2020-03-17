@@ -117,7 +117,7 @@ seastar::future<> runScenario01() {
     K2INFO("Scenario 01: empty node");
     return seastar::make_ready_future()
     .then([this] {
-        dto::Partition* part = _pgetter.getPartitionForKey(dto::Key{.partitionKey="Key1", .rangeKey="rKey1"});
+        dto::Partition* part = _pgetter.getPartitionForKey(dto::Key{.partitionKey="Key1", .rangeKey="rKey1"}).partition;
         // read wrong collection
         dto::K23SIReadRequest request {
             .pvid = part->pvid,

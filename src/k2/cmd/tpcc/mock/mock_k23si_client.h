@@ -29,9 +29,7 @@ public:
         priority(dto::TxnPriority::Medium) {}
 
     Deadline<> deadline;
-    //Timestamp timestamp;
     dto::TxnPriority priority;
-    // auto-retry policy...
 };
 
 template<typename ValueType>
@@ -67,7 +65,7 @@ class K2TxnHandle {
 public:
     K2TxnHandle() = default;
     K2TxnHandle(const K2TxnOptions& options, CPOClient* cpo) noexcept :
-        _options(options), _cpo_client(cpo), _started(true)  {}
+        _options(options), _cpo_client(cpo), _started(true), _ended(false)  {}
 
     template <typename ValueType>
     future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
@@ -75,42 +73,23 @@ public:
             return make_exception_future<ReadResult<ValueType>>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
 
-        dto::K23SIReadRequest request{};
-        request.key = std::move(key);
-        request.collectionName = collection;
+        read_ops++;
 
-        return do_with(std::move(request), [this] (dto::K23SIReadRequest& request) {
-            return _cpo_client->PartitionRequest
-                <dto::K23SIReadRequest, dto::K23SIReadResponse<ValueType>, dto::Verbs::K23SI_READ>
-                (_options.deadline, request).
-                then([] (auto&& response) {
-                    auto& [status, k2response] = response;
-                    auto userResponse = ReadResult<ValueType>(std::move(status), std::move(k2response));
-                    return make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
-                });
-        });
-    }
+        auto* request = new dto::K23SIReadRequest{
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            collection,
+            dto::K23SI_MTR(),
+            std::move(key)
+        };
 
-    template <typename ValueType>
-    future<WriteResult> write(dto::Key key, const String& collection, ValueType&& value) {
-        if (!_started) {
-            return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
-        }
-
-        dto::K23SIWriteRequest<ValueType> request{};
-        request.key = std::move(key);
-        request.collectionName = collection;
-        request.value.val = std::move(value);
-
-        return do_with(std::move(request), [this] (dto::K23SIWriteRequest<ValueType>& request) {
-            return _cpo_client->PartitionRequest
-                <dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
-                (_options.deadline, request).
-                then([] (auto&& response) {
-                    auto& [status, k2response] = response;
-                    return make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
-                });
-        });
+        return _cpo_client->PartitionRequest
+            <dto::K23SIReadRequest, dto::K23SIReadResponse<ValueType>, dto::Verbs::K23SI_READ>
+            (_options.deadline, *request).
+            then([] (auto&& response) {
+                auto& [status, k2response] = response;
+                auto userResponse = ReadResult<ValueType>(std::move(status), std::move(k2response));
+                return make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
+            }).finally([request] () { delete request; });
     }
 
     template <typename ValueType>
@@ -119,27 +98,42 @@ public:
             return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
 
-        dto::K23SIWriteRequest<ValueType> request{};
-        request.key = std::move(key);
-        request.collectionName = collection;
-        request.value.val = value;
+        write_ops++;
 
-        return do_with(std::move(request), [this] (dto::K23SIWriteRequest<ValueType>& request) {
-            return _cpo_client->PartitionRequest
-                <dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
-                (_options.deadline, request).
-                then([] (auto&& response) {
-                    auto& [status, k2response] = response;
-                    return make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
-                });
-        });
+        auto* request = new dto::K23SIWriteRequest<ValueType>{
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            collection,
+            dto::K23SI_MTR(),
+            dto::Key(),
+            false,
+            false,
+            std::move(key),
+            SerializeAsPayload<ValueType>{value}};
+
+        return _cpo_client->PartitionRequest
+            <dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
+            (_options.deadline, *request).
+            then([] (auto&& response) {
+                auto& [status, k2response] = response;
+                return make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+            }).finally([request] () { delete request; });
     }
 
-    future<EndResult> end(bool shouldCommit) { (void) shouldCommit; return make_ready_future<EndResult>(EndResult(Status::S200_OK())); };
+    future<EndResult> end(bool shouldCommit) { 
+        (void) shouldCommit; return make_ready_future<EndResult>(EndResult(Status::S200_OK())); 
+    };
+
+
+    uint64_t read_ops{0};
+    uint64_t write_ops{0};
+
 private:
     K2TxnOptions _options;
     CPOClient* _cpo_client;
     bool _started;
+    bool _ended;
+    Status _end_status;
+    dto::TxnPriority _retry_priority;
 };
 
 class K23SIClientConfig {
@@ -176,6 +170,9 @@ public:
     future<K2TxnHandle> beginTxn(const K2TxnOptions& options) {
         return make_ready_future<K2TxnHandle>(K2TxnHandle(options, &_cpo_client));
     };
+
+    uint64_t read_ops{0};
+    uint64_t write_ops{0};
 };
 
 } // namespace k2

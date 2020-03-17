@@ -1,7 +1,11 @@
-#include "Collection.h"
-#include <crc32c/crc32c.h>
-#include <string>
 #include <algorithm>
+#include <string>
+
+#include <crc32c/crc32c.h>
+#include <k2/transport/RPCDispatcher.h>
+#include <k2/transport/RRDMARPCProtocol.h>
+
+#include "Collection.h"
 
 namespace k2 {
 namespace dto {
@@ -42,6 +46,22 @@ bool Partition::PVID::operator!=(const Partition::PVID& o) const {
     return !operator==(o);
 }
 
+PartitionGetter::PartitionWithEndpoint PartitionGetter::GetPartitionWithEndpoint(Partition* p) {
+    PartitionWithEndpoint partition{};
+    partition.partition = p;
+
+    for (auto ep = p->endpoints.begin(); ep != p->endpoints.end(); ++ep) {
+        partition.preferredEndpoint = *(RPC().getTXEndpoint(*ep));
+
+        if (seastar::engine()._rdma_stack && 
+                partition.preferredEndpoint.getProtocol() == RRDMARPCProtocol::proto) {
+            break;
+        }
+    }
+
+    return partition;
+}
+
 PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) {
     if (collection.metadata.hashScheme == HashScheme::Range) {
         _rangePartitionMap.reserve(collection.partitionMap.partitions.size());
@@ -49,7 +69,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            RangeMapElement e(it->endKey, &(*it));
+            RangeMapElement e(it->endKey, GetPartitionWithEndpoint(&(*it)));
             _rangePartitionMap.push_back(std::move(e));
         }
 
@@ -62,7 +82,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            HashMapElement e{.hvalue = std::stoull(it->endKey), .partition = &(*it)};
+            HashMapElement e{.hvalue = std::stoull(it->endKey), .partition = GetPartitionWithEndpoint(&(*it))};
             _hashPartitionMap.push_back(std::move(e));
         }
 
@@ -70,17 +90,17 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
     }
 }
 
-Partition* PartitionGetter::getPartitionForKey(const Key& key) {
+PartitionGetter::PartitionWithEndpoint PartitionGetter::getPartitionForKey(const Key& key) {
     switch (collection.metadata.hashScheme) {
         case HashScheme::Range:
         {
-            RangeMapElement to_find(key.partitionKey, nullptr);
+            RangeMapElement to_find(key.partitionKey, PartitionGetter::PartitionWithEndpoint());
             auto it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
             if (it != _rangePartitionMap.end()) {
                 return it->partition;
             }
 
-            return nullptr;
+            return PartitionWithEndpoint{};
         }
         case HashScheme::HashCRC32C:
         {
@@ -89,16 +109,16 @@ Partition* PartitionGetter::getPartitionForKey(const Key& key) {
             // shift the existing hash over to the high 32 bits and add it in to get a 64bit hash
             hash += hash << 32;
 
-            HashMapElement to_find{.hvalue = hash, .partition = nullptr};
+            HashMapElement to_find{.hvalue = hash, .partition = PartitionGetter::PartitionWithEndpoint()};
             auto it = std::lower_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
             if (it != _hashPartitionMap.end()) {
                 return it->partition;
             }
 
-            return nullptr;
+            return PartitionWithEndpoint{};
         }
         default:
-            return nullptr;
+            return PartitionWithEndpoint{};
     }
 }
 
