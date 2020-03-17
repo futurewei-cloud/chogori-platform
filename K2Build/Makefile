@@ -14,11 +14,11 @@ build:
 
 test_plog: build
 	@echo ">>> Testing plogmock"
-	@../$(BUILD_DIR)/test/plogmock/plogmock_test && testReturnCode=$? && exit $(testReturnCode)
+	@../$(BUILD_DIR)/test/plogmock/plogmock_test -- --reactor-backend epoll && testReturnCode=$? && exit $(testReturnCode)
 
 test_volume: build
 	@echo ">>> Testing PersistentVolume"
-	@../$(BUILD_DIR)/test/persistentVolume/persistent_volume_test && testReturnCode=$? && exit $(testReturnCode)
+	@../$(BUILD_DIR)/test/persistentVolume/persistent_volume_test -- --reactor-backend epoll && testReturnCode=$? && exit $(testReturnCode)
 
 test_transport: build
 	@echo ">>> Testing transport"

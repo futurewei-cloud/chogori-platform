@@ -44,10 +44,11 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
             if (tcpep) {
                 partition.endpoints.insert(tcpep->getURL());
             }
-            auto rdmaep = RPC().getServerEndpoint(RRDMARPCProtocol::proto);
-            if (rdmaep) {
+            if (seastar::engine()._rdma_stack) {
+                auto rdmaep = RPC().getServerEndpoint(RRDMARPCProtocol::proto);
                 partition.endpoints.insert(rdmaep->getURL());
             }
+
             if (partition.endpoints.size() > 0) {
                 partition.astate = dto::AssignmentState::Assigned;
                 K2INFO("Assigned partition for driver k23si");
