@@ -6,29 +6,38 @@ namespace dto {
     // we want the read cache to determine ordering based on certain comparison so that we have some stable
     // ordering even across different nodes and TSOs
     const Timestamp& max(const Timestamp& a, const Timestamp& b) {
-        return a.compareCertain(b) == Timestamp::GT ? b : a;
+        return a.compareCertain(b) == Timestamp::LT ? b : a;
     }
 } // ns dto
 
+
+// get timeNow Timestamp from TSO
 seastar::future<dto::Timestamp> getTimeNow() {
-    // TODO call TSO service
-    return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp());
+    // TODO call TSO service with timeout and retry logic
+    auto nsecsSinceEpoch = nsec(CachedSteadyClock::now(true).time_since_epoch()).count();
+    return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 1550647543, 1000));
 }
+
 
 K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
     _cmeta(std::move(cmeta)),
     _partition(std::move(partition)),
     _retentionUpdateTimer([this] {
-        // TODO call TSO to get timestamp here
         _retentionRefresh = _retentionRefresh.then([]{
-            return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp());
+            return getTimeNow();
         })
-        .then([this](dto::Timestamp ts) {
+        .then([this](dto::Timestamp&& ts) {
             _retentionTimestamp = ts - _cmeta.retentionPeriod;
+            _txnMgr.updateRetentionTimestamp(_retentionTimestamp);
+        }).then_wrapped([this](auto&& fut) {
+            // ignore exceptions and just run again
+            fut.ignore_ready_future();
+            K2WARN("Unable to obtain recent timestamp from TSO");
             // run again
-            _retentionUpdateTimer.arm(_minimumRetentionPeriod());
+            _retentionUpdateTimer.arm(_retentionUpdateInterval);
         });
-    }) {
+    }),
+    _cpo(_config.cpoEndpoint()) {
     K2INFO("ctor for cname=" << _cmeta.name <<", part=" << _partition);
 }
 
@@ -42,12 +51,11 @@ seastar::future<> K23SIPartitionModule::start() {
             // the request is outside the retention window
             return RPCResponse(dto::K23SIStatus::AbortRequestTooOld(), dto::K23SIReadResponse<Payload>());
         }
-        return handleRead(std::move(request), dto::K23SI_MTR_ZERO);
+        return handleRead(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.readTimeout()));
     });
 
-    RPC().registerRPCObserver<dto::K23SIWriteRequest<Payload>, dto::K23SIWriteResponse>
-    (dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest<Payload>&& request) {
-        return handleWrite(std::move(request));
+    RPC().registerRPCObserver<dto::K23SIWriteRequest<Payload>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest<Payload>&& request) {
+        return handleWrite(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
     });
 
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
@@ -60,19 +68,28 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleTxnEnd(std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>
+    (dto::Verbs::K23SI_TXN_HEARTBEAT, [this](dto::K23SITxnHeartbeatRequest&& request) {
+        return handleTxnHeartbeat(std::move(request));
+    });
+
+    RPC().registerRPCObserver<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
+    (dto::Verbs::K23SI_TXN_FINALIZE, [this](dto::K23SITxnFinalizeRequest&& request) {
+        return handleTxnFinalize(std::move(request));
+    });
+
     // todo call TSO to get a timestamp
     return getTimeNow()
-        .then([this](dto::Timestamp watermark) {
-            if (_cmeta.retentionPeriod < _minimumRetentionPeriod()) {
+        .then([this](dto::Timestamp&& watermark) {
+            if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
                 K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
-                       << _minimumRetentionPeriod() << "). Extending retention to minimum");
-                _cmeta.retentionPeriod = _minimumRetentionPeriod();
+                       << _config.minimumRetentionPeriod() << "). Extending retention to minimum");
+                _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
             }
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;
-            ConfigVar<uint64_t> readCacheSize("k23si_read_cache_size", 10000);
-            _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, readCacheSize());
-            _retentionUpdateTimer.arm(_minimumRetentionPeriod());
-            return seastar::make_ready_future();
+            _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
+            _retentionUpdateTimer.arm(_config.minimumRetentionPeriod() / 2);
+            return seastar::when_all(_recovery(), _txnMgr.start(_cmeta.name, watermark, _cmeta.retentionPeriod, _cmeta.heartbeatDeadline)).discard_result();
         });
 }
 
@@ -80,104 +97,382 @@ K23SIPartitionModule::~K23SIPartitionModule() {
     K2INFO("dtor for cname=" << _cmeta.name <<", part=" << _partition);
 }
 
+seastar::future<> K23SIPartitionModule::_recovery() {
+    //TODO perform recovery
+    return _persistence.makeCall(FastDeadline(10s));
+}
+
 seastar::future<> K23SIPartitionModule::stop() {
     K2INFO("stop for cname=" << _cmeta.name << ", part=" << _partition);
     _retentionUpdateTimer.cancel();
-    return std::move(_retentionRefresh);
+    return seastar::when_all(std::move(_retentionRefresh), _txnMgr.stop()).discard_result();
 }
 
 seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
-K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR) {
+_makeReadOK(DataRecord* rec) {
+    if (rec == nullptr || rec->isTombstone) {
+        return RPCResponse(dto::K23SIStatus::KeyNotFound(), dto::K23SIReadResponse<Payload>{});
+    }
+
+    auto response = dto::K23SIReadResponse<Payload>();
+    response.value.val = rec->value.val.share();
+    return RPCResponse(dto::K23SIStatus::OK(), std::move(response));
+}
+
+seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
+K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        return RPCResponse(dto::K23SIStatus::RefreshCollection(), dto::K23SIReadResponse<Payload>{});
+    }
+    if (!_validateRetentionWindow(request)) {
+        // the request is outside the retention window
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld(), dto::K23SIReadResponse<Payload>{});
+    }
+    // sitMTR will be ZERO for original requests or non-zero for post-PUSH reads
     // update the read cache to lock out any future writers which may attempt to modify the key range
     // before this read's timestamp
     if (sitMTR == dto::K23SI_MTR_ZERO) {
         _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
     }
 
+    // find the version deque for the key
     auto fiter = _indexer.find(request.key);
     if (fiter == _indexer.end()) {
-        return _makeReadResponse(nullptr);
+        return _makeReadOK(nullptr);
     }
     auto& versions = fiter->second;
     auto viter = versions.begin();
     // position the version iterator at the version we should be returning
-    while(viter != versions.end() && request.mtr.timestamp.compareCertain(viter->timestamp) < 0) {
+    while(viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
         ++viter;
     }
     if (viter == versions.end()) {
-        // we either had no versions, or all versions were newer than the requested timestamp
-        return _makeReadResponse(nullptr);
+        // happy case: we either had no versions, or all versions were newer than the requested timestamp
+        return _makeReadOK(nullptr);
     }
 
     // happy case: either committed, or txn is reading its own write
-    if (viter->status == DataRecord::Committed || viter->mtr == request.mtr) {
-        return _makeReadResponse(&(*viter));
+    if (viter->status == DataRecord::Committed || viter->txnId.mtr == request.mtr) {
+        return _makeReadOK(&(*viter));
     }
     // record is still pending and isn't from same transaction.
 
     if (sitMTR == dto::K23SI_MTR_ZERO) {
-        sitMTR = viter->mtr;
         // this is a fresh read finding a WI. have to do a push
-        return _doPush(viter->trh, sitMTR, request.mtr)
-            .then([this, sitMTR, request=std::move(request)](auto winnerMTR) mutable {
+        sitMTR = viter->txnId.mtr;
+        return _doPush(request.collectionName, viter->txnId, request.mtr, deadline)
+            .then([this, sitMTR, request=std::move(request), deadline](auto&& winnerMTR) mutable {
                 if (winnerMTR == sitMTR) {
                     // sitting transaction won. Abort the incoming request
-                    auto resp = dto::K23SIReadResponse<Payload>();
-                    return RPCResponse(dto::K23SIStatus::AbortConflict(), std::move(resp));
+                    return RPCResponse(dto::K23SIStatus::AbortConflict(), dto::K23SIReadResponse<Payload>{});
                 }
-                // incoming request won. re-run read logic to get
-                return handleRead(std::move(request), sitMTR);
+                // incoming request won. re-run read logic
+                return handleRead(std::move(request), sitMTR, deadline);
             });
     }
     // this is a read after a push and we still find a WI. This WI must be the exact same one we pushed against,
     // or else our read cache was not used correctly in code.
-    K2ASSERT(sitMTR == viter->mtr, "bug in code: found WI after push");
+    K2ASSERT(sitMTR == viter->txnId.mtr, "bug in code: found WI after push");
+    K2ASSERT(viter == versions.begin(), "must be at newest version if we found a write intent")
+
+    // remove the WI from cache and queue it up for cleanup
     _queueWICleanup(std::move(*viter));
-    ++viter;
-    return _makeReadResponse(viter == versions.end() ? nullptr : &(*viter));
+    versions.pop_front();
+    return _makeReadOK(versions.begin() == versions.end() ? nullptr : &(versions[0]));
 }
 
-seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
-K23SIPartitionModule::_makeReadResponse(DataRecord* rec) const {
-    if (rec == nullptr || rec->isTombstone) {
-        return RPCResponse(dto::K23SIStatus::KeyNotFound(), dto::K23SIReadResponse<Payload>());
+bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest<Payload>& request, std::deque<DataRecord>& versions) {
+    if (!_validateRetentionWindow(request)) {
+        // the request is outside the retention window
+        return false;
+    }
+    // check read cache for R->W conflicts
+    auto ts = _readCache->checkInterval(request.key, request.key);
+    if (request.mtr.timestamp.compareCertain(ts) < 0) {
+        // this key range was read more recently than this write
+        return false;
     }
 
-    auto response = dto::K23SIReadResponse<Payload>();
-    response.key = rec->key;
-    response.value.val = rec->value.val.share();
-    return RPCResponse(dto::K23SIStatus::OK(), std::move(response));
+    // check if we have a committed value newer than the request. The latest committed
+    // is either the first or second in deque as we may have at most one outstanding WI
+    // NB(1) if we try to place a WI over a committed value from different transaction with same ts.end
+    // (even if from different TSO), reject the incoming write in order to avoid weird read-my-write problem
+    // for in-progress transactions
+    // NB(2) we cannot allow writes past a committed value since a write has to imply a read causality, so
+    // if a txn committed a value at time T5, then we must also assume they did a read at time T5
+    // NB(3) if we encounter a WI, we check the second oldest version to see if there is a need to push.
+    // If the second oldest is newer than we are, then we won't commit even if we win a PUSH against the WI.
+    if (versions.size() > 0 && versions[0].status == DataRecord::Committed &&
+        request.mtr.timestamp.compareCertain(versions[0].txnId.mtr.timestamp) <= 0) {
+        // newest version is the latest committed and its newer than the request
+        return false;
+    }
+    else if (versions.size() > 1 && versions[0].status == DataRecord::WriteIntent &&
+        request.mtr.timestamp.compareCertain(versions[1].txnId.mtr.timestamp) <= 0) {
+        // second newest version is the latest committed and its newer than the request.
+        // no need to push since this request would fail anyway against the committed value
+        return false;
+    }
+
+    return true;
 }
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest<Payload>&& request) {
-    (void)request;
-    // NB if we try to place a WI over a committed value with same ts.end (even if from different TSO), reject the
-    // incoming write in order to avoid weird read-my-write problem for in-progress transactions
-    return RPCResponse(Status::S501_Not_Implemented("Not implemented"), dto::K23SIWriteResponse());
+K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest<Payload>&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
+    // NB: failures in processing a write do not require that we set the TR state to aborted at the TRH. We rely on
+    //     the client to do the correct thing and issue an abort on a failure.
+    // NB: sitMTR will be ZERO for original requests or non-zero for post-PUSH, winning writes.
+
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        return RPCResponse(dto::K23SIStatus::RefreshCollection(), dto::K23SIWriteResponse{});
+    }
+    // at this point the request is valid. Check to see if we should be creating a TR
+    // we want to create the TR now even if the write may fail due to some other constraints. In case
+    // of such failure, the client is expected to come in and end the transaction with Abort
+    if (request.designateTRH) {
+        return _txnMgr.onAction(TxnRecord::Action::onCreate, {.trh=request.trh, .mtr=request.mtr})
+        .then([this, request=std::move(request), sitMTR=std::move(sitMTR), deadline]() mutable {
+            request.designateTRH = false; // unset the flag and re-run
+            return handleWrite(std::move(request), std::move(sitMTR), deadline);
+        })
+        .handle_exception_type([](TxnManager::ClientError&) {
+            // Failed to create
+            return RPCResponse(dto::K23SIStatus::AbortConflict(), dto::K23SIWriteResponse{});
+        });
+    }
+
+    auto& versions = _indexer[request.key];
+    if (!_validateStaleWrite(request, versions)) {
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld(), dto::K23SIWriteResponse{});
+    }
+
+    // check to see if we should push or if we're coming after a push and the WI is still here
+    if (versions.size() > 0 && versions[0].status == DataRecord::WriteIntent) {
+        auto& rec = versions[0];
+        auto& rqmtr = request.mtr;
+
+        if (sitMTR == rec.txnId.mtr) {
+            // this is a post-PUSH request which won over the siting WI and we still have the WI in cache
+            _queueWICleanup(std::move(rec));
+            versions.pop_front();
+        }
+        else if (rec.txnId.mtr != rqmtr) {
+            // this is a write request finding a WI from a different transaction. Do another push with the remaining
+            // deadline time.
+            sitMTR = rec.txnId.mtr;
+            return _doPush(request.collectionName, rec.txnId, request.mtr, deadline)
+                .then([this, sitMTR, request = std::move(request), deadline](auto&& winnerMTR) mutable {
+                    if (winnerMTR == sitMTR) {
+                        // sitting transaction won. Abort the incoming request
+                        return RPCResponse(dto::K23SIStatus::AbortConflict(), dto::K23SIWriteResponse{});
+                    }
+                    // incoming request won. re-run write logic
+                    return handleWrite(std::move(request), sitMTR, deadline);
+                });
+        }
+    }
+
+    // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
+    return _createWI(std::move(request), versions, deadline).then([] () mutable {
+        return RPCResponse(dto::K23SIStatus::Created(), dto::K23SIWriteResponse{});
+    });
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
 K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
-    (void)request;
-    return RPCResponse(Status::S501_Not_Implemented("Not implemented"), dto::K23SITxnPushResponse());
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        return RPCResponse(dto::K23SIStatus::RefreshCollection(), dto::K23SITxnPushResponse());
+    }
+    TxnId txnId{.trh=std::move(request.key), .mtr=std::move(request.incumbentMTR)};
+    TxnRecord& incumbent = _txnMgr.getTxnRecord(txnId);
+    // the only state for which we'd directly abort is the Created state (we didn't have this txn)
+    bool abortIncumbent = incumbent.state == TxnRecord::State::Created;
+    if (incumbent.state == TxnRecord::State::InProgress) {
+        // check the cases when we have to abort the incumbent
+        // #1 abort based on priority
+        if (incumbent.txnId.mtr.priority > request.challengerMTR.priority) { // bigger number means lower priority
+            abortIncumbent = true;
+        }
+        // #2 if equal, pick the newer transaction
+        else if (incumbent.txnId.mtr.priority == request.challengerMTR.priority) {
+            auto cmpResult = incumbent.txnId.mtr.timestamp.compareCertain(request.challengerMTR.timestamp);
+            if (cmpResult == dto::Timestamp::LT) {
+                abortIncumbent = true;
+            }
+            // #3 if same priority and timestamp, abort on tso ID which must be unique
+            if (incumbent.txnId.mtr.timestamp.tsoId() < request.challengerMTR.timestamp.tsoId()) {
+                abortIncumbent = true;
+            }
+            else {
+                // make sure we don't have a bug - the timestamps cannot be the same
+                K2ASSERT(incumbent.txnId.mtr.timestamp.tsoId() != request.challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
+            }
+        }
+    }
+    if (abortIncumbent) {
+        // challenger won
+        return _txnMgr.onAction(TxnRecord::Action::onForceAbort, std::move(txnId)).then([mtr=std::move(request.challengerMTR)] {
+            return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnPushResponse{.winnerMTR = std::move(mtr)});
+        });
+    }
+    else {
+        // incumbent won
+        return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnPushResponse{.winnerMTR = std::move(txnId.mtr)});
+    }
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
 K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
-    (void)request;
-    return RPCResponse(Status::S501_Not_Implemented("Not implemented"), dto::K23SITxnEndResponse());
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        return RPCResponse(dto::K23SIStatus::RefreshCollection(), dto::K23SITxnEndResponse());
+    }
+
+    if (!_validateRetentionWindow(request)) {
+        // the request is outside the retention window
+        return _txnMgr.onAction(TxnRecord::Action::onRetentionWindowExpire,
+                            {.trh=std::move(request.key), .mtr=std::move(request.mtr)})
+                .then([]() {
+                    return RPCResponse(dto::K23SIStatus::AbortRequestTooOld(), dto::K23SITxnEndResponse());
+                });
+    }
+    TxnId txnId{.trh = std::move(request.key), .mtr = std::move(request.mtr)};
+
+    // this action always needs to be executed against the transaction to see what would happen.
+    // If we can successfully execute the action, then it's a success response. Otherwise, the user
+    // receives an error response which is telling them that the transaction has been aborted
+    auto action = request.action == dto::EndAction::Commit ? TxnRecord::Action::onEndCommit : TxnRecord::Action::onEndAbort;
+
+    // store the write keys into the txnrecord
+    TxnRecord& rec = _txnMgr.getTxnRecord(txnId);
+    rec.writeKeys = std::move(request.writeKeys);
+
+    // and just execute the transition
+    return _txnMgr.onAction(action, std::move(txnId))
+        .then([] {
+            // action was successful
+            return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnEndResponse());
+        })
+        .handle_exception_type([](TxnManager::ClientError&) {
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed(), dto::K23SITxnEndResponse());
+        });
+}
+
+seastar::future<std::tuple<Status, dto::K23SITxnHeartbeatResponse>>
+K23SIPartitionModule::handleTxnHeartbeat(dto::K23SITxnHeartbeatRequest&& request) {
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        return RPCResponse(dto::K23SIStatus::RefreshCollection(), dto::K23SITxnHeartbeatResponse());
+    }
+    if (!_validateRetentionWindow(request)) {
+        // the request is outside the retention window
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld(), dto::K23SITxnHeartbeatResponse());
+    }
+
+    return _txnMgr.onAction(TxnRecord::Action::onHeartbeat, TxnId{.trh=std::move(request.key), .mtr=std::move(request.mtr)})
+    .then([]() {
+        // heartbeat was applied successfully
+        return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnHeartbeatResponse());
+    })
+    .handle_exception_type([] (TxnManager::ClientError&) {
+        // there was a problem applying the heartbeat due to client's view of the TR state. Client should abort
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed(), dto::K23SITxnHeartbeatResponse{});
+    });
 }
 
 seastar::future<dto::K23SI_MTR>
-K23SIPartitionModule::_doPush(dto::Key trh, dto::K23SI_MTR sitMTR, dto::K23SI_MTR pushMTR) {
-    (void) trh;
-    (void) pushMTR;
-    return seastar::make_ready_future<dto::K23SI_MTR>(std::move(sitMTR));
+K23SIPartitionModule::_doPush(String collectionName, TxnId sitTxnId, dto::K23SI_MTR pushMTR, FastDeadline deadline) {
+    dto::K23SITxnPushRequest request{};
+    request.collectionName = std::move(collectionName);
+    request.incumbentMTR = std::move(sitTxnId.mtr);
+    request.key = std::move(sitTxnId.trh);
+    request.challengerMTR = std::move(pushMTR);
+    return _cpo.PartitionRequest<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse, dto::Verbs::K23SI_TXN_PUSH>(deadline, request)
+    .then([](auto&& responsePair) {
+        auto& [status, response] = responsePair;
+        if (status != dto::K23SIStatus::OK()) {
+            return seastar::make_exception_future<dto::K23SI_MTR>(TxnManager::ServerError());
+        }
+        return seastar::make_ready_future<dto::K23SI_MTR>(std::move(response.winnerMTR));
+    });
 }
 
-void K23SIPartitionModule::_queueWICleanup(DataRecord rec) {
-    (void) rec; // just drop the record
+void K23SIPartitionModule::_queueWICleanup(DataRecord&& rec) {
+    DataRecord(std::move(rec)); // move the record here so that we can drop it
 }
 
+seastar::future<>
+K23SIPartitionModule::_createWI(dto::K23SIWriteRequest<Payload>&& request, std::deque<DataRecord>& versions, FastDeadline deadline) {
+    DataRecord rec;
+    rec.key = std::move(request.key);
+    // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
+    rec.value.val = request.value.val.copy();
+    rec.isTombstone = request.isDelete;
+    rec.txnId = TxnId{.trh = std::move(request.trh), .mtr = std::move(request.mtr)};
+    rec.status = DataRecord::WriteIntent;
+
+    versions.push_front(std::move(rec));
+    // TODO write to WAL
+    return _persistence.makeCall(deadline);
+}
+
+seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
+K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) {
+    // find the version deque for the key
+    auto fiter = _indexer.find(request.key);
+    if (fiter == _indexer.end() || fiter->second.empty()) {
+        if (request.action == dto::EndAction::Abort) {
+            // we don't have it but it was an abort anyway
+            return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnFinalizeResponse());
+        }
+        // we can't allow the commit since we don't have the write intent
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed(), dto::K23SITxnFinalizeResponse());
+    }
+    auto& versions = fiter->second;
+    auto viter = versions.begin();
+    // position the version iterator at the version we should be converting
+    while (viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
+        ++viter;
+    }
+
+    TxnId txnId{.trh=std::move(request.trh), .mtr=std::move(request.mtr)};
+    if (viter == versions.end() || viter->txnId != txnId) {
+        // we don't have a record from this transaction
+        if (request.action == dto::EndAction::Abort) {
+            // we don't have it but it was an abort anyway
+            return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnFinalizeResponse());
+        }
+        // we can't allow the commit since we don't have the write intent and we don't have a committed version
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed(), dto::K23SITxnFinalizeResponse());
+    }
+
+    // we found a record from this transaction
+    if (viter->status != DataRecord::WriteIntent) {
+        // asked to commit and it was already committed
+        if (request.action == dto::EndAction::Commit) {
+            // we don't have it but it was an abort anyway
+            return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnFinalizeResponse());
+        }
+        // we can't allow the abort since the record is already committed
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed(), dto::K23SITxnFinalizeResponse());
+    }
+
+    // it is a write intent
+    if (request.action == dto::EndAction::Commit) {
+        viter->status = DataRecord::Committed;
+        // we don't have it but it was an abort anyway
+    }
+    else {
+        // erase from version list
+        versions.erase(viter);
+        if (versions.empty()) {
+            // if there are no versions left, erase the key from indexer
+            _indexer.erase(fiter);
+        }
+    }
+    return RPCResponse(dto::K23SIStatus::OK(), dto::K23SITxnFinalizeResponse());
+}
 } // ns k2
