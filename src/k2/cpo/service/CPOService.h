@@ -15,7 +15,7 @@ class CPOService {
 private:
     typedef std::function<seastar::distributed<CPOService>&()> DistGetter;
     DistGetter _dist;
-    String _dataDir;
+    ConfigVar<String> _dataDir{"data_dir"};
     String _getCollectionPath(String name);
     void _assignCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};

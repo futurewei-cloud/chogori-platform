@@ -1,4 +1,6 @@
 #pragma once
+#undef K2_DEBUG_LOGGING
+#define K2_DEBUG_LOGGING 1
 
 #include <map>
 #include <unordered_map>
@@ -67,13 +69,17 @@ private: // methods
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
     bool _validateRequestPartition(const RequestT& req) const {
-        return req.collectionName == _cmeta.name && req.pvid == _partition.pvid;
+        auto result = req.collectionName == _cmeta.name && req.pvid == _partition.pvid;
+        K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed"));
+        return result;
     }
 
     // validate requests are within the retention window for the collection. return true if request is valid
     template <typename RequestT>
     bool _validateRetentionWindow(const RequestT& req) const {
-        return req.mtr.timestamp.compareCertain(_retentionTimestamp) >= 0;
+        auto result = req.mtr.timestamp.compareCertain(_retentionTimestamp) >= 0;
+        K2DEBUG("Partition: " << _partition << ", retention validation " << (result ? "passed" : "failed"));
+        return result;
     }
 
     // validate writes are not stale - older than the newest committed write or past a recent read.

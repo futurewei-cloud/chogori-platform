@@ -8,7 +8,7 @@
 int main(int argc, char** argv) {
     k2::App app;
     app.addOptions()
-        ("data_dir", bpo::value<std::string>(), "The directory where we can keep data");
+        ("data_dir", bpo::value<k2::String>(), "The directory where we can keep data");
     app.addApplet<k2::CPOService>([&]() mutable -> seastar::distributed<k2::CPOService>& {
         return app.getDist<k2::CPOService>();
     });

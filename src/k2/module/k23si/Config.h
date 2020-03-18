@@ -31,9 +31,9 @@ struct K23SIConfig {
     ConfigVar<uint64_t> finalizeRetries{"k23si_txn_finalize_retries", 10};
 
     // the endpoint for our persistence
-    ConfigVar<String> persistenceEndpoint{"k23si_persistence_endpoint"};
+    ConfigVar<String> persistenceEndpoint{"k23si_persistence_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
 
     // the endpoint for the CPO
-    ConfigVar<String> cpoEndpoint{"k23si_cpo_endpoint"};
+    ConfigVar<String> cpoEndpoint{"k23si_cpo_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
 };
 }

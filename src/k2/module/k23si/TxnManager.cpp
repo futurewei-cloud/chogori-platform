@@ -24,6 +24,7 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
     _hbDeadline = hbDeadline;
     updateRetentionTimestamp(rts);
     _hbTimer.set_callback([this] {
+        K2DEBUG("txn manager check hb");
         _hbTask = _hbTask.then([this] {
             // refresh the clock
             auto now = CachedSteadyClock::now(true);
@@ -32,18 +33,18 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
                 return seastar::do_until(
                     [this, now, &dispatched] {
                         auto cantExpire = dispatched >= _config.maxHBExpireCount();
-                        auto noHB = _hblist.front().hbExpiry > now;
-                        auto noRW = _rwlist.front().rwExpiry > _tsonow;
+                        auto noHB = _hblist.empty() || _hblist.front().hbExpiry > now;
+                        auto noRW = _rwlist.empty() || _rwlist.front().rwExpiry > _tsonow;
                         return cantExpire || (noHB && noRW);
                     },
                     [this, &dispatched, now] {
                         dispatched++;
-                        if (_hblist.front().hbExpiry < now) {
+                        if (!_hblist.empty() && _hblist.front().hbExpiry < now) {
                             auto& tr = _hblist.front();
                             _hblist.pop_front();
                             return onAction(TxnRecord::Action::onHeartbeatExpire, tr.txnId);
                         }
-                        else if (_rwlist.front().rwExpiry < _tsonow) {
+                        else if (!_rwlist.empty() && _rwlist.front().rwExpiry < _tsonow) {
                             auto& tr = _rwlist.front();
                             _rwlist.pop_front();
                             return onAction(TxnRecord::Action::onRetentionWindowExpire, tr.txnId);

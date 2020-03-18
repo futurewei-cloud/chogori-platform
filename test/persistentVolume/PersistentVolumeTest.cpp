@@ -2,7 +2,7 @@
 #include <seastar/testing/test_case.hh>
 #include <TestUtil.h>
 
-#include <k2/persistence/PersistentVolume.h>
+#include <k2/persistence/persistentVolume/PersistentVolume.h>
 #include <k2/persistence/plog/PlogMock.h>
 #include <iostream>
 

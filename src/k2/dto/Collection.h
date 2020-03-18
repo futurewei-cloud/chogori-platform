@@ -36,12 +36,24 @@ struct Key {
 };
 
 // the assignment state of a partition
-enum AssignmentState: uint8_t {
+enum class AssignmentState: uint8_t {
     NotAssigned,
     PendingAssignment,
     Assigned,
     FailedAssignment
 };
+
+inline std::ostream& operator<<(std::ostream& os, const AssignmentState& state) {
+    const char* strstate = "bad state";
+    switch (state) {
+        case AssignmentState::NotAssigned: strstate= "not_assigned"; break;
+        case AssignmentState::PendingAssignment: strstate= "pending_assignment"; break;
+        case AssignmentState::Assigned: strstate= "assigned"; break;
+        case AssignmentState::FailedAssignment: strstate= "failed_assignment"; break;
+        default: break;
+    }
+    return os << "state=" << strstate;
+}
 
 // Partition in a K2 Collection. By default, the key-range type is String (for range-based partitioning)
 // but it can also be an integral type for hash-based partitioning

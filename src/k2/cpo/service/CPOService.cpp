@@ -42,10 +42,9 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
-    _dataDir = Config()["data_dir"].as<std::string>();
     if (seastar::engine().cpu_id() == 0) {
         // only core 0 handles CPO business
-        if (!fileutil::makeDir(_dataDir)) {
+        if (!fileutil::makeDir(_dataDir())) {
             throw std::runtime_error("unable to create data directory");
         }
     }
@@ -108,7 +107,7 @@ CPOService::handleGet(dto::CollectionGetRequest&& request) {
 }
 
 String CPOService::_getCollectionPath(String name) {
-    return _dataDir + "/" + name + ".collection";
+    return _dataDir() + "/" + name + ".collection";
 }
 
 void CPOService::_assignCollection(dto::Collection& collection) {

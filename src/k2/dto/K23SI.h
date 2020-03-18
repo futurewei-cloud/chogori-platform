@@ -147,6 +147,16 @@ enum class EndAction:uint8_t {
     Commit
 };
 
+inline std::ostream& operator<<(std::ostream& os, const EndAction& act) {
+    const char* stract = "bad action";
+    switch (act) {
+        case EndAction::Abort: stract= "abort"; break;
+        case EndAction::Commit: stract= "commit"; break;
+        default: break;
+    }
+    return os << "state=" << stract;
+}
+
 struct K23SITxnEndRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
