@@ -1,5 +1,5 @@
 //<!--
-//    (C)opyright Futurewei Technologies Inc, 2019
+//    (C)opyright Futurewei Technologies Inc, 2020
 //-->
 #pragma once
 
@@ -14,13 +14,7 @@
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 
-using namespace seastar;
-
 namespace k2 {
-
-std::ostream& operator<<(std::ostream& os, const dto::Key& key) {
-    return os << key.partitionKey << key.rangeKey;
-}
 
 class K2TxnOptions{
 public:
@@ -68,9 +62,9 @@ public:
         _options(options), _cpo_client(cpo), _started(true), _ended(false)  {}
 
     template <typename ValueType>
-    future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
+    seastar::future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
         if (!_started) {
-            return make_exception_future<ReadResult<ValueType>>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<ReadResult<ValueType>>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
 
         read_ops++;
@@ -88,14 +82,14 @@ public:
             then([] (auto&& response) {
                 auto& [status, k2response] = response;
                 auto userResponse = ReadResult<ValueType>(std::move(status), std::move(k2response));
-                return make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
+                return seastar::make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
             }).finally([request] () { delete request; });
     }
 
     template <typename ValueType>
-    future<WriteResult> write(dto::Key key, const String& collection, const ValueType& value) {
+    seastar::future<WriteResult> write(dto::Key key, const String& collection, const ValueType& value) {
         if (!_started) {
-            return make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
 
         write_ops++;
@@ -115,14 +109,11 @@ public:
             (_options.deadline, *request).
             then([] (auto&& response) {
                 auto& [status, k2response] = response;
-                return make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+                return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
             }).finally([request] () { delete request; });
     }
 
-    future<EndResult> end(bool shouldCommit) { 
-        (void) shouldCommit; return make_ready_future<EndResult>(EndResult(Status::S200_OK())); 
-    };
-
+    seastar::future<EndResult> end(bool shouldCommit);
 
     uint64_t read_ops{0};
     uint64_t write_ops{0};
@@ -134,6 +125,7 @@ private:
     bool _ended;
     Status _end_status;
     dto::TxnPriority _retry_priority;
+    std::vector<dto::Key> _write_set;
 };
 
 class K23SIClientConfig {
@@ -144,32 +136,13 @@ public:
 class K23SIClient {
 public:
     K23SIClient(const K23SIClientConfig &) {};
-    K23SIClient(const K23SIClientConfig &, const std::vector<std::string>& _endpoints, std::string _cpo) {
-        for (auto it = _endpoints.begin(); it != _endpoints.end(); ++it) {
-            _k2endpoints.push_back(String(*it));
-        }
-        _cpo_client = CPOClient(String(_cpo));
-    };
+    K23SIClient(const K23SIClientConfig &, const std::vector<std::string>& _endpoints, std::string _cpo);
+
+    seastar::future<Status> makeCollection(const String& collection);
+    seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
+
     std::vector<String> _k2endpoints;
     CPOClient _cpo_client;
-
-    future<Status> makeCollection(const String& collection) {
-        std::vector<String> endpoints = _k2endpoints;
-
-        dto::CollectionMetadata metadata{
-            .name = collection,
-            .hashScheme = dto::HashScheme::HashCRC32C,
-            .storageDriver = dto::StorageDriver::K23SI,
-            .capacity = {},
-            .retentionPeriod = Duration(600s)
-        };
-
-        return _cpo_client.CreateAndWaitForCollection(Deadline<>(5s), std::move(metadata), std::move(endpoints));
-    }
-
-    future<K2TxnHandle> beginTxn(const K2TxnOptions& options) {
-        return make_ready_future<K2TxnHandle>(K2TxnHandle(options, &_cpo_client));
-    };
 
     uint64_t read_ops{0};
     uint64_t write_ops{0};

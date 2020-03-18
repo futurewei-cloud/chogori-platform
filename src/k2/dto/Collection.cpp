@@ -51,11 +51,14 @@ PartitionGetter::PartitionWithEndpoint PartitionGetter::GetPartitionWithEndpoint
     partition.partition = p;
 
     for (auto ep = p->endpoints.begin(); ep != p->endpoints.end(); ++ep) {
-        partition.preferredEndpoint = *(RPC().getTXEndpoint(*ep));
+        std::unique_ptr<TXEndpoint> endpoint = RPC().getTXEndpoint(*ep);
+        if (endpoint) {
+            partition.preferredEndpoint = *endpoint;
 
-        if (seastar::engine()._rdma_stack && 
-                partition.preferredEndpoint.getProtocol() == RRDMARPCProtocol::proto) {
-            break;
+            if (seastar::engine()._rdma_stack && 
+                    partition.preferredEndpoint.getProtocol() == RRDMARPCProtocol::proto) {
+                break;
+            }
         }
     }
 
