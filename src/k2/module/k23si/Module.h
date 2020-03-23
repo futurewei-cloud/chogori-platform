@@ -1,6 +1,4 @@
 #pragma once
-#undef K2_DEBUG_LOGGING
-#define K2_DEBUG_LOGGING 1
 
 #include <map>
 #include <unordered_map>

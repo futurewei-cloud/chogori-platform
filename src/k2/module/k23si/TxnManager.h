@@ -1,6 +1,5 @@
 #pragma once
-#undef K2_DEBUG_LOGGING
-#define K2_DEBUG_LOGGING 1
+
 #include <k2/dto/K23SI.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <boost/intrusive/list.hpp>
