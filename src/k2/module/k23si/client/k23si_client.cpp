@@ -11,9 +11,11 @@ K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* c
     _failed(false), _failed_status(Status::S200_OK()), _txn_end_deadline(d)
 {}
 
+
 void K2TxnHandle::checkResponseStatus(Status& status) {
     if (status == dto::K23SIStatus::AbortConflict() || 
-        status == dto::K23SIStatus::AbortRequestTooOld()) {
+        status == dto::K23SIStatus::AbortRequestTooOld() ||
+        status == dto::K23SIStatus::OperationNotAllowed()) {
         _failed = true;
         _failed_status = status;
     }
@@ -45,9 +47,12 @@ void K2TxnHandle::makeHeartbeatTimer() {
         }
         Duration deadline = it->second.collection.metadata.heartbeatDeadline / 2;
 
-        (void) _cpo_client->PartitionRequest
+        _heartbeat_future = _cpo_client->PartitionRequest
         <dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>
-        (Deadline<>(deadline), *request).finally([request] () { delete request; });
+        (Deadline<>(deadline), *request).then([this] (auto&& response) {
+            auto& [status, k2response] = response;
+            checkResponseStatus(status);
+        }).finally([request] () { delete request; });
     });
 
     auto it = _cpo_client->collections.find(_trh_collection);
@@ -86,7 +91,9 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             }
 
             // TODO min transaction time
-            return seastar::make_ready_future<EndResult>(EndResult(std::move(status)));
+            return _heartbeat_future.then([s=std::move(status)] () {
+                return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
+            });
         }).finally([request] () { delete request; });
 }
 

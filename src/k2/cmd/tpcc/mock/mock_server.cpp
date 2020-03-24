@@ -17,7 +17,7 @@
 
 using namespace k2;
 
-class Service : public seastar::weakly_referencable<Service> {
+class Service {
 public:  // application lifespan
     Service():
         _stopped(true) {

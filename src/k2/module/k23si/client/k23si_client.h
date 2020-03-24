@@ -101,8 +101,8 @@ private:
     void checkResponseStatus(Status& status);
 public:
     K2TxnHandle() = default;
-    K2TxnHandle(K2TxnHandle&& o) = default;
-    K2TxnHandle& operator=(K2TxnHandle&& o) = default;
+    K2TxnHandle(K2TxnHandle&& o) noexcept = default;
+    K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d) noexcept;
 
     template <typename ValueType>
@@ -196,6 +196,7 @@ private:
     Duration _txn_end_deadline;
 
     std::unique_ptr<seastar::timer<>> _heartbeat_timer{nullptr};
+    seastar::future<> _heartbeat_future{seastar::make_ready_future<>()};
     std::vector<dto::Key> _write_set;
     dto::Key _trh_key;
     std::string _trh_collection;
