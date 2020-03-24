@@ -6,11 +6,11 @@
 #include <string>
 
 #include <k2/common/Common.h>
+#include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/Payload.h>
 #include <k2/transport/PayloadSerialization.h>
 
 #include "tpcc_rand.h"
-#include "mock/mock_k23si_client.h"
 
 #define CHECK_READ_STATUS(read_result) \
     do { \
@@ -22,7 +22,7 @@
     while (0) \
 
 template<typename ValueType>
-future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
+seastar::future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
 {
     k2::dto::Key key = {};
     key.partitionKey = row.getPartitionKey();
@@ -31,27 +31,10 @@ future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
     return txn.write(std::move(key), "TPCC", row.data).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2WARN("writeRow failed!");
-            return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
+            return seastar::make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
         }
 
-        return make_ready_future<k2::WriteResult>(std::move(result));
-    });
-}
-
-template<typename ValueType>
-future<k2::WriteResult> writeRow(ValueType&& row, k2::K2TxnHandle& txn)
-{
-    k2::dto::Key key = {};
-    key.partitionKey = row.getPartitionKey();
-    key.rangeKey = row.getRowKey();
-
-    return txn.write(std::move(key), "TPCC", std::move(row.data)).then([] (k2::WriteResult&& result) {
-        if (!result.status.is2xxOK()) {
-            K2WARN("writeRow failed!");
-            return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
-        }
-
-        return make_ready_future<k2::WriteResult>(std::move(result));
+        return seastar::make_ready_future<k2::WriteResult>(std::move(result));
     });
 }
 
@@ -312,19 +295,19 @@ public:
 
 // NewOrder does not have data, so specialize and write an empty Payload
 template<>
-future<k2::WriteResult> writeRow<NewOrder>(const NewOrder& row, k2::K2TxnHandle& txn)
+seastar::future<k2::WriteResult> writeRow<NewOrder>(const NewOrder& row, k2::K2TxnHandle& txn)
 {
     k2::dto::Key key = {};
     key.partitionKey = row.getPartitionKey();
     key.rangeKey = row.getRowKey();
 
-    return txn.write(std::move(key), "TPCC", k2::Payload()).then([] (k2::WriteResult&& result) {
+    return txn.write(std::move(key), "TPCC", 0).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2WARN("writeRow failed!");
-            return make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
+            return seastar::make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
         }
 
-        return make_ready_future<k2::WriteResult>(std::move(result));
+        return seastar::make_ready_future<k2::WriteResult>(std::move(result));
     });
 }
 

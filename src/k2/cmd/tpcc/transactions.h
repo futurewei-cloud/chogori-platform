@@ -7,10 +7,10 @@
 
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
+#include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
 #include <seastar/core/sleep.hh>
 
-#include "mock/mock_k23si_client.h"
 #include "schema.h"
 
 using namespace seastar;
@@ -51,7 +51,7 @@ public:
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
-            _txn = std::move(txn);
+            _txn = K2TxnHandle(std::move(txn));
             return runWithTxn();
         });
     }
@@ -170,7 +170,7 @@ public:
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
-            _txn = std::move(txn);
+            _txn = K2TxnHandle(std::move(txn));
             return runWithTxn();
         });
     }
@@ -217,7 +217,7 @@ private:
                 return _txn.read<Item::Data>(Item::getKey(line.data.ItemID), "TPCC")
                 .then([this, i_id=line.data.ItemID] (auto&& result) {
                     if (result.status == Status::S404_Not_Found()) {
-                        return _txn.end(false).then([] (EndResult&& result) { (void) result; return make_exception_future<Item>(std::runtime_error("Bad ItemID")); });
+                        return make_exception_future<Item>(std::runtime_error("Bad ItemID"));
                     } else if (!result.status.is2xxOK()) {
                         K2WARN("Bad read status: " << result.status);
                         return make_exception_future<Item>(std::runtime_error("Bad read status"));

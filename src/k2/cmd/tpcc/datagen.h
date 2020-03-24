@@ -4,10 +4,10 @@
 #pragma once
 
 #include <seastar/core/future.hh>
+#include <k2/module/k23si/client/k23si_client.h>
 
 #include <vector>
 
-#include "mock/mock_k23si_client.h"
 #include "schema.h"
 #include "tpcc_rand.h"
 
