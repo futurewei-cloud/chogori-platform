@@ -19,14 +19,17 @@ class TSO_ClientLib
 public:
     // constructor
     // TODO: instead of pass in TSOServerURL, we need to change later to CPO URL and get URLs of TSO servers from there instead.
-    TSO_ClientLib(std::string& tSOServerURL) { _tSOServerURLs.emplace_back(tSOServerURL); K2INFO("ctor");}
+    TSO_ClientLib(const std::string& tSOServerURL) { _tSOServerURLs.emplace_back(tSOServerURL); K2INFO("ctor");}
     
     ~TSO_ClientLib() { K2INFO("dtor");}
 
     seastar::future<> start();
     seastar::future<> stop();
 
+    // get the timestamp from TSO (distributed from TSOClient Timestamp batch)
     seastar::future<TimeStamp> GetTimeStampFromTSO(const TimePoint& requestLocalTime);
+    // get the timestamp with MTL(Minimum Transaction Latency) - alternatively instead of this new API, consider put MTL inside timestamp. 
+    // seastar::future<std::tuple<TimeStamp, Duration>> GetTimeStampWithMTLFromTSO(const TimePoint& requestLocalTime);
 
 private:
 
@@ -61,9 +64,11 @@ private:
     struct ClientRequest
     {
         TimePoint   _requestTime;
-        seastar::promise<TimeStamp> _promise;       // promise for this client request
+        seastar::lw_shared_ptr<seastar::promise<TimeStamp>> _promise;       // promise for this client request
         bool        _triggeredBatchRequest{false};  // if this client request tirggered a batch request to TSO server
     };
+
+
 
     // returned available timestamp batch 
     struct TimeStampBatchInfo

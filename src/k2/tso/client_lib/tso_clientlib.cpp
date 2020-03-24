@@ -30,8 +30,9 @@ seastar::future<> TSO_ClientLib::stop()
 
     for (auto&& clientRequest : _pendingClientRequests)
     {
-        clientRequest._promise.set_exception(std::runtime_error("we were stopped"));
+        clientRequest._promise->set_exception(std::runtime_error("we were stopped"));
     }
+    _pendingClientRequests.clear();
 
     //TODO: consider gracefully record outgoing batch request to TSO server and set exception to them as well.
     //currently, only in its continuation do nothing if stop is called. Should be ok except if this object is quickly deleted.
@@ -188,6 +189,7 @@ seastar::future<TimeStamp> TSO_ClientLib::GetTimeStampFromTSO(const TimePoint& r
     // if we couldn't return a ready timestamp, we need to create the request promise and return the future of it in all following difference cases.
     ClientRequest curRequest;
     curRequest._requestTime = requestLocalTime;
+    curRequest._promise = seastar::make_lw_shared<seastar::promise<TimeStamp>>();
     // TODO: get config from appBase and use min batch size, default 4
     uint16_t batchSizeToRequest = 4;
 
@@ -234,8 +236,8 @@ seastar::future<TimeStamp> TSO_ClientLib::GetTimeStampFromTSO(const TimePoint& r
         if (canPiggyBack)
         {
             curRequest._triggeredBatchRequest = false; // no op, just for readability
-            _pendingClientRequests.emplace_back(std::move(curRequest));
-            return _pendingClientRequests.back()._promise.get_future();
+            _pendingClientRequests.push_back(std::move(curRequest));
+            return _pendingClientRequests.back()._promise->get_future();
         }
     }
 
@@ -253,8 +255,8 @@ seastar::future<TimeStamp> TSO_ClientLib::GetTimeStampFromTSO(const TimePoint& r
         });
 
     curRequest._triggeredBatchRequest = true;
-    _pendingClientRequests.emplace_back(std::move(curRequest));
-    return _pendingClientRequests.back()._promise.get_future();
+    _pendingClientRequests.push_back(std::move(curRequest));
+    return _pendingClientRequests.back()._promise->get_future();
 }
 
 void TSO_ClientLib::ProcessReturnedBatch(TimeStampBatch batch, TimePoint batchTriggeredTime)
@@ -347,22 +349,15 @@ void TSO_ClientLib::ProcessReturnedBatch(TimeStampBatch batch, TimePoint batchTr
         // update _lastIssuedBatchTriggeredTime as we are about to issue from this batch
         _lastIssuedBatchTriggeredTime = _lastIssuedBatchTriggeredTime < batchInfo._triggeredTime ? batchInfo._triggeredTime : _lastIssuedBatchTriggeredTime;
 
-        for (auto&& clientRequest : _pendingClientRequests)
+        // fulfill as much pending client request as possible, while delete fulfilled pending request
+        while (batchInfo._usedCount < batchInfo._batch.TSCount && !_pendingClientRequests.empty())
         {
-            // it is only ok to fulfill client request with requested time smaller than the batch's expiration time
-            if (clientRequest._requestTime < batchInfo.ExpirationTime() &&
-                batchInfo._usedCount < batchInfo._batch.TSCount)
-            {
-                clientRequest._promise.set_value(TimeStampBatch::GenerateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
-                batchInfo._usedCount++;
-                _pendingClientRequestsCount--;
-            }
-            else
-            {
-                break;
-            }
+            _pendingClientRequests.front()._promise->set_value(TimeStampBatch::GenerateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
+            _pendingClientRequests.pop_front();
+            batchInfo._usedCount++;       
+            _pendingClientRequestsCount--;
         }
-
+        
         // remove this batch if it is used up
         if (_timeStampBatchQue.front()._usedCount == _timeStampBatchQue.front()._batch.TSCount)
         {

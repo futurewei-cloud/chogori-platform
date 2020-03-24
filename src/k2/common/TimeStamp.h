@@ -40,6 +40,21 @@ namespace k2
             }
         };
 
+        // Comparision without uncertainty window, i.e. no Unknown/uncertain result. 
+        // If two timestamps are the same time value, the result is decided by the TSOId
+        constexpr int CompareWOUncertainty(TimeStamp& other) 
+        {
+            if (TEndTSECount() != other.TEndTSECount())
+            {
+                return TEndTSECount() < other.TEndTSECount() ? -1 : 1;
+            }
+            else
+            {
+                return TSOId() < other.TSOId() ? -1 : 
+                        (TSOId() > other.TSOId() ? 1 : 0 );
+            }
+        };
+
         TimeStamp(uint64_t tEndTSECount, uint32_t tsoId, uint16_t tStartDelta) :  // should verify tEndTSECount > tStartDelta 
             _tEndTSECount(tEndTSECount), _tsoId(tsoId), _tStartDelta(tStartDelta) {};
 
