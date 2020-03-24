@@ -115,8 +115,6 @@ private:
                         }
                     })
                     .finally([this, curTxn] () {
-                        _readOps += curTxn->read_ops;
-                        _writeOps += curTxn->write_ops;
                         delete curTxn; 
                     });
                 }
@@ -126,8 +124,8 @@ private:
             auto duration = k2::Clock::now() - _start;
             auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
             auto cntpsec = (double)_totalCount/totalsecs;
-            auto readpsec = (double)_readOps/totalsecs;
-            auto writepsec = (double)_writeOps/totalsecs;
+            auto readpsec = (double)_client.read_ops/totalsecs;
+            auto writepsec = (double)_client.write_ops/totalsecs;
             K2INFO("totalCount=" << _totalCount << "(" << cntpsec << " per sec)" );
             K2INFO("read ops " << readpsec << " per sec)" );
             K2INFO("write ops " << writepsec << " per sec)" );

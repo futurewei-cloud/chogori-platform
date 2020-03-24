@@ -79,6 +79,12 @@ public:  // application lifespan
             return RPCResponse(Status::S200_OK(), dto::K23SITxnEndResponse());
         });
 
+        RPC().registerRPCObserver<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>(dto::Verbs::K23SI_TXN_HEARTBEAT,
+        [this] (dto::K23SITxnHeartbeatRequest&& request) {
+            (void) request;
+            return RPCResponse(Status::S200_OK(), dto::K23SITxnHeartbeatResponse());
+        });
+
         RPC().registerRPCObserver<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>(dto::Verbs::K2_ASSIGNMENT_CREATE,
         [this] (dto::AssignmentCreateRequest&& request) {
             auto ep = (seastar::engine()._rdma_stack?

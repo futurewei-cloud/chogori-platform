@@ -20,8 +20,6 @@ class TPCCTxn {
 public:
     virtual future<bool> run() = 0;
     virtual ~TPCCTxn() = default;
-    uint64_t read_ops{0};
-    uint64_t write_ops{0};
 };
 
 class PaymentT : public TPCCTxn
@@ -53,11 +51,8 @@ public:
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
-            _txn = std::move(txn);
-            return runWithTxn().finally([this] () {
-                read_ops = _txn.read_ops;
-                write_ops = _txn.write_ops;
-            });
+            _txn = K2TxnHandle(std::move(txn));
+            return runWithTxn();
         });
     }
 
@@ -175,11 +170,8 @@ public:
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
-            _txn = std::move(txn);
-            return runWithTxn().finally([this] () {
-                read_ops = _txn.read_ops;
-                write_ops = _txn.write_ops;
-            });
+            _txn = K2TxnHandle(std::move(txn));
+            return runWithTxn();
         });
     }
 
