@@ -1,6 +1,7 @@
 #pragma once
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
+#include <k2/transport/TXEndpoint.h>
 #include <set>
 #include <iostream>
 #include <unordered_map>
@@ -180,20 +181,28 @@ struct Collection {
 
 class PartitionGetter {
 public:
+    struct PartitionWithEndpoint {
+        Partition* partition;
+        TXEndpoint preferredEndpoint;
+    };
+
     PartitionGetter(Collection&& collection);
     PartitionGetter() = default;
 
-    // Returns the partition for the given key. Hashes key if hashScheme is not range
-    Partition* getPartitionForKey(const Key& key);
+    // Returns the partition and preferred endpointfor the given key. 
+    // Hashes key if hashScheme is not range
+    PartitionWithEndpoint getPartitionForKey(const Key& key);
 
     Collection collection;
 
 private:
+    static PartitionWithEndpoint GetPartitionWithEndpoint(Partition* p);
+
     struct RangeMapElement {
-        RangeMapElement(const String& k, Partition* part) : key(k), partition(part) {}
+        RangeMapElement(const String& k, PartitionWithEndpoint part) : key(k), partition(std::move(part)) {}
 
         std::reference_wrapper<const String> key;
-        Partition* partition;
+        PartitionWithEndpoint partition;
 
         bool operator<(const RangeMapElement& other) const noexcept {
             return key.get() < other.key.get();
@@ -202,7 +211,7 @@ private:
 
     struct HashMapElement {
         uint64_t hvalue;
-        Partition* partition;
+        PartitionWithEndpoint partition;
         bool operator<(const HashMapElement& other) const noexcept {
             return hvalue < other.hvalue;
         }
