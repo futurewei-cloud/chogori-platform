@@ -110,13 +110,13 @@ K23SIClient::K23SIClient(const K23SIClientConfig &, const std::vector<std::strin
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
     _metric_groups.add_group("K23SI_client", {
-        sm::make_derive("read_ops", read_ops, sm::description("Total K23SI Read operations"), labels),
-        sm::make_derive("write_ops", write_ops, sm::description("Total K23SI Write/Delete operations"), labels),
-        sm::make_derive("total_txns", total_txns, sm::description("Total K23SI transactions began"), labels),
-        sm::make_derive("successful_txns", successful_txns, sm::description("Total K23SI transactions ended successfully (committed or user aborted)"), labels),
-        sm::make_derive("abort_conflicts", abort_conflicts, sm::description("Total K23SI transactions aborted due to conflict"), labels),
-        sm::make_derive("abort_too_old", abort_too_old, sm::description("Total K23SI transactions aborted due to retention window expiration"), labels),
-        sm::make_derive("heartbeats", heartbeats, sm::description("Total K23SI transaction heartbeats sent"), labels),
+        sm::make_counter("read_ops", read_ops, sm::description("Total K23SI Read operations"), labels),
+        sm::make_counter("write_ops", write_ops, sm::description("Total K23SI Write/Delete operations"), labels),
+        sm::make_counter("total_txns", total_txns, sm::description("Total K23SI transactions began"), labels),
+        sm::make_counter("successful_txns", successful_txns, sm::description("Total K23SI transactions ended successfully (committed or user aborted)"), labels),
+        sm::make_counter("abort_conflicts", abort_conflicts, sm::description("Total K23SI transactions aborted due to conflict"), labels),
+        sm::make_counter("abort_too_old", abort_too_old, sm::description("Total K23SI transactions aborted due to retention window expiration"), labels),
+        sm::make_counter("heartbeats", heartbeats, sm::description("Total K23SI transaction heartbeats sent"), labels),
     });
 }
 

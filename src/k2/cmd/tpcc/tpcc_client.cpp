@@ -53,9 +53,14 @@ public:  // application lifespan
         labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
 
         _metric_groups.add_group("TPC-C", {
-            sm::make_counter("total_count", _totalCount, sm::description("Total number of TPC-C transactions"), labels),
-            sm::make_histogram("request_latency", [this]{ return _requestLatency.getHistogram();},
-                    sm::description("Latency of TPC-C transactions"), labels)
+            sm::make_counter("completed_txns", _completedTxns, sm::description("Number of completed TPC-C transactions"), labels),
+            sm::make_counter("new_order_txns", _newOrderTxns, sm::description("Number of completed New Order transactions"), labels),
+            sm::make_counter("payment_txns", _paymentTxns, sm::description("Number of completed Payment transactions"), labels),
+            sm::make_histogram("new_order_latency", [this]{ return _newOrderLatency.getHistogram();},
+                    sm::description("Latency of New Order transactions"), labels),
+            sm::make_histogram("payment_latency", [this]{ return _paymentLatency.getHistogram();},
+                    sm::description("Latency of Payment transactions"), labels)
+
         });
     }
 
@@ -64,6 +69,8 @@ public:  // application lifespan
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: " << ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
+        registerMetrics();
+
         return _benchmark()
         .handle_exception([this](auto exc) {
             K2ERROR_EXC("Unable to execute benchmark", exc);
@@ -77,44 +84,82 @@ public:  // application lifespan
     }
 
 private:
+    seastar::future<> _data_load() {
+        K2INFO("Creating DataLoader");
+        int cpus = seastar::smp::count;
+        int id = seastar::engine().cpu_id();
+        int share = _max_warehouses() / cpus;
+        if (_max_warehouses() % cpus != 0) {
+            K2WARN("CPUs must divide envenly into num warehouses!");
+            return make_ready_future<>();
+        }
+
+        _loader = DataLoader(generateWarehouseData(1+(id*share), 1+(id*share)+share));
+
+        auto f = seastar::sleep(1s);
+        if (id == 0) {
+            f = f.then ([this] {
+                K2INFO("Creating collection");
+                return _client.makeCollection("TPCC");
+            }).discard_result()
+            .then([this] {
+                K2INFO("Starting item data load");
+                _item_loader = DataLoader(generateItemData());
+                return _item_loader.loadData(_client, 32);
+            });
+        }
+
+        return f.then ([this] {
+            K2INFO("Starting load to server");
+            return _loader.loadData(_client, 32);
+        }).then ([this] {
+            K2INFO("Data load done");
+        });
+    }
+
     seastar::future<> _benchmark() {
         K2INFO("Creating K23SIClient");
         _client = K23SIClient(K23SIClientConfig(), _tcpRemotes(), _cpo());
-        K2INFO("Creating DataLoader");
-        _loader = DataLoader(generateWarehouseData(1, 3));
+
+        if (_do_data_load()) {
+            return _data_load();
+        }
 
         return seastar::sleep(1s)
-        .then ([this] {
-            K2INFO("Creating collection");
-            return _client.makeCollection("TPCC");
-        }).discard_result()
-        .then ([this] {
-            K2INFO("Starting load to server");
-            return _loader.loadData(_client, 32);
-        }).then([this] {
-            K2INFO("Warehouse data load done, starting item data load");
-            _loader = DataLoader(generateItemData());
-            return _loader.loadData(_client, 32);
-        }).then([this] {
+        .then([this] {
             K2INFO("Starting transactins...");
 
             _timer.arm(_testDuration);
             _start = k2::Clock::now();
-            _random = RandomContext(0);
+            _random = RandomContext(seastar::engine().cpu_id());
 
             return seastar::do_until(
                 [this] { return _stopped; },
                 [this] {
                     uint32_t txn_type = _random.UniformRandom(1, 100);
-                    TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, 1, 2)
-                                                     : (TPCCTxn*) new NewOrderT(_random, _client, 1, 2);
+                    uint32_t w_id = _random.UniformRandom(1, _max_warehouses());
+                    TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses())
+                                                     : (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
+                    auto txn_start = k2::Clock::now();
                     return curTxn->run()
-                    .then([this] (bool success) {
-                        if (success) {
-                            _totalCount++;
+                    .then([this, txn_type, txn_start] (bool success) {
+                        if (!success) {
+                            return;
+                        }
+
+                        _completedTxns++;
+                        auto end = k2::Clock::now();
+                        auto dur = end - txn_start;
+
+                        if (txn_type <= 43) {
+                            _paymentTxns++;
+                            _paymentLatency.add(dur);
+                        } else {
+                            _newOrderTxns++;
+                            _newOrderLatency.add(dur);
                         }
                     })
-                    .finally([this, curTxn] () {
+                    .finally([curTxn] () {
                         delete curTxn; 
                     });
                 }
@@ -123,10 +168,10 @@ private:
         .finally([this] () {
             auto duration = k2::Clock::now() - _start;
             auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
-            auto cntpsec = (double)_totalCount/totalsecs;
+            auto cntpsec = (double)_completedTxns/totalsecs;
             auto readpsec = (double)_client.read_ops/totalsecs;
             auto writepsec = (double)_client.write_ops/totalsecs;
-            K2INFO("totalCount=" << _totalCount << "(" << cntpsec << " per sec)" );
+            K2INFO("completedTxns=" << _completedTxns << "(" << cntpsec << " per sec)" );
             K2INFO("read ops " << readpsec << " per sec)" );
             K2INFO("write ops " << writepsec << " per sec)" );
             return make_ready_future();
@@ -139,16 +184,22 @@ private:
     bool _stopped;
     seastar::promise<> _stopPromise;
     DataLoader _loader;
+    DataLoader _item_loader;
     RandomContext _random;
     k2::TimePoint _start;
     seastar::timer<> _timer;
     ConfigVar<std::vector<std::string>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<std::string> _cpo{"cpo"};
+    ConfigVar<std::string> _tso{"tso"};
+    ConfigVar<bool> _do_data_load{"data_load"};
+    ConfigVar<int> _max_warehouses{"num_warehouses"};
 
     sm::metric_groups _metric_groups;
-    k2::ExponentialHistogram _requestLatency;
-    std::vector<k2::TimePoint> _requestIssueTimes;
-    uint32_t _totalCount{0};
+    k2::ExponentialHistogram _newOrderLatency;
+    k2::ExponentialHistogram _paymentLatency;
+    uint64_t _completedTxns{0};
+    uint64_t _newOrderTxns{0};
+    uint64_t _paymentTxns{0};
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
 }; // class Client
@@ -158,6 +209,9 @@ int main(int argc, char** argv) {;
     app.addOptions()
         ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<std::string>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tso", bpo::value<std::string>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
+        ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals");
     app.addApplet<Client>();

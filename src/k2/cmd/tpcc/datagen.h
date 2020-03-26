@@ -93,7 +93,7 @@ TPCCData generateWarehouseData(uint32_t id_start, uint32_t id_end)
     reserve_space += num_warehouses*10*3000*10;
     reserve_space += num_warehouses*10*900;
     data.reserve(reserve_space);
-    RandomContext random(0);
+    RandomContext random(id_start);
 
     for (uint32_t i=id_start; i < id_end; ++i) {
         auto warehouse = Warehouse(random, i);

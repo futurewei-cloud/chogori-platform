@@ -16,7 +16,7 @@ runnables = parse.parseConfig(args.config_file)
 for r in runnables:
     if r.name in args.start or "all" in args.start:
         print("Starting:")
-        print(r)
+        print(r.getDockerRun())
         conn = Connection(r.host, user="user")
         pull = conn.run(r.getDockerPull())
         print(pull)
