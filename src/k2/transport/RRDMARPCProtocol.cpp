@@ -15,11 +15,10 @@ const String RRDMARPCProtocol::proto("rrdma+k2rpc");
 RRDMARPCProtocol::RRDMARPCProtocol(VirtualNetworkStack::Dist_t& vnet):
     IRPCProtocol(vnet, proto),
     _stopped(true),
-    _svrEndpoint(seastar::make_lw_shared<TXEndpoint>(
-            _endpointFromAddress(seastar::engine()._rdma_stack ?
-                                seastar::engine()._rdma_stack->localEndpoint:
-                                seastar::rdma::EndPoint{}))
-    ) {
+    _svrEndpoint(seastar::engine()._rdma_stack ?
+            seastar::make_lw_shared<TXEndpoint>(_endpointFromAddress(seastar::engine()._rdma_stack->localEndpoint)) :
+            nullptr)
+    {
     K2DEBUG("ctor");
 }
 
@@ -29,7 +28,7 @@ RRDMARPCProtocol::~RRDMARPCProtocol() {
 
 void RRDMARPCProtocol::start() {
     K2DEBUG("start");
-    if (seastar::engine()._rdma_stack) {
+    if (_svrEndpoint) {
         _listener = _vnet.local().listenRRDMA();
         K2INFO("Starting listening RRDMA Proto on: " << _svrEndpoint->getURL());
 

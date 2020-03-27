@@ -12,6 +12,8 @@
 #include <k2/common/TypeMap.h>
 
 // k2 transport
+#include <k2/transport/AutoRRDMARPCProtocol.h>
+#include <k2/transport/Discovery.h>
 #include <k2/transport/RPCProtocolFactory.h>
 #include <k2/transport/RRDMARPCProtocol.h>
 #include <k2/transport/TCPRPCProtocol.h>
@@ -53,7 +55,12 @@ class MultiAddressProvider : public k2::IAddressProvider {
 
 // This is a foundational class used to create K2 Apps.
 class App {
-   public:  // API
+public:  // API
+    App(){
+        // add the discovery applet o all apps
+        addApplet<k2::Discovery>();
+    }
+
     // helper class for positional option adding
     class PosOptAdder {
        public:
@@ -121,6 +128,7 @@ class App {
         k2::VirtualNetworkStack::Dist_t vnet;
         k2::RPCProtocolFactory::Dist_t tcpproto;
         k2::RPCProtocolFactory::Dist_t rrdmaproto;
+        k2::RPCProtocolFactory::Dist_t autoproto;
         k2::Prometheus prometheus;
         MultiAddressProvider addrProvider;
         RPCProtocolFactory::BuilderFunc_t tcpProtobuilder;
@@ -197,6 +205,10 @@ class App {
                 return rrdmaproto.stop();
             });
             seastar::engine().at_exit([&] {
+                K2INFO("stop autoproto");
+                return autoproto.stop();
+            });
+            seastar::engine().at_exit([&] {
                 K2INFO("stop dispatcher");
                 return RPCDist().stop();
             });
@@ -230,6 +242,10 @@ class App {
                     .then([&]() {
                         K2INFO("create rdma");
                         return rrdmaproto.start(k2::RRDMARPCProtocol::builder(std::ref(vnet)));
+                    })
+                    .then([&]() {
+                        K2INFO("create auto-rrdma proto");
+                        return autoproto.start(k2::AutoRRDMARPCProtocol::builder(std::ref(vnet), std::ref(rrdmaproto)));
                     })
                     .then([&]() {
                         K2INFO("create dispatcher");
@@ -267,6 +283,15 @@ class App {
                         return RPCDist().invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(rrdmaproto));
                     })
                     .then([&]() {
+                        K2INFO("start auto-RRDMA protocol");
+                        return autoproto.invoke_on_all(&k2::RPCProtocolFactory::start);
+                    })
+                    .then([&]() {
+                        K2INFO("register auto-RRDMA protocol");
+                        // Could register more protocols here via separate invoke_on_all calls
+                        return RPCDist().invoke_on_all(&k2::RPCDispatcher::registerProtocol, seastar::ref(autoproto));
+                    })
+                    .then([&]() {
                         K2INFO("start dispatcher");
                         return RPCDist().invoke_on_all(&k2::RPCDispatcher::start);
                     })
@@ -289,7 +314,7 @@ class App {
         }
     }
 
-   private:
+private:
     seastar::app_template _app;
     TypeMap<void*> _applets;
     std::vector<std::function<seastar::future<>()>> _ctors;     // functors which create user applets

@@ -220,8 +220,12 @@ seastar::lw_shared_ptr<TXEndpoint> RPCDispatcher::getServerEndpoint(const String
 
 std::vector<seastar::lw_shared_ptr<TXEndpoint>> RPCDispatcher::getServerEndpoints() const {
     std::vector<seastar::lw_shared_ptr<TXEndpoint>> result;
-    for(const auto& kvp : _protocols)
-        result.push_back(kvp.second->getServerEndpoint());
+    for(const auto& kvp : _protocols) {
+        auto ep = kvp.second->getServerEndpoint();
+        if (ep) {
+            result.push_back(kvp.second->getServerEndpoint());
+        }
+    }
     return result;
 }
 

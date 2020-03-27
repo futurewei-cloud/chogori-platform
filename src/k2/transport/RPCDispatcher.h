@@ -16,6 +16,7 @@
 
 // k2
 #include <k2/common/Common.h>
+#include <k2/config/Config.h>
 #include "RPCProtocolFactory.h"
 #include "Request.h"
 #include "Status.h"

@@ -44,8 +44,8 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
             if (tcpep) {
                 partition.endpoints.insert(tcpep->getURL());
             }
-            if (seastar::engine()._rdma_stack) {
-                auto rdmaep = RPC().getServerEndpoint(RRDMARPCProtocol::proto);
+            auto rdmaep = RPC().getServerEndpoint(RRDMARPCProtocol::proto);
+            if (rdmaep) {
                 partition.endpoints.insert(rdmaep->getURL());
             }
 
