@@ -1,6 +1,8 @@
 #include <random>
 #include <algorithm>
 
+#include <seastar/core/sleep.hh>
+
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include <k2/transport/RetryStrategy.h>
 
@@ -11,12 +13,14 @@ namespace k2
 
 seastar::future<> TSO_ClientLib::start()
 {
+    K2INFO("start");
     _stopped = false;
     k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");});
 
     // for now we use the first server URL only, in the future, allow to check other server in case first one is not available
-    return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]);
+    return seastar::sleep(_startDelay)
+        .then([this] () mutable { return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]); });
 }
 
 seastar::future<> TSO_ClientLib::stop()
@@ -209,9 +213,11 @@ seastar::future<TimeStamp> TSO_ClientLib::GetTimeStampFromTSO(const TimePoint& r
             uint16_t pendingRequestCountForBackBatch = 0;
             for(auto it = _pendingClientRequests.crbegin(); it != _pendingClientRequests.crend(); it++)
             {
-                K2ASSERT(it->_requestTime >= backBatch._triggeredTime, "Outgoing batch request must started before the client request.");
+                //K2ASSERT(it->_requestTime >= backBatch._triggeredTime, "Outgoing batch request must started before the client request.");
 
-                if (it->_requestTime <= backBatch._triggeredTime
+                // Quick (and dirty check), we only check the pending client request that is issued at or after last batch is issued to server
+                // even those pending client requests issued before that could use the last batch
+                if (it->_requestTime >= backBatch._triggeredTime
                     && pendingRequestCountForBackBatch < backBatch._expectedBatchSize)
                 {
                     pendingRequestCountForBackBatch++;
@@ -405,7 +411,7 @@ seastar::future<TimeStampBatch> TSO_ClientLib::GetTimeStampBatch(uint16_t batchS
 {
     auto retryStrategy = k2::ExponentialBackoffStrategy();
     //TODO: need to find out if the TSO is local or remote and get the timeout config accordingly
-    retryStrategy.withRetries(3).withStartTimeout(100us).withRate(5);
+    retryStrategy.withRetries(3).withStartTimeout(10ms).withRate(5);
 
     return seastar::do_with(std::move(retryStrategy), TimeStampBatch(), [this, batchSize]
         (ExponentialBackoffStrategy& rs, TimeStampBatch& batch) mutable
@@ -426,8 +432,9 @@ seastar::future<TimeStampBatch> TSO_ClientLib::GetTimeStampBatch(uint16_t batchS
             std::unique_ptr<Payload> payload = myRemote.newPayload();
             payload->write(batchSize);
 
-            K2INFO("Requesting timeStampBatch with retriesLeft=" << retriesLeft << ", and timeout=" << k2::usec(timeout).count()
-                    << "us, with worker " << randWorker);
+            (void) retriesLeft;
+            // K2INFO("Requesting timeStampBatch with retriesLeft=" << retriesLeft << ", and timeout=" << k2::usec(timeout).count()
+            //        << "us, with worker " << randWorker);
 
             return k2::RPC().sendRequest(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, std::move(payload), myRemote, timeout)
             .then([this, &batch](std::unique_ptr<k2::Payload> replyPayload) mutable {

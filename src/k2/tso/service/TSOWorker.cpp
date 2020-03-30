@@ -27,20 +27,6 @@ seastar::future<> TSOService::TSOWorker::stop()
     return seastar::make_ready_future<>();
 }
 
-std::vector<k2::String> TSOService::TSOWorker::GetWorkerURLs()
-{
-    std::vector<k2::String> result;
-
-    // return all endpoint URLs of various transport type, currently, we must have TCP and RDMA
-    result.emplace_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
-
-    K2ASSERT(seastar::engine()._rdma_stack, "TSOWorker should have RDMA transport.");
-
-    result.emplace_back(k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto)->getURL());
-
-    return result;
-}
-
 void TSOService::TSOWorker::RegisterGetTSOTimeStampBatch()
 {
     k2::RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable 
@@ -103,7 +89,7 @@ void TSOService::TSOWorker::UpdateWorkerControlInfo(const TSOWorkerControlInfo& 
 
 void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo)
 {    
-    K2INFO("AdjustWorker: worker core:" << seastar::engine().cpu_id());
+    //K2INFO("AdjustWorker: worker core" );
 
     // step 1/3 Validate current status and input
     K2ASSERT(controlInfo.IsReadyToIssueTS && _curControlInfo.IsReadyToIssueTS, "pre and post state need to be both ready!");
@@ -141,6 +127,7 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
     // wait out the required pause time if duration since last request is issued is smaller
     if (timeToPauseWorkerNanoSec > 0)
     {
+        K2INFO("AdjustWorker: worker core need to sleep(ns)" << std::to_string(timeToPauseWorkerNanoSec));
         // Get current time and compare with last request time to see how much more need to pause 
         uint64_t curTimeMicroSecRounded = TSE_Count_MicroSecRounded(SysClock::now());
 
@@ -172,12 +159,16 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSO(uint16_t batchSizeRequ
 {
     TimeStampBatch result;
 
+    //K2INFO("Start getting a timestamp batch");
+    //K2INFO("Start getting a timestamp batch 2");
+
     // this function is on hotpath, code organized to optimized the most common happy case for efficiency
     
     // in most of time, it is happy path, where current time at microsecond level is greater than last call's time
     // i.e. each worker core has one call or less per microsecond
     // get current request time now, removing nano second part
     uint64_t nowMicroSecRounded = TSE_Count_MicroSecRounded(k2::SysClock::now());
+    //K2INFO("Start getting a timestamp batch, got current time.");
     
     if (_curControlInfo.IsReadyToIssueTS &&
         nowMicroSecRounded + _curControlInfo.TbeTESAdjustment + 1000 < _curControlInfo.ReservedTimeShreshold &&
@@ -192,6 +183,12 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSO(uint16_t batchSizeRequ
         result.TTLNanoSec = _curControlInfo.BatchTTL;
         result.TSCount = batchSizeToIssue;
         result.TbeNanoSecStep = _curControlInfo.TbeNanoSecStep;
+
+        /*K2INFO("returning a tsBatch reqSize:" << batchSizeRequested << " at rounded request time:[" << nowMicroSecRounded 
+            << ":"<< _lastRequestTimeMicrSecRounded << "]TbeAdj:" << _curControlInfo.TbeTESAdjustment 
+            << " batch value(tbe:tsdelta:TTL:TSCount:Step)[" << result.TbeTESBase << ":" <<result.TsDelta << ":" << result.TTLNanoSec
+            << ":" << batchSizeToIssue << ":" << result.TbeNanoSecStep <<"]");
+        */
 
         _lastRequestTimeMicrSecRounded = nowMicroSecRounded;
         _lastRequestTimeStampCount = batchSizeToIssue;
@@ -208,6 +205,7 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSO(uint16_t batchSizeRequ
 // helper function to issue timeStamp (or check error situation)
 TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t nowMicroSecRounded) 
 {
+    K2INFO("getting a timestamp batch in helper");
     // step 1/4 sanity check, check IsReadyToIssueTS and possible issued timestamp is within ReservedTimeShreshold 
     if (!_curControlInfo.IsReadyToIssueTS)
     {

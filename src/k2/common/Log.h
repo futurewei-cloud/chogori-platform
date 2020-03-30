@@ -30,6 +30,26 @@ private:
     LogEntry& operator=(const LogEntry&) = delete;
 };
 
+// time point (nano accurate) to a stream /char buffer
+// TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
+inline void TimePointToStream(int64_t nanosec, char buffer[100])
+{
+    auto microsec = nanosec/1000;
+    nanosec -= microsec*1000;
+    auto millis = microsec/1000;
+    microsec -= millis*1000;
+    auto secs = millis/1000;
+    millis -= secs*1000;
+    auto mins = (secs/60);
+    secs -= (mins*60);
+    auto hours = (mins/60);
+    mins -= (hours*60);
+    auto days = (hours/24);
+    hours -= (days*24);
+
+    std::snprintf(buffer, 100, "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec, nanosec);   
+}
+
 inline LogEntry StartLogStream() {
     // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
     static thread_local char buffer[100];

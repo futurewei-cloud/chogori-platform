@@ -18,8 +18,9 @@ class TSO_ClientLib
 {
 public:
     // constructor
+    // startDelay - a delay/sleep duration in start(). This is for testing purpose where the client lib start need to delay waiting for server starts
     // TODO: instead of pass in TSOServerURL, we need to change later to CPO URL and get URLs of TSO servers from there instead.
-    TSO_ClientLib(const std::string& tSOServerURL) { _tSOServerURLs.emplace_back(tSOServerURL); K2INFO("ctor");}
+    TSO_ClientLib(const std::string& tSOServerURL, Duration startDelay) : _startDelay(startDelay) { _tSOServerURLs.emplace_back(tSOServerURL); K2INFO("ctor");}
     
     ~TSO_ClientLib() { K2INFO("dtor");}
 
@@ -59,6 +60,9 @@ private:
     // For correctness verification purpose, we keep track of the latest _triggeredTime of the batches whenever we issued timestamp from a (new) batch
     // So that if an out-of-order old batch comes in, we will discard it.  
     TimePoint _lastIssuedBatchTriggeredTime;
+
+    // startDelay - a delay/sleep duration in start(). This is for testing purpose where the client lib start need to delay waiting for server starts
+    Duration _startDelay;
 
     // info about queued request that is promised but not yet fulfilled
     struct ClientRequest

@@ -33,6 +33,7 @@ seastar::future<> TSOService::TSOController::start()
             RegisterGetTSOMasterURL();
             RegisterGetTSOWorkersURLs();
 
+            K2INFO("TSOController started");
             return seastar::make_ready_future<>();
         });
 }
@@ -62,6 +63,7 @@ seastar::future<> TSOService::TSOController::stop()
 
 seastar::future<> TSOService::TSOController::InitializeInternal()
 {
+    K2INFO("InitializeInternal");
     // step 1/3 initialize worker control info
     InitWorkerControlInfo();
 
@@ -87,6 +89,7 @@ void TSOService::TSOController::InitWorkerControlInfo()
 
 seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
 {
+    K2INFO("GetAllWorkerURLs");
     return seastar::map_reduce(boost::irange(1u, seastar::smp::count),   // all worker cores, starting from 1
         [this] (unsigned cpuId) {
             return _outer._baseApp.getDist<k2::TSOService>().invoke_on(cpuId, &TSOService::GetWorkerURLs)
@@ -98,9 +101,10 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
         },
         std::vector<std::vector<k2::String>>(),
         [] (std::vector<std::vector<k2::String>>&& singleRes, std::vector<std::vector<k2::String>>&& result) {
-            if (singleRes.size() != 0)
+            if (!singleRes.empty())
             {
-                K2ASSERT(singleRes[0].size() > 0 && singleRes.size() == 1, "Invalid worker URLs");
+                // just check first one for simplicity, ideally, should check all returned work core url has value.
+                K2ASSERT(singleRes[0].size() > 0, "Invalid worker URLs");
                 result.insert(result.end(), singleRes.begin(), singleRes.end());
             }
             return result;
@@ -108,12 +112,14 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
     .then([this] (std::vector<std::vector<k2::String>>&& result) mutable 
     {
         _workersURLs = std::move(result);
+        K2INFO("got workerURLs:" <<_workersURLs.size());
         return seastar::make_ready_future<>();
     });
 }
 
 seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold) 
 {
+    K2INFO("SetRoleInternal isMaster:" << std::to_string(isMaster));
     if (!_isMasterInstance && isMaster)  // change from standby to master
     {
         // when change from standby to master
@@ -219,8 +225,9 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         // case 1, if we lost lease, suicide now 
         if (curTimeTSECount > (uint64_t) _myLease.time_since_epoch().count())
         {
-            K2ASSERT(false, "Lost lease detected during HeartBeat.");
-            Suicide();
+            K2INFO("Lost lease detected during HeartBeat. cur time and mylease : " << curTimeTSECount << ":" << _myLease.time_since_epoch().count());
+            //K2ASSERT(false, "Lost lease detected during HeartBeat.");
+            //Suicide();
         }
 
         // case 2, if prevReservedTimeShreshold is in future and within one heartbeat, sleep out and recursive call DoHeartBeat()
@@ -239,7 +246,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         if (_prevReservedTimeShreshold > curTimeTSECount && 
             (_prevReservedTimeShreshold - curTimeTSECount >= (uint64_t) _heartBeatTimerInterval().count()))
         {
-            return RenewLeaseOnly();
+            return RenewLeaseOnly().then([this](SysTimePt newLease) {_myLease = newLease;});
         }
 
         // case 4, regular situation, extending lease and ReservedTimeThreshold, then SendWorkersControlInfo

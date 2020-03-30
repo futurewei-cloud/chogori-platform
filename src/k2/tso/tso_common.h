@@ -36,7 +36,7 @@ public:
 
         uint16_t endingNanoSecAdjust = usedCount * batch.TbeNanoSecStep;
         // creat timestamp from batch. Note: tStart are the same for all timestamps in the batch
-        TimeStamp ts(batch.TbeTESBase + endingNanoSecAdjust, batch.TsDelta + endingNanoSecAdjust, batch.TSOId);
+        TimeStamp ts(batch.TbeTESBase + endingNanoSecAdjust, batch.TSOId, batch.TsDelta + endingNanoSecAdjust);
         return ts;
     }
 

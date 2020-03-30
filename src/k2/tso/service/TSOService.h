@@ -59,7 +59,7 @@ public :  // application lifespan
     // worker API updating the controlInfo, triggered from controller through SS cross-core communication
     void UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo);
 
-    // worker API to provide its URLs
+    // get worker endpoint URLs of all transport stack, TCP/IP, RDMA, etc.
     std::vector<k2::String> GetWorkerURLs();
 
     // controller public APIs
@@ -148,6 +148,7 @@ class TSOService::TSOController
     // TODO: implement this
     seastar::future<std::tuple<bool, uint64_t>> JoinServerCluster() 
     {
+        K2INFO("JoinServerCluster");
         // fake new master
         std::tuple<bool, uint64_t> result(true, 0);
         _myLease = GenNewLeaseVal();
@@ -217,7 +218,7 @@ class TSOService::TSOController
     // TODO: implement this
     seastar::future<> RemoveLeaseFromPaxos() {return seastar::make_ready_future<>();}
     seastar::future<> RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*uint64_t newReservedTimsShreshold*/) {return seastar::make_ready_future<>();}
-    seastar::future<> RenewLeaseOnly() {return seastar::make_ready_future<>();}
+    seastar::future<SysTimePt> RenewLeaseOnly() {return seastar::make_ready_future<SysTimePt>(GenNewLeaseVal());}
 
     // regular heartbeat update to Paxos when not a master
     seastar::future<> UpdateStandByHeartBeat() {return seastar::make_ready_future<>();}
@@ -293,9 +294,6 @@ class TSOService::TSOWorker
     seastar::future<> start();
 
     DISABLE_COPY_MOVE(TSOWorker);
-
-    // get worker endpoint URLs of all transport stack, TCP/IP, RDMA, etc.
-    std::vector<k2::String> GetWorkerURLs();
 
     // get updated controlInfo from controller and update local copy
     void UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo);

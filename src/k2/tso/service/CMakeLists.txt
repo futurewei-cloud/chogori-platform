@@ -5,9 +5,16 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_executable (tso_main ${HEADERS} ${SOURCES})
+add_library (tso_service STATIC ${HEADERS} ${SOURCES})
 
-target_link_libraries (tso_main PRIVATE k2appbase k2common k2transport Seastar::seastar)
+set_target_properties(tso_service PROPERTIES
+	VERSION ${PROJECT_VERSION}
+	SOVERSION 1
+)
 
-install (TARGETS tso_main DESTINATION bin)
+target_link_libraries (tso_service PRIVATE k2appbase k2common k2transport Seastar::seastar)
+
+install(TARGETS tso_service DESTINATION lib/k2)
+install(FILES ${HEADERS} DESTINATION include/k2/tso)
+
 

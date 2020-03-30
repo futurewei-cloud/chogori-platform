@@ -81,9 +81,23 @@ void TSOService::UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo
 
 std::vector<k2::String> TSOService::GetWorkerURLs()
 {
-    K2ASSERT(seastar::engine().cpu_id() != 0 && _worker != nullptr, "GetWorkerURLs should be on worker core only!");
+    // NOTE: this fn is called by controller during start() on worker after the transport is initialized
+    // so directly return the transport config info
+    K2ASSERT(seastar::engine().cpu_id() != 0, "GetWorkerURLs should be on worker core only!");
+    K2INFO("GetWorkerURLs on worker core. tcp url is:" <<k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
 
-    return _worker->GetWorkerURLs();
+    std::vector<k2::String> result;
+
+    // return all endpoint URLs of various transport type, currently, we must have TCP and RDMA
+    result.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
+
+    if (seastar::engine()._rdma_stack)
+    { 
+        K2INFO("TSOWorker have RDMA transport.");
+        result.push_back(k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto)->getURL());
+    }
+
+    return result;
 }
 
     /*
