@@ -117,6 +117,40 @@ private:
         });
     }
 
+    seastar::future<> _tpcc() {
+        return seastar::do_until(
+            [this] { return _stopped; },
+            [this] {
+                uint32_t txn_type = _random.UniformRandom(1, 100);
+                uint32_t w_id = _random.UniformRandom(1, _max_warehouses());
+                TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses())
+                                                 : (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
+                auto txn_start = k2::Clock::now();
+                return curTxn->run()
+                .then([this, txn_type, txn_start] (bool success) {
+                    if (!success) {
+                        return;
+                    }
+
+                    _completedTxns++;
+                    auto end = k2::Clock::now();
+                    auto dur = end - txn_start;
+
+                    if (txn_type <= 43) {
+                        _paymentTxns++;
+                        _paymentLatency.add(dur);
+                    } else {
+                        _newOrderTxns++;
+                        _newOrderLatency.add(dur);
+                    }
+                })
+                .finally([curTxn] () {
+                    delete curTxn; 
+                });
+            }
+        );
+    }
+
     seastar::future<> _benchmark() {
         K2INFO("Creating K23SIClient");
         _client = K23SIClient(K23SIClientConfig(), _tcpRemotes(), _cpo());
@@ -132,39 +166,12 @@ private:
             _timer.arm(_testDuration);
             _start = k2::Clock::now();
             _random = RandomContext(seastar::engine().cpu_id());
-
-            return seastar::do_until(
-                [this] { return _stopped; },
-                [this] {
-                    uint32_t txn_type = _random.UniformRandom(1, 100);
-                    uint32_t w_id = _random.UniformRandom(1, _max_warehouses());
-                    TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses())
-                                                     : (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
-                    auto txn_start = k2::Clock::now();
-                    return curTxn->run()
-                    .then([this, txn_type, txn_start] (bool success) {
-                        if (!success) {
-                            return;
-                        }
-
-                        _completedTxns++;
-                        auto end = k2::Clock::now();
-                        auto dur = end - txn_start;
-
-                        if (txn_type <= 43) {
-                            _paymentTxns++;
-                            _paymentLatency.add(dur);
-                        } else {
-                            _newOrderTxns++;
-                            _newOrderLatency.add(dur);
-                        }
-                    })
-                    .finally([curTxn] () {
-                        delete curTxn; 
-                    });
-                }
-            );
+            for (int i=0; i<_clients_per_core(); ++i) {
+                _tpcc_futures.emplace_back(_tpcc());
+            }
+            return when_all(_tpcc_futures.begin(), _tpcc_futures.end());
         })
+        .discard_result()
         .finally([this] () {
             auto duration = k2::Clock::now() - _start;
             auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
@@ -188,11 +195,14 @@ private:
     RandomContext _random;
     k2::TimePoint _start;
     seastar::timer<> _timer;
+    std::vector<future<>> _tpcc_futures;
+
     ConfigVar<std::vector<std::string>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<std::string> _cpo{"cpo"};
-    ConfigVar<std::string> _tso{"tso"};
+    ConfigVar<std::string> _tso{"tso_endpoint"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<int> _max_warehouses{"num_warehouses"};
+    ConfigVar<int> _clients_per_core{"clients_per_core"};
 
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _newOrderLatency;
@@ -209,9 +219,10 @@ int main(int argc, char** argv) {;
     app.addOptions()
         ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<std::string>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("tso", bpo::value<std::string>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tso_endpoint", bpo::value<std::string>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
+        ("clients_per_core", bpo::value<int>()->default_value(1), "Number of concurrent TPC-C clients per core")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals");
     app.addApplet<Client>();
