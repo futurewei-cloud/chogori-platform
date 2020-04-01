@@ -15,6 +15,28 @@ using namespace seastar;
 
 namespace k2 {
 
+using namespace dto;
+
+// debugging print, time point (nano accurate) to a stream 
+// TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
+inline void TimePointToStream(int64_t nanosec, char buffer[100])
+{
+    auto microsec = nanosec/1000;
+    nanosec -= microsec*1000;
+    auto millis = microsec/1000;
+    microsec -= millis*1000;
+    auto secs = millis/1000;
+    millis -= secs*1000;
+    auto mins = (secs/60);
+    secs -= (mins*60);
+    auto hours = (mins/60);
+    mins -= (hours*60);
+    auto days = (hours/24);
+    hours -= (days*24);
+
+    std::snprintf(buffer, 100, "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec, nanosec);   
+}
+
 class sampleTSOApp
 {
 public:
@@ -36,31 +58,31 @@ public:
 
             auto curSteadyTime = Clock::now();
             char timeBuffer[100];
-            k2::logging::TimePointToStream(curSteadyTime.time_since_epoch().count(), timeBuffer);
+            TimePointToStream(curSteadyTime.time_since_epoch().count(), timeBuffer);
             K2INFO("Issuing first 100us apart TS at local request time:" << timeBuffer);
-            (void) _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimeStampFromTSO(curSteadyTime)
-                .then([this](auto&& timeStamp)
+            (void) _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
+                .then([this](auto&& timestamp)
                 {
                     char timeBufferS[100];
                     char timeBufferE[100];
-                    k2::logging::TimePointToStream(timeStamp.TStartTSECount(), timeBufferS);
-                    k2::logging::TimePointToStream(timeStamp.TEndTSECount(), timeBufferE);
-                    K2INFO("got first 100us apart TS value:{[" << timeBufferS <<":"<< timeBufferE<<"] TSOId:" <<timeStamp.TSOId());
+                    TimePointToStream(timestamp.tStartTSECount(), timeBufferS);
+                    TimePointToStream(timestamp.tEndTSECount(), timeBufferE);
+                    K2INFO("got first 100us apart TS value:{[" << timeBufferS <<":"<< timeBufferE<<"] TSOId:" <<timestamp.tsoId());
                     (void) seastar::sleep(100us)
                     .then([this]
                     {
                         TimePoint curSteadyTime = Clock::now();
                         char timeBuffer[100];
-                        k2::logging::TimePointToStream(curSteadyTime.time_since_epoch().count(), timeBuffer);
+                        TimePointToStream(curSteadyTime.time_since_epoch().count(), timeBuffer);
                         K2INFO("Issuing second 100us apart TS at local request time:" << timeBuffer);
-                        (void) _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimeStampFromTSO(curSteadyTime)
+                        (void) _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
                         .then([](auto&& ts)
                         {
                             char timeBufferS[100];
                             char timeBufferE[100];
-                            k2::logging::TimePointToStream(ts.TStartTSECount(), timeBufferS);
-                            k2::logging::TimePointToStream(ts.TEndTSECount(), timeBufferE);
-                            K2INFO("got second 100us apart TS value:{[" << timeBufferS <<":"<< timeBufferE<<"] TSOId:" <<ts.TSOId());
+                            TimePointToStream(ts.tStartTSECount(), timeBufferS);
+                            TimePointToStream(ts.tEndTSECount(), timeBufferE);
+                            K2INFO("got second 100us apart TS value:{[" << timeBufferS <<":"<< timeBufferE<<"] TSOId:" <<ts.tsoId());
                         });
                     });
                 });
@@ -74,10 +96,10 @@ public:
             {
                 TimePoint curSteadyTime = Clock::now();
                 K2INFO("Issuing continous TS #"<<i<<" at local request time:" << curSteadyTime.time_since_epoch().count());
-                (void) tso_clientlib.GetTimeStampFromTSO(curSteadyTime)
-                    .then([idx=i](auto&& timeStamp)
+                (void) tso_clientlib.GetTimestampFromTSO(curSteadyTime)
+                    .then([idx=i](auto&& timestamp)
                     {
-                        K2INFO("got continous TS #"<<idx<<" TS value:" << timeStamp.TStartTSECount() <<":"<< timeStamp.TEndTSECount());
+                        K2INFO("got continous TS #"<<idx<<" TS value:" << timestamp.TStartTSECount() <<":"<< timestamp.TEndTSECount());
                     });
             }
         })

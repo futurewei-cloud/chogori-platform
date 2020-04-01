@@ -16,20 +16,20 @@ seastar::future<> TSOService::TSOWorker::start()
 {
     _tsoId = _outer.TSOId(); 
 
-    RegisterGetTSOTimeStampBatch();
+    RegisterGetTSOTimestampBatch();
     return seastar::make_ready_future<>();
 }
 
 seastar::future<> TSOService::TSOWorker::stop() 
 {
     // unregistar all APIs
-    RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, nullptr);
     return seastar::make_ready_future<>();
 }
 
-void TSOService::TSOWorker::RegisterGetTSOTimeStampBatch()
+void TSOService::TSOWorker::RegisterGetTSOTimestampBatch()
 {
-    k2::RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable 
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable 
     {
         if (request.payload)
         {
@@ -38,14 +38,14 @@ void TSOService::TSOWorker::RegisterGetTSOTimeStampBatch()
 
             // TODO: handle exceptions
             auto response = request.endpoint.newPayload();
-            auto timeStampBatch = GetTimeStampFromTSO(batchSize); 
-            //K2INFO("time stamp batch returned is: " << timeStampBatch);
-            response->write(timeStampBatch);
+            auto timestampBatch = GetTimestampFromTSO(batchSize); 
+            //K2INFO("time stamp batch returned is: " << timestampBatch);
+            response->write(timestampBatch);
             k2::RPC().sendReply(std::move(response), request);
         }
         else
         {
-            K2ERROR("GetTSOTimeStampBatch comes in without request payload.");
+            K2ERROR("GetTSOTimestampBatch comes in without request payload.");
         }
         
     });
@@ -154,10 +154,10 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
     return;
 }
 
-// API issuing TimeStamp to the TSO client
-TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSO(uint16_t batchSizeRequested) 
+// API issuing Timestamp to the TSO client
+TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequested) 
 {
-    TimeStampBatch result;
+    TimestampBatch result;
 
     //K2INFO("Start getting a timestamp batch");
     //K2INFO("Start getting a timestamp batch 2");
@@ -202,8 +202,8 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSO(uint16_t batchSizeRequ
     return GetTimeStampFromTSOLessFrequentHelper(batchSizeRequested, nowMicroSecRounded);
 }
 
-// helper function to issue timeStamp (or check error situation)
-TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t nowMicroSecRounded) 
+// helper function to issue timestamp (or check error situation)
+TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t nowMicroSecRounded) 
 {
     K2INFO("getting a timestamp batch in helper");
     // step 1/4 sanity check, check IsReadyToIssueTS and possible issued timestamp is within ReservedTimeShreshold 
@@ -212,7 +212,7 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
         K2WARN("Not ready to issue timestamp batch due to IsReadyToIssueTS, worker core:" << seastar::engine().cpu_id());
 
         // TODO: consider giving more detail information on why IsReadyToIssueTS is false, e.g. the instance is not master, not init, or wait/sleep 
-        throw ServerNotReadyException();
+        throw TSONotReadyException();
     }
 
     // step 2/4 this is case when we try to issue timestamp batch beyond ReservedTimeShreshold (indicating it is not refreshed), this is really a bug and need to root cause.
@@ -222,7 +222,7 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
          K2WARN("Not ready to issue timestamp batch due to ReservedTimeShreshold, worker core:" << seastar::engine().cpu_id());
 
         // TODO: consider giving more detail information
-        throw ServerNotReadyException();
+        throw TSONotReadyException();
     }
 
     // step 3/4 if somehow current time is smaller than last request time
@@ -231,7 +231,7 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
         // this is rare, normally should be a bug, add detal debug info later
         K2DEBUG("nowMicroSecRounded:" << nowMicroSecRounded << "< _lastRequestTimeMicrSecRounded:" <<_lastRequestTimeMicrSecRounded);
         // let client retry, maybe we should blocking sleep if there is a case this happening legit and the difference is small, e.g. a few microseconds
-        throw ServerNotReadyException();
+        throw TSONotReadyException();
     }
 
     // step 4/4 handle the case nowMicroSecRounded == _lastRequestTimeMicrSecRounded
@@ -248,12 +248,12 @@ TimeStampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
             nowMicroSecRounded = TSE_Count_MicroSecRounded(SysClock::now());
         }
 
-        return GetTimeStampFromTSO(batchSizeRequested);
+        return GetTimestampFromTSO(batchSizeRequested);
     }
 
     K2ASSERT(nowMicroSecRounded == _lastRequestTimeMicrSecRounded, "last and this requests are in same microsecond!");
 
-    TimeStampBatch result;
+    TimestampBatch result;
     result.TbeTESBase = nowMicroSecRounded + _curControlInfo.TbeTESAdjustment 
         + seastar::engine().cpu_id() - 1
         + _lastRequestTimeStampCount * _curControlInfo.TbeNanoSecStep;

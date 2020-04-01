@@ -81,7 +81,7 @@ class App {
     seastar::distributed<AppletType>& getDist() {
         auto findIter = _applets.find<AppletType>();
         if (findIter == _applets.end()) {
-            throw std::runtime_error("applet not found:");
+            throw std::runtime_error("applet not found");
         }
         // this is safe, since we created the object ourselves, based on AppletType
         // in other words, if we found an entry of type AppletType, then the value stored in the map

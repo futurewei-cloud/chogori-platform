@@ -2,7 +2,7 @@
 
 # K2 TimeStamp and TSO 
 ## 1.  Design goals
-K2 TimeStamp is a specific designed data structure for timeStamp used for marking transactions' time in order to provide transaction isolation and consistency.  TSO(TimeStampOracle) is a service for providing K2 TimeStamps to K2 client clusters/data servers managing transactions. 
+K2 TimeStamp is a specific designed data structure for timestamp used for marking transactions' time in order to provide transaction isolation and consistency.  TSO(TimeStampOracle) is a service for providing K2 TimeStamps to K2 client clusters/data servers managing transactions. 
 
 The design goals of K2 TimeStamp and K2 TSO are
 - Functionality: support K2 global distributed transaction, Sequencial consistent SSI (3SI), with optimization for within datacenter avg 20 microsecond latency transactions.
@@ -59,7 +59,7 @@ K2 TSO normally is deployed one per region, shared by all tenants. In case there
 
 In order to guarantee the high availability, TSO is deployed with mulitple instances on top of a Paxos cluster, with one of the instance is master serving the timestamp request from clients. Besides master election, the Paxos cluster is also used for 1)heath/heartbeat/lease monitoring and managment; 2)keep record of reserved time threshold. 1) is typical usage of Paxos group, no more explaination is needed. 2)is to guarantee Timestamp from TSO service is (logically) strictly increasing. When TSO master instance crashes, a different instance need to know what highest timestamp(Te) old master has issued. Due to high TPS of issuing timestamp, a TSO master only periodically reserve a future time threshold and persist it into the Paxos group. The TSO master only issue timestamp within the threshold and as the time approaches the reserved time threshold, new threshold is reserved and recorded. The duration between threshold is related with duration of heartbeat. We expect to set heartbeat frequency to be 10ms, and with lost of 3 heartbeat, we will let Paxos to pick new master. Thus, the threshold duration can be extend per 30 ms for 30 ms more into future. This also fulfill the goal of TSO server availability interruption time less than 200 millisecond when unexpected crash happens.
 
-As we are using Te part of uncertainty window to be the sequenceNumber when comparing between timeStamps from same TSO, the uncertainty window given be K2 TimeStamp is always a larger window including fully the true uncertainty window the TSO has. 
+As we are using Te part of uncertainty window to be the sequenceNumber when comparing between timestamps from same TSO, the uncertainty window given be K2 TimeStamp is always a larger window including fully the true uncertainty window the TSO has. 
 
 In order to guarantee external causal consistency, we need to set minimal distance between two region/data centers, i.e. two TSO. The time need to traveling between two regions should be bigger than the timestamp uncertainty windows size. The scenario is like this: For an external client, when she issues one transaction T1 on data center A (TSO A) and after it suceeds, she then issues another transaction T2 on data center B (TSO B). Transaction 1 and Transaction 2 has causal relationship but our system is not aware of (thus external causal relationship). In order to preserve such relationship, the timestamp of T2 must be greater than that of T1. As these timestamps are from different TSO, their uncertainty window can't overlap, thus once the distance between two TSO need more time to travel than the uncertainty window size, it is guaranteed that when T2 was getting a timestamp from TSO B, the time has already passed the uncertainty window of timestamp for transaction T1 (as issuing T2 after seeing T1 finish will take the time need travel between TSO A and TSO B). As we expect our uncertainty window size around 2 microsecond, it means 2 *1e-6 * 300k KM = 0.6 KM minimal distance (The speed of light is roughly 300K km/second, or 0.3km/microsecond). Normally distance between data centers of different geo-region is beyond 800 KM to be isolated from earthquke harzard, so such distance request is not an issue.  
 
@@ -102,13 +102,13 @@ To simplify the design for batch with above requirements met, we choose followin
 ### 3.3 Batch design at K2 TSO server side
 K2 TSO client batch request API to K2 TSO server is following,
 ```
-future<K2TimeStampBatch> GetTimeStampFromTSO(int batchSizeRequested)
+future<TimestampBatch> GetTimeStampFromTSO(int batchSizeRequested)
 ```
 batchSizeRequested is desired amount of timestamps for TSO server to generate, the server may or may not honor it depends on server side availability. 
 
 The returned batch is following structure:
 ```
-struct K2TimeStampBatch
+struct TimestampBatch
 {
     uint64_t TbeTESBase       - batch uncertain window end time, number of nanosecond ticks from UTC 1970-01-01:00:00:00
     uint16_t TSOId            - TSOId
@@ -147,9 +147,9 @@ struct TSOWorkerControlInfo
 }   
 ```
 
-A worker core doesn't coordinate with other worker core, as cross-core communication is expensive(>0.5 microsecond in SeaStar), so we need to make sure different work core will issue batch of different timestamp (even at the same nano second). Thus, for each work core, it will use its SeaStar core ID as starting base of nano second value in the TbeTSEBase and each timeStamp in the batch will be number of work core, i.e. TbeNanoSecStep away from each other. For example, say we have 20 worker cores and their id are 0, 1, ... 19, then for core 0, the nano second value in the starting batch (of the microsecond) will be 0, 20, 40, ... and core 1 will be 1, 21, 41, ... etc. For each microsecond, each worker core can issue at most 1000/number or work core time stamps.  
+A worker core doesn't coordinate with other worker core, as cross-core communication is expensive(>0.5 microsecond in SeaStar), so we need to make sure different work core will issue batch of different timestamp (even at the same nano second). Thus, for each work core, it will use its SeaStar core ID as starting base of nano second value in the TbeTSEBase and each timestamp in the batch will be number of work core, i.e. TbeNanoSecStep away from each other. For example, say we have 20 worker cores and their id are 0, 1, ... 19, then for core 0, the nano second value in the starting batch (of the microsecond) will be 0, 20, 40, ... and core 1 will be 1, 21, 41, ... etc. For each microsecond, each worker core can issue at most 1000/number or work core time stamps.  
 
-To make sure a worker core doesn't issue duplicate timestamp across different client requests within the same microsecond, each worker core keep a local value of microsecondOfLastRequest, timeStampCounterOflastMicrosecond, which are initialized to 0 both, so that we can avoid this issue. 
+To make sure a worker core doesn't issue duplicate timestamp across different client requests within the same microsecond, each worker core keep a local value of microsecondOfLastRequest, timestampCounterOflastMicrosecond, which are initialized to 0 both, so that we can avoid this issue. 
 
 The detail of steps of a worker core processing the cleint request is following:
 ```
@@ -157,7 +157,7 @@ The detail of steps of a worker core processing the cleint request is following:
 2. get tNow = system_clock::now(); calculate intended TbeTESBase = tNow(set last three digits of nano second to 0) + coreId; 
 3. if TbeTESBase != microsecondOfLastRequest, 
      then 
-     {      set timeStampCounterOflastMicrosecond = 0, 
+     {      set timestampCounterOflastMicrosecond = 0, 
             and set return value TSCount = min (1000/TbeNanoSecStep, batchSizeRequested) as the max amount of timestamp in a batch is 1000/TbeNanoSecStep;
      }
      else 
@@ -171,14 +171,14 @@ The detail of steps of a worker core processing the cleint request is following:
          }
          else
          {
-             set TbeTESBase += timeStampCounterOflastMicrosecond *  TbeNanoSecStep;
+             set TbeTESBase += timestampCounterOflastMicrosecond *  TbeNanoSecStep;
          }
      }
 4. check updated possible last timestmap in the batch is before reservedTimeShreshold, i.e.
          if  (TbeTESBase + (batchSizeRequested -1) * TbeNanoSecStep) > reservedTimeShreshold, 
          return ServerNotReady error;
 5. generating the return batch with update TbeTESBase, batchSizeRequested, TbeNanoSecStep, TsDelta, TSOId and return to client; 
-   update microsecondOfLastRequest and timeStampCounterOflastMicrosecond
+   update microsecondOfLastRequest and timestampCounterOflastMicrosecond
 ```
 
 #### Control Core
@@ -227,9 +227,9 @@ Batch complexity is transparent to the application completely and essentially th
 ```
 future<K2TimeStamp> GetTimeStampFromTSO(const steady_clock::time_point& requestLocalTime);
 ```
-Inside K2 TSO Client, (i.e. the implementation for above API), it manages a possible existing batch of timestamps from latest call into TSO server. If there is no batch of timestamps or all timestamps in the batch are used up, K2 TSO client issues a new call to TSO server to get a new batch of timestamps, K2TimeStampBatch as mentioned before 
+Inside K2 TSO Client, (i.e. the implementation for above API), it manages a possible existing batch of timestamps from latest call into TSO server. If there is no batch of timestamps or all timestamps in the batch are used up, K2 TSO client issues a new call to TSO server to get a new batch of timestamps, TimestampBatch as mentioned before 
 ```
-struct K2TimeStampBatch
+struct TimestampBatch
 {
     uint64_t TbeTESBase       - batch uncertain window end time, number of nanosecond ticks from UTC 1970-01-01:00:00:00
     uint16_t TSOId            - TSOId
@@ -239,14 +239,14 @@ struct K2TimeStampBatch
     uint8_t  TTLus            - TTL of batch on the client side in microseconds
 }
 ```
-Together with a batch/K2TimeStampBatch, K2 TSO client keeps a pair of local parameters for the batch
+Together with a batch/TimestampBatch, K2 TSO client keeps a pair of local parameters for the batch
 ```
 steady_clock::time_point  firstRequestLocalTimeOfBatch
 uint16_t                  usedCountOfBatch
 ```
 firstRequestLocalTimeOfBatch is set to the requestLocalTime of the first client request of timestamp which triggered the call into TSO server and get the batch. Together with TTLus in the batch, latter requests from K2 client for timestamp, if the requestLocalTime within the firstRequestLocalTimeOfBatch + TTLus, it could used the timestamp from the batch if the batch is not used up. usedCountOfBatch is initialized to 0 and incremented after each time stamp is used from the batch. 
 
-When the request is within TTL of the batch, a timestamp is generated from the batch with TeTSE set to TbeTESBase +  TbeNanoSecStep * usedCountOfBatch, TSOId and TsDelta are trivially set to the same value from K2TimeStampBatch. 
+When the request is within TTL of the batch, a timestamp is generated from the batch with TeTSE set to TbeTESBase +  TbeNanoSecStep * usedCountOfBatch, TSOId and TsDelta are trivially set to the same value from TimestampBatch. 
 
 ## 4 Design alternatives and reasoning
 ### 4.1 Conditions that guarantees casual consistency and potential to expand mulitple TSO within same data center if needed

@@ -27,18 +27,14 @@ seastar::future<> TSOService::stop()
     {
         K2ASSERT(_controller != nullptr, "_controller null!");
         K2INFO("TSOController stops on core:" <<seastar::engine().cpu_id());
-        return _controller->stop()
-            .then( [] {RPC().registerLowTransportMemoryObserver(nullptr); return seastar::make_ready_future<>();});
+        return _controller->stop();
     }
     else
     {
         K2ASSERT(_worker != nullptr, "_controller null!");
         K2INFO("TSOWorder stops on core:" <<seastar::engine().cpu_id());
-        return _worker->stop()
-            .then( [] {RPC().registerLowTransportMemoryObserver(nullptr); return seastar::make_ready_future<>();});
+        return _worker->stop();
     }
-
-    
 }
 
 seastar::future<> TSOService::start()
@@ -49,13 +45,8 @@ seastar::future<> TSOService::start()
     if (seastar::smp::count < 2)
     {
         K2INFO("TSOService starts unexpected on less than 2 cores. Core counts:" <<seastar::smp::count);
-        return seastar::make_exception_future(NotEnoughCoreException(seastar::smp::count));
+        return seastar::make_exception_future(TSONotEnoughCoreException(seastar::smp::count));
     }
-
-    RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) 
-    {            
-        K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
-    });
     
     // Always use core 0 as controller and the rest as workers
     if (seastar::engine().cpu_id() == 0)

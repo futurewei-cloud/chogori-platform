@@ -52,8 +52,8 @@ seastar::future<> TSOService::TSOController::stop()
             _statsUpdateTimer.cancel();
 
             // unregistar all APIs
-            RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_MASTERSERVER_URL, nullptr);
-            RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_WORKERS_URLS, nullptr);
+            RPC().registerMessageObserver(dto::Verbs::GET_TSO_MASTERSERVER_URL, nullptr);
+            RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, nullptr);
             // unregister internal APIs
             //RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
     
@@ -178,7 +178,7 @@ seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint
 
 void TSOService::TSOController::RegisterGetTSOMasterURL() 
 {
-    k2::RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_MASTERSERVER_URL, [this](k2::Request&& request) mutable 
+    k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_MASTERSERVER_URL, [this](k2::Request&& request) mutable 
     {
         auto response = request.endpoint.newPayload();
         K2INFO("Master TSO TCP endpoint is: " << _masterInstanceURL);
@@ -189,7 +189,7 @@ void TSOService::TSOController::RegisterGetTSOMasterURL()
 
 void TSOService::TSOController::RegisterGetTSOWorkersURLs() 
 {
-    k2::RPC().registerMessageObserver(TSOMsgVerbs::GET_TSO_WORKERS_URLS, [this](k2::Request&& request) mutable 
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, [this](k2::Request&& request) mutable 
     {
         auto response = request.endpoint.newPayload();
         response->write(_workersURLs);

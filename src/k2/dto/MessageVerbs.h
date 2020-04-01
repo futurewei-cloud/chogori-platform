@@ -30,6 +30,14 @@ enum Verbs : k2::Verb {
     // K23SI finalize transaction
     K23SI_TXN_FINALIZE,
 
+    /************* TSO *******************/
+    // API from TSO client to any TSO instance to get master instance URL
+    GET_TSO_MASTERSERVER_URL    = 100,  
+    // API from TSO client to TSO master server to get its workers(cores)' URLs
+    GET_TSO_WORKERS_URLS,       
+    // API from TSO client to get timestamp batch from any TSO worker cores          
+    GET_TSO_TIMESTAMP_BATCH,             
+
     /************ END OF RESERVED BLOCK *****************/
     END=200
 };
