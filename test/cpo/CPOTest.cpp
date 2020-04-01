@@ -22,7 +22,7 @@ seastar::future<> CPOTest::stop() {
 
 seastar::future<> CPOTest::start() {
     K2INFO("start");
-    ConfigVar<std::string> configEp("cpo_endpoint");
+    ConfigVar<String> configEp("cpo_endpoint");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
     // let start() finish and then run the tests

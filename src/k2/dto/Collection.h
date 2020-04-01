@@ -183,15 +183,15 @@ class PartitionGetter {
 public:
     struct PartitionWithEndpoint {
         Partition* partition;
-        TXEndpoint preferredEndpoint;
+        std::unique_ptr<TXEndpoint> preferredEndpoint;
     };
 
     PartitionGetter(Collection&& collection);
     PartitionGetter() = default;
 
-    // Returns the partition and preferred endpointfor the given key. 
+    // Returns the partition and preferred endpointfor the given key.
     // Hashes key if hashScheme is not range
-    PartitionWithEndpoint getPartitionForKey(const Key& key);
+    PartitionWithEndpoint& getPartitionForKey(const Key& key);
 
     Collection collection;
 
