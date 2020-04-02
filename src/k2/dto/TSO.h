@@ -48,9 +48,6 @@ public:
     Timestamp operator-(const Duration d) const;
     Timestamp operator+(const Duration d) const;
 
-    // Creates a clock TimePoint from the timestamp. The timepoint is set to be at the end of this timestamp
-    TimePoint toTimePoint() const;
-
     size_t hash() const;
 
     friend std::ostream& operator<<(std::ostream& os, const Timestamp& ts) {

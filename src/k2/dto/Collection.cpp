@@ -3,7 +3,7 @@
 
 #include <crc32c/crc32c.h>
 #include <k2/transport/RPCDispatcher.h>
-#include <k2/transport/RRDMARPCProtocol.h>
+#include <k2/transport/Discovery.h>
 
 #include "Collection.h"
 
@@ -49,18 +49,7 @@ bool Partition::PVID::operator!=(const Partition::PVID& o) const {
 PartitionGetter::PartitionWithEndpoint PartitionGetter::GetPartitionWithEndpoint(Partition* p) {
     PartitionWithEndpoint partition{};
     partition.partition = p;
-
-    for (auto ep = p->endpoints.begin(); ep != p->endpoints.end(); ++ep) {
-        std::unique_ptr<TXEndpoint> endpoint = RPC().getTXEndpoint(*ep);
-        if (endpoint) {
-            partition.preferredEndpoint = *endpoint;
-
-            if (seastar::engine()._rdma_stack && 
-                    partition.preferredEndpoint.getProtocol() == RRDMARPCProtocol::proto) {
-                break;
-            }
-        }
-    }
+    partition.preferredEndpoint = Discovery::selectBestEndpoint(p->endpoints);
 
     return partition;
 }
@@ -93,7 +82,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
     }
 }
 
-PartitionGetter::PartitionWithEndpoint PartitionGetter::getPartitionForKey(const Key& key) {
+PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(const Key& key) {
     switch (collection.metadata.hashScheme) {
         case HashScheme::Range:
         {
@@ -103,7 +92,7 @@ PartitionGetter::PartitionWithEndpoint PartitionGetter::getPartitionForKey(const
                 return it->partition;
             }
 
-            return PartitionWithEndpoint{};
+            throw std::runtime_error("no partition for endpoint");
         }
         case HashScheme::HashCRC32C:
         {
@@ -118,10 +107,10 @@ PartitionGetter::PartitionWithEndpoint PartitionGetter::getPartitionForKey(const
                 return it->partition;
             }
 
-            return PartitionWithEndpoint{};
+            throw std::runtime_error("no partition for endpoint");
         }
         default:
-            return PartitionWithEndpoint{};
+            throw std::runtime_error("no partition for endpoint");
     }
 }
 

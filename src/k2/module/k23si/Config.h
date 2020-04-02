@@ -15,6 +15,9 @@ struct K23SIConfig {
     // often and cause load issues.
     ConfigDuration minimumRetentionPeriod{"retention_minimum", 1h};
 
+    // how often to update our retention timestamp from the TSO.
+    ConfigDuration retentionTimestampUpdateInterval{"retention_ts_update_interval", 60s};
+
     // timeout for read requests (including potential PUSH operation)
     ConfigDuration readTimeout{"read_timeout", 100us};
 
@@ -23,9 +26,6 @@ struct K23SIConfig {
 
     // what is our read cache size in number of entries
     ConfigVar<uint64_t> readCacheSize{"k23si_read_cache_size", 10000};
-
-    // how many transactions to expire due to heartbeat before we yield
-    ConfigVar<uint64_t> maxHBExpireCount{"k23si_max_hb_expire_count", 100};
 
     // how many times to try and finalize a transaction
     ConfigVar<uint64_t> finalizeRetries{"k23si_txn_finalize_retries", 10};

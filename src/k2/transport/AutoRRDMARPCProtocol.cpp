@@ -109,7 +109,7 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
                 return seastar::make_ready_future();
             })
             .handle_exception([this, it](auto exc) {
-                K2WARN_EXC("unable to list endpoints", exc);
+                K2WARN_EXC("unable to find an RRDMA endpoint", exc);
                 _endpoints.erase(it);
             });
         _pendingDiscovery = seastar::when_all(std::move(_pendingDiscovery), std::move(newDiscovery)).discard_result();
