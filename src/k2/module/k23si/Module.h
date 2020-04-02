@@ -117,9 +117,6 @@ private: // members
     // timer used to refresh the retention timestamp from the TSO
     seastar::timer<> _retentionUpdateTimer;
 
-    // when to update the retention timestamp
-    Duration _retentionUpdateInterval;
-
     // used to tell if there is a refresh in progress so that we don't stop() too early
     seastar::future<> _retentionRefresh = seastar::make_ready_future();
 

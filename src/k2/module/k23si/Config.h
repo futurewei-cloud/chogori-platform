@@ -15,6 +15,9 @@ struct K23SIConfig {
     // often and cause load issues.
     ConfigDuration minimumRetentionPeriod{"retention_minimum", 1h};
 
+    // how often to update our retention timestamp from the TSO.
+    ConfigDuration retentionTimestampUpdateInterval{"retention_ts_update_interval", 60s};
+
     // timeout for read requests (including potential PUSH operation)
     ConfigDuration readTimeout{"read_timeout", 100us};
 
