@@ -27,28 +27,24 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
         _hbTask = _hbTask.then([this] {
             // refresh the clock
             auto now = CachedSteadyClock::now(true);
-            return seastar::do_with((uint64_t)0, [this, now](uint64_t& dispatched) {
-                return seastar::do_until(
-                    [this, now, &dispatched] {
-                        auto cantExpire = dispatched >= _config.maxHBExpireCount();
-                        auto noHB = _hblist.empty() || _hblist.front().hbExpiry > now;
-                        auto noRW = _rwlist.empty() || _rwlist.front().rwExpiry.compareCertain(_retentionTs) > 0;
-                        return cantExpire || (noHB && noRW);
-                    },
-                    [this, &dispatched, now] {
-                        dispatched++;
-                        if (!_hblist.empty() && _hblist.front().hbExpiry < now) {
-                            auto& tr = _hblist.front();
-                            _hblist.pop_front();
-                            return onAction(TxnRecord::Action::onHeartbeatExpire, tr.txnId);
-                        }
-                        else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) < 0) {
-                            auto& tr = _rwlist.front();
-                            _rwlist.pop_front();
-                            return onAction(TxnRecord::Action::onRetentionWindowExpire, tr.txnId);
-                        }
-                        return seastar::make_exception_future<>(ServerError());
-                    });
+            return seastar::do_until(
+                [this, now] {
+                    auto noHB = _hblist.empty() || _hblist.front().hbExpiry > now;
+                    auto noRW = _rwlist.empty() || _rwlist.front().rwExpiry.compareCertain(_retentionTs) > 0;
+                    return noHB && noRW;
+                },
+                [this, now] {
+                    if (!_hblist.empty() && _hblist.front().hbExpiry < now) {
+                        auto& tr = _hblist.front();
+                        _hblist.pop_front();
+                        return onAction(TxnRecord::Action::onHeartbeatExpire, tr.txnId);
+                    }
+                    else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) < 0) {
+                        auto& tr = _rwlist.front();
+                        _rwlist.pop_front();
+                        return onAction(TxnRecord::Action::onRetentionWindowExpire, tr.txnId);
+                    }
+                    return seastar::make_exception_future<>(ServerError());
             })
             .then([this] {
                 _hbTimer.arm(_hbDeadline);
