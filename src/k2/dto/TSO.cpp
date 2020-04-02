@@ -55,11 +55,5 @@ size_t Timestamp::hash() const {
            std::hash<decltype(_tsoId)>{}(_tsoId);
 }
 
-TimePoint Timestamp::toTimePoint() const {
-    TimePoint result{};
-    result += std::chrono::nanoseconds(_tEndTSECount);
-    return result;
-}
-
 } // ns dto
 } // ns k2

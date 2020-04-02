@@ -28,14 +28,12 @@ K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::P
             return getTimeNow();
         })
         .then([this](dto::Timestamp&& ts) {
+            // set the retention timestamp (the time of the oldest entry we should keep)
             _retentionTimestamp = ts - _cmeta.retentionPeriod;
             _txnMgr.updateRetentionTimestamp(_retentionTimestamp);
-        }).then_wrapped([this](auto&& fut) {
-            // ignore exceptions and just run again
-            fut.ignore_ready_future();
-            K2WARN("Unable to obtain recent timestamp from TSO");
-            // run again
-            _retentionUpdateTimer.arm(_retentionUpdateInterval);
+        })
+        .finally([this]{
+            _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
         });
     }),
     _cpo(_config.cpoEndpoint()) {
@@ -81,18 +79,19 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleTxnFinalize(std::move(request));
     });
 
+    if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
+        K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
+                                      << _config.minimumRetentionPeriod() << "). Extending retention to minimum");
+        _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
+    }
+
     // todo call TSO to get a timestamp
     return getTimeNow()
         .then([this](dto::Timestamp&& watermark) {
-            if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
-                K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
-                       << _config.minimumRetentionPeriod() << "). Extending retention to minimum");
-                _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
-            }
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;
             _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
-            _retentionUpdateTimer.arm(_config.minimumRetentionPeriod() / 2);
-            return seastar::when_all(_recovery(), _txnMgr.start(_cmeta.name, watermark, _cmeta.retentionPeriod, _cmeta.heartbeatDeadline)).discard_result();
+            _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
+            return seastar::when_all(_recovery(), _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline)).discard_result();
         });
 }
 

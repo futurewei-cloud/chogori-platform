@@ -60,7 +60,7 @@ struct TxnRecord {
     std::vector<dto::Key> writeKeys;
 
     // Expiry time point for retention window - these are driven off each TSO clock update
-    TimePoint rwExpiry;
+    dto::Timestamp rwExpiry;
     nsbi::list_member_hook<> rwLink;
 
     // for the heartbeat timer set - these are driven off local time
@@ -137,14 +137,16 @@ class TxnManager {
 public: // lifecycle
     TxnManager();
 
-    // When started, we need to be told the current TSO time, as well as the desired collection retention period.
-    // the retention period is dynamic and so cannot come from configuration.
-    seastar::future<> start(const String& collectionName, dto::Timestamp rts, Duration retentionPeriod, Duration hbDeadline);
+    // When started, we need to be told:
+    // - the current retentionTimestamp
+    // - the heartbeat interval for the collection
+    seastar::future<> start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline);
 
     // called when
     seastar::future<> stop();
 
     // called to update the retention timestamp when the server refreshes from TSO
+    // We cache this value and use it to expire transactions when they are outside retention window.
     void updateRetentionTimestamp(dto::Timestamp rts);
 
     // returns the record for an id. Creates a new record in Created state if one does not exist
@@ -196,11 +198,8 @@ private: // fields
     // the collection-wide deadline for heartbeating of transactions
     Duration _hbDeadline;
 
-    // this is the timestamp
-    TimePoint _tsonow;
-
-    // the retention duration of the collection
-    Duration _retentionPeriod;
+    // this is the retention window timestamp we should use for new transactions
+    dto::Timestamp _retentionTs;
 
     Persistence _persistence;
 

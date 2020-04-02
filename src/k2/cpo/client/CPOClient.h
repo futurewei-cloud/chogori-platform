@@ -157,7 +157,7 @@ public:
             }
 
             // Try to get partition info
-            dto::PartitionGetter::PartitionWithEndpoint partition = collections[request.collectionName].getPartitionForKey(request.key);
+            auto& partition = collections[request.collectionName].getPartitionForKey(request.key);
             if (!partition.partition || partition.partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
                 K2DEBUG("Failed to get assigned partition");
@@ -168,7 +168,7 @@ public:
             request.pvid = partition.partition->pvid;
 
             // Attempt the request RPC
-            return RPC().callRPC<RequestT, ResponseT>(verb, request, partition.preferredEndpoint, timeout).
+            return RPC().callRPC<RequestT, ResponseT>(verb, request, *partition.preferredEndpoint, timeout).
             then([this, &request, deadline, retries] (auto&& result) {
                 auto& [status, k2response] = result;
 
