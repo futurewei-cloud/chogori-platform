@@ -16,6 +16,7 @@ seastar::future<> TSO_ClientLib::start()
     K2INFO("start");
     _stopped = false;
 
+    _tSOServerURLs.emplace_back(TSOServerURL());
     // for now we use the first server URL only, in the future, allow to check other server in case first one is not available
     return seastar::sleep(_startDelay)
         .then([this] () mutable { return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]); });

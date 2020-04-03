@@ -9,6 +9,7 @@
 #include <k2/appbase/AppEssentials.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
+#include <k2/tso/client_lib/tso_clientlib.h>
 #include <seastar/core/sleep.hh>
 
 #include "schema.h"
@@ -20,8 +21,9 @@ using namespace k2;
 
 class Client {
 public:  // application lifespan
-    Client():
-        _client(K23SIClient(K23SIClientConfig())),
+    Client(k2::App& baseApp):
+        _baseApp(baseApp),
+        _client(K23SIClient(baseApp, K23SIClientConfig())),
         _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _stopped(true),
         _timer(seastar::timer<>([this] {
@@ -71,7 +73,7 @@ public:  // application lifespan
         });
         registerMetrics();
 
-        return _benchmark()
+        return _client.start().then([this] () { return _benchmark(); })
         .handle_exception([this](auto exc) {
             K2ERROR_EXC("Unable to execute benchmark", exc);
             _stopped = true;
@@ -153,7 +155,6 @@ private:
 
     seastar::future<> _benchmark() {
         K2INFO("Creating K23SIClient");
-        _client = K23SIClient(K23SIClientConfig(), _tcpRemotes(), _cpo());
 
         if (_do_data_load()) {
             return _data_load();
@@ -186,6 +187,7 @@ private:
     }
 
 private:
+    App& _baseApp;
     K23SIClient _client;
     k2::Duration _testDuration;
     bool _stopped;
@@ -197,9 +199,6 @@ private:
     seastar::timer<> _timer;
     std::vector<future<>> _tpcc_futures;
 
-    ConfigVar<std::vector<std::string>> _tcpRemotes{"tcp_remotes"};
-    ConfigVar<std::string> _cpo{"cpo"};
-    ConfigVar<std::string> _tso{"tso_endpoint"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<int> _max_warehouses{"num_warehouses"};
     ConfigVar<int> _clients_per_core{"clients_per_core"};
@@ -225,6 +224,8 @@ int main(int argc, char** argv) {;
         ("clients_per_core", bpo::value<int>()->default_value(1), "Number of concurrent TPC-C clients per core")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals");
-    app.addApplet<Client>();
+
+    app.addApplet<k2::TSO_ClientLib>(0s);
+    app.addApplet<Client>(seastar::ref(app));
     return app.start(argc, argv);
 }

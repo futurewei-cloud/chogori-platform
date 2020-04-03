@@ -4,6 +4,8 @@
 
 #include "k23si_client.h"
 
+#include <k2/tso/client_lib/tso_clientlib.h>
+
 namespace k2 {
 
 K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d) noexcept :
@@ -101,12 +103,8 @@ seastar::future<WriteResult> K2TxnHandle::erase(dto::Key key, const String& coll
     return write<int>(std::move(key), collection, 0, true);
 }
 
-K23SIClient::K23SIClient(const K23SIClientConfig &, const std::vector<std::string>& _endpoints, std::string _cpo) : _gen(std::random_device()()) {
-    for (auto it = _endpoints.begin(); it != _endpoints.end(); ++it) {
-        _k2endpoints.push_back(String(*it));
-    }
-    _cpo_client = CPOClient(String(_cpo));
-
+K23SIClient::K23SIClient(k2::App& baseApp, const K23SIClientConfig &) : 
+        _baseApp(baseApp), _gen(std::random_device()()) {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
     _metric_groups.add_group("K23SI_client", {
@@ -118,6 +116,20 @@ K23SIClient::K23SIClient(const K23SIClientConfig &, const std::vector<std::strin
         sm::make_counter("abort_too_old", abort_too_old, sm::description("Total K23SI transactions aborted due to retention window expiration"), labels),
         sm::make_counter("heartbeats", heartbeats, sm::description("Total K23SI transaction heartbeats sent"), labels),
     });
+}
+
+seastar::future<> K23SIClient::start() {
+    for (auto it = _tcpRemotes().begin(); it != _tcpRemotes().end(); ++it) {
+        _k2endpoints.push_back(String(*it));
+    }
+    K2INFO("_cpo: " << _cpo());
+    _cpo_client = CPOClient(String(_cpo()));
+
+    return seastar::make_ready_future<>();
+}
+
+seastar::future<> K23SIClient::stop() {
+    return seastar::make_ready_future<>();
 }
 
 seastar::future<Status> K23SIClient::makeCollection(const String& collection) {
@@ -135,16 +147,17 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection) {
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
-    // TODO TSO integration
-    dto::K23SI_MTR mtr{
-        _rnd(_gen),
-        dto::Timestamp(),
-        options.priority
-    };
+    return _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(Clock::now())
+    .then([this, options] (auto&& timestamp) {
+        dto::K23SI_MTR mtr{
+            _rnd(_gen),
+            std::move(timestamp),
+            options.priority
+        };
 
-    total_txns++;
-
-    return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), options.deadline, &_cpo_client, this, txn_end_deadline()));
+        total_txns++;
+        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), options.deadline, &_cpo_client, this, txn_end_deadline()));
+    });
 }
 
 } // namespace k2
