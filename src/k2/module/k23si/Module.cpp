@@ -21,7 +21,7 @@ seastar::future<dto::Timestamp> getTimeNow() {
 
 K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
     _cmeta(std::move(cmeta)),
-    _partition(std::move(partition)),
+    _partition(std::move(partition), _cmeta.hashScheme),
     _retentionUpdateTimer([this] {
         K2DEBUG("Partition: " << _partition << ", refreshing retention timestamp");
         _retentionRefresh = _retentionRefresh.then([]{

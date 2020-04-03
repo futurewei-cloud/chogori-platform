@@ -28,7 +28,11 @@ struct Key {
     bool operator>=(const Key& o) const noexcept;
     bool operator==(const Key& o) const noexcept;
 
+    // hash useful for hash-containers
     size_t hash() const noexcept;
+    // partitioning hash used in K2
+    size_t partitionHash() const noexcept;
+
     K2_PAYLOAD_FIELDS(partitionKey, rangeKey);
 
     friend std::ostream& operator<<(std::ostream& os, const Key& key) {
@@ -219,6 +223,26 @@ private:
 
     std::vector<RangeMapElement> _rangePartitionMap;
     std::vector<HashMapElement> _hashPartitionMap;
+};
+
+// Helper wrapper for Partitions, which allows to establish
+// if a partition owns a key
+class OwnerPartition {
+public:
+    OwnerPartition(Partition&& part, HashScheme scheme);
+    bool owns(const Key& key) const;
+    Partition& operator()() { return _partition; }
+    const Partition& operator()() const { return _partition; }
+    friend std::ostream& operator<<(std::ostream& os, const OwnerPartition& p) {
+        return os << p._partition;
+    }
+
+private:
+    Partition _partition;
+    HashScheme _scheme;
+    uint64_t _hstart;
+    uint64_t _hend;
+
 };
 
 } // namespace dto

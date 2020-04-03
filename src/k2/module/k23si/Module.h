@@ -67,7 +67,7 @@ private: // methods
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
     bool _validateRequestPartition(const RequestT& req) const {
-        auto result = req.collectionName == _cmeta.name && req.pvid == _partition.pvid;
+        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid && _partition.owns(req.key);
         K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed"));
         return result;
     }
@@ -95,7 +95,7 @@ private: // members
     dto::CollectionMetadata _cmeta;
 
     // the partition we're assigned
-    dto::Partition _partition;
+    dto::OwnerPartition _partition;
 
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
     // (newest item is at front of the deque)
