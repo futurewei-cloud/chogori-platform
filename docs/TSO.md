@@ -2,10 +2,10 @@
 
 # K2 TimeStamp and TSO 
 ## 1.  Design goals
-K2 TimeStamp is a specific designed data structure for timeStamp used for marking transactions' time in order to provide transaction isolation and consistency.  TSO(TimeStampOracle) is a service for providing K2 TimeStamps to K2 client clusters/data servers managing transactions. 
+K2 TimeStamp is a specific designed data structure for timestamp used for marking transactions' time in order to provide transaction isolation and consistency.  TSO(TimeStampOracle) is a service for providing K2 TimeStamps to K2 client clusters/data servers managing transactions. 
 
-The design goals of K2 TimneStamp and K2 TSO are
-- Functionality: support K2 global distributed transaction, SSI and sequencial consistency, with optimization for within datacenter avg 20 microsecond latency transactions.
+The design goals of K2 TimeStamp and K2 TSO are
+- Functionality: support K2 global distributed transaction, Sequencial consistent SSI (3SI), with optimization for within datacenter avg 20 microsecond latency transactions.
 - Performance: Issuing of K2 TimeStamp within the same data center should take less than 10 microsecond, ideally avg less than 5 microsecond.
 - Scalability: Single TSO service can provide 50-100 million timestamps per second for the system, essentially support 50-100 million transactions per second(roughly 50 -100X current top TPCC record holder at 68 million tpmc).
 - Availability: K2 TSO as logical single point of failure, should be designed with high availability >= 99.999%. Designed no down time for software upgrade, no down time for single physical server replacement, minimal unavailable time(ideally <200 millisecond) for server crash recover. 
@@ -30,9 +30,9 @@ K2 TimeStamp mainly is composed of two functional components, one is a bounded u
 
 The public interface of K2 TimeStamp contains accessor to these fields:
 ```
-system_clock Ts       - startTime of the TrueTime
-system_clock Te       - endTime of TrueTime
-UInt16 TSOId          - The global unique Id
+system_clock::time_point TStart()   - startTime of the TrueTime
+system_clock::time_point TEnd()     - endTime of TrueTime
+unint32_t                TSOId()    - The global unique Id of TSO
 ```
 As well as a comparison api:
 ```
@@ -49,17 +49,17 @@ UN - Only applicable when TSOId are different and uncertainty window overlap,
      i.e. other.Ts <= this.Ts <= other.Te || other.Ts <= this.Te <= other.Te
 ```        
 
-Internal structure for TimeStamp(two cacheline) is
-uint64_t TeTSE         - Te's time_since_epoch(), Number of ticks from UTC 1970-01-01:00:00:00, in Nanosecond 
+Internal structure for TimeStamp is
+uint64_t _tEndTSECount  - counts of nanoseconds for tEnd's time_since_epoch(), from UTC 1970-01-01:00:00:00
 uint16_t TSOId         - TSOId
-uint32_t TsDelta  - time difference between Ts and Te, in nanosecond unit
+uint16_t TsDelta  - time difference between Ts and Te, in nanosecond unit
 
 ### 2.2 K2 TSO service and servers
 K2 TSO normally is deployed one per region, shared by all tenants. In case there are dedicated customer with extreame transaction throughput need, we can depoy dedicated K2 TSO for such customer, i.e. their database only per region. 
 
 In order to guarantee the high availability, TSO is deployed with mulitple instances on top of a Paxos cluster, with one of the instance is master serving the timestamp request from clients. Besides master election, the Paxos cluster is also used for 1)heath/heartbeat/lease monitoring and managment; 2)keep record of reserved time threshold. 1) is typical usage of Paxos group, no more explaination is needed. 2)is to guarantee Timestamp from TSO service is (logically) strictly increasing. When TSO master instance crashes, a different instance need to know what highest timestamp(Te) old master has issued. Due to high TPS of issuing timestamp, a TSO master only periodically reserve a future time threshold and persist it into the Paxos group. The TSO master only issue timestamp within the threshold and as the time approaches the reserved time threshold, new threshold is reserved and recorded. The duration between threshold is related with duration of heartbeat. We expect to set heartbeat frequency to be 10ms, and with lost of 3 heartbeat, we will let Paxos to pick new master. Thus, the threshold duration can be extend per 30 ms for 30 ms more into future. This also fulfill the goal of TSO server availability interruption time less than 200 millisecond when unexpected crash happens.
 
-As we are using Te part of uncertainty window to be the sequenceNumber when comparing between timeStamps from same TSO, the uncertainty window given be K2 TimeStamp is always a larger window including fully the true uncertainty window the TSO has. 
+As we are using Te part of uncertainty window to be the sequenceNumber when comparing between timestamps from same TSO, the uncertainty window given be K2 TimeStamp is always a larger window including fully the true uncertainty window the TSO has. 
 
 In order to guarantee external causal consistency, we need to set minimal distance between two region/data centers, i.e. two TSO. The time need to traveling between two regions should be bigger than the timestamp uncertainty windows size. The scenario is like this: For an external client, when she issues one transaction T1 on data center A (TSO A) and after it suceeds, she then issues another transaction T2 on data center B (TSO B). Transaction 1 and Transaction 2 has causal relationship but our system is not aware of (thus external causal relationship). In order to preserve such relationship, the timestamp of T2 must be greater than that of T1. As these timestamps are from different TSO, their uncertainty window can't overlap, thus once the distance between two TSO need more time to travel than the uncertainty window size, it is guaranteed that when T2 was getting a timestamp from TSO B, the time has already passed the uncertainty window of timestamp for transaction T1 (as issuing T2 after seeing T1 finish will take the time need travel between TSO A and TSO B). As we expect our uncertainty window size around 2 microsecond, it means 2 *1e-6 * 300k KM = 0.6 KM minimal distance (The speed of light is roughly 300K km/second, or 0.3km/microsecond). Normally distance between data centers of different geo-region is beyond 800 KM to be isolated from earthquke harzard, so such distance request is not an issue.  
 
@@ -102,13 +102,13 @@ To simplify the design for batch with above requirements met, we choose followin
 ### 3.3 Batch design at K2 TSO server side
 K2 TSO client batch request API to K2 TSO server is following,
 ```
-future<K2TimeStampBatch> GetTimeStampFromTSO(int batchSizeRequested)
+future<TimestampBatch> GetTimeStampFromTSO(int batchSizeRequested)
 ```
 batchSizeRequested is desired amount of timestamps for TSO server to generate, the server may or may not honor it depends on server side availability. 
 
 The returned batch is following structure:
 ```
-struct K2TimeStampBatch
+struct TimestampBatch
 {
     uint64_t TbeTESBase       - batch uncertain window end time, number of nanosecond ticks from UTC 1970-01-01:00:00:00
     uint16_t TSOId            - TSOId
@@ -128,35 +128,36 @@ The reason that TbeNanoSecStep is not 1 (thus can be ignored) is related with th
 
 K2 TSO server is a K2 server application which is based on SeaStar platform. Each core is dedicated to its own task/role. On TSO Server (master instance), which is a multi core system(we do not need multi-socket system, as cross socket synchronization is too expensive), cores are split into two roles, one is control core, and the rest are worker cores. 
 
-#### workder cores
+#### worker cores
+If current TSO instance is not master, there is nothing much for worker core to do. If it is a master, worker core key responsibility is to
+1. handle TSO client request, issuing time stamp (batch). This is a normal priority task.
+2. handle config data(TSOWorkerControlInfo below) update task issued from the control core. This is a high priority task.
+3. collect and aggregate statistics data of this core for control core to collect. This is a low priority task.
+
 Each worker core has following local config data needed to generate batch, all are set by the control core.
 ```
 struct TSOWorkerControlInfo
 {
-    bool      okToIssueTS           - flag indicating if this core is ok to issue TS, could be false when shutdow is signaled
+    bool      IsReadyToIssueTS      - if this core is allowed to issue TS, could be false for various reasons
     uint16_t  TbeNanoSecStep        - step to skip between timestam, actually same as the number of worker cores 
     uint64_t  TbeTESAdjustment      - batch ending time adjustment from current chrono::steady_clock::now();
     uint16_t  TsDelta               - batch starting time adjustment from TbeTSEAdjustment, basically the uncertainty window size
-    uint64_t  reservedTimeShreshold - reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that
+    uint64_t  ReservedTimeShreshold - reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that
+    uint8_t  TTLus                  - TTL of batch on the client side in microseconds
 }   
 ```
 
-There are three type of tasks each worker core handles and they are on (High, Normal, Low) priority schduling groups
-- High Priority - config data update task issued from the control core
-- Normal - TSO client request processing
-- Low - periodically send aggregated statistics data of this core to control core (Todo: more detail design)
+A worker core doesn't coordinate with other worker core, as cross-core communication is expensive(>0.5 microsecond in SeaStar), so we need to make sure different work core will issue batch of different timestamp (even at the same nano second). Thus, for each work core, it will use its SeaStar core ID as starting base of nano second value in the TbeTSEBase and each timestamp in the batch will be number of work core, i.e. TbeNanoSecStep away from each other. For example, say we have 20 worker cores and their id are 0, 1, ... 19, then for core 0, the nano second value in the starting batch (of the microsecond) will be 0, 20, 40, ... and core 1 will be 1, 21, 41, ... etc. For each microsecond, each worker core can issue at most 1000/number or work core time stamps.  
 
-A worker core doesn't coordinate with other worker core, as cross-core communication is expensive(>0.5 microsecond in SeaStar), so we need to make sure different work core will issue batch of different timestamp (even at the same nano second). Thus, for each work core, it will use its SeaStar core ID as starting base of nano second value in the TbeTSEBase and each timeStamp in the batch will be number of work core, i.e. TbeNanoSecStep away from each other. For example, say we have 20 worker cores and their id are 0, 1, ... 19, then for core 0, the nano second value in the starting batch (of the microsecond) will be 0, 20, 40, ... and core 1 will be 1, 21, 41, ... etc. For each microsecond, each worker core can issue at most 1000/number or work core time stamps.  
-
-To make sure a worker core doesn't issue duplicate timestamp across different client requests within the same microsecond, each worker core keep a local value of microsecondOfLastRequest, timeStampCounterOflastMicrosecond, which are initialized to 0 both, so that we can avoid this issue. 
+To make sure a worker core doesn't issue duplicate timestamp across different client requests within the same microsecond, each worker core keep a local value of microsecondOfLastRequest, timestampCounterOflastMicrosecond, which are initialized to 0 both, so that we can avoid this issue. 
 
 The detail of steps of a worker core processing the cleint request is following:
 ```
 1. Upon request arrival, check okToIssueTS, if false, return ServerNotReady error (should have different error code if current server is not TSO master instance).
-2. get tNow = steady_clock::now(); calculate intended TbeTESBase = tNow(set last three digits of nano second to 0) + coreId; 
+2. get tNow = system_clock::now(); calculate intended TbeTESBase = tNow(set last three digits of nano second to 0) + coreId; 
 3. if TbeTESBase != microsecondOfLastRequest, 
      then 
-     {      set timeStampCounterOflastMicrosecond = 0, 
+     {      set timestampCounterOflastMicrosecond = 0, 
             and set return value TSCount = min (1000/TbeNanoSecStep, batchSizeRequested) as the max amount of timestamp in a batch is 1000/TbeNanoSecStep;
      }
      else 
@@ -170,27 +171,28 @@ The detail of steps of a worker core processing the cleint request is following:
          }
          else
          {
-             set TbeTESBase += timeStampCounterOflastMicrosecond *  TbeNanoSecStep;
+             set TbeTESBase += timestampCounterOflastMicrosecond *  TbeNanoSecStep;
          }
      }
 4. check updated possible last timestmap in the batch is before reservedTimeShreshold, i.e.
          if  (TbeTESBase + (batchSizeRequested -1) * TbeNanoSecStep) > reservedTimeShreshold, 
          return ServerNotReady error;
 5. generating the return batch with update TbeTESBase, batchSizeRequested, TbeNanoSecStep, TsDelta, TSOId and return to client; 
-   update microsecondOfLastRequest and timeStampCounterOflastMicrosecond
+   update microsecondOfLastRequest and timestampCounterOflastMicrosecond
 ```
 
 #### Control Core
 Control core key responsibility is to 
-1. Periodically sync up with atomic clock/GPS clock for real time. (Depends on the atomic clock device we finally purchase and deploy, we will set the frequency of sync up, but now we expect it at least once per 10 millisecond). Base on the updated real time and current TSOWorkerControlInfo, if necessary, make modification to TSOWorkerControlInfo and send tasks to all worker cores to update their own. Essentially, this is to control all workers on the timestamps(batch) they can issue. We call this perioadical task TimeSyncTask at control core. 
-2. Periodically reserve the new future threshold, reservedTimeShreshold, that worker core can give out timestamp. As reservedTimeShreshold is a member of TSOWorkerControlInfo, so each time this timed task is done, it propagates updated TSOWorkerControlInfo to all workders. We can this peroadical task TimethresholdReservation task at control core.
-3. Periodically aggregate the statistics data for all worker cores for metrics reporting. Basically, low priority lamda tasks from the work cores with each worker core's statistics need to be aggregated and if necessary reported.  
+1. Upon instance started up, join the TSO server cluster and figure out which instance is the master(if needed, participate master selection). Also collect info about its own worker cores. So, upon call of GetTSOServerInfo from client, it can tell the client who the TSO Server master instance is, and itself is the master, the readyness of itself and RDMA address of its workers, etc. 
+2. If current instance is master, periodically sync up with atomic clock/GPS clock for real time. (Depends on the atomic clock device we finally purchase and deploy, we will set the frequency of sync up, but now we expect it at least once per 10 millisecond). Base on the updated real time and current TSOWorkerControlInfo, if necessary, make modification to TSOWorkerControlInfo and send tasks to all worker cores to update their own. Essentially, this is to control all workers on the timestamps(batch) they can issue. We call this perioadical task TimeSyncTask at control core. 
+3. If current instance is master, periodically send heartbeat to paxos, which including renew lease and reserve the new future threshold, reservedTimeShreshold, that worker core can give out timestamp. As reservedTimeShreshold is a member of TSOWorkerControlInfo, so each time this timed task is done, it propagates updated TSOWorkerControlInfo to all workders. We can this peroadical task TimethresholdReservation task at control core.
+4. If current instance is master, Periodically aggregate the statistics data for all worker cores for metrics reporting. Basically, low priority lamda tasks from the work cores with each worker core's statistics need to be aggregated and if necessary reported.  
 
-TimethresdholdReservation task is relatively simple. As previous analysis in section 2.2, the reserved threshold can be set to the master instance of TSO server heart beat failure time, i.e. 3 time of heart beats. Assuming we are doing one heart per 10 millisecond freqeuncy, than the threshold is 30 millisecond away from each other. The frequency of the task can be set to once per 30 millisecond (or higher for smaller granularity to avoid possible task delay if any happens in production). Each time this task runs, it extends reservedTimeShreshold to current real time plus 30 millisecond and record that into the Paxos cluster. And then it send message(i.e. SeaStar crosscore Lamda) to all worker cores to update TSOWorkerControlInfo for updated reservedTimeShreshold.
+For a master, at each heartbeat(say each 10 ms), it will extend its lease to indicates its master status. In normal situation, the reservedTimeShreshold is the same value and extended same time together with the lease. Currently both are set to be current time plus 3 times of heartbeat interval(e.g. 30 ms). Controle core will kept a copy of renewed lease and at each heart beat will check the lease, it find out it already lost lease(due to prevous heartbeat failure for 3 times), it will suicide immediately. When a master is asked to shut down gracefully, it could adjust the reservedTimeShreshold back(bigger than any issued out timestamp) so that other future master can resume service earlier instead of waiting full 30 ms. At the end of heartbeat, the control core will send message(i.e. SeaStar crosscore Lamda) to all worker cores to update TSOWorkerControlInfo for updated reservedTimeShreshold. 
 
 When a master instance of TSO server starts up, it looks for reservedTimeShreshold from the paxos cluster. It not find (in the first bootstrap case) it write a new reservedTimeShreshold into Paxos. If it found one, it will make sure, through waiting if need, that the real time of this master instance server is greater than the value to skip the time that already reserved by previous master instance to make sure the timestamp issued has strictly increasing ending time of uncertainty window, which is used as sequence number of the timestamp.
 
-TimeSyncTask handling is more involved, as it controls all other data members inside TSOWorkerControlInfo, essentially controls the timestamp worker cores can issue. 
+TimeSyncTask handling is responsible to check current machine clock is drift off from Atomic/GPS clock. If it is drift large enough, it will adjust TbeTESAdjustment in TSOWorkerControlInfo and which will be sent to all the worker cores in following heartbeat. 
 
 ```
 struct TSOWorkerControlInfo
@@ -225,9 +227,9 @@ Batch complexity is transparent to the application completely and essentially th
 ```
 future<K2TimeStamp> GetTimeStampFromTSO(const steady_clock::time_point& requestLocalTime);
 ```
-Inside K2 TSO Client, (i.e. the implementation for above API), it manages a possible existing batch of timestamps from latest call into TSO server. If there is no batch of timestamps or all timestamps in the batch are used up, K2 TSO client issues a new call to TSO server to get a new batch of timestamps, K2TimeStampBatch as mentioned before 
+Inside K2 TSO Client, (i.e. the implementation for above API), it manages a possible existing batch of timestamps from latest call into TSO server. If there is no batch of timestamps or all timestamps in the batch are used up, K2 TSO client issues a new call to TSO server to get a new batch of timestamps, TimestampBatch as mentioned before 
 ```
-struct K2TimeStampBatch
+struct TimestampBatch
 {
     uint64_t TbeTESBase       - batch uncertain window end time, number of nanosecond ticks from UTC 1970-01-01:00:00:00
     uint16_t TSOId            - TSOId
@@ -237,11 +239,17 @@ struct K2TimeStampBatch
     uint8_t  TTLus            - TTL of batch on the client side in microseconds
 }
 ```
-Together with a batch/K2TimeStampBatch, K2 TSO client keeps a pair of local parameters for the batch
+Together with a batch/TimestampBatch, K2 TSO client keeps a pair of local parameters for the batch
 ```
 steady_clock::time_point  firstRequestLocalTimeOfBatch
 uint16_t                  usedCountOfBatch
 ```
 firstRequestLocalTimeOfBatch is set to the requestLocalTime of the first client request of timestamp which triggered the call into TSO server and get the batch. Together with TTLus in the batch, latter requests from K2 client for timestamp, if the requestLocalTime within the firstRequestLocalTimeOfBatch + TTLus, it could used the timestamp from the batch if the batch is not used up. usedCountOfBatch is initialized to 0 and incremented after each time stamp is used from the batch. 
 
-When the request is within TTL of the batch, a timestamp is generated from the batch with TeTSE set to TbeTESBase +  TbeNanoSecStep * usedCountOfBatch, TSOId and TsDelta are trivially set to the same value from K2TimeStampBatch. 
+When the request is within TTL of the batch, a timestamp is generated from the batch with TeTSE set to TbeTESBase +  TbeNanoSecStep * usedCountOfBatch, TSOId and TsDelta are trivially set to the same value from TimestampBatch. 
+
+## 4 Design alternatives and reasoning
+### 4.1 Conditions that guarantees casual consistency and potential to expand mulitple TSO within same data center if needed
+
+
+### 4.2 Impact consideration of between different STO clients there can be significant different network latencies to the TSO server 

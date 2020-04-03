@@ -32,13 +32,13 @@ Timestamp::CompareResult Timestamp::compareUncertain(const Timestamp& other) con
 }
 
 Timestamp::CompareResult Timestamp::compareCertain(const Timestamp& other) const {
-    // do standard comparison
-    auto result = compareUncertain(other);
-    if (result == UN) {
-        // but if it turns out to be uncertain, provide ordering based on the TSO id
-        result = _tsoId < other._tsoId ? LT : GT;
+    if (tEndTSECount() != other.tEndTSECount()){
+        return tEndTSECount() < other.tEndTSECount() ? LT : GT;
     }
-    return result;
+    else {
+        return tsoId() < other.tsoId() ? LT : 
+            (tsoId() > other.tsoId() ? GT : EQ);
+    }
 }
 
 Timestamp Timestamp::operator-(const Duration d) const {

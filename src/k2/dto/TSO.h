@@ -5,6 +5,7 @@
 
 namespace k2 {
 namespace dto {
+// TODO: rename this file to timestamp after merge
 // K2Timestamp - a TrueTime uncertainty window and TSOId
 // internally keep TEndTSECount and tStartDelta for efficient serialization and comparison
 class Timestamp{
@@ -36,6 +37,7 @@ public:
     // this should be used when the user cares if due to uncertainty, two timestamps may not be orderable
     CompareResult compareUncertain(const Timestamp& other) const;
 
+    // TODO: After merger, change return type to int
     // provides orderable comparison between timestamps. It returns LT, EQ, or GT - never UN
     // Two timestamps are EQ if they are from same TSO and their start/end times are identical
     // Normally we do certain ordering just based on the END value. In cases of different TSO
