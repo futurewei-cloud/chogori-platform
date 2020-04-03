@@ -9,6 +9,7 @@
 #include <seastar/core/future.hh>
 #include <seastar/core/future-util.hh>
 
+#include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
@@ -69,12 +70,18 @@ class K2TxnHandle;
 
 class K23SIClient {
 public:
-    K23SIClient(const K23SIClientConfig &) {};
-    K23SIClient(const K23SIClientConfig &, const std::vector<std::string>& _endpoints, std::string _cpo);
+    K23SIClient(k2::App& baseApp, const K23SIClientConfig &);
+private:
+k2::App& _baseApp;
+public:
 
+    seastar::future<> start();
+    seastar::future<> stop();
     seastar::future<Status> makeCollection(const String& collection);
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
 
+    ConfigVar<std::vector<std::string>> _tcpRemotes{"tcp_remotes"};
+    ConfigVar<std::string> _cpo{"cpo"};
     ConfigDuration create_collection_deadline{"create_collection_deadline", 1s};
     ConfigDuration retention_window{"retention_window", 600s};
     ConfigDuration txn_end_deadline{"txn_end_deadline", 200ms};
