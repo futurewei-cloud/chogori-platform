@@ -31,9 +31,8 @@ public:  // application lifespan
         }
 
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
-
-        // let start() finish and then run the tests
-        _testFuture = seastar::sleep(1ms)
+        _testTimer.set_callback([this] {
+            _testFuture = runScenarioUnassignedNodes()
             .then([this] {
                 K2INFO("Creating test collection...");
                 auto request = dto::CollectionCreateRequest{
@@ -77,8 +76,9 @@ public:  // application lifespan
             .then([this] { return runScenario03(); })
             .then([this] { return runScenario04(); })
             .then([this] { return runScenario05(); })
-            .then([] {
+            .then([this] {
                 K2INFO("======= All tests passed ========");
+                exitcode = 0;
             })
             .handle_exception([this](auto exc) {
                 try {
@@ -95,23 +95,31 @@ public:  // application lifespan
                 K2INFO("======= Test ended ========");
                 seastar::engine().exit(exitcode);
             });
+        });
 
+        _testTimer.arm(0ms);
         return seastar::make_ready_future();
     }
 
 private:
-    int exitcode;
+    int exitcode = -1;
     ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
     ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
 
     std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
+    seastar::timer<> _testTimer;
     seastar::future<> _testFuture = seastar::make_ready_future();
 
     dto::PartitionGetter _pgetter;
     uint64_t txnids = 10000;
 public: // tests
+
+seastar::future<> runScenarioUnassignedNodes() {
+    K2INFO("runScenarioUnassignedNodes");
+    return seastar::make_ready_future();
+}
 
 seastar::future<> runScenario01() {
     K2INFO("Scenario 01: empty node");

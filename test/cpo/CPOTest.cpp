@@ -7,7 +7,7 @@
 
 using namespace k2;
 
-CPOTest::CPOTest():exitcode(0) {
+CPOTest::CPOTest() {
     K2INFO("ctor");
 }
 
@@ -26,14 +26,15 @@ seastar::future<> CPOTest::start() {
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
     // let start() finish and then run the tests
-    _testFuture = seastar::sleep(1ms)
-        .then([this] { return runTest1(); })
+    _testTimer.set_callback([this] {
+        _testFuture = runTest1()
         .then([this] { return runTest2(); })
         .then([this] { return runTest3(); })
         .then([this] { return runTest4(); })
         .then([this] { return runTest5(); })
-        .then([] {
+        .then([this] {
             K2INFO("======= All tests passed ========");
+            exitcode = 0;
         })
         .handle_exception([this](auto exc) {
             try {
@@ -50,6 +51,8 @@ seastar::future<> CPOTest::start() {
             K2INFO("======= Test ended ========");
             seastar::engine().exit(exitcode);
         });
+    });
+    _testTimer.arm(0ms);
     return seastar::make_ready_future<>();
 }
 
