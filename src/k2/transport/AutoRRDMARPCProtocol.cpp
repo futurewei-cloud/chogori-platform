@@ -76,7 +76,7 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
     if (it == _endpoints.end()) {
         // construct default tuple with empty endpoint and a list
         auto& [ep, pending] = _endpoints[autoEndpoint];
-        K2DEBUG("queueing up against new ep: " << autoEndpoint);
+        K2DEBUG("queueing up against new ep: " << autoEndpoint.getURL());
         pending.push_back({verb, std::move(payload), std::move(metadata)});
         auto tcpEp = _getTCPEndpoint(autoEndpoint.getURL());
         ListEndpointsRequest request{};
@@ -117,11 +117,11 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
     else {
         auto& [ep, pending] = it->second;
         if (!pending.empty()) {
-            K2DEBUG("queueing up against pending ep: " << endpoint);
+            K2DEBUG("queueing up against pending ep: " << ep->getURL());
             pending.push_back({verb, std::move(payload), std::move(metadata)});
         }
         else {
-            K2DEBUG("Sending via RRDMA ep: " << ep);
+            K2DEBUG("Sending via RRDMA ep: " << ep->getURL());
             _rrdmaProto->send(verb, std::move(payload), *ep, std::move(metadata));
         }
     }

@@ -163,8 +163,10 @@ public:  // API
         // we are now ready to assemble the running application
         auto result = _app.run_deprecated(argc, argv, [&] {
             auto& config = _app.configuration();
-
-            uint16_t promport = config["prometheus_port"].as<uint16_t>();
+            K2INFO("Starting " << argv[0] << ", with args:");
+            for (int i = 1; i < argc; i++) {
+                K2INFO("\t " << argv[i]);
+            }
 
             if (config.count("tcp_port") && config.count("tcp_endpoints")) {
                 const char* msg = "Only one of tcp_port/tcp_endpoints option is allowed";
@@ -229,7 +231,9 @@ public:  // API
                 }()
                     .then([&] {
                         K2INFO("create prometheus");
-                        return prometheus.start(promport, "K2 txbench client metrics", "txbench_client");
+                        ConfigVar<uint16_t> promport{"prometheus_port"};
+
+                        return prometheus.start(promport(), "K2 txbench client metrics", "txbench_client");
                     })
                     .then([&] {
                         K2INFO("create vnet");
