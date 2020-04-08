@@ -126,7 +126,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
     seastar::future<std::tuple<Status, Response_t>> callRPC(Verb verb, Request_t& request, TXEndpoint& endpoint, Duration timeout) {
         auto payload = endpoint.newPayload();
         payload->write(request);
-        K2DEBUG("RPC Request call");
+        K2DEBUG("RPC Request call to endpoint: " << endpoint.getURL());
 
         return sendRequest(verb, std::move(payload), endpoint, timeout)
             .then([](std::unique_ptr<Payload>&& responsePayload) {

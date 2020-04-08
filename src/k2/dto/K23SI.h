@@ -27,7 +27,7 @@ inline std::ostream& operator<<(std::ostream& os, const TxnPriority& pri) {
         case TxnPriority::Lowest: strpri= "lowest"; break;
         default: break;
     }
-    return os << "state=" << strpri;
+    return os << strpri;
 }
 
 // Minimum Transaction Record - enough to identify a transaction.
@@ -40,7 +40,7 @@ struct K23SI_MTR {
     size_t hash() const;
     K2_PAYLOAD_FIELDS(txnid, timestamp, priority);
     friend std::ostream& operator<<(std::ostream& os, const K23SI_MTR& mtr) {
-        return os << "txnid=" << mtr.txnid << ", timestamp=" << mtr.timestamp << ", priority=" << mtr.priority;
+        return os << "{txnid=" << mtr.txnid << ", timestamp=" << mtr.timestamp << ", priority=" << mtr.priority << "}";
     }
 };
 // zero-value for MTRs
@@ -51,8 +51,13 @@ struct K23SIReadRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName; // the name of the collection
     K23SI_MTR mtr; // the MTR for the issuing transaction
+    // use the name "key" so that we can use common routing from CPO client
     Key key; // the key to read
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
+    friend std::ostream& operator<<(std::ostream& os, const K23SIReadRequest& r) {
+        return os << "{" << "pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr << ", key=" << r.key << "}";
+    }
 };
 
 // The response for READs
@@ -85,9 +90,15 @@ struct K23SIWriteRequest {
     Key trh;
     bool isDelete = false; // is this a delete write?
     bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
-    Key key; // the key for the write. The request is routed based on this key
+    // use the name "key" so that we can use common routing from CPO client
+    Key key; // the key for the write
     SerializeAsPayload<ValueType> value; // the value of the write
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
+    friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest<ValueType>& r) {
+        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
+                  << r.isDelete << ", designate=" <<r.designateTRH << "}";
+    }
 };
 
 struct K23SIWriteResponse {
@@ -99,12 +110,17 @@ struct K23SITxnHeartbeatRequest {
     Partition::PVID pvid;
     // the name of the collection
     String collectionName;
-    // trh of the transaction we want to heartbeat. The request is routed based on this key
+    // trh of the transaction we want to heartbeat.
+    // use the name "key" so that we can use common routing from CPO client
     Key key;
     // the MTR for the transaction we want to heartbeat
     K23SI_MTR mtr;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
+    friend std::ostream& operator<<(std::ostream& os, const K23SITxnHeartbeatRequest& r) {
+        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr << ", key=" << r.key << "}";
+    }
 };
 
 struct K23SITxnHeartbeatResponse {
@@ -125,7 +141,8 @@ struct K23SITxnPushRequest {
     Partition::PVID pvid;
     // the name of the collection
     String collectionName;
-    // trh of the incumbent. The request is routed based on this key
+    // trh of the incumbent.
+    // use the name "key" so that we can use common routing from CPO client
     Key key;
     // the MTR for the incumbent transaction
     K23SI_MTR incumbentMTR;
@@ -133,6 +150,10 @@ struct K23SITxnPushRequest {
     K23SI_MTR challengerMTR;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, incumbentMTR, challengerMTR);
+    friend std::ostream& operator<<(std::ostream& os, const K23SITxnPushRequest& r) {
+        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", Imtr=" << r.incumbentMTR << ", Cmtr=" << r.challengerMTR << ", key=" << r.key << "}";
+    }
 };
 
 // Response for PUSH operation
@@ -154,7 +175,7 @@ inline std::ostream& operator<<(std::ostream& os, const EndAction& act) {
         case EndAction::Commit: stract= "commit"; break;
         default: break;
     }
-    return os << "state=" << stract;
+    return os << stract;
 }
 
 struct K23SITxnEndRequest {
@@ -162,7 +183,8 @@ struct K23SITxnEndRequest {
     Partition::PVID pvid;
     // the name of the collection
     String collectionName;
-    // trh of the transaction to end. The request is routed based on this key
+    // trh of the transaction to end.
+    // use the name "key" so that we can use common routing from CPO client
     Key key;
     // the MTR for the transaction to end
     K23SI_MTR mtr;
@@ -173,6 +195,14 @@ struct K23SITxnEndRequest {
     std::vector<Key> writeKeys;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys);
+    friend std::ostream& operator<<(std::ostream& os, const K23SITxnEndRequest& r) {
+        os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr << ", action=" << r.action << ", key=" << r.key << ", writeKeys=[";
+        for (auto& k: r.writeKeys) {
+            os << k << ",";
+        }
+        return os << "]}";
+    }
 };
 
 struct K23SITxnEndResponse {
@@ -194,6 +224,10 @@ struct K23SITxnFinalizeRequest {
     EndAction action;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, trh, mtr, key, action);
+    friend std::ostream& operator<<(std::ostream& os, const K23SITxnFinalizeRequest& r) {
+        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", action=" << r.action << "}";
+    }
 };
 
 struct K23SITxnFinalizeResponse {
