@@ -6,8 +6,8 @@ namespace k2 {
 
 Persistence::Persistence() {
     //TODO discover RDMA endpoint
-    _remoteEndpoint = RPC().getTXEndpoint(_config.persistenceEndpoint());
-    K2DEBUG("ctor with endpoint: " << _remoteEndpoint->getURL());
+    //K2DEBUG("ctor with endpoint: " << _remoteEndpoint->getURL());
+    //_remoteEndpoint = RPC().getTXEndpoint(_config.persistenceEndpoint());
 }
 
 seastar::future<> Persistence::makeCall(FastDeadline deadline) {
@@ -20,7 +20,8 @@ seastar::future<> Persistence::makeCall(FastDeadline deadline) {
             (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, deadline.getRemaining()).discard_result();
     }
     else {
-        return seastar::make_exception_future(std::runtime_error("Persistence not availabe"));
+        return seastar::make_ready_future<>();
+        //return seastar::make_exception_future(std::runtime_error("Persistence not availabe"));
     }
 }
 
