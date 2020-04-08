@@ -279,14 +279,14 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
     if (batchTriggeredTime < _lastIssuedBatchTriggeredTime)
     {
         //TODO: log more detailed infor
-        K2WARN("TimestampBatch comes in out of order and late, discarded");
+        K2INFO("TimestampBatch comes in out of order, discarded");
         return;
     }
     TimePoint minTimePointBar = _pendingClientRequests.empty()? Clock::now() : _pendingClientRequests.front()._requestTime;
     if(batchTriggeredTime.time_since_epoch().count() + batch.TTLNanoSec < minTimePointBar.time_since_epoch().count())
     {
         //TODO: log more detailed infor
-        K2WARN("TimestampBatch comes in out of order and late, discarded");
+        K2INFO("TimestampBatch comes in late, discarded");
         return;
     }
 
@@ -355,17 +355,18 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         // fulfill as much pending client request as possible, while delete fulfilled pending request
         while (batchInfo._usedCount < batchInfo._batch.TSCount && !_pendingClientRequests.empty())
         {
+            auto minTime = _pendingClientRequests.front()._requestTime.time_since_epoch().count();
+            if(batchInfo._triggeredTime.time_since_epoch().count() + batchInfo._expectedTTL < minTime) {
+                break;
+            }
+ 
             _pendingClientRequests.front()._promise->set_value(TimestampBatch::GenerateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
             _pendingClientRequests.pop_front();
             batchInfo._usedCount++;       
             _pendingClientRequestsCount--;
         }
         
-        // remove this batch if it is used up
-        if (_timestampBatchQue.front()._usedCount == _timestampBatchQue.front()._batch.TSCount)
-        {
-            _timestampBatchQue.pop_front();
-        }
+        _timestampBatchQue.pop_front();
     }
 
     // step 4/4 if all available batches are used up and existing unavailable/outgoing batches is not enough to fulfill all the pending client request
@@ -423,7 +424,8 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
 
             K2ASSERT(!_curTSOServerWorkerEndPoints.empty(), "we should have workers");
             // pick next worker (effecitvely random one, as _curTSOServerWorkerEndPoints is shuffled already when it is populated)
-            int randWorker = (_curWorkerIdx++) %  _curTSOServerWorkerEndPoints.size();
+            //int randWorker = (_curWorkerIdx++) %  _curTSOServerWorkerEndPoints.size();
+            int randWorker = 0;
 
             auto myRemote = _curTSOServerWorkerEndPoints[randWorker];
             std::unique_ptr<Payload> payload = myRemote.newPayload();
