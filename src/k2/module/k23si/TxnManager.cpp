@@ -325,7 +325,12 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
     rec.unlinkRW(_rwlist);
     // persist if needed
 
-    return _persistence.makeCall(FastDeadline(10s));
+    return _persistence.makeCall(FastDeadline(10s)).then([this, &rec]{
+        rec.unlinkBG(_bgTasks);
+        rec.unlinkRW(_rwlist);
+        rec.unlinkHB(_hblist);
+        _transactions.erase(rec.txnId);
+    });
 }
 
 seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {

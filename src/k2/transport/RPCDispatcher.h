@@ -167,35 +167,44 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
     void registerRPCObserver(Verb verb, RPCRequestObserver_t<Request_t, Response_t> observer) {
         // wrap the RPC observer into a message observer
         registerMessageObserver(verb, [this, observer=std::move(observer)](Request&& request) mutable {
-            auto reply = request.endpoint.newPayload();
-            // parse the incoming request
-            Request_t rpcRequest;
-            if (!request.payload->read(rpcRequest)) {
-                reply->write(Status::S400_Bad_Request("Unable to parse incoming request"));
-                sendReply(std::move(reply), request);
-            }
             // we're ignoring the returned future here so we can't wait for it before the rpc dispatcher exits
             // to guard against segv on shutdown, obtain a weak pointer
-            (void)observer(std::move(rpcRequest))
-            .then([disp=weak_from_this(), reply=std::move(reply), request=std::move(request)](auto&& result) mutable {
-                if (disp) {
-                    // write out the status first
-                    reply->write(std::get<0>(result));
-                    // write out the Response_t
-                    reply->write(std::get<1>(result));
-                    disp->sendReply(std::move(reply), request);
-                }
-                else {
-                    K2WARN("dispatcher is going down: unable to send response to " << request.endpoint.getURL());
-                }
-            })
-            .handle_exception([disp=weak_from_this(), request=std::move(request), reply=std::move(reply)](auto exc) mutable {
-                K2ERROR_EXC("RPC handler failed with uncaught exception", exc);
-                if (disp) {
-                    reply->write(Status::S500_Internal_Server_Error());
-                    disp->sendReply(std::move(reply), request);
-                }
-            });
+            (void)seastar::do_with(std::move(request), Request_t{}, weak_from_this(),
+                [&observer](auto& request, auto& rpcRequest, auto& disp) {
+                    if (!disp) return seastar::make_ready_future();
+
+                    if (!request.payload->read(rpcRequest)) {
+                        auto reply = request.endpoint.newPayload();
+                        reply->write(Status::S400_Bad_Request("Unable to parse incoming request"));
+                        disp->sendReply(std::move(reply), request);
+                        return seastar::make_ready_future();
+                    }
+                    // if disp was still alive, it's safe to call observer
+                    return observer(std::move(rpcRequest))
+                        .then([&](auto&& result) mutable {
+                            if (!disp) {
+                                K2WARN("dispatcher is going down: unable to send response to " << request.endpoint.getURL());
+                                return;
+                            }
+
+                            auto& [status, response] = result;
+                            // write out the status first
+                            auto reply = request.endpoint.newPayload();
+                            reply->write(status);
+                            // write out the Response_t
+                            reply->write(response);
+                            disp->sendReply(std::move(reply), request);
+                        })
+                        .handle_exception([&](auto exc) mutable {
+                            K2ERROR_EXC("RPC handler failed with uncaught exception", exc);
+                            if (disp) {
+                                auto reply = request.endpoint.newPayload();
+                                reply->write(Status::S500_Internal_Server_Error());
+                                reply->write(Response_t{});
+                                disp->sendReply(std::move(reply), request);
+                            }
+                        });
+               });
         });
     }
 
