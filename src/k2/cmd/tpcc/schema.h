@@ -15,7 +15,7 @@
 #define CHECK_READ_STATUS(read_result) \
     do { \
         if (!((read_result).status.is2xxOK())) { \
-            K2WARN("TPC-C failed to read rows!"); \
+            K2WARN("TPC-C failed to read rows: " << (read_result).status); \
             return make_exception_future(std::runtime_error(std::string("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
         } \
     } \

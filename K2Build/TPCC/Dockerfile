@@ -8,3 +8,4 @@ COPY build/src/k2/cmd/tpcc/mock/mock_server /usr/local/bin/
 COPY build/src/k2/cmd/tpcc/tpcc_client /usr/local/bin/
 COPY build/src/k2/cmd/controlPlaneOracle/cpo_main /usr/local/bin/
 COPY build/src/k2/cmd/tso/tso /usr/local/bin/
+COPY build/src/k2/cmd/nodepool/nodepool /usr/local/bin/
