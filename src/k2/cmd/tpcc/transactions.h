@@ -62,13 +62,12 @@ private:
         future<> district_update = districtUpdate();
         future<> customer_update = customerUpdate();
 
-        future<> history_update = when_all(std::move(warehouse_update), std::move(district_update))
-        .then([this] (auto&& results) {
-            (void) results;
+        future<> history_update = when_all_succeed(std::move(warehouse_update), std::move(district_update))
+        .then([this] () {
             return historyUpdate();
         });
 
-        return when_all(std::move(customer_update), std::move(history_update))
+        return when_all_succeed(std::move(customer_update), std::move(history_update))
         .then_wrapped([this] (auto&& fut) {
             if (fut.failed()) {
                 _failed = true;
