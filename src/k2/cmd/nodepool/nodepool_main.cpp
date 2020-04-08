@@ -12,6 +12,7 @@ int main(int argc, char** argv) {
     k2::App app;
 
     app.addOptions()
+        ("k23si_cpo_endpoint", bpo::value<k2::String>(), "the endpoint for k2 CPO service")
         ("k23si_persistence_endpoint", bpo::value<k2::String>(), "the endpoint for k2 persistence");
 
     app.addApplet<k2::AssignmentManager>();

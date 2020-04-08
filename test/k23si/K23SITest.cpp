@@ -1,5 +1,6 @@
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
+#include <k2/module/k23si/Module.h>
 #include <seastar/core/sleep.hh>
 
 #include <k2/dto/K23SI.h>
@@ -8,6 +9,12 @@
 #include <k2/dto/MessageVerbs.h>
 
 namespace k2 {
+struct DataRec {
+    String f1;
+    String f2;
+    K2_PAYLOAD_FIELDS(f1, f2);
+};
+
 const char* collname = "k23si_test_collection";
 
 class K23SITest {
@@ -215,6 +222,52 @@ cases requiring client to refresh collection pmap
         - write inside an already read history
             expect S403_Forbidden
     */
+
+    return seastar::make_ready_future()
+    .then([this] {
+        return getTimeNow();
+    })
+    .then([this] (dto::Timestamp ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR{
+                .txnid = txnids++,
+                .timestamp = std::move(ts),
+                .priority = dto::TxnPriority::Medium},
+            dto::Key{.partitionKey = "Key1", .rangeKey = "rKey1"},
+            DataRec{.f1="field1", .f2="field2"},
+            [this] (dto::K23SI_MTR& mtr, dto::Key& key, DataRec& rec) {
+                auto& part = _pgetter.getPartitionForKey(key);
+                dto::K23SIWriteRequest<DataRec> request;
+                request.pvid = part.partition->pvid;
+                request.collectionName = collname;
+                request.mtr = mtr;
+                request.trh = key;
+                request.isDelete = false;
+                request.designateTRH=true;
+                request.key=key;
+                request.value.val = rec;
+                return RPC().callRPC<dto::K23SIWriteRequest<DataRec>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms)
+                .then([this, &mtr, &key](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::Created());
+                    // commit
+                    auto& part = _pgetter.getPartitionForKey(key);
+                    dto::K23SITxnEndRequest request;
+                    request.pvid = part.partition->pvid;
+                    request.collectionName = collname;
+                    request.mtr = mtr;
+                    request.key = key;
+                    request.action = dto::EndAction::Commit;
+                    request.writeKeys.push_back(key);
+                    return RPC().callRPC<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(dto::Verbs::K23SI_TXN_END, request, *part.preferredEndpoint, 100ms);
+                })
+                .then([this, &mtr, &key](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::OK());
+                    return seastar::sleep(100ms);
+                });
+        });
+    });
     return seastar::make_ready_future();
 }
 seastar::future<> runScenario03() {

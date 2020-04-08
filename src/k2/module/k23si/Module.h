@@ -68,7 +68,8 @@ private: // methods
     template<typename RequestT>
     bool _validateRequestPartition(const RequestT& req) const {
         auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid && _partition.owns(req.key);
-        K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed"));
+        K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
+                << ", for request=" << req);
         return result;
     }
 
@@ -76,7 +77,7 @@ private: // methods
     template <typename RequestT>
     bool _validateRetentionWindow(const RequestT& req) const {
         auto result = req.mtr.timestamp.compareCertain(_retentionTimestamp) >= 0;
-        K2DEBUG("Partition: " << _partition << ", retention validation " << (result ? "passed" : "failed"));
+        K2DEBUG("Partition: " << _partition << ", retention validation " << (result ? "passed" : "failed") << ", have=" << _retentionTimestamp << ", for request=" << req);
         return result;
     }
 
@@ -125,5 +126,12 @@ private: // members
 
     CPOClient _cpo;
 };
+
+// get timeNow Timestamp from TSO
+inline seastar::future<dto::Timestamp> getTimeNow() {
+    // TODO call TSO service with timeout and retry logic
+    auto nsecsSinceEpoch = nsec(std::chrono::system_clock::now().time_since_epoch()).count();
+    return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 1550647543, 1000));
+}
 
 } // ns k2

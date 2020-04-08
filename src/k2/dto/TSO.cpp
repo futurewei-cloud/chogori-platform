@@ -36,13 +36,18 @@ Timestamp::CompareResult Timestamp::compareCertain(const Timestamp& other) const
         return tEndTSECount() < other.tEndTSECount() ? LT : GT;
     }
     else {
-        return tsoId() < other.tsoId() ? LT : 
+        return tsoId() < other.tsoId() ? LT :
             (tsoId() > other.tsoId() ? GT : EQ);
     }
 }
 
 Timestamp Timestamp::operator-(const Duration d) const {
-    return Timestamp(_tEndTSECount - nsec(d).count(), _tsoId, _tStartDelta);
+    uint64_t cnt = nsec(d).count();
+    if (_tEndTSECount <= cnt + _tStartDelta) {
+        // our clock hasn't started that far back. Return minimum value
+        return Timestamp(_tStartDelta, _tsoId, _tStartDelta);
+    }
+    return Timestamp(_tEndTSECount - cnt, _tsoId, _tStartDelta);
 }
 
 Timestamp Timestamp::operator+(const Duration d) const {

@@ -21,7 +21,7 @@ struct TxnId {
     bool operator==(const TxnId& o) const;
     bool operator!=(const TxnId& o) const;
     friend std::ostream& operator<<(std::ostream& os, const TxnId& txnId) {
-        return os << "trh=" << txnId.trh << ", mtr=" << txnId.mtr;
+        return os << "{trh=" << txnId.trh << ", mtr=" << txnId.mtr <<"}";
     }
 };
 } // ns k2
@@ -71,6 +71,15 @@ struct TxnRecord {
     nsbi::list_member_hook<> bgTaskLink;
     seastar::future<> bgTaskFut = seastar::make_ready_future();
 
+    friend std::ostream& operator<<(std::ostream& os, const TxnRecord& rec) {
+        os << "{txnId=" << rec.txnId << ", writeKeys=[";
+        for (auto& key: rec.writeKeys) {
+            os << key << ",";
+        }
+        os << "], rwExpiry=" << rec.rwExpiry << ", hbExpiry=" << rec.hbExpiry << "}";
+        return os;
+    }
+
     // TR state
     enum class State : uint8_t {
         Created = 0,
@@ -92,7 +101,7 @@ struct TxnRecord {
             case State::Deleted: strstate= "deleted"; break;
             default: break;
         }
-        return os << "state=" << strstate;
+        return os << strstate;
     }
 
     // The last action on this TR (the action that put us into the above state)
@@ -109,7 +118,7 @@ struct TxnRecord {
     };
 
     friend std::ostream& operator<<(std::ostream& os, const Action& action) {
-        const char* straction = "bad state";
+        const char* straction = "bad action";
         switch (action) {
             case Action::Nil: straction= "nil"; break;
             case Action::onCreate: straction= "on_create"; break;
@@ -122,8 +131,16 @@ struct TxnRecord {
             case Action::onFinalizeComplete: straction= "on_finalize_complete"; break;
             default: break;
         }
-        return os << "action=" << straction;
+        return os << straction;
     }
+
+    typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::rwLink>> RWList;
+    typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::hbLink>> HBList;
+    typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::bgTaskLink>> BGList;
+
+    void unlinkHB(HBList& hblist);
+    void unlinkRW(RWList& hblist);
+    void unlinkBG(BGList& hblist);
 };  // class TR
 
 // take care of
@@ -136,6 +153,7 @@ struct TxnRecord {
 class TxnManager {
 public: // lifecycle
     TxnManager();
+    ~TxnManager();
 
     // When started, we need to be told:
     // - the current retentionTimestamp
@@ -179,11 +197,11 @@ private: // methods driving the state machine
 
 private: // fields
     // Expiry lists. The order in the list is ascending so that the oldest item would be in the front
-    nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::rwLink>> _rwlist;
-    nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::hbLink>> _hblist;
+    TxnRecord::RWList _rwlist;
+    TxnRecord::HBList _hblist;
 
     // this list holds the transactions which are doing some background task.
-    nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::bgTaskLink>> _bgTasks;
+    TxnRecord::BGList _bgTasks;
 
     // heartbeats checks are driven off single timer.
     seastar::timer<> _hbTimer;

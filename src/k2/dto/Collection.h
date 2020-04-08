@@ -36,7 +36,7 @@ struct Key {
     K2_PAYLOAD_FIELDS(partitionKey, rangeKey);
 
     friend std::ostream& operator<<(std::ostream& os, const Key& key) {
-        return os << "pkey=" << key.partitionKey << ", rkey=" << key.rangeKey;
+        return os << "{pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
     }
 };
 
@@ -57,7 +57,7 @@ inline std::ostream& operator<<(std::ostream& os, const AssignmentState& state) 
         case AssignmentState::FailedAssignment: strstate= "failed_assignment"; break;
         default: break;
     }
-    return os << "state=" << strstate;
+    return os << strstate;
 }
 
 // Partition in a K2 Collection. By default, the key-range type is String (for range-based partitioning)
@@ -76,6 +76,10 @@ struct Partition {
         // operators
         bool operator==(const PVID& o) const;
         bool operator!=(const PVID& o) const;
+        friend std::ostream& operator<<(std::ostream& os, const PVID& pvid) {
+            return os << "{id=" << pvid.id << ", rangeV=" << pvid.rangeVersion << ", assignmentV=" << pvid.assignmentVersion << "}";
+        }
+
     } pvid;
     // the starting key for the partition
     String startKey;
@@ -95,7 +99,7 @@ struct Partition {
 
     // for debug printing
     friend std::ostream& operator<<(std::ostream& os, const Partition& part) {
-        os << "("
+        os << "{"
            << "rVersion=" << part.pvid.rangeVersion
            << ", aVersion=" << part.pvid.assignmentVersion
            << ", id=" << part.pvid.id
@@ -105,8 +109,7 @@ struct Partition {
         for (auto& ep: part.endpoints) {
             os << ep << ", ";
         }
-        os << "], astate=" << part.astate
-        << ")";
+        os << "], astate=" << part.astate << "}";
         return os;
     }
 };
@@ -118,13 +121,13 @@ struct PartitionMap {
 
     // for debug printing
     friend std::ostream& operator<<(std::ostream& os, const PartitionMap& pmap) {
-        os << "("
+        os << "{"
            << "version=" << pmap.version
            << ", partitions=[";
         for (auto& part : pmap.partitions) {
             os << part << " ";
         }
-        os << "]";
+        os << "]}";
         return os;
     }
 };

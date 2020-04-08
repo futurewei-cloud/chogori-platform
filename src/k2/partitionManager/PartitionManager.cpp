@@ -19,6 +19,7 @@ seastar::future<> PartitionManager::stop() {
     K2INFO("stop");
     // signal the partition module that we're stopping
     if (_pmodule) {
+        K2INFO("stopping module");
         return _pmodule->stop();
     }
     return seastar::make_ready_future<>();
@@ -38,6 +39,8 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
     }
 
     if (meta.storageDriver == dto::StorageDriver::K23SI) {
+        partition.astate = dto::AssignmentState::Assigned;
+
         _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);
         return _pmodule->start().then([partition = std::move(partition)] () mutable {
             auto tcpep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
@@ -55,6 +58,7 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
             }
             else {
                 K2ERROR("Server not configured correctly. there were no listening protocols configured");
+                partition.astate = dto::AssignmentState::FailedAssignment;
             }
             return seastar::make_ready_future<dto::Partition>(std::move(partition));
         });
