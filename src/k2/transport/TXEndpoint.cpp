@@ -110,7 +110,7 @@ const String& TXEndpoint::getIP() const { return _ip; }
 uint32_t TXEndpoint::getPort() const { return _port; }
 
 bool TXEndpoint::operator==(const TXEndpoint& other) const {
-    return _hash == other._hash;
+    return _url == other._url;
 }
 
 size_t TXEndpoint::hash() const { return _hash; }
