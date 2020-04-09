@@ -69,6 +69,7 @@ public:
                         return seastar::make_ready_future<Status>(std::move(status));
                     }
                 }
+                K2WARN("retry failed with status: " << status);
 
                 if (!retries) {
                     status = Status::S408_Request_Timeout("Retries exceeded");

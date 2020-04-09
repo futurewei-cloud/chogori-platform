@@ -410,7 +410,7 @@ K23SIPartitionModule::_doPush(String collectionName, TxnId sitTxnId, dto::K23SI_
     .then([this](auto&& responsePair) {
         auto& [status, response] = responsePair;
         if (status != dto::K23SIStatus::OK()) {
-            K2DEBUG("Partition: " << _partition << ", txn push failed");
+            K2ERROR("Partition: " << _partition << ", txn push failed");
             return seastar::make_exception_future<dto::K23SI_MTR>(TxnManager::ServerError());
         }
         return seastar::make_ready_future<dto::K23SI_MTR>(std::move(response.winnerMTR));

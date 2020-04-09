@@ -59,7 +59,7 @@ public: // API
     // get the port for this endpoint
     uint32_t getPort() const;
 
-    // Comparison. Two endpoints are the same if their hashes are the same
+    // Comparison
     bool operator==(const TXEndpoint &other) const;
 
     // the stored hash value for this endpoint.
