@@ -1,3 +1,4 @@
+
 #include <random>
 #include <algorithm>
 
@@ -163,6 +164,7 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
             // if obsolete, remove it and retry issuing timestamp from next batch at front.
             if (headBatch.ExpirationTime() < requestLocalTime)
             {
+		K2INFO("Detected and discarded existing obsolete batch when issuing TS. headBatch.ExpirationTime() < requestLocalTime.");
                 _timestampBatchQue.pop_front();
                 continue;
             }
@@ -170,6 +172,7 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
             // we are here means that the headBatch has timestamp ready to issue
             Timestamp result = TimestampBatch::GenerateTimeStampFromBatch(headBatch._batch, headBatch._usedCount);
             headBatch._usedCount++;
+	    K2INFO("Issued TS from existing batch.");
             // update _lastIssuedBatchTriggeredTime
             _lastIssuedBatchTriggeredTime = _lastIssuedBatchTriggeredTime < headBatch._triggeredTime ? headBatch._triggeredTime : _lastIssuedBatchTriggeredTime;
             // remove the batch if used up.
@@ -239,7 +242,8 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
         if (canPiggyBack)
         {
             curRequest._triggeredBatchRequest = false; // no op, just for readability
-            _pendingClientRequests.push_back(std::move(curRequest));
+             _pendingClientRequests.push_back(std::move(curRequest));
+	    //K2INFO("Piggy Back on outgoing batch.");
             return _pendingClientRequests.back()._promise->get_future();
         }
     }
@@ -256,6 +260,8 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
         .then([this, triggeredTime = requestLocalTime](TimestampBatch&& newBatch) {
             ProcessReturnedBatch(std::move(newBatch), triggeredTime);
         });
+
+    //K2INFO("Request new Batch for this  TS.");
 
     curRequest._triggeredBatchRequest = true;
     _pendingClientRequests.push_back(std::move(curRequest));
@@ -282,11 +288,12 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         K2INFO("TimestampBatch comes in out of order, discarded");
         return;
     }
+    bool hasPendingCR= !_pendingClientRequests.empty();
     TimePoint minTimePointBar = _pendingClientRequests.empty()? Clock::now() : _pendingClientRequests.front()._requestTime;
     if(batchTriggeredTime.time_since_epoch().count() + batch.TTLNanoSec < minTimePointBar.time_since_epoch().count())
     {
         //TODO: log more detailed infor
-        K2INFO("TimestampBatch comes in late, discarded");
+        K2INFO("TimestampBatch comes in late, discarded. hasPendingClientRequest:" << (hasPendingCR ? "TRUE" : "FALSE"));
         return;
     }
 
@@ -302,7 +309,8 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         ite->_isAvailable &&
         ite->ExpirationTime() < minTimePointBar)
     {
-         K2ASSERT(ite->_usedCount < ite->_batch.TSCount, "we should not have used-up batch still kept around!");
+        K2ASSERT(ite->_usedCount < ite->_batch.TSCount, "we should not have used-up batch still kept around!");
+	K2INFO("Discard existing obosolete available Front batch.");
 
         _timestampBatchQue.pop_front();
         ite = _timestampBatchQue.begin();
@@ -313,6 +321,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         !ite->_isAvailable &&
         ite->_triggeredTime < batchTriggeredTime)
     {
+	K2INFO("Discard existing unavailable older Front batch.");
         _timestampBatchQue.pop_front();
         ite = _timestampBatchQue.begin();
     }
@@ -340,8 +349,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
     }
 
     // step 3/4 if any pending client request in _pendingClientRequests, start to fulfil them in order with the existing batch(es)
-    uint16_t _pendingClientRequestsCount = (uint16_t) _pendingClientRequests.size();
-    if (_pendingClientRequestsCount > 0)
+    if (!_pendingClientRequests.empty())
     {
         // there are pending client request, in our design, we now can have only one available batch at the front of _timestampBatchQue,
         //as we aggressively fulfill client request when client request arrives or batch comes back, so execpt current incoming batch,
@@ -355,24 +363,25 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         // fulfill as much pending client request as possible, while delete fulfilled pending request
         while (batchInfo._usedCount < batchInfo._batch.TSCount && !_pendingClientRequests.empty())
         {
-            auto minTime = _pendingClientRequests.front()._requestTime.time_since_epoch().count();
-            if(batchInfo._triggeredTime.time_since_epoch().count() + batchInfo._expectedTTL < minTime) {
+            if(batchInfo.ExpirationTime() < _pendingClientRequests.front()._requestTime) {
+		// K2INFO("Skipping an existing obsolete batch.");
                 break;
             }
  
             _pendingClientRequests.front()._promise->set_value(TimestampBatch::GenerateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
-            _pendingClientRequests.pop_front();
+            _pendingClientRequests.pop_front();  // Is it safe to pop immediate? Seastar will keep track of futures?
             batchInfo._usedCount++;       
-            _pendingClientRequestsCount--;
         }
         
+       // TODO: optimize this to keep the current front batch if there is still valid TS in it. 
         _timestampBatchQue.pop_front();
     }
 
     // step 4/4 if all available batches are used up and existing unavailable/outgoing batches is not enough to fulfill all the pending client request
     // issue replacement batch request
-    if (_pendingClientRequestsCount > 0)
+    if (!_pendingClientRequests.empty())
     {
+	uint16_t pendingClientRequestsCount = (uint16_t) _pendingClientRequests.size();
         uint16_t expectedTSCount = 0;
         uint16_t batchSizeToRequest = 0;
         const auto& cTimestampBatchQue = _timestampBatchQue;
@@ -382,10 +391,11 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
             expectedTSCount += batchInfo._expectedBatchSize;
         }
 
-        batchSizeToRequest = expectedTSCount >= _pendingClientRequestsCount ? expectedTSCount - _pendingClientRequestsCount : 0;
+        batchSizeToRequest = expectedTSCount >= pendingClientRequestsCount ? 0 : pendingClientRequestsCount - expectedTSCount;
 
         if (batchSizeToRequest > 0)
         {
+	    K2INFO("Need to request more batch due to unfulfilled pending client requests, count:" << batchSizeToRequest); 
             // TODO: get config from appBase and use max batch size, default 32
             batchSizeToRequest = std::min(batchSizeToRequest, (uint16_t)32);
 
