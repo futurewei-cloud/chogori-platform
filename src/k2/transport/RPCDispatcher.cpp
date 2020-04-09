@@ -2,6 +2,7 @@
 //    (C)opyright Futurewei Technologies Inc, 2019
 //-->
 #include <cstdlib>
+#include <seastar/core/sleep.hh>
 
 #include <k2/common/Log.h>
 #include "RPCDispatcher.h"
@@ -130,11 +131,26 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
 }
 
 void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
-    K2DEBUG("sending message for verb: " << verb << ", to endpoint=" << endpoint.getURL());
 
     auto protoi = _protocols.find(endpoint.getProtocol());
     if (protoi == _protocols.end()) {
         K2WARN("Unsupported protocol: "<< endpoint.getProtocol());
+        return;
+    }
+    auto serverep = protoi->second->getServerEndpoint();
+    K2DEBUG("sending message for verb: " << verb << ", to endpoint=" << endpoint.getURL()
+            << ", with server endpoint: " << (serverep ? serverep->getURL() : String("none")));
+    if (serverep && endpoint == *serverep) {
+        // deliver via a future to possibly yield if there is a loop of send/receive requests
+        (void) seastar::sleep(0ns)
+            .then([disp=weak_from_this(), verb, endpoint, meta=std::move(meta), payload=std::move(payload)] () mutable {
+                if (disp) {
+                    // rewind the payload to the correct position
+                    payload->seek(txconstants::MAX_HEADER_SIZE);
+                    meta.setPayloadSize(payload->getDataRemaining());
+                    disp->_handleNewMessage(Request(verb, endpoint, std::move(meta), std::move(payload)));
+                }
+        });
         return;
     }
     protoi->second->send(verb, std::move(payload), endpoint, std::move(meta));
@@ -156,7 +172,7 @@ void RPCDispatcher::sendReply(std::unique_ptr<Payload> payload, Request& forRequ
 seastar::future<std::unique_ptr<Payload>>
 RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout) {
     uint64_t msgid = _msgSequenceID++;
-    K2DEBUG("Request send with msgid=" << msgid);
+    K2DEBUG("Request send with msgid=" << msgid << ", timeout=" << timeout << ", ep=" << endpoint.getURL());
 
     // the promise gets fulfilled when prom for this msgid comes back.
     PayloadPromise prom;

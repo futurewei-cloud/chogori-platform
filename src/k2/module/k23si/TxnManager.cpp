@@ -78,6 +78,10 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
             })
             .then([this] {
                 _hbTimer.arm(_hbDeadline);
+            })
+            .handle_exception([] (auto exc){
+                K2ERROR_EXC("caught exception while checking hb/rw expiration", exc);
+                return seastar::make_ready_future();
             });
         });
     });
@@ -95,7 +99,10 @@ seastar::future<> TxnManager::stop() {
         return seastar::do_for_each(_bgTasks.begin(), _bgTasks.end(), [](auto& txn){
             K2DEBUG("waiting for bg task on " << txn);
             return std::move(txn.bgTaskFut);
-        }).discard_result().then([]{K2DEBUG("stopped");});
+        }).discard_result().then([]{K2DEBUG("stopped");}).handle_exception([](auto exc) {
+            K2ERROR_EXC("caught exception on stop", exc);
+            return seastar::make_ready_future();
+        });
     });
 }
 
@@ -364,7 +371,7 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
             .then([&request](auto&& responsePair) {
                 auto& [status, response] = responsePair;
                 if (status != dto::K23SIStatus::OK()) {
-                    K2DEBUG("Finalize request did not succeed for " << request);
+                    K2ERROR("Finalize request did not succeed for " << request << ", status=" << status);
                     return seastar::make_exception_future<>(TxnManager::ServerError());
                 }
                 K2DEBUG("Finalize request succeeded for " << request);
