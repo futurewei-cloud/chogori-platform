@@ -306,14 +306,16 @@ K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
                 K2DEBUG("Partition: " << _partition << ", aborting incumbent for key " << request.key);
                 abortIncumbent = true;
             }
-            // #3 if same priority and timestamp, abort on tso ID which must be unique
-            if (incumbent.txnId.mtr.timestamp.tsoId() < request.challengerMTR.timestamp.tsoId()) {
-                K2DEBUG("Partition: " << _partition << ", aborting incumbent for key " << request.key);
-                abortIncumbent = true;
-            }
-            else {
-                // make sure we don't have a bug - the timestamps cannot be the same
-                K2ASSERT(incumbent.txnId.mtr.timestamp.tsoId() != request.challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
+            else if (cmpResult == dto::Timestamp::EQ) {
+                // #3 if same priority and timestamp, abort on tso ID which must be unique
+                if (incumbent.txnId.mtr.timestamp.tsoId() < request.challengerMTR.timestamp.tsoId()) {
+                    K2DEBUG("Partition: " << _partition << ", aborting incumbent for key " << request.key);
+                    abortIncumbent = true;
+                }
+                else {
+                    // make sure we don't have a bug - the timestamps cannot be the same
+                    K2ASSERT(incumbent.txnId.mtr.timestamp.tsoId() != request.challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
+                }
             }
         }
     }

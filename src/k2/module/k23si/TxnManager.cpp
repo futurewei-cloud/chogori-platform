@@ -139,7 +139,7 @@ TxnRecord& TxnManager::_createRecord(TxnId txnId) {
         TxnRecord& rec = it.first->second;
         rec.txnId = it.first->first;
         rec.state = TxnRecord::State::Created;
-        rec.rwExpiry = _retentionTs;
+        rec.rwExpiry = txnId.mtr.timestamp;
         rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
 
         _hblist.push_back(rec);
