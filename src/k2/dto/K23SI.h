@@ -161,6 +161,9 @@ struct K23SITxnPushResponse {
     // the mtr of the winning transaction
     K23SI_MTR winnerMTR;
     K2_PAYLOAD_FIELDS(winnerMTR);
+    friend std::ostream& operator<<(std::ostream& os, const K23SITxnPushResponse& r) {
+        return os << "{winnerMTR=" << r.winnerMTR;
+    }
 };
 
 enum class EndAction:uint8_t {

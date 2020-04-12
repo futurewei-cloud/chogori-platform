@@ -403,19 +403,23 @@ K23SIPartitionModule::handleTxnHeartbeat(dto::K23SITxnHeartbeatRequest&& request
 
 seastar::future<dto::K23SI_MTR>
 K23SIPartitionModule::_doPush(String collectionName, TxnId sitTxnId, dto::K23SI_MTR pushMTR, FastDeadline deadline) {
+    K2DEBUG("partition: " << _partition << ", executing push against txnid=" << sitTxnId << ", for mtr=" << pushMTR);
     dto::K23SITxnPushRequest request{};
     request.collectionName = std::move(collectionName);
     request.incumbentMTR = std::move(sitTxnId.mtr);
     request.key = std::move(sitTxnId.trh);
     request.challengerMTR = std::move(pushMTR);
-    return _cpo.PartitionRequest<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse, dto::Verbs::K23SI_TXN_PUSH>(deadline, request)
-    .then([this](auto&& responsePair) {
-        auto& [status, response] = responsePair;
-        if (status != dto::K23SIStatus::OK()) {
-            K2ERROR("Partition: " << _partition << ", txn push failed");
-            return seastar::make_exception_future<dto::K23SI_MTR>(TxnManager::ServerError());
-        }
-        return seastar::make_ready_future<dto::K23SI_MTR>(std::move(response.winnerMTR));
+    return seastar::do_with(std::move(request), [this, deadline] (auto& request) {
+        return _cpo.PartitionRequest<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse, dto::Verbs::K23SI_TXN_PUSH>(deadline, request)
+        .then([this](auto&& responsePair) {
+            auto& [status, response] = responsePair;
+            K2DEBUG("Push request completed with status=" << status << ", and response=" << response);
+            if (status != dto::K23SIStatus::OK()) {
+                K2ERROR("Partition: " << _partition << ", txn push failed");
+                return seastar::make_exception_future<dto::K23SI_MTR>(TxnManager::ServerError());
+            }
+            return seastar::make_ready_future<dto::K23SI_MTR>(std::move(response.winnerMTR));
+        });
     });
 }
 

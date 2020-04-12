@@ -13,6 +13,12 @@ struct DataRec {
     String f1;
     String f2;
     K2_PAYLOAD_FIELDS(f1, f2);
+    bool operator==(const DataRec& o) {
+        return f1 == o.f1 && f2 == o.f2;
+    }
+    friend std::ostream& operator<<(std::ostream& os, const DataRec& r) {
+        return os << "{f1=" << r.f1 << ", f2=" << r.f2 << "}";
+    }
 };
 
 const char* collname = "k23si_test_collection";
@@ -121,6 +127,53 @@ private:
 
     dto::PartitionGetter _pgetter;
     uint64_t txnids = 10000;
+
+    template <typename DataType>
+    seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
+    doWrite(const dto::Key& key, const DataType& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH) {
+        K2DEBUG("key=" << key << ",partition hash=" << key.partitionHash())
+        auto& part = _pgetter.getPartitionForKey(key);
+        dto::K23SIWriteRequest<DataType> request;
+        request.pvid = part.partition->pvid;
+        request.collectionName = cname;
+        request.mtr = mtr;
+        request.trh = trh;
+        request.isDelete = isDelete;
+        request.designateTRH = isTRH;
+        request.key = key;
+        request.value.val = data;
+        return RPC().callRPC<dto::K23SIWriteRequest<DataType>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms);
+    }
+
+    template <typename ResponseType>
+    seastar::future<std::tuple<Status, dto::K23SIReadResponse<ResponseType>>>
+    doRead(const dto::Key& key, const dto::K23SI_MTR& mtr, const String& cname) {
+        K2DEBUG("key=" << key << ",partition hash=" << key.partitionHash())
+        auto& part = _pgetter.getPartitionForKey(key);
+        // read wrong collection
+        dto::K23SIReadRequest request {
+            .pvid = part.partition->pvid,
+            .collectionName = cname,
+            .mtr =mtr,
+            .key=key
+        };
+        return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<ResponseType>>
+            (dto::Verbs::K23SI_READ, request, *part.preferredEndpoint, 100ms);
+    }
+
+    seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
+    doEnd(dto::Key trh, dto::K23SI_MTR mtr, String cname, bool isCommit, std::vector<dto::Key> wkeys) {
+        K2DEBUG("key=" << trh << ",partition hash=" << trh.partitionHash())
+        auto& part = _pgetter.getPartitionForKey(trh);
+        dto::K23SITxnEndRequest request;
+        request.pvid = part.partition->pvid;
+        request.collectionName = cname;
+        request.mtr = mtr;
+        request.key = trh;
+        request.action = isCommit ? dto::EndAction::Commit : dto::EndAction::Abort;
+        request.writeKeys = wkeys;
+        return RPC().callRPC<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(dto::Verbs::K23SI_TXN_END, request, *part.preferredEndpoint, 100ms);
+    }
 public: // tests
 
 seastar::future<> runScenarioUnassignedNodes() {
@@ -132,27 +185,11 @@ seastar::future<> runScenario01() {
     K2INFO("Scenario 01: empty node");
     return seastar::make_ready_future()
     .then([this] {
-        dto::Partition* part = _pgetter.getPartitionForKey(dto::Key{.partitionKey="Key1", .rangeKey="rKey1"}).partition;
-        // read wrong collection
-        dto::K23SIReadRequest request {
-            .pvid = part->pvid,
-            .collectionName = "somebadcoll",
-            .mtr {
-                .txnid = txnids++,
-                .timestamp = dto::Timestamp(100000, 1, 1000),
-                .priority = dto::TxnPriority::Medium
-            },
-            .key{
-                .partitionKey = "key1",
-                .rangeKey = "rkey1"
-            }
-        };
-        return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>
-            (dto::Verbs::K23SI_READ, request, *_k2Endpoints[0], 100ms)
-        .then([](auto&& response) {
-            auto& [status, resp] = response;
-            K2EXPECT(status, Status::S410_Gone());
-        });
+        return doRead<Payload>({"Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
+    })
+    .then([](auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(status, Status::S410_Gone());
     });
     /*
     Scenario 1: empty node:
@@ -227,44 +264,31 @@ cases requiring client to refresh collection pmap
     .then([this] {
         return getTimeNow();
     })
-    .then([this] (dto::Timestamp ts) {
+    .then([this] (dto::Timestamp&& ts) {
         return seastar::do_with(
             dto::K23SI_MTR{
                 .txnid = txnids++,
                 .timestamp = std::move(ts),
                 .priority = dto::TxnPriority::Medium},
             dto::Key{.partitionKey = "Key1", .rangeKey = "rKey1"},
+            dto::Key{.partitionKey = "Key1", .rangeKey = "rKey1"},
             DataRec{.f1="field1", .f2="field2"},
-            [this] (dto::K23SI_MTR& mtr, dto::Key& key, DataRec& rec) {
-                auto& part = _pgetter.getPartitionForKey(key);
-                dto::K23SIWriteRequest<DataRec> request;
-                request.pvid = part.partition->pvid;
-                request.collectionName = collname;
-                request.mtr = mtr;
-                request.trh = key;
-                request.isDelete = false;
-                request.designateTRH=true;
-                request.key=key;
-                request.value.val = rec;
-                return RPC().callRPC<dto::K23SIWriteRequest<DataRec>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms)
-                .then([this, &mtr, &key](auto&& response) {
+            [this] (dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec) {
+                return doWrite<DataRec>(key, rec, mtr, trh, collname, false, true)
+                .then([this, &mtr, &key, &trh](auto&& response) {
                     auto& [status, resp] = response;
                     K2EXPECT(status, dto::K23SIStatus::Created());
-                    // commit
-                    auto& part = _pgetter.getPartitionForKey(key);
-                    dto::K23SITxnEndRequest request;
-                    request.pvid = part.partition->pvid;
-                    request.collectionName = collname;
-                    request.mtr = mtr;
-                    request.key = key;
-                    request.action = dto::EndAction::Commit;
-                    request.writeKeys.push_back(key);
-                    return RPC().callRPC<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(dto::Verbs::K23SI_TXN_END, request, *part.preferredEndpoint, 100ms);
+                    return doEnd(trh, mtr, collname, true, {key});
                 })
-                .then([this, &mtr, &key](auto&& response) {
+                .then([this, &key, &mtr](auto&& response) {
                     auto& [status, resp] = response;
                     K2EXPECT(status, dto::K23SIStatus::OK());
-                    return seastar::sleep(100ms);
+                    return doRead<DataRec>(key, mtr, collname);
+                })
+                .then([&rec](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::OK());
+                    K2EXPECT(resp.value.val, rec);
                 });
         });
     });
@@ -275,15 +299,119 @@ seastar::future<> runScenario03() {
     return seastar::make_ready_future();
 }
 seastar::future<> runScenario04() {
-    K2INFO("Scenario 04");
-    return seastar::make_ready_future();
-}
-seastar::future<> runScenario05() {
-    K2INFO("Scenario 05");
-    return seastar::make_ready_future();
+    K2INFO("Scenario 04: concurrent transactions same keys");
+    return seastar::do_with(
+        dto::K23SI_MTR{},
+        dto::Key{"s04-pkey1", "rkey1"},
+        dto::K23SI_MTR{},
+        dto::Key{"s04-pkey1", "rkey1"},
+        [this](auto& m1, auto& k1, auto& m2, auto& k2) {
+            return getTimeNow()
+                .then([&](dto::Timestamp&& ts) {
+                    m1.txnid = txnids++;
+                    m1.timestamp = ts;
+                    m1.priority = dto::TxnPriority::Medium;
+                    return doWrite<DataRec>(k1, {"fk1", "f2"}, m1, k1, collname, false, true);
+                })
+                .then([&](auto&& result) {
+                    auto& [status, r] = result;
+                    K2EXPECT(status, dto::K23SIStatus::Created());
+                    return getTimeNow();
+                })
+                .then([&](dto::Timestamp&& ts) {
+                    m2.txnid = txnids++;
+                    m2.timestamp = ts;
+                    m2.priority = dto::TxnPriority::Medium;
+                    return doWrite<DataRec>(k2, {"fk2", "f2"}, m2, k2, collname, false, true);
+                })
+                .then([&](auto&& result) {
+                    auto& [status, r] = result;
+                    K2EXPECT(status, dto::K23SIStatus::Created());
+                    return seastar::when_all(doEnd(k1, m1, collname, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
+                })
+                .then([&](auto&& result) mutable {
+                    auto& [r1, r2] = result;
+                    // apparently, have to move these out of the incoming futures since get0() returns an rvalue
+                    auto [status1, result1] = r1.get0();
+                    auto [status2, result2] = r2.get0();
+                    // first txn gets aborted in this scenario since on push, the newer txn wins. The status should not be OK
+                    K2EXPECT(status1, dto::K23SIStatus::OperationNotAllowed());
+                    K2EXPECT(status2, dto::K23SIStatus::OK());
+                    // do end for first txn with Abort
+                    return doEnd(k1, m1, collname, false, {k1});
+                })
+                .then([&](auto&& result) {
+                    auto& [status, resp] = result;
+                    K2EXPECT(status, dto::K23SIStatus::OK());
+
+                    return seastar::when_all(doRead<DataRec>(k1, m1, collname), doRead<DataRec>(k2, m2, collname));
+                })
+                .then([&](auto&& result) mutable {
+                    auto& [r1, r2] = result;
+                    auto [status1, result1] = r1.get0();
+                    auto [status2, result2] = r2.get0();
+                    K2EXPECT(status1, dto::K23SIStatus::KeyNotFound());
+                    K2EXPECT(status2, dto::K23SIStatus::OK());
+                    DataRec d2{"fk2", "f2"};
+                    K2EXPECT(result2.value.val, d2);
+                });
+        });
 }
 
-}; // class K23SITest
+seastar::future<> runScenario05() {
+    K2INFO("Scenario 05: concurrent transactions different keys");
+    return seastar::do_with(
+        dto::K23SI_MTR{},
+        dto::Key{"s05-pkey1", "rkey1"},
+        dto::K23SI_MTR{},
+        dto::Key{"s05-pkey1", "rkey2"},
+        [this](auto& m1, auto& k1, auto& m2, auto& k2) {
+            return getTimeNow()
+                .then([&](dto::Timestamp&& ts) {
+                    m1.txnid = txnids++;
+                    m1.timestamp = ts;
+                    m1.priority = dto::TxnPriority::Medium;
+                    return doWrite<DataRec>(k1, {"fk1","f2"}, m1, k1, collname, false, true);
+                })
+                .then([&](auto&& result) {
+                    auto& [status, r] = result;
+                    K2EXPECT(status, dto::K23SIStatus::Created());
+                    return getTimeNow();
+                })
+                .then([&](dto::Timestamp&& ts) {
+                    m2.txnid = txnids++;
+                    m2.timestamp = ts;
+                    m2.priority = dto::TxnPriority::Medium;
+                    return doWrite<DataRec>(k2, {"fk2", "f2"}, m2, k2, collname, false, true);
+                })
+                .then([&](auto&& result) {
+                    auto& [status, r] = result;
+                    K2EXPECT(status, dto::K23SIStatus::Created());
+                    return seastar::when_all(doEnd(k1, m1, collname, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
+                })
+                .then([&](auto&& result) mutable {
+                    auto& [r1, r2] = result;
+                    auto [status1, result1] = r1.get0();
+                    auto [status2, result2] = r2.get0();
+                    K2EXPECT(status1, dto::K23SIStatus::OK());
+                    K2EXPECT(status2, dto::K23SIStatus::OK());
+                    return seastar::when_all(doRead<DataRec>(k1, m1, collname), doRead<DataRec>(k2, m2, collname));
+                })
+                .then([&](auto&& result) mutable {
+                    auto& [r1, r2] = result;
+                    auto [status1, result1] = r1.get0();
+                    auto [status2, result2] = r2.get0();
+                    K2EXPECT(status1, dto::K23SIStatus::OK());
+                    K2EXPECT(status2, dto::K23SIStatus::OK());
+                    DataRec d1{"fk1", "f2"};
+                    DataRec d2{"fk2", "f2"};
+                    K2EXPECT(result1.value.val, d1);
+                    K2EXPECT(result2.value.val, d2);
+                });
+        });
+}
+
+};  // class K23SITest
 } // ns k2
 
 int main(int argc, char** argv) {

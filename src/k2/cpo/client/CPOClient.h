@@ -90,7 +90,7 @@ public:
         return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *cpo, timeout).then([this, name = request.name, key, deadline, retries](auto&& response) {
             auto& [status, coll_response] = response;
             bool retry = false;
-            K2DEBUG("collection get response received with status: " << status);
+            K2DEBUG("collection get response received with status: " << status << ", for name=["<< name << "]");
             if (status.is2xxOK()) {
                 collections[name] = dto::PartitionGetter(std::move(coll_response.collection));
                 dto::Partition* partition = collections[name].getPartitionForKey(key).partition;
@@ -158,7 +158,7 @@ public:
         }
 
         return f.then([this, deadline, &request, retries](Status&& status) {
-            K2DEBUG("Collection get completed with status: " << status);
+            K2DEBUG("Collection get completed with status: " << status << ", request="<< request);
             auto it = collections.find(request.collectionName);
 
             if (it == collections.end()) {
