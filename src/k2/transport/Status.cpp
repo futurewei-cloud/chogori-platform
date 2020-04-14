@@ -5,6 +5,10 @@ bool Status::operator==(const Status& o) { return code == o.code; }
 
 bool Status::operator!=(const Status& o) { return !(code == o.code); }
 
+Status Status::operator()(String message) const {
+    return Status{this->code, message};
+}
+
 bool Status::is1xxInProgress() const { return code >= 100 && code <= 199; }
 
 bool Status::is2xxOK() const { return code >= 200 && code <= 299; }

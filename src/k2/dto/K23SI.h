@@ -69,13 +69,13 @@ struct K23SIReadResponse {
 
 // status codes for reads
 struct K23SIStatus {
-    static Status KeyNotFound() { return k2::Status::S404_Not_Found();}
-    static Status RefreshCollection() { return k2::Status::S410_Gone();}
-    static Status AbortConflict() { return k2::Status::S409_Conflict();}
-    static Status AbortRequestTooOld() { return k2::Status::S403_Forbidden();}
-    static Status OK() { return k2::Status::S200_OK(); }
-    static Status Created() { return k2::Status::S201_Created(); }
-    static Status OperationNotAllowed() { return k2::Status::S405_Method_Not_Allowed(); }
+    static const inline Status KeyNotFound=k2::Statuses::S404_Not_Found;
+    static const inline Status RefreshCollection=k2::Statuses::S410_Gone;
+    static const inline Status AbortConflict=k2::Statuses::S409_Conflict;
+    static const inline Status AbortRequestTooOld=k2::Statuses::S403_Forbidden;
+    static const inline Status OK=k2::Statuses::S200_OK;
+    static const inline Status Created=k2::Statuses::S201_Created;
+    static const inline Status OperationNotAllowed=k2::Statuses::S405_Method_Not_Allowed;
 };
 
 template <typename ValueType>

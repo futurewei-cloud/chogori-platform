@@ -133,12 +133,12 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                 // parse status
                 auto result = std::make_tuple<Status, Response_t>(Status(), Response_t());
                 if (!responsePayload->read(std::get<0>(result))) {
-                    std::get<0>(result) = Status::S500_Internal_Server_Error("Unable to parse status from response");
+                    std::get<0>(result) = Statuses::S500_Internal_Server_Error("unable to parse status from response");
                 }
                 else {
                     if (!responsePayload->read(std::get<1>(result))) {
                         // failed to parse a Response_t
-                        std::get<0>(result) = Status::S500_Internal_Server_Error("Unable to parse response object");
+                        std::get<0>(result) = Statuses::S500_Internal_Server_Error("unable to parse response object");
                     }
                 }
                 return result;
@@ -148,7 +148,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     std::rethrow_exception(exc);
                 }
                 catch (const RPCDispatcher::RequestTimeoutException&) {
-                    return std::make_tuple<Status, Response_t>(Status::S503_Service_Unavailable(), Response_t());
+                    return std::make_tuple<Status, Response_t>(Statuses::S503_Service_Unavailable("client timed out"), Response_t());
                 }
                 catch (const std::exception &e) {
                     K2ERROR("RPC send failed with uncaught exception: " << e.what());
@@ -157,7 +157,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     K2ERROR("RPC send failed with unknown exception");
                 }
 
-                return std::make_tuple<Status, Response_t>(Status::S500_Internal_Server_Error(), Response_t());
+                return std::make_tuple<Status, Response_t>(Statuses::S500_Internal_Server_Error("unknown exception while sending request"), Response_t());
             });
     }
 
@@ -175,7 +175,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
 
                     if (!request.payload->read(rpcRequest)) {
                         auto reply = request.endpoint.newPayload();
-                        reply->write(Status::S400_Bad_Request("Unable to parse incoming request"));
+                        reply->write(Statuses::S400_Bad_Request("unable to parse incoming request"));
                         disp->sendReply(std::move(reply), request);
                         return seastar::make_ready_future();
                     }
@@ -199,7 +199,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                             K2ERROR_EXC("RPC handler failed with uncaught exception", exc);
                             if (disp) {
                                 auto reply = request.endpoint.newPayload();
-                                reply->write(Status::S500_Internal_Server_Error());
+                                reply->write(Statuses::S500_Internal_Server_Error("server caught exception processing request"));
                                 reply->write(Response_t{});
                                 disp->sendReply(std::move(reply), request);
                             }
