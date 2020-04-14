@@ -128,6 +128,7 @@ struct K23SITxnHeartbeatResponse {
 };
 
 struct K23SI_PersistenceRequest {
+    int tmp;
     K2_PAYLOAD_COPYABLE;
 };
 

@@ -259,6 +259,9 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
     (void) GetTimestampBatch(batchSizeToRequest)
         .then([this, triggeredTime = requestLocalTime](TimestampBatch&& newBatch) {
             ProcessReturnedBatch(std::move(newBatch), triggeredTime);
+        }).handle_exception([] (auto exc) {
+            (void) exc;
+            K2INFO("Failed to get timestamp batch");
         });
 
     //K2INFO("Request new Batch for this  TS.");
@@ -395,7 +398,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
 
         if (batchSizeToRequest > 0)
         {
-	    K2INFO("Need to request more batch due to unfulfilled pending client requests, count:" << batchSizeToRequest); 
+	        K2DEBUG("Need to request more batch due to unfulfilled pending client requests, count:" << batchSizeToRequest); 
             // TODO: get config from appBase and use max batch size, default 32
             batchSizeToRequest = std::min(batchSizeToRequest, (uint16_t)32);
 
@@ -410,6 +413,9 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
             (void) GetTimestampBatch(batchSizeToRequest)
                 .then([this, triggeredTime = curTime](TimestampBatch newBatch) {
                     ProcessReturnedBatch(newBatch, triggeredTime);
+            }).handle_exception([] (auto exc) {
+                (void) exc;
+                K2INFO("Failed to get timestamp batch");
             });
         }
     }

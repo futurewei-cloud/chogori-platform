@@ -53,6 +53,10 @@ public:
         .then([this] (K2TxnHandle&& txn) {
             _txn = K2TxnHandle(std::move(txn));
             return runWithTxn();
+        }).handle_exception([] (auto exc) {
+            (void) exc;
+            K2INFO("Failed to start txn");
+            return make_ready_future<bool>(false);
         });
     }
 
@@ -79,7 +83,15 @@ private:
             K2DEBUG("Payment txn finished");
 
             return _txn.end(true);
-        }).then([this] (EndResult&& result) {
+        }).then_wrapped([this] (auto&& fut) {
+            if (fut.failed()) {
+                _failed = true;
+                fut.ignore_ready_future();
+                return make_ready_future<bool>(false);
+            }
+            
+            EndResult result = fut.get0();
+
             if (result.status.is2xxOK() && ! _failed) {
                 return make_ready_future<bool>(true);
             }
@@ -171,6 +183,10 @@ public:
         .then([this] (K2TxnHandle&& txn) {
             _txn = K2TxnHandle(std::move(txn));
             return runWithTxn();
+        }).handle_exception([] (auto exc) {
+            (void) exc;
+            K2INFO("Failed to start txn");
+            return make_ready_future<bool>(false);
         });
     }
 
@@ -218,7 +234,7 @@ private:
                     if (result.status == dto::K23SIStatus::KeyNotFound) {
                         return make_exception_future<Item>(std::runtime_error("Bad ItemID"));
                     } else if (!result.status.is2xxOK()) {
-                        K2WARN("Bad read status: " << result.status);
+                        K2DEBUG("Bad read status: " << result.status);
                         return make_exception_future<Item>(std::runtime_error("Bad read status"));
                     }
 
@@ -228,7 +244,7 @@ private:
                     return _txn.read<Stock::Data>(Stock::getKey(supply_id, item.ItemID), "TPCC")
                     .then([item, supply_id] (auto&& result) {
                         if (!result.status.is2xxOK()) {
-                            K2WARN("Bad read status: " << result.status);
+                            K2DEBUG("Bad read status: " << result.status);
                             return make_exception_future<std::pair<Item, Stock>>(std::runtime_error("Bad read status"));
                         }
                         return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), Stock(result.getValue(), supply_id, item.ItemID)));
@@ -265,7 +281,15 @@ private:
             K2DEBUG("NewOrder _total_amount: " << _total_amount);
 
             return _txn.end(true);
-        }).then([this] (EndResult&& result) {
+        }).then_wrapped([this] (auto&& fut) {
+            if (fut.failed()) {
+                _failed = true;
+                fut.ignore_ready_future();
+                return make_ready_future<bool>(false);
+            }
+            
+            EndResult result = fut.get0();
+
             if (result.status.is2xxOK() && ! _failed) {
                 return make_ready_future<bool>(true);
             }

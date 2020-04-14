@@ -107,13 +107,15 @@ private:
             .then([this] {
                 K2INFO("Starting item data load");
                 _item_loader = DataLoader(generateItemData());
-                return _item_loader.loadData(_client, 32);
+                return _item_loader.loadData(_client, 2);
             });
+        } else {
+            f = f.then([] { return seastar::sleep(2s); });
         }
 
         return f.then ([this] {
             K2INFO("Starting load to server");
-            return _loader.loadData(_client, 32);
+            return _loader.loadData(_client, 2);
         }).then ([this] {
             K2INFO("Data load done");
         });
@@ -223,7 +225,9 @@ int main(int argc, char** argv) {;
         ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
         ("clients_per_core", bpo::value<int>()->default_value(1), "Number of concurrent TPC-C clients per core")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
-        ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals");
+        ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
+        ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
 
     app.addApplet<k2::TSO_ClientLib>(0s);
     app.addApplet<Client>(seastar::ref(app));
