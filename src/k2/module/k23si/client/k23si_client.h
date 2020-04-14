@@ -84,7 +84,7 @@ public:
     ConfigVar<std::string> _cpo{"cpo"};
     ConfigDuration create_collection_deadline{"create_collection_deadline", 1s};
     ConfigDuration retention_window{"retention_window", 600s};
-    ConfigDuration txn_end_deadline{"txn_end_deadline", 200ms};
+    ConfigDuration txn_end_deadline{"txn_end_deadline", 60s};
 
     uint64_t read_ops{0};
     uint64_t write_ops{0};
@@ -110,7 +110,7 @@ public:
     K2TxnHandle() = default;
     K2TxnHandle(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
-    K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d) noexcept;
+    K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
     template <typename ValueType>
     seastar::future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
@@ -201,6 +201,7 @@ private:
     bool _failed;
     Status _failed_status;
     Duration _txn_end_deadline;
+    TimePoint _start_time;
 
     std::unique_ptr<seastar::timer<>> _heartbeat_timer{nullptr};
     seastar::future<> _heartbeat_future{seastar::make_ready_future<>()};

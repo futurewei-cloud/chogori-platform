@@ -8,9 +8,9 @@
 
 namespace k2 {
 
-K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d) noexcept :
+K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept :
     _mtr(std::move(mtr)), _deadline(deadline), _cpo_client(cpo), _client(client), _started(true), 
-    _failed(false), _failed_status(Status::S200_OK()), _txn_end_deadline(d)
+    _failed(false), _failed_status(Status::S200_OK()), _txn_end_deadline(d), _start_time(start_time)
 {}
 
 
@@ -28,7 +28,7 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
 
     if (status == dto::K23SIStatus::AbortRequestTooOld()) {
         _client->abort_too_old++;
-        K2WARN("Abort: txn too old: " << _mtr);
+        K2DEBUG("Abort: txn too old: " << _mtr);
     }
 }
 
@@ -54,6 +54,9 @@ void K2TxnHandle::makeHeartbeatTimer() {
         (Deadline<>(deadline), *request).then([this] (auto&& response) {
             auto& [status, k2response] = response;
             checkResponseStatus(status);
+            if (_failed) {
+                _heartbeat_timer->cancel();
+            }
         }).finally([request] () { delete request; });
     });
 
@@ -72,7 +75,9 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         return seastar::make_ready_future<EndResult>(EndResult(Status::S200_OK()));
     }
 
-    _heartbeat_timer->cancel();
+    if (_heartbeat_timer) {
+        _heartbeat_timer->cancel();
+    }
 
     auto* request  = new dto::K23SITxnEndRequest {
         dto::Partition::PVID(), // Will be filled in by PartitionRequest
@@ -90,10 +95,20 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             auto& [status, k2response] = response;
             if (status.is2xxOK() && !_failed) {
                 _client->successful_txns++;
+            } else if (!status.is2xxOK()){
+                K2INFO("TxnEndRequest failed: " << status);
             }
 
-            // TODO min transaction time
-            return _heartbeat_future.then([s=std::move(status)] () {
+            return _heartbeat_future.then([this, s=std::move(status)] () {
+                // TODO get min transaction time from TSO client
+                auto time_spent = Clock::now() - _start_time;
+                if (time_spent < 10us) {
+                    auto sleep = 10us - time_spent;
+                    return seastar::sleep(sleep).then([s=std::move(s)] () {
+                        return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
+                    });
+                }
+
                 return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
             });
         }).finally([request] () { delete request; });
@@ -147,8 +162,9 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection) {
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
-    return _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(Clock::now())
-    .then([this, options] (auto&& timestamp) {
+    auto start_time = Clock::now();
+    return _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(start_time)
+    .then([this, start_time, options] (auto&& timestamp) {
         dto::K23SI_MTR mtr{
             _rnd(_gen),
             std::move(timestamp),
@@ -156,7 +172,7 @@ seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) 
         };
 
         total_txns++;
-        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), options.deadline, &_cpo_client, this, txn_end_deadline()));
+        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), options.deadline, &_cpo_client, this, txn_end_deadline(), start_time));
     });
 }
 
