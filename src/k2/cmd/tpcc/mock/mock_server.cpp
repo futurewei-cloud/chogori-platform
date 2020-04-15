@@ -57,7 +57,7 @@ public:  // application lifespan
                 K2INFO("Wrote " << total / 1024.0 << " KB");
                 K2INFO(_data.size() << " records in _data, load factor: " << _data.load_factor());
             }
-            return RPCResponse(Status::S200_OK(), std::move(response));
+            return RPCResponse(Statuses::S200_OK("put accepted"), std::move(response));
         });
 
         RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
@@ -70,19 +70,19 @@ public:  // application lifespan
             if (iter != _data.end()) {
                 response.value.val = iter->second.share();
             }
-            return RPCResponse(iter != _data.end() ? Status::S200_OK() : Status::S404_Not_Found(), std::move(response));
+            return RPCResponse(iter != _data.end() ? Statuses::S200_OK("get accepted") : Statuses::S404_Not_Found("get did not find key"), std::move(response));
         });
 
         RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(dto::Verbs::K23SI_TXN_END,
         [this] (dto::K23SITxnEndRequest&& request) {
             (void) request;
-            return RPCResponse(Status::S200_OK(), dto::K23SITxnEndResponse());
+            return RPCResponse(Statuses::S200_OK("txn end accepted"), dto::K23SITxnEndResponse());
         });
 
         RPC().registerRPCObserver<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>(dto::Verbs::K23SI_TXN_HEARTBEAT,
         [this] (dto::K23SITxnHeartbeatRequest&& request) {
             (void) request;
-            return RPCResponse(Status::S200_OK(), dto::K23SITxnHeartbeatResponse());
+            return RPCResponse(Statuses::S200_OK("hb received"), dto::K23SITxnHeartbeatResponse());
         });
 
         RPC().registerRPCObserver<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>(dto::Verbs::K2_ASSIGNMENT_CREATE,
@@ -96,7 +96,7 @@ public:  // application lifespan
             dto::AssignmentCreateResponse response{.assignedPartition = std::move(request.partition)};
             response.assignedPartition.astate = dto::AssignmentState::Assigned;
 
-            return RPCResponse(Status::S200_OK(), std::move(response));
+            return RPCResponse(Statuses::S200_OK("assignment accepted"), std::move(response));
         });
 
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {

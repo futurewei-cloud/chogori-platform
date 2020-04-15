@@ -7,24 +7,24 @@
 namespace k2 {
 
 K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d) noexcept :
-    _mtr(std::move(mtr)), _deadline(deadline), _cpo_client(cpo), _client(client), _started(true), 
-    _failed(false), _failed_status(Status::S200_OK()), _txn_end_deadline(d)
+    _mtr(std::move(mtr)), _deadline(deadline), _cpo_client(cpo), _client(client), _started(true),
+    _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d)
 {}
 
 
 void K2TxnHandle::checkResponseStatus(Status& status) {
-    if (status == dto::K23SIStatus::AbortConflict() || 
-        status == dto::K23SIStatus::AbortRequestTooOld() ||
-        status == dto::K23SIStatus::OperationNotAllowed()) {
+    if (status == dto::K23SIStatus::AbortConflict ||
+        status == dto::K23SIStatus::AbortRequestTooOld ||
+        status == dto::K23SIStatus::OperationNotAllowed) {
         _failed = true;
         _failed_status = status;
     }
 
-    if (status == dto::K23SIStatus::AbortConflict()) {
+    if (status == dto::K23SIStatus::AbortConflict) {
         _client->abort_conflicts++;
     }
 
-    if (status == dto::K23SIStatus::AbortRequestTooOld()) {
+    if (status == dto::K23SIStatus::AbortRequestTooOld) {
         _client->abort_too_old++;
         K2WARN("Abort: txn too old: " << _mtr);
     }
@@ -67,7 +67,7 @@ void K2TxnHandle::makeHeartbeatTimer() {
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     if (!_write_set.size()) {
         _client->successful_txns++;
-        return seastar::make_ready_future<EndResult>(EndResult(Status::S200_OK()));
+        return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
     }
 
     _heartbeat_timer->cancel();

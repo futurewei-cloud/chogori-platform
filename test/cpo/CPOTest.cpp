@@ -63,7 +63,7 @@ seastar::future<> CPOTest::runTest1() {
     .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms)
     .then([](auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Status::S404_Not_Found());
+        K2EXPECT(status, Statuses::S404_Not_Found);
     });
 }
 
@@ -87,7 +87,7 @@ seastar::future<> CPOTest::runTest2() {
     .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
     .then([](auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Status::S201_Created());
+        K2EXPECT(status, Statuses::S201_Created);
     });
 }
 
@@ -110,7 +110,7 @@ seastar::future<> CPOTest::runTest3() {
         .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
         .then([](auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Status::S403_Forbidden());
+            K2EXPECT(status, Statuses::S403_Forbidden);
         });
 }
 
@@ -121,7 +121,7 @@ seastar::future<> CPOTest::runTest4() {
         .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Status::S200_OK());
+            K2EXPECT(status, Statuses::S200_OK);
             auto& md = resp.collection.metadata;
             K2EXPECT(md.name, "collection2");
             K2EXPECT(md.hashScheme, dto::HashScheme::HashCRC32C);
@@ -155,7 +155,7 @@ seastar::future<> CPOTest::runTest5() {
         .then([](auto&& response) {
             // create the collection
             auto& [status, resp] = response;
-            K2EXPECT(status, Status::S201_Created());
+            K2EXPECT(status, Statuses::S201_Created);
         })
         .then([] {
             // wait for collection to get assigned
@@ -169,7 +169,7 @@ seastar::future<> CPOTest::runTest5() {
         })
         .then([this](auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Status::S200_OK());
+            K2EXPECT(status, Statuses::S200_OK);
             K2EXPECT(resp.collection.metadata.name, "collectionAssign");
             K2EXPECT(resp.collection.metadata.hashScheme, dto::HashScheme::HashCRC32C);
             K2EXPECT(resp.collection.metadata.storageDriver, dto::StorageDriver::K23SI);

@@ -370,7 +370,7 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
             (deadline, request, _config.finalizeRetries())
             .then([&request](auto&& responsePair) {
                 auto& [status, response] = responsePair;
-                if (status != dto::K23SIStatus::OK()) {
+                if (!status.is2xxOK()) {
                     K2ERROR("Finalize request did not succeed for " << request << ", status=" << status);
                     return seastar::make_exception_future<>(TxnManager::ServerError());
                 }
