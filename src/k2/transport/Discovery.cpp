@@ -31,7 +31,7 @@ seastar::future<> Discovery::start() {
                 response.endpoints.push_back(serverEndpoint->getURL());
             }
         }
-        return RPCResponse(Status::S200_OK(), std::move(response));
+        return RPCResponse(Statuses::S200_OK("list endpoints success"), std::move(response));
     });
 
     return seastar::make_ready_future();

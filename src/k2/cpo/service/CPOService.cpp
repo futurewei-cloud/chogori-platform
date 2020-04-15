@@ -56,7 +56,7 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     K2INFO("Received collection create request for " << request.metadata.name);
     auto cpath = _getCollectionPath(request.metadata.name);
     if (fileutil::fileExists(cpath)) {
-        return RPCResponse(Status::S403_Forbidden("Collection already exists"), dto::CollectionCreateResponse());
+        return RPCResponse(Statuses::S403_Forbidden("collection already exists"), dto::CollectionCreateResponse());
     }
     request.metadata.heartbeatDeadline = _collectionHeartbeatDeadline();
     // create a collection from the incoming request
@@ -182,15 +182,15 @@ std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
     std::tuple<Status, dto::Collection> result;
     Payload p;
     if (!fileutil::readFile(p, cpath)) {
-        std::get<0>(result) = Status::S404_Not_Found("Collection not found");
+        std::get<0>(result) = Statuses::S404_Not_Found("collection not found");
         return result;
     }
     if (!p.read(std::get<1>(result))) {
-        std::get<0>(result) = Status::S500_Internal_Server_Error("Unable to read collection data");
+        std::get<0>(result) = Statuses::S500_Internal_Server_Error("unable to read collection data");
         return result;
     };
     K2INFO("Found collection in: " << cpath);
-    std::get<0>(result) = Status::S200_OK();
+    std::get<0>(result) = Statuses::S200_OK("collection found");
     return result;
 }
 
@@ -199,11 +199,11 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
     Payload p([] { return Binary(4096); });
     p.write(collection);
     if (!fileutil::writeFile(std::move(p), cpath)) {
-        return Status::S500_Internal_Server_Error("Unable to write collection data");
+        return Statuses::S500_Internal_Server_Error("unable to write collection data");
     }
 
     K2DEBUG("saved collection: " << cpath);
-    return Status::S201_Created();
+    return Statuses::S201_Created("collection created");
 }
 
 } // namespace k2

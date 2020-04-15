@@ -84,7 +84,7 @@ public:
     typedef SharedPtr<IOResultT> Ptr;
     typedef std::function<void(const Ptr&)> CallbackT;
 protected:
-    Status _status = Status::S102_Processing("IO result is not available since it's still running");
+    Status _status = Statuses::S102_Processing("IO result is not available since it's still running");
     bool _finished = false;
     CallbackT _callback;
 
@@ -103,7 +103,7 @@ protected:
 public:
     void cancel()
     {
-        setResult(Status::S410_Gone("IO operation was canceled"));
+        setResult(Statuses::S410_Gone("IO operation was canceled"));
     }
 
     Status getStatus()

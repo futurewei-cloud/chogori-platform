@@ -39,7 +39,7 @@ public:
         return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *cpo, timeout).then([this, name = request.metadata.name, deadline](auto&& response) {
             auto& [status, k2response] = response;
 
-            if (status == Status::S403_Forbidden() || status.is2xxOK()) {
+            if (status == Statuses::S403_Forbidden || status.is2xxOK()) {
                 Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
                 return seastar::sleep(s).then([this, name, deadline]() -> seastar::future<Status> {
                     return GetAssignedPartitionWithRetry(deadline, name, dto::Key{.partitionKey = "", .rangeKey = ""});
@@ -72,7 +72,7 @@ public:
                 K2WARN("retry failed with status: " << status);
 
                 if (!retries) {
-                    status = Status::S408_Request_Timeout("Retries exceeded");
+                    status = Statuses::S408_Request_Timeout("get assigned partition retries exceeded");
                     return seastar::make_ready_future<Status>(std::move(status));
                 }
 
@@ -111,20 +111,20 @@ public:
             }
 
             if (status.is2xxOK() && retry && !retries) {
-                status = Status::S503_Service_Unavailable("Not all partitions assigned");
+                status = Statuses::S503_Service_Unavailable("not all partitions assigned in cpo");
                 FulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (deadline.isOver()) {
-                status = Status::S408_Request_Timeout("Deadline exceeded");
+                status = Statuses::S408_Request_Timeout("cpo deadline exceeded");
                 FulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (!retries) {
                 FulfillWaiters(name, status);
-                status = Status::S408_Request_Timeout("Retries exceeded");
+                status = Statuses::S408_Request_Timeout("cpo retries exceeded");
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
@@ -143,7 +143,7 @@ public:
     seastar::future<std::tuple<Status, ResponseT>> PartitionRequest(Deadline<ClockT> deadline, RequestT& request, uint8_t retries=1) {
         K2DEBUG("making partition request with deadline=" << deadline.getRemaining());
         // If collection is not in cache or partition is not assigned, get collection first
-        seastar::future<Status> f = seastar::make_ready_future<Status>(Status::S200_OK());
+        seastar::future<Status> f = seastar::make_ready_future<Status>(Statuses::S200_OK("default cached response"));
         auto it = collections.find(request.collectionName);
         if (it == collections.end()) {
             K2DEBUG("Collection not found");
@@ -172,7 +172,7 @@ public:
             if (!partition.partition || partition.partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
                 K2DEBUG("Failed to get assigned partition");
-                return RPCResponse(Status::S503_Service_Unavailable("Partition not assigned"), ResponseT());
+                return RPCResponse(Statuses::S503_Service_Unavailable("partition not assigned"), ResponseT());
             }
 
             Duration timeout = std::min(deadline.getRemaining(), partition_request_timeout());
@@ -186,19 +186,19 @@ public:
                 K2DEBUG("partition call completed with status " << status);
 
                 // Success or unrecoverable error
-                if (status != Status::S410_Gone() && !status.is5xxRetryable()) {
+                if (status != Statuses::S410_Gone("") && !status.is5xxRetryable()) {
                     return RPCResponse(std::move(status), std::move(k2response));
                 }
 
                 if (deadline.isOver()) {
                     K2DEBUG("Deadline exceeded");
-                    status = Status::S408_Request_Timeout("Deadline exceeded");
+                    status = Statuses::S408_Request_Timeout("partition deadline exceeded");
                     return RPCResponse(std::move(status), ResponseT());
                 }
 
                 if (retries == 0) {
                     K2DEBUG("Retries exceeded, status: " << status);
-                    return RPCResponse(Status::S408_Request_Timeout("Retries exceeded"), ResponseT());
+                    return RPCResponse(Statuses::S408_Request_Timeout("partition retries exceeded"), ResponseT());
                 }
 
                 // S410_Gone (refresh partition map) or retryable error

@@ -42,7 +42,7 @@ public:
         }
 
         _amount = random.UniformRandom(100, 500000) / 100.0f;
-        
+
         _failed = false;
     }
 
@@ -216,7 +216,7 @@ private:
             future<> line_updates = parallel_for_each(_lines.begin(), _lines.end(), [this] (OrderLine& line) {
                 return _txn.read<Item::Data>(Item::getKey(line.data.ItemID), "TPCC")
                 .then([this, i_id=line.data.ItemID] (auto&& result) {
-                    if (result.status == Status::S404_Not_Found()) {
+                    if (result.status == dto::K23SIStatus::KeyNotFound) {
                         return make_exception_future<Item>(std::runtime_error("Bad ItemID"));
                     } else if (!result.status.is2xxOK()) {
                         K2WARN("Bad read status: " << result.status);
