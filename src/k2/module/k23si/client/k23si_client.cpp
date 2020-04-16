@@ -9,7 +9,7 @@ namespace k2 {
 
 K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept :
     _mtr(std::move(mtr)), _deadline(deadline), _cpo_client(cpo), _client(client), _started(true), 
-    _failed(false), _failed_status(Status::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time)
+    _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time)
 {}
 
 
