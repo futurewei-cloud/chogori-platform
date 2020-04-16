@@ -54,8 +54,7 @@ public:
             _txn = K2TxnHandle(std::move(txn));
             return runWithTxn();
         }).handle_exception([] (auto exc) {
-            (void) exc;
-            K2INFO("Failed to start txn");
+            K2WARN_EXC("Failed to start txn: ", exc);
             return make_ready_future<bool>(false);
         });
     }
@@ -184,8 +183,7 @@ public:
             _txn = K2TxnHandle(std::move(txn));
             return runWithTxn();
         }).handle_exception([] (auto exc) {
-            (void) exc;
-            K2INFO("Failed to start txn");
+            K2WARN_EXC("Failed to start txn: ", exc);
             return make_ready_future<bool>(false);
         });
     }

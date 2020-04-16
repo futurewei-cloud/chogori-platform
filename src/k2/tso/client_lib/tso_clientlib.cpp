@@ -164,7 +164,7 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
             // if obsolete, remove it and retry issuing timestamp from next batch at front.
             if (headBatch.ExpirationTime() < requestLocalTime)
             {
-		K2INFO("Detected and discarded existing obsolete batch when issuing TS. headBatch.ExpirationTime() < requestLocalTime.");
+                K2WARN("Detected and discarded existing obsolete batch when issuing TS. headBatch.ExpirationTime() < requestLocalTime.");
                 _timestampBatchQue.pop_front();
                 continue;
             }
@@ -172,7 +172,7 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
             // we are here means that the headBatch has timestamp ready to issue
             Timestamp result = TimestampBatch::GenerateTimeStampFromBatch(headBatch._batch, headBatch._usedCount);
             headBatch._usedCount++;
-	    K2INFO("Issued TS from existing batch.");
+            K2DEBUG("Issued TS from existing batch.");
             // update _lastIssuedBatchTriggeredTime
             _lastIssuedBatchTriggeredTime = _lastIssuedBatchTriggeredTime < headBatch._triggeredTime ? headBatch._triggeredTime : _lastIssuedBatchTriggeredTime;
             // remove the batch if used up.
@@ -242,8 +242,8 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
         if (canPiggyBack)
         {
             curRequest._triggeredBatchRequest = false; // no op, just for readability
-             _pendingClientRequests.push_back(std::move(curRequest));
-	    //K2INFO("Piggy Back on outgoing batch.");
+            _pendingClientRequests.push_back(std::move(curRequest));
+            K2DEBUG("Piggy Back on outgoing batch.");
             return _pendingClientRequests.back()._promise->get_future();
         }
     }
@@ -260,11 +260,10 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
         .then([this, triggeredTime = requestLocalTime](TimestampBatch&& newBatch) {
             ProcessReturnedBatch(std::move(newBatch), triggeredTime);
         }).handle_exception([] (auto exc) {
-            (void) exc;
-            K2INFO("Failed to get timestamp batch");
+            K2ERROR_EXC("GetTimestampBatch failed: ", exc);
         });
 
-    //K2INFO("Request new Batch for this  TS.");
+    K2DEBUG("Request new Batch for this  TS.");
 
     curRequest._triggeredBatchRequest = true;
     _pendingClientRequests.push_back(std::move(curRequest));
@@ -288,7 +287,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
     if (batchTriggeredTime < _lastIssuedBatchTriggeredTime)
     {
         //TODO: log more detailed infor
-        K2INFO("TimestampBatch comes in out of order, discarded");
+        K2WARN("TimestampBatch comes in out of order, discarded");
         return;
     }
     bool hasPendingCR= !_pendingClientRequests.empty();
@@ -296,7 +295,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
     if(batchTriggeredTime.time_since_epoch().count() + batch.TTLNanoSec < minTimePointBar.time_since_epoch().count())
     {
         //TODO: log more detailed infor
-        K2INFO("TimestampBatch comes in late, discarded. hasPendingClientRequest:" << (hasPendingCR ? "TRUE" : "FALSE"));
+        K2WARN("TimestampBatch comes in late, discarded. hasPendingClientRequest:" << (hasPendingCR ? "TRUE" : "FALSE"));
         return;
     }
 
@@ -313,7 +312,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         ite->ExpirationTime() < minTimePointBar)
     {
         K2ASSERT(ite->_usedCount < ite->_batch.TSCount, "we should not have used-up batch still kept around!");
-	K2INFO("Discard existing obosolete available Front batch.");
+        K2DEBUG("Discard existing obosolete available Front batch.");
 
         _timestampBatchQue.pop_front();
         ite = _timestampBatchQue.begin();
@@ -324,7 +323,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         !ite->_isAvailable &&
         ite->_triggeredTime < batchTriggeredTime)
     {
-	K2INFO("Discard existing unavailable older Front batch.");
+        K2DEBUG("Discard existing unavailable older Front batch.");
         _timestampBatchQue.pop_front();
         ite = _timestampBatchQue.begin();
     }
@@ -367,12 +366,12 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         while (batchInfo._usedCount < batchInfo._batch.TSCount && !_pendingClientRequests.empty())
         {
             if(batchInfo.ExpirationTime() < _pendingClientRequests.front()._requestTime) {
-		// K2INFO("Skipping an existing obsolete batch.");
+                K2DEBUG("Skipping an existing obsolete batch.");
                 break;
             }
  
             _pendingClientRequests.front()._promise->set_value(TimestampBatch::GenerateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
-            _pendingClientRequests.pop_front();  // Is it safe to pop immediate? Seastar will keep track of futures?
+            _pendingClientRequests.pop_front();
             batchInfo._usedCount++;       
         }
         
@@ -414,8 +413,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
                 .then([this, triggeredTime = curTime](TimestampBatch newBatch) {
                     ProcessReturnedBatch(newBatch, triggeredTime);
             }).handle_exception([] (auto exc) {
-                (void) exc;
-                K2INFO("Failed to get timestamp batch");
+                K2ERROR_EXC("GetTimestampBatch failed: ", exc);
             });
         }
     }
@@ -440,8 +438,7 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
 
             K2ASSERT(!_curTSOServerWorkerEndPoints.empty(), "we should have workers");
             // pick next worker (effecitvely random one, as _curTSOServerWorkerEndPoints is shuffled already when it is populated)
-            //int randWorker = (_curWorkerIdx++) %  _curTSOServerWorkerEndPoints.size();
-            int randWorker = 0;
+            int randWorker = (_curWorkerIdx++) %  _curTSOServerWorkerEndPoints.size();
 
             auto myRemote = _curTSOServerWorkerEndPoints[randWorker];
             std::unique_ptr<Payload> payload = myRemote.newPayload();

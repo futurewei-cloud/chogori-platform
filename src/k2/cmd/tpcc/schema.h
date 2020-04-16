@@ -303,7 +303,7 @@ seastar::future<k2::WriteResult> writeRow<NewOrder>(const NewOrder& row, k2::K2T
 
     return txn.write(std::move(key), "TPCC", 0).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
-            K2INFO("writeRow failed!");
+            K2INFO("writeRow failed: " << result.status);
             return seastar::make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
         }
 

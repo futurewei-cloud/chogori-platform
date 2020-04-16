@@ -19,6 +19,7 @@
 #include <k2/dto/Collection.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
+#include <k2/tso/client_lib/tso_clientlib.h>
 
 namespace k2 {
 
@@ -72,7 +73,7 @@ class K23SIClient {
 public:
     K23SIClient(k2::App& baseApp, const K23SIClientConfig &);
 private:
-k2::App& _baseApp;
+k2::TSO_ClientLib& _tsoClient;
 public:
 
     seastar::future<> start();
@@ -80,8 +81,8 @@ public:
     seastar::future<Status> makeCollection(const String& collection);
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
 
-    ConfigVar<std::vector<std::string>> _tcpRemotes{"tcp_remotes"};
-    ConfigVar<std::string> _cpo{"cpo"};
+    ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
+    ConfigVar<String> _cpo{"cpo"};
     ConfigDuration create_collection_deadline{"create_collection_deadline", 1s};
     ConfigDuration retention_window{"retention_window", 600s};
     ConfigDuration txn_end_deadline{"txn_end_deadline", 60s};

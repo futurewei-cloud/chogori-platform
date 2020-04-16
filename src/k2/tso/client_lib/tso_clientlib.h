@@ -46,7 +46,7 @@ private:
     // process returned batch from TSO server
     void ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTriggeredTime);
 
-    ConfigVar<std::string> TSOServerURL{"tso_endpoint"};
+    ConfigVar<k2::String> TSOServerURL{"tso_endpoint"};
 
     bool _stopped{false};
 

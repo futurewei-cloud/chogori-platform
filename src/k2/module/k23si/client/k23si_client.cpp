@@ -4,7 +4,6 @@
 
 #include "k23si_client.h"
 
-#include <k2/tso/client_lib/tso_clientlib.h>
 
 namespace k2 {
 
@@ -28,7 +27,7 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
 
     if (status == dto::K23SIStatus::AbortRequestTooOld) {
         _client->abort_too_old++;
-        K2DEBUG("Abort: txn too old: " << _mtr);
+        K2WARN("Abort: txn too old: " << _mtr);
     }
 }
 
@@ -119,7 +118,7 @@ seastar::future<WriteResult> K2TxnHandle::erase(dto::Key key, const String& coll
 }
 
 K23SIClient::K23SIClient(k2::App& baseApp, const K23SIClientConfig &) : 
-        _baseApp(baseApp), _gen(std::random_device()()) {
+        _tsoClient(baseApp.getDist<k2::TSO_ClientLib>().local()), _gen(std::random_device()()) {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
     _metric_groups.add_group("K23SI_client", {
@@ -163,7 +162,7 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection) {
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
     auto start_time = Clock::now();
-    return _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(start_time)
+    return _tsoClient.GetTimestampFromTSO(start_time)
     .then([this, start_time, options] (auto&& timestamp) {
         dto::K23SI_MTR mtr{
             _rnd(_gen),

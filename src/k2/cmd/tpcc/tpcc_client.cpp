@@ -22,7 +22,6 @@ using namespace k2;
 class Client {
 public:  // application lifespan
     Client(k2::App& baseApp):
-        _baseApp(baseApp),
         _client(K23SIClient(baseApp, K23SIClientConfig())),
         _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _stopped(true),
@@ -189,7 +188,6 @@ private:
     }
 
 private:
-    App& _baseApp;
     K23SIClient _client;
     k2::Duration _testDuration;
     bool _stopped;
@@ -218,9 +216,9 @@ private:
 int main(int argc, char** argv) {;
     k2::App app;
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("cpo", bpo::value<std::string>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("tso_endpoint", bpo::value<std::string>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
         ("clients_per_core", bpo::value<int>()->default_value(1), "Number of concurrent TPC-C clients per core")
