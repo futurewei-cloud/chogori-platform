@@ -9,6 +9,7 @@
 #include <k2/appbase/AppEssentials.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
+#include <k2/tso/client_lib/tso_clientlib.h>
 #include <seastar/core/sleep.hh>
 
 #include "schema.h"
@@ -20,8 +21,8 @@ using namespace k2;
 
 class Client {
 public:  // application lifespan
-    Client():
-        _client(K23SIClient(K23SIClientConfig())),
+    Client(k2::App& baseApp):
+        _client(K23SIClient(baseApp, K23SIClientConfig())),
         _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _stopped(true),
         _timer(seastar::timer<>([this] {
@@ -71,7 +72,7 @@ public:  // application lifespan
         });
         registerMetrics();
 
-        return _benchmark()
+        return _client.start().then([this] () { return _benchmark(); })
         .handle_exception([this](auto exc) {
             K2ERROR_EXC("Unable to execute benchmark", exc);
             _stopped = true;
@@ -105,13 +106,15 @@ private:
             .then([this] {
                 K2INFO("Starting item data load");
                 _item_loader = DataLoader(generateItemData());
-                return _item_loader.loadData(_client, 32);
+                return _item_loader.loadData(_client, 2);
             });
+        } else {
+            f = f.then([] { return seastar::sleep(2s); });
         }
 
         return f.then ([this] {
             K2INFO("Starting load to server");
-            return _loader.loadData(_client, 32);
+            return _loader.loadData(_client, 2);
         }).then ([this] {
             K2INFO("Data load done");
         });
@@ -153,7 +156,6 @@ private:
 
     seastar::future<> _benchmark() {
         K2INFO("Creating K23SIClient");
-        _client = K23SIClient(K23SIClientConfig(), _tcpRemotes(), _cpo());
 
         if (_do_data_load()) {
             return _data_load();
@@ -197,9 +199,6 @@ private:
     seastar::timer<> _timer;
     std::vector<future<>> _tpcc_futures;
 
-    ConfigVar<std::vector<std::string>> _tcpRemotes{"tcp_remotes"};
-    ConfigVar<std::string> _cpo{"cpo"};
-    ConfigVar<std::string> _tso{"tso_endpoint"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<int> _max_warehouses{"num_warehouses"};
     ConfigVar<int> _clients_per_core{"clients_per_core"};
@@ -217,14 +216,18 @@ private:
 int main(int argc, char** argv) {;
     k2::App app;
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("cpo", bpo::value<std::string>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("tso_endpoint", bpo::value<std::string>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
         ("clients_per_core", bpo::value<int>()->default_value(1), "Number of concurrent TPC-C clients per core")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
-        ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals");
-    app.addApplet<Client>();
+        ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
+        ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
+
+    app.addApplet<k2::TSO_ClientLib>(0s);
+    app.addApplet<Client>(seastar::ref(app));
     return app.start(argc, argv);
 }

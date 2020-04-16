@@ -7,7 +7,7 @@ namespace k2 {
 Persistence::Persistence() {
     //TODO discover RDMA endpoint
     _remoteEndpoint = RPC().getTXEndpoint(_config.persistenceEndpoint());
-    K2DEBUG("ctor with endpoint: " << _remoteEndpoint->getURL());
+    K2INFO("ctor with endpoint: " << _remoteEndpoint->getURL());
 }
 
 seastar::future<> Persistence::makeCall(FastDeadline deadline) {

@@ -297,7 +297,8 @@ seastar::future<> TxnManager::_aborted(TxnRecord& rec) {
     rec.unlinkRW(_rwlist);
     // queue up background task for finalizing
     rec.bgTaskFut = rec.bgTaskFut.then([this, &rec] () mutable{
-        return _finalizeTransaction(rec, FastDeadline(_config.writeTimeout()));
+        // TODO Deadline based on transaction size
+        return _finalizeTransaction(rec, FastDeadline(5s));
     });
     _bgTasks.push_back(rec);
     // persist if needed
@@ -315,7 +316,8 @@ seastar::future<> TxnManager::_committed(TxnRecord& rec) {
 
     // queue up background task for finalizing
     rec.bgTaskFut = rec.bgTaskFut.then([this, &rec]() mutable {
-        return _finalizeTransaction(rec, FastDeadline(_config.writeTimeout()));
+        // TODO Deadline based on transaction size
+        return _finalizeTransaction(rec, FastDeadline(5s));
     });
     _bgTasks.push_back(rec);
     // persist if needed
