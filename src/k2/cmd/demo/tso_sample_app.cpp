@@ -117,9 +117,11 @@ private:
 
 int main(int argc, char **argv) 
 {
-    const std::string endpointUrl = "tcp+k2rpc://127.0.0.1:9000";
     k2::App app;
-    app.addApplet<k2::TSO_ClientLib>(endpointUrl, 1s);
+    app.addOptions()
+    ("tso_endpoint", bpo::value<std::string>()->default_value("tcp+k2rpc://127.0.0.1:9000"), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
+    
+    app.addApplet<k2::TSO_ClientLib>(1s);
     app.addApplet<k2::TSOService>(seastar::ref(app));
     app.addApplet<k2::sampleTSOApp>(seastar::ref(app));
 
