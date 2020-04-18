@@ -12,7 +12,7 @@ Prometheus::Prometheus() {
 }
 seastar::future<>
 Prometheus::start(uint16_t port, const char* helpMessage, const char* prefix) {
-    K2INFO("starting prometheus on port: " << port);
+    K2INFO("starting prometheus on port: " << port << ", msg=" << helpMessage <<", prefix=" << prefix);
     seastar::prometheus::config pctx;
     pctx.metric_help=helpMessage;
     pctx.prefix=prefix;

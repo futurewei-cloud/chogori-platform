@@ -33,6 +33,7 @@ def parseRunnableConfig(runnable, config_files, cpus):
     if cpus > 10:
         print("Warning: script does not support cpus > 10 yet!")
 
+    parsed_args = []
     for filename in config_files.split(' '):
         config = configparser.ConfigParser()
         config.read(filename)
@@ -44,6 +45,10 @@ def parseRunnableConfig(runnable, config_files, cpus):
             runnable.docker_args += config["deployment"]["docker_args"] + " "
 
         for arg in config["program_args"]:
+            if arg in parsed_args:
+                continue
+
+            parsed_args.append(arg)
             value = config["program_args"][arg]
             if value == "$cpus":
                 value = str(cpus)

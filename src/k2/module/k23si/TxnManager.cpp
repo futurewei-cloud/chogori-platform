@@ -18,7 +18,34 @@ TxnManager::TxnManager():
     _cpo(_config.cpoEndpoint()) {
 }
 
+void TxnRecord::unlinkHB(HBList& hblist) {
+    if (hbLink.is_linked()) {
+        hblist.erase(hblist.iterator_to(*this));
+    }
+}
+void TxnRecord::unlinkRW(RWList& rwlist) {
+    if (rwLink.is_linked()) {
+        rwlist.erase(rwlist.iterator_to(*this));
+    }
+}
+void TxnRecord::unlinkBG(BGList& bglist) {
+    if (bgTaskLink.is_linked()) {
+        bglist.erase(bglist.iterator_to(*this));
+    }
+}
+
+TxnManager::~TxnManager() {
+    K2DEBUG("dtor");
+    _hblist.clear();
+    _rwlist.clear();
+    _bgTasks.clear();
+    for (auto& [key, trec]: _transactions) {
+        K2WARN("Shutdown dropping transaction: " << trec);
+    }
+}
+
 seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline) {
+    K2DEBUG("start");
     _collectionName = collectionName;
     _hbDeadline = hbDeadline;
     updateRetentionTimestamp(rts);
@@ -34,20 +61,27 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
                     return noHB && noRW;
                 },
                 [this, now] {
-                    if (!_hblist.empty() && _hblist.front().hbExpiry < now) {
+                    if (!_hblist.empty() && _hblist.front().hbExpiry <= now) {
                         auto& tr = _hblist.front();
+                        K2DEBUG("heartbeat expired on: " << tr);
                         _hblist.pop_front();
                         return onAction(TxnRecord::Action::onHeartbeatExpire, tr.txnId);
                     }
-                    else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) < 0) {
+                    else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) <= 0) {
                         auto& tr = _rwlist.front();
+                        K2DEBUG("rw expired on: " << tr);
                         _rwlist.pop_front();
                         return onAction(TxnRecord::Action::onRetentionWindowExpire, tr.txnId);
                     }
-                    return seastar::make_exception_future<>(ServerError());
+                    K2ERROR("Heartbeat processing failure - expected to find either hb or rw expired item but none found");
+                    return seastar::make_ready_future();
             })
             .then([this] {
                 _hbTimer.arm(_hbDeadline);
+            })
+            .handle_exception([] (auto exc){
+                K2ERROR_EXC("caught exception while checking hb/rw expiration", exc);
+                return seastar::make_ready_future();
             });
         });
     });
@@ -57,32 +91,43 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
 }
 
 seastar::future<> TxnManager::stop() {
+    K2DEBUG("stop");
     _stopping = true;
     _hbTimer.cancel();
     return std::move(_hbTask).then([this]{
-        return seastar::parallel_for_each(_bgTasks.begin(), _bgTasks.end(), [](auto& txn){
+        K2DEBUG("hb stopped. stopping " << _bgTasks.size() << " bg tasks");
+        return seastar::do_for_each(_bgTasks.begin(), _bgTasks.end(), [](auto& txn){
+            K2DEBUG("waiting for bg task on " << txn);
             return std::move(txn.bgTaskFut);
-        }).discard_result();
+        }).discard_result().then([]{K2DEBUG("stopped");}).handle_exception([](auto exc) {
+            K2ERROR_EXC("caught exception on stop", exc);
+            return seastar::make_ready_future();
+        });
     });
 }
 
 void TxnManager::updateRetentionTimestamp(dto::Timestamp rts) {
+    K2DEBUG("retention ts now=" << rts)
     _retentionTs = rts;
 }
 
 TxnRecord& TxnManager::getTxnRecord(const TxnId& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
+        K2DEBUG("found existing record: " << it->second);
         return it->second;
     }
+    K2DEBUG("Txn record not found. creating one");
     return _createRecord(txnId);
 }
 
 TxnRecord& TxnManager::getTxnRecord(TxnId&& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
+        K2DEBUG("found existing record: " << it->second);
         return it->second;
     }
+    K2DEBUG("Txn record not found. creating one");
     return _createRecord(std::move(txnId));
 }
 
@@ -94,12 +139,13 @@ TxnRecord& TxnManager::_createRecord(TxnId txnId) {
         TxnRecord& rec = it.first->second;
         rec.txnId = it.first->first;
         rec.state = TxnRecord::State::Created;
-        rec.rwExpiry = _retentionTs;
+        rec.rwExpiry = txnId.mtr.timestamp;
         rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
 
         _hblist.push_back(rec);
         _rwlist.push_back(rec);
     }
+    K2DEBUG("created new txn record: " << it.first->second);
     return it.first->second;
 }
 
@@ -221,6 +267,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
 }
 
 seastar::future<> TxnManager::_inProgress(TxnRecord& rec) {
+    K2DEBUG("Setting status to inProgress for " << rec);
     // set state
     rec.state = TxnRecord::State::InProgress;
     // manage hb expiry: we only come here immediately after Created which sets HB
@@ -230,25 +277,28 @@ seastar::future<> TxnManager::_inProgress(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
+    K2DEBUG("Setting status to forceAborted for " << rec);
     // set state
     rec.state = TxnRecord::State::ForceAborted;
     // manage hb expiry
-    _hblist.erase(_hblist.iterator_to(rec));
+    rec.unlinkHB(_hblist);
     // manage rw expiry: we want to track expiration on retention window
     // persist if needed
     return _persistence.makeCall(FastDeadline(10s));
 }
 
 seastar::future<> TxnManager::_aborted(TxnRecord& rec) {
+    K2DEBUG("Setting status to aborted for " << rec);
     // set state
     rec.state = TxnRecord::State::Aborted;
     // manage hb expiry
-    _hblist.erase(_hblist.iterator_to(rec));
+    rec.unlinkHB(_hblist);
     // manage rw expiry
-    _rwlist.erase(_rwlist.iterator_to(rec));
+    rec.unlinkRW(_rwlist);
     // queue up background task for finalizing
     rec.bgTaskFut = rec.bgTaskFut.then([this, &rec] () mutable{
-        return _finalizeTransaction(rec, FastDeadline(_config.writeTimeout()));
+        // TODO Deadline based on transaction size
+        return _finalizeTransaction(rec, FastDeadline(5s));
     });
     _bgTasks.push_back(rec);
     // persist if needed
@@ -256,15 +306,18 @@ seastar::future<> TxnManager::_aborted(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_committed(TxnRecord& rec) {
+    K2DEBUG("Setting status to committed for " << rec);
     // set state
     rec.state = TxnRecord::State::Committed;
     // manage hb expiry
-    _hblist.erase(_hblist.iterator_to(rec));
+    rec.unlinkHB(_hblist);
     // manage rw expiry
-    _rwlist.erase(_rwlist.iterator_to(rec));
+    rec.unlinkRW(_rwlist);
+
     // queue up background task for finalizing
     rec.bgTaskFut = rec.bgTaskFut.then([this, &rec]() mutable {
-        return _finalizeTransaction(rec, FastDeadline(_config.writeTimeout()));
+        // TODO Deadline based on transaction size
+        return _finalizeTransaction(rec, FastDeadline(5s));
     });
     _bgTasks.push_back(rec);
     // persist if needed
@@ -272,21 +325,28 @@ seastar::future<> TxnManager::_committed(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
+    K2DEBUG("Setting status to deleted for " << rec);
     // set state
     rec.state = TxnRecord::State::Deleted;
     // manage hb expiry
-    _hblist.erase(_hblist.iterator_to(rec));
+    rec.unlinkHB(_hblist);
     // manage rw expiry
-    _rwlist.erase(_rwlist.iterator_to(rec));
+    rec.unlinkRW(_rwlist);
     // persist if needed
 
-    return _persistence.makeCall(FastDeadline(10s));
+    return _persistence.makeCall(FastDeadline(10s)).then([this, &rec]{
+        rec.unlinkBG(_bgTasks);
+        rec.unlinkRW(_rwlist);
+        rec.unlinkHB(_hblist);
+        _transactions.erase(rec.txnId);
+    });
 }
 
 seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
+    K2DEBUG("Processing heartbeat for " << rec);
     // set state: no change
     // manage hb expiry
-    _hblist.erase(_hblist.iterator_to(rec));
+    rec.unlinkHB(_hblist);
     rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
     _hblist.push_back(rec);
     // manage rw expiry: no change
@@ -295,6 +355,7 @@ seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline deadline) {
+    K2DEBUG("Finalizing " << rec);
     //TODO we need to keep trying to finalize in cases of failures.
     // this needs to be done in a rate-limited fashion. For now, we just try some configurable number of times and give up
     return seastar::parallel_for_each(rec.writeKeys.begin(), rec.writeKeys.end(), [&rec, this, deadline](dto::Key& key) {
@@ -309,13 +370,15 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
                                          dto::K23SITxnFinalizeResponse,
                                          dto::Verbs::K23SI_TXN_FINALIZE>
             (deadline, request, _config.finalizeRetries())
-            .then([](auto&& responsePair) {
+            .then([&request](auto&& responsePair) {
                 auto& [status, response] = responsePair;
-                if (status != dto::K23SIStatus::OK()) {
+                if (!status.is2xxOK()) {
+                    K2ERROR("Finalize request did not succeed for " << request << ", status=" << status);
                     return seastar::make_exception_future<>(TxnManager::ServerError());
                 }
+                K2DEBUG("Finalize request succeeded for " << request);
                 return seastar::make_ready_future<>();
-            });
+            }).finally([]{ K2DEBUG("finalize call finished");});
         });
     })
     .then([this, &rec] {

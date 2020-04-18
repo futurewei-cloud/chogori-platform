@@ -19,10 +19,10 @@ struct K23SIConfig {
     ConfigDuration retentionTimestampUpdateInterval{"retention_ts_update_interval", 60s};
 
     // timeout for read requests (including potential PUSH operation)
-    ConfigDuration readTimeout{"read_timeout", 100us};
+    ConfigDuration readTimeout{"read_timeout", 100ms};
 
     // timeout for write requests (including potential PUSH operations)
-    ConfigDuration writeTimeout{"write_timeout", 150us};
+    ConfigDuration writeTimeout{"write_timeout", 150ms};
 
     // what is our read cache size in number of entries
     ConfigVar<uint64_t> readCacheSize{"k23si_read_cache_size", 10000};

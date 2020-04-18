@@ -12,6 +12,10 @@ int main(int argc, char** argv) {
     k2::App app;
 
     app.addOptions()
+        ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
+        ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
+        ("k23si_cpo_endpoint", bpo::value<k2::String>(), "the endpoint for k2 CPO service")
         ("k23si_persistence_endpoint", bpo::value<k2::String>(), "the endpoint for k2 persistence");
 
     app.addApplet<k2::AssignmentManager>();

@@ -24,7 +24,7 @@ public:
     // constructor
     // startDelay - a delay/sleep duration in start(). This is for testing purpose where the client lib start need to delay waiting for server starts
     // TODO: instead of pass in TSOServerURL, we need to change later to CPO URL and get URLs of TSO servers from there instead.
-    TSO_ClientLib(const std::string& tSOServerURL, Duration startDelay) : _startDelay(startDelay) { _tSOServerURLs.emplace_back(tSOServerURL); K2INFO("ctor");}
+    TSO_ClientLib(Duration startDelay) : _startDelay(startDelay) { K2INFO("ctor");}
     
     ~TSO_ClientLib() { K2INFO("dtor");}
 
@@ -45,6 +45,8 @@ private:
 
     // process returned batch from TSO server
     void ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTriggeredTime);
+
+    ConfigVar<k2::String> TSOServerURL{"tso_endpoint"};
 
     bool _stopped{false};
 

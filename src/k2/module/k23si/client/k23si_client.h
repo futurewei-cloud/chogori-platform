@@ -9,6 +9,7 @@
 #include <seastar/core/future.hh>
 #include <seastar/core/future-util.hh>
 
+#include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
@@ -18,6 +19,7 @@
 #include <k2/dto/Collection.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
+#include <k2/tso/client_lib/tso_clientlib.h>
 
 namespace k2 {
 
@@ -69,15 +71,21 @@ class K2TxnHandle;
 
 class K23SIClient {
 public:
-    K23SIClient(const K23SIClientConfig &) {};
-    K23SIClient(const K23SIClientConfig &, const std::vector<std::string>& _endpoints, std::string _cpo);
+    K23SIClient(k2::App& baseApp, const K23SIClientConfig &);
+private:
+k2::TSO_ClientLib& _tsoClient;
+public:
 
+    seastar::future<> start();
+    seastar::future<> stop();
     seastar::future<Status> makeCollection(const String& collection);
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
 
+    ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
+    ConfigVar<String> _cpo{"cpo"};
     ConfigDuration create_collection_deadline{"create_collection_deadline", 1s};
     ConfigDuration retention_window{"retention_window", 600s};
-    ConfigDuration txn_end_deadline{"txn_end_deadline", 200ms};
+    ConfigDuration txn_end_deadline{"txn_end_deadline", 60s};
 
     uint64_t read_ops{0};
     uint64_t write_ops{0};
@@ -103,7 +111,7 @@ public:
     K2TxnHandle() = default;
     K2TxnHandle(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
-    K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d) noexcept;
+    K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
     template <typename ValueType>
     seastar::future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
@@ -194,6 +202,7 @@ private:
     bool _failed;
     Status _failed_status;
     Duration _txn_end_deadline;
+    TimePoint _start_time;
 
     std::unique_ptr<seastar::timer<>> _heartbeat_timer{nullptr};
     seastar::future<> _heartbeat_future{seastar::make_ready_future<>()};

@@ -3,7 +3,7 @@
 #include <iostream>
 //
 // duration used in a few places to specify timeouts and such
-// 
+//
 
 using namespace std::chrono_literals;  // so that we can type "1ms"
 
@@ -88,6 +88,11 @@ inline constexpr uint64_t TSE_Count_MicroSecRounded(const SysTimePt& t) {
 namespace std {
     inline std::ostream& operator<<(std::ostream& os, const k2::Duration& dur) {
         os << k2::nsec(dur).count() << "ns";
+        return os;
+    }
+
+    inline std::ostream& operator<<(std::ostream& os, const k2::TimePoint& tp) {
+        os << k2::nsec(tp.time_since_epoch()).count() << "ns";
         return os;
     }
 } // ns std

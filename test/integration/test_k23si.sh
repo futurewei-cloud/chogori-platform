@@ -10,15 +10,15 @@ PERSISTENCE=tcp+k2rpc://0.0.0.0:12001
 CPO=tcp+k2rpc://0.0.0.0:9000
 
 # start CPO on 2 cores
-./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --enable_tx_checksum true --reactor-backend epoll &
+./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 13000 &
 cpo_child_pid=$!
 
 # start nodepool on 3 cores
-./build/src/k2/cmd/nodepool/nodepool -c3 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll &
+./build/src/k2/cmd/nodepool/nodepool -c3 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll --prometheus_port 13001 --k23si_cpo_endpoint ${CPO}&
 nodepool_child_pid=$!
 
 # start persistence on 1 cores
-./build/src/k2/cmd/persistence/persistence -c1 --tcp_endpoints ${PERSISTENCE} --enable_tx_checksum true --reactor-backend epoll &
+./build/src/k2/cmd/persistence/persistence -c1 --tcp_endpoints ${PERSISTENCE} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 13002 &
 persistence_child_pid=$!
 
 function finish {

@@ -43,7 +43,7 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
     // for now, simply pass it onto local handler
     return PManager().assignPartition(std::move(request.collectionMeta), std::move(request.partition))
         .then([](auto&& partition) {
-            auto status = (partition.astate == dto::AssignmentState::Assigned) ? Status::S201_Created() : Status::S403_Forbidden("partition assignment was not allowed");
+            auto status = (partition.astate == dto::AssignmentState::Assigned) ? Statuses::S201_Created("assignment accepted") : Statuses::S403_Forbidden("partition assignment was not allowed");
             dto::AssignmentCreateResponse resp{.assignedPartition = std::move(partition)};
             return RPCResponse(std::move(status), std::move(resp));
         });
@@ -55,7 +55,7 @@ AssignmentManager::handleOffload(dto::AssignmentOffloadRequest&& request) {
     // TODO implement - here we should drop our assignment, cleaning up any resources we have
     // allocated for our partition(s). We should be ready to receive new assignments after this.
     K2INFO("Received request to offload assignment for " << request.collectionName);
-    return RPCResponse(Status::S501_Not_Implemented("offload has not been implemented"), dto::AssignmentOffloadResponse());
+    return RPCResponse(Statuses::S501_Not_Implemented("offload has not been implemented"), dto::AssignmentOffloadResponse());
 }
 
 }  // namespace k2

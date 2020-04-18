@@ -37,6 +37,13 @@ bool Key::operator==(const Key& o) const noexcept {
 size_t Key::hash() const noexcept {
     return std::hash<k2::String>()(partitionKey) + std::hash<k2::String>()(rangeKey);
 }
+size_t Key::partitionHash() const noexcept {
+    uint32_t c32c = crc32c::Crc32c(partitionKey.c_str(), partitionKey.size());
+    uint64_t hash = c32c;
+    // shift the existing hash over to the high 32 bits and add it in to get a 64bit hash
+    hash += hash << 32;
+    return hash;
+}
 
 bool Partition::PVID::operator==(const Partition::PVID& o) const {
     return id == o.id && rangeVersion == o.rangeVersion && assignmentVersion == o.assignmentVersion;
@@ -96,12 +103,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
         }
         case HashScheme::HashCRC32C:
         {
-            uint32_t c32c = crc32c::Crc32c(key.partitionKey.c_str(), key.partitionKey.size());
-            uint64_t hash = c32c;
-            // shift the existing hash over to the high 32 bits and add it in to get a 64bit hash
-            hash += hash << 32;
-
-            HashMapElement to_find{.hvalue = hash, .partition = PartitionGetter::PartitionWithEndpoint()};
+            HashMapElement to_find{.hvalue = key.partitionHash(), .partition = PartitionGetter::PartitionWithEndpoint()};
             auto it = std::lower_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
             if (it != _hashPartitionMap.end()) {
                 return it->partition;
@@ -111,6 +113,26 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
         }
         default:
             throw std::runtime_error("no partition for endpoint");
+    }
+}
+
+OwnerPartition::OwnerPartition(Partition&& part, HashScheme scheme) :
+    _partition(std::move(part)),
+    _scheme(scheme),
+    _hstart(std::stoull(_partition.startKey)),
+    _hend(std::stoull(_partition.endKey)) {
+}
+
+bool OwnerPartition::owns(const Key& key) const {
+    switch (_scheme) {
+        case HashScheme::Range:
+            return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <=0;
+        case HashScheme::HashCRC32C: {
+            auto phash = key.partitionHash();
+            return _hstart <= phash && phash <= _hend;
+        }
+        default:
+            return false;
     }
 }
 

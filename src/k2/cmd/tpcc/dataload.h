@@ -53,6 +53,7 @@ private:
             return txn.end(true);
         }).then([] (EndResult&& result) {
             if (!result.status.is2xxOK()) {
+                K2INFO("Failed to commit: " << result.status);
                 return make_exception_future<>(std::runtime_error("Commit failed during bulk data load"));
             }
 
