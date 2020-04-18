@@ -1,10 +1,10 @@
 [-UP-](./TXN.md)
 
-# K2 TimeStamp and TSO 
+# K2 Timestamp and TSO 
 ## 1.  Design goals
 K2 TimeStamp is a specific designed data structure for timeStamp used for marking transactions' time in order to provide transaction isolation and consistency.  TSO(TimeStampOracle) is a service for providing K2 TimeStamps to K2 client clusters/data servers managing transactions. 
 
-The design goals of K2 TimneStamp and K2 TSO are
+The design goals of K2 Timestamp and K2 TSO are
 - Functionality: support K2 global distributed transaction, at Sequencial consistent Serializable Snashot Isolation level(K2-3SI transaction protocol) and external causal relationship, with optimization for within datacenter avg 20 microsecond latency transactions.
 - Performance: Issuing of K2 TimeStamp within the same data center should take less than 10 microsecond, ideally avg less than 5 microsecond.
 - Scalability: Single TSO service can provide 50-100 million timestamps per second for the system, essentially support 50-100 million transactions per second(roughly 50 -100X current top TPCC record holder at 68 million tpmc).
@@ -22,18 +22,18 @@ With design goals above, let's derive some more detailed design key points.
 ### 2.1 Timestamp ordinal requirement from K2-3SI
 First, we need to take a careful look at the requirement of transaction/event order and timstamp resulting from support K2-3SI. K2-3SI detailed analysis is at [K2 Transaction Design Spec](./TXN.md). Here we only give a summary of key points to related with TSO to help derive the design. 
 
-Following distributed transactional system consistency model explained by [https://jepsen.io/consistency],![alt](./images/jepsenconsistency.jpg) K2-3SI, on isolation side (left side on the Jepsen model), supports [Serializable snapshot Isolation](https://jepsen.io/consistency/models/serializable); on the consistency side (right side on the Jepsen model), K2-3SI supports [Sequential Consistency](https://jepsen.io/consistency/models/sequential), just one level down from the top [Linearizable](https://jepsen.io/consistency/models/linearizable) to avoid expensive real time synchronization. To support transaction atomicity and cross transaction isolation, all operations in a transaction is marked with a "transaction time" (which can be a sequence number like LSN in MySQL, or a TimeStamp in Google's Spanner"). Typically, such "transaction time" is record of the commit time(or commit record LSN) of a transaction. In K2-3SI, to minimize the distributed transaction latency and increase the throughput, we choose the transaction start time as the "transaction time". This indicates the order of transactions(for isolation) is based on the start time of each transaction and operations/transaction confliction and resolution is based on such time as well. To support Sequential consistency, this "transaction time" also need provide total ordinal relationship between any two transactions which gives same order of any two transaction at any partition of the distributed system. 
+Following distributed transactional system consistency model explained by [https://jepsen.io/consistency],![alt](./images/jepsenconsistency.jpg) K2-3SI, on isolation side (left side on the Jepsen model), supports [Serializable snapshot Isolation](https://jepsen.io/consistency/models/serializable); on the consistency side (right side on the Jepsen model), K2-3SI supports [Sequential Consistency](https://jepsen.io/consistency/models/sequential), just one level down from the top [Linearizable](https://jepsen.io/consistency/models/linearizable) to avoid expensive real time synchronization. To support transaction atomicity and cross transaction isolation, all operations in a transaction is marked with a "transaction time" (which can be a sequence number like LSN in MySQL, or a TimeStamp in Google's Spanner"). Typically, such "transaction time" is record of the commit time(or commit record LSN) of a transaction. In K2-3SI, to minimize the distributed transaction latency and increase the throughput, we choose the transaction start time as the "transaction time". This indicates the order of transactions (for isolation) is based on the start time of each transaction and operations/transaction confliction and resolution is based on such time as well. To support Sequential consistency, this "transaction time" also need provide total ordinal relationship between any two transactions which gives same order of any two transaction at any partition of the distributed system. 
 
 Assuming there is only single TSO at any moment for the whole system serving all other servers, the "transaction time" could be either a sequence number or a machine (system) time issued from the TSO. On theory, this simple approach would fulfill the requirement mentioned above. But there are three major engineering issue we need to solve/optimize. 
 - First, such singele TSO become system's single point of failure; 
 - Second, the single TSO could be potential performance bottle neck for the system; 
 - Third, when there are more than one geo-region, the servers at different geo-region may take unavoidable milisecond level network latency to get the "transaction time" from the TSO, even for the transaction only invovles on that origining geo-region. This is conflicting with the goal of high performance(low latency) for K2.
 
-For first issue, typical engineering solution is to have multiple instances cluster with one as leader(acting TSO) and rest as stand-by. The leadership is maintained by leash(heat beat renewed) based on a paxos cluster(e.g. open source system like ZooKeeper or ETCD). One of the stand-by will compete to be new leader when the existing leader crash or stop service for any reason, e.g. software upgrade. 
+For first issue, typical engineering solution is to have multiple instances cluster with one as leader (acting TSO) and rest as stand-by. The leadership is maintained by leash (heat beat renewed) based on a paxos cluster(e.g. open source system like ZooKeeper or ETCD). One of the stand-by will compete to be new leader when the existing leader crash or stop service for any reason, e.g. software upgrade. 
 
 For second performance bottle neck of single server issue, the typical engineer solution is to scale up the server through better hardware and more efficient software. Also another practical approach is through deployment seperation, i.e. for differen database/deployment where transaction/data never overlay with each other, we can have seperate TSO for different database/deployment. Note, this approach normally is not prefered in cloud native system, where scale out of a single deployment support mulitple tenants is one of the basic cloud principles. 
 
-For the third issue, unless there is a TSO per geo-region/Data Center, requests from different geo-region has to travel to the other geo-reiont where TSO is deployed. This introduce mulitple TSO scenario which is complex situation worth its own section to discuss(section 2.2). Basically, the complexity results from multiple TSO is that each TSO will have slightly different time (time skew) due to time sync error, further more such time skew can be dynamic as each TSO clock may futher drift (i.e. speed of clock is different from true time change rate). In such case, we still need to find a way to order timestamps from different TSO and futher to support the transaction protocol (isolation and consistency). 
+For the third issue, unless there is a TSO per geo-regions/Data Centers, requests from different geo-region have to travel to the other geo-reiont where TSO is deployed. This introduces mulitple TSO scenario which is complex situation worth its own section to discuss(section 2.2). Basically, the complexity results from multiple TSO is that each TSO will have slightly different time (time skew) due to time sync error, further more such time skew can be dynamic as each TSO clock may futher drift (i.e. speed of clock is different from true time change rate). In such case, we still need to find a way to order timestamps from different TSO and futher to support the transaction protocol (isolation and consistency). 
 
 To summerize this ordinal requirement analysis, in order to support K2-3SI, we need timestamp to be ordinal. If there were only one TSO, such requirement would be easy to achieve, by issuing strict monotoneous increasing sequence number or time value. But we need to support mulitple TSO for cross geo-region deployment. Further more we will see later that such multiple TSO will be significant helpful to support scale up and scale out in later part of this spec. 
 
@@ -127,7 +127,7 @@ UN - Only applicable when TSOId are different and uncertainty window overlap,
      i.e. other.Ts <= this.Ts <= other.Te || other.Ts <= this.Te <= other.Te
 ```        
 
-Internal structure for TimeStamp is
+Internal structure for Timestamp is
 uint64_t _tEndTSECount  - counts of nanoseconds for tEnd's time_since_epoch(), from UTC 1970-01-01:00:00:00
 uint16_t TSOId         - TSOId
 uint16_t TsDelta  - time difference between Ts and Te, in nanosecond unit
@@ -137,13 +137,13 @@ K2 TSO Client is the component resides inside K2 Client Library that is responsi
 
 The interface K2 TSO Client exposed to K2 Client Library can be as simple as following 
 ```
-future<K2TimeStamp> GetTimeStampFromTSO();
+future<K2TimeStamp> GetTimestampFromTSO();
 ```
 
-But our actually implementation has one extra input parameter of local steady time when the request is made, as following:
+But our actual implementation has one extra input parameter of local steady time when the request is made, as following:
 
 ```
-future<K2TimeStamp> GetTimeStampFromTSO(const steady_clock::time_point& requestLocalTime);
+future<K2TimeStamp> GetTimestampFromTSO(const steady_clock::time_point& requestLocalTime);
 ```
 the requestLocalTime param is the local stead_clock::now() when K2 Client Library start the processing the new request from application upon receive it. K2 Client Library need to keep track of this and K2 TSO Client need to know this as well. This is due to the fact we are using batch request between TSO client and TSO server for timestamps, with details in next section. Even K2 TSO Client could make a call to now(), but we should save this extra call as now() is already called in K2 Client Library.
 
