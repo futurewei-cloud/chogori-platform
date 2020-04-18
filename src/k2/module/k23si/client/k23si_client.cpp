@@ -8,7 +8,7 @@
 namespace k2 {
 
 K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept :
-    _mtr(std::move(mtr)), _deadline(deadline), _cpo_client(cpo), _client(client), _started(true), 
+    _mtr(std::move(mtr)), _deadline(deadline), _cpo_client(cpo), _client(client), _started(true),
     _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time)
 {}
 
@@ -117,8 +117,8 @@ seastar::future<WriteResult> K2TxnHandle::erase(dto::Key key, const String& coll
     return write<int>(std::move(key), collection, 0, true);
 }
 
-K23SIClient::K23SIClient(k2::App& baseApp, const K23SIClientConfig &) : 
-        _tsoClient(baseApp.getDist<k2::TSO_ClientLib>().local()), _gen(std::random_device()()) {
+K23SIClient::K23SIClient(const K23SIClientConfig &) :
+        _tsoClient(AppBase().getDist<k2::TSO_ClientLib>().local()), _gen(std::random_device()()) {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
     _metric_groups.add_group("K23SI_client", {

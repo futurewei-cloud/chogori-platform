@@ -9,6 +9,7 @@
 #include <k2/dto/K23SI.h>
 #include <k2/common/Chrono.h>
 #include <k2/cpo/client/CPOClient.h>
+#include <k2/tso/client_lib/tso_clientlib.h>
 
 #include "ReadCache.h"
 #include "TxnManager.h"
@@ -125,13 +126,12 @@ private: // members
     Persistence _persistence;
 
     CPOClient _cpo;
-};
 
-// get timeNow Timestamp from TSO
-inline seastar::future<dto::Timestamp> getTimeNow() {
-    // TODO call TSO service with timeout and retry logic
-    auto nsecsSinceEpoch = nsec(std::chrono::system_clock::now().time_since_epoch()).count();
-    return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 1550647543, 1000));
-}
+    // get timeNow Timestamp from TSO
+    seastar::future<dto::Timestamp> getTimeNow() {
+        thread_local TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
+        return tsoClient.GetTimestampFromTSO(Clock::now());
+    }
+};
 
 } // ns k2

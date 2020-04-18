@@ -17,7 +17,7 @@ namespace k2 {
 
 using namespace dto;
 
-// debugging print, time point (nano accurate) to a stream 
+// debugging print, time point (nano accurate) to a stream
 // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
 inline void TimePointToStream(int64_t nanosec, char buffer[100])
 {
@@ -34,25 +34,25 @@ inline void TimePointToStream(int64_t nanosec, char buffer[100])
     auto days = (hours/24);
     hours -= (days*24);
 
-    std::snprintf(buffer, 100, "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec, nanosec);   
+    std::snprintf(buffer, 100, "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec, nanosec);
 }
 
 class sampleTSOApp
 {
 public:
-    sampleTSOApp(k2::App& baseApp) : _baseApp(baseApp) {};
+    sampleTSOApp(){};
 
-    seastar::future<> stop() 
+    seastar::future<> stop()
     {
         K2INFO("stop");
         return seastar::make_ready_future<>();
     };
 
-    void start() 
+    void start()
     {
         K2INFO("start");
         (void)seastar::sleep(2s)
-        .then([this] 
+        .then([this]
         {
             K2INFO("Getting 2 timestamps async in loop at least 100us apart from each other");
 
@@ -60,7 +60,7 @@ public:
             char timeBuffer[100];
             TimePointToStream(curSteadyTime.time_since_epoch().count(), timeBuffer);
             K2INFO("Issuing first 100us apart TS at local request time:" << timeBuffer);
-            (void) _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
+            (void) AppBase().getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
                 .then([this](auto&& timestamp)
                 {
                     char timeBufferS[100];
@@ -75,7 +75,7 @@ public:
                         char timeBuffer[100];
                         TimePointToStream(curSteadyTime.time_since_epoch().count(), timeBuffer);
                         K2INFO("Issuing second 100us apart TS at local request time:" << timeBuffer);
-                        (void) _baseApp.getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
+                        (void) AppBase().getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
                         .then([](auto&& ts)
                         {
                             char timeBufferS[100];
@@ -110,20 +110,18 @@ public:
            */
         });
     };
-private:
-   k2::App& _baseApp;
 };
 }
 
-int main(int argc, char **argv) 
+int main(int argc, char **argv)
 {
     k2::App app;
     app.addOptions()
-    ("tso_endpoint", bpo::value<std::string>()->default_value("tcp+k2rpc://127.0.0.1:9000"), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
-    
+    ("tso_endpoint", bpo::value<k2::String>()->default_value("tcp+k2rpc://127.0.0.1:9000"), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
+
     app.addApplet<k2::TSO_ClientLib>(1s);
-    app.addApplet<k2::TSOService>(seastar::ref(app));
-    app.addApplet<k2::sampleTSOApp>(seastar::ref(app));
+    app.addApplet<k2::TSOService>();
+    app.addApplet<k2::sampleTSOApp>();
 
     return app.start(argc, argv);
 }
