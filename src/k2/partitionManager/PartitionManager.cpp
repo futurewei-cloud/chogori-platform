@@ -5,7 +5,7 @@
 #include <k2/transport/TCPRPCProtocol.h>
 
 namespace k2 {
-__thread PartitionManager* __local_pmanager;
+thread_local PartitionManager* __local_pmanager;
 
 PartitionManager::PartitionManager() {
     K2INFO("ctor");

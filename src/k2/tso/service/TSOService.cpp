@@ -8,7 +8,7 @@
 
 namespace k2 {
 
-TSOService::TSOService(k2::App& baseApp) :_baseApp(baseApp)
+TSOService::TSOService()
 {
     K2INFO("ctor");
 }
@@ -47,7 +47,7 @@ seastar::future<> TSOService::start()
         K2INFO("TSOService starts unexpected on less than 2 cores. Core counts:" <<seastar::smp::count);
         return seastar::make_exception_future(TSONotEnoughCoreException(seastar::smp::count));
     }
-    
+
     // Always use core 0 as controller and the rest as workers
     if (seastar::engine().cpu_id() == 0)
     {
@@ -83,7 +83,7 @@ std::vector<k2::String> TSOService::GetWorkerURLs()
     result.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
 
     if (seastar::engine()._rdma_stack)
-    { 
+    {
         K2INFO("TSOWorker have RDMA transport.");
         result.push_back(k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto)->getURL());
     }
@@ -102,11 +102,11 @@ std::vector<k2::String> TSOService::GetWorkerURLs()
 
     // call msgReceiver method on core#0
     return _baseApp.getDist<k2::TSOService>().invoke_on(0, &TSOService::msgReceiver);
-    
+
 }
 
 
-seastar::future<> TSOService::msgReceiver() 
+seastar::future<> TSOService::msgReceiver()
 {
     K2INFO("Message received");
     K2INFO("Core 0 Id:" << seastar::engine().cpu_id());

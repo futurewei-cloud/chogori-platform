@@ -24,6 +24,6 @@ private:
 }; // class PartitionManager
 
 // per-thread/reactor instance of the partition manager
-extern __thread PartitionManager * __local_pmanager;
+extern thread_local PartitionManager * __local_pmanager;
 inline PartitionManager& PManager() { return *__local_pmanager; }
 } // namespace k2

@@ -21,8 +21,8 @@ using namespace k2;
 
 class Client {
 public:  // application lifespan
-    Client(k2::App& baseApp):
-        _client(K23SIClient(baseApp, K23SIClientConfig())),
+    Client():
+        _client(K23SIClient(K23SIClientConfig())),
         _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _stopped(true),
         _timer(seastar::timer<>([this] {
@@ -148,7 +148,7 @@ private:
                     }
                 })
                 .finally([curTxn] () {
-                    delete curTxn; 
+                    delete curTxn;
                 });
             }
         );
@@ -228,6 +228,6 @@ int main(int argc, char** argv) {;
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
 
     app.addApplet<k2::TSO_ClientLib>(0s);
-    app.addApplet<Client>(seastar::ref(app));
+    app.addApplet<Client>();
     return app.start(argc, argv);
 }

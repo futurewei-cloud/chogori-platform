@@ -71,7 +71,7 @@ class K2TxnHandle;
 
 class K23SIClient {
 public:
-    K23SIClient(k2::App& baseApp, const K23SIClientConfig &);
+    K23SIClient(const K23SIClientConfig &);
 private:
 k2::TSO_ClientLib& _tsoClient;
 public:

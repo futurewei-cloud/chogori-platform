@@ -15,7 +15,7 @@ K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::P
     _partition(std::move(partition), _cmeta.hashScheme),
     _retentionUpdateTimer([this] {
         K2DEBUG("Partition: " << _partition << ", refreshing retention timestamp");
-        _retentionRefresh = _retentionRefresh.then([]{
+        _retentionRefresh = _retentionRefresh.then([this]{
             return getTimeNow();
         })
         .then([this](dto::Timestamp&& ts) {

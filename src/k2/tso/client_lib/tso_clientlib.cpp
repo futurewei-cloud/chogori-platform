@@ -14,7 +14,7 @@ namespace k2
 
 seastar::future<> TSO_ClientLib::start()
 {
-    K2INFO("start");
+    K2INFO("start with server url: " << TSOServerURL());
     _stopped = false;
 
     _tSOServerURLs.emplace_back(TSOServerURL());
@@ -45,9 +45,13 @@ seastar::future<> TSO_ClientLib::stop()
     return seastar::make_ready_future<>();
 }
 
-seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const std::string& serverURL)
+seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String& serverURL)
 {
     auto myRemote = k2::RPC().getTXEndpoint(serverURL);
+    if (!myRemote) {
+        K2ERROR("Invalid server url: " << serverURL);
+        return seastar::make_exception_future(std::runtime_error("invalid server url"));
+    }
     auto retryStrategy = seastar::make_lw_shared<k2::ExponentialBackoffStrategy>();
     retryStrategy->withRetries(5).withStartTimeout(1s).withRate(5);
 
@@ -137,9 +141,9 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
     if (requestLocalTime < _lastSeenRequestTime)
     {
         // crash in debug and error log and exception in production.
-        K2ASSERT(false, "requestLocalTime " <<requestLocalTime.time_since_epoch().count() <<" is older than _lastSeenRequestTime " << _lastSeenRequestTime.time_since_epoch().count());
-        K2ERROR("requestLocalTime " <<requestLocalTime.time_since_epoch().count() <<" is older than _lastSeenRequestTime " << _lastSeenRequestTime.time_since_epoch().count());
-        return seastar::make_exception_future<Timestamp>(new TimeStampRequestOutOfOrderException(requestLocalTime.time_since_epoch().count(), _lastSeenRequestTime.time_since_epoch().count()));
+        K2ASSERT(false, "requestLocalTime " << requestLocalTime <<" is older than _lastSeenRequestTime " << _lastSeenRequestTime);
+        K2ERROR("requestLocalTime " << requestLocalTime <<" is older than _lastSeenRequestTime " << _lastSeenRequestTime);
+        return seastar::make_exception_future<Timestamp>(TimeStampRequestOutOfOrderException(requestLocalTime.time_since_epoch().count(), _lastSeenRequestTime.time_since_epoch().count()));
     }
     else
     {
@@ -369,13 +373,13 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
                 K2DEBUG("Skipping an existing obsolete batch.");
                 break;
             }
- 
+
             _pendingClientRequests.front()._promise->set_value(TimestampBatch::GenerateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
             _pendingClientRequests.pop_front();
-            batchInfo._usedCount++;       
+            batchInfo._usedCount++;
         }
-        
-       // TODO: optimize this to keep the current front batch if there is still valid TS in it. 
+
+       // TODO: optimize this to keep the current front batch if there is still valid TS in it.
         _timestampBatchQue.pop_front();
     }
 
@@ -397,7 +401,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
 
         if (batchSizeToRequest > 0)
         {
-	        K2DEBUG("Need to request more batch due to unfulfilled pending client requests, count:" << batchSizeToRequest); 
+	        K2DEBUG("Need to request more batch due to unfulfilled pending client requests, count:" << batchSizeToRequest);
             // TODO: get config from appBase and use max batch size, default 32
             batchSizeToRequest = std::min(batchSizeToRequest, (uint16_t)32);
 
