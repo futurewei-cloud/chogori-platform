@@ -29,6 +29,12 @@ public:  // application lifespan
     K23SITest() { K2INFO("ctor");}
     ~K23SITest(){ K2INFO("dtor");}
 
+    static seastar::future<dto::Timestamp> getTimeNow() {
+        // TODO call TSO service with timeout and retry logic
+        auto nsecsSinceEpoch = nsec(std::chrono::system_clock::now().time_since_epoch()).count();
+        return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 1550647543, 1000));
+    }
+
     // required for seastar::distributed interface
     seastar::future<> stop() {
         K2INFO("stop");

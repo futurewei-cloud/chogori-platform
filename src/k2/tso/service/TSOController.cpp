@@ -11,9 +11,9 @@
 
 #include "TSOService.h"
 
-namespace k2 
+namespace k2
 {
-seastar::future<> TSOService::TSOController::start() 
+seastar::future<> TSOService::TSOController::start()
 {
     K2INFO("TSOController start");
 
@@ -38,7 +38,7 @@ seastar::future<> TSOService::TSOController::start()
         });
 }
 
-seastar::future<> TSOService::TSOController::stop() 
+seastar::future<> TSOService::TSOController::stop()
 {
     K2INFO("TSOController stop");
     _stopRequested = true;
@@ -56,7 +56,7 @@ seastar::future<> TSOService::TSOController::stop()
             RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, nullptr);
             // unregister internal APIs
             //RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
-    
+
             return seastar::make_ready_future<>();
         });
  }
@@ -80,7 +80,7 @@ void TSOService::TSOController::InitWorkerControlInfo()
     _lastSentControlInfo.TbeTESAdjustment = _defaultTSBatchEndAdj().count();    // default 8us, or 8000
     _lastSentControlInfo.TsDelta =          _defaultTSBatchEndAdj().count();    // batch window size is also default _defaultTSBatchEndAdj
     _lastSentControlInfo.BatchTTL =         _batchTTL().count();
-    
+
     _controlInfoToSend.TbeNanoSecStep =     seastar::smp::count - 1;            // same as number of worker cores
     _controlInfoToSend.TbeTESAdjustment =   _defaultTSBatchEndAdj().count();
     _controlInfoToSend.TsDelta =            _defaultTSBatchEndAdj().count();
@@ -92,7 +92,7 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
     K2INFO("GetAllWorkerURLs");
     return seastar::map_reduce(boost::irange(1u, seastar::smp::count),   // all worker cores, starting from 1
         [this] (unsigned cpuId) {
-            return _outer._baseApp.getDist<k2::TSOService>().invoke_on(cpuId, &TSOService::GetWorkerURLs)
+            return AppBase().getDist<k2::TSOService>().invoke_on(cpuId, &TSOService::GetWorkerURLs)
             .then([] (std::vector<k2::String>&& urls) {
                 std::vector<std::vector<k2::String>> wrapped_urls;
                 wrapped_urls.emplace_back(std::move(urls));
@@ -109,7 +109,7 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
             }
             return result;
         })
-    .then([this] (std::vector<std::vector<k2::String>>&& result) mutable 
+    .then([this] (std::vector<std::vector<k2::String>>&& result) mutable
     {
         _workersURLs = std::move(result);
         K2INFO("got workerURLs:" <<_workersURLs.size());
@@ -117,7 +117,7 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
     });
 }
 
-seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold) 
+seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold)
 {
     K2INFO("SetRoleInternal isMaster:" << std::to_string(isMaster));
     if (!_isMasterInstance && isMaster)  // change from standby to master
@@ -147,7 +147,7 @@ seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint
                 return DoHeartBeat();
             });
         }
-        
+
         // let regular heartbeat to deal with _prevReservedTimeShreshold
         return seastar::make_ready_future<>();
     }
@@ -156,7 +156,7 @@ seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint
         // set the _isMasterInstance to false, and update worker
         _isMasterInstance = false;
         // reuse latest control info,  IsReadyToIssueTS will be set inside SendWorkersControlInfo()
-        _controlInfoToSend =  _lastSentControlInfo; 
+        _controlInfoToSend =  _lastSentControlInfo;
 
         return SendWorkersControlInfo();
     }
@@ -176,9 +176,9 @@ seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint
     }
 };
 
-void TSOService::TSOController::RegisterGetTSOMasterURL() 
+void TSOService::TSOController::RegisterGetTSOMasterURL()
 {
-    k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_MASTERSERVER_URL, [this](k2::Request&& request) mutable 
+    k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_MASTERSERVER_URL, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
         K2INFO("Master TSO TCP endpoint is: " << _masterInstanceURL);
@@ -187,9 +187,9 @@ void TSOService::TSOController::RegisterGetTSOMasterURL()
     });
 }
 
-void TSOService::TSOController::RegisterGetTSOWorkersURLs() 
+void TSOService::TSOController::RegisterGetTSOWorkersURLs()
 {
-    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, [this](k2::Request&& request) mutable 
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
         response->write(_workersURLs);
@@ -200,11 +200,11 @@ void TSOService::TSOController::RegisterGetTSOWorkersURLs()
 void TSOService::TSOController::HeartBeat()
 {
     _heartBeatFuture = DoHeartBeat()
-        .then([this] () mutable 
-        { 
+        .then([this] () mutable
+        {
             if (!_stopRequested)
             {
-                _heartBeatTimer.arm(_heartBeatTimerInterval()); 
+                _heartBeatTimer.arm(_heartBeatTimerInterval());
             }
         });
 
@@ -222,7 +222,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
     {
         uint64_t curTimeTSECount = SysClock::now().time_since_epoch().count();
 
-        // case 1, if we lost lease, suicide now 
+        // case 1, if we lost lease, suicide now
         if (curTimeTSECount > (uint64_t) _myLease.time_since_epoch().count())
         {
             K2INFO("Lost lease detected during HeartBeat. cur time and mylease : " << curTimeTSECount << ":" << _myLease.time_since_epoch().count());
@@ -232,7 +232,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
 
         // case 2, if prevReservedTimeShreshold is in future and within one heartbeat, sleep out and recursive call DoHeartBeat()
         // prevReservedTimeShreshold - curTimeTSECount < _heartBeatTimerInterval().count()
-        if (_prevReservedTimeShreshold > curTimeTSECount && 
+        if (_prevReservedTimeShreshold > curTimeTSECount &&
             (_prevReservedTimeShreshold - curTimeTSECount < (uint64_t) _heartBeatTimerInterval().count()))
         {
             std::chrono::nanoseconds sleepDur(_prevReservedTimeShreshold - curTimeTSECount);
@@ -243,7 +243,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         }
 
         // case 3, if prevReservedTimeShreshold is in future and beyond one heartbeat, send heartbeat with renew lease only
-        if (_prevReservedTimeShreshold > curTimeTSECount && 
+        if (_prevReservedTimeShreshold > curTimeTSECount &&
             (_prevReservedTimeShreshold - curTimeTSECount >= (uint64_t) _heartBeatTimerInterval().count()))
         {
             return RenewLeaseOnly().then([this](SysTimePt newLease) {_myLease = newLease;});
@@ -257,15 +257,15 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
                 _controlInfoToSend.ReservedTimeShreshold = std::get<0>(newLeaseAndThreshold).time_since_epoch().count();
 
                 uint64_t newCurTimeTSECount = SysClock::now().time_since_epoch().count();
-                K2ASSERT(_controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && 
+                K2ASSERT(_controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount &&
                     (uint64_t) _myLease.time_since_epoch().count() > newCurTimeTSECount,
                     "new lease and ReservedTimeThreshold should be in the future.");
-                
+
                 // update worker!
                 return SendWorkersControlInfo();
             });
     }
-    else 
+    else
     {
         return UpdateStandByHeartBeat()
             .then([this] () mutable {
@@ -286,7 +286,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
     }
 
     // now we are master instance and stopping
-    
+
     uint64_t curTimeTSECount = SysClock::now().time_since_epoch().count();
 
     if (_prevReservedTimeShreshold > curTimeTSECount)
@@ -300,17 +300,17 @@ seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
         // remove our lease on Paxos
         return RemoveLeaseFromPaxos();
     }
-    
+
     // set _isMasterInstance to false send to workers first to stop issuing timestamp
-    // and then nicely reduce ReservedTimeShreshold to new currentTime + _lastSentControlInfo.TbeTESAdjustment and remove lease 
+    // and then nicely reduce ReservedTimeShreshold to new currentTime + _lastSentControlInfo.TbeTESAdjustment and remove lease
     // so that other standby can quickly become new master
     _isMasterInstance = false;
 
     return SendWorkersControlInfo()
         .then([this] () mutable {
-            //uint64_t newReservedTimeShresholdTSECount = SysClock::now().time_since_epoch().count() 
+            //uint64_t newReservedTimeShresholdTSECount = SysClock::now().time_since_epoch().count()
             //    + std::max(_lastSentControlInfo.TbeTESAdjustment, (uint64_t) _defaultTSBatchEndAdj().count());
-            
+
             // remove our lease on Paxos and update ReservedTimeShreshold
             return RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*newReservedTimeShresholdTSECount*/);
         });
@@ -339,14 +339,14 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
             readyToIssue = true;
         }
     }
-    
+
     _controlInfoToSend.IsReadyToIssueTS = readyToIssue;
 
     // step 2/3 update _lastSentControlInfo
     _lastSentControlInfo = _controlInfoToSend;
 
     // step 3/3 submit to workers
-    auto& dist = _outer._baseApp.getDist<k2::TSOService>();
+    auto& dist = AppBase().getDist<k2::TSOService>();
     return dist.invoke_on_others(
         [info=_controlInfoToSend] (auto& worker) {
             worker.UpdateWorkerControlInfo(info);
@@ -355,7 +355,7 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
 
 void TSOService::TSOController::Suicide()
 {
-    // suicide when and only when we are master and find we lost lease 
+    // suicide when and only when we are master and find we lost lease
     auto curTime = SysClock::now();
     K2ASSERT(_isMasterInstance && curTime > _myLease, "Suicide when not lost lease or not master?");
 
@@ -366,15 +366,15 @@ void TSOService::TSOController::Suicide()
 void TSOService::TSOController::TimeSync()
 {
     // timesync task will do nothing when _stopRequested
-    if (_stopRequested) 
+    if (_stopRequested)
         return;
 
-    _timeSyncFuture = DoTimeSync().then( [this] () mutable 
-    { 
+    _timeSyncFuture = DoTimeSync().then( [this] () mutable
+    {
         if (!_stopRequested)
         {
             _timeSyncTimer.arm(_timeSyncTimerInterval());
-        } 
+        }
     });
 
     return;
@@ -383,12 +383,12 @@ void TSOService::TSOController::TimeSync()
 seastar::future<> TSOService::TSOController::DoTimeSync()
 {
     // timesync task will do nothing when _stopRequested
-    if (_stopRequested) 
+    if (_stopRequested)
         return seastar::make_ready_future<>();
-    
+
     return CheckAtomicGPSClock()
         .then([this](std::tuple<SysTimePt, SysTimePt> tt /*truetime result from CheckAtomicGPSClock()*/ ) mutable {
-            if (_stopRequested) 
+            if (_stopRequested)
                 return seastar::make_ready_future<>();
 
             auto ttB = std::get<0>(tt);
@@ -419,8 +419,8 @@ seastar::future<> TSOService::TSOController::DoTimeSync()
         });
 }
 
-seastar::future<std::tuple<SysTimePt, SysTimePt>> TSOService::TSOController::CheckAtomicGPSClock() 
-{ 
+seastar::future<std::tuple<SysTimePt, SysTimePt>> TSOService::TSOController::CheckAtomicGPSClock()
+{
     //TODO: implement this
     auto curTime = SysClock::now();
     std::tuple<SysTimePt, SysTimePt> fakeTrueTime(curTime - 1us, curTime + 1us);
@@ -429,12 +429,12 @@ seastar::future<std::tuple<SysTimePt, SysTimePt>> TSOService::TSOController::Che
 
 void TSOService::TSOController::CollectAndReportStats()
 {
-    _statsUpdateFuture = DoCollectAndReportStats().then( [this] () mutable 
-    { 
+    _statsUpdateFuture = DoCollectAndReportStats().then( [this] () mutable
+    {
         if (!_stopRequested)
         {
             _statsUpdateTimer.arm(_timeSyncTimerInterval());
-        } 
+        }
     });
 
     return;

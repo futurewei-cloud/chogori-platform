@@ -7,11 +7,13 @@
 #include <k2/collectionMetadataCache/CollectionMetadataCache.h>
 #include <k2/nodePoolMonitor/NodePoolMonitor.h>
 #include <k2/partitionManager/PartitionManager.h>
+#include <k2/tso/client_lib/tso_clientlib.h>
 
 int main(int argc, char** argv) {
     k2::App app;
 
     app.addOptions()
+        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO) endpoint")
         ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
@@ -22,6 +24,7 @@ int main(int argc, char** argv) {
     app.addApplet<k2::NodePoolMonitor>();
     app.addApplet<k2::PartitionManager>();
     app.addApplet<k2::CollectionMetadataCache>();
+    app.addApplet<k2::TSO_ClientLib>(10ms);
 
     return app.start(argc, argv);
 }
