@@ -23,6 +23,7 @@ struct TxnId {
     friend std::ostream& operator<<(std::ostream& os, const TxnId& txnId) {
         return os << "{trh=" << txnId.trh << ", mtr=" << txnId.mtr <<"}";
     }
+    K2_PAYLOAD_FIELDS(trh, mtr);
 };
 } // ns k2
 
@@ -49,6 +50,7 @@ struct DataRecord {
         Committed     // the record has been committed and we should use the key/value
         // aborted WIs don't need state - as soon as we learn that a WI has been aborted, we remove it
     } status;
+    K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
 };
 
 // A Transaction record
@@ -89,6 +91,8 @@ struct TxnRecord {
         Committed,
         Deleted
     } state = State::Created;
+
+    K2_PAYLOAD_FIELDS(txnId, writeKeys, state);
 
     friend std::ostream& operator<<(std::ostream& os, const State& st) {
         const char* strstate = "bad state";
