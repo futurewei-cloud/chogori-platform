@@ -85,7 +85,7 @@ K23SIPartitionModule::~K23SIPartitionModule() {
 seastar::future<> K23SIPartitionModule::_recovery() {
     //TODO perform recovery
     K2DEBUG("Partition: " << _partition << ", recovery");
-    return _persistence.makeCall(FastDeadline(10s));
+    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, FastDeadline(10s));
 }
 
 seastar::future<> K23SIPartitionModule::stop() {
@@ -440,7 +440,7 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest<Payload>&& request, std::
 
     versions.push_front(std::move(rec));
     // TODO write to WAL
-    return _persistence.makeCall(deadline);
+    return _persistence.makeCall(versions.front(), deadline);
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
@@ -505,7 +505,8 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
             _indexer.erase(fiter);
         }
     }
-    return _persistence.makeCall(FastDeadline(10s)).then([]{
+    // send a partiall update
+    return _persistence.makeCall(dto::K23SI_PersistencePartialUpdate{}, FastDeadline(10s)).then([]{
         return RPCResponse(dto::K23SIStatus::OK("persistence call succeeded"), dto::K23SITxnFinalizeResponse{});
     });
 }

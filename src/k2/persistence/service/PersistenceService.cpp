@@ -22,9 +22,10 @@ seastar::future<> PersistenceService::stop() {
 
 seastar::future<> PersistenceService::start() {
     K2INFO("Registering message handlers");
-    RPC().registerRPCObserver<dto::K23SI_PersistenceRequest, dto::K23SI_PersistenceResponse>(dto::Verbs::K23SI_Persist, [this](dto::K23SI_PersistenceRequest&& request) {
+    RPC().registerRPCObserver<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
+    (dto::Verbs::K23SI_Persist, [this](dto::K23SI_PersistenceRequest<Payload>&& request) {
         (void) request;
-        return RPCResponse(Statuses::S200_OK("persistence success"), dto::K23SI_PersistenceResponse());
+        return RPCResponse(Statuses::S200_OK("persistence success"), dto::K23SI_PersistenceResponse{});
     });
 
     return seastar::make_ready_future();

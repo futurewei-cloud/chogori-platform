@@ -127,12 +127,21 @@ struct K23SITxnHeartbeatResponse {
     K2_PAYLOAD_COPYABLE;
 };
 
+template <typename ValueType>
 struct K23SI_PersistenceRequest {
-    int tmp;
-    K2_PAYLOAD_COPYABLE;
+    SerializeAsPayload<ValueType> value;  // the value of the write
+    K2_PAYLOAD_FIELDS(value);
 };
 
 struct K23SI_PersistenceResponse {
+    K2_PAYLOAD_COPYABLE;
+};
+
+struct K23SI_PersistenceRecoveryRequest {
+    K2_PAYLOAD_COPYABLE;
+};
+
+struct K23SI_PersistencePartialUpdate {
     K2_PAYLOAD_COPYABLE;
 };
 
