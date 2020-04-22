@@ -334,7 +334,7 @@ void RPCParser::_stIN_PARTIAL_VARIABLE_HEADER() {
     // done with the partial binary.
     std::move(_partialBinary).prefix(0);
 
-    std::memcpy(data, _currentBinary.get_write(), totalNeed - partSize);
+    std::memcpy(data + partSize, _currentBinary.get_write(), totalNeed - partSize);
     // rewind the current binary
     _currentBinary.trim_front(totalNeed - partSize);
 
