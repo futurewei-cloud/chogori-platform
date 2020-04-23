@@ -15,7 +15,7 @@ namespace logging {
 
 class LogEntry {
 public:
-    static seastar::sstring prefix;
+    static seastar::sstring procName;
 
     std::ostringstream out;
     LogEntry()=default;
@@ -54,7 +54,7 @@ inline LogEntry StartLogStream() {
     std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
     LogEntry entry;
     auto id = seastar::engine_is_ready() ? seastar::engine().cpu_id() : pthread_self();
-    entry.out << "[" << buffer << "]-" << LogEntry::prefix << "-(" << id <<") ";
+    entry.out << "[" << buffer << "]-" << LogEntry::procName << "-(" << id <<") ";
     return entry;
 }
 

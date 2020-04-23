@@ -2,7 +2,7 @@
 namespace k2 {
 namespace logging {
 
-seastar::sstring LogEntry::prefix="";
+seastar::sstring LogEntry::procName="";
 
 }
 }// ns k2

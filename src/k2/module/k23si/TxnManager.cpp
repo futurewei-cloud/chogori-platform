@@ -154,9 +154,6 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
     TxnRecord& rec = getTxnRecord(std::move(txnId));
     auto state = rec.state;
     K2DEBUG("Processing action " << action << ", for state " << state << ", in txn " << rec);
-    if (action != TxnRecord::Action::onHeartbeat || state != TxnRecord::State::InProgress) {
-        K2INFO("Processing action " << action << ", for state " << state << ", in txn " << rec);
-    }
     switch (state) {
         case TxnRecord::State::Created:
             // We did not have a transaction record and it was just created
@@ -323,7 +320,8 @@ seastar::future<> TxnManager::_committed(TxnRecord& rec) {
 
     return _persistence.makeCall(rec, FastDeadline(10s))
     .then([&rec, this]{
-        return _finalizeTransaction(rec, FastDeadline(5s  +  10ms * rec.writeKeys.size()));
+        auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size())/_config.finalizeBatchSize();
+        return _finalizeTransaction(rec, FastDeadline(timeout));
     });
     /*
     // queue up background task for finalizing
@@ -372,7 +370,7 @@ seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline deadline) {
-    K2INFO("Finalizing " << rec);
+    K2DEBUG("Finalizing " << rec);
     //TODO we need to keep trying to finalize in cases of failures.
     // this needs to be done in a rate-limited fashion. For now, we just try some configurable number of times and give up
     return seastar::do_with((uint64_t)0, [this, &rec, deadline] (auto& batchStart) {
@@ -412,7 +410,7 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
         );
     })
     .then([this, &rec] {
-        K2INFO("finalize completed for: " << rec);
+        K2DEBUG("finalize completed for: " << rec);
         return onAction(TxnRecord::Action::onFinalizeComplete, rec.txnId);
     });
 }

@@ -226,6 +226,7 @@ int main(int argc, char** argv) {;
         ("clients_per_core", bpo::value<int>()->default_value(1), "Number of concurrent TPC-C clients per core")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("dataload_txn_timeout", bpo::value<ParseableDuration>(), "Timeout of dataload txn, as chrono literal")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
 

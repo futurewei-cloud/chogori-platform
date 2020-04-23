@@ -34,7 +34,7 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
 }
 
 void K2TxnHandle::makeHeartbeatTimer() {
-    K2INFO("makehb, mtr=" << _mtr);
+    K2DEBUG("makehb, mtr=" << _mtr);
     _heartbeat_timer.set_callback([this] {
         _client->heartbeats++;
 
@@ -54,12 +54,13 @@ void K2TxnHandle::makeHeartbeatTimer() {
             auto& [status, k2response] = response;
             checkResponseStatus(status);
             if (_failed) {
-                K2INFO("txn failed: stopping hb in " << _mtr);
-                _heartbeat_timer.cancel();
+                K2DEBUG("txn failed: stopping hb in " << _mtr);
+                _hbShouldStop = true;
             }
         }).finally([request, this] {
             delete request;
-            _heartbeat_timer.arm(_heartbeat_interval);
+            if (!_hbShouldStop)
+                _heartbeat_timer.arm(_heartbeat_interval);
         });
     });
 }
@@ -79,8 +80,9 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         std::move(_write_set)
     };
 
-    K2INFO("Cancel hb for " << _mtr);
+    K2DEBUG("Cancel hb for " << _mtr);
     _heartbeat_timer.cancel();
+    _hbShouldStop = true;
 
     return _cpo_client->PartitionRequest
         <dto::K23SITxnEndRequest, dto::K23SITxnEndResponse, dto::Verbs::K23SI_TXN_END>

@@ -182,7 +182,7 @@ public:
                 if (status.is2xxOK() && !_hbActive) {
                     _hbActive = true;
                     K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
-                    K2INFO("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
+                    K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
                     _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
                     _heartbeat_timer.arm(_heartbeat_interval);
@@ -213,6 +213,7 @@ private:
 
     Duration _heartbeat_interval;
     bool _hbActive = false;
+    bool _hbShouldStop = false;
     seastar::timer<> _heartbeat_timer;
     seastar::future<> _heartbeat_future{seastar::make_ready_future()};
     std::vector<dto::Key> _write_set;

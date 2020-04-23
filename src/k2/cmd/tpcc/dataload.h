@@ -25,7 +25,8 @@ public:
     future<> loadData(K23SIClient& client, int pipeline_depth)
     {
         K2TxnOptions options{};
-        options.deadline = Deadline(6000s);
+
+        options.deadline = Deadline(ConfigDuration("dataload_txn_timeout", 600s)());
         std::vector<future<>> futures;
 
         for (int i=0; i < pipeline_depth; ++i) {

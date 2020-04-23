@@ -5,7 +5,7 @@ namespace k2 {
 App* ___appBase___;
 
 int App::start(int argc, char** argv) {
-    k2::logging::LogEntry::prefix = std::filesystem::path(argv[0]).filename().c_str();
+    k2::logging::LogEntry::procName = std::filesystem::path(argv[0]).filename().c_str();
     ___appBase___ = this;
     k2::VirtualNetworkStack::Dist_t vnet;
     k2::RPCProtocolFactory::Dist_t tcpproto;
