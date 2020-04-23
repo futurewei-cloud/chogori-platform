@@ -75,9 +75,10 @@ struct TxnRecord {
 
     friend std::ostream& operator<<(std::ostream& os, const TxnRecord& rec) {
         os << "{txnId=" << rec.txnId << ", writeKeys=[";
-        for (auto& key: rec.writeKeys) {
-            os << key << ",";
-        }
+        os << rec.writeKeys.size();
+        //for (auto& key: rec.writeKeys) {
+        //    os << key << ",";
+        //}
         os << "], rwExpiry=" << rec.rwExpiry << ", hbExpiry=" << rec.hbExpiry << "}";
         return os;
     }

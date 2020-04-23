@@ -179,8 +179,13 @@ public:
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
-                if (!_heartbeat_timer && status.is2xxOK()) {
+                if (status.is2xxOK() && !_hbActive) {
+                    _hbActive = true;
+                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
+                    K2INFO("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
+                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
+                    _heartbeat_timer.arm(_heartbeat_interval);
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
@@ -192,7 +197,9 @@ public:
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed
     seastar::future<EndResult> end(bool shouldCommit);
-
+    friend std::ostream& operator<<(std::ostream& os, const K2TxnHandle& h){
+        return os << h._mtr;
+    }
 private:
     dto::K23SI_MTR _mtr;
     Deadline<> _deadline{Deadline<>(10s)};
@@ -204,11 +211,13 @@ private:
     Duration _txn_end_deadline;
     TimePoint _start_time;
 
-    std::unique_ptr<seastar::timer<>> _heartbeat_timer{nullptr};
-    seastar::future<> _heartbeat_future{seastar::make_ready_future<>()};
+    Duration _heartbeat_interval;
+    bool _hbActive = false;
+    seastar::timer<> _heartbeat_timer;
+    seastar::future<> _heartbeat_future{seastar::make_ready_future()};
     std::vector<dto::Key> _write_set;
     dto::Key _trh_key;
-    std::string _trh_collection;
+    String _trh_collection;
 };
 
 } // namespace k2

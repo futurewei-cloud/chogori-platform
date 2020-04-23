@@ -4,14 +4,19 @@
 #pragma once
 #include <pthread.h>
 #include <ctime>
+#include <string>
 #include <iostream>
 #include <seastar/core/reactor.hh>  // for access to reactor
+#include <seastar/core/sstring.hh>
 #include <sstream>
 #include "Chrono.h"
 namespace k2{
 namespace logging {
+
 class LogEntry {
 public:
+    static seastar::sstring prefix;
+
     std::ostringstream out;
     LogEntry()=default;
     LogEntry(LogEntry&&)=default;
@@ -49,7 +54,7 @@ inline LogEntry StartLogStream() {
     std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
     LogEntry entry;
     auto id = seastar::engine_is_ready() ? seastar::engine().cpu_id() : pthread_self();
-    entry.out << "[" << buffer << "]" << "(" << id <<") ";
+    entry.out << "[" << buffer << "]-" << LogEntry::prefix << "-(" << id <<") ";
     return entry;
 }
 
