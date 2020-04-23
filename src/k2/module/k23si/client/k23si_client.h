@@ -179,13 +179,12 @@ public:
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
-                if (status.is2xxOK() && !_hbActive) {
-                    _hbActive = true;
+                if (status.is2xxOK() && !_heartbeat_timer.armed()) {
                     K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
                     K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
                     _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
-                    _heartbeat_timer.arm(_heartbeat_interval);
+                    _heartbeat_timer.arm_periodic(_heartbeat_interval);
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
@@ -212,8 +211,6 @@ private:
     TimePoint _start_time;
 
     Duration _heartbeat_interval;
-    bool _hbActive = false;
-    bool _hbShouldStop = false;
     seastar::timer<> _heartbeat_timer;
     seastar::future<> _heartbeat_future{seastar::make_ready_future()};
     std::vector<dto::Key> _write_set;

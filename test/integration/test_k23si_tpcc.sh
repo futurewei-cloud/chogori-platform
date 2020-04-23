@@ -50,7 +50,7 @@ trap finish EXIT
 
 sleep 1
 
-./build/src/k2/cmd/tpcc/tpcc_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --num_warehouses 1 --prometheus_port 63100 --enable_tx_checksum true --reactor-backend epoll --memory=512M --partition_request_timeout=30s --dataload_txn_timeout=6000s --num_concurrent_txns=2
+./build/src/k2/cmd/tpcc/tpcc_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --num_warehouses 1 --prometheus_port 63100 --enable_tx_checksum true --reactor-backend epoll --memory=512M --partition_request_timeout=30s --dataload_txn_timeout=6000s --num_concurrent_txns=4
 
 #Wait for "Done with benchmark" message and kill process.
 #Run bechmark phase:

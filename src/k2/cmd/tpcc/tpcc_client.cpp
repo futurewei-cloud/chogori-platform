@@ -81,6 +81,7 @@ public:  // application lifespan
             K2INFO("Done with benchmark");
             _stopped = true;
             _stopPromise.set_value();
+            seastar::engine().exit(0);
         });
     }
 

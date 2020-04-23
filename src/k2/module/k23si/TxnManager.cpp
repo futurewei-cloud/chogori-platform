@@ -87,7 +87,7 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
     });
     _hbTimer.arm(_hbDeadline);
     // TODO recover transaction state
-    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, FastDeadline(10s));
+    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, _config.persistenceTimeout());
 }
 
 seastar::future<> TxnManager::stop() {
@@ -284,7 +284,7 @@ seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
     rec.unlinkHB(_hblist);
     // manage rw expiry: we want to track expiration on retention window
     // persist if needed
-    return _persistence.makeCall(rec, FastDeadline(10s));
+    return _persistence.makeCall(rec, _config.persistenceTimeout());
 }
 
 seastar::future<> TxnManager::_aborted(TxnRecord& rec) {
@@ -295,18 +295,20 @@ seastar::future<> TxnManager::_aborted(TxnRecord& rec) {
     rec.unlinkHB(_hblist);
     // manage rw expiry
     rec.unlinkRW(_rwlist);
+
     // queue up background task for finalizing
     _bgTasks.push_back(rec);
     rec.bgTaskFut = rec.bgTaskFut
-    .then([] {
-        return seastar::sleep(0us);
-    })
-    .then([this, &rec]() {
-        // TODO Deadline based on transaction size
-        return _finalizeTransaction(rec, FastDeadline(5s));
-    });
+                        .then([] {
+                            return seastar::sleep(0us);
+                        })
+                        .then([this, &rec]() {
+                            // TODO Deadline based on transaction size
+                            auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
+                            return _finalizeTransaction(rec, FastDeadline(timeout));
+                        });
     // persist if needed
-    return _persistence.makeCall(rec, FastDeadline(10s));
+    return _persistence.makeCall(rec, _config.persistenceTimeout());
 }
 
 seastar::future<> TxnManager::_committed(TxnRecord& rec) {
@@ -318,12 +320,6 @@ seastar::future<> TxnManager::_committed(TxnRecord& rec) {
     // manage rw expiry
     rec.unlinkRW(_rwlist);
 
-    return _persistence.makeCall(rec, FastDeadline(10s))
-    .then([&rec, this]{
-        auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size())/_config.finalizeBatchSize();
-        return _finalizeTransaction(rec, FastDeadline(timeout));
-    });
-    /*
     // queue up background task for finalizing
     _bgTasks.push_back(rec);
     rec.bgTaskFut = rec.bgTaskFut
@@ -332,11 +328,11 @@ seastar::future<> TxnManager::_committed(TxnRecord& rec) {
     })
     .then([this, &rec]() {
         // TODO Deadline based on transaction size
-        return _finalizeTransaction(rec, FastDeadline(5s));
+        auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size())/_config.finalizeBatchSize();
+        return _finalizeTransaction(rec, FastDeadline(timeout));
     });
     // persist if needed
-    return _persistence.makeCall(rec, FastDeadline(10s));
-    */
+    return _persistence.makeCall(rec, _config.persistenceTimeout());
 }
 
 seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
@@ -349,7 +345,7 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
     rec.unlinkRW(_rwlist);
     // persist if needed
 
-    return _persistence.makeCall(rec, FastDeadline(10s)).then([this, &rec]{
+    return _persistence.makeCall(rec, _config.persistenceTimeout()).then([this, &rec]{
         rec.unlinkBG(_bgTasks);
         rec.unlinkRW(_rwlist);
         rec.unlinkHB(_hblist);

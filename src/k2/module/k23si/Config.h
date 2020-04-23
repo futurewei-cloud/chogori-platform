@@ -35,6 +35,7 @@ struct K23SIConfig {
 
     // the endpoint for our persistence
     ConfigVar<String> persistenceEndpoint{"k23si_persistence_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
+    ConfigDuration persistenceTimeout{"k23si_persistence_timeout", 10s};
 
     // the endpoint for the CPO
     ConfigVar<String> cpoEndpoint{"k23si_cpo_endpoint", "tcp+k2rpc://127.0.0.1:12345"};

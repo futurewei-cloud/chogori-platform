@@ -55,12 +55,10 @@ void K2TxnHandle::makeHeartbeatTimer() {
             checkResponseStatus(status);
             if (_failed) {
                 K2DEBUG("txn failed: stopping hb in " << _mtr);
-                _hbShouldStop = true;
+                _heartbeat_timer.cancel();
             }
         }).finally([request, this] {
             delete request;
-            if (!_hbShouldStop)
-                _heartbeat_timer.arm(_heartbeat_interval);
         });
     });
 }
@@ -82,7 +80,6 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
 
     K2DEBUG("Cancel hb for " << _mtr);
     _heartbeat_timer.cancel();
-    _hbShouldStop = true;
 
     return _cpo_client->PartitionRequest
         <dto::K23SITxnEndRequest, dto::K23SITxnEndResponse, dto::Verbs::K23SI_TXN_END>
