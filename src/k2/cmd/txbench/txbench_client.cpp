@@ -12,7 +12,7 @@
 class Client {
 public:  // application lifespan
     Client():
-        _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<std::string>>()),
+        _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<k2::String>>()),
         _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
         _data(0),
         _stopped(true),
@@ -279,7 +279,7 @@ private:
     }
 
 private:
-    std::vector<std::string> _tcpRemotes;
+    std::vector<k2::String> _tcpRemotes;
     k2::Duration _testDuration;
     k2::Duration _actualTestDuration;
     char* _data;
@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
         ("pipeline_depth_mbytes", bpo::value<uint32_t>()->default_value(200), "How much data do we allow to go un-ACK-ed")
         ("pipeline_depth_count", bpo::value<uint32_t>()->default_value(10), "How many requests do we allow to go un-ACK-ed")
         ("echo_mode", bpo::value<bool>()->default_value(false), "Should we echo all data in requests when we ACK. ")
-        ("tcp_remotes", bpo::value<std::vector<std::string>>()->multitoken()->default_value(std::vector<std::string>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run");
     return app.start(argc, argv);
 }

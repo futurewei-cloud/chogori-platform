@@ -10,7 +10,9 @@ namespace k2 {
 K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, Deadline<> deadline, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept :
     _mtr(std::move(mtr)), _deadline(deadline), _cpo_client(cpo), _client(client), _started(true),
     _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time)
-{}
+{
+    K2DEBUG("ctor, mtr=" << _mtr);
+}
 
 
 void K2TxnHandle::checkResponseStatus(Status& status) {
@@ -32,7 +34,8 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
 }
 
 void K2TxnHandle::makeHeartbeatTimer() {
-    _heartbeat_timer = std::make_unique<seastar::timer<>>([this] () {
+    K2DEBUG("makehb, mtr=" << _mtr);
+    _heartbeat_timer.set_callback([this] {
         _client->heartbeats++;
 
         auto* request = new dto::K23SITxnHeartbeatRequest {
@@ -42,40 +45,28 @@ void K2TxnHandle::makeHeartbeatTimer() {
             _mtr
         };
 
-        auto it = _cpo_client->collections.find(_trh_collection);
-        if (it == _cpo_client->collections.end()) {
-            K2WARN("Heartbeat timer failed to get trh collection!");
-        }
-        Duration deadline = it->second.collection.metadata.heartbeatDeadline / 2;
+        K2DEBUG("send hb for " << _mtr);
 
-        _heartbeat_future = _cpo_client->PartitionRequest
-        <dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>
-        (Deadline<>(deadline), *request).then([this] (auto&& response) {
+        _heartbeat_future = _heartbeat_future.then([this, request] {
+            return _cpo_client->PartitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request);
+        })
+        .then([this] (auto&& response) {
             auto& [status, k2response] = response;
             checkResponseStatus(status);
             if (_failed) {
-                _heartbeat_timer->cancel();
+                K2DEBUG("txn failed: stopping hb in " << _mtr);
+                _heartbeat_timer.cancel();
             }
-        }).finally([request] () { delete request; });
+        }).finally([request, this] {
+            delete request;
+        });
     });
-
-    auto it = _cpo_client->collections.find(_trh_collection);
-    if (it == _cpo_client->collections.end()) {
-        K2WARN("Heartbeat timer failed to get trh collection!");
-    }
-
-    Duration period = it->second.collection.metadata.heartbeatDeadline / 2;
-    _heartbeat_timer->arm_periodic(period);
 }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     if (!_write_set.size()) {
         _client->successful_txns++;
         return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
-    }
-
-    if (_heartbeat_timer) {
-        _heartbeat_timer->cancel();
     }
 
     auto* request  = new dto::K23SITxnEndRequest {
@@ -87,6 +78,9 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         std::move(_write_set)
     };
 
+    K2DEBUG("Cancel hb for " << _mtr);
+    _heartbeat_timer.cancel();
+
     return _cpo_client->PartitionRequest
         <dto::K23SITxnEndRequest, dto::K23SITxnEndResponse, dto::Verbs::K23SI_TXN_END>
         (Deadline<>(_txn_end_deadline), *request).
@@ -95,7 +89,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             if (status.is2xxOK() && !_failed) {
                 _client->successful_txns++;
             } else if (!status.is2xxOK()){
-                K2INFO("TxnEndRequest failed: " << status);
+                K2WARN("TxnEndRequest failed: " << status);
             }
 
             return _heartbeat_future.then([this, s=std::move(status)] () {

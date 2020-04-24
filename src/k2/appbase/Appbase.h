@@ -27,7 +27,7 @@ namespace k2 {
 class MultiAddressProvider : public k2::IAddressProvider {
    public:
     MultiAddressProvider() = default;
-    MultiAddressProvider(const std::vector<std::string>& urls) : _urls(urls) {}
+    MultiAddressProvider(const std::vector<String>& urls) : _urls(urls) {}
     MultiAddressProvider& operator=(MultiAddressProvider&&) = default;
     seastar::socket_address getAddress(int coreID) const override {
         if (size_t(coreID) < _urls.size()) {
@@ -50,7 +50,7 @@ class MultiAddressProvider : public k2::IAddressProvider {
     }
 
    private:
-    std::vector<std::string> _urls;
+    std::vector<String> _urls;
 };  // class MultiAddressProvider
 
 // This is a foundational class used to create K2 Apps.
