@@ -85,7 +85,7 @@ K23SIPartitionModule::~K23SIPartitionModule() {
 seastar::future<> K23SIPartitionModule::_recovery() {
     //TODO perform recovery
     K2DEBUG("Partition: " << _partition << ", recovery");
-    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, FastDeadline(10s));
+    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, _config.persistenceTimeout());
 }
 
 seastar::future<> K23SIPartitionModule::stop() {
@@ -506,7 +506,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         }
     }
     // send a partiall update
-    return _persistence.makeCall(dto::K23SI_PersistencePartialUpdate{}, FastDeadline(10s)).then([]{
+    return _persistence.makeCall(dto::K23SI_PersistencePartialUpdate{}, _config.persistenceTimeout()).then([]{
         return RPCResponse(dto::K23SIStatus::OK("persistence call succeeded"), dto::K23SITxnFinalizeResponse{});
     });
 }

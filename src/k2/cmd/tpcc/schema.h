@@ -16,7 +16,7 @@
     do { \
         if (!((read_result).status.is2xxOK())) { \
             K2INFO("TPC-C failed to read rows: " << (read_result).status); \
-            return make_exception_future(std::runtime_error(std::string("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
+            return make_exception_future(std::runtime_error(k2::String("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
         } \
     } \
     while (0) \

@@ -30,8 +30,12 @@ struct K23SIConfig {
     // how many times to try and finalize a transaction
     ConfigVar<uint64_t> finalizeRetries{"k23si_txn_finalize_retries", 10};
 
+    // how many writes to finalize in parallel
+    ConfigVar<uint64_t> finalizeBatchSize{"k23si_txn_finalize_batch_size", 20};
+
     // the endpoint for our persistence
     ConfigVar<String> persistenceEndpoint{"k23si_persistence_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
+    ConfigDuration persistenceTimeout{"k23si_persistence_timeout", 10s};
 
     // the endpoint for the CPO
     ConfigVar<String> cpoEndpoint{"k23si_cpo_endpoint", "tcp+k2rpc://127.0.0.1:12345"};

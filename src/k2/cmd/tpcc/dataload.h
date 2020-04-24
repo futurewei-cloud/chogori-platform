@@ -25,11 +25,13 @@ public:
     future<> loadData(K23SIClient& client, int pipeline_depth)
     {
         K2TxnOptions options{};
-        options.deadline = Deadline(600s);
+
+        options.deadline = Deadline(ConfigDuration("dataload_txn_timeout", 600s)());
         std::vector<future<>> futures;
 
         for (int i=0; i < pipeline_depth; ++i) {
             futures.push_back(client.beginTxn(options).then([this] (K2TxnHandle&& t) {
+                    K2DEBUG("txn begin in load data");
                     return do_with(std::move(t), [this] (K2TxnHandle& txn) {
                         return insertDataLoop(txn);
                 });
@@ -45,6 +47,7 @@ private:
         return do_until(
             [this] { return _data.size() == 0; },
             [this, &txn] () {
+            K2DEBUG("remaining data size=" << _data.size());
             auto write_func = std::move(_data.back());
             _data.pop_back();
 

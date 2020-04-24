@@ -1,10 +1,11 @@
 #include "Appbase.h"
-
+#include <filesystem>
 namespace k2 {
 
 App* ___appBase___;
 
 int App::start(int argc, char** argv) {
+    k2::logging::LogEntry::procName = std::filesystem::path(argv[0]).filename().c_str();
     ___appBase___ = this;
     k2::VirtualNetworkStack::Dist_t vnet;
     k2::RPCProtocolFactory::Dist_t tcpproto;
@@ -17,7 +18,7 @@ int App::start(int argc, char** argv) {
     addOptions()
     ("prometheus_port", bpo::value<uint16_t>()->default_value(8089), "HTTP port for the prometheus server")
     ("tcp_port", bpo::value<uint16_t>(), "If specified, this TCP port will be opened on all shards (kernel-based incoming connection load-balancing via shared bind on same port from multiple listeners. Conflicts with --tcp_endpoints")
-    ("tcp_endpoints", bpo::value<std::vector<std::string>>()->multitoken(), "A list(space-delimited) of TCP listening endpoints to assign to each core. You can specify either full endpoints, e.g. 'tcp+k2rpc://192.168.1.2:12345' or just ports , e.g. '12345'. If simple ports are specified, the stack will bind to 0.0.0.0. Conflicts with --tcp_port")
+    ("tcp_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "A list(space-delimited) of TCP listening endpoints to assign to each core. You can specify either full endpoints, e.g. 'tcp+k2rpc://192.168.1.2:12345' or just ports , e.g. '12345'. If simple ports are specified, the stack will bind to 0.0.0.0. Conflicts with --tcp_port")
     ("enable_tx_checksum", bpo::value<bool>()->default_value(false), "enables transport-level checksums (and validation) on all messages. it incurs double - read penalty(data is read separately to compute checksum)")
     //("vservers", bpo::value<std::vector<int>>()->multitoken(), "This option accepts exactly 2 integers, which specify how many virtual servers to create(1) and how many cores each server should have(2). The servers are reachable within the same process over the sim protocol, with auto-assigned names.")
     ;
@@ -59,7 +60,7 @@ int App::start(int argc, char** argv) {
             auto port = config["tcp_port"].as<uint16_t>();
             tcpProtobuilder = k2::TCPRPCProtocol::builder(std::ref(vnet), port);
         } else if (config.count("tcp_endpoints")) {
-            std::vector<std::string> tcp_endpoints = config["tcp_endpoints"].as<std::vector<std::string>>();
+            std::vector<k2::String> tcp_endpoints = config["tcp_endpoints"].as<std::vector<k2::String>>();
             addrProvider = MultiAddressProvider(tcp_endpoints);
             tcpProtobuilder = k2::TCPRPCProtocol::builder(std::ref(vnet), std::ref(addrProvider));
         } else {

@@ -81,6 +81,7 @@ public:  // application lifespan
             K2INFO("Done with benchmark");
             _stopped = true;
             _stopPromise.set_value();
+            seastar::engine().exit(0);
         });
     }
 
@@ -106,7 +107,7 @@ private:
             .then([this] {
                 K2INFO("Starting item data load");
                 _item_loader = DataLoader(generateItemData());
-                return _item_loader.loadData(_client, 2);
+                return _item_loader.loadData(_client, _num_concurrent_txns());
             });
         } else {
             f = f.then([] { return seastar::sleep(2s); });
@@ -114,7 +115,7 @@ private:
 
         return f.then ([this] {
             K2INFO("Starting load to server");
-            return _loader.loadData(_client, 2);
+            return _loader.loadData(_client, _num_concurrent_txns());
         }).then ([this] {
             K2INFO("Data load done");
         });
@@ -202,6 +203,7 @@ private:
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<int> _max_warehouses{"num_warehouses"};
     ConfigVar<int> _clients_per_core{"clients_per_core"};
+    ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
 
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _newOrderLatency;
@@ -221,9 +223,11 @@ int main(int argc, char** argv) {;
         ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
+        ("num_concurrent_txns", bpo::value<int>()->default_value(2), "Number of concurrent transactions to use")
         ("clients_per_core", bpo::value<int>()->default_value(1), "Number of concurrent TPC-C clients per core")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("dataload_txn_timeout", bpo::value<ParseableDuration>(), "Timeout of dataload txn, as chrono literal")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
 
