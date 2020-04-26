@@ -39,7 +39,14 @@ void RRDMARPCProtocol::start() {
             [this] {
             return _listener.accept().then(
                 [this] (std::unique_ptr<seastar::rdma::RDMAConnection>&& rconn) {
-                    auto && ep = _endpointFromAddress(rconn->getAddr());
+                    // Unlike TCP, RDMA uses symmetric endpoints for connecting and
+                    // receiving connections. This causes channels to be dropped in the map.
+                    // The top 8 bits of QP numbers are unused, so we shift the UDQP num
+                    // to get unique endpoints
+                    auto adjusted_addr = rconn->getAddr();
+                    adjusted_addr.UDQP = adjusted_addr.UDQP << 8;
+
+                    auto && ep = _endpointFromAddress(adjusted_addr);
                     K2DEBUG("Accepted connection from " << ep.getURL());
                     _handleNewChannel(std::move(rconn), std::move(ep));
                     return seastar::make_ready_future();
@@ -176,7 +183,10 @@ RRDMARPCProtocol::_handleNewChannel(std::unique_ptr<seastar::rdma::RDMAConnectio
             return seastar::make_ready_future();
         });
     assert(chan->getTXEndpoint().canAllocate());
-    _channels.emplace(chan->getTXEndpoint(), chan);
+    auto [it, placed] = _channels.emplace(chan->getTXEndpoint(), chan);
+    if (!placed) {
+        K2WARN("Failed to place new RDMA channel");
+    }
     chan->run();
     return chan;
 }

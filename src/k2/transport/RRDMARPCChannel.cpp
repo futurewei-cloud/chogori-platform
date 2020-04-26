@@ -22,7 +22,7 @@ RRDMARPCChannel::RRDMARPCChannel(std::unique_ptr<seastar::rdma::RDMAConnection> 
 RRDMARPCChannel::~RRDMARPCChannel(){
     K2DEBUG("dtor");
     if (!_closingInProgress) {
-        K2WARN("destructor without graceful close");
+        K2WARN("destructor without graceful close: " << _endpoint.getURL());
     }
 }
 
@@ -47,7 +47,7 @@ void RRDMARPCChannel::run() {
     );
     _rpcParser.registerParserFailureObserver(
         [this](std::exception_ptr exc) {
-            K2DEBUG("Received parser exception");
+            K2WARN_EXC("Received parser exception", exc);
             this->_failureObserver(this->_endpoint, exc);
         }
     );
