@@ -237,6 +237,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                 case TxnRecord::Action::onCreate: // signal client to abort
                 case TxnRecord::Action::onForceAbort:
                 case TxnRecord::Action::onHeartbeat:
+                    return seastar::make_ready_future();  // allow as no-op
                 case TxnRecord::Action::onEndCommit:
                     return seastar::make_exception_future(ClientError());
                 case TxnRecord::Action::onEndAbort: // accept this to be re-entrant
@@ -254,6 +255,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                 case TxnRecord::Action::onCreate: // signal client to abort
                 case TxnRecord::Action::onForceAbort:
                 case TxnRecord::Action::onHeartbeat:
+                    return seastar::make_ready_future();  // allow as no-op
                 case TxnRecord::Action::onEndAbort:
                     return seastar::make_exception_future(ClientError());
                 case TxnRecord::Action::onEndCommit: // accept this to be re-entrant
