@@ -416,7 +416,14 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
             (void) GetTimestampBatch(batchSizeToRequest)
                 .then([this, triggeredTime = curTime](TimestampBatch newBatch) {
                     ProcessReturnedBatch(newBatch, triggeredTime);
-            }).handle_exception([] (auto exc) {
+            }).handle_exception([this] (auto exc) {
+                // Set exception for all pending client requests
+                for (auto&& clientRequest : _pendingClientRequests)
+                {
+                    clientRequest._promise->set_exception(exc);
+                }
+                _pendingClientRequests.clear();
+
                 K2ERROR_EXC("GetTimestampBatch failed: ", exc);
             });
         }
