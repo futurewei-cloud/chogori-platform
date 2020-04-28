@@ -42,8 +42,7 @@ class sampleTSOApp
 public:
     sampleTSOApp(){};
 
-    seastar::future<> stop()
-    {
+    seastar::future<> gracefulStop() {
         K2INFO("stop");
         return seastar::make_ready_future<>();
     };

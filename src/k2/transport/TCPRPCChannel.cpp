@@ -175,7 +175,7 @@ seastar::future<> TCPRPCChannel::gracefulClose(Duration timeout) {
     K2DEBUG("graceful close")
     _closeSocket();
 
-    return seastar::when_all(std::move(_closeDoneFuture), std::move(_loopDoneFuture)).discard_result();
+    return seastar::when_all_succeed(std::move(_closeDoneFuture), std::move(_loopDoneFuture)).discard_result();
 }
 
 void TCPRPCChannel::_closeSocket() {

@@ -18,7 +18,7 @@ AssignmentManager::~AssignmentManager() {
     K2INFO("dtor");
 }
 
-seastar::future<> AssignmentManager::stop() {
+seastar::future<> AssignmentManager::gracefulStop() {
     K2INFO("stop");
     return seastar::make_ready_future();
 }

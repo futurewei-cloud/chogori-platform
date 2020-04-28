@@ -35,7 +35,7 @@ void TxnRecord::unlinkBG(BGList& bglist) {
 }
 
 TxnManager::~TxnManager() {
-    K2DEBUG("dtor");
+    K2INFO("dtor for cname=" << _collectionName);
     _hblist.clear();
     _rwlist.clear();
     _bgTasks.clear();
@@ -90,16 +90,22 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
     return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, _config.persistenceTimeout());
 }
 
-seastar::future<> TxnManager::stop() {
-    K2DEBUG("stop");
+seastar::future<> TxnManager::gracefulStop() {
+    K2INFO("stopping txn mgr for coll=" << _collectionName);
     _stopping = true;
     _hbTimer.cancel();
-    return std::move(_hbTask).then([this]{
-        K2DEBUG("hb stopped. stopping " << _bgTasks.size() << " bg tasks");
-        return seastar::do_for_each(_bgTasks.begin(), _bgTasks.end(), [](auto& txn){
-            K2DEBUG("waiting for bg task on " << txn);
-            return std::move(txn.bgTaskFut);
-        }).discard_result().then([]{K2DEBUG("stopped");}).handle_exception([](auto exc) {
+    return _hbTask.then([this] {
+        K2INFO("hb stopped. stopping " << _bgTasks.size() << " bg tasks");
+        std::vector<seastar::future<>> _bgFuts;
+        for (auto& txn: _bgTasks) {
+            K2INFO("Waiting for bg task in " << txn);
+            _bgFuts.push_back(std::move(txn.bgTaskFut));
+        }
+        return seastar::when_all_succeed(_bgFuts.begin(), _bgFuts.end()).discard_result()
+        .then([]{
+            K2INFO("stopped");
+        })
+        .handle_exception([](auto exc) {
             K2ERROR_EXC("caught exception on stop", exc);
             return seastar::make_ready_future();
         });

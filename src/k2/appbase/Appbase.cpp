@@ -89,20 +89,32 @@ int App::start(int argc, char** argv) {
             return rrdmaproto.stop();
         });
         seastar::engine().at_exit([&] {
-            K2INFO("stop autoproto");
-            return autoproto.stop();
-        });
-        seastar::engine().at_exit([&] {
             K2INFO("stop dispatcher");
             return RPCDist().stop();
         });
         seastar::engine().at_exit([&] {
-            K2INFO("stop user applets");
-            std::vector<seastar::future<>> stopFutures;
-            for (auto& stopper : _stoppers) {
-                stopFutures.push_back(stopper());
-            }
-            return seastar::when_all(stopFutures.begin(), stopFutures.end()).discard_result();
+            K2INFO("stop autoproto");
+            return autoproto.stop();
+        });
+        seastar::engine().at_exit([&] {
+            K2INFO("hard stop user applets");
+            return seastar::do_for_each(_stoppers.rbegin(), _stoppers.rend(), [](auto& func) {
+                    return func();
+                })
+                .then([] { K2INFO("hard stopped"); })
+                .handle_exception([](auto exc) {
+                    K2ERROR_EXC("caught exception in hard stop", exc);
+                });
+        });
+        seastar::engine().at_exit([&] {
+            K2INFO("graceful stop user applets");
+            return seastar::do_for_each(_gracefulStoppers.rbegin(), _gracefulStoppers.rend(), [](auto& func) {
+                    return func();
+                })
+                .then([] { K2INFO("graceful stopped"); })
+                .handle_exception([](auto exc) {
+                    K2ERROR_EXC("caught exception in graceful stop", exc);
+                });
         });
 
         return
@@ -143,7 +155,7 @@ int App::start(int argc, char** argv) {
                     for (auto& ctor : _ctors) {
                         ctorFutures.push_back(ctor());
                     }
-                    return seastar::when_all(ctorFutures.begin(), ctorFutures.end()).discard_result();
+                    return seastar::when_all_succeed(ctorFutures.begin(), ctorFutures.end()).discard_result();
                 })
                 // STARTUP LOGIC
                 .then([&]() {
@@ -187,7 +199,7 @@ int App::start(int argc, char** argv) {
                     for (auto& starter : _starters) {
                         startFutures.push_back(starter());
                     }
-                    return seastar::when_all(startFutures.begin(), startFutures.end()).discard_result();
+                    return seastar::when_all_succeed(startFutures.begin(), startFutures.end()).discard_result();
                 })
                 .handle_exception([](auto exc) {
                     K2ERROR_EXC("Startup sequence failed with exception", exc);

@@ -38,14 +38,13 @@ seastar::future<> TSOService::TSOController::start()
         });
 }
 
-seastar::future<> TSOService::TSOController::stop()
-{
+seastar::future<> TSOService::TSOController::gracefulStop() {
     K2INFO("TSOController stop");
     _stopRequested = true;
 
     // need to chain all operations into a sequencial future chain to have them done properly
     // gracefully wait all future done here
-    return seastar::when_all(std::move(_heartBeatFuture), std::move(_timeSyncFuture), std::move(_statsUpdateFuture)).discard_result()
+    return seastar::when_all_succeed(std::move(_heartBeatFuture), std::move(_timeSyncFuture), std::move(_statsUpdateFuture)).discard_result()
         .then([this] () mutable {
             _heartBeatTimer.cancel();
             _timeSyncTimer.cancel();
@@ -59,7 +58,7 @@ seastar::future<> TSOService::TSOController::stop()
 
             return seastar::make_ready_future<>();
         });
- }
+}
 
 seastar::future<> TSOService::TSOController::InitializeInternal()
 {

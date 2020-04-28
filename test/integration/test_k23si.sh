@@ -48,6 +48,6 @@ function finish {
 }
 trap finish EXIT
 
-sleep 1
+sleep 2
 
 ./build/test/k23si/k23si_test --cpo_endpoint ${CPO} --k2_endpoints ${EPS} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63100

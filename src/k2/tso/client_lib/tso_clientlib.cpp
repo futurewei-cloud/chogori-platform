@@ -23,8 +23,7 @@ seastar::future<> TSO_ClientLib::start()
         .then([this] () mutable { return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]); });
 }
 
-seastar::future<> TSO_ClientLib::stop()
-{
+seastar::future<> TSO_ClientLib::gracefulStop() {
     K2INFO("stop");
     if (_stopped) {
         return seastar::make_ready_future<>();

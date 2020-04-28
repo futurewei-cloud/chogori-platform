@@ -29,7 +29,7 @@ public:
     ~TSO_ClientLib() { K2INFO("dtor");}
 
     seastar::future<> start();
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
 
     // get the timestamp from TSO (distributed from TSOClient Timestamp batch)
     seastar::future<Timestamp> GetTimestampFromTSO(const TimePoint& requestLocalTime);

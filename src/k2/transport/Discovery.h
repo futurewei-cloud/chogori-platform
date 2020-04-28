@@ -48,7 +48,7 @@ public :  // application lifespan
         return nullptr;
     }
     // required for seastar::distributed interface
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<> start();
 };  // class Discovery
 

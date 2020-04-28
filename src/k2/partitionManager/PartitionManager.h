@@ -16,7 +16,7 @@ public: // application lifespan
     seastar::future<dto::Partition> assignPartition(dto::CollectionMetadata meta, dto::Partition partition);
 
     // required for seastar::distributed interface
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<> start();
 
 private:

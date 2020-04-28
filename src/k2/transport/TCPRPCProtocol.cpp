@@ -134,7 +134,7 @@ seastar::future<> TCPRPCProtocol::stop() {
     }
 
     // here we return a future which completes once all GracefulClose futures complete.
-    return seastar::when_all(futs.begin(), futs.end()).discard_result();
+    return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
 std::unique_ptr<TXEndpoint> TCPRPCProtocol::getTXEndpoint(String url) {

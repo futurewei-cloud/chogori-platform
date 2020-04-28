@@ -53,7 +53,9 @@ public:
     size_t hash() const;
 
     friend std::ostream& operator<<(std::ostream& os, const Timestamp& ts) {
-        return os << "{tsoId=" << ts._tsoId << ", endCount=" << ts._tEndTSECount << ", delta=" << ts._tStartDelta << "}";
+        return os << "{tsoId=" << ts._tsoId << ", endCount=" << ts._tEndTSECount
+                  << "(" << printTime(TimePoint{} + 1ns*ts._tEndTSECount)
+                  << "), delta=" << ts._tStartDelta << "}";
     }
 
    private:

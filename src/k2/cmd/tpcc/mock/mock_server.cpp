@@ -29,8 +29,8 @@ public:  // application lifespan
     }
 
     // required for seastar::distributed interface
-    seastar::future<> stop() {
-        K2INFO("stop");
+    seastar::future<> gracefulStop() {
+        K2INFO("graceful stop");
         _stopped = true;
         // unregistar all observers
         k2::RPC().registerMessageObserver(dto::Verbs::K23SI_READ, nullptr);
