@@ -52,7 +52,7 @@ public :  // application lifespan
     ~TSOService();
 
     // required for seastar::distributed interface
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<> start();
 
     //TODO: implement this
@@ -116,7 +116,7 @@ class TSOService::TSOController
     // 3) then wait for all three timered task done and cancel timers respectively
     // 4) then exit cluster
     // NOTE: stop may need one full cycle of heartbeat() to finish, default 10ms.
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
 
     DISABLE_COPY_MOVE(TSOController);
 
@@ -290,7 +290,7 @@ class TSOService::TSOWorker
     public:
     TSOWorker(TSOService& outer) : _outer(outer){};
 
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<> start();
 
     DISABLE_COPY_MOVE(TSOWorker);

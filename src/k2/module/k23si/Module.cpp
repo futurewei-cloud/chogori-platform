@@ -74,7 +74,7 @@ seastar::future<> K23SIPartitionModule::start() {
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;
             _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
             _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
-            return seastar::when_all(_recovery(), _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline)).discard_result();
+            return seastar::when_all_succeed(_recovery(), _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline)).discard_result();
         });
 }
 
@@ -88,10 +88,10 @@ seastar::future<> K23SIPartitionModule::_recovery() {
     return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, _config.persistenceTimeout());
 }
 
-seastar::future<> K23SIPartitionModule::stop() {
+seastar::future<> K23SIPartitionModule::gracefulStop() {
     K2INFO("stop for cname=" << _cmeta.name << ", part=" << _partition);
     _retentionUpdateTimer.cancel();
-    return seastar::when_all(std::move(_retentionRefresh), _txnMgr.stop()).discard_result().then([]{K2DEBUG("stopped");});
+    return seastar::when_all_succeed(std::move(_retentionRefresh), _txnMgr.gracefulStop()).discard_result().then([]{K2INFO("stopped");});
 }
 
 seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>

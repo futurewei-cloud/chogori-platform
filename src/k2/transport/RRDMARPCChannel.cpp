@@ -122,7 +122,7 @@ seastar::future<> RRDMARPCChannel::gracefulClose(Duration timeout) {
     // close the connection if it wasn't closed already
     _closeRconn();
 
-    return seastar::when_all(std::move(_closeDoneFuture), std::move(_loopDoneFuture)).discard_result();
+    return seastar::when_all_succeed(std::move(_closeDoneFuture), std::move(_loopDoneFuture)).discard_result();
 }
 
 void RRDMARPCChannel::_closeRconn() {

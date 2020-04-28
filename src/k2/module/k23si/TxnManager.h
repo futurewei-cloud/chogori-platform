@@ -166,7 +166,7 @@ public: // lifecycle
     seastar::future<> start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline);
 
     // called when
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
 
     // called to update the retention timestamp when the server refreshes from TSO
     // We cache this value and use it to expire transactions when they are outside retention window.

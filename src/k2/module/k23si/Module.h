@@ -24,9 +24,9 @@ public: // lifecycle
     ~K23SIPartitionModule();
 
     seastar::future<> start();
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
 
-public:
+   public:
     // verb handlers
     // Read is called when we either get a new read, or after we perform a push operation on behalf of an incoming
     // read (recursively). We only perform the recursive attempt to read if we won this PUSH operation.

@@ -11,7 +11,7 @@ CollectionMetadataCache::~CollectionMetadataCache() {
     K2INFO("dtor");
 }
 
-seastar::future<> CollectionMetadataCache::stop() {
+seastar::future<> CollectionMetadataCache::gracefulStop() {
     K2INFO("stop");
     return seastar::make_ready_future<>();
 }

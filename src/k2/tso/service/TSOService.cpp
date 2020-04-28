@@ -18,8 +18,7 @@ TSOService::~TSOService()
     K2INFO("dtor");
 }
 
-seastar::future<> TSOService::stop()
-{
+seastar::future<> TSOService::gracefulStop() {
     K2INFO("stop");
 
     // Always use core 0 as controller and the rest as workers
@@ -27,13 +26,13 @@ seastar::future<> TSOService::stop()
     {
         K2ASSERT(_controller != nullptr, "_controller null!");
         K2INFO("TSOController stops on core:" <<seastar::engine().cpu_id());
-        return _controller->stop();
+        return _controller->gracefulStop();
     }
     else
     {
         K2ASSERT(_worker != nullptr, "_controller null!");
         K2INFO("TSOWorder stops on core:" <<seastar::engine().cpu_id());
-        return _worker->stop();
+        return _worker->gracefulStop();
     }
 }
 

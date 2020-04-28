@@ -16,8 +16,8 @@ Discovery::~Discovery() {
     K2INFO("dtor");
 }
 
-seastar::future<> Discovery::stop() {
-    K2INFO("stop");
+seastar::future<> Discovery::gracefulStop() {
+    K2INFO("graceful stop");
     return seastar::make_ready_future();
 }
 

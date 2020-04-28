@@ -20,6 +20,8 @@
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 #include <k2/tso/client_lib/tso_clientlib.h>
+#include <k2/common/Timer.h>
+
 
 namespace k2 {
 
@@ -77,7 +79,7 @@ k2::TSO_ClientLib& _tsoClient;
 public:
 
     seastar::future<> start();
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<Status> makeCollection(const String& collection);
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
 
@@ -179,12 +181,12 @@ public:
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
-                if (status.is2xxOK() && !_heartbeat_timer.armed()) {
+                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
                     K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
                     _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
-                    _heartbeat_timer.arm_periodic(_heartbeat_interval);
+                    _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
@@ -211,8 +213,7 @@ private:
     TimePoint _start_time;
 
     Duration _heartbeat_interval;
-    seastar::timer<> _heartbeat_timer;
-    seastar::future<> _heartbeat_future{seastar::make_ready_future()};
+    PeriodicTimer _heartbeat_timer;
     std::vector<dto::Key> _write_set;
     dto::Key _trh_key;
     String _trh_collection;

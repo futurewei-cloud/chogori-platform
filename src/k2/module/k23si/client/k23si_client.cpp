@@ -35,7 +35,7 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
 
 void K2TxnHandle::makeHeartbeatTimer() {
     K2DEBUG("makehb, mtr=" << _mtr);
-    _heartbeat_timer.set_callback([this] {
+    _heartbeat_timer.setCallback([this] {
         _client->heartbeats++;
 
         auto* request = new dto::K23SITxnHeartbeatRequest {
@@ -47,14 +47,12 @@ void K2TxnHandle::makeHeartbeatTimer() {
 
         K2DEBUG("send hb for " << _mtr);
 
-        _heartbeat_future = _heartbeat_future.then([this, request] {
-            return _cpo_client->PartitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request);
-        })
+        return _cpo_client->PartitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request)
         .then([this] (auto&& response) {
             auto& [status, k2response] = response;
             checkResponseStatus(status);
             if (_failed) {
-                K2DEBUG("txn failed: stopping hb in " << _mtr);
+                K2DEBUG("txn failed: cancelling hb in " << _mtr);
                 _heartbeat_timer.cancel();
             }
         }).finally([request, this] {
@@ -92,7 +90,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
                 K2WARN("TxnEndRequest failed: " << status);
             }
 
-            return _heartbeat_future.then([this, s=std::move(status)] () {
+            return _heartbeat_timer.stop().then([this, s=std::move(status)] () {
                 // TODO get min transaction time from TSO client
                 auto time_spent = Clock::now() - _start_time;
                 if (time_spent < 10us) {
@@ -136,7 +134,7 @@ seastar::future<> K23SIClient::start() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<> K23SIClient::stop() {
+seastar::future<> K23SIClient::gracefulStop() {
     return seastar::make_ready_future<>();
 }
 

@@ -11,7 +11,7 @@ NodePoolMonitor::~NodePoolMonitor() {
     K2INFO("dtor");
 }
 
-seastar::future<> NodePoolMonitor::stop() {
+seastar::future<> NodePoolMonitor::gracefulStop() {
     K2INFO("stop");
     return seastar::make_ready_future<>();
 }

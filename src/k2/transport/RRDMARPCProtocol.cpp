@@ -89,7 +89,7 @@ seastar::future<> RRDMARPCProtocol::stop() {
 
     // now schedule futures for graceful close of all channels
     std::vector<seastar::future<>> futs;
-    futs.push_back(_listener.close());
+    if (_svrEndpoint) futs.push_back(_listener.close());
     futs.push_back(std::move(_listenerClosed));
 
     for (auto chan: channels) {
@@ -103,7 +103,7 @@ seastar::future<> RRDMARPCProtocol::stop() {
     }
 
     // here we return a future which completes once all GracefulClose futures complete.
-    return seastar::when_all(futs.begin(), futs.end()).discard_result();
+    return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
 std::unique_ptr<TXEndpoint> RRDMARPCProtocol::getTXEndpoint(String url) {

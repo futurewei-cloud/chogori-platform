@@ -38,7 +38,7 @@ enum MessageVerbs : Verb {
 class KVService {
 public:  // application lifespan
     // required for seastar::distributed interface
-    seastar::future<> stop() {
+    seastar::future<> gracefulStop() {
         K2INFO("stop");
         return seastar::make_ready_future<>();
     }
@@ -71,7 +71,7 @@ private:
 
 class KVClientTest {
 public:
-    seastar::future<> stop() {
+    seastar::future<> gracefulStop() {
         K2INFO("stop");
         return seastar::make_ready_future<>();
     }
