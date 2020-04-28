@@ -263,7 +263,14 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
     (void) GetTimestampBatch(batchSizeToRequest)
         .then([this, triggeredTime = requestLocalTime](TimestampBatch&& newBatch) {
             ProcessReturnedBatch(std::move(newBatch), triggeredTime);
-        }).handle_exception([] (auto exc) {
+        }).handle_exception([this] (auto exc) {
+            // Set exception for all pending client requests
+            for (auto&& clientRequest : _pendingClientRequests)
+            {
+                clientRequest._promise->set_exception(exc);
+            }
+            _pendingClientRequests.clear();
+
             K2ERROR_EXC("GetTimestampBatch failed: ", exc);
         });
 
