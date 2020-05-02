@@ -31,7 +31,7 @@ public:
         _d_id = random.UniformRandom(1, 10);
         _c_id = random.NonUniformRandom(1023, 1, 3000); // TODO, by last name
         uint32_t local = random.UniformRandom(1, 100);
-        if (local <= 85) {
+        if (local <= 85 || max_w_id == 1) {
             _c_w_id = _w_id;
             _c_d_id = _d_id;
         } else {
@@ -51,7 +51,7 @@ public:
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
-            _txn = K2TxnHandle(std::move(txn));
+            _txn = std::move(txn);
             return runWithTxn();
         }).handle_exception([] (auto exc) {
             K2WARN_EXC("Failed to start txn: ", exc);
@@ -88,7 +88,7 @@ private:
                 fut.ignore_ready_future();
                 return make_ready_future<bool>(false);
             }
-            
+
             EndResult result = fut.get0();
 
             if (result.status.is2xxOK() && ! _failed) {
@@ -180,7 +180,7 @@ public:
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
         .then([this] (K2TxnHandle&& txn) {
-            _txn = K2TxnHandle(std::move(txn));
+            _txn = std::move(txn);
             return runWithTxn();
         }).handle_exception([] (auto exc) {
             K2WARN_EXC("Failed to start txn: ", exc);
@@ -285,7 +285,7 @@ private:
                 fut.ignore_ready_future();
                 return make_ready_future<bool>(false);
             }
-            
+
             EndResult result = fut.get0();
 
             if (result.status.is2xxOK() && ! _failed) {

@@ -4,14 +4,19 @@
 #pragma once
 #include <pthread.h>
 #include <ctime>
+#include <string>
 #include <iostream>
 #include <seastar/core/reactor.hh>  // for access to reactor
+#include <seastar/core/sstring.hh>
 #include <sstream>
 #include "Chrono.h"
 namespace k2{
 namespace logging {
+
 class LogEntry {
 public:
+    static seastar::sstring procName;
+
     std::ostringstream out;
     LogEntry()=default;
     LogEntry(LogEntry&&)=default;
@@ -31,25 +36,9 @@ private:
 };
 
 inline LogEntry StartLogStream() {
-    // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
-    static thread_local char buffer[100];
-    auto now = k2::usec(Clock::now().time_since_epoch());
-    auto microsec = now.count();
-    auto millis = microsec/1000;
-    microsec -= millis*1000;
-    auto secs = millis/1000;
-    millis -= secs*1000;
-    auto mins = (secs/60);
-    secs -= (mins*60);
-    auto hours = (mins/60);
-    mins -= (hours*60);
-    auto days = (hours/24);
-    hours -= (days*24);
-
-    std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
     LogEntry entry;
     auto id = seastar::engine_is_ready() ? seastar::engine().cpu_id() : pthread_self();
-    entry.out << "[" << buffer << "]" << "(" << id <<") ";
+    entry.out << "[" << printTime(Clock::now()) << "]-" << LogEntry::procName << "-(" << id <<") ";
     return entry;
 }
 

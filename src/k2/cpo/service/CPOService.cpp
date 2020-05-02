@@ -22,14 +22,14 @@ CPOService::~CPOService() {
     K2INFO("dtor");
 }
 
-seastar::future<> CPOService::stop() {
+seastar::future<> CPOService::gracefulStop() {
     K2INFO("stop");
     std::vector<seastar::future<>> futs;
     for (auto& [k,v]: _assignments) {
         futs.push_back(std::move(v));
     }
     _assignments.clear();
-    return seastar::when_all(futs.begin(), futs.end()).discard_result();
+    return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
 seastar::future<> CPOService::start() {
@@ -148,7 +148,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         })
         );
     }
-    _assignments.emplace(name, seastar::when_all(futs.begin(), futs.end()).discard_result()
+    _assignments.emplace(name, seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()
         .then([this, name] {
             _assignments.erase(name);
             return seastar::make_ready_future();

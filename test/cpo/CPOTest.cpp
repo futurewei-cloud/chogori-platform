@@ -15,7 +15,7 @@ CPOTest::~CPOTest() {
     K2INFO("dtor");
 }
 
-seastar::future<> CPOTest::stop() {
+seastar::future<> CPOTest::gracefulStop() {
     K2INFO("stop");
     return std::move(_testFuture);
 }

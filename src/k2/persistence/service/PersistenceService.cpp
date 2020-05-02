@@ -15,7 +15,7 @@ PersistenceService::~PersistenceService() {
     K2INFO("dtor");
 }
 
-seastar::future<> PersistenceService::stop() {
+seastar::future<> PersistenceService::gracefulStop() {
     K2INFO("stop");
     return seastar::make_ready_future();
 }

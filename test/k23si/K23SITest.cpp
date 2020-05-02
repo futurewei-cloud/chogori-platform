@@ -36,7 +36,7 @@ public:  // application lifespan
     }
 
     // required for seastar::distributed interface
-    seastar::future<> stop() {
+    seastar::future<> gracefulStop() {
         K2INFO("stop");
         return std::move(_testFuture);
     }

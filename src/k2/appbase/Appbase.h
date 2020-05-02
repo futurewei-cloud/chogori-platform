@@ -27,7 +27,7 @@ namespace k2 {
 class MultiAddressProvider : public k2::IAddressProvider {
    public:
     MultiAddressProvider() = default;
-    MultiAddressProvider(const std::vector<std::string>& urls) : _urls(urls) {}
+    MultiAddressProvider(const std::vector<String>& urls) : _urls(urls) {}
     MultiAddressProvider& operator=(MultiAddressProvider&&) = default;
     seastar::socket_address getAddress(int coreID) const override {
         if (size_t(coreID) < _urls.size()) {
@@ -50,7 +50,7 @@ class MultiAddressProvider : public k2::IAddressProvider {
     }
 
    private:
-    std::vector<std::string> _urls;
+    std::vector<String> _urls;
 };  // class MultiAddressProvider
 
 // This is a foundational class used to create K2 Apps.
@@ -114,6 +114,7 @@ public:  // API
                     std::move(args));
             });
         _starters.push_back([dd]() mutable { return dd->invoke_on_all(&AppletType::start); });
+        _gracefulStoppers.push_back([dd]() mutable { return dd->invoke_on_all(&AppletType::gracefulStop); });
         _stoppers.push_back([dd]() mutable { return dd->stop(); });
         _dtors.push_back([dd]() mutable { delete dd; });
 
@@ -127,9 +128,11 @@ public:  // API
     int start(int argc, char** argv);
 
     ~App() {
-        for (auto&& dtor : _dtors) {
-            dtor();
+        K2INFO("dtor user applets");
+        for (auto rit = _dtors.rbegin(); rit != _dtors.rend(); ++rit) {
+            (*rit)();
         }
+        K2INFO("dtor user applets done");
     }
 
 private:
@@ -137,8 +140,9 @@ private:
     TypeMap<void*> _applets;
     std::vector<std::function<seastar::future<>()>> _ctors;     // functors which create user applets
     std::vector<std::function<seastar::future<>()>> _starters;  // functors which call start() on user applets
-    std::vector<std::function<seastar::future<>()>> _stoppers;  // functors which call stop() on user applets
-    std::vector<std::function<void()>> _dtors;                  // functors which delete user applets
+    std::vector<std::function<seastar::future<>()>> _gracefulStoppers;  // functors which call gracefulStop() on user applets
+    std::vector<std::function<seastar::future<>()>> _stoppers;  // functors which call stop() on user applets and delete them
+    std::vector<std::function<void()>> _dtors;                  // functors which delete the distributed containers
 };                                                              // class App
 
 // global access to the AppBase

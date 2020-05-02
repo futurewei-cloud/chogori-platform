@@ -23,8 +23,7 @@ seastar::future<> TSO_ClientLib::start()
         .then([this] () mutable { return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]); });
 }
 
-seastar::future<> TSO_ClientLib::stop()
-{
+seastar::future<> TSO_ClientLib::gracefulStop() {
     K2INFO("stop");
     if (_stopped) {
         return seastar::make_ready_future<>();
@@ -263,7 +262,14 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
     (void) GetTimestampBatch(batchSizeToRequest)
         .then([this, triggeredTime = requestLocalTime](TimestampBatch&& newBatch) {
             ProcessReturnedBatch(std::move(newBatch), triggeredTime);
-        }).handle_exception([] (auto exc) {
+        }).handle_exception([this] (auto exc) {
+            // Set exception for all pending client requests
+            for (auto&& clientRequest : _pendingClientRequests)
+            {
+                clientRequest._promise->set_exception(exc);
+            }
+            _pendingClientRequests.clear();
+
             K2ERROR_EXC("GetTimestampBatch failed: ", exc);
         });
 
@@ -416,7 +422,14 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
             (void) GetTimestampBatch(batchSizeToRequest)
                 .then([this, triggeredTime = curTime](TimestampBatch newBatch) {
                     ProcessReturnedBatch(newBatch, triggeredTime);
-            }).handle_exception([] (auto exc) {
+            }).handle_exception([this] (auto exc) {
+                // Set exception for all pending client requests
+                for (auto&& clientRequest : _pendingClientRequests)
+                {
+                    clientRequest._promise->set_exception(exc);
+                }
+                _pendingClientRequests.clear();
+
                 K2ERROR_EXC("GetTimestampBatch failed: ", exc);
             });
         }

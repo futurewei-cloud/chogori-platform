@@ -11,7 +11,7 @@ public :  // application lifespan
     ~PersistenceService();
 
     // required for seastar::distributed interface
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<> start();
 };  // class PersistenceService
 

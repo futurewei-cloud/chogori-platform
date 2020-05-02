@@ -63,16 +63,36 @@ public:
 private:
     typename ClockT::time_point _deadline;
 }; // class Deadline
+
+
+inline const char* printTime(TimePoint tp) {
+    // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
+    static thread_local char buffer[100];
+    auto now = k2::usec(tp.time_since_epoch());
+    auto microsec = now.count();
+    auto millis = microsec/1000;
+    microsec -= millis*1000;
+    auto secs = millis/1000;
+    millis -= secs*1000;
+    auto mins = (secs/60);
+    secs -= (mins*60);
+    auto hours = (mins/60);
+    mins -= (hours*60);
+    auto days = (hours/24);
+    hours -= (days*24);
+    std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
+    return buffer;
+}
 } // ns k2
 
 namespace std {
     inline std::ostream& operator<<(std::ostream& os, const k2::Duration& dur) {
-        os << k2::nsec(dur).count() << "ns";
+        os << k2::printTime(k2::TimePoint{} + dur);
         return os;
     }
 
     inline std::ostream& operator<<(std::ostream& os, const k2::TimePoint& tp) {
-        os << k2::nsec(tp.time_since_epoch()).count() << "ns";
+        os << k2::printTime(tp);
         return os;
     }
 } // ns std

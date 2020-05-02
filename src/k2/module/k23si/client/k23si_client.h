@@ -20,6 +20,8 @@
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 #include <k2/tso/client_lib/tso_clientlib.h>
+#include <k2/common/Timer.h>
+
 
 namespace k2 {
 
@@ -77,7 +79,7 @@ k2::TSO_ClientLib& _tsoClient;
 public:
 
     seastar::future<> start();
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<Status> makeCollection(const String& collection);
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
 
@@ -179,8 +181,12 @@ public:
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
-                if (!_heartbeat_timer && status.is2xxOK()) {
+                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
+                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
+                    K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
+                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
+                    _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
@@ -192,7 +198,9 @@ public:
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed
     seastar::future<EndResult> end(bool shouldCommit);
-
+    friend std::ostream& operator<<(std::ostream& os, const K2TxnHandle& h){
+        return os << h._mtr;
+    }
 private:
     dto::K23SI_MTR _mtr;
     Deadline<> _deadline{Deadline<>(10s)};
@@ -204,11 +212,11 @@ private:
     Duration _txn_end_deadline;
     TimePoint _start_time;
 
-    std::unique_ptr<seastar::timer<>> _heartbeat_timer{nullptr};
-    seastar::future<> _heartbeat_future{seastar::make_ready_future<>()};
+    Duration _heartbeat_interval;
+    PeriodicTimer _heartbeat_timer;
     std::vector<dto::Key> _write_set;
     dto::Key _trh_key;
-    std::string _trh_collection;
+    String _trh_collection;
 };
 
 } // namespace k2

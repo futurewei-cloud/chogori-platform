@@ -9,18 +9,18 @@
 
 #include "TSOService.h"
 
-namespace k2 
+namespace k2
 {
 
-seastar::future<> TSOService::TSOWorker::start() 
+seastar::future<> TSOService::TSOWorker::start()
 {
-    _tsoId = _outer.TSOId(); 
+    _tsoId = _outer.TSOId();
 
     RegisterGetTSOTimestampBatch();
     return seastar::make_ready_future<>();
 }
 
-seastar::future<> TSOService::TSOWorker::stop() 
+seastar::future<> TSOService::TSOWorker::gracefulStop()
 {
     // unregistar all APIs
     RPC().registerMessageObserver(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, nullptr);
@@ -29,7 +29,7 @@ seastar::future<> TSOService::TSOWorker::stop()
 
 void TSOService::TSOWorker::RegisterGetTSOTimestampBatch()
 {
-    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable 
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable
     {
         if (request.payload)
         {
@@ -38,7 +38,7 @@ void TSOService::TSOWorker::RegisterGetTSOTimestampBatch()
 
             // TODO: handle exceptions
             auto response = request.endpoint.newPayload();
-            auto timestampBatch = GetTimestampFromTSO(batchSize); 
+            auto timestampBatch = GetTimestampFromTSO(batchSize);
             //K2INFO("time stamp batch returned is: " << timestampBatch);
             response->write(timestampBatch);
             k2::RPC().sendReply(std::move(response), request);
@@ -47,7 +47,7 @@ void TSOService::TSOWorker::RegisterGetTSOTimestampBatch()
         {
             K2ERROR("GetTSOTimestampBatch comes in without request payload.");
         }
-        
+
     });
 }
 
@@ -64,16 +64,16 @@ void TSOService::TSOWorker::UpdateWorkerControlInfo(const TSOWorkerControlInfo& 
         // step 1/3 TODO: validate other member in controlInfo
 
         // step 2/3 Initialize statistics and kick off periodical statistics report task
-        
+
         // step 3/3 set controlInfo and start/stop accepting request
         _curControlInfo = controlInfo;
     }
     else if (_curControlInfo.IsReadyToIssueTS && !controlInfo.IsReadyToIssueTS)
     {
         K2INFO("StopWorker: worker core:" << seastar::engine().cpu_id());
-        
+
         // step 1/3 TODO: validate other member in controlInfo
-            
+
         // step 2/3 stop periodical statistics report task and report last residue statistics
 
         // step 3/3 set controlInfo and start/stop accepting request
@@ -88,7 +88,7 @@ void TSOService::TSOWorker::UpdateWorkerControlInfo(const TSOWorkerControlInfo& 
 }
 
 void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo)
-{    
+{
     //K2INFO("AdjustWorker: worker core" );
 
     // step 1/3 Validate current status and input
@@ -119,7 +119,7 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
 
     // round up to microsecond sleep time
     auto floorTimeToPauseWorkerNanoSec = timeToPauseWorkerNanoSec / 1000 * 1000;
-    if (timeToPauseWorkerNanoSec > 0 && timeToPauseWorkerNanoSec != floorTimeToPauseWorkerNanoSec) 
+    if (timeToPauseWorkerNanoSec > 0 && timeToPauseWorkerNanoSec != floorTimeToPauseWorkerNanoSec)
     {
         timeToPauseWorkerNanoSec = floorTimeToPauseWorkerNanoSec + 1000;
     }
@@ -155,20 +155,19 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
 }
 
 // API issuing Timestamp to the TSO client
-TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequested) 
+TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequested)
 {
     TimestampBatch result;
 
     //K2INFO("Start getting a timestamp batch");
 
     // this function is on hotpath, code organized to optimized the most common happy case for efficiency
-    
     // In most of time, it is happy path, where current TBE(Timestamp Batch End) time at microsecond level(curTBEMicroSecRounded) is greater than last call's Timebatch end time
     // i.e. each worker core has one call or less per microsecond
     // In such case, simply issue timebatch associated with curTBEMicroSecRounded, timestamp counts up to either batchSizeRequested or max allowed from 1 microsec
     uint64_t curTBEMicroSecRounded = (Clock::now().time_since_epoch().count() +  _curControlInfo.TBEAdjustment) / 1000 * 1000;
     //K2INFO("Start getting a timestamp batch, got current time.");
-    
+
     // most straightward happy case, fast path
     if (_curControlInfo.IsReadyToIssueTS &&
         curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold &&
@@ -205,12 +204,12 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
 TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t curTBEMicroSecRounded) 
 {
     K2INFO("getting a timestamp batch in helper");
-    // step 1/4 sanity check, check IsReadyToIssueTS and possible issued timestamp is within ReservedTimeShreshold 
+    // step 1/4 sanity check, check IsReadyToIssueTS and possible issued timestamp is within ReservedTimeShreshold
     if (!_curControlInfo.IsReadyToIssueTS)
     {
         K2WARN("Not ready to issue timestamp batch due to IsReadyToIssueTS, worker core:" << seastar::engine().cpu_id());
 
-        // TODO: consider giving more detail information on why IsReadyToIssueTS is false, e.g. the instance is not master, not init, or wait/sleep 
+        // TODO: consider giving more detail information on why IsReadyToIssueTS is false, e.g. the instance is not master, not init, or wait/sleep
         throw TSONotReadyException();
     }
 

@@ -35,7 +35,7 @@ void TxnRecord::unlinkBG(BGList& bglist) {
 }
 
 TxnManager::~TxnManager() {
-    K2DEBUG("dtor");
+    K2INFO("dtor for cname=" << _collectionName);
     _hblist.clear();
     _rwlist.clear();
     _bgTasks.clear();
@@ -63,13 +63,13 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
                 [this, now] {
                     if (!_hblist.empty() && _hblist.front().hbExpiry <= now) {
                         auto& tr = _hblist.front();
-                        K2DEBUG("heartbeat expired on: " << tr);
+                        K2WARN("heartbeat expired on: " << tr);
                         _hblist.pop_front();
                         return onAction(TxnRecord::Action::onHeartbeatExpire, tr.txnId);
                     }
                     else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) <= 0) {
                         auto& tr = _rwlist.front();
-                        K2DEBUG("rw expired on: " << tr);
+                        K2WARN("rw expired on: " << tr);
                         _rwlist.pop_front();
                         return onAction(TxnRecord::Action::onRetentionWindowExpire, tr.txnId);
                     }
@@ -87,19 +87,25 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
     });
     _hbTimer.arm(_hbDeadline);
     // TODO recover transaction state
-    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, FastDeadline(10s));
+    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, _config.persistenceTimeout());
 }
 
-seastar::future<> TxnManager::stop() {
-    K2DEBUG("stop");
+seastar::future<> TxnManager::gracefulStop() {
+    K2INFO("stopping txn mgr for coll=" << _collectionName);
     _stopping = true;
     _hbTimer.cancel();
-    return std::move(_hbTask).then([this]{
-        K2DEBUG("hb stopped. stopping " << _bgTasks.size() << " bg tasks");
-        return seastar::do_for_each(_bgTasks.begin(), _bgTasks.end(), [](auto& txn){
-            K2DEBUG("waiting for bg task on " << txn);
-            return std::move(txn.bgTaskFut);
-        }).discard_result().then([]{K2DEBUG("stopped");}).handle_exception([](auto exc) {
+    return _hbTask.then([this] {
+        K2INFO("hb stopped. stopping " << _bgTasks.size() << " bg tasks");
+        std::vector<seastar::future<>> _bgFuts;
+        for (auto& txn: _bgTasks) {
+            K2INFO("Waiting for bg task in " << txn);
+            _bgFuts.push_back(std::move(txn.bgTaskFut));
+        }
+        return seastar::when_all_succeed(_bgFuts.begin(), _bgFuts.end()).discard_result()
+        .then([]{
+            K2INFO("stopped");
+        })
+        .handle_exception([](auto exc) {
             K2ERROR_EXC("caught exception on stop", exc);
             return seastar::make_ready_future();
         });
@@ -153,7 +159,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
     // This method's responsibility is to execute valid state transitions.
     TxnRecord& rec = getTxnRecord(std::move(txnId));
     auto state = rec.state;
-    K2DEBUG("Processing action " << action << ", for state " << state);
+    K2DEBUG("Processing action " << action << ", for state " << state << ", in txn " << rec);
     switch (state) {
         case TxnRecord::State::Created:
             // We did not have a transaction record and it was just created
@@ -231,6 +237,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                 case TxnRecord::Action::onCreate: // signal client to abort
                 case TxnRecord::Action::onForceAbort:
                 case TxnRecord::Action::onHeartbeat:
+                    return seastar::make_ready_future();  // allow as no-op
                 case TxnRecord::Action::onEndCommit:
                     return seastar::make_exception_future(ClientError());
                 case TxnRecord::Action::onEndAbort: // accept this to be re-entrant
@@ -248,6 +255,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                 case TxnRecord::Action::onCreate: // signal client to abort
                 case TxnRecord::Action::onForceAbort:
                 case TxnRecord::Action::onHeartbeat:
+                    return seastar::make_ready_future();  // allow as no-op
                 case TxnRecord::Action::onEndAbort:
                     return seastar::make_exception_future(ClientError());
                 case TxnRecord::Action::onEndCommit: // accept this to be re-entrant
@@ -284,7 +292,7 @@ seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
     rec.unlinkHB(_hblist);
     // manage rw expiry: we want to track expiration on retention window
     // persist if needed
-    return _persistence.makeCall(rec, FastDeadline(10s));
+    return _persistence.makeCall(rec, _config.persistenceTimeout());
 }
 
 seastar::future<> TxnManager::_aborted(TxnRecord& rec) {
@@ -295,14 +303,20 @@ seastar::future<> TxnManager::_aborted(TxnRecord& rec) {
     rec.unlinkHB(_hblist);
     // manage rw expiry
     rec.unlinkRW(_rwlist);
+
     // queue up background task for finalizing
-    rec.bgTaskFut = rec.bgTaskFut.then([this, &rec] () mutable{
-        // TODO Deadline based on transaction size
-        return _finalizeTransaction(rec, FastDeadline(5s));
-    });
     _bgTasks.push_back(rec);
+    rec.bgTaskFut = rec.bgTaskFut
+                        .then([] {
+                            return seastar::sleep(0us);
+                        })
+                        .then([this, &rec]() {
+                            // TODO Deadline based on transaction size
+                            auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
+                            return _finalizeTransaction(rec, FastDeadline(timeout));
+                        });
     // persist if needed
-    return _persistence.makeCall(rec, FastDeadline(10s));
+    return _persistence.makeCall(rec, _config.persistenceTimeout());
 }
 
 seastar::future<> TxnManager::_committed(TxnRecord& rec) {
@@ -315,13 +329,18 @@ seastar::future<> TxnManager::_committed(TxnRecord& rec) {
     rec.unlinkRW(_rwlist);
 
     // queue up background task for finalizing
-    rec.bgTaskFut = rec.bgTaskFut.then([this, &rec]() mutable {
-        // TODO Deadline based on transaction size
-        return _finalizeTransaction(rec, FastDeadline(5s));
-    });
     _bgTasks.push_back(rec);
+    rec.bgTaskFut = rec.bgTaskFut
+    .then([] {
+        return seastar::sleep(0us);
+    })
+    .then([this, &rec]() {
+        // TODO Deadline based on transaction size
+        auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size())/_config.finalizeBatchSize();
+        return _finalizeTransaction(rec, FastDeadline(timeout));
+    });
     // persist if needed
-    return _persistence.makeCall(rec, FastDeadline(10s));
+    return _persistence.makeCall(rec, _config.persistenceTimeout());
 }
 
 seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
@@ -334,7 +353,7 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
     rec.unlinkRW(_rwlist);
     // persist if needed
 
-    return _persistence.makeCall(rec, FastDeadline(10s)).then([this, &rec]{
+    return _persistence.makeCall(rec, _config.persistenceTimeout()).then([this, &rec]{
         rec.unlinkBG(_bgTasks);
         rec.unlinkRW(_rwlist);
         rec.unlinkHB(_hblist);
@@ -358,30 +377,44 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
     K2DEBUG("Finalizing " << rec);
     //TODO we need to keep trying to finalize in cases of failures.
     // this needs to be done in a rate-limited fashion. For now, we just try some configurable number of times and give up
-    return seastar::parallel_for_each(rec.writeKeys.begin(), rec.writeKeys.end(), [&rec, this, deadline](dto::Key& key) {
-        dto::K23SITxnFinalizeRequest request{};
-        request.key = std::move(key);
-        request.collectionName = _collectionName;
-        request.mtr = rec.txnId.mtr;
-        request.trh = rec.txnId.trh;
-        request.action = rec.state == TxnRecord::State::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
-        return seastar::do_with(std::move(request), [&rec, this, deadline] (auto& request) {
-            return _cpo.PartitionRequest<dto::K23SITxnFinalizeRequest,
-                                         dto::K23SITxnFinalizeResponse,
-                                         dto::Verbs::K23SI_TXN_FINALIZE>
-            (deadline, request, _config.finalizeRetries())
-            .then([&request](auto&& responsePair) {
-                auto& [status, response] = responsePair;
-                if (!status.is2xxOK()) {
-                    K2ERROR("Finalize request did not succeed for " << request << ", status=" << status);
-                    return seastar::make_exception_future<>(TxnManager::ServerError());
-                }
-                K2DEBUG("Finalize request succeeded for " << request);
-                return seastar::make_ready_future<>();
-            }).finally([]{ K2DEBUG("finalize call finished");});
-        });
+    return seastar::do_with((uint64_t)0, [this, &rec, deadline] (auto& batchStart) {
+        return seastar::do_until(
+            [this, &rec, &batchStart] { return batchStart >= rec.writeKeys.size(); },
+            [this, &rec, &batchStart, deadline] {
+                auto start = rec.writeKeys.begin() + batchStart;
+                batchStart += std::min(_config.finalizeBatchSize(), rec.writeKeys.size() - batchStart);
+                auto end = rec.writeKeys.begin() + batchStart;
+                return seastar::parallel_for_each(start, end, [&rec, this, deadline](dto::Key& key) {
+                    dto::K23SITxnFinalizeRequest request{};
+                    request.key = key;
+                    request.collectionName = _collectionName;
+                    request.mtr = rec.txnId.mtr;
+                    request.trh = rec.txnId.trh;
+                    request.action = rec.state == TxnRecord::State::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
+                    K2DEBUG("Finalizing req=" << request);
+                    return seastar::do_with(std::move(request), [&rec, this, deadline](auto& request) {
+                        return _cpo.PartitionRequest<dto::K23SITxnFinalizeRequest,
+                                                    dto::K23SITxnFinalizeResponse,
+                                                    dto::Verbs::K23SI_TXN_FINALIZE>
+                        (deadline, request, _config.finalizeRetries())
+                        .then([&request](auto&& responsePair) {
+                            auto& [status, response] = responsePair;
+                            if (!status.is2xxOK()) {
+                                K2ERROR("Finalize request did not succeed for " << request << ", status=" << status);
+                                return seastar::make_exception_future<>(TxnManager::ServerError());
+                            }
+                            K2DEBUG("Finalize request succeeded for " << request);
+                            return seastar::make_ready_future<>();
+                        }).finally([]{ K2DEBUG("finalize call finished");});
+                    });
+                }).then([&batchStart, &rec]{
+                    K2DEBUG("Batch done, now at: " << batchStart << ", in " << rec);
+                });
+            }
+        );
     })
     .then([this, &rec] {
+        K2DEBUG("finalize completed for: " << rec);
         return onAction(TxnRecord::Action::onFinalizeComplete, rec.txnId);
     });
 }

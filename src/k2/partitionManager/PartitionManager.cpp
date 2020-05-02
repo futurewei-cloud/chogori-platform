@@ -15,12 +15,12 @@ PartitionManager::~PartitionManager() {
     K2INFO("dtor");
 }
 
-seastar::future<> PartitionManager::stop() {
+seastar::future<> PartitionManager::gracefulStop() {
     K2INFO("stop");
     // signal the partition module that we're stopping
     if (_pmodule) {
         K2INFO("stopping module");
-        return _pmodule->stop();
+        return _pmodule->gracefulStop();
     }
     return seastar::make_ready_future<>();
 }

@@ -39,7 +39,7 @@ seastar::future<> PlogMock::close() {
     for (auto it = m_plogFileDescriptors.begin(); it != m_plogFileDescriptors.end(); it++) {
         futs.push_back(it->second.close());
     }
-    return seastar::when_all(futs.begin(), futs.end()).discard_result();
+    return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
 seastar::future<std::vector<PlogId>> PlogMock::create(uint plogCount)

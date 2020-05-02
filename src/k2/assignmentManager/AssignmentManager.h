@@ -16,7 +16,7 @@ public:  // application lifespan
     ~AssignmentManager();
 
     // required for seastar::distributed interface
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<> start();
 
     seastar::future<std::tuple<Status, dto::AssignmentCreateResponse>>

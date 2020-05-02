@@ -8,7 +8,7 @@ public:  // application lifespan
     ~CPOTest();
 
     // required for seastar::distributed interface
-    seastar::future<> stop();
+    seastar::future<> gracefulStop();
     seastar::future<> start();
 
     seastar::future<> runTest1();
