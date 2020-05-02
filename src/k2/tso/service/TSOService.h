@@ -36,13 +36,13 @@ public: // types
    struct TSOWorkerControlInfo
     {
         bool        IsReadyToIssueTS;       // if this core is allowed to issue TS, could be false for various reasons (TODO: consider adding reasons)
-        uint8_t     TbeNanoSecStep;         // step to skip between timestamp in nanoSec, actually same as the number of worker cores
-        uint64_t    TbeTESAdjustment;       // batch ending time adjustment from current chrono::system_clock::now(), in nanoSec;
+        uint8_t     TBENanoSecStep;         // step to skip between timestamp in nanoSec, actually same as the number of worker cores
+        uint64_t    TBEAdjustment;       // batch ending time adjustment from current chrono::system_clock::now(), in nanoSec;
         uint16_t    TsDelta;                // batch starting time adjustment from TbeTSEAdjustment, basically the uncertainty window size, in nanoSec
         uint64_t    ReservedTimeShreshold;  // reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that, in nanoSec counts
         uint16_t    BatchTTL;               // TTL of batch issued in nanoseconds, not expected to change once set
 
-        TSOWorkerControlInfo() : IsReadyToIssueTS(false), TbeNanoSecStep(0), TbeTESAdjustment(0), TsDelta(0), ReservedTimeShreshold(0), BatchTTL(0) {};
+        TSOWorkerControlInfo() : IsReadyToIssueTS(false), TBENanoSecStep(0), TBEAdjustment(0), TsDelta(0), ReservedTimeShreshold(0), BatchTTL(0) {};
     };
 
     // TODO: worker/controller statistics structure typedef
@@ -89,7 +89,7 @@ private:
 // 1. Upon start, join the cluster and get the for instance (role of instance can change upon API SetRole() as well)
 // 2. Upon role change, set or adjust heartbeat - If master role, heartbeat also extends lease and extends ReservedTimeShreshold. If standby role, hearbeat check master's lease/healthness.
 //    In master role, if ReservedTimeShreshold get extended, update TSOWorkerControlInfo to all workers.
-// 3. Periodically checkAtomicGPSClock, and adjust TbeTESAdjustment if needed and further more update TSOWorkerControlInfo to all workers upon such adjustment. Note: If not master role, doing this for optimization.
+// 3. Periodically checkAtomicGPSClock, and adjust TBEAdjustment if needed and further more update TSOWorkerControlInfo to all workers upon such adjustment. Note: If not master role, doing this for optimization.
 // 4. If master role, periodically collect statistics from all worker cores and reports.
 class TSOService::TSOController
 {
@@ -196,8 +196,10 @@ class TSOService::TSOController
     // helper function which do the real work of time sync.
     seastar::future<> DoTimeSync();
 
-    // check atomic/GPS clock and return an uncertainty windows of time containing current real time
-    seastar::future<std::tuple<SysTimePt, SysTimePt>> CheckAtomicGPSClock();
+    // check atomic/GPS clock and return an effective uncertainty windows of time containing current real time
+    // return value is actually two unint64 values<T, V>, the first one is the difference of TAI TSE(in nanosec) since Jan. 1, 1970 to local steady_clock, the second value is uncertainty window size(in nanosec)
+    // The current time (uncertainty window) will be <steady_clock::now() + T - V/2, steady_clock::now() + T + V/2>
+    seastar::future<std::tuple<uint64_t, uint64_t>> CheckAtomicGPSClock();
 
     // Once we have updated controlInfo due to any reason, e.g. role change, ReservedTimeShreshold or drift from atomic clock,
     // propagate the update to all workers and
@@ -218,23 +220,23 @@ class TSOService::TSOController
     // TODO: implement this
     seastar::future<> RemoveLeaseFromPaxos() {return seastar::make_ready_future<>();}
     seastar::future<> RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*uint64_t newReservedTimsShreshold*/) {return seastar::make_ready_future<>();}
-    seastar::future<SysTimePt> RenewLeaseOnly() {return seastar::make_ready_future<SysTimePt>(GenNewLeaseVal());}
+    seastar::future<uint64_t> RenewLeaseOnly() {return seastar::make_ready_future<uint64_t>(GenNewLeaseVal());}
 
     // regular heartbeat update to Paxos when not a master
     seastar::future<> UpdateStandByHeartBeat() {return seastar::make_ready_future<>();}
 
     // regular heartbeat update to Paxos when is a master
     // return future contains newly extended Lease and ReservedTimeThreshold
-    seastar::future<std::tuple<SysTimePt, SysTimePt>>RenewLeaseAndExtendReservedTimeThreshold()
+    seastar::future<std::tuple<uint64_t, uint64_t>>RenewLeaseAndExtendReservedTimeThreshold()
     {
 
         auto extendedLeaseAndThreshold = GenNewLeaseVal();
-        std::tuple<SysTimePt, SysTimePt> tup(extendedLeaseAndThreshold, extendedLeaseAndThreshold);
-        return seastar::make_ready_future<std::tuple<SysTimePt, SysTimePt>>(tup);
+        std::tuple<uint64_t, uint64_t> tup(extendedLeaseAndThreshold, extendedLeaseAndThreshold);
+        return seastar::make_ready_future<std::tuple<uint64_t, uint64_t>>(tup);
     }
 
-    // three times of heartBeat + 1 extra millisecond to allow missing up to 3 heartbeat before loose leases
-    inline SysTimePt GenNewLeaseVal() { return SysClock::now() + _heartBeatTimerInterval() * 3 + 1ms;}
+    // current TA time + three times of heartBeat + 1 extra millisecond to allow missing up to 3 heartbeat before loose leases
+    inline uint64_t GenNewLeaseVal() { return TimeAuthorityNow() + _heartBeatTimerInterval().count() * 3 + 1*1000*1000;}
 
     // outer TSOService object
     TSOService& _outer;
@@ -248,12 +250,19 @@ class TSOService::TSOController
     // worker cores' URLs, each worker can have mulitple urls
     std::vector<std::vector<k2::String>> _workersURLs;
 
+    // The difference between the TA(Time Authority) and local time (local steady clock as it is strictly increasing).
+    // This is part of TBEAdjustment. This is kept to detect local steady_clock drift away from Time Authority at each TimeSyncTask.
+    uint64_t _diffTALocalInNanosec {0};
+
+    // known current time of TA(TimeAuthority), local steady_clock time now + the diff between, in units of nanosec since Jan. 1, 1970 (TAI)
+    inline uint64_t TimeAuthorityNow() {return Clock::now().time_since_epoch().count() +  _diffTALocalInNanosec; }
+
     // when this instance become (new) master, it need to get previous master's ReservedTimeShreshold
     // and wait out this time if current time is less than this value
     uint64_t _prevReservedTimeShreshold{ULLONG_MAX};
 
     // Lease at the Paxos, whem this is master, updated by heartbeat.
-    SysTimePt _myLease{0ms};
+    uint64_t _myLease;
 
     // set when stop() is called
     bool _stopRequested{false};
@@ -271,8 +280,11 @@ class TSOService::TSOController
     seastar::timer<> _timeSyncTimer;
     ConfigDuration _timeSyncTimerInterval{"tso.ctrol_time_sync_interval", 10ms};
     seastar::future<> _timeSyncFuture = seastar::make_ready_future<>();  // need to keep track of timeSync task future for proper shutdown
-    ConfigDuration _batchTTL{"tso.ctrol_ts_batch_TTL", 8ms};
-    ConfigDuration _defaultTSBatchEndAdj{"tso.ctrol_ts_batch_end-adj", 8ms}; // this is also the batch uncertainty windows size
+
+    // this is the batch uncertainty windows size, should be less than MTL(minimal transaction latency), 
+    // this is also used at the TSO client side as batch's TTL(Time To Live)
+    // TODO: consider derive this value from MTL configuration.
+    ConfigDuration _defaultTBWindowSize{"tso.ctrol_ts_batch_win_size", 8ms}; 
 
     seastar::timer<> _statsUpdateTimer;
     ConfigDuration _statsUpdateTimerInterval{"tso.ctrol_stats_update_interval", 1s};
@@ -309,9 +321,10 @@ class TSOService::TSOWorker
     // current worker control info
     TSOWorkerControlInfo _curControlInfo;
 
-    // last request time rounded at microsecond level and count of timestamp issued in the microsecond
-    // Note: each worker core can issue up to (1000/TbeNanoSecStep) timestamps within same microsecond
-    uint64_t _lastRequestTimeMicrSecRounded{0};  // typically generated from SysTimePt_MicroSecRounded(Now())
+    // last request's TBE(Timestamp Batch End) time rounded at microsecond level 
+    uint64_t _lastRequestTBEMicroSecRounded{0};  
+    // count of timestamp issued in last request's timestamp batch 
+    // Note: each worker core can issue up to (1000/TBENanoSecStep) timestamps within same microsecond (at TBE)
     uint16_t _lastRequestTimeStampCount{0};
 
     // TODO: statistics structure

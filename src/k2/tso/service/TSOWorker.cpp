@@ -99,9 +99,9 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
     uint64_t timeToPauseWorkerNanoSec = 0;
 
     // when shrink uncertainty window by reduce ending time, worker need to wait out the delta 
-    if (controlInfo.TbeTESAdjustment < _curControlInfo.TbeTESAdjustment)
+    if (controlInfo.TBEAdjustment < _curControlInfo.TBEAdjustment)
     {
-        timeToPauseWorkerNanoSec += _curControlInfo.TbeTESAdjustment - controlInfo.TbeTESAdjustment;
+        timeToPauseWorkerNanoSec += _curControlInfo.TBEAdjustment - controlInfo.TBEAdjustment;
     }
 
     // when reducing BatchTTL, worker need to wait out the delta (this should be rare)
@@ -110,8 +110,8 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
         timeToPauseWorkerNanoSec += _curControlInfo.BatchTTL - controlInfo.BatchTTL;
     }
 
-    // when TbeNanoSecStep change(this should be really really rare if not an bug), sleep 1 microsecond if no other reason to sleep
-    if (controlInfo.TbeNanoSecStep != _curControlInfo.TbeNanoSecStep &&
+    // when TBENanoSecStep change(this should be really really rare if not an bug), sleep 1 microsecond if no other reason to sleep
+    if (controlInfo.TBENanoSecStep != _curControlInfo.TBENanoSecStep &&
         timeToPauseWorkerNanoSec < 1000)
     {
         timeToPauseWorkerNanoSec = 1000;
@@ -128,13 +128,13 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
     if (timeToPauseWorkerNanoSec > 0)
     {
         K2INFO("AdjustWorker: worker core need to sleep(ns)" << std::to_string(timeToPauseWorkerNanoSec));
-        // Get current time and compare with last request time to see how much more need to pause 
-        uint64_t curTimeMicroSecRounded = TSE_Count_MicroSecRounded(SysClock::now());
+        // Get current TBE(Timestamp Batch End) time and compare with last request time to see how much more need to pause 
+        uint64_t curTBEMicroSecRounded =  (Clock::now().time_since_epoch().count() +  _curControlInfo.TBEAdjustment) / 1000 * 1000;
 
-        if ((curTimeMicroSecRounded - timeToPauseWorkerNanoSec) < _lastRequestTimeMicrSecRounded)
+        if ((curTBEMicroSecRounded - timeToPauseWorkerNanoSec) < _lastRequestTBEMicroSecRounded)
         {
             // TODO: warning if sleep more than 10 microsecond
-            auto sleepNanoSecCount = _lastRequestTimeMicrSecRounded + timeToPauseWorkerNanoSec - curTimeMicroSecRounded;  
+            auto sleepNanoSecCount = _lastRequestTBEMicroSecRounded + timeToPauseWorkerNanoSec - curTBEMicroSecRounded;  
             K2INFO("Due to TSOWorkerControlInfo change, worker core:" << seastar::engine().cpu_id() << " going to sleep "<< sleepNanoSecCount << " nanosec.");
             if (sleepNanoSecCount >  10 * 1000)
             {
@@ -142,9 +142,9 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
             }
 
             // busy sleep
-            while ((curTimeMicroSecRounded - timeToPauseWorkerNanoSec) < _lastRequestTimeMicrSecRounded) 
+            while ((curTBEMicroSecRounded - timeToPauseWorkerNanoSec) < _lastRequestTBEMicroSecRounded) 
             {
-                curTimeMicroSecRounded = TSE_Count_MicroSecRounded(SysClock::now());
+                curTBEMicroSecRounded = (Clock::now().time_since_epoch().count() +  _curControlInfo.TBEAdjustment) / 1000 * 1000;
             }
         }
     }
@@ -160,37 +160,36 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
     TimestampBatch result;
 
     //K2INFO("Start getting a timestamp batch");
-    //K2INFO("Start getting a timestamp batch 2");
 
     // this function is on hotpath, code organized to optimized the most common happy case for efficiency
     
-    // in most of time, it is happy path, where current time at microsecond level is greater than last call's time
+    // In most of time, it is happy path, where current TBE(Timestamp Batch End) time at microsecond level(curTBEMicroSecRounded) is greater than last call's Timebatch end time
     // i.e. each worker core has one call or less per microsecond
-    // get current request time now, removing nano second part
-    uint64_t nowMicroSecRounded = TSE_Count_MicroSecRounded(k2::SysClock::now());
+    // In such case, simply issue timebatch associated with curTBEMicroSecRounded, timestamp counts up to either batchSizeRequested or max allowed from 1 microsec
+    uint64_t curTBEMicroSecRounded = (Clock::now().time_since_epoch().count() +  _curControlInfo.TBEAdjustment) / 1000 * 1000;
     //K2INFO("Start getting a timestamp batch, got current time.");
     
+    // most straightward happy case, fast path
     if (_curControlInfo.IsReadyToIssueTS &&
-        nowMicroSecRounded + _curControlInfo.TbeTESAdjustment + 1000 < _curControlInfo.ReservedTimeShreshold &&
-        nowMicroSecRounded > _lastRequestTimeMicrSecRounded) 
+        curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold &&
+        curTBEMicroSecRounded > _lastRequestTBEMicroSecRounded) 
     {
-        uint16_t batchSizeToIssue = std::min(batchSizeRequested, (uint16_t)(1000/_curControlInfo.TbeNanoSecStep));
+        uint16_t batchSizeToIssue = std::min(batchSizeRequested, (uint16_t)(1000/_curControlInfo.TBENanoSecStep));
 
-        result.TbeTESBase = nowMicroSecRounded + _curControlInfo.TbeTESAdjustment 
-            + seastar::engine().cpu_id() - 1;
+        result.TBEBase = curTBEMicroSecRounded + seastar::engine().cpu_id() - 1;
         result.TSOId = _tsoId;
         result.TsDelta = _curControlInfo.TsDelta;
         result.TTLNanoSec = _curControlInfo.BatchTTL;
         result.TSCount = batchSizeToIssue;
-        result.TbeNanoSecStep = _curControlInfo.TbeNanoSecStep;
+        result.TBENanoSecStep = _curControlInfo.TBENanoSecStep;
 
-        /*K2INFO("returning a tsBatch reqSize:" << batchSizeRequested << " at rounded request time:[" << nowMicroSecRounded 
-            << ":"<< _lastRequestTimeMicrSecRounded << "]TbeAdj:" << _curControlInfo.TbeTESAdjustment 
-            << " batch value(tbe:tsdelta:TTL:TSCount:Step)[" << result.TbeTESBase << ":" <<result.TsDelta << ":" << result.TTLNanoSec
-            << ":" << batchSizeToIssue << ":" << result.TbeNanoSecStep <<"]");
+        /*K2INFO("returning a tsBatch reqSize:" << batchSizeRequested << " at rounded request time:[" << curTBEMicroSecRounded 
+            << ":"<< _lastRequestTBEMicroSecRounded << "]TbeAdj:" << _curControlInfo.TBEAdjustment 
+            << " batch value(tbe:tsdelta:TTL:TSCount:Step)[" << result.TBEBase << ":" <<result.TsDelta << ":" << result.TTLNanoSec
+            << ":" << batchSizeToIssue << ":" << result.TBENanoSecStep <<"]");
         */
 
-        _lastRequestTimeMicrSecRounded = nowMicroSecRounded;
+        _lastRequestTBEMicroSecRounded = curTBEMicroSecRounded;
         _lastRequestTimeStampCount = batchSizeToIssue;
 
         // TODO: accumulate statistics
@@ -199,11 +198,11 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
     }
 
     // otherwise, handle less frequent situation
-    return GetTimeStampFromTSOLessFrequentHelper(batchSizeRequested, nowMicroSecRounded);
+    return GetTimeStampFromTSOLessFrequentHelper(batchSizeRequested, curTBEMicroSecRounded);
 }
 
 // helper function to issue timestamp (or check error situation)
-TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t nowMicroSecRounded) 
+TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t curTBEMicroSecRounded) 
 {
     K2INFO("getting a timestamp batch in helper");
     // step 1/4 sanity check, check IsReadyToIssueTS and possible issued timestamp is within ReservedTimeShreshold 
@@ -216,7 +215,7 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
     }
 
     // step 2/4 this is case when we try to issue timestamp batch beyond ReservedTimeShreshold (indicating it is not refreshed), this is really a bug and need to root cause.
-    if (nowMicroSecRounded + _curControlInfo.TbeTESAdjustment + 1000 > _curControlInfo.ReservedTimeShreshold)
+    if (curTBEMicroSecRounded + 1000 > _curControlInfo.ReservedTimeShreshold)
     {
         // this is really a bug if ReservedTimeShreshold is not updated promptly.
          K2WARN("Not ready to issue timestamp batch due to ReservedTimeShreshold, worker core:" << seastar::engine().cpu_id());
@@ -226,44 +225,42 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
     }
 
     // step 3/4 if somehow current time is smaller than last request time
-    if (nowMicroSecRounded < _lastRequestTimeMicrSecRounded)
+    if (curTBEMicroSecRounded < _lastRequestTBEMicroSecRounded)
     {
         // this is rare, normally should be a bug, add detal debug info later
-        K2DEBUG("nowMicroSecRounded:" << nowMicroSecRounded << "< _lastRequestTimeMicrSecRounded:" <<_lastRequestTimeMicrSecRounded);
+        K2DEBUG("curTBEMicroSecRounded:" << curTBEMicroSecRounded << "< _lastRequestTBEMicroSecRounded:" <<_lastRequestTBEMicroSecRounded);
         // let client retry, maybe we should blocking sleep if there is a case this happening legit and the difference is small, e.g. a few microseconds
         throw TSONotReadyException();
     }
 
-    // step 4/4 handle the case nowMicroSecRounded == _lastRequestTimeMicrSecRounded
+    // step 4/4 handle the case curTBEMicroSecRounded == _lastRequestTBEMicroSecRounded
     // If leftover timestamp of this microSec is sufficient, issue them out, otherwise, busy wait to next microsec and issue timestamp.
-    K2ASSERT(nowMicroSecRounded == _lastRequestTimeMicrSecRounded, "last and this requests are in same microsecond!");
-    uint16_t leftoverTS = 1000 / _curControlInfo.TbeNanoSecStep - _lastRequestTimeStampCount;
+    K2ASSERT(curTBEMicroSecRounded == _lastRequestTBEMicroSecRounded, "last and this requests are in same microsecond!");
+    uint16_t leftoverTS = 1000 / _curControlInfo.TBENanoSecStep - _lastRequestTimeStampCount;
 
     if (leftoverTS < batchSizeRequested)
     {
         // not enough timestamp at current microsecond to issue out,
         // busy wait out and go through normal code path to issue timestamp on next microsecond
-        while (nowMicroSecRounded == _lastRequestTimeMicrSecRounded)
+        while (curTBEMicroSecRounded == _lastRequestTBEMicroSecRounded)
         {
-            nowMicroSecRounded = TSE_Count_MicroSecRounded(SysClock::now());
+            curTBEMicroSecRounded = (Clock::now().time_since_epoch().count() +  _curControlInfo.TBEAdjustment) / 1000 * 1000;
         }
 
         return GetTimestampFromTSO(batchSizeRequested);
     }
 
-    K2ASSERT(nowMicroSecRounded == _lastRequestTimeMicrSecRounded, "last and this requests are in same microsecond!");
+    K2ASSERT(curTBEMicroSecRounded == _lastRequestTBEMicroSecRounded, "last and this requests are in same microsecond!");
 
     TimestampBatch result;
-    result.TbeTESBase = nowMicroSecRounded + _curControlInfo.TbeTESAdjustment 
-        + seastar::engine().cpu_id() - 1
-        + _lastRequestTimeStampCount * _curControlInfo.TbeNanoSecStep;
+    result.TBEBase = curTBEMicroSecRounded + seastar::engine().cpu_id() - 1 + _lastRequestTimeStampCount * _curControlInfo.TBENanoSecStep;
     result.TSOId = _tsoId;
     result.TsDelta = _curControlInfo.TsDelta;
     result.TTLNanoSec = _curControlInfo.BatchTTL;
     result.TSCount = batchSizeRequested;
-    result.TbeNanoSecStep = _curControlInfo.TbeNanoSecStep;
+    result.TBENanoSecStep = _curControlInfo.TBENanoSecStep;
 
-    //_lastRequestTimeMicrSecRounded = nowMicroSecRounded;
+    //_lastRequestTBEMicroSecRounded = curTBEMicroSecRounded;   // they are same, no need to set.
     _lastRequestTimeStampCount += batchSizeRequested; // we've just issued batchSizeRequested
 
     return result;

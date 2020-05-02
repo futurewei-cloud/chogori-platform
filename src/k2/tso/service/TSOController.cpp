@@ -76,15 +76,13 @@ seastar::future<> TSOService::TSOController::InitializeInternal()
 void TSOService::TSOController::InitWorkerControlInfo()
 {
     // initialize TSOWorkerControlInfo
-    _lastSentControlInfo.TbeNanoSecStep =   seastar::smp::count - 1;            // same as number of worker cores
-    _lastSentControlInfo.TbeTESAdjustment = _defaultTSBatchEndAdj().count();    // default 8us, or 8000
-    _lastSentControlInfo.TsDelta =          _defaultTSBatchEndAdj().count();    // batch window size is also default _defaultTSBatchEndAdj
-    _lastSentControlInfo.BatchTTL =         _batchTTL().count();
+    _lastSentControlInfo.TBENanoSecStep =   seastar::smp::count - 1;            // same as number of worker cores
+    _lastSentControlInfo.TsDelta =          _defaultTBWindowSize().count();     // uncertain window size of timestamp from the batch is also default _defaultTBWindowSize
+    _lastSentControlInfo.BatchTTL =         _defaultTBWindowSize().count();     // batch's TTL is also _defaultTBWindowSize
 
-    _controlInfoToSend.TbeNanoSecStep =     seastar::smp::count - 1;            // same as number of worker cores
-    _controlInfoToSend.TbeTESAdjustment =   _defaultTSBatchEndAdj().count();
-    _controlInfoToSend.TsDelta =            _defaultTSBatchEndAdj().count();
-    _controlInfoToSend.BatchTTL =           _batchTTL().count();
+    _controlInfoToSend.TBENanoSecStep =     seastar::smp::count - 1;            
+    _controlInfoToSend.TsDelta =            _defaultTBWindowSize().count();
+    _controlInfoToSend.BatchTTL =           _defaultTBWindowSize().count();
 }
 
 seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
@@ -132,7 +130,7 @@ seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint
         // If prevReservedTimeShreshold is in the past, or within next heartbeat cycle,
         // then issue out of band heartBeat, to make our own TimeShreshold reservation and start service immediately afterwards,
         // otherwise, let regular hearBeat to pick up the work.
-        uint64_t curTimeTSECount = SysClock::now().time_since_epoch().count();
+        uint64_t curTimeTSECount = TimeAuthorityNow();
 
         if (prevReservedTimeShreshold < curTimeTSECount)
         {
@@ -220,12 +218,12 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
 
     if (_isMasterInstance)
     {
-        uint64_t curTimeTSECount = SysClock::now().time_since_epoch().count();
+        uint64_t curTimeTSECount = TimeAuthorityNow();
 
         // case 1, if we lost lease, suicide now
-        if (curTimeTSECount > (uint64_t) _myLease.time_since_epoch().count())
+        if (curTimeTSECount >  _myLease)
         {
-            K2INFO("Lost lease detected during HeartBeat. cur time and mylease : " << curTimeTSECount << ":" << _myLease.time_since_epoch().count());
+            K2INFO("Lost lease detected during HeartBeat. cur time and mylease : " << curTimeTSECount << ":" << _myLease);
             //K2ASSERT(false, "Lost lease detected during HeartBeat.");
             //Suicide();
         }
@@ -246,19 +244,18 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         if (_prevReservedTimeShreshold > curTimeTSECount &&
             (_prevReservedTimeShreshold - curTimeTSECount >= (uint64_t) _heartBeatTimerInterval().count()))
         {
-            return RenewLeaseOnly().then([this](SysTimePt newLease) {_myLease = newLease;});
+            return RenewLeaseOnly().then([this](uint64_t newLease) {_myLease = newLease;});
         }
 
         // case 4, regular situation, extending lease and ReservedTimeThreshold, then SendWorkersControlInfo
         return RenewLeaseAndExtendReservedTimeThreshold()
-            .then([this] (std::tuple<SysTimePt, SysTimePt> newLeaseAndThreshold) mutable {
+            .then([this] (std::tuple<uint64_t, uint64_t> newLeaseAndThreshold) mutable {
                 // set new lease and new threshold
                 _myLease = std::get<0>(newLeaseAndThreshold);
-                _controlInfoToSend.ReservedTimeShreshold = std::get<0>(newLeaseAndThreshold).time_since_epoch().count();
+                _controlInfoToSend.ReservedTimeShreshold = std::get<1>(newLeaseAndThreshold);
 
-                uint64_t newCurTimeTSECount = SysClock::now().time_since_epoch().count();
-                K2ASSERT(_controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount &&
-                    (uint64_t) _myLease.time_since_epoch().count() > newCurTimeTSECount,
+                uint64_t newCurTimeTSECount = TimeAuthorityNow();
+                K2ASSERT(_controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
                     "new lease and ReservedTimeThreshold should be in the future.");
 
                 // update worker!
@@ -287,7 +284,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
 
     // now we are master instance and stopping
 
-    uint64_t curTimeTSECount = SysClock::now().time_since_epoch().count();
+    uint64_t curTimeTSECount = TimeAuthorityNow();
 
     if (_prevReservedTimeShreshold > curTimeTSECount)
     {
@@ -302,14 +299,14 @@ seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
     }
 
     // set _isMasterInstance to false send to workers first to stop issuing timestamp
-    // and then nicely reduce ReservedTimeShreshold to new currentTime + _lastSentControlInfo.TbeTESAdjustment and remove lease
+    // and then nicely reduce ReservedTimeShreshold to new currentTime + _lastSentControlInfo.TBEAdjustment and remove lease
     // so that other standby can quickly become new master
     _isMasterInstance = false;
 
     return SendWorkersControlInfo()
         .then([this] () mutable {
-            //uint64_t newReservedTimeShresholdTSECount = SysClock::now().time_since_epoch().count()
-            //    + std::max(_lastSentControlInfo.TbeTESAdjustment, (uint64_t) _defaultTSBatchEndAdj().count());
+            //uint64_t newReservedTimeShresholdTSECount = Clock::now().time_since_epoch().count()
+            //    + std::max(_lastSentControlInfo.TBEAdjustment, (uint64_t) _defaultTBWindowSize().count());
 
             // remove our lease on Paxos and update ReservedTimeShreshold
             return RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*newReservedTimeShresholdTSECount*/);
@@ -323,10 +320,10 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
     bool readyToIssue = false;
     if (_isMasterInstance)
     {
-        uint64_t curTimeTSECount = SysClock::now().time_since_epoch().count();
+        uint64_t curTimeTSECount = TimeAuthorityNow();
 
         // if lost lease, suicide.
-        if(curTimeTSECount > (uint64_t)_myLease.time_since_epoch().count())
+        if(curTimeTSECount > _myLease)
         {
             Suicide();
         }
@@ -356,7 +353,7 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
 void TSOService::TSOController::Suicide()
 {
     // suicide when and only when we are master and find we lost lease
-    auto curTime = SysClock::now();
+    auto curTime = TimeAuthorityNow();
     K2ASSERT(_isMasterInstance && curTime > _myLease, "Suicide when not lost lease or not master?");
 
     K2ASSERT(false, "Suiciding");
@@ -387,44 +384,67 @@ seastar::future<> TSOService::TSOController::DoTimeSync()
         return seastar::make_ready_future<>();
 
     return CheckAtomicGPSClock()
-        .then([this](std::tuple<SysTimePt, SysTimePt> tt /*truetime result from CheckAtomicGPSClock()*/ ) mutable {
+        .then([this](std::tuple<uint64_t, uint64_t> tt /*truetime result from CheckAtomicGPSClock() in the form of <steady_clock delta, uncertainty window size>*/ ) mutable {
             if (_stopRequested)
                 return seastar::make_ready_future<>();
 
-            auto ttB = std::get<0>(tt);
-            auto ttE = std::get<1>(tt);
+            auto deltaToSteadyClock = std::get<0>(tt);
+            auto uncertaintyWindowSize = std::get<1>(tt);
 
-            K2ASSERT(ttE >= ttB, "trueTime end time should be greater or equal to begin time.");
-            K2ASSERT((ttE - ttB) < 3us, "trueTime windows size should be less than 3us.");
-            SysTimePt localNow = SysClock::now();
+            K2ASSERT(uncertaintyWindowSize < 3000, "trueTime windows size should be less than 3us.");
 
             if (!_isMasterInstance)
             {
-                if (ttB >= localNow || localNow >= ttE)
-                {
-                    // TODO: out of true time window, adjust current system time to (TTB + TTE) / 2
-                }
+                _diffTALocalInNanosec = deltaToSteadyClock;
                 // as localNow is always in TrueTime window, these values will be kept as initialized
-                _lastSentControlInfo.TbeTESAdjustment = _defaultTSBatchEndAdj().count();    // default 8us, or 8000
-                _lastSentControlInfo.TsDelta =          _defaultTSBatchEndAdj().count();    // batch window size is also default _defaultTSBatchEndAdj
-                _controlInfoToSend.TbeTESAdjustment =   _defaultTSBatchEndAdj().count();
-                _controlInfoToSend.TsDelta =            _defaultTSBatchEndAdj().count();
+                // The batch uncertainty window size is _defaultTBWindowSize, assuming _defaultTBWindowSize > uncertaintyWindowSize
+                _lastSentControlInfo.TBEAdjustment  = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;     
+                _lastSentControlInfo.TsDelta        = _defaultTBWindowSize().count();    // batch window size is also default _defaultTBWindowSize
+                _controlInfoToSend.TBEAdjustment    = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;     
+                _controlInfoToSend.TsDelta          = _defaultTBWindowSize().count();
             }
             else // master case
             {
-                // TODO: more complex smearing case may be needed
+                // local steady_clock drifted from time authority or time authority changed time for more than 1000 nanosecond or 1 microsecond, need to do smearing adjustment
+                uint64_t driftDelta = _diffTALocalInNanosec > deltaToSteadyClock ? (_diffTALocalInNanosec - deltaToSteadyClock) : (deltaToSteadyClock - _diffTALocalInNanosec);
+                if (driftDelta > 1000)
+                {
+                    if (_diffTALocalInNanosec != 0)
+                    {
+                        // TODO adjust TBEAdjustment with smearing as well, at the rate less than 1- (TsDelta/MTL) instad of direct one time change.
+                        K2WARN("Local steady_clock drift away from Time Authority! Smearing adjustment in progress. old diff value:" << _diffTALocalInNanosec << "new diff value:" << deltaToSteadyClock);
+                    }
+                    _diffTALocalInNanosec = deltaToSteadyClock;
+                    // The batch uncertainty window size is _defaultTBWindowSize, assuming _defaultTBWindowSize > uncertaintyWindowSize
+                    _controlInfoToSend.TBEAdjustment =   deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
+                }
             }
 
             return seastar::make_ready_future<>();
         });
 }
 
-seastar::future<std::tuple<SysTimePt, SysTimePt>> TSOService::TSOController::CheckAtomicGPSClock()
+seastar::future<std::tuple<uint64_t, uint64_t>> TSOService::TSOController::CheckAtomicGPSClock()
 {
     //TODO: implement this
-    auto curTime = SysClock::now();
-    std::tuple<SysTimePt, SysTimePt> fakeTrueTime(curTime - 1us, curTime + 1us);
-    return seastar::make_ready_future<std::tuple<SysTimePt, SysTimePt>>(fakeTrueTime);
+    // fake time diff of Atomic clock to local steady clock with that between system_clock and steady_clock
+    uint64_t newDiffTALocalInNanosec = std::chrono::system_clock::now().time_since_epoch().count() - Clock::now().time_since_epoch().count();
+
+    // there is lots of noise for newDiffTALocalInNanosec, fake removing the noise
+    if (_diffTALocalInNanosec!= 0) 
+    {
+        /*
+        uint64_t driftDelta = _diffTALocalInNanosec > newDiffTALocalInNanosec ? (_diffTALocalInNanosec - newDiffTALocalInNanosec) : (newDiffTALocalInNanosec - _diffTALocalInNanosec);
+        if (driftDelta > 10 * 1000) // warn if diff drift more than 10 microsecond
+        {
+            K2WARN("diff between sys time and steady time changed from "<<_diffTALocalInNanosec <<" to " << newDiffTALocalInNanosec << " ignored !");
+        }*/
+        // always ignore the diff.
+        newDiffTALocalInNanosec = _diffTALocalInNanosec;
+    }
+
+    std::tuple<uint64_t, uint64_t> fakeResult(newDiffTALocalInNanosec, 2000/*fake 2000 nanosec uncertainty window size*/);
+    return seastar::make_ready_future<std::tuple<uint64_t, uint64_t>>(fakeResult);
 }
 
 void TSOService::TSOController::CollectAndReportStats()

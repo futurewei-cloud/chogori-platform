@@ -5,7 +5,6 @@
 
 namespace k2 {
 namespace dto {
-// TODO: rename this file to timestamp after merge
 // K2Timestamp - a TrueTime uncertainty window and TSOId
 // internally keep TEndTSECount and tStartDelta for efficient serialization and comparison
 class Timestamp{
@@ -24,10 +23,10 @@ public:
     // ctor
     Timestamp(uint64_t tEndTSECount, uint32_t tsoId, uint32_t tStartDelta);
 
-    // end time of uncertainty window;
+    // end time of uncertainty window - TAI TimeSinceEpoch count in nanoseconds since Jan. 1, 1970;
     uint64_t tEndTSECount() const;
 
-    // start time of uncertainty window;
+    // start time of uncertainty window - TAI nanoseconds count
     uint64_t tStartTSECount() const;
 
     // global unique Id of the TSO issuing this TS
@@ -57,7 +56,7 @@ public:
     }
 
    private:
-    uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE
+    uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE in TAI 
     uint32_t _tsoId = 0;
     uint32_t _tStartDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max
 

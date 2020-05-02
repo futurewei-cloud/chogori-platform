@@ -128,7 +128,7 @@ UN - Only applicable when TSOId are different and uncertainty window overlap,
 ```        
 
 Internal structure for Timestamp is
-uint64_t _tEndTSECount  - counts of nanoseconds for tEnd's time_since_epoch(), from UTC 1970-01-01:00:00:00
+uint64_t _tEndTSECount  - counts of nanoseconds for tEnd's time_since_epoch(), from TAI (International Atomic Time, strictly increasing time from atomic clock with no leap seconds since UNIX epoch Jan. 1, 1970)
 uint16_t TSOId         - TSOId
 uint16_t TsDelta  - time difference between Ts and Te, in nanosecond unit
 
@@ -160,32 +160,32 @@ The returned batch is following structure:
 ```
 struct TimestampBatch
 {
-    uint64_t TbeTESBase       - batch uncertain window end time, number of nanosecond ticks from UTC 1970-01-01:00:00:00
+    uint64_t TBEBase       - batch uncertain window end time, number of nanosecond ticks from UTC 1970-01-01:00:00:00
     uint16_t TSOId            - TSOId
     uint16_t TsDelta          - time difference between Ts and Te, in nanosecond unit   
     uint16_t TSCount          - number of timestamp can be generated from this batch
-    uint8_t  TbeNanoSecStep   - step (number of nanoseconds) to skip between timestamp Te in the batch
+    uint8_t  TBENanoSecStep   - step (number of nanoseconds) to skip between timestamp Te in the batch
     uint8_t  TTLus            - TTL of batch on the client side in microseconds
 
     static const Timestamp GenerateTimeStampFromBatch(const TimestampBatch& batch, uint8_t usedCount)
     {
         K2ASSERT(usedCount < batch.TSCount, "requested timestamp count too large.");
 
-        uint16_t endingNanoSecAdjust = usedCount * batch.TbeNanoSecStep;
+        uint16_t endingNanoSecAdjust = usedCount * batch.TBENanoSecStep;
         // creat timestamp from batch. Note: tStart are the same for all timestamps in the batch
-        Timestamp ts(batch.TbeTESBase + endingNanoSecAdjust, batch.TSOId, batch.TsDelta + endingNanoSecAdjust);
+        Timestamp ts(batch.TBEBase + endingNanoSecAdjust, batch.TSOId, batch.TsDelta + endingNanoSecAdjust);
         return ts;
     }
 }
 ```
 E.g. TBeTSEBase is 1576884547194846100 for time point at 2019-12-20:15:29:07, which is set with TSO server time uncertain window ending time plus the TTL, in nanosecond ticks, with some adjustment for base for the batch, which will be explained later. TSOId is ingored to explain here. 
 TsDelta could be up to 10000 (10 microsecond), it is eseentially the batch time window size.
-Let's say TbeNanoSecStep is 20 and TSCount is 10, i.e. this batch contains 10 timestamps, then  10 timestamps has Te = TbeTESBase + i * TbeNanoSecStep, i = 0, 1, ... 10, in this example, they are
+Let's say TBENanoSecStep is 20 and TSCount is 10, i.e. this batch contains 10 timestamps, then  10 timestamps has Te = TBEBase + i * TBENanoSecStep, i = 0, 1, ... 10, in this example, they are
 1576884547194846100 + i * 20 as shown in the function GenerateTimeStampFromBatch() 
 
-Upon receiving a timestamp batch from Server, TSO client within the timestamp batch TTL can issue timestamps from the batch by calling GenerateTimeStampFromBatch(). The TSO client keeps track of the count (UsedCount) of timestamps already issued from a batch to generate correct timestamp (by adding TbeNanoSecStep * usedCount to TbeTESBase)
+Upon receiving a timestamp batch from Server, TSO client within the timestamp batch TTL can issue timestamps from the batch by calling GenerateTimeStampFromBatch(). The TSO client keeps track of the count (UsedCount) of timestamps already issued from a batch to generate correct timestamp (by adding TBENanoSecStep * usedCount to TBEBase)
 
-The reason that TbeNanoSecStep is not 1 is related with the detailed design on the TSO server side, it is essentially the number of worker CPU cores on TSO server taking the requests and issuing batchs. With this and different TbeTESBase for different cores at the same time, we can generate unique timestamps (per TSO) across timestamp batches from different TSO worker CPU cores.
+The reason that TBENanoSecStep is not 1 is related with the detailed design on the TSO server side, it is essentially the number of worker CPU cores on TSO server taking the requests and issuing batchs. With this and different TBEBase for different cores at the same time, we can generate unique timestamps (per TSO) across timestamp batches from different TSO worker CPU cores.
 
 ### 3.4 Batch design analysis
 #### 3.4.1 Scalability and Performance requirement 
@@ -199,7 +199,7 @@ The benefit for batch includes typical benefit from batching, e.g. reducing the 
 ##### Batch and relationship with Time Uncertainty Window
 Essentially, a TimestampBatch is a group of K2 Timestamps. From TimestampBatch, timestamp can be regenerated. Regenerated K2 Timestamp's time uncertainty window need to fully cover the time uncertainty window if the timestamp were recieved directly from TSO server individually to guarantee the correctness when compare time between timestamps from different TSO. From correctness point of view, it is ok if regenerated uncertainty window has TStart smaller than that of direct server can issue, and TEnd larger than direct one. 
 
-At the same time, the TimeStamp generated from TimestampBatch need to have TEnd strictly increasing as well as it is guranteed to be unique if from same TSO. So we designed a TimestampBatch as described in section 3.3 which has a pre-defined algorithm to generate timestamp by manupulating the TEnd by adding a nanoseconds step between each timestamp. With different TbeTESBase for each TimestampBatch, uniqueness and strictly increasing requirement both can be met.
+At the same time, the TimeStamp generated from TimestampBatch need to have TEnd strictly increasing as well as it is guranteed to be unique if from same TSO. So we designed a TimestampBatch as described in section 3.3 which has a pre-defined algorithm to generate timestamp by manupulating the TEnd by adding a nanoseconds step between each timestamp. With different TBEBase for each TimestampBatch, uniqueness and strictly increasing requirement both can be met.
 
 Please note, for both High time Accuracy TSO System and Low time Accuracy TSO system, i.e. regardless the size of time uncertainty window, above discussion holds true. 
 
@@ -227,45 +227,45 @@ Each worker core has following local config data needed to generate batch, all a
 struct TSOWorkerControlInfo
 {
     bool      IsReadyToIssueTS      - if this core is allowed to issue TS, could be false for various reasons
-    uint16_t  TbeNanoSecStep        - step to skip between timestam, actually same as the number of worker cores 
-    uint64_t  TbeTESAdjustment      - batch ending time adjustment from current chrono::steady_clock::now();
+    uint16_t  TBENanoSecStep        - step to skip between timestam, actually same as the number of worker cores 
+    uint64_t  TBEAdjustment         - timestamp batch end time adjustment from current chrono::steady_clock::now();
     uint16_t  TsDelta               - batch starting time adjustment from TbeTSEAdjustment, basically the uncertainty window size
     uint64_t  ReservedTimeShreshold - reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that
-    uint8_t  TTLus                  - TTL of batch on the client side in microseconds
+    uint8_t   TTLus                 - TTL of batch on the client side in microseconds
 }   
 ```
 
-A worker core doesn't coordinate with other worker core, as cross-core communication is expensive(>0.5 microsecond in SeaStar), so we need to make sure different work core will issue batch of different timestamp (even at the same nano second). Thus, for each work core, it will use its SeaStar core ID as starting base of nano second value in the TbeTSEBase and each timestamp in the batch will be number of work core, i.e. TbeNanoSecStep away from each other. For example, say we have 20 worker cores and their id are 0, 1, ... 19, then for core 0, the nano second value in the starting batch (of the microsecond) will be 0, 20, 40, ... and core 1 will be 1, 21, 41, ... etc. For each microsecond, each worker core can issue at most 1000/number or work core time stamps.  
+A worker core doesn't coordinate with other worker core, as cross-core communication is expensive(>0.5 microsecond in SeaStar), so we need to make sure different work core will issue batch of different timestamp (even at the same nano second). Thus, for each work core, it will use its SeaStar core ID as starting base of nano second value in the TbeTSEBase and each timestamp in the batch will be number of work core, i.e. TBENanoSecStep away from each other. For example, say we have 20 worker cores and their id are 0, 1, ... 19, then for core 0, the nano second value in the starting batch (of the microsecond) will be 0, 20, 40, ... and core 1 will be 1, 21, 41, ... etc. For each microsecond, each worker core can issue at most 1000/number or work core time stamps.  
 
 To make sure a worker core doesn't issue duplicate timestamp across different client requests within the same microsecond, each worker core keep a local value of microsecondOfLastRequest, timestampCounterOflastMicrosecond, which are initialized to 0 both, so that we can avoid this issue. 
 
 The detail of steps of a worker core processing the cleint request is following:
 ```
 1. Upon request arrival, check okToIssueTS, if false, return ServerNotReady error (should have different error code if current server is not TSO master instance).
-2. get tNow = system_clock::now(); calculate intended TbeTESBase = tNow(set last three digits of nano second to 0) + coreId; 
-3. if TbeTESBase != microsecondOfLastRequest, 
+2. get tNow = steady_clock::now(); tNowAdj = tNow + TBEAdjustment; calculate intended TBEBase = tNowAdj(set last three digits of nano second to 0) + coreId; 
+3. if TBEBase != microsecondOfLastRequest, 
      then 
      {      set timestampCounterOflastMicrosecond = 0, 
-            and set return value TSCount = min (1000/TbeNanoSecStep, batchSizeRequested) as the max amount of timestamp in a batch is 1000/TbeNanoSecStep;
+            and set return value TSCount = min (1000/TBENanoSecStep, batchSizeRequested) as the max amount of timestamp in a batch is 1000/TBENanoSecStep;
      }
      else 
      {
-         if (1000/TbeNanoSecStep - microsecondOfLastRequest) < batchSizeRequested
+         if (1000/TBENanoSecStep - microsecondOfLastRequest) < batchSizeRequested
          then
          {
              busy wait till next microsecond (or schedule this task to the end of client request scheduling group and redo from begining)
-             // after wait with new(next) microsecond TbeTESBase
-             set return value TSCount = min (1000/TbeNanoSecStep, batchSizeRequested)
+             // after wait with new(next) microsecond TBEBase
+             set return value TSCount = min (1000/TBENanoSecStep, batchSizeRequested)
          }
          else
          {
-             set TbeTESBase += timestampCounterOflastMicrosecond *  TbeNanoSecStep;
+             set TBEBase += timestampCounterOflastMicrosecond *  TBENanoSecStep;
          }
      }
 4. check updated possible last timestmap in the batch is before reservedTimeShreshold, i.e.
-         if  (TbeTESBase + (batchSizeRequested -1) * TbeNanoSecStep) > reservedTimeShreshold, 
+         if  (TBEBase + (batchSizeRequested -1) * TBENanoSecStep) > reservedTimeShreshold, 
          return ServerNotReady error;
-5. generating the return batch with update TbeTESBase, batchSizeRequested, TbeNanoSecStep, TsDelta, TSOId and return to client; 
+5. generating the return batch with update TBEBase, batchSizeRequested, TBENanoSecStep, TsDelta, TSOId and return to client; 
    update microsecondOfLastRequest and timestampCounterOflastMicrosecond
 ```
 
@@ -278,23 +278,23 @@ Control core key responsibility is to
 struct TSOWorkerControlInfo
 {
     bool      okToIssueTS           - flag indicating if this core is ok to issue TS, could be false when shutdow is signaled
-    uint16_t  TbeNanoSecStep        - step to skip between timestam, actually same as the number of worker cores 
-    uint64_t  TbeTESAdjustment      - batch ending time adjustment from current chrono::steady_clock::now();
+    uint16_t  TBENanoSecStep        - step to skip between timestamp, actually same as the number of worker cores 
+    uint64_t  TBEAdjustment      - batch ending time adjustment from current chrono::steady_clock::now();
     uint16_t  TsDelta               - batch starting time adjustment from TbeTSEAdjustment, basically the uncertainty window size
     uint64_t  reservedTimeShreshold - reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that
 }   
 ```
-TimeSyncTask is responsible to check current machine clock is drift off from time authorities (e.g. Atomic/GPS clock or NTP). If it is drift large enough, it will adjust TbeTESAdjustment and TsDelta in TSOWorkerControlInfo and which will be sent to all the worker cores. 
+TimeSyncTask is responsible to check current machine clock is drift off from time authorities (e.g. Atomic/GPS clock or NTP). If it is drift large enough, it will adjust TBEAdjustment and TsDelta in TSOWorkerControlInfo and which will be sent to all the worker cores. Upon the start of service, in first TimeSync we keep the delta between time authority time and local machine steady clock, e.g. TAI in high Acuracy system(number of nano seconds), _diffTALocalInNanosec. TBEAdjustment is initialized with _diffTALocalInNanosec. Upon futher TimeSynTask, we check new time value from time authority and compare with local steady_clock to check if local steady_clock drifted(differs from _diffTALocalInNanosec) and if it does, we adjust _diffTALocalInNanosec and TBEAdjustment. Besides local steady_clock drift (away from Time Authroity), another reason TBEAdjustment may change could be that the time uncertainty window size change from Time Authority. Such change is rare and can be ignored when in High Accuracy system, but can happen in Low Accuracy case with NTP. 
 
-Change on TsDelTa is relatively simple, once TbeTESAdjustment's update is set. Basically, it will be adjusted so that derived Ts is the true time Ts at the moment of update. The tricky issue is updating of TbeTESAdjustment.
+Change on TsDelTa is relatively simple, once TBEAdjustment's update is set and time uncertainty window is known from time authority. Basically, it will be adjusted so that derived Ts is the true time Ts at the moment of update. The tricky issue is updating of TBEAdjustment.
 
-TbeTESAdjustment is the adjustment to be done to current system_clock::Now().time_since_epoch().count() to generate TBeTESBase, the base end time for the timestamp batch to be issued. There are two reasons to have this adjustment. 
-1. The system time of TSO server has a time difference to the time given by time authority(atomic/GPS clock or NTP), which is the simple delta between machine system time and time authority.
+TBEAdjustment is the adjustment to be done to current steady_clock::Now().time_since_epoch().count() to generate TBEBase, the base end time for the timestamp batch to be issued. There are two reasons to have this adjustment. 
+1. The steady time of TSO server is time since the machine booted, has a difference to the time given by time authority(atomic/GPS clock or NTP).
 2. After some duration of time, When the time drift sufficient large between master instance of TSO server and the time authority, we need to adjust the simple delta.
 
-It is very important to point out again that when we update the TbeTESAdjustment,TSO server need to do the smearing of the time to make sure 1)the ending time of timestamp is not going backwards. 2) the rate of smearing is not exceeding the ration between MTL to batch TTL. 1) is for making sure the TEnd of timstamp is strinctly increasing, 2) is to make sure already issued out timestamp batch preserves causal consistency with new issuing time stamp batch. This is done both at the control core and worker core. When the value need to be updated is large, large than 1 microsecond, the control core smearing it to 1 microsecond per X microsecond. X can be set fixed, e.g. at 10 microsecond, or depends on the value of adjusment we need to do, the bigger it is, the smaller X to be set to reduce the total time duration for the smearing. Also on the worker core side, when smearing backward happens(i.e. new TbeTESAdjustment is smaller by 1), work core need to make sure to wait at least one full microsecond after microsecondOfLastRequest before it can issue new timestamp batch so that the timestamp never has smaller Te in the timestamp batch. 
+It is very important to point out again that when we update the TBEAdjustment,TSO server need to do the smearing of the time to make sure 1)the ending time of timestamp is not going backwards. 2) the rate of smearing is not exceeding the ration between MTL to batch TTL. 1) is for making sure the TEnd of timstamp is strinctly increasing, 2) is to make sure already issued out timestamp batch preserves causal consistency with new issuing time stamp batch. This is done both at the control core and worker core. When the value need to be updated is large, large than 1 microsecond, the control core smearing it to 1 microsecond per X microsecond. X can be set fixed, e.g. at 10 microsecond, or depends on the value of adjusment we need to do, the bigger it is, the smaller X to be set to reduce the total time duration for the smearing. Also on the worker core side, when smearing backward happens(i.e. new TBEAdjustment is smaller by 1), work core need to make sure to wait at least one full microsecond after microsecondOfLastRequest before it can issue new timestamp batch so that the timestamp never has smaller Te in the timestamp batch. 
 
-Since worker core is using system clock and TbeTESAdjustment to have accurate time stamp batch, we do not allow TSO server system clock change. It can be changed when the instance is on standby mode. This way, we can simplify the implementation of TimeSyncTask handling. When TSO server starts up (transitioned from standby mode), it could adjust machine system clock after get the real time from time authority (atomic/GPS clock or NTP), as well as other parameters in TSOWorkerControlInfo, before seting up worker cores. After that, essentially the control core take over the time adjustment through TimeSyncTask.
+Since worker core is using system clock and TBEAdjustment to have accurate time stamp batch, we do not allow TSO server system clock change. It can be changed when the instance is on standby mode. This way, we can simplify the implementation of TimeSyncTask handling. When TSO server starts up (transitioned from standby mode), it could adjust machine system clock after get the real time from time authority (atomic/GPS clock or NTP), as well as other parameters in TSOWorkerControlInfo, before seting up worker cores. After that, essentially the control core take over the time adjustment through TimeSyncTask.
 
 There is no server side load balance between worker cores for design simplicity and robustiness, furthermore such simple design and implementation minimize the latency and server cost, the load balance can be easily at K2 TSO Client side. A simple random or round Robin load balance between worker cores on the client side should be sufficient. Of course, for High Accuracy system, where there are mulitple active TSO servers, the load balance between TSO servers is different issue and will be discussed in section 4.1
 
@@ -339,7 +339,7 @@ The design of TSO system for Low Time Accuracy at TSO server differs only at the
 
 1. Upon instance started up, join the TSO server cluster and figure out which instance is the master(if needed, participate master selection). Also collect info about its own worker cores. So, upon call of GetTSOServerInfo from client, it can tell the client who the TSO Server master instance is, and itself is the master, the readyness of itself and RDMA address of its workers, etc. 
 
-2. If current instance is master, periodically send heartbeat to paxos, which including renew lease and reserve the new future threshold, reservedTimeShreshold, that worker core can give out timestamp. As reservedTimeShreshold is a member of TSOWorkerControlInfo, so each time this timed task is done, it propagates updated TSOWorkerControlInfo to all workders. The TimeSyncTask possible caused change on the adjustment of TbeTESAdjustment can be pushed through heartbeat and reserved threshold result as well.
+2. If current instance is master, periodically send heartbeat to paxos, which including renew lease and reserve the new future threshold, reservedTimeShreshold, that worker core can give out timestamp. As reservedTimeShreshold is a member of TSOWorkerControlInfo, so each time this timed task is done, it propagates updated TSOWorkerControlInfo to all workders. The TimeSyncTask possible caused change on the adjustment of TBEAdjustment can be pushed through heartbeat and reserved threshold result as well.
 
 One important thing to note is that if cross different geo region network latency is bigger than MTL, then it means any two transaction with causal relationship won't have overlapping timestamp. This will simplify the comparison of the timestamp in such way that we can ignore the time uncertainty window, just use CompareWithCertainty(), not only for timestamps within a geo region (from same TSO so valid anyway), but also for timestamps from different geo region(i.e. different TSO). For transactions with overlapping timestamps from different TSOs can be only trully concurrent transaction without causal relationship, thus for Sequential Consistency need of K2-3SI, just an order is system wide agreed order is needed. Such ignorance of time uncertainty window has great engineering value, e.g. elimination of system wide point of query starvation problem due to time uncertainty window overlapping.
 
