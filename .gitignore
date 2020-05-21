@@ -1,0 +1,10 @@
+.idea/
+.editorconfig
+.vscode/
+build/
+deps/
+*.rpm
+*.deb
+*.changes
+*.iml
+cluster/__pycache__/
