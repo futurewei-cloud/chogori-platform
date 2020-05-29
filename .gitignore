@@ -7,4 +7,5 @@ deps/
 *.deb
 *.changes
 *.iml
+k2b
 cluster/__pycache__/
