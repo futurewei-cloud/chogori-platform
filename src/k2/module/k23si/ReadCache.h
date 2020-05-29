@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <list>
 #include <iostream>
 
-#include </usr/local/include/intervaltree.hpp>
+#include <intervaltree.hpp>
 
 using namespace Intervals;
 
