@@ -168,7 +168,9 @@ void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoin
     }
     auto serverep = protoi->second->getServerEndpoint();
     K2DEBUG("sending message for verb: " << int(verb) << ", to endpoint=" << endpoint.getURL()
-            << ", with server endpoint: " << (serverep ? serverep->getURL() : String("none")));
+            << ", with server endpoint: " << (serverep ? serverep->getURL() : String("none"))
+            << ", payload size=" << (payload?payload->getSize():0)
+            << ", payload capacity=" << (payload?payload->getCapacity():0));
     if (serverep && endpoint == *serverep) {
         // deliver via a future to possibly yield if there is a loop of send/receive requests
         (void) seastar::sleep(0ns)
@@ -205,10 +207,11 @@ void RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint
     _send(verb, std::move(payload), endpoint, std::move(metadata));
 }
 
-seastar::future<> 
+seastar::future<>
 RPCDispatcher::setAddressCore(std::pair<String, int> url_core) {
     auto url = url_core.first;
     int core_id = url_core.second;
+    K2DEBUG("Setting address core: " << url << ", for id=" << core_id);
     _url_cores.insert(std::make_pair(url, core_id));
     return seastar::make_ready_future<>();
 }

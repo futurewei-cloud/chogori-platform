@@ -77,7 +77,7 @@ private:
                            k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
                            k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
                 K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
-                response->write((void*)ep->getURL().c_str(), ep->getURL().size());
+                response->write(ep->getURL());
                 k2::RPC().sendReply(std::move(response), request);
             });
     }
@@ -275,8 +275,9 @@ private:
                     return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
                 }
                 k2::String remoteURL;
-                for (auto&& buf: payload->release()) {
-                    remoteURL.append((char*)buf.get_write(), buf.size());
+                if (!payload->read(remoteURL)) {
+                    K2ERROR("Unable to read remote URL in GET_DATA_URL response");
+                    return seastar::make_exception_future<>(std::runtime_error("cannot parse remote endpoint"));
                 }
                 K2INFO("Found remote data endpoint: " << remoteURL);
                 _session.client = *(k2::RPC().getTXEndpoint(remoteURL));
