@@ -33,8 +33,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include "schema.h"
 #include "transactions.h"
 
-static constexpr float FLOAT_DELTA = 0.0001;
-
 using namespace seastar;
 using namespace k2;
 
@@ -161,7 +159,7 @@ private:
 
     // Consistency condition 1 of spec
     future<> verifyWarehouseYTD() {
-        return do_with(0.0f, (uint16_t)1, [this] (float& total, uint16_t& cur_d_id) {
+        return do_with((uint32_t)0, (uint16_t)1, [this] (uint32_t& total, uint16_t& cur_d_id) {
             return do_until(
                     [this, &cur_d_id] () { return cur_d_id > _districts_per_warehouse(); },
                     [this, &cur_d_id, &total] () {
@@ -180,9 +178,9 @@ private:
                 .then([this, &total] (auto&& result) {
                     CHECK_READ_STATUS(result);
                     Warehouse warehouse(result.getValue(), _cur_w_id);
-                    float w_total = warehouse.data.YTD;
-                    K2ASSERT(abs(w_total - total) <= FLOAT_DELTA,
-                             "Warehouse and district YTD totals did not match!");
+                    uint32_t w_total = warehouse.data.YTD;
+                    K2INFO("YTD consistency, w_total: " << w_total << " total: " << total);
+                    K2ASSERT(w_total == total, "Warehouse and district YTD totals did not match!");
                     return make_ready_future<>();
                 });
             });
@@ -200,7 +198,7 @@ private:
                 return _txn.read<District::Data>(District::getKey(_cur_w_id, cur_d_id), "TPCC")
                 .then([this, &cur_d_id, &cur_o_id] (auto&& result) {
                     if (!(result.status.is2xxOK())) {
-                        return make_exception_future<uint32_t>(std::runtime_error(k2::String("Order should exist but does not")));
+                        return make_exception_future<uint32_t>(std::runtime_error(k2::String("District should exist but does not")));
                     }
 
                     District district(result.getValue(), _cur_w_id, cur_d_id);

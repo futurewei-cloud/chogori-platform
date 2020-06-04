@@ -85,7 +85,7 @@ public:
         random.RandomString(6, 10, data.Name);
         data.address = Address(random);
         data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        data.YTD = _districts_per_warehouse() * _customers_per_district() * 10.0f;
+        data.YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
     }
 
     k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
@@ -101,7 +101,7 @@ public:
     uint32_t WarehouseID;
     struct Data {
         float Tax; // TODO Needs to be fixed point to be in spec
-        float YTD; // TODO Needs to be fixed point to be in spec
+        uint32_t YTD; // "Fixed point", first two digits are cents
         char Name[11];
         Address address;
         K2_PAYLOAD_COPYABLE;
@@ -122,7 +122,7 @@ public:
         random.RandomString(6, 10, data.Name);
         data.address = Address(random);
         data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        data.YTD = _customers_per_district() * 10.0f;
+        data.YTD = _customers_per_district() * 1000;
         data.NextOrderID = _customers_per_district()+1;
     }
 
@@ -140,7 +140,7 @@ public:
     uint16_t DistrictID;
     struct Data {
         float Tax; // TODO Needs to be fixed point to be in spec
-        float YTD; // TODO Needs to be fixed point to be in spec
+        uint32_t YTD; // "Fixed point", first two digits are cents
         uint32_t NextOrderID;
         char Name[11];
         Address address;
@@ -175,8 +175,8 @@ public:
 
         data.CreditLimit = 50000.0f;
         data.Discount = random.UniformRandom(0, 5000) / 10000.0f;
-        data.Balance = -10.0f;
-        data.YTDPayment = 10.0f;
+        data.Balance = -1000;
+        data.YTDPayment = 1000;
         data.PaymentCount = 1;
         data.DeliveryCount = 0;
         random.RandomString(300, 500, data.Info);
@@ -199,8 +199,8 @@ public:
         uint64_t SinceDate;
         float CreditLimit; // TODO Needs to be fixed point to be in spec
         float Discount;
-        float Balance; // TODO Needs to be fixed point to be in spec
-        float YTDPayment; // TODO Needs to be fixed point to be in spec
+        int32_t Balance;
+        uint32_t YTDPayment;
         uint16_t PaymentCount;
         uint16_t DeliveryCount;
         char FirstName[17];
@@ -226,7 +226,7 @@ public:
         data.CustomerWarehouseID = w_id;
         data.CustomerDistrictID = d_id;
         data.Date = getDate();
-        data.Amount = 10.0f;
+        data.Amount = 1000;
         random.RandomString(12, 24, data.Info);
     }
 
@@ -257,7 +257,7 @@ public:
         uint64_t Date;
         uint32_t CustomerID;
         uint32_t CustomerWarehouseID;
-        float Amount; // TODO
+        uint32_t Amount;
         uint16_t CustomerDistrictID;
         uint16_t DistrictID;
         char Info[25];

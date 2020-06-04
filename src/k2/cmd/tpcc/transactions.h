@@ -63,7 +63,7 @@ public:
             _c_d_id = random.UniformRandom(1, _districts_per_warehouse());
         }
 
-        _amount = random.UniformRandom(100, 500000) / 100.0f;
+        _amount = random.UniformRandom(100, 500000);
 
         _failed = false;
         _abort = false;
@@ -182,11 +182,11 @@ private:
     K23SIClient& _client;
     K2TxnHandle _txn;
     uint32_t _w_id;
-    uint16_t _d_id;
-    uint32_t _c_id;
     uint32_t _c_w_id;
+    uint32_t _c_id;
+    uint32_t _amount;
+    uint16_t _d_id;
     uint16_t _c_d_id;
-    float _amount;
     char _w_name[11];
     char _d_name[11];
     bool _failed;
