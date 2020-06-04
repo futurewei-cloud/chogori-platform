@@ -72,6 +72,13 @@ RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
         }
     });
 
+    auto ep = RPC().getServerEndpoint(proto->supportedProtocol());
+    if (ep){
+        std::pair<String, int> url_core;
+        url_core = std::make_pair(ep->getURL(), seastar::engine().cpu_id());
+        K2INFO("BroadCast URL and Core ID" << ep->getURL());
+        return RPCDist().invoke_on_all(&k2::RPCDispatcher::setAddressCore, url_core);
+    }
     return seastar::make_ready_future<>();
 }
 
@@ -150,8 +157,10 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
     }
 }
 
-void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
 
+void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
+    auto ep = RPC().getServerEndpoint(endpoint.getProtocol());
+    //K2INFO("From: " << ep->getURL() <<" To " << endpoint.getURL());
     auto protoi = _protocols.find(endpoint.getProtocol());
     if (protoi == _protocols.end()) {
         K2WARN("Unsupported protocol: "<< endpoint.getProtocol());
@@ -173,8 +182,22 @@ void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoin
         });
         return;
     }
+
+    auto core = _url_cores.find(endpoint.getURL());
+    if (core != _url_cores.end()){
+        (void) seastar::sleep(0ns)
+            .then([core, verb, endpoint, meta=std::move(meta), payload=std::move(payload)] () mutable {
+                // rewind the payload to the correct position
+                payload->seek(txconstants::MAX_HEADER_SIZE);
+                meta.setPayloadSize(payload->getDataRemaining());
+                auto return_value = RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
+        });
+        return;
+    }
+
     protoi->second->send(verb, std::move(payload), endpoint, std::move(meta));
 }
+
 
 void RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint) {
     K2DEBUG("Plain send");
@@ -182,8 +205,15 @@ void RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint
     _send(verb, std::move(payload), endpoint, std::move(metadata));
 }
 
+seastar::future<> 
+RPCDispatcher::setAddressCore(std::pair<String, int> url_core) {
+    auto url = url_core.first;
+    int core_id = url_core.second;
+    _url_cores.insert(std::make_pair(url, core_id));
+    return seastar::make_ready_future<>();
+}
+
 void RPCDispatcher::sendReply(std::unique_ptr<Payload> payload, Request& forRequest) {
-    K2DEBUG("Reply send for request: " << forRequest.metadata.requestID);
     MessageMetadata metadata;
     metadata.setResponseID(forRequest.metadata.requestID);
     _send(InternalVerbs::NIL, std::move(payload), forRequest.endpoint, std::move(metadata));

@@ -57,7 +57,7 @@ class RPCDispatcher: public seastar::weakly_referencable<RPCDispatcher> {
 public: // types
     // distributed<> version of the class
     typedef seastar::distributed<RPCDispatcher> Dist_t;
-
+    
     // thrown when you attempt to register something more than once
     struct DuplicateRegistrationException : public std::exception {
         virtual const char* what() const noexcept override{ return "duplicate registration not allowed";}
@@ -149,6 +149,9 @@ public: // message-oriented API
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
     void sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
+    
+    seastar::future<> setAddressCore(std::pair<String, int> url_core);
+
 
 public: // RPC-oriented interface. Small convenience so that users don't have to deal with Payloads directly
     // Same as sendRequest but for RPC types, not raw payloads
@@ -248,6 +251,9 @@ private:  // methods
 private: // fields
     // the protocols this dispatcher will be able to support
     std::unordered_map<String, seastar::shared_ptr<IRPCProtocol>> _protocols;
+
+    // add the map for core-address
+    std::unordered_map<String, int> _url_cores;
 
     // the message observers
     std::unordered_map<Verb, RequestObserver_t> _observers;
