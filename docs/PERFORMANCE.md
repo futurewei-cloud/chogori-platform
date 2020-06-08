@@ -70,6 +70,17 @@ Transaction Latency percentiles:
 - p99:   198 usec
 - p99.9: 232 usec
 
+### Multi-partition throughput test
+10 client cores, 2 servers with 4 cores each, pipeline depth 1, 1 read and 2 writes per transaction:
+
+|                      | 5/15/2020   | 6/8/2020   |
+| :---                 | :---------: | :--------: |
+| Aggregate Txns/sec   | 64,500      | 66,000     |
+| 50% Latency (usec)   | 119         | 116        |
+| 90% Latency (usec)   | 193         | 189        |
+| 99% Latency (usec)   | 278         | 274        |
+| 99.9% Latency (usec) | 341         | 339        |
+
 
 ## TPC-C Benchmark, New Order and Payment transaction types (src/k2/cmd/tpcc/)
 

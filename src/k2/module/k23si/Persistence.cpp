@@ -26,8 +26,9 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 Persistence::Persistence() {
-    //TODO discover RDMA endpoint
-    _remoteEndpoint = RPC().getTXEndpoint(_config.persistenceEndpoint());
+    int id = seastar::engine().cpu_id();
+    String endpoint = _config.persistenceEndpoint()[id % _config.persistenceEndpoint().size()];
+    _remoteEndpoint = RPC().getTXEndpoint(endpoint);
     K2INFO("ctor with endpoint: " << _remoteEndpoint->getURL());
 }
 
