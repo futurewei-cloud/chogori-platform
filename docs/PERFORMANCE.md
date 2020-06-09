@@ -109,5 +109,5 @@ New Order Transaction Latency percentiles:
 
 ## Summary of performance-relevant changes by date
 
-5/15/2020: Initial open source release
-6/08/2020: Allow multiple persistence endpoints, instead of one per process. Update dependecy packages.
+- 5/15/2020: Initial open source release
+- 6/08/2020: Allow multiple persistence endpoints, instead of one per process. Update dependecy packages.
