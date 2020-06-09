@@ -280,6 +280,8 @@ private: // don't need
     RPCDispatcher(RPCDispatcher&& o) = delete;
     RPCDispatcher& operator=(const RPCDispatcher& o) = delete;
     RPCDispatcher& operator=(RPCDispatcher&& o) = delete;
+
+    ConfigVar<bool> _txUseCrossCoreLoopback{"tx_xcore_loopback"};
 };
 
 // global RPC dist container which can be initialized by main() of an application so that

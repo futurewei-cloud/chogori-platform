@@ -27,7 +27,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 #include <seastar/core/sleep.hh>
-
+#include <k2/common/Timer.h>
+#include <typeinfo>
 namespace k2 {
 // implements an example RPC Service which can send/receive messages
 
@@ -50,9 +51,15 @@ struct GET_Response {
     K2_PAYLOAD_FIELDS(key, value);
 };
 
+struct Echo_Message {
+    String message;
+    K2_PAYLOAD_FIELDS(message);
+};
+
 enum MessageVerbs : Verb {
     PUT = 100,
-    GET = 101
+    GET = 101,
+    MES = 102
 };
 
 class KVService {
@@ -75,7 +82,7 @@ public:  // application lifespan
         });
 
         RPC().registerRPCObserver<GET_Request, GET_Response>(MessageVerbs::GET, [this](GET_Request&& request) {
-            K2INFO("Received get for key: " << request.key);
+            K2INFO("CPU_ID: " << seastar::engine().cpu_id() << " Received get for key: " << request.key);
             GET_Response response;
             response.key=request.key;
             auto iter = _cache.find(request.key);
@@ -84,12 +91,31 @@ public:  // application lifespan
             }
             return RPCResponse(Statuses::S200_OK("get accepted"), std::move(response));
         });
+
+        RPC().registerRPCObserver<Echo_Message, Echo_Message>(MessageVerbs::MES, [this](Echo_Message&& request) {
+            K2INFO("Received echo for message: " << request.message);
+            Echo_Message response;
+            response.message=request.message;
+            return RPCResponse(Statuses::S200_OK("get accepted"), std::move(response));
+        });
     }
 private:
     std::map<String, String> _cache;
 };  // class Service
 
 class KVClientTest {
+private:
+    PeriodicTimer _heartbeat_timer;
+
+    void makeHeartbeatTimer() {
+        _heartbeat_timer.setCallback([] {
+            Echo_Message request{.message = "Fuck Echo"}; 
+            return RPC().callRPC<Echo_Message, Echo_Message>(MessageVerbs::GET, request, *RPC().getTXEndpoint("tcp+k2rpc://0.0.0.0:12345"), 1s)
+            .then([] (auto&& resp) {
+                K2INFO("CPU_ID: " << seastar::engine().cpu_id() << " Received MEG response with status: " << std::get<0>(resp) << ", value=" << std::get<1>(resp).message);
+            });
+        });
+    }
 public:
     seastar::future<> gracefulStop() {
         K2INFO("stop");
@@ -97,23 +123,34 @@ public:
     }
 
     void start() {
-        (void)seastar::sleep(1s)
-        .then([] {
-            K2INFO("putting record");
+        /*(void)seastar::sleep(1s)
+        .then([this] {
+            makeHeartbeatTimer();
+            _heartbeat_timer.armPeriodic(Duration(1s));
             PUT_Request request{.key="Key1", .value="Value1"};
-            auto ep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
-            K2INFO("found endpoint: " << ep->getURL());
+            //auto ep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
+            auto ep = RPC().getTXEndpoint("tcp+k2rpc://0.0.0.0:12345");
+            K2INFO("found endpoint: " << ep->getURL() << " CPU_ID:  " << seastar::engine().cpu_id()<<" "<<typeid(ep->getURL()).name()<<" "<<typeid(seastar::engine().cpu_id()).name());
             return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, request, *ep, 1s);
         })
         .then([](auto&& resp) {
             K2INFO("Received PUT response with status: " << std::get<0>(resp));
-
             K2INFO("getting record");
             GET_Request request{.key = "Key1"};
-            return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, request, *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s);
+            return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, request, *RPC().getTXEndpoint("tcp+k2rpc://0.0.0.0:12345"), 1s);
+        })
+        .then([this](auto&& resp) {
+            K2INFO("Received GET response with status: " << std::get<0>(resp) << ", value=" << std::get<1>(resp).value);
+            Echo_Message request{.message = "Hello"};   
+            return RPC().callRPC<Echo_Message, Echo_Message>(MessageVerbs::GET, request, *RPC().getTXEndpoint("tcp+k2rpc://0.0.0.0:12345"), 1s);
         })
         .then([](auto&& resp) {
-            K2INFO("Received GET response with status: " << std::get<0>(resp) << ", value=" << std::get<1>(resp).value);
+            K2INFO("Received MEG response with status: " << std::get<0>(resp) << ", value=" << std::get<1>(resp).message);
+        });*/
+        (void)seastar::sleep(1s)
+        .then([this] {
+            makeHeartbeatTimer();
+            _heartbeat_timer.armPeriodic(Duration(1s));
         });
     }
 };

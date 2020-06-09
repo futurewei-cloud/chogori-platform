@@ -76,7 +76,7 @@ RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
     if (ep){
         std::pair<String, int> url_core;
         url_core = std::make_pair(ep->getURL(), seastar::engine().cpu_id());
-        K2INFO("BroadCast URL and Core ID" << ep->getURL());
+        K2DEBUG("BroadCast URL and Core ID" << ep->getURL());
         return RPCDist().invoke_on_all(&k2::RPCDispatcher::setAddressCore, url_core);
     }
     return seastar::make_ready_future<>();
@@ -171,32 +171,22 @@ void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoin
             << ", with server endpoint: " << (serverep ? serverep->getURL() : String("none"))
             << ", payload size=" << (payload?payload->getSize():0)
             << ", payload capacity=" << (payload?payload->getCapacity():0));
-    if (serverep && endpoint == *serverep) {
-        // deliver via a future to possibly yield if there is a loop of send/receive requests
-        (void) seastar::sleep(0ns)
-            .then([disp=weak_from_this(), verb, endpoint, meta=std::move(meta), payload=std::move(payload)] () mutable {
-                if (disp) {
-                    // rewind the payload to the correct position
-                    payload->seek(txconstants::MAX_HEADER_SIZE);
-                    meta.setPayloadSize(payload->getDataRemaining());
-                    disp->_handleNewMessage(Request(verb, endpoint, std::move(meta), std::move(payload)));
-                }
-        });
+    if (_txUseCrossCoreLoopback() && serverep && endpoint == *serverep) {
+        payload->seek(txconstants::MAX_HEADER_SIZE);
+        meta.setPayloadSize(payload->getDataRemaining());
+        auto return_value = RPCDist().invoke_on(seastar::engine().cpu_id(), &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
         return;
     }
 
-    auto core = _url_cores.find(endpoint.getURL());
-    if (core != _url_cores.end()){
-        (void) seastar::sleep(0ns)
-            .then([core, verb, endpoint, meta=std::move(meta), payload=std::move(payload)] () mutable {
-                // rewind the payload to the correct position
-                payload->seek(txconstants::MAX_HEADER_SIZE);
-                meta.setPayloadSize(payload->getDataRemaining());
-                auto return_value = RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
-        });
-        return;
+    if (_txUseCrossCoreLoopback()){
+        auto core = _url_cores.find(endpoint.getURL());
+        if (core != _url_cores.end()){
+            payload->seek(txconstants::MAX_HEADER_SIZE);
+            meta.setPayloadSize(payload->getDataRemaining());
+            auto return_value = RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
+            return;
+        }
     }
-
     protoi->second->send(verb, std::move(payload), endpoint, std::move(meta));
 }
 
@@ -233,7 +223,7 @@ RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoi
     MessageMetadata metadata;
     metadata.setRequestID(msgid);
 
-    _send(verb, std::move(payload), endpoint, std::move(metadata));
+   
 
     seastar::timer<> timer([this, msgid] {
         // raise an exception in the promise for this request.
@@ -248,7 +238,7 @@ RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoi
 
     auto fut = prom.get_future();
     _rrPromises.emplace(msgid, ResponseTracker{std::move(prom), std::move(timer)});
-
+    _send(verb, std::move(payload), endpoint, std::move(metadata));
     return fut;
 }
 

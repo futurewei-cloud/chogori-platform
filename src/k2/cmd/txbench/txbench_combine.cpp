@@ -151,7 +151,7 @@ class Client {
 public:  // application lifespan
     Client():
         _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<k2::String>>()),
-        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
+        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1ms),
         _data(0),
         _stopped(true),
         _haveSendPromise(false),
@@ -243,6 +243,20 @@ public:  // application lifespan
             K2INFO("unackedSize=" << _session.unackedSize);
             K2INFO("unackedCount=" << _session.unackedCount);
             K2INFO("testDuration=" << k2::msec(_actualTestDuration).count()  << "ms");
+            uint64_t vector_size = _duration_counts.size();
+            if (vector_size > 0){
+                K2INFO("Latency 50% =" << _duration_counts[(int)(vector_size/100.0*50)]  << "ns");
+                K2INFO("Latency 90% =" <<  _duration_counts[(int)(vector_size/100.0*90)] << "ns");
+                K2INFO("Latency 99% ==" <<  _duration_counts[(int)(vector_size/100.0*99)] << "ns");
+                K2INFO("Latency 99.9% ==" << _duration_counts[(int)(vector_size/100.0*99.9)]  << "ns");
+                K2INFO("Latency 99.99% ==" << _duration_counts[(int)(vector_size/100.0*99.99)]  << "ns");
+
+                K2INFO("Latency Size: " << vector_size);
+                for (uint64_t i=10;i>=1;--i){
+                    K2INFO("Latency " << i << " ==" << _duration_counts[vector_size-i]  << "ns");
+                }
+            }
+
             _stopped = true;
             _stopPromise.set_value();
         });
@@ -361,6 +375,7 @@ private:
                 for (uint64_t reqid = _session.totalCount - _session.unackedCount; reqid < ack.totalCount; reqid++) {
                     auto idx = reqid % _session.config.pipelineCount;
                     auto dur = now - _requestIssueTimes[idx];
+                    _duration_counts.push_back(k2::nsec(dur).count());
                     _requestLatency.add(dur);
                 }
                 _session.unackedCount = _session.totalCount - ack.totalCount;
@@ -390,7 +405,22 @@ private:
                 return seastar::make_ready_future<>();
             }
         ).finally([this] {
+            int vector_size = _duration_counts.size();
+            K2INFO("Total Size: " << vector_size);
+            uint64_t max = 0;
+            for (int i = 0; i<vector_size;++i){
+                if (_duration_counts[i] >= 10000000){
+                    K2INFO("Large Size: " << i<<" " << _duration_counts[i]);
+                }
+                if (_duration_counts[i] > max)
+                    max = _duration_counts[i];
+            }
+            K2INFO("Maximum Size: " << max);
+            
+            std::sort(_duration_counts.begin(), _duration_counts.end()); 
+            K2INFO("Total Size2: " << _duration_counts.size());
             _actualTestDuration = k2::Clock::now() - _start;
+
         });
     }
 
@@ -419,6 +449,7 @@ private:
 
 private:
     std::vector<k2::String> _tcpRemotes;
+    std::vector<uint64_t> _duration_counts;
     k2::Duration _testDuration;
     k2::Duration _actualTestDuration;
     char* _data;
@@ -441,6 +472,7 @@ int main(int argc, char** argv) {
     app.addApplet<Client>();
     app.addOptions()
         ("request_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to send with each request")
+        ("tx_xcore_loopback", bpo::value<bool>()->default_value(false), "Whether enable the in process loopback across different cores")
         ("ack_count", bpo::value<uint32_t>()->default_value(5), "How many messages do we ack at once")
         ("pipeline_depth_mbytes", bpo::value<uint32_t>()->default_value(200), "How much data do we allow to go un-ACK-ed")
         ("pipeline_depth_count", bpo::value<uint32_t>()->default_value(10), "How many requests do we allow to go un-ACK-ed")
