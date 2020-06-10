@@ -135,7 +135,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
             throw std::runtime_error("no partition for endpoint");
         }
         default:
-            throw std::runtime_error("no partition for endpoint");
+            throw std::runtime_error("Unknown hash scheme for collection");
     }
 }
 
@@ -149,6 +149,10 @@ OwnerPartition::OwnerPartition(Partition&& part, HashScheme scheme) :
 bool OwnerPartition::owns(const Key& key) const {
     switch (_scheme) {
         case HashScheme::Range:
+            if (_partition.endKey == "") {
+                return _partition.startKey.compare(key.partitionKey) <= 0;
+            }
+            // TODO should endKey comparision be strictly less than?
             return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <=0;
         case HashScheme::HashCRC32C: {
             auto phash = key.partitionHash();

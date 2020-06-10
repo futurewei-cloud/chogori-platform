@@ -34,7 +34,11 @@ struct CollectionCreateRequest {
     CollectionMetadata metadata;
     // the endpoints of the k2 cluster to use for setting up this collection
     std::vector<String> clusterEndpoints;
-    K2_PAYLOAD_FIELDS(metadata, clusterEndpoints);
+    // Only relevant for range partitioned collections. Contains the key range
+    // endpoints for each partition.
+    std::vector<String> rangeEnds;
+
+    K2_PAYLOAD_FIELDS(metadata, clusterEndpoints, rangeEnds);
 };
 
 // Response to CollectionCreateRequest
