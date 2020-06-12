@@ -101,7 +101,7 @@ public:
 
     seastar::future<> start();
     seastar::future<> gracefulStop();
-    seastar::future<Status> makeCollection(const String& collection);
+    seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};

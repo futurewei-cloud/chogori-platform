@@ -75,7 +75,7 @@ seastar::future<> CPOService::start() {
 }
 
 void makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& eps, const std::vector<String>& rangeEnds) {
-    String lastEnd = ""
+    String lastEnd = "";
 
     K2ASSERT(rangeEnds.size() == eps.size(), "Collection endpoints size must equal rangeEnds size");
     // The partition for a key is found using lower_bound on the start keys, 
@@ -141,10 +141,10 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
         makeHashPartitionMap(collection, request.clusterEndpoints);
     } 
     else if (collection.metadata.hashScheme == dto::HashScheme::Range) {
-        makeRangePartitionMap(collection, request.clusterEndpoints);
+        makeRangePartitionMap(collection, request.clusterEndpoints, request.rangeEnds);
     }
     else {
-        return RPCResponse(Statuses::S403_Forbidden("Unknown hashScheme"), dto:CollectionCreateResponse());
+        return RPCResponse(Statuses::S403_Forbidden("Unknown hashScheme"), dto::CollectionCreateResponse());
     }
 
     auto status = _saveCollection(collection);
