@@ -162,7 +162,7 @@ bool OwnerPartition::owns(const Key& key) const {
             if (_partition.endKey == "") {
                 return _partition.startKey.compare(key.partitionKey) <= 0;
             }
-            // TODO should endKey comparision be strictly less than?
+
             return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) < 0;
         case HashScheme::HashCRC32C: {
             auto phash = key.partitionHash();
