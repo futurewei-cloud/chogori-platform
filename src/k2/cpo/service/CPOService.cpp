@@ -74,13 +74,19 @@ seastar::future<> CPOService::start() {
     return seastar::make_ready_future<>();
 }
 
-void makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& eps, const std::vector<String>& rangeEnds) {
+int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& eps, const std::vector<String>& rangeEnds) {
     String lastEnd = "";
 
-    K2ASSERT(rangeEnds.size() == eps.size(), "Collection endpoints size must equal rangeEnds size");
+    if (rangeEnds.size() != eps.size()) {
+        K2WARN("Error in client's make collection request: collection endpoints size does not equal rangeEnds size");
+        return -1;
+    }
     // The partition for a key is found using lower_bound on the start keys, 
     // so it is OK for the last range end key to be ""
-    K2ASSERT(rangeEnds[rangeEnds.size()-1] == "", "The last rangeEnd key should be an empty string");
+    if (rangeEnds[rangeEnds.size()-1] != "") {
+        K2WARN("Error in client's make collection request: the last rangeEnd key is not an empty string");
+        return -1;
+    }
 
     for (uint64_t i = 0; i < eps.size(); ++i) {
         dto::Partition part {
@@ -97,8 +103,10 @@ void makeRangePartitionMap(dto::Collection& collection, const std::vector<String
 
         lastEnd = rangeEnds[i];
         collection.partitionMap.partitions.push_back(std::move(part));
-        collection.partitionMap.version++;
     }
+
+    collection.partitionMap.version++;
+    return 0;
 }
 
 void makeHashPartitionMap(dto::Collection& collection, const std::vector<String>& eps) {
@@ -121,8 +129,9 @@ void makeHashPartitionMap(dto::Collection& collection, const std::vector<String>
             .astate=dto::AssignmentState::PendingAssignment
         };
         collection.partitionMap.partitions.push_back(std::move(part));
-        collection.partitionMap.version++;
     }
+
+    collection.partitionMap.version++;
 }
 
 seastar::future<std::tuple<Status, dto::CollectionCreateResponse>>
@@ -137,14 +146,19 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     dto::Collection collection;
     collection.metadata = request.metadata;
 
+    int err = 0;
     if (collection.metadata.hashScheme == dto::HashScheme::HashCRC32C) {
         makeHashPartitionMap(collection, request.clusterEndpoints);
     } 
     else if (collection.metadata.hashScheme == dto::HashScheme::Range) {
-        makeRangePartitionMap(collection, request.clusterEndpoints, request.rangeEnds);
+        err = makeRangePartitionMap(collection, request.clusterEndpoints, request.rangeEnds);
     }
     else {
         return RPCResponse(Statuses::S403_Forbidden("Unknown hashScheme"), dto::CollectionCreateResponse());
+    }
+
+    if (err) {
+        return RPCResponse(Statuses::S400_Bad_Request("Bad rangeEnds"), dto::CollectionCreateResponse());
     }
 
     auto status = _saveCollection(collection);

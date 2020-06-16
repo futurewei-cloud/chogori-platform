@@ -205,7 +205,7 @@ seastar::future<> CPOTest::runTest5() {
             K2EXPECT(resp.collection.metadata.capacity.dataCapacityMegaBytes, 1000);
             K2EXPECT(resp.collection.metadata.capacity.readIOPs, 100000);
             K2EXPECT(resp.collection.metadata.capacity.writeIOPs, 100000);
-            K2EXPECT(resp.collection.partitionMap.version, 3);
+            K2EXPECT(resp.collection.partitionMap.version, 1);
             K2EXPECT(resp.collection.partitionMap.partitions.size(), 3);
 
             // how many partitions we have

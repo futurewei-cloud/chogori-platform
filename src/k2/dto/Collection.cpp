@@ -124,6 +124,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
             // greater than the key (start keys are inclusive), so we return the partition before 
             // the one obtained by upper_bound
             auto it = std::upper_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
+            K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
             if (it != _rangePartitionMap.end()) {
                 return (--it)->partition;
             }
@@ -133,7 +134,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
         case HashScheme::HashCRC32C:
         {
             HashMapElement to_find{.hvalue = key.partitionHash(), .partition = PartitionGetter::PartitionWithEndpoint()};
-            auto it = std::lower_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
+            auto it = std::upper_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
             if (it != _hashPartitionMap.end()) {
                 return it->partition;
             }
@@ -162,10 +163,10 @@ bool OwnerPartition::owns(const Key& key) const {
                 return _partition.startKey.compare(key.partitionKey) <= 0;
             }
             // TODO should endKey comparision be strictly less than?
-            return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <=0;
+            return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) < 0;
         case HashScheme::HashCRC32C: {
             auto phash = key.partitionHash();
-            return _hstart <= phash && phash <= _hend;
+            return _hstart <= phash && phash < _hend;
         }
         default:
             return false;
