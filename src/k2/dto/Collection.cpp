@@ -91,7 +91,9 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            RangeMapElement e(it->endKey, GetPartitionWithEndpoint(&(*it)));
+            // For range partitioning, we need to use the startKey because the last
+            // range end key will be an empty string ("") and wouldn't be sorted correctly
+            RangeMapElement e(it->startKey, GetPartitionWithEndpoint(&(*it)));
             _rangePartitionMap.push_back(std::move(e));
         }
 
@@ -117,17 +119,22 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
         case HashScheme::Range:
         {
             RangeMapElement to_find(key.partitionKey, PartitionGetter::PartitionWithEndpoint());
-            auto it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
+
+            // We are comparing against the start keys and upper_bound gives the first start key
+            // greater than the key (start keys are inclusive), so we return the partition before 
+            // the one obtained by upper_bound
+            auto it = std::upper_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
+            K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
             if (it != _rangePartitionMap.end()) {
-                return it->partition;
+                return (--it)->partition;
             }
 
-            throw std::runtime_error("no partition for endpoint");
+            return _rangePartitionMap.rbegin()->partition;
         }
         case HashScheme::HashCRC32C:
         {
             HashMapElement to_find{.hvalue = key.partitionHash(), .partition = PartitionGetter::PartitionWithEndpoint()};
-            auto it = std::lower_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
+            auto it = std::upper_bound(_hashPartitionMap.begin(), _hashPartitionMap.end(), to_find);
             if (it != _hashPartitionMap.end()) {
                 return it->partition;
             }
@@ -135,24 +142,31 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
             throw std::runtime_error("no partition for endpoint");
         }
         default:
-            throw std::runtime_error("no partition for endpoint");
+            throw std::runtime_error("Unknown hash scheme for collection");
     }
 }
 
 OwnerPartition::OwnerPartition(Partition&& part, HashScheme scheme) :
     _partition(std::move(part)),
-    _scheme(scheme),
-    _hstart(std::stoull(_partition.startKey)),
-    _hend(std::stoull(_partition.endKey)) {
+    _scheme(scheme) {
+
+    if (_scheme == HashScheme::HashCRC32C) {
+        _hstart = std::stoull(_partition.startKey);
+        _hend = std::stoull(_partition.endKey);
+    }
 }
 
 bool OwnerPartition::owns(const Key& key) const {
     switch (_scheme) {
         case HashScheme::Range:
-            return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <=0;
+            if (_partition.endKey == "") {
+                return _partition.startKey.compare(key.partitionKey) <= 0;
+            }
+
+            return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) < 0;
         case HashScheme::HashCRC32C: {
             auto phash = key.partitionHash();
-            return _hstart <= phash && phash <= _hend;
+            return _hstart <= phash && phash < _hend;
         }
         default:
             return false;

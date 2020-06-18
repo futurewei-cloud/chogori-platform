@@ -89,7 +89,8 @@ public:  // application lifespan
                         },
                         .retentionPeriod = Duration(1h)*90*24
                     },
-                    .clusterEndpoints = _k2ConfigEps()
+                    .clusterEndpoints = _k2ConfigEps(),
+                    .rangeEnds{}
                 };
                 return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
                         (dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s);

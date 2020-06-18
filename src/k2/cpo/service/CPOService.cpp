@@ -74,18 +74,42 @@ seastar::future<> CPOService::start() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<std::tuple<Status, dto::CollectionCreateResponse>>
-CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
-    K2INFO("Received collection create request for " << request.metadata.name);
-    auto cpath = _getCollectionPath(request.metadata.name);
-    if (fileutil::fileExists(cpath)) {
-        return RPCResponse(Statuses::S403_Forbidden("collection already exists"), dto::CollectionCreateResponse());
+int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& eps, const std::vector<String>& rangeEnds) {
+    String lastEnd = "";
+
+    if (rangeEnds.size() != eps.size()) {
+        K2WARN("Error in client's make collection request: collection endpoints size does not equal rangeEnds size");
+        return -1;
     }
-    request.metadata.heartbeatDeadline = _collectionHeartbeatDeadline();
-    // create a collection from the incoming request
-    dto::Collection collection;
-    collection.metadata = request.metadata;
-    auto& eps = request.clusterEndpoints;
+    // The partition for a key is found using lower_bound on the start keys, 
+    // so it is OK for the last range end key to be ""
+    if (rangeEnds[rangeEnds.size()-1] != "") {
+        K2WARN("Error in client's make collection request: the last rangeEnd key is not an empty string");
+        return -1;
+    }
+
+    for (uint64_t i = 0; i < eps.size(); ++i) {
+        dto::Partition part {
+            .pvid{
+                .id = i,
+                .rangeVersion=1,
+                .assignmentVersion=1
+            },
+            .startKey=lastEnd,
+            .endKey=rangeEnds[i],
+            .endpoints={eps[i]},
+            .astate=dto::AssignmentState::PendingAssignment
+        };
+
+        lastEnd = rangeEnds[i];
+        collection.partitionMap.partitions.push_back(std::move(part));
+    }
+
+    collection.partitionMap.version++;
+    return 0;
+}
+
+void makeHashPartitionMap(dto::Collection& collection, const std::vector<String>& eps) {
     const uint64_t max = std::numeric_limits<uint64_t>::max();
 
     uint64_t partSize = (eps.size() > 0) ? (max / eps.size()) : (max);
@@ -105,8 +129,38 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
             .astate=dto::AssignmentState::PendingAssignment
         };
         collection.partitionMap.partitions.push_back(std::move(part));
-        collection.partitionMap.version++;
     }
+
+    collection.partitionMap.version++;
+}
+
+seastar::future<std::tuple<Status, dto::CollectionCreateResponse>>
+CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
+    K2INFO("Received collection create request for " << request.metadata.name);
+    auto cpath = _getCollectionPath(request.metadata.name);
+    if (fileutil::fileExists(cpath)) {
+        return RPCResponse(Statuses::S403_Forbidden("collection already exists"), dto::CollectionCreateResponse());
+    }
+    request.metadata.heartbeatDeadline = _collectionHeartbeatDeadline();
+    // create a collection from the incoming request
+    dto::Collection collection;
+    collection.metadata = request.metadata;
+
+    int err = 0;
+    if (collection.metadata.hashScheme == dto::HashScheme::HashCRC32C) {
+        makeHashPartitionMap(collection, request.clusterEndpoints);
+    } 
+    else if (collection.metadata.hashScheme == dto::HashScheme::Range) {
+        err = makeRangePartitionMap(collection, request.clusterEndpoints, request.rangeEnds);
+    }
+    else {
+        return RPCResponse(Statuses::S403_Forbidden("Unknown hashScheme"), dto::CollectionCreateResponse());
+    }
+
+    if (err) {
+        return RPCResponse(Statuses::S400_Bad_Request("Bad rangeEnds"), dto::CollectionCreateResponse());
+    }
+
     auto status = _saveCollection(collection);
     if (!status.is2xxOK()) {
         return RPCResponse(std::move(status), dto::CollectionCreateResponse());
