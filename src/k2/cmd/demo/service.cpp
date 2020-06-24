@@ -21,6 +21,12 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
+#include <k2/common/Common.h>
+#include <k2/transport/PayloadSerialization.h>
+#include <k2/transport/Status.h>
+#include <seastar/core/sleep.hh>
+#include <k2/common/Timer.h>
+#include <typeinfo>
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/transport/RetryStrategy.h>
@@ -39,7 +45,7 @@ public: // public types
 public:  // application lifespan
     Service():
         _updateTimer([this]{
-            this->sendHeartbeat();
+            return this->sendHeartbeat();
         }),
         _msgCount(0) {
         // Constructors should not do much more than just remembering the passed state because
@@ -55,13 +61,15 @@ public:  // application lifespan
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
         K2INFO("stop");
-        _updateTimer.cancel();
-        // unregistar all observers
-        RPC().registerMessageObserver(MsgVerbs::POST, nullptr);
-        RPC().registerMessageObserver(MsgVerbs::GET, nullptr);
-        RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
-        RPC().registerLowTransportMemoryObserver(nullptr);
-        return seastar::make_ready_future<>();
+        return _updateTimer.stop().
+        then([] () {
+            // unregistar all observers
+            RPC().registerMessageObserver(MsgVerbs::POST, nullptr);
+            RPC().registerMessageObserver(MsgVerbs::GET, nullptr);
+            RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
+            RPC().registerLowTransportMemoryObserver(nullptr);
+            return seastar::make_ready_future<>();
+        });
     }
 
     // called after construction
@@ -101,7 +109,7 @@ public:  // application lifespan
     }
 
 public: // Work generators
-    void sendHeartbeat() {
+    seastar::future<> sendHeartbeat() {
         K2INFO("Sending reqid="<< _msgCount);
         // send a GET
         String msg("Requesting GET reqid=");
@@ -111,8 +119,9 @@ public: // Work generators
         request->write(msg.c_str(), msg.size()+1);
         // straight Send sends requests without any form of retry. Underlying transport may or may not
         // attempt redelivery (e.g. TCP packet reliability)
-        (void) RPC().send(GET, std::move(request), *_heartbeatTXEndpoint).
-        then([this, msg = std::move(msg)] () {
+        return RPC().send(GET, std::move(request), *_heartbeatTXEndpoint).
+        then([this] (){
+            // send a POST where we expect to receive a reply
             _msgCount++;
             auto msground = _msgCount;
 
@@ -123,7 +132,7 @@ public: // Work generators
             // NB: since seastar future continuations may be scheduled to run at later points,
             // it may be possible that the Service instance goes away in a middle of a retry.
             // To avoid a segmentation fault, either use copies, or as in this example - weak reference
-            (void) retryStrategy->run([self=weak_from_this(), msground](size_t retriesLeft, Duration timeout) {
+            return retryStrategy->run([self=weak_from_this(), msground](size_t retriesLeft, Duration timeout) {
                 K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
                        << timeout.count() << ", in reqid="<< msground);
                 if (!self) {
@@ -151,7 +160,6 @@ public: // Work generators
                     // if (msg.Status != msg.StatusOK) {
                     //    return make_exception_future<>(std::exception(msg.Status));
                     // }
-                    return seastar::make_ready_future<>();
                 });
 
             }) // Do returns an empty future here for the response either successful if any of the tries succeeded, or an exception.
@@ -169,6 +177,8 @@ public: // Work generators
                 }
             });
         });
+
+        
     }
 
 public:
@@ -221,7 +231,7 @@ private:
         return result;
     }
 
-    seastar::timer<> _updateTimer;
+    SingleTimer _updateTimer;
     static constexpr auto _updateTimerInterval = 1s;
     std::unique_ptr<TXEndpoint> _heartbeatTXEndpoint;
     // send around our message count
