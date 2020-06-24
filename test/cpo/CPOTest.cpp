@@ -104,7 +104,8 @@ seastar::future<> CPOTest::runTest2() {
             },
             .retentionPeriod = 1h*90*24
         },
-        .clusterEndpoints{}
+        .clusterEndpoints{},
+        .rangeEnds{}
     };
     return RPC()
     .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
@@ -128,7 +129,10 @@ seastar::future<> CPOTest::runTest3() {
             },
             .retentionPeriod = 1h
         },
-        .clusterEndpoints{}};
+        .clusterEndpoints{},
+        .rangeEnds{}
+    };
+
     return RPC()
         .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
         .then([](auto&& response) {
@@ -171,7 +175,8 @@ seastar::future<> CPOTest::runTest5() {
             },
             .retentionPeriod = 5h
         },
-        .clusterEndpoints = _k2ConfigEps()
+        .clusterEndpoints = _k2ConfigEps(),
+        .rangeEnds{}
     };
     return RPC()
         .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
@@ -200,7 +205,7 @@ seastar::future<> CPOTest::runTest5() {
             K2EXPECT(resp.collection.metadata.capacity.dataCapacityMegaBytes, 1000);
             K2EXPECT(resp.collection.metadata.capacity.readIOPs, 100000);
             K2EXPECT(resp.collection.metadata.capacity.writeIOPs, 100000);
-            K2EXPECT(resp.collection.partitionMap.version, 3);
+            K2EXPECT(resp.collection.partitionMap.version, 1);
             K2EXPECT(resp.collection.partitionMap.partitions.size(), 3);
 
             // how many partitions we have

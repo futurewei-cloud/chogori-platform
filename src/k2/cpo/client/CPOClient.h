@@ -50,9 +50,10 @@ public:
     // Creates a collection and waits for it to be assigned. If the collection already exisits,
     // the future is still completed successfully
     template<typename ClockT=Clock>
-    seastar::future<Status> CreateAndWaitForCollection(Deadline<ClockT> deadline, dto::CollectionMetadata&& metadata, std::vector<String>&& clusterEndpoints) {
+    seastar::future<Status> CreateAndWaitForCollection(Deadline<ClockT> deadline, dto::CollectionMetadata&& metadata, std::vector<String>&& clusterEndpoints, std::vector<String>&& rangeEnds) {
         dto::CollectionCreateRequest request{.metadata = std::move(metadata),
-                                             .clusterEndpoints = std::move(clusterEndpoints)};
+                                             .clusterEndpoints = std::move(clusterEndpoints),
+                                             .rangeEnds = std::move(rangeEnds)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
         K2DEBUG("making call to CPO with timeout " << timeout);

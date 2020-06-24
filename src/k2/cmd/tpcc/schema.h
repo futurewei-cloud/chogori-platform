@@ -41,6 +41,14 @@ Copyright(c) 2020 Futurewei Cloud
     } \
     while (0) \
 
+k2::String WIDToString(uint32_t id) {
+    char chars[8];
+    // We need leading 0s for lexographic ordering
+    // Apparently snprintf is faster than stringstream
+    snprintf(chars, 8, "%04u", id);
+    return k2::String(chars);
+}
+
 template<typename ValueType>
 seastar::future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
 {
@@ -85,14 +93,14 @@ public:
         random.RandomString(6, 10, data.Name);
         data.address = Address(random);
         data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        data.YTD = _districts_per_warehouse() * _customers_per_district() * 10.0f;
+        data.YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
     }
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return ""; }
     static k2::dto::Key getKey(uint32_t w_id) {
         k2::dto::Key key = {
-            .partitionKey = std::to_string(w_id),
+            .partitionKey = WIDToString(w_id),
             .rangeKey = ""
         };
         return key;
@@ -101,7 +109,7 @@ public:
     uint32_t WarehouseID;
     struct Data {
         float Tax; // TODO Needs to be fixed point to be in spec
-        float YTD; // TODO Needs to be fixed point to be in spec
+        uint32_t YTD; // "Fixed point", first two digits are cents
         char Name[11];
         Address address;
         K2_PAYLOAD_COPYABLE;
@@ -122,15 +130,15 @@ public:
         random.RandomString(6, 10, data.Name);
         data.address = Address(random);
         data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        data.YTD = _customers_per_district() * 10.0f;
+        data.YTD = _customers_per_district() * 1000;
         data.NextOrderID = _customers_per_district()+1;
     }
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return "DIST:" + std::to_string(DistrictID); }
     static k2::dto::Key getKey(uint32_t w_id, uint16_t id) {
         k2::dto::Key key = {
-            .partitionKey = std::to_string(w_id),
+            .partitionKey = WIDToString(w_id),
             .rangeKey = "DIST:" + std::to_string(id)
         };
         return key;
@@ -140,7 +148,7 @@ public:
     uint16_t DistrictID;
     struct Data {
         float Tax; // TODO Needs to be fixed point to be in spec
-        float YTD; // TODO Needs to be fixed point to be in spec
+        uint32_t YTD; // "Fixed point", first two digits are cents
         uint32_t NextOrderID;
         char Name[11];
         Address address;
@@ -175,18 +183,18 @@ public:
 
         data.CreditLimit = 50000.0f;
         data.Discount = random.UniformRandom(0, 5000) / 10000.0f;
-        data.Balance = -10.0f;
-        data.YTDPayment = 10.0f;
+        data.Balance = -1000;
+        data.YTDPayment = 1000;
         data.PaymentCount = 1;
         data.DeliveryCount = 0;
         random.RandomString(300, 500, data.Info);
     }
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
     static k2::dto::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t c_id) {
         k2::dto::Key key = {
-            .partitionKey = std::to_string(w_id),
+            .partitionKey = WIDToString(w_id),
             .rangeKey = "CUST:" + std::to_string(d_id) + ":" + std::to_string(c_id)
         };
         return key;
@@ -199,8 +207,8 @@ public:
         uint64_t SinceDate;
         float CreditLimit; // TODO Needs to be fixed point to be in spec
         float Discount;
-        float Balance; // TODO Needs to be fixed point to be in spec
-        float YTDPayment; // TODO Needs to be fixed point to be in spec
+        int32_t Balance;
+        uint32_t YTDPayment;
         uint16_t PaymentCount;
         uint16_t DeliveryCount;
         char FirstName[17];
@@ -226,7 +234,7 @@ public:
         data.CustomerWarehouseID = w_id;
         data.CustomerDistrictID = d_id;
         data.Date = getDate();
-        data.Amount = 10.0f;
+        data.Amount = 1000;
         random.RandomString(12, 24, data.Info);
     }
 
@@ -249,7 +257,7 @@ public:
         strcpy(data.Info+offset, d_name);
     }
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return "HIST:" + std::to_string(data.Date); }
 
     uint32_t WarehouseID;
@@ -257,7 +265,7 @@ public:
         uint64_t Date;
         uint32_t CustomerID;
         uint32_t CustomerWarehouseID;
-        float Amount; // TODO
+        uint32_t Amount;
         uint16_t CustomerDistrictID;
         uint16_t DistrictID;
         char Info[25];
@@ -291,11 +299,11 @@ public:
         // OrderID and AllLocal to be filled in by the transaction
     }
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return "ORDER:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
     static k2::dto::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t o_id) {
         k2::dto::Key key = {
-            .partitionKey = std::to_string(w_id),
+            .partitionKey = WIDToString(w_id),
             .rangeKey = "ORDER:" + std::to_string(d_id) + ":" + std::to_string(o_id)
         };
         return key;
@@ -324,7 +332,7 @@ class NewOrder {
 public:
     NewOrder(const Order& order) : WarehouseID(order.WarehouseID), OrderID(order.OrderID), DistrictID(order.DistrictID) {}
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return "NEW:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
 
     uint32_t WarehouseID;
@@ -391,7 +399,7 @@ public:
         data.Amount = 0.0f;
     }
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return "ORDERLINE:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID) + ":" + std::to_string(OrderLineNumber); }
 
     uint32_t WarehouseID;
@@ -480,11 +488,11 @@ public:
         }
     }
 
-    k2::String getPartitionKey() const { return std::to_string(WarehouseID); }
+    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
     k2::String getRowKey() const { return "STOCK:" + std::to_string(ItemID); }
     static k2::dto::Key getKey(uint32_t w_id, uint32_t i_id) {
         k2::dto::Key key = {
-            .partitionKey = std::to_string(w_id),
+            .partitionKey = WIDToString(w_id),
             .rangeKey = "STOCK:" + std::to_string(i_id)
         };
         return key;

@@ -57,7 +57,7 @@ struct K23SIConfig {
     ConfigVar<uint64_t> finalizeBatchSize{"k23si_txn_finalize_batch_size", 20};
 
     // the endpoint for our persistence
-    ConfigVar<String> persistenceEndpoint{"k23si_persistence_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
+    ConfigVar<std::vector<String>> persistenceEndpoint{"k23si_persistence_endpoints"};
     ConfigDuration persistenceTimeout{"k23si_persistence_timeout", 10s};
 
     // the endpoint for the CPO

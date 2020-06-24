@@ -154,18 +154,19 @@ seastar::future<> K23SIClient::gracefulStop() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<Status> K23SIClient::makeCollection(const String& collection) {
+seastar::future<Status> K23SIClient::makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds) {
     std::vector<String> endpoints = _k2endpoints;
+    dto::HashScheme scheme = rangeEnds.size() ? dto::HashScheme::Range : dto::HashScheme::HashCRC32C;
 
     dto::CollectionMetadata metadata{
         .name = collection,
-        .hashScheme = dto::HashScheme::HashCRC32C,
+        .hashScheme = scheme,
         .storageDriver = dto::StorageDriver::K23SI,
         .capacity = {},
         .retentionPeriod = Duration(retention_window())
     };
 
-    return _cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints));
+    return _cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {

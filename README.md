@@ -7,6 +7,9 @@ K2 Project is a platform for building low-latency (μs) in-memory distributed pe
 
 This repository contains implementations for K2 core services and subsystems (transport, persistence, etc.).
 
+For more interactive discussions, news, planning and other questions, please visit our discussion board here:
+https://groups.google.com/forum/#!forum/chogori-dev
+
 ## Build instructions
 
 ### Install instructions

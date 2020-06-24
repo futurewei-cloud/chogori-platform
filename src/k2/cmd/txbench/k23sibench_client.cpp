@@ -108,7 +108,7 @@ public:  // application lifespan
             }
             return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
         })
-        .handle_exception([this](auto exc) {
+        .handle_exception([](auto exc) {
             K2ERROR_EXC("Unable to execute benchmark", exc);
             return seastar::make_ready_future();
         })
@@ -126,14 +126,18 @@ private:
             [this] {
                 k2::K2TxnOptions opts{};
                 opts.deadline = k2::Deadline(_txnTimeout());
-                opts.syncFinalize = false;
-                _totalTxns ++;
+                opts.syncFinalize = _sync_finalize();
                 auto start = k2::Clock::now();
                 return _client.beginTxn(opts)
                 .then([this, start](k2::K2TxnHandle&& txn) {
+                    _totalTxns ++;
                     return seastar::do_with(std::move(txn), [this, start] (auto& txn) {
                         return _runTxn(start, txn);
                     });
+                })
+                .handle_exception([] (auto exc) {
+                    K2ERROR_EXC("Txn failed: ", exc);
+                    return seastar::make_ready_future<>();
                 });
             });
     }
@@ -274,6 +278,7 @@ private://metrics
     k2::ConfigVar<uint32_t> _reads{"reads"};
     k2::ConfigVar<uint32_t> _writes{"writes"};
     k2::ConfigVar<uint32_t> _pipelineDepth{"pipeline_depth"};
+    k2::ConfigVar<bool> _sync_finalize{"sync_finalize"};
     k2::ConfigDuration _testDuration{"test_duration", 30s};
     k2::ConfigDuration _txnTimeout{"txn_timeout", 10s};
 
@@ -294,6 +299,7 @@ int main(int argc, char** argv) {
         ("reads", bpo::value<uint32_t>()->default_value(1), "How many reads to do in each txn")
         ("writes", bpo::value<uint32_t>()->default_value(1), "How many writes to do in each txn")
         ("pipeline_depth", bpo::value<uint32_t>()->default_value(10), "How many transactions to run concurrently")
+        ("sync_finalize", bpo::value<bool>()->default_value(false), "K23SI Sync finalize option")
         ("test_duration", bpo::value<k2::ParseableDuration>(), "How long to run")
         ("txn_timeout", bpo::value<k2::ParseableDuration>(), "timeout for each transaction")
         // config for dependencies

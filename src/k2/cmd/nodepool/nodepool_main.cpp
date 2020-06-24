@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
         ("k23si_cpo_endpoint", bpo::value<k2::String>(), "the endpoint for k2 CPO service")
-        ("k23si_persistence_endpoint", bpo::value<k2::String>(), "the endpoint for k2 persistence");
+        ("k23si_persistence_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A space-delimited list of k2 persistence endpoints, each core will pick one endpoint");
 
     app.addApplet<k2::TSO_ClientLib>(10ms);
     app.addApplet<k2::CollectionMetadataCache>();

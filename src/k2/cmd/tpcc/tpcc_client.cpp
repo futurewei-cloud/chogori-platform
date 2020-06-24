@@ -42,6 +42,21 @@ using namespace k2;
 
 std::atomic<uint32_t> cores_finished = 0;
 
+std::vector<String> getRangeEnds(uint32_t numPartitions, uint32_t numWarehouses) {
+    uint32_t share = numWarehouses / numPartitions;
+    share = share == 0 ? 1 : share;
+    std::vector<String> rangeEnds;
+
+    // Warehouse IDs start at 1, and range end is open interval
+    for (uint32_t i = 1; i <= numPartitions; ++i) {
+        K2DEBUG("RangeEnd: " << WIDToString((i*share)+1));
+        rangeEnds.push_back(WIDToString((i*share)+1));
+    }
+    rangeEnds[numPartitions-1] = "";
+
+    return rangeEnds;
+}
+
 class Client {
 public:  // application lifespan
     Client():
@@ -144,7 +159,7 @@ private:
         if (id == 0) {
             f = f.then ([this] {
                 K2INFO("Creating collection");
-                return _client.makeCollection("TPCC");
+                return _client.makeCollection("TPCC", getRangeEnds(_tcpRemotes().size(), _max_warehouses()));
             }).discard_result()
             .then([this] {
                 K2INFO("Starting item data load");
@@ -243,6 +258,7 @@ private:
     seastar::timer<> _timer;
     std::vector<future<>> _tpcc_futures;
 
+    ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<bool> _do_verification{"do_verification"};
     ConfigVar<int> _max_warehouses{"num_warehouses"};
