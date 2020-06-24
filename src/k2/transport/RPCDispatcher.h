@@ -135,7 +135,7 @@ public: // message-oriented API
     // Invokes the remote rpc for the given verb with the given payload. This is an asynchronous API. No guarantees
     // are made on the delivery of the payload after the call returns.
     // This is a lower-level API which is useful for sending messages that do not expect replies.
-    void send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint);
+    seastar::future<> send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint);
 
     // Invokes the remote rpc for the given verb with the given payload. This is an asynchronous API. No guarantees
     // are made on the delivery of the payload.
@@ -148,10 +148,11 @@ public: // message-oriented API
 
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
-    void sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
+    seastar::future<> sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
     
     seastar::future<> setAddressCore(std::pair<String, int> url_core);
 
+    
 
 public: // RPC-oriented interface. Small convenience so that users don't have to deal with Payloads directly
     // Same as sendRequest but for RPC types, not raw payloads
@@ -209,15 +210,14 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     if (!request.payload->read(rpcRequest)) {
                         auto reply = request.endpoint.newPayload();
                         reply->write(Statuses::S400_Bad_Request("unable to parse incoming request"));
-                        disp->sendReply(std::move(reply), request);
-                        return seastar::make_ready_future();
+                        return disp->sendReply(std::move(reply), request);
                     }
                     // if disp was still alive, it's safe to call observer
                     return observer(std::move(rpcRequest))
                         .then([&](auto&& result) mutable {
                             if (!disp) {
                                 K2WARN("dispatcher is going down: unable to send response to " << request.endpoint.getURL());
-                                return;
+                                return seastar::make_ready_future();
                             }
 
                             auto& [status, response] = result;
@@ -226,7 +226,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                             reply->write(status);
                             // write out the Response_t
                             reply->write(response);
-                            disp->sendReply(std::move(reply), request);
+                            return disp->sendReply(std::move(reply), request);
                         })
                         .handle_exception([&](auto exc) mutable {
                             K2ERROR_EXC("RPC handler failed with uncaught exception", exc);
@@ -234,8 +234,9 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                                 auto reply = request.endpoint.newPayload();
                                 reply->write(Statuses::S500_Internal_Server_Error("server caught exception processing request"));
                                 reply->write(Response_t{});
-                                disp->sendReply(std::move(reply), request);
+                                return disp->sendReply(std::move(reply), request);
                             }
+                            return seastar::make_ready_future();
                         });
                });
         });
@@ -246,7 +247,7 @@ private:  // methods
     void _handleNewMessage(Request&& request);
 
     // Helper method useds to send messages
-    void _send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta);
+    seastar::future<> _send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta);
 
 private: // fields
     // the protocols this dispatcher will be able to support

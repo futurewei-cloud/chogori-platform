@@ -75,17 +75,14 @@ public:  // application lifespan
         }
 
         K2INFO("Registering message handlers");
-
         RPC().registerMessageObserver(MsgVerbs::POST,
             [this](Request&& request) mutable {
-                this->handlePOST(std::move(request));
+                return this->handlePOST(std::move(request));
             });
-
         RPC().registerMessageObserver(MsgVerbs::GET,
             [this](Request&& request) mutable {
-                this->handleGET(std::move(request));
+                return this->handleGET(std::move(request));
             });
-
         RPC().registerMessageObserver(MsgVerbs::ACK,
             [this](Request&& request) mutable {
                 auto received = getPayloadString(request.payload.get());
@@ -107,19 +104,15 @@ public: // Work generators
     void sendHeartbeat() {
         K2INFO("Sending reqid="<< _msgCount);
         // send a GET
-        {
-            String msg("Requesting GET reqid=");
-            msg += std::to_string(_msgCount++);
+        String msg("Requesting GET reqid=");
+        msg += std::to_string(_msgCount++);
 
-            std::unique_ptr<Payload> request = _heartbeatTXEndpoint->newPayload();
-            request->write(msg.c_str(), msg.size()+1);
-            // straight Send sends requests without any form of retry. Underlying transport may or may not
-            // attempt redelivery (e.g. TCP packet reliability)
-            RPC().send(GET, std::move(request), *_heartbeatTXEndpoint);
-        }
-
-        // send a POST where we expect to receive a reply
-        {
+        std::unique_ptr<Payload> request = _heartbeatTXEndpoint->newPayload();
+        request->write(msg.c_str(), msg.size()+1);
+        // straight Send sends requests without any form of retry. Underlying transport may or may not
+        // attempt redelivery (e.g. TCP packet reliability)
+        (void) RPC().send(GET, std::move(request), *_heartbeatTXEndpoint).
+        then([this, msg = std::move(msg)] () {
             _msgCount++;
             auto msground = _msgCount;
 
@@ -158,6 +151,7 @@ public: // Work generators
                     // if (msg.Status != msg.StatusOK) {
                     //    return make_exception_future<>(std::exception(msg.Status));
                     // }
+                    return seastar::make_ready_future<>();
                 });
 
             }) // Do returns an empty future here for the response either successful if any of the tries succeeded, or an exception.
@@ -174,12 +168,12 @@ public: // Work generators
                     self->_updateTimer.arm(_updateTimerInterval);
                 }
             });
-        }
+        });
     }
 
 public:
     // Message handlers
-    void handlePOST(Request&& request) {
+    seastar::future<> handlePOST(Request&& request) {
         auto received = getPayloadString(request.payload.get());
         K2INFO("Received POST message from endpoint: " << request.endpoint.getURL()
               << ", with payload: " << received);
@@ -189,10 +183,10 @@ public:
         std::unique_ptr<Payload> msg = request.endpoint.newPayload();
         msg->write(msgData.c_str(), msgData.size()+1);
         // respond to the client's request
-        RPC().sendReply(std::move(msg), request);
+        return RPC().sendReply(std::move(msg), request);
     }
 
-    void handleGET(Request&& request) {
+    seastar::future<> handleGET(Request&& request) {
         auto received = getPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.getURL()
               << ", with payload: " << received);
@@ -203,7 +197,7 @@ public:
         msg->write(msgData.c_str(), msgData.size()+1);
 
         // Here we just forward the message using a straight Send and we don't expect any responses to our forward
-        RPC().send(ACK, std::move(msg), request.endpoint);
+        return RPC().send(ACK, std::move(msg), request.endpoint);
     }
 
 private:

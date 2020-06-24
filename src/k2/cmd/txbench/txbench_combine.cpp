@@ -78,7 +78,7 @@ private:
                            k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
                 K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
                 response->write(ep->getURL());
-                k2::RPC().sendReply(std::move(response), request);
+                return k2::RPC().sendReply(std::move(response), request);
             });
     }
 
@@ -96,8 +96,9 @@ private:
                 auto resp = request.endpoint.newPayload();
                 SessionAck ack{.sessionID=sid};
                 resp->write((void*)&ack, sizeof(ack));
-                k2::RPC().sendReply(std::move(resp), request);
+                return k2::RPC().sendReply(std::move(resp), request);
             }
+            return seastar::make_ready_future();
         });
     }
 
@@ -131,12 +132,16 @@ private:
                             }
                             _data.clear();
                         }
-                        k2::RPC().send(ACK, std::move(response), request.endpoint);
-                        session.unackedSize = 0;
-                        session.unackedCount = 0;
+                        return k2::RPC().send(ACK, std::move(response), request.endpoint).
+                        then([&] (){
+                            session.unackedSize = 0;
+                            session.unackedCount = 0;
+                        });
+                        
                     }
                 }
             }
+            return seastar::make_ready_future();
         });
     }
 
@@ -394,7 +399,7 @@ private:
             [this] { return _stopped; },
             [this] { // body of loop
                 if (canSend()) {
-                    send();
+                    return send();
                 }
                 else {
                     assert(!_haveSendPromise);
@@ -402,7 +407,6 @@ private:
                     _sendProm = seastar::promise<>();
                     return _sendProm.get_future();
                 }
-                return seastar::make_ready_future<>();
             }
         ).finally([this] {
             int vector_size = _duration_counts.size();
@@ -431,7 +435,7 @@ private:
                _session.unackedCount < _session.config.pipelineCount;
     }
 
-    void send() {
+    seastar::future<> send() {
         auto payload = _session.client.newPayload();
         auto padding = sizeof(_session.sessionID) + sizeof(_session.totalCount);
         assert(padding < _session.config.responseSize);
@@ -444,7 +448,7 @@ private:
         payload->write((void*)&_session.totalCount, sizeof(_session.totalCount));
         payload->write(_data, _session.config.responseSize - padding );
         _requestIssueTimes[_session.totalCount % _session.config.pipelineCount] = k2::Clock::now();
-        k2::RPC().send(REQUEST, std::move(payload), _session.client);
+        return k2::RPC().send(REQUEST, std::move(payload), _session.client);
     }
 
 private:

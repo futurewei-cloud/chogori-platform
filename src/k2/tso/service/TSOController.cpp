@@ -203,7 +203,7 @@ void TSOService::TSOController::RegisterGetTSOMasterURL()
         auto response = request.endpoint.newPayload();
         K2INFO("Master TSO TCP endpoint is: " << _masterInstanceURL);
         response->write((void*)_masterInstanceURL.c_str(), _masterInstanceURL.size());
-        k2::RPC().sendReply(std::move(response), request);
+        return k2::RPC().sendReply(std::move(response), request);
     });
 }
 
@@ -213,7 +213,7 @@ void TSOService::TSOController::RegisterGetTSOWorkersURLs()
     {
         auto response = request.endpoint.newPayload();
         response->write(_workersURLs);
-        k2::RPC().sendReply(std::move(response), request);
+        return k2::RPC().sendReply(std::move(response), request);
     });
 }
 

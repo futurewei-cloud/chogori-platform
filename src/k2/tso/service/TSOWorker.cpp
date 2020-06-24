@@ -64,13 +64,13 @@ void TSOService::TSOWorker::RegisterGetTSOTimestampBatch()
             auto timestampBatch = GetTimestampFromTSO(batchSize);
             //K2INFO("time stamp batch returned is: " << timestampBatch);
             response->write(timestampBatch);
-            k2::RPC().sendReply(std::move(response), request);
+            return k2::RPC().sendReply(std::move(response), request);
         }
         else
         {
             K2ERROR("GetTSOTimestampBatch comes in without request payload.");
         }
-
+        return seastar::make_ready_future();
     });
 }
 

@@ -78,7 +78,7 @@ private:
                            k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
                 K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
                 response->write((void*)ep->getURL().c_str(), ep->getURL().size());
-                k2::RPC().sendReply(std::move(response), request);
+                return k2::RPC().sendReply(std::move(response), request);
             });
     }
 
@@ -96,8 +96,9 @@ private:
                 auto resp = request.endpoint.newPayload();
                 SessionAck ack{.sessionID=sid};
                 resp->write((void*)&ack, sizeof(ack));
-                k2::RPC().sendReply(std::move(resp), request);
+                return k2::RPC().sendReply(std::move(resp), request);
             }
+            return seastar::make_ready_future();
         });
     }
 
@@ -131,12 +132,16 @@ private:
                             }
                             _data.clear();
                         }
-                        k2::RPC().send(ACK, std::move(response), request.endpoint);
-                        session.unackedSize = 0;
-                        session.unackedCount = 0;
+                        return k2::RPC().send(ACK, std::move(response), request.endpoint).
+                        then([&] (){
+                            session.unackedSize = 0;
+                            session.unackedCount = 0;
+                        });
+                        
                     }
                 }
             }
+            return seastar::make_ready_future();
         });
     }
 
