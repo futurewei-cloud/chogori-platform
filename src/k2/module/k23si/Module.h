@@ -30,6 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/K23SI.h>
+#include <k2/dto/K23SIInspect.h>
 #include <k2/common/Chrono.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/tso/client_lib/tso_clientlib.h>
@@ -72,6 +73,18 @@ public: // lifecycle
 
     seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
     handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request);
+
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
+    handleInspectRecords(dto::K23SIInspectRecordsRequest&& request);
+
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>>
+    handleInspectTxn(dto::K23SIInspectTxnRequest&& request);
+
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectWIsResponse>>
+    handleInspectWIs(dto::K23SIInspectWIsRequest&& request);
 
 private: // methods
     // this method executes a push operation at the given TRH in order to

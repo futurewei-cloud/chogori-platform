@@ -140,6 +140,17 @@ void TxnManager::updateRetentionTimestamp(dto::Timestamp rts) {
     _retentionTs = rts;
 }
 
+TxnRecord* TxnManager::getTxnRecordNoCreate(const TxnId& txnId) {
+    auto it = _transactions.find(txnId);
+    if (it != _transactions.end()) {
+        K2DEBUG("found existing record: " << it->second);
+        return &(it->second);
+    }
+
+    K2DEBUG("Txn record not found for " << txnId);
+    return nullptr;
+}
+
 TxnRecord& TxnManager::getTxnRecord(const TxnId& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {

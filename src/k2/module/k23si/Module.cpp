@@ -84,6 +84,21 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleTxnFinalize(std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::K23SIInspectRecordsRequest, dto::K23SIInspectRecordsResponse>
+    (dto::Verbs::K23SI_INSPECT_RECORDS, [this](dto::K23SIInspectRecordsRequest&& request) {
+        return handleInspectRecords(std::move(request));
+    });
+
+    RPC().registerRPCObserver<dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse>
+    (dto::Verbs::K23SI_INSPECT_TXN, [this](dto::K23SIInspectTxnRequest&& request) {
+        return handleInspectTxn(std::move(request));
+    });
+
+    RPC().registerRPCObserver<dto::K23SIInspectWIsRequest, dto::K23SIInspectWIsResponse>
+    (dto::Verbs::K23SI_INSPECT_WIS, [this](dto::K23SIInspectWIsRequest&& request) {
+        return handleInspectWIs(std::move(request));
+    });
+
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
         K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
                                       << _config.minimumRetentionPeriod() << "). Extending retention to minimum");
@@ -534,4 +549,69 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         return RPCResponse(dto::K23SIStatus::OK("persistence call succeeded"), dto::K23SITxnFinalizeResponse{});
     });
 }
+
+// For test and debug purposes, not normal transaction processsing
+// Returns all versions+WIs for a particular key
+seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
+K23SIPartitionModule::handleInspectRecords(dto::K23SIInspectRecordsRequest&& request) {
+    K2DEBUG("handleInspectRecords for: " << request.key);
+
+    auto it = _indexer.find(request.key);
+    if (it == _indexer.end()) {
+        return RPCResponse(dto::K23SIStatus::KeyNotFound("Key not found in indexer"), dto::K23SIInspectRecordsResponse{});
+    }
+    auto& versions = it->second;
+
+    std::vector<DataRecord> records;
+    records.reserve(versions.size());
+
+    for (DataRecord& rec : versions) {
+        DataRecord copy {
+            rec.key,
+            rec.value.val.share(),
+            rec.isTombstone,
+            rec.txnId,
+            rec.status
+        };
+
+        records.push_back(std::move(copy));
+    }
+
+    dto::K23SIInspectRecordsResponse response {
+        std::move(records)
+    };
+    return RPCResponse(dto::K23SIStatus::OK("Inspect records success"), std::move(response));
+}
+
+// For test and debug purposes, not normal transaction processsing
+// Returns the specified TRH
+seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>>
+K23SIPartitionModule::handleInspectTxn(dto::K23SIInspectTxnRequest&& request) {
+    K2DEBUG("handleInspectTxn key: " << request.key << ", mtr: " << request.mtr);
+
+    TxnId id{std::move(request.key), std::move(request.mtr)};
+    TxnRecord* txn = _txnMgr.getTxnRecordNoCreate(id);
+    if (!txn) {
+        return RPCResponse(dto::K23SIStatus::KeyNotFound("TRH not found"), dto::K23SIInspectTxnResponse{});
+    }
+
+    K23SIInspectTxnResponse response {
+        txn->txnId,
+        txn->writeKeys,
+        txn->rwExpiry,
+        txn->syncFinalize,
+        txn->state
+    };
+    return RPCResponse(dto::K23SIStatus::OK("Inspect txn success"), std::move(response));
+}
+
+// For test and debug purposes, not normal transaction processsing
+// Returns all WIs on this node for all keys
+seastar::future<std::tuple<Status, dto::K23SIInspectWIsResponse>>
+K23SIPartitionModule::handleInspectWIs(dto::K23SIInspectWIsRequest&& request) {
+    // TODO
+    (void) request;
+    return RPCResponse(dto::K23SIStatus::OK("Inspect WIs success"), dto::K23SIInspectWIsResponse());
+}
+
 } // ns k2

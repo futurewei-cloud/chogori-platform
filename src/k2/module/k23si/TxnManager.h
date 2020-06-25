@@ -197,6 +197,7 @@ public: // lifecycle
     // We cache this value and use it to expire transactions when they are outside retention window.
     void updateRetentionTimestamp(dto::Timestamp rts);
 
+    TxnRecord* getTxnRecordNoCreate(const TxnId& txnId);
     // returns the record for an id. Creates a new record in Created state if one does not exist
     TxnRecord& getTxnRecord(const TxnId& txnId);
     TxnRecord& getTxnRecord(TxnId&& txnId);
