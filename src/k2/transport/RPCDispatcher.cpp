@@ -72,11 +72,11 @@ RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
         }
     });
 
-    auto ep = RPC().getServerEndpoint(proto->supportedProtocol());
-    if (ep){
+    auto serverep = proto->getServerEndpoint();
+    if (serverep){
         std::pair<String, int> url_core;
-        url_core = std::make_pair(ep->getURL(), seastar::engine().cpu_id());
-        K2DEBUG("BroadCast URL and Core ID" << ep->getURL());
+        url_core = std::make_pair(serverep->getURL(), seastar::engine().cpu_id());
+        K2DEBUG("BroadCast URL and Core ID" << serverep->getURL());
         return RPCDist().invoke_on_all(&k2::RPCDispatcher::setAddressCore, url_core);
     }
     return seastar::make_ready_future<>();
@@ -172,18 +172,23 @@ RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& en
             << ", payload size=" << (payload?payload->getSize():0)
             << ", payload capacity=" << (payload?payload->getCapacity():0));
     if (_txUseCrossCoreLoopback()) {
-        if (serverep && endpoint == *serverep){
-            payload->seek(txconstants::MAX_HEADER_SIZE);
-            meta.setPayloadSize(payload->getDataRemaining());
-            _handleNewMessage(Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
-            return seastar::make_ready_future<>();
-        }
-        
         auto core = _url_cores.find(endpoint.getURL());
         if (core != _url_cores.end()){
+            // rewind the payload to the correct position
             payload->seek(txconstants::MAX_HEADER_SIZE);
             meta.setPayloadSize(payload->getDataRemaining());
-            auto return_value = RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
+
+            if (serverep && endpoint == *serverep){
+                _handleNewMessage(Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
+            }
+            else{
+                //We don't care about the result of this call since we don't make a promise that we're going to deliver the data.
+                (void) RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload))).
+                handle_exception([&](auto exc) mutable {
+                    K2ERROR_EXC("invoke_on failed", exc);
+                    return seastar::make_ready_future();
+                });
+            }
             return seastar::make_ready_future<>();
         }
     }
@@ -201,10 +206,7 @@ RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& end
 
 seastar::future<>
 RPCDispatcher::setAddressCore(std::pair<String, int> url_core) {
-    auto url = url_core.first;
-    int core_id = url_core.second;
-    K2DEBUG("Setting address core: " << url << ", for id=" << core_id);
-    _url_cores.insert(std::make_pair(url, core_id));
+    _url_cores.insert(std::move(url_core));
     return seastar::make_ready_future<>();
 }
 

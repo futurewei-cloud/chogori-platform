@@ -253,7 +253,7 @@ private: // fields
     // the protocols this dispatcher will be able to support
     std::unordered_map<String, seastar::shared_ptr<IRPCProtocol>> _protocols;
 
-    // add the map for core-address
+    // the mapping we use to discover whether the given URL is owned by the other cores in the same process in order to perform in process loopback
     std::unordered_map<String, int> _url_cores;
 
     // the message observers
@@ -282,7 +282,7 @@ private: // don't need
     RPCDispatcher& operator=(const RPCDispatcher& o) = delete;
     RPCDispatcher& operator=(RPCDispatcher&& o) = delete;
 
-    ConfigVar<bool> _txUseCrossCoreLoopback{"tx_xcore_loopback"};
+    ConfigVar<bool> _txUseCrossCoreLoopback{"tx_xcore_loopback", true};
 };
 
 // global RPC dist container which can be initialized by main() of an application so that

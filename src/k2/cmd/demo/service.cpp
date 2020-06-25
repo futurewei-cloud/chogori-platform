@@ -21,15 +21,10 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <k2/common/Common.h>
-#include <k2/transport/PayloadSerialization.h>
-#include <k2/transport/Status.h>
-#include <seastar/core/sleep.hh>
-#include <k2/common/Timer.h>
-#include <typeinfo>
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/transport/RetryStrategy.h>
+#include <k2/common/Timer.h>
 
 namespace k2 {
 // implements an example RPC Service which can send/receive messages
@@ -63,7 +58,7 @@ public:  // application lifespan
         K2INFO("stop");
         return _updateTimer.stop().
         then([] () {
-            // unregistar all observers
+            // unregister all observers
             RPC().registerMessageObserver(MsgVerbs::POST, nullptr);
             RPC().registerMessageObserver(MsgVerbs::GET, nullptr);
             RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
