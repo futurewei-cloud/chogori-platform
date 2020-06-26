@@ -7,6 +7,7 @@
 	- data model mapping (Ivan/Jian)
 		- partition of DB to partitioning of K2
 		- row mapping
+		- secondary index
 	- 3SI correctness (Justin)
 		- orphaned WIs
 		- state inspect capability
