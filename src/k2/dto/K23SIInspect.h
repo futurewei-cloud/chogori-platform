@@ -31,7 +31,10 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-// For test and debug, requests all versions including WIs for a particular key
+// All of the inspect requests in this file are for test and debug purposes
+// They return the current 3SI state without affecting it
+
+// Requests all versions including WIs for a particular key
 // without affecting transaction state
 struct K23SIInspectRecordsRequest {
     // These fields make the request compatible with the PartitionRequest wrapper
@@ -46,7 +49,7 @@ struct K23SIInspectRecordsResponse {
     K2_PAYLOAD_FIELDS(records);
 };
 
-// For test and debug, requests the TRH of a transaction without affecting transaction state
+// Requests the TRH of a transaction without affecting transaction state
 struct K23SIInspectTxnRequest {
     // These fields make the request compatible with the PartitionRequest wrapper
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
@@ -82,7 +85,7 @@ struct K23SIInspectTxnResponse {
     }
 };
 
-// For test and debug, requests all WIs on a node for any key
+// Requests all WIs on a node for all keys
 struct K23SIInspectWIsRequest {
     K2_PAYLOAD_EMPTY;
 };
@@ -90,6 +93,15 @@ struct K23SIInspectWIsRequest {
 struct K23SIInspectWIsResponse {
     std::vector<DataRecord> WIs;
     K2_PAYLOAD_FIELDS(WIs);
+};
+
+struct K23SIInspectAllTxnsRequest {
+    K2_PAYLOAD_EMPTY;
+};
+
+struct K23SIInspectAllTxnsResponse {
+    std::vector<K23SIInspectTxnResponse> txns;
+    K2_PAYLOAD_FIELDS(txns);
 };
 
 } // ns dto

@@ -31,6 +31,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Persistence.h"
 
 namespace k2 {
+class K23SIPartitionModule;
+
 namespace nsbi = boost::intrusive;
 
 // Complete unique identifier of a transaction in the system
@@ -230,6 +232,8 @@ private: // methods driving the state machine
     TxnRecord& _createRecord(TxnId txnId);
 
 private: // fields
+    friend class K23SIPartitionModule;
+
     // Expiry lists. The order in the list is ascending so that the oldest item would be in the front
     TxnRecord::RWList _rwlist;
     TxnRecord::HBList _hblist;

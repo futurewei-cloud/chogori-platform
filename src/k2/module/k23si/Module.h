@@ -86,6 +86,10 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SIInspectWIsResponse>>
     handleInspectWIs(dto::K23SIInspectWIsRequest&& request);
 
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectAllTxnsResponse>>
+    handleInspectAllTxns(dto::K23SIInspectAllTxnsRequest&& request);
+
 private: // methods
     // this method executes a push operation at the given TRH in order to
     // select a winner between the sitting transaction's mtr (sitMTR)

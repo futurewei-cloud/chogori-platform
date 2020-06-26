@@ -99,6 +99,11 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleInspectWIs(std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::K23SIInspectAllTxnsRequest, dto::K23SIInspectAllTxnsResponse>
+    (dto::Verbs::K23SI_INSPECT_ALL_TXNS, [this](dto::K23SIInspectAllTxnsRequest&& request) {
+        return handleInspectAllTxns(std::move(request));
+    });
+
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
         K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
                                       << _config.minimumRetentionPeriod() << "). Extending retention to minimum");
@@ -609,9 +614,55 @@ K23SIPartitionModule::handleInspectTxn(dto::K23SIInspectTxnRequest&& request) {
 // Returns all WIs on this node for all keys
 seastar::future<std::tuple<Status, dto::K23SIInspectWIsResponse>>
 K23SIPartitionModule::handleInspectWIs(dto::K23SIInspectWIsRequest&& request) {
-    // TODO
     (void) request;
-    return RPCResponse(dto::K23SIStatus::OK("Inspect WIs success"), dto::K23SIInspectWIsResponse());
+    K2DEBUG("handleInspectWIs");
+    std::vector<DataRecord> records;
+
+    for (auto it = _indexer.begin(); it != _indexer.end(); ++it) {
+        auto& versions = it->second;
+        for (DataRecord& rec : versions) {
+            if (rec.status != DataRecord::Status::WriteIntent) {
+                continue;
+            }
+
+            DataRecord copy {
+                rec.key,
+                rec.value.val.share(),
+                rec.isTombstone,
+                rec.txnId,
+                rec.status
+            };
+
+            records.push_back(std::move(copy));
+        }
+    }
+
+    dto::K23SIInspectWIsResponse response { std::move(records) };
+    return RPCResponse(dto::K23SIStatus::OK("Inspect WIs success"), std::move(response));
+}
+
+seastar::future<std::tuple<Status, dto::K23SIInspectAllTxnsResponse>>
+K23SIPartitionModule::handleInspectAllTxns(dto::K23SIInspectAllTxnsRequest&& request) {
+    (void) request;
+    K2DEBUG("handleInspectAllTxns");
+
+    std::vector<dto::K23SIInspectTxnResponse> txns;
+    txns.reserve(_txnMgr._transactions.size());
+
+    for (auto it = _txnMgr._transactions.begin(); it != _txnMgr._transactions.end(); ++it) {
+        K23SIInspectTxnResponse copy {
+            it->second.txnId,
+            it->second.writeKeys,
+            it->second.rwExpiry,
+            it->second.syncFinalize,
+            it->second.state
+        };
+
+        txns.push_back(std::move(copy));
+    }
+
+    dto::K23SIInspectAllTxnsResponse response { std::move(txns) };
+    return RPCResponse(dto::K23SIStatus::OK("Inspect all txns success"), std::move(response));
 }
 
 } // ns k2
