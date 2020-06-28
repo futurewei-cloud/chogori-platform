@@ -7,8 +7,10 @@ K2 TimeStamp is a specific designed data structure for timeStamp used for markin
 The design goals of K2 Timestamp and K2 TSO are
 - Functionality: support K2 global distributed transaction, at Sequencial consistent Serializable Snashot Isolation level(K2-3SI transaction protocol) and external causal relationship, with optimization for within datacenter avg 20 microsecond latency transactions.
 - Performance: Issuing of K2 TimeStamp within the same data center should take less than 10 microsecond, ideally avg less than 5 microsecond.
-- Scalability: Single TSO service can provide 50-100 million timestamps per second for the system, essentially support 50-100 million transactions per second(roughly 50 -100X current top TPCC record holder at 68 million tpmc).
+- Scalability: Single TSO service can provide 50-100 million timestamps per second for the system, essentially support 50-100 million transactions per second(roughly 50 -100X current top TPCC record holder at 60 million tpmc or roughtly 1 million txn/s). [^1]
 - Availability: K2 TSO as logical single point of failure, should be designed with high availability >= 99.999%. Designed no down time for software upgrade, no down time for single physical server replacement, minimal unavailable time(ideally <200 millisecond) for server crash recover. 
+
+[^1]: Note(06/28/2020): Above goals were original set as for 1/1/2020, since then, TPCC new latest record as of today is 707 million tpmc (or roughly 11 million txn/s). Originally TSO was thought to be a single active instance system, thus single TSO service goal was set to be 50 - 100x of TPCC record then and such goal is still 5 -10 times of this new record. But as later this design specified, TSO service is a scale-out design (supporting concurrent multi-active instances) and is not limit by single TSO instance throughput. Thus, together with other sub-systems, whole Chogori(K2) is a fully scale-out system at data plane.
 
 Besides general distributed system requirement, e.g. high availability, hgih scalability, low latency requirement etc. for K2 TSO design, K2 TSO is distinctively designed to support 
 #####a) K2 specific transaction protocol, K2-3SI. 
