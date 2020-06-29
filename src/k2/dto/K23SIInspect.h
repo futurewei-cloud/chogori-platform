@@ -24,12 +24,91 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <k2/common/Common.h>
-#include <k2/module/k23si/TxnManager.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 
 namespace k2 {
 namespace dto {
+
+// Complete unique identifier of a transaction in the system
+struct TxnId {
+    // this is the routable key for the TR - we can route requests for the TR (i.e. PUSH)
+    // based on the partition map of the collection.
+    dto::Key trh;
+    // the MTR for the transaction
+    dto::K23SI_MTR mtr;
+
+    size_t hash() const {
+        return trh.hash() + mtr.hash();
+    }
+
+    bool operator==(const TxnId& o) const{
+        return trh == o.trh && mtr == o.mtr;
+    }
+
+    bool operator!=(const TxnId& o) const{
+        return !operator==(o);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const TxnId& txnId) {
+        return os << "{trh=" << txnId.trh << ", mtr=" << txnId.mtr <<"}";
+    }
+
+    K2_PAYLOAD_FIELDS(trh, mtr);
+};
+
+} // ns dto
+} // ns d2
+
+// Define std::hash for TxnIds so that we can use them in hash maps/sets
+namespace std {
+template <>
+struct hash<k2::dto::TxnId> {
+    size_t operator()(const k2::dto::TxnId& txnId) const {
+        return txnId.hash();
+    }
+};  // hash
+} // ns std
+
+namespace k2 {
+namespace dto {
+
+// A record in the 3SI version cache.
+struct DataRecord {
+    dto::Key key;
+    SerializeAsPayload<Payload> value;
+    bool isTombstone = false;
+    dto::TxnId txnId;
+    enum Status: uint8_t {
+        WriteIntent,  // the record hasn't been committed/aborted yet
+        Committed     // the record has been committed and we should use the key/value
+        // aborted WIs don't need state - as soon as we learn that a WI has been aborted, we remove it
+    } status;
+    K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
+};
+
+enum class TxnRecordState : uint8_t {
+        Created = 0,
+        InProgress,
+        ForceAborted,
+        Aborted,
+        Committed,
+        Deleted
+};
+
+inline std::ostream& operator<<(std::ostream& os, const TxnRecordState& st) {
+    const char* strstate = "bad state";
+    switch (st) {
+        case TxnRecordState::Created: strstate= "created"; break;
+        case TxnRecordState::InProgress: strstate= "in_progress"; break;
+        case TxnRecordState::ForceAborted: strstate= "force_aborted"; break;
+        case TxnRecordState::Aborted: strstate= "aborted"; break;
+        case TxnRecordState::Committed: strstate= "committed"; break;
+        case TxnRecordState::Deleted: strstate= "deleted"; break;
+        default: break;
+    }
+    return os << strstate;
+}
 
 // All of the inspect requests in this file are for test and debug purposes
 // They return the current 3SI state without affecting it
@@ -73,7 +152,7 @@ struct K23SIInspectTxnResponse {
 
     bool syncFinalize = false;
 
-    TxnRecord::State state;
+    TxnRecordState state;
 
     K2_PAYLOAD_FIELDS(txnId, writeKeys, rwExpiry, state);
 
@@ -95,6 +174,7 @@ struct K23SIInspectWIsResponse {
     K2_PAYLOAD_FIELDS(WIs);
 };
 
+// Request all TRHs on a node
 struct K23SIInspectAllTxnsRequest {
     K2_PAYLOAD_EMPTY;
 };
@@ -102,6 +182,16 @@ struct K23SIInspectAllTxnsRequest {
 struct K23SIInspectAllTxnsResponse {
     std::vector<K23SIInspectTxnResponse> txns;
     K2_PAYLOAD_FIELDS(txns);
+};
+
+// Request all keys stored on a node
+struct K23SIInspectAllKeysRequest {
+    K2_PAYLOAD_EMPTY;
+};
+
+struct K23SIInspectAllKeysResponse {
+    std::vector<Key> keys;
+    K2_PAYLOAD_FIELDS(keys);
 };
 
 } // ns dto

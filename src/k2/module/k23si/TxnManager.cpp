@@ -25,18 +25,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-size_t TxnId::hash() const {
-    return trh.hash() + mtr.hash();
-}
-
-bool TxnId::operator==(const TxnId& o) const{
-    return trh == o.trh && mtr == o.mtr;
-}
-
-bool TxnId::operator!=(const TxnId& o) const{
-    return !operator==(o);
-}
-
 TxnManager::TxnManager():
     _cpo(_config.cpoEndpoint()) {
 }
@@ -140,7 +128,7 @@ void TxnManager::updateRetentionTimestamp(dto::Timestamp rts) {
     _retentionTs = rts;
 }
 
-TxnRecord* TxnManager::getTxnRecordNoCreate(const TxnId& txnId) {
+TxnRecord* TxnManager::getTxnRecordNoCreate(const dto::TxnId& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
         K2DEBUG("found existing record: " << it->second);
@@ -151,7 +139,7 @@ TxnRecord* TxnManager::getTxnRecordNoCreate(const TxnId& txnId) {
     return nullptr;
 }
 
-TxnRecord& TxnManager::getTxnRecord(const TxnId& txnId) {
+TxnRecord& TxnManager::getTxnRecord(const dto::TxnId& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
         K2DEBUG("found existing record: " << it->second);
@@ -161,7 +149,7 @@ TxnRecord& TxnManager::getTxnRecord(const TxnId& txnId) {
     return _createRecord(txnId);
 }
 
-TxnRecord& TxnManager::getTxnRecord(TxnId&& txnId) {
+TxnRecord& TxnManager::getTxnRecord(dto::TxnId&& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
         K2DEBUG("found existing record for " << txnId << ": " << it->second);
@@ -171,14 +159,14 @@ TxnRecord& TxnManager::getTxnRecord(TxnId&& txnId) {
     return _createRecord(std::move(txnId));
 }
 
-TxnRecord& TxnManager::_createRecord(TxnId txnId) {
+TxnRecord& TxnManager::_createRecord(dto::TxnId txnId) {
     // we don't persist the record on create. If we have a sudden failure, we'd just abort the transaction when
     // it comes to commit.
     auto it = _transactions.insert({std::move(txnId), TxnRecord{}});
     if (it.second) {
         TxnRecord& rec = it.first->second;
         rec.txnId = it.first->first;
-        rec.state = TxnRecord::State::Created;
+        rec.state = dto::TxnRecordState::Created;
         rec.rwExpiry = txnId.mtr.timestamp;
         rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
 
@@ -189,13 +177,13 @@ TxnRecord& TxnManager::_createRecord(TxnId txnId) {
     return it.first->second;
 }
 
-seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
+seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnId) {
     // This method's responsibility is to execute valid state transitions.
     TxnRecord& rec = getTxnRecord(std::move(txnId));
     auto state = rec.state;
     K2DEBUG("Processing action " << action << ", for state " << state << ", in txn " << rec);
     switch (state) {
-        case TxnRecord::State::Created:
+        case dto::TxnRecordState::Created:
             // We did not have a transaction record and it was just created
             switch (action) {
                 case TxnRecord::Action::onCreate:
@@ -209,13 +197,13 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                             return seastar::make_exception_future(ClientError());
                         });
                 case TxnRecord::Action::onEndCommit:  // create an entry in Aborted state so that it can be finalized
-                    return _end(rec, TxnRecord::State::Aborted)
+                    return _end(rec, dto::TxnRecordState::Aborted)
                         .then([] {
                             // respond with failure since we had to abort but were asked to commit
                             return seastar::make_exception_future(ClientError());
                         });
                 case TxnRecord::Action::onEndAbort:  // create an entry in Aborted state so that it can be finalized
-                    return _end(rec, TxnRecord::State::Aborted);
+                    return _end(rec, dto::TxnRecordState::Aborted);
                 case TxnRecord::Action::onHeartbeatExpire:        // internal error - must have a TR
                 case TxnRecord::Action::onRetentionWindowExpire:  // internal error - must have a TR
                 case TxnRecord::Action::onFinalizeComplete:       // internal error - must have a TR
@@ -223,16 +211,16 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                     K2ERROR("Invalid transition for txnid: " << txnId << ", in state: " << state);
                     return seastar::make_exception_future(ServerError());
             };
-        case TxnRecord::State::InProgress:
+        case dto::TxnRecordState::InProgress:
             switch (action) {
                 case TxnRecord::Action::onCreate: // no-op - stay in same state
                     return _inProgress(rec);
                 case TxnRecord::Action::onHeartbeat:
                     return _heartbeat(rec);
                 case TxnRecord::Action::onEndCommit:
-                    return _end(rec, TxnRecord::State::Committed);
+                    return _end(rec, dto::TxnRecordState::Committed);
                 case TxnRecord::Action::onEndAbort:
-                    return _end(rec, TxnRecord::State::Aborted);
+                    return _end(rec, dto::TxnRecordState::Aborted);
                 case TxnRecord::Action::onForceAbort:             // asked to force-abort (e.g. on PUSH)
                 case TxnRecord::Action::onRetentionWindowExpire:  // we've had this transaction for too long
                 case TxnRecord::Action::onHeartbeatExpire:        // originator didn't hearbeat on time
@@ -242,7 +230,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                     K2ERROR("Invalid transition for txnid: " << txnId << ", in state: " << state);
                     return seastar::make_exception_future(ServerError());
             };
-        case TxnRecord::State::ForceAborted:
+        case dto::TxnRecordState::ForceAborted:
             switch (action) {
                 case TxnRecord::Action::onCreate: // this has been aborted already. Signal the client to issue endAbort
                     return seastar::make_exception_future(ClientError());
@@ -251,13 +239,13 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                 case TxnRecord::Action::onRetentionWindowExpire:
                     return _deleted(rec);
                 case TxnRecord::Action::onEndCommit:
-                    return _end(rec, TxnRecord::State::Aborted)
+                    return _end(rec, dto::TxnRecordState::Aborted)
                         .then([] {
                             // respond with failure since we had to abort but were asked to commit
                             return seastar::make_exception_future(ClientError());
                         });
                 case TxnRecord::Action::onEndAbort:
-                    return _end(rec, TxnRecord::State::Aborted);
+                    return _end(rec, dto::TxnRecordState::Aborted);
                 case TxnRecord::Action::onHeartbeat: // signal client to abort
                     return seastar::make_exception_future(ClientError());
                 case TxnRecord::Action::onFinalizeComplete:
@@ -266,7 +254,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                     K2ERROR("Invalid transition for txnid: " << txnId);
                     return seastar::make_exception_future(ServerError());
             };
-        case TxnRecord::State::Aborted:
+        case dto::TxnRecordState::Aborted:
             switch (action) {
                 case TxnRecord::Action::onCreate: // signal client to abort
                 case TxnRecord::Action::onForceAbort:
@@ -284,7 +272,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
                     K2ERROR("Invalid transition for txnid: " << txnId);
                     return seastar::make_exception_future(ServerError());
             };
-        case TxnRecord::State::Committed:
+        case dto::TxnRecordState::Committed:
             switch (action) {
                 case TxnRecord::Action::onCreate: // signal client to abort
                 case TxnRecord::Action::onForceAbort:
@@ -311,7 +299,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, TxnId txnId) {
 seastar::future<> TxnManager::_inProgress(TxnRecord& rec) {
     K2DEBUG("Setting status to inProgress for " << rec);
     // set state
-    rec.state = TxnRecord::State::InProgress;
+    rec.state = dto::TxnRecordState::InProgress;
     // manage hb expiry: we only come here immediately after Created which sets HB
     // manage rw expiry: same as hb
     // persist if needed: no need - in case of failures, we'll just abort
@@ -321,7 +309,7 @@ seastar::future<> TxnManager::_inProgress(TxnRecord& rec) {
 seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
     K2DEBUG("Setting status to forceAborted for " << rec);
     // set state
-    rec.state = TxnRecord::State::ForceAborted;
+    rec.state = dto::TxnRecordState::ForceAborted;
     // manage hb expiry
     rec.unlinkHB(_hblist);
     // manage rw expiry: we want to track expiration on retention window
@@ -329,7 +317,7 @@ seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
     return _persistence.makeCall(rec, _config.persistenceTimeout());
 }
 
-seastar::future<> TxnManager::_end(TxnRecord& rec, TxnRecord::State state) {
+seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
     K2DEBUG("Setting state to " << state << ", for " << rec);
     // set state
     rec.state = state;
@@ -368,7 +356,7 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, TxnRecord::State state) {
 seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
     K2DEBUG("Setting status to deleted for " << rec);
     // set state
-    rec.state = TxnRecord::State::Deleted;
+    rec.state = dto::TxnRecordState::Deleted;
     // manage hb expiry
     rec.unlinkHB(_hblist);
     // manage rw expiry
@@ -413,7 +401,7 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
                     request.collectionName = _collectionName;
                     request.mtr = rec.txnId.mtr;
                     request.trh = rec.txnId.trh;
-                    request.action = rec.state == TxnRecord::State::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
+                    request.action = rec.state == dto::TxnRecordState::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
                     K2DEBUG("Finalizing req=" << request);
                     return seastar::do_with(std::move(request), [&rec, this, deadline](auto& request) {
                         return _cpo.PartitionRequest<dto::K23SITxnFinalizeRequest,
