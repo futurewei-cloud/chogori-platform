@@ -24,7 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <k2/dto/K23SI.h>
-#include <k2/dto/K23SIInspect.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <boost/intrusive/list.hpp>
 #include <seastar/core/shared_ptr.hh>
