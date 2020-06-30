@@ -57,6 +57,13 @@ enum Verbs : k2::Verb {
 
     /************ K23SI Persistence *****************/
     K23SI_Persist = 40,
+
+    /************ K23SI Inspection ******************/
+    K23SI_INSPECT_RECORDS = 45,
+    K23SI_INSPECT_TXN,
+    K23SI_INSPECT_WIS,
+    K23SI_INSPECT_ALL_TXNS,
+    K23SI_INSPECT_ALL_KEYS,
     
     /************* TSO *******************/
     // API from TSO client to any TSO instance to get master instance URL

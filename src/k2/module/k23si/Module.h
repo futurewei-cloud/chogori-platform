@@ -30,6 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/K23SI.h>
+#include <k2/dto/K23SIInspect.h>
 #include <k2/common/Chrono.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/tso/client_lib/tso_clientlib.h>
@@ -73,6 +74,26 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
     handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request);
 
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
+    handleInspectRecords(dto::K23SIInspectRecordsRequest&& request);
+
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>>
+    handleInspectTxn(dto::K23SIInspectTxnRequest&& request);
+
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectWIsResponse>>
+    handleInspectWIs(dto::K23SIInspectWIsRequest&& request);
+
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectAllTxnsResponse>>
+    handleInspectAllTxns(dto::K23SIInspectAllTxnsRequest&& request);
+
+    // For test and debug purposes, not normal transaction processsing
+    seastar::future<std::tuple<Status, dto::K23SIInspectAllKeysResponse>>
+    handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& request);
+
 private: // methods
     // this method executes a push operation at the given TRH in order to
     // select a winner between the sitting transaction's mtr (sitMTR)
@@ -83,10 +104,10 @@ private: // methods
     // In cases where the pusing txn is to be aborted, whoever calls _doPush() has to signal
     // the client that they must issue an onEnd(Abort).
     seastar::future<dto::K23SI_MTR>
-    _doPush(String collectionName, TxnId sitTxnId, dto::K23SI_MTR pushMTR, FastDeadline deadline);
+    _doPush(String collectionName, dto::TxnId sitTxnId, dto::K23SI_MTR pushMTR, FastDeadline deadline);
 
     // helper method used to clean up WI which have been removed
-    void _queueWICleanup(DataRecord&& rec);
+    void _queueWICleanup(dto::DataRecord&& rec);
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
@@ -107,10 +128,10 @@ private: // methods
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
-    bool _validateStaleWrite(dto::K23SIWriteRequest<Payload>& request, std::deque<DataRecord>& versions);
+    bool _validateStaleWrite(dto::K23SIWriteRequest<Payload>& request, std::deque<dto::DataRecord>& versions);
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest<Payload>&& request, std::deque<DataRecord>& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIWriteRequest<Payload>&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
 
     // recover data upon startup
     seastar::future<> _recovery();
@@ -125,7 +146,7 @@ private: // members
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
     // (newest item is at front of the deque)
     // Duplicates are not allowed
-    std::map<dto::Key, std::deque<DataRecord>> _indexer;
+    std::map<dto::Key, std::deque<dto::DataRecord>> _indexer;
 
     // to store transactions
     TxnManager _txnMgr;

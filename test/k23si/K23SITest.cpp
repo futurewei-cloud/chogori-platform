@@ -24,9 +24,11 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/module/k23si/Module.h>
+#include <k2/cpo/client/CPOClient.h>
 #include <seastar/core/sleep.hh>
 
 #include <k2/dto/K23SI.h>
+#include <k2/dto/K23SIInspect.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
@@ -72,6 +74,7 @@ public:  // application lifespan
             _k2Endpoints.push_back(RPC().getTXEndpoint(ep));
         }
 
+        _cpo_client = CPOClient(_cpoConfigEp());
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
             _testFuture = runScenarioUnassignedNodes()
@@ -155,6 +158,7 @@ private:
     seastar::timer<> _testTimer;
     seastar::future<> _testFuture = seastar::make_ready_future();
 
+    CPOClient _cpo_client;
     dto::PartitionGetter _pgetter;
     uint64_t txnids = 10000;
 
@@ -204,6 +208,37 @@ private:
         request.writeKeys = wkeys;
         return RPC().callRPC<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(dto::Verbs::K23SI_TXN_END, request, *part.preferredEndpoint, 100ms);
     }
+
+
+    seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
+    doRequestRecords(dto::Key key) {
+        auto* request = new dto::K23SIInspectRecordsRequest {
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            k2::String(collname),
+            std::move(key)
+        };
+
+        return _cpo_client.PartitionRequest
+            <dto::K23SIInspectRecordsRequest, dto::K23SIInspectRecordsResponse, dto::Verbs::K23SI_INSPECT_RECORDS>
+            (Deadline<>(1s), *request).
+            finally([request] () { delete request; });
+    }
+
+    seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>>
+    doRequestTRH(dto::Key trh, dto::K23SI_MTR mtr) {
+        auto* request = new dto::K23SIInspectTxnRequest {
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            k2::String(collname),
+            std::move(trh),
+            std::move(mtr)
+        };
+
+        return _cpo_client.PartitionRequest
+            <dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse, dto::Verbs::K23SI_INSPECT_TXN>
+            (Deadline<>(1s), *request).
+            finally([request] () { delete request; });
+    }
+
 public: // tests
 
 seastar::future<> runScenarioUnassignedNodes() {
@@ -214,6 +249,15 @@ seastar::future<> runScenarioUnassignedNodes() {
 seastar::future<> runScenario01() {
     K2INFO("Scenario 01: empty node");
     return seastar::make_ready_future()
+    .then([this] {
+        return doRequestRecords({"Key1", "rKey1"}).
+        then([this] (auto&& response) {
+            auto& [status, k2response] = response;
+            K2EXPECT(status, Statuses::S404_Not_Found);
+            K2EXPECT(k2response.records.size(), 0);
+            return seastar::make_ready_future<>();
+        });
+    })
     .then([this] {
         return doRead<Payload>({"Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
     })
@@ -305,9 +349,33 @@ cases requiring client to refresh collection pmap
             DataRec{.f1="field1", .f2="field2"},
             [this] (dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec) {
                 return doWrite<DataRec>(key, rec, mtr, trh, collname, false, true)
-                .then([this, &mtr, &key, &trh](auto&& response) {
+                .then([this](auto&& response) {
                     auto& [status, resp] = response;
                     K2EXPECT(status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                // Verify there is one WI on node
+                .then([this, &key] {
+                    return doRequestRecords(key).
+                    then([this] (auto&& response) {
+                        auto& [status, k2response] = response;
+                        K2EXPECT(status, Statuses::S200_OK);
+                        K2EXPECT(k2response.records.size(), 1);
+                        K2EXPECT(k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
+                        return seastar::make_ready_future<>();
+                    });
+                })
+                // Verify the Txn is InProgress
+                .then([this, &trh, &mtr] {
+                        return doRequestTRH(trh, mtr).
+                        then([this] (auto&& response) {
+                            auto& [status, k2response] = response;
+                            K2EXPECT(status, Statuses::S200_OK);
+                            K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+                            return seastar::make_ready_future<>();
+                        });
+                })
+                .then([this, &trh, &mtr, &key] {
                     return doEnd(trh, mtr, collname, true, {key});
                 })
                 .then([this, &key, &mtr](auto&& response) {
@@ -357,6 +425,26 @@ seastar::future<> runScenario04() {
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
                     K2EXPECT(status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([&] () {
+                    return doRequestRecords(k2);
+                })
+                .then([&] (auto&& response) {
+                    // Verify there is a single WI for key
+                    auto& [status, k2response] = response;
+                    K2EXPECT(status, Statuses::S200_OK);
+                    K2EXPECT(k2response.records.size(), 1);
+                    K2EXPECT(k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
+
+                    return doRequestTRH(k2, m2);
+                })
+                .then([&] (auto&& response) {
+                    // Verify newer txn is still InProgress
+                    auto& [status, k2response] = response;
+                    K2EXPECT(status, Statuses::S200_OK);
+                    K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+
                     return seastar::when_all(doEnd(k1, m1, collname, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
                 })
                 .then([&](auto&& result) mutable {
@@ -417,6 +505,22 @@ seastar::future<> runScenario05() {
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
                     K2EXPECT(status, dto::K23SIStatus::Created);
+
+                    return doRequestTRH(k1, m1);
+                })
+                // Verify both txns are InProgress
+                .then([&] (auto&& response) {
+                    auto& [status, k2response] = response;
+                    K2EXPECT(status, Statuses::S200_OK);
+                    K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+
+                    return doRequestTRH(k2, m2);
+                })
+                .then([&] (auto&& response) {
+                    auto& [status, k2response] = response;
+                    K2EXPECT(status, Statuses::S200_OK);
+                    K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+
                     return seastar::when_all(doEnd(k1, m1, collname, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
                 })
                 .then([&](auto&& result) mutable {

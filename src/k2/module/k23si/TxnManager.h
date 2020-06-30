@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <k2/dto/K23SI.h>
+#include <k2/dto/K23SIInspect.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <boost/intrusive/list.hpp>
 #include <seastar/core/shared_ptr.hh>
@@ -31,54 +32,13 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Persistence.h"
 
 namespace k2 {
+class K23SIPartitionModule;
+
 namespace nsbi = boost::intrusive;
-
-// Complete unique identifier of a transaction in the system
-struct TxnId {
-    // this is the routable key for the TR - we can route requests for the TR (i.e. PUSH)
-    // based on the partition map of the collection.
-    dto::Key trh;
-    // the MTR for the transaction
-    dto::K23SI_MTR mtr;
-    size_t hash() const;
-    bool operator==(const TxnId& o) const;
-    bool operator!=(const TxnId& o) const;
-    friend std::ostream& operator<<(std::ostream& os, const TxnId& txnId) {
-        return os << "{trh=" << txnId.trh << ", mtr=" << txnId.mtr <<"}";
-    }
-    K2_PAYLOAD_FIELDS(trh, mtr);
-};
-} // ns k2
-
-// Define std::hash for TxnIds so that we can use them in hash maps/sets
-namespace std {
-template <>
-struct hash<k2::TxnId> {
-    size_t operator()(const k2::TxnId& txnId) const {
-        return txnId.hash();
-    }
-};  // hash
-}  // namespace std
-
-namespace k2 {
-
-// A record in the cache.
-struct DataRecord {
-    dto::Key key;
-    SerializeAsPayload<Payload> value;
-    bool isTombstone = false;
-    TxnId txnId;
-    enum Status: uint8_t {
-        WriteIntent,  // the record hasn't been committed/aborted yet
-        Committed     // the record has been committed and we should use the key/value
-        // aborted WIs don't need state - as soon as we learn that a WI has been aborted, we remove it
-    } status;
-    K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
-};
 
 // A Transaction record
 struct TxnRecord {
-    TxnId txnId;
+    dto::TxnId txnId;
 
     // the keys to which this transaction wrote. These are delivered as part of the End request and we have to ensure
     // that the corresponding write intents are converted appropriately
@@ -108,31 +68,9 @@ struct TxnRecord {
         return os;
     }
 
-    // TR state
-    enum class State : uint8_t {
-        Created = 0,
-        InProgress,
-        ForceAborted,
-        Aborted,
-        Committed,
-        Deleted
-    } state = State::Created;
+    dto::TxnRecordState state = dto::TxnRecordState::Created;
 
     K2_PAYLOAD_FIELDS(txnId, writeKeys, state);
-
-    friend std::ostream& operator<<(std::ostream& os, const State& st) {
-        const char* strstate = "bad state";
-        switch (st) {
-            case State::Created: strstate= "created"; break;
-            case State::InProgress: strstate= "in_progress"; break;
-            case State::ForceAborted: strstate= "force_aborted"; break;
-            case State::Aborted: strstate= "aborted"; break;
-            case State::Committed: strstate= "committed"; break;
-            case State::Deleted: strstate= "deleted"; break;
-            default: break;
-        }
-        return os << strstate;
-    }
 
     // The last action on this TR (the action that put us into the above state)
     enum class Action : uint8_t {
@@ -197,15 +135,16 @@ public: // lifecycle
     // We cache this value and use it to expire transactions when they are outside retention window.
     void updateRetentionTimestamp(dto::Timestamp rts);
 
+    TxnRecord* getTxnRecordNoCreate(const dto::TxnId& txnId);
     // returns the record for an id. Creates a new record in Created state if one does not exist
-    TxnRecord& getTxnRecord(const TxnId& txnId);
-    TxnRecord& getTxnRecord(TxnId&& txnId);
+    TxnRecord& getTxnRecord(const dto::TxnId& txnId);
+    TxnRecord& getTxnRecord(dto::TxnId&& txnId);
 
     // delivers the given action for the given transaction.
     // If there is a failure we return an exception future with:
     // ClientError: indicates the client has attempted an invalid action and so the transaction should abort
     // ServerError: indicates that we had trouble processing the transaction. The client should abort.
-    seastar::future<> onAction(TxnRecord::Action action, TxnId txnId);
+    seastar::future<> onAction(TxnRecord::Action action, dto::TxnId txnId);
 
     // onAction can complete successfully or with one of these errors
     struct ClientError: public std::exception{
@@ -221,14 +160,16 @@ private: // methods driving the state machine
     // but no other validation has been performed. Upon problem, we return either a ClientError or ServerError
     seastar::future<> _inProgress(TxnRecord& rec);
     seastar::future<> _forceAborted(TxnRecord& rec);
-    seastar::future<> _end(TxnRecord& rec, TxnRecord::State state);
+    seastar::future<> _end(TxnRecord& rec, dto::TxnRecordState state);
     seastar::future<> _deleted(TxnRecord& rec);
     seastar::future<> _heartbeat(TxnRecord& rec);
     seastar::future<> _finalizeTransaction(TxnRecord& rec, FastDeadline deadline);
 
-    TxnRecord& _createRecord(TxnId txnId);
+    TxnRecord& _createRecord(dto::TxnId txnId);
 
 private: // fields
+    friend class K23SIPartitionModule;
+
     // Expiry lists. The order in the list is ascending so that the oldest item would be in the front
     TxnRecord::RWList _rwlist;
     TxnRecord::HBList _hblist;
@@ -241,7 +182,7 @@ private: // fields
     seastar::future<> _hbTask = seastar::make_ready_future();
 
     // the primary store for transaction records
-    std::unordered_map<TxnId, TxnRecord> _transactions;
+    std::unordered_map<dto::TxnId, TxnRecord> _transactions;
 
     // the configuration for the k23si module
     K23SIConfig _config;
