@@ -27,12 +27,136 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/RetryStrategy.h>
 
 #include "txbench_common.h"
+#include <cstdlib>
+#include <ctime>
+#include <unordered_map>
+
+class Service : public seastar::weakly_referencable<Service> {
+public:  // application lifespan
+    Service():
+        _stopped(true) {
+        K2INFO("ctor");
+    };
+
+    virtual ~Service() {
+        K2INFO("dtor");
+    }
+
+    // required for seastar::distributed interface
+    seastar::future<> gracefulStop() {
+        K2INFO("stop");
+        _stopped = true;
+        // unregistar all observers
+        k2::RPC().registerMessageObserver(GET_DATA_URL, nullptr);
+        k2::RPC().registerMessageObserver(REQUEST, nullptr);
+        k2::RPC().registerMessageObserver(START_SESSION, nullptr);
+        k2::RPC().registerLowTransportMemoryObserver(nullptr);
+        return seastar::make_ready_future<>();
+    }
+
+    seastar::future<> start() {
+        _stopped = false;
+
+        _registerDATA_URL();
+        _registerSTART_SESSION();
+        _registerREQUEST();
+
+        k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
+            K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
+        });
+        return seastar::make_ready_future<>();
+    }
+
+private:
+    void _registerDATA_URL() {
+        K2INFO("TCP endpoint is: " << k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
+        k2::RPC().registerMessageObserver(GET_DATA_URL,
+            [this](k2::Request&& request) mutable {
+                auto response = request.endpoint.newPayload();
+                auto ep = (seastar::engine()._rdma_stack?
+                           k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
+                           k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
+                K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
+                response->write(ep->getURL());
+                return k2::RPC().sendReply(std::move(response), request);
+            });
+    }
+
+    void _registerSTART_SESSION() {
+        k2::RPC().registerMessageObserver(START_SESSION, [this](k2::Request&& request) mutable {
+            auto sid = uint64_t(std::rand());
+            if (request.payload) {
+                SessionConfig config{};
+                request.payload->read((void*)&config, sizeof(config));
+
+                BenchSession session(request.endpoint, sid, config);
+                auto result = _sessions.try_emplace(sid, std::move(session));
+                assert(result.second);
+                K2INFO("Starting new session: " << sid);
+                auto resp = request.endpoint.newPayload();
+                SessionAck ack{.sessionID=sid};
+                resp->write((void*)&ack, sizeof(ack));
+                return k2::RPC().sendReply(std::move(resp), request);
+            }
+            return seastar::make_ready_future();
+        });
+    }
+
+    void _registerREQUEST() {
+        k2::RPC().registerMessageObserver(REQUEST, [this](k2::Request&& request) mutable {
+            if (request.payload) {
+                uint64_t sid = 0;
+                uint64_t reqId = 0;
+                request.payload->read((void*)&sid, sizeof(sid));
+                request.payload->read((void*)&reqId, sizeof(reqId));
+
+                auto siditer = _sessions.find(sid);
+                if (siditer != _sessions.end()) {
+                    auto& session = siditer->second;
+                    session.runningSum += reqId;
+                    session.totalSize += session.config.responseSize;
+                    session.totalCount += 1;
+                    session.unackedSize += session.config.responseSize;
+                    session.unackedCount += 1;
+                    if (session.config.echoMode) {
+                        auto&& buffs = request.payload->release();
+                        _data.insert(_data.end(), std::move_iterator(buffs.begin()), std::move_iterator(buffs.end()));
+                    }
+                    if (session.unackedCount >= session.config.ackCount) {
+                        auto response = request.endpoint.newPayload();
+                        Ack ack{.sessionID=sid, .totalCount=session.totalCount, .totalSize=session.totalSize, .checksum=session.runningSum};
+                        response->write((void*)&ack, sizeof(ack));
+                        if (session.config.echoMode) {
+                            for (auto&& buf: _data) {
+                                response->write(buf.get(), buf.size());
+                            }
+                            _data.clear();
+                        }
+                        return k2::RPC().send(ACK, std::move(response), request.endpoint).
+                        then([&] (){
+                            session.unackedSize = 0;
+                            session.unackedCount = 0;
+                        });
+                        
+                    }
+                }
+            }
+            return seastar::make_ready_future();
+        });
+    }
+
+private:
+    // flag we need to tell if we've been stopped
+    bool _stopped;
+    std::unordered_map<uint64_t, BenchSession> _sessions;
+    std::vector<k2::Binary> _data;
+}; // class Service
 
 class Client {
 public:  // application lifespan
     Client():
         _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<k2::String>>()),
-        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
+        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1ms),
         _data(0),
         _stopped(true),
         _haveSendPromise(false),
@@ -124,6 +248,20 @@ public:  // application lifespan
             K2INFO("unackedSize=" << _session.unackedSize);
             K2INFO("unackedCount=" << _session.unackedCount);
             K2INFO("testDuration=" << k2::msec(_actualTestDuration).count()  << "ms");
+            uint64_t vector_size = _duration_counts.size();
+            if (vector_size > 0){
+                K2INFO("Latency 50% =" << _duration_counts[(int)(vector_size/100.0*50)]  << "ns");
+                K2INFO("Latency 90% =" <<  _duration_counts[(int)(vector_size/100.0*90)] << "ns");
+                K2INFO("Latency 99% ==" <<  _duration_counts[(int)(vector_size/100.0*99)] << "ns");
+                K2INFO("Latency 99.9% ==" << _duration_counts[(int)(vector_size/100.0*99.9)]  << "ns");
+                K2INFO("Latency 99.99% ==" << _duration_counts[(int)(vector_size/100.0*99.99)]  << "ns");
+
+                K2INFO("Latency Size: " << vector_size);
+                for (uint64_t i=10;i>=1;--i){
+                    K2INFO("Latency " << i << " ==" << _duration_counts[vector_size-i]  << "ns");
+                }
+            }
+
             _stopped = true;
             _stopPromise.set_value();
         });
@@ -156,8 +294,9 @@ private:
                     return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
                 }
                 k2::String remoteURL;
-                for (auto&& buf: payload->release()) {
-                    remoteURL.append((char*)buf.get_write(), buf.size());
+                if (!payload->read(remoteURL)) {
+                    K2ERROR("Unable to read remote URL in GET_DATA_URL response");
+                    return seastar::make_exception_future<>(std::runtime_error("cannot parse remote endpoint"));
                 }
                 K2INFO("Found remote data endpoint: " << remoteURL);
                 _session.client = *(k2::RPC().getTXEndpoint(remoteURL));
@@ -241,6 +380,7 @@ private:
                 for (uint64_t reqid = _session.totalCount - _session.unackedCount; reqid < ack.totalCount; reqid++) {
                     auto idx = reqid % _session.config.pipelineCount;
                     auto dur = now - _requestIssueTimes[idx];
+                    _duration_counts.push_back(k2::nsec(dur).count());
                     _requestLatency.add(dur);
                 }
                 _session.unackedCount = _session.totalCount - ack.totalCount;
@@ -267,10 +407,24 @@ private:
                     _sendProm = seastar::promise<>();
                     return _sendProm.get_future();
                 }
-                return seastar::make_ready_future<>();
             }
         ).finally([this] {
+            int vector_size = _duration_counts.size();
+            K2INFO("Total Size: " << vector_size);
+            uint64_t max = 0;
+            for (int i = 0; i<vector_size;++i){
+                if (_duration_counts[i] >= 10000000){
+                    K2INFO("Large Size: " << i<<" " << _duration_counts[i]);
+                }
+                if (_duration_counts[i] > max)
+                    max = _duration_counts[i];
+            }
+            K2INFO("Maximum Size: " << max);
+            
+            std::sort(_duration_counts.begin(), _duration_counts.end()); 
+            K2INFO("Total Size2: " << _duration_counts.size());
             _actualTestDuration = k2::Clock::now() - _start;
+
         });
     }
 
@@ -299,6 +453,7 @@ private:
 
 private:
     std::vector<k2::String> _tcpRemotes;
+    std::vector<uint64_t> _duration_counts;
     k2::Duration _testDuration;
     k2::Duration _actualTestDuration;
     char* _data;
@@ -317,9 +472,11 @@ private:
 
 int main(int argc, char** argv) {
     k2::App app("txbench_client");
+    app.addApplet<Service>();
     app.addApplet<Client>();
     app.addOptions()
         ("request_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to send with each request")
+        ("tx_xcore_loopback", bpo::value<bool>()->default_value(false), "Whether enable the in process loopback across different cores")
         ("ack_count", bpo::value<uint32_t>()->default_value(5), "How many messages do we ack at once")
         ("pipeline_depth_mbytes", bpo::value<uint32_t>()->default_value(200), "How much data do we allow to go un-ACK-ed")
         ("pipeline_depth_count", bpo::value<uint32_t>()->default_value(10), "How many requests do we allow to go un-ACK-ed")

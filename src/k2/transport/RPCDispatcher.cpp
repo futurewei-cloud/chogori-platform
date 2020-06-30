@@ -72,6 +72,13 @@ RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
         }
     });
 
+    auto serverep = proto->getServerEndpoint();
+    if (serverep){
+        std::pair<String, int> url_core;
+        url_core = std::make_pair(serverep->getURL(), seastar::engine().cpu_id());
+        K2DEBUG("BroadCast URL and Core ID" << serverep->getURL());
+        return RPCDist().invoke_on_all(&k2::RPCDispatcher::setAddressCore, url_core);
+    }
     return seastar::make_ready_future<>();
 }
 
@@ -150,43 +157,64 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
     }
 }
 
-void RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
 
+seastar::future<>
+RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
+    auto ep = RPC().getServerEndpoint(endpoint.getProtocol());
     auto protoi = _protocols.find(endpoint.getProtocol());
     if (protoi == _protocols.end()) {
         K2WARN("Unsupported protocol: "<< endpoint.getProtocol());
-        return;
+        return seastar::make_ready_future<>();
     }
     auto serverep = protoi->second->getServerEndpoint();
     K2DEBUG("sending message for verb: " << int(verb) << ", to endpoint=" << endpoint.getURL()
-            << ", with server endpoint: " << (serverep ? serverep->getURL() : String("none")));
-    if (serverep && endpoint == *serverep) {
-        // deliver via a future to possibly yield if there is a loop of send/receive requests
-        (void) seastar::sleep(0ns)
-            .then([disp=weak_from_this(), verb, endpoint, meta=std::move(meta), payload=std::move(payload)] () mutable {
-                if (disp) {
-                    // rewind the payload to the correct position
-                    payload->seek(txconstants::MAX_HEADER_SIZE);
-                    meta.setPayloadSize(payload->getDataRemaining());
-                    disp->_handleNewMessage(Request(verb, endpoint, std::move(meta), std::move(payload)));
-                }
-        });
-        return;
+            << ", with server endpoint: " << (serverep ? serverep->getURL() : String("none"))
+            << ", payload size=" << (payload?payload->getSize():0)
+            << ", payload capacity=" << (payload?payload->getCapacity():0));
+    if (_txUseCrossCoreLoopback()) {
+        auto core = _url_cores.find(endpoint.getURL());
+        if (core != _url_cores.end()){
+            // rewind the payload to the correct position
+            payload->seek(txconstants::MAX_HEADER_SIZE);
+            meta.setPayloadSize(payload->getDataRemaining());
+
+            if (serverep && endpoint == *serverep){
+                _handleNewMessage(Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
+            }
+            else{
+                //We don't care about the result of this call since we don't make a promise that we're going to deliver the data.
+                (void) RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload))).
+                handle_exception([&](auto exc) mutable {
+                    K2ERROR_EXC("invoke_on failed", exc);
+                    return seastar::make_ready_future();
+                });
+            }
+            return seastar::make_ready_future<>();
+        }
     }
     protoi->second->send(verb, std::move(payload), endpoint, std::move(meta));
+    return seastar::make_ready_future<>();
 }
 
-void RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint) {
+
+seastar::future<>
+RPCDispatcher::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint) {
     K2DEBUG("Plain send");
     MessageMetadata metadata;
-    _send(verb, std::move(payload), endpoint, std::move(metadata));
+    return _send(verb, std::move(payload), endpoint, std::move(metadata));
 }
 
-void RPCDispatcher::sendReply(std::unique_ptr<Payload> payload, Request& forRequest) {
-    K2DEBUG("Reply send for request: " << forRequest.metadata.requestID);
+seastar::future<>
+RPCDispatcher::setAddressCore(std::pair<String, int> url_core) {
+    _url_cores.insert(std::move(url_core));
+    return seastar::make_ready_future<>();
+}
+
+seastar::future<>
+RPCDispatcher::sendReply(std::unique_ptr<Payload> payload, Request& forRequest) {
     MessageMetadata metadata;
     metadata.setResponseID(forRequest.metadata.requestID);
-    _send(InternalVerbs::NIL, std::move(payload), forRequest.endpoint, std::move(metadata));
+    return _send(InternalVerbs::NIL, std::move(payload), forRequest.endpoint, std::move(metadata));
 }
 
 seastar::future<std::unique_ptr<Payload>>
@@ -199,8 +227,6 @@ RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoi
     // record the promise so that we can fulfil it if we get a response
     MessageMetadata metadata;
     metadata.setRequestID(msgid);
-
-    _send(verb, std::move(payload), endpoint, std::move(metadata));
 
     seastar::timer<> timer([this, msgid] {
         // raise an exception in the promise for this request.
@@ -216,7 +242,12 @@ RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoi
     auto fut = prom.get_future();
     _rrPromises.emplace(msgid, ResponseTracker{std::move(prom), std::move(timer)});
 
-    return fut;
+    return _send(verb, std::move(payload), endpoint, std::move(metadata)).
+    then([fut=std::move(fut)] () mutable {
+        return std::move(fut);
+    });
+
+
 }
 
 void RPCDispatcher::registerLowTransportMemoryObserver(LowTransportMemoryObserver_t observer) {
