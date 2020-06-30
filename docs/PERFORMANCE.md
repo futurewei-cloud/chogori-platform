@@ -73,13 +73,13 @@ Transaction Latency percentiles:
 ### Multi-partition throughput test
 10 client cores, 2 servers with 4 cores each, pipeline depth 1, 1 read and 2 writes per transaction:
 
-|                      | 5/15/2020   | 6/08/2020  |
-| :---                 | :---------: | :--------: |
-| Aggregate Txns/sec   | 64,500      | 66,000     |
-| p50 Latency (usec)   | 119         | 116        |
-| p90 Latency (usec)   | 193         | 189        |
-| p99 Latency (usec)   | 278         | 274        |
-| p99.9 Latency (usec) | 341         | 339        |
+|                      | 5/15/2020   | 6/08/2020  | 6/30/2020  |
+| :---                 | :---------: | :--------: | :--------: |
+| Aggregate Txns/sec   | 64,500      | 66,000     | 72,000     |
+| p50 Latency (usec)   | 119         | 116        | 108        |
+| p90 Latency (usec)   | 193         | 189        | 167        |
+| p99 Latency (usec)   | 278         | 274        | 235        |
+| p99.9 Latency (usec) | 341         | 339        | 286        |
 
 
 ## TPC-C Benchmark, New Order and Payment transaction types (src/k2/cmd/tpcc/)
@@ -100,17 +100,18 @@ New Order Transaction Latency percentiles:
 
 Percentile latencies are for New Order transaction type. Throughput is for both New Order and Payment types.
 
-|                         | 5/15/2020   | 6/12/2020  |
-| :---                    | :---------: | :--------: |
-| Aggregate Txns/sec      | 7,200       | 9,600      |
-| Agg. read/write ops/sec | 208,000     | 283,000    |
-| p50 Latency (usec)      | 500         | 440        |
-| p90 Latency (usec)      | 900         | 590        |
-| p99 Latency (usec)      | 1200        | 700        |
-| p99.9 Latency (usec)    | 1500        | 820        |
+|                         | 5/15/2020   | 6/12/2020  | 6/30/2020  |
+| :---                    | :---------: | :--------: | :--------: |
+| Aggregate Txns/sec      | 7,200       | 9,600      | 12,800     |
+| Agg. read/write ops/sec | 208,000     | 283,000    | 375,800    |
+| p50 Latency (usec)      | 500         | 440        | 360        |
+| p90 Latency (usec)      | 900         | 590        | 470        |
+| p99 Latency (usec)      | 1200        | 700        | 550        |
+| p99.9 Latency (usec)    | 1500        | 820        | 560        |
 
 ## Summary of performance-relevant changes by date
 
-- 5/15/2020: Initial open source release
-- 6/08/2020: Allow multiple persistence endpoints, instead of one per process. Update dependency packages.
+- 6/30/2020: Improvements for core-to-self and core-to-core loopback
 - 6/12/2020: Manual pre-split range partitioning, allows for better load balance with TPC-C.
+- 6/08/2020: Allow multiple persistence endpoints, instead of one per process. Update dependency packages.
+- 5/15/2020: Initial open source release
