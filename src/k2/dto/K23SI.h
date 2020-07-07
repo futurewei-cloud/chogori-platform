@@ -157,7 +157,7 @@ struct K23SIReadRequest {
     String collectionName; // the name of the collection
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
-    Key key; // the key to read
+    Key key; // the key to read, schema name is baked into the range key
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
     friend std::ostream& operator<<(std::ostream& os, const K23SIReadRequest& r) {
         return os << "{" << "pvid=" << r.pvid << ", colName=" << r.collectionName
@@ -166,10 +166,11 @@ struct K23SIReadRequest {
 };
 
 // The response for READs
-template<typename ValueType>
 struct K23SIReadResponse {
-    SerializeAsPayload<ValueType> value; // the value we found
-    K2_PAYLOAD_FIELDS(value);
+    uint32_t schemaVersion;
+    std::vector<uint32_t> includedFields; // Indices of fields included in the result, to support optional fields. Empty vector means all fields included
+    Payload value;
+    K2_PAYLOAD_FIELDS(schemaVersion, includedFields, value);
 };
 
 // status codes for reads
@@ -195,10 +196,13 @@ struct K23SIWriteRequest {
     Key trh;
     bool isDelete = false; // is this a delete write?
     bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
+    bool isPartialUpdate = false; // If true, includedFields is interpreted to be the only fields to update
     // use the name "key" so that we can use common routing from CPO client
-    Key key; // the key for the write
+    Key key; // the key to read, schema name is baked into the range key
+    uint32_t schemaVersion;
+    std::vector<uint32_t> includedFields; // Indices of fields included in the request, to support optional fields and partial updates. Empty vector means all fields included
     SerializeAsPayload<ValueType> value; // the value of the write
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, isPartialUpdate, key, schemaVersion, includedFields, value);
     friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest<ValueType>& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
@@ -208,6 +212,49 @@ struct K23SIWriteRequest {
 
 struct K23SIWriteResponse {
     K2_PAYLOAD_EMPTY;
+};
+
+enum class K23SIQueryOp : uint8_t {
+    EQ,
+    NEQ,
+    GT,
+    GTE,
+    LT,
+    LTE
+};
+
+struct K23SIQueryPredicate {
+    K23SIQueryOp op;
+    Payload operand;
+    K2_PAYLOAD_FIELDS(op, operand);
+};
+
+struct K23SIQueryRequest {
+    Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    String collectionName; // the name of the collection
+    K23SI_MTR mtr; // the MTR for the issuing transaction
+    Key prefix; // prefix to scan
+    Key exclusiveStartKey; // where to begin scan (exclusive)
+    Key endKey; // where to end the scan (optional, may be empty string)
+    uint32_t numRecords; // Records to return in a single response
+
+    // All predicates will be ANDed together to select records
+    std::vector<K23SIQueryPredicate> predicates;
+    std::vector<uint32_t> projectedFields; // Indices of fields to project. Empty means all fields
+
+    K2_PAYLOAD_FIELDS(pvid, collectioName, mtr, prefix, exclusiveStartKey, endKey, numRecords, predicates, projectedFields);
+};
+
+struct K23SIQueryRecord {
+    Payload value;
+    uint32_t schemaVersion;
+    std::vector<uint32_t> includedFields; // Indices of included fields, to support optional fields
+};    
+
+struct K23SIQueryResponse {
+    Key lastScanned; // Last key scanned, can be used as exclusive start to continue scanning
+    std::vector<K23SIQueryRecord> records;
+    K2_PAYLOAD_FIELDS(lastScanned, records);
 };
 
 struct K23SITxnHeartbeatRequest {

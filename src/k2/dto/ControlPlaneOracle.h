@@ -22,7 +22,10 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
+
 #include "Collection.h"
+#include "document/Types.h"
+
 // This file contains DTOs for K2 ControlPlaneOracle
 
 namespace k2 {
@@ -58,6 +61,25 @@ struct CollectionGetResponse {
     // The collection we found
     Collection collection;
     K2_PAYLOAD_FIELDS(collection);
+};
+
+// Request to create a schema and attach it to a collection
+// If schemaName already exists, it creates a new version
+struct CreateSchemaRequest {
+    String collectionName;
+    String schemaName;
+    std::vector<DocumentFieldType> fields;
+    std::vector<String> fieldNames;
+    std::vector<uint32_t> partitionKeyFields; // Indices of the fields to use for the partitionKey
+    std::vector<uint32_t> rangeKeyFields; // Indices of the fields to use for the rangeKey
+    K2_PAYLOAD_FIELDS(collectioName, schemaName, fields, fieldNames, partitionKeyFields, rangeKeyFields);
+};
+
+// Response to CreateSchemaRequest
+// TODO: does getting the response mean the operation is complete?
+struct CreateSchemaResponse {
+    uint32_t version; // version of the created schema
+    K2_PAYLOAD_COPYABLE;
 };
 
 }  // namespace dto

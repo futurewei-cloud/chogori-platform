@@ -66,6 +66,7 @@ public:
     }
 
     Status status;
+    uint32_t schemaVersion;
 private:
     dto::K23SIReadResponse<ValueType> response;
 };
@@ -137,84 +138,24 @@ public:
     K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
     template <typename ValueType>
-    seastar::future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
-        if (!_started) {
-            return seastar::make_exception_future<ReadResult<ValueType>>(std::runtime_error("Invalid use of K2TxnHandle"));
-        }
-
-        if (_failed) {
-            return seastar::make_ready_future<ReadResult<ValueType>>(ReadResult<ValueType>(_failed_status, dto::K23SIReadResponse<ValueType>()));
-        }
-
-        _client->read_ops++;
-
-        auto* request = new dto::K23SIReadRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            collection,
-            _mtr,
-            std::move(key)
-        };
-
-        return _cpo_client->PartitionRequest
-            <dto::K23SIReadRequest, dto::K23SIReadResponse<ValueType>, dto::Verbs::K23SI_READ>
-            (_options.deadline, *request).
-            then([this] (auto&& response) {
-                auto& [status, k2response] = response;
-                checkResponseStatus(status);
-
-                auto userResponse = ReadResult<ValueType>(std::move(status), std::move(k2response));
-                return seastar::make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
-            }).finally([request] () { delete request; });
+    seastar::future<ReadResult<ValueType>> read(const ValueType& document, const String& collection, const String& schema, uint32_t schemaVersion) {
+        // TODO
     }
+
+    seastar::future<ReadResult<SerializableDocument>> read(const SerializableDocument& document);
+
+    // TODO query interface
 
     template <typename ValueType>
-    seastar::future<WriteResult> write(dto::Key key, const String& collection, const ValueType& value, bool erase=false) {
-        if (!_started) {
-            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
-        }
-
-        if (_failed) {
-            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
-        }
-
-        if (!_write_set.size()) {
-            _trh_key = key;
-            _trh_collection = collection;
-        }
-        _write_set.push_back(key);
-        _client->write_ops++;
-
-        auto* request = new dto::K23SIWriteRequest<ValueType>{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            collection,
-            _mtr,
-            _trh_key,
-            erase,
-            _write_set.size() == 1,
-            std::move(key),
-            SerializeAsPayload<ValueType>{value}
-        };
-
-        return _cpo_client->PartitionRequest
-            <dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
-            (_options.deadline, *request).
-            then([this] (auto&& response) {
-                auto& [status, k2response] = response;
-                checkResponseStatus(status);
-
-                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
-                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
-                    K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
-                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
-                    makeHeartbeatTimer();
-                    _heartbeat_timer.armPeriodic(_heartbeat_interval);
-                }
-
-                return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
-            }).finally([request] () { delete request; });
+    seastar::future<WriteResult> write(ValueType document, const String& collection, const String& schema, bool erase=false) {
+        // TODO
     }
 
-    seastar::future<WriteResult> erase(dto::Key key, const String& collection);
+    seastar::future<WriteResult> write(SerializableDocument document);
+
+    seastar::future<WriteResult> partialUpdate(SerializableDocument document);
+
+    seastar::future<WriteResult> erase(SerializableDocument document);
 
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed
