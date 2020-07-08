@@ -27,6 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/Status.h>
 
 #include "Collection.h"
+#include "SerializableDocument.h"
 #include "Timestamp.h"
 
 namespace k2 {
@@ -167,10 +168,8 @@ struct K23SIReadRequest {
 
 // The response for READs
 struct K23SIReadResponse {
-    uint32_t schemaVersion;
-    std::vector<uint32_t> includedFields; // Indices of fields included in the result, to support optional fields. Empty vector means all fields included
-    Payload value;
-    K2_PAYLOAD_FIELDS(schemaVersion, includedFields, value);
+    SerializableDocument document;
+    K2_PAYLOAD_FIELDS(document);
 };
 
 // status codes for reads
@@ -199,10 +198,9 @@ struct K23SIWriteRequest {
     bool isPartialUpdate = false; // If true, includedFields is interpreted to be the only fields to update
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key to read, schema name is baked into the range key
-    uint32_t schemaVersion;
-    std::vector<uint32_t> includedFields; // Indices of fields included in the request, to support optional fields and partial updates. Empty vector means all fields included
-    SerializeAsPayload<ValueType> value; // the value of the write
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, isPartialUpdate, key, schemaVersion, includedFields, value);
+    SerializableDocument document;
+
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, isPartialUpdate, key, document);
     friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest<ValueType>& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
@@ -220,40 +218,32 @@ enum class K23SIQueryOp : uint8_t {
     GT,
     GTE,
     LT,
-    LTE
-};
-
-struct K23SIQueryPredicate {
-    K23SIQueryOp op;
-    Payload operand;
-    K2_PAYLOAD_FIELDS(op, operand);
+    LTE,
+    STARTS_WITH
 };
 
 struct K23SIQueryRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName; // the name of the collection
+    String schemaName;
     K23SI_MTR mtr; // the MTR for the issuing transaction
-    Key prefix; // prefix to scan
     Key exclusiveStartKey; // where to begin scan (exclusive)
-    Key endKey; // where to end the scan (optional, may be empty string)
     uint32_t numRecords; // Records to return in a single response
 
     // All predicates will be ANDed together to select records
-    std::vector<K23SIQueryPredicate> predicates;
-    std::vector<uint32_t> projectedFields; // Indices of fields to project. Empty means all fields
+    std::vector<K23SIQueryOp> predicateOps;
+    std::vector<uint32_t> predicateFields; // by index into schema
+    // Pack operands into a single payload to reduce fragmentation
+    Payload predicateOperands;
 
-    K2_PAYLOAD_FIELDS(pvid, collectioName, mtr, prefix, exclusiveStartKey, endKey, numRecords, predicates, projectedFields);
+    std::vector<uint64_t> excludedFields; // Bitmap of fields to exclude from projection.
+
+    K2_PAYLOAD_FIELDS(pvid, collectionName, schemaName, mtr, exclusiveStartKey, numRecords, predicateOps, predicateFields, predicateOperands, excludedFields);
 };
-
-struct K23SIQueryRecord {
-    Payload value;
-    uint32_t schemaVersion;
-    std::vector<uint32_t> includedFields; // Indices of included fields, to support optional fields
-};    
 
 struct K23SIQueryResponse {
     Key lastScanned; // Last key scanned, can be used as exclusive start to continue scanning
-    std::vector<K23SIQueryRecord> records;
+    std::vector<SerializableDocument> records;
     K2_PAYLOAD_FIELDS(lastScanned, records);
 };
 

@@ -24,29 +24,47 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <k2/dto/DocumentTypes.h>
-#include <k2/dto/Collection.h>
+#include <k2/dto/ControlPlaneOracle.h>
 
 namespace k2 {
+namespace dto {
 
 class SerializableDocument {
 public:
-    SerializableDocument(String collectionName, String schemaName, uint32_t schemaVersion);
 
-    template <typename FieldType, dto::DocumentFieldType type>
+    template <typename FieldType, DocumentFieldType type>
     void serializeField(FieldType field, const String& name);
 
-    template <typename FieldType, dto::DocumentFieldType type>
+    template <typename FieldType, DocumentFieldType type>
     void serializeField(FieldType field, uint32_t fieldIndex);
 
-    template <typename FieldType, dto::DocumentFieldType type>
-    FieldType deserializeField(FieldType field, const String& name);
+    template <typename FieldType, DocumentFieldType type>
+    FieldType deserializeField(const String& name);
 
-    template <typename FieldType, dto::DocumentFieldType type>
-    FieldType deserializeField(FieldType field, uint32_t fieldIndex);
+    template <typename FieldType, DocumentFieldType type>
+    FieldType deserializeField(uint32_t fieldIndex);
 
-private:
-    dto::Key getPartitionKey();
-    dto::Key getRangeKey();
+    // We expose the payload in case the user wants to write it to file or otherwise 
+    // store it on their own. For normal K23SI operations the user does not need to touch this variable
+    Payload fieldData;
+
+    SerializableDocument(String collectionName, const Schema& schema);
+    SerializableDocument();
+
+    String collectionName;
+    Schema schema;
+
+    Key getPartitionKey();
+    Key getRangeKey();
+
+    // The following members are the ones that are serialized, along with fieldData
+    // Bitmap of fields that are excluded because they are optional or this is for a partial update
+    std::vector<uint64_t> excludedFields;
+    String schemaName;
+    uint32_t schemaVersion;
+
+    K2_PAYLOAD_FIELDS(fieldData, excludedFields, schemaName, schemaVersion);
 };
 
+} // ns dto
 } // ns k2

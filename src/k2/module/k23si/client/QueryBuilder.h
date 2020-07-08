@@ -23,15 +23,24 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <cstdint>
+#include <k2/dto/DocumentTypes.h>
+#include <k2/dto/Collection.h>
 
 namespace k2 {
-namespace dto {
 
-enum class DocumentFieldType : uint16_t {
-    STRING,
-    UINT32T
+class QueryBuilder {
+public:
+
+    template <typename FieldType, dto::DocumentFieldType type>
+    void addPredicate(dto::K23SIQueryOp op, FieldType operand, const String& fieldName);
+
+    template <typename FieldType, dto::DocumentFieldType type>
+    void addPredicate(dto::K23SIQueryOp op, FieldType operand, uint32_t fieldIndex);
+
+    void addProjection(std::vector<uint32_t> fieldIndices);
+
+private:
+    QueryBuilder(String collectionName, const dto::Schema& schema);
 };
 
-} // ns dto
 } // ns k2

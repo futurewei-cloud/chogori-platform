@@ -37,6 +37,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/Collection.h>
+#include <k2/module/k23si/client/QueryBuilder.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 #include <k2/tso/client_lib/tso_clientlib.h>
@@ -59,16 +60,16 @@ public:
 template<typename ValueType>
 class ReadResult {
 public:
-    ReadResult(Status s, dto::K23SIReadResponse<ValueType>&& r) : status(std::move(s)), response(std::move(r)) {}
+    ReadResult(Status s, dto::K23SIReadResponse&& r) : status(std::move(s)), document(std::move(r.document)) {}
 
     ValueType& getValue() {
-        return response.value.val;
+        // TODO need to specialize for user-defined types
+        return document;
     }
 
     Status status;
-    uint32_t schemaVersion;
 private:
-    dto::K23SIReadResponse<ValueType> response;
+    dto::SerializableDocument document;
 };
 
 class WriteResult{
@@ -78,6 +79,19 @@ public:
 
 private:
     dto::K23SIWriteResponse response;
+};
+
+typedef dto::Key QueryContinuationToken;
+
+class QueryResult {
+public:
+    QueryResult(Status s, dto::K23SIQueryResponse&& r) : status(std::move(s)), 
+            continuationToken(std::move(r.lastScanned)), 
+            documents(std::move(r.records)) {}
+
+    Status status;
+    QueryContinuationToken continuationToken;
+    std::vector<SerializableDocument> documents;
 };
 
 class EndResult{
@@ -104,6 +118,8 @@ public:
     seastar::future<> gracefulStop();
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
+    dto::SerializableDocument makeSerializableDocument(const String& collection, const String& schema);
+    QueryBuilder makeQueryBuilder(const String& collection, const String& schema, QueryContinuationToken=QueryContinuationToken{});
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -140,15 +156,17 @@ public:
     template <typename ValueType>
     seastar::future<ReadResult<ValueType>> read(const ValueType& document, const String& collection, const String& schema, uint32_t schemaVersion) {
         // TODO
+        throw std::runtime_error("Not implemented");
     }
 
-    seastar::future<ReadResult<SerializableDocument>> read(const SerializableDocument& document);
+    seastar::future<ReadResult<SerializableDocument>> read(SerializableDocument document);
 
-    // TODO query interface
+    seastar::future<QueryResult> query(const QueryBuilder& q);
 
     template <typename ValueType>
     seastar::future<WriteResult> write(ValueType document, const String& collection, const String& schema, bool erase=false) {
         // TODO
+        throw std::runtime_error("Not implemented");
     }
 
     seastar::future<WriteResult> write(SerializableDocument document);
