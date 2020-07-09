@@ -37,7 +37,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/Collection.h>
-#include <k2/module/k23si/client/QueryBuilder.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 #include <k2/tso/client_lib/tso_clientlib.h>
@@ -119,7 +118,7 @@ public:
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
     dto::SerializableDocument makeSerializableDocument(const String& collection, const String& schema);
-    QueryBuilder makeQueryBuilder(const String& collection, const String& schema, QueryContinuationToken=QueryContinuationToken{});
+    dto::K23SIQueryRequest makeQueryRequest(const String& collection, const String& schema, QueryContinuationToken=QueryContinuationToken{});
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -161,7 +160,7 @@ public:
 
     seastar::future<ReadResult<SerializableDocument>> read(SerializableDocument document);
 
-    seastar::future<QueryResult> query(const QueryBuilder& q);
+    seastar::future<QueryResult> query(const K23SIQueryRequest& q);
 
     template <typename ValueType>
     seastar::future<WriteResult> write(ValueType document, const String& collection, const String& schema, bool erase=false) {

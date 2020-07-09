@@ -92,7 +92,7 @@ private:
             // FirstName is our range key
             schema.rangeKeyFields = std::vector<uint32_t>{1};
 
-            dto::CreateSchemaRequest request{ "demo_schema", std::move(schema) };
+            dto::CreateSchemaRequest request{ "demo", std::move(schema) };
             return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *(RPC().getTXEndpoint(_cpo())), 1s);
         })
         .then([this] (auto&& response) {
@@ -103,9 +103,9 @@ private:
         })
         .then([this] (K2TxnHandle&& txn) {
             SerializableDocument writeDoc = _client.makeSerializableDocument("demo", "demo_schema");
-            writeDoc.serializeField<String, dto::DocumentFieldType::STRING>("Baggins", "LastName");
-            writeDoc.serializeField<String, dto::DocumentFieldType::STRING>("Bilbo", "FirstName");
-            writeDoc.serializeField<uint32_t, dto::DocumentFieldType::UINT32T>(777, "Balance");
+            writeDoc.serializeNext<String>("Baggins"); // LastName
+            writeDoc.serializeNext<String>("Bilbo"); // FirstName
+            writeDoc.serializeNext<uint32_t>(777); // Balance
 
             return txn.write(std::move(writeDoc))
             .then([&txn] (WriteResult&& result) {
@@ -116,14 +116,14 @@ private:
         .then([this] (K2TxnHandle&& txn) {
             SerializableDocument readDoc = _client.makeSerializableDocument("demo", "demo_schema");
             // We need the partition and range key fields to do the read request
-            readDoc.serializeField<String, dto::DocumentFieldType::STRING>("Baggins", "LastName");
-            readDoc.serializeField<String, dto::DocumentFieldType::STRING>("Bilbo", "FirstName");
+            readDoc.serializeNext<String>("Baggins"); // LastName
+            readDoc.serializeNext<String>("Bilbo"); // FirstName
 
             return txn.read(std::move(readDoc))
             .then([&txn] (ReadResult<SerializableDocument>&& result) {
                 K2ASSERT(result.status.is2xxOK(), "Read failed");
 
-                uint32_t balance = result.getValue().deserializeField<uint32_t, dto::DocumentFieldType::UINT32T>("Balance");
+                uint32_t balance = result.getValue().deserializeField<uint32_t>("Balance");
                 K2ASSERT(balance == 777, "We did not read our write");
                 return std::move(txn);
             });

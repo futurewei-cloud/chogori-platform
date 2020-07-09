@@ -32,20 +32,29 @@ namespace dto {
 class SerializableDocument {
 public:
 
-    template <typename FieldType, DocumentFieldType type>
-    void serializeField(FieldType field, const String& name);
+    // The document must be serialized in order. Schema will be enforced
+    template <typename FieldType>
+    void serializeNext(FieldType field);
 
-    template <typename FieldType, DocumentFieldType type>
-    void serializeField(FieldType field, uint32_t fieldIndex);
+    // Skip serializing the next field, for optional fields or partial updates
+    void skipNext();
 
-    template <typename FieldType, DocumentFieldType type>
+    // Deserialization can be in any order, but the preferred method is in-order
+    template <typename FieldType>
     FieldType deserializeField(const String& name);
 
-    template <typename FieldType, DocumentFieldType type>
+    template <typename FieldType>
     FieldType deserializeField(uint32_t fieldIndex);
 
-    // We expose the payload in case the user wants to write it to file or otherwise 
-    // store it on their own. For normal K23SI operations the user does not need to touch this variable
+    // We expose a shared payload in case the user wants to write it to file or otherwise 
+    // store it on their own. For normal K23SI operations the user does not need to touch this
+    Payload getSharedPayload();
+
+    // Bitmap of fields that are excluded because they are optional or this is for a partial update
+    std::vector<bool> excludedFields;
+    String schemaName;
+    uint32_t schemaVersion;
+
     Payload fieldData;
 
     SerializableDocument(String collectionName, const Schema& schema);
@@ -57,13 +66,7 @@ public:
     Key getPartitionKey();
     Key getRangeKey();
 
-    // The following members are the ones that are serialized, along with fieldData
-    // Bitmap of fields that are excluded because they are optional or this is for a partial update
-    std::vector<uint64_t> excludedFields;
-    String schemaName;
-    uint32_t schemaVersion;
-
-    K2_PAYLOAD_FIELDS(fieldData, excludedFields, schemaName, schemaVersion);
+    K2_PAYLOAD_FIELDS(excludedFields, schemaName, schemaVersion, fieldData);
 };
 
 } // ns dto

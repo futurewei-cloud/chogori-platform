@@ -223,6 +223,14 @@ enum class K23SIQueryOp : uint8_t {
 };
 
 struct K23SIQueryRequest {
+    template <typename FieldType>
+    void addPredicate(dto::K23SIQueryOp op, FieldType operand, const String& fieldName);
+
+    template <typename FieldType>
+    void addPredicate(dto::K23SIQueryOp op, FieldType operand, uint32_t fieldIndex);
+
+    void addProjection(std::vector<uint32_t> fieldIndices);
+
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName; // the name of the collection
     String schemaName;
@@ -236,7 +244,7 @@ struct K23SIQueryRequest {
     // Pack operands into a single payload to reduce fragmentation
     Payload predicateOperands;
 
-    std::vector<uint64_t> excludedFields; // Bitmap of fields to exclude from projection.
+    std::vector<bool> excludedFields; // Bitmap of fields to exclude from projection.
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, schemaName, mtr, exclusiveStartKey, numRecords, predicateOps, predicateFields, predicateOperands, excludedFields);
 };
