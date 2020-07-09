@@ -25,7 +25,8 @@ the schema is known at compile time and can be expressed as a C++ type. The othe
 class which allows the user to serialize/deserialize one field at a time. In both cases, as part of the 
 schema, the user defines which fields will be part of the partitionKey and which fields will be part of 
 the rangeKey. The client will automatically construct the partitionKey and rangeKey from the fields 
-serialized by the user.
+serialized by the user. The two interfaces (template-based C++ types and SerializableDocument) are cross-
+compatible.
 
 
 ## Supported Document Field Types
@@ -42,8 +43,21 @@ Every type used as a document field needs to be supported by us in code. We have
 
 The query operation is semi-programmable. We support a list of predicates, each with a relational operator 
 and an operand. The predicates will be applied and ANDed together. We also support a list of fields to 
-project.
+project. The query also returns an opaque continuation token (implemented as the last Key scanned), that 
+the user can use to continue getting results. A prefix-scan query is expressed through the predicates, 
+namely EQ and STARTS\_WITH operators on the rangeKey fields. The server will need to convert these 
+predicates into an efficient scan of the data.
+
+## Typed Payloads
 
 
-The query is a prefix scan with a key prefix, an exclusive start key (can be used to continue a scan), and 
-an optional end key.
+There is a question on if we should support Typed Payloads, meaning Payloads that encode the type of 
+each value (including support for nil and aggregate values) inline with the data. This would allow us to 
+simplify the implementation of the SerializableDocument a bit, and more importantly it provides 
+robustness if the schema gets lost for a document.
+
+
+The downside is space and CPU cache overhead on every document which we avoid in the normal Payload 
+implementation by sharing the schema among documents. This downside is probably not significant for 
+network messages since it is unlikely to push messages over a MTU boundary but it is much more 
+significant for data saved on the server.
