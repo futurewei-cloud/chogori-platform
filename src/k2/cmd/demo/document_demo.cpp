@@ -30,6 +30,11 @@ Copyright(c) 2020 Futurewei Cloud
 
 using namespace k2;
 
+template <typename T>
+void fieldVisitor(T field, String collection) {
+    K2INFO("The field data (of collection " << collection << ") is: " << field);
+}
+
 class Demo {
 public:  // application lifespan
     Demo():
@@ -125,6 +130,9 @@ private:
 
                 uint32_t balance = result.getValue().deserializeField<uint32_t>("Balance");
                 K2ASSERT(balance == 777, "We did not read our write");
+
+                result.getValue().fieldCursor = 0;
+                FOR_EACH_FIELD(result.getValue(), fieldVisitor, result.getValue().collectionName);
                 return std::move(txn);
             });
         })

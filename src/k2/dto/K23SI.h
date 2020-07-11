@@ -117,8 +117,7 @@ namespace dto {
 
 // A record in the 3SI version cache.
 struct DataRecord {
-    dto::Key key;
-    SerializeAsPayload<Payload> value;
+    SerializableDocument document;
     bool isTombstone = false;
     dto::TxnId txnId;
     enum Status: uint8_t {
@@ -126,7 +125,8 @@ struct DataRecord {
         Committed     // the record has been committed and we should use the key/value
         // aborted WIs don't need state - as soon as we learn that a WI has been aborted, we remove it
     } status;
-    K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
+
+    K2_PAYLOAD_FIELDS(document, isTombstone, txnId, status);
 };
 
 enum class TxnRecordState : uint8_t {
@@ -183,7 +183,6 @@ struct K23SIStatus {
     static const inline Status OperationNotAllowed=k2::Statuses::S405_Method_Not_Allowed;
 };
 
-template <typename ValueType>
 struct K23SIWriteRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName; // the name of the collection
@@ -201,7 +200,8 @@ struct K23SIWriteRequest {
     SerializableDocument document;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, isPartialUpdate, key, document);
-    friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest<ValueType>& r) {
+
+    friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
                   << r.isDelete << ", designate=" <<r.designateTRH << "}";

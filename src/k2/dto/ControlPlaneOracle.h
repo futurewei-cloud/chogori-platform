@@ -65,6 +65,7 @@ struct CollectionGetResponse {
 
 struct Schema {
     String name;
+    uint64_t id;
     uint32_t version;
     std::vector<DocumentFieldType> fields;
     std::vector<String> fieldNames;

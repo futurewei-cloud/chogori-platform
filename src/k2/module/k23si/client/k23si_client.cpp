@@ -140,10 +140,6 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         }).finally([request] () { delete request; });
 }
 
-seastar::future<WriteResult> K2TxnHandle::erase(dto::Key key, const String& collection) {
-    return write<int>(std::move(key), collection, 0, true);
-}
-
 K23SIClient::K23SIClient(const K23SIClientConfig &) :
         _tsoClient(AppBase().getDist<k2::TSO_ClientLib>().local()), _gen(std::random_device()()) {
     _metric_groups.clear();

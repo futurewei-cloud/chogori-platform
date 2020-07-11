@@ -31,20 +31,40 @@ namespace dto {
 
 class SerializableDocument {
 public:
-
     // The document must be serialized in order. Schema will be enforced
     template <typename FieldType>
-    void serializeNext(FieldType field);
+    void serializeNext(FieldType field) {
+        DocumentFieldType ft = TToDocumentFieldType<FieldType>();
+        if (ft != schema.fields[fieldCursor]) {
+            throw new std::runtime_error("Schema not followed in document serialization");
+        }
+
+        fieldData.write(field);
+        ++fieldCursor;
+    }
 
     // Skip serializing the next field, for optional fields or partial updates
-    void skipNext();
+    void skipNext() {
+        if (excludedFields.size() == 0) {
+            excludedFields = std::vector<bool>(schema.fields.size(), false);
+        }
+
+        excludedFields[fieldCursor] = true;
+        ++fieldCursor;
+    }
 
     // Deserialization can be in any order, but the preferred method is in-order
     template <typename FieldType>
-    FieldType deserializeField(const String& name);
+    FieldType deserializeField(const String& name) {
+        (void) name;
+        throw new std::runtime_error("Not implemented");
+    }
 
     template <typename FieldType>
-    FieldType deserializeField(uint32_t fieldIndex);
+    FieldType deserializeField(uint32_t fieldIndex) {
+        (void) fieldIndex;
+        throw new std::runtime_error("Not implemented");
+    }
 
     // We expose a shared payload in case the user wants to write it to file or otherwise 
     // store it on their own. For normal K23SI operations the user does not need to touch this
@@ -52,22 +72,42 @@ public:
 
     // Bitmap of fields that are excluded because they are optional or this is for a partial update
     std::vector<bool> excludedFields;
-    String schemaName;
+    uint64_t schemaID;
     uint32_t schemaVersion;
 
     Payload fieldData;
 
     SerializableDocument(String collectionName, const Schema& schema);
-    SerializableDocument();
+    SerializableDocument() = default;
+    SerializableDocument(const SerializableDocument& doc, bool copyPayload);
 
     String collectionName;
     Schema schema;
+    uint32_t fieldCursor = 0;
 
     Key getPartitionKey();
     Key getRangeKey();
 
-    K2_PAYLOAD_FIELDS(excludedFields, schemaName, schemaVersion, fieldData);
+    K2_PAYLOAD_FIELDS(excludedFields, schemaID, schemaVersion, fieldData);
 };
+
+#define FOR_EACH_FIELD(document, func, ...) \
+    do { \
+    document.fieldCursor = 0; \
+    while (document.fieldCursor < document.schema.fields.size()) { \
+        switch (document.schema.fields[document.fieldCursor]) { \
+            case DocumentFieldType::STRING: \
+                func<String>(document.deserializeField<String>(document.fieldCursor), __VA_ARGS__); \
+                break; \
+            case DocumentFieldType::UINT32T: \
+                func<uint32_t>(document.deserializeField<uint32_t>(document.fieldCursor), __VA_ARGS__); \
+                break; \
+            default: \
+                throw new std::runtime_error("Unknown type"); \
+        } \
+        document.fieldCursor++; \
+    } \
+    } while (0) \
 
 } // ns dto
 } // ns k2

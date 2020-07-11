@@ -25,6 +25,9 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <cstdint>
 
+#include <k2/common/Log.h>
+#include <k2/common/Common.h>
+
 namespace k2 {
 namespace dto {
 
@@ -32,6 +35,14 @@ enum class DocumentFieldType : uint16_t {
     STRING,
     UINT32T
 };
+
+template <typename T>
+DocumentFieldType TToDocumentFieldType() {
+    K2ASSERT(false, "Unsupported type for document");
+}
+
+template <> DocumentFieldType TToDocumentFieldType<String>() { return DocumentFieldType::STRING; }
+template <> DocumentFieldType TToDocumentFieldType<uint32_t>() { return DocumentFieldType::UINT32T; }
 
 } // ns dto
 } // ns k2
