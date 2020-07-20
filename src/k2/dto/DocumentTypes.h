@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <cstdint>
+#include <cstring>
 
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
@@ -31,9 +32,12 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-enum class DocumentFieldType : uint16_t {
-    STRING,
-    UINT32T
+enum class DocumentFieldType : uint8_t {
+    NULL_T = 0,
+    STRING = 1,
+    UINT32T = 2,
+    MAX_TYPE = 127
+    // Last bit is used to determine ascending/descending
 };
 
 template <typename T>
@@ -43,6 +47,40 @@ DocumentFieldType TToDocumentFieldType() {
 
 template <> DocumentFieldType TToDocumentFieldType<String>() { return DocumentFieldType::STRING; }
 template <> DocumentFieldType TToDocumentFieldType<uint32_t>() { return DocumentFieldType::UINT32T; }
+
+// Converts a document field type to a string suitable for being part of a key
+template <typename T>
+String DocumentFieldToKeyStringAscend(const T& field) {
+    K2ASSERT(false, "Unsupported type for document");
+}
+
+template <> String DocumentFieldToKeyStringAscend<String>(const String& field) {
+    // Sizes will not match if there are exta null bytes
+    K2ASSERT(field.size() == strlen(field.c_str()));
+    String typeByte("0");
+    typeByte[0] = DocumentFieldType::STRING;
+    return typeByte+field;
+}
+
+// Simple conversion to big-endian
+template <> String DocumentFieldToKeyStringAscend<uint32_t>(const uint32_t& field)
+{
+    // type byte + 4 bytes
+    String s("12345");
+    s[0] = DocumentFieldType::UINT32T;
+    s[1] = (uint8_t)(field >> 24);
+    s[2] = (uint8_t)(field >> 16);
+    s[3] = (uint8_t)(field >> 8);
+    s[4] = (uint8_t)(field);
+
+    return s;
+}
+
+String NullToKeyStringAscend() {
+    String s("n");
+    s[0] = '\0';
+    return s;
+}
 
 } // ns dto
 } // ns k2

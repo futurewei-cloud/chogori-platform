@@ -65,6 +65,10 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, [this] (dto::CreateSchemaRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleSchemaCreate, std::move(request));
+    });
+
     if (seastar::engine().cpu_id() == 0) {
         // only core 0 handles CPO business
         if (!fileutil::makeDir(_dataDir())) {
@@ -181,6 +185,66 @@ CPOService::handleGet(dto::CollectionGetRequest&& request) {
         response.collection = std::move(collection);
     }
     return RPCResponse(std::move(status), std::move(response));
+}
+
+seastar::future<std::tuple<Status, dto::SchemaCreateResponse>>
+CPOService::handleSchemaCreate(dto::SchemaCreateRequest&& request) {
+    K2INFO("Received schema create request for " << request.collectionName << " : " request.schema.name);
+
+    // Start of validation for schema create request
+
+    if (request.schema.fields.size() != request.schema.fieldNames.size()) {
+        K2WARN("Bad SchemaCreateRequest: fields and fieldNames are not equal size");
+        return RPCResponse(Statuses::S400_Bad_Request("fields and fieldNames are not equal size"), dto::SchemaCreateResponse());
+    }
+
+    if (request.schema.partitionKeyFields.size() == 0) {
+        K2WARN("Bad SchemaCreateRequest: No partitionKeyFields defined");
+        return RPCResponse(Statuses::S400_Bad_Request("No partitionKeyFields defined"), dto::SchemaCreateResponse());
+    }
+
+    uint32_t last = 0;
+    for (const KeyFieldDef& keyField : request.schema.partitionKeyFields) {
+        if (last < keyField.index) {
+            K2WARN("Bad SchemaCreateRequest: partitionKeyFields not in order");
+            return RPCResponse(Statuses::S400_Bad_Request("partitionKeyFields not in order"), dto::SchemaCreateResponse());
+        }
+
+        if (keyField.index >= request.schema.fields.size()) {
+            K2WARN("Bad SchemaCreateRequest: partitionKeyField index out of bounds");
+            return RPCResponse(Statuses::S400_Bad_Request("partitionKeyField index out of bounds"), dto::SchemaCreateResponse());
+        }
+
+        last = keyField.index;
+    }
+
+    last = 0;
+    for (const KeyFieldDef& keyField : request.schema.rangeKeyFields) {
+        if (last < keyField.index) {
+            K2WARN("Bad SchemaCreateRequest: rangeKeyFields not in order");
+            return RPCResponse(Statuses::S400_Bad_Request("rangeKeyFields not in order"), dto::SchemaCreateResponse());
+        }
+
+        if (keyField.index >= request.schema.fields.size()) {
+            K2WARN("Bad SchemaCreateRequest: rangeKeyField index out of bounds");
+            return RPCResponse(Statuses::S400_Bad_Request("rangeKeyField index out of bounds"), dto::SchemaCreateResponse());
+        }
+
+        last = keyField.index;
+    }
+
+    auto lastVersionIt = lastVersionID.find(std::make_pair(request.collectionName, request.schema,name));
+    if ((lastVersionIt == lastVersionID.end() && request.schema.version != 1) ||
+        (lastVersionIt != lastVersionID.end() && lastVersionIt->second + 1 != request.schema.version)) {
+        K2INFO("Wrong version in SchemaCreateRequest");
+        return RPCResponse(Statuses::S403_Forbidden("Expected schema version does not match"), dto::SchemaCreateResponse());
+    }
+
+    // End of validation
+
+    // TODO update schema, push to servers
+
+    return RPCResponse(Statuses::S200_OK("Created successfully"), dto::SchemaCreateResponse{});
 }
 
 String CPOService::_getCollectionPath(String name) {

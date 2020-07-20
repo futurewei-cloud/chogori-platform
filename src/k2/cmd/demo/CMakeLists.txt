@@ -10,4 +10,4 @@ target_link_libraries (rpc_echo PRIVATE k2appbase k2transport k2common Seastar::
 target_link_libraries (rpc_service PRIVATE k2appbase k2transport k2common Seastar::seastar)
 target_link_libraries (tso_sample_app PRIVATE tso_service tso_clientlib k2appbase k2transport k2common Seastar::seastar)
 target_link_libraries (txn_client_demo PRIVATE k2common Seastar::seastar)
-target_link_libraries (document_demo PRIVATE k2common Seastar::seastar)
+target_link_libraries (document_demo PRIVATE k2appbase k2transport k2common Seastar::seastar)

@@ -131,8 +131,7 @@ private:
                 uint32_t balance = result.getValue().deserializeField<uint32_t>("Balance");
                 K2ASSERT(balance == 777, "We did not read our write");
 
-                result.getValue().fieldCursor = 0;
-                FOR_EACH_FIELD(result.getValue(), fieldVisitor, result.getValue().collectionName);
+                FOR_EACH_DOC_FIELD(result.getValue(), fieldVisitor, result.getValue().collectionName);
                 return std::move(txn);
             });
         })

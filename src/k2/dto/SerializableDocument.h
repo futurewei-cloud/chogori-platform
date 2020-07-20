@@ -33,9 +33,9 @@ class SerializableDocument {
 public:
     // The document must be serialized in order. Schema will be enforced
     template <typename FieldType>
-    void serializeNext(FieldType field) {
+    void serializeNext(FieldType field, const Schema& schema) {
         DocumentFieldType ft = TToDocumentFieldType<FieldType>();
-        if (ft != schema.fields[fieldCursor]) {
+        if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor]) {
             throw new std::runtime_error("Schema not followed in document serialization");
         }
 
@@ -44,69 +44,97 @@ public:
     }
 
     // Skip serializing the next field, for optional fields or partial updates
-    void skipNext() {
-        if (excludedFields.size() == 0) {
-            excludedFields = std::vector<bool>(schema.fields.size(), false);
-        }
-
-        excludedFields[fieldCursor] = true;
-        ++fieldCursor;
-    }
+    void skipNext(const Schema& schema);
 
     // Deserialization can be in any order, but the preferred method is in-order
     template <typename FieldType>
-    FieldType deserializeField(const String& name) {
-        (void) name;
-        throw new std::runtime_error("Not implemented");
+    FieldType deserializeField(const String& name, const Schema& schema) {
+        for (uint32_t i = 0; i < schema.fields.size(); ++i) {
+            if (schema.fieldNames[i] == name) {
+                return deserializeField<FieldType>(i, schema);
+            }
+        }
+
+        throw new std::runtime_error("Schema not followed in document deserialization");
     }
 
+    void seekDocument(uint32_t fieldIndex, const Schema& schema);
+
     template <typename FieldType>
-    FieldType deserializeField(uint32_t fieldIndex) {
-        (void) fieldIndex;
-        throw new std::runtime_error("Not implemented");
+    FieldType deserializeField(uint32_t fieldIndex, const Schema& schema) {
+        if (excludedFields.size() > 0 && excludedFields[fieldIndex]) {
+            throw new std::runtime_error("Tried to deserialize an excluded field");
+        }
+
+        DocumentFieldType ft = TToDocumentFieldType<FieldType>();
+        if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor]) {
+            throw new std::runtime_error("Schema not followed in document deserialization");
+        }
+
+        if (fieldIndex != fieldCursor) {
+            seekDocument(fieldIndex, schema);
+        }
+
+        FieldType value;
+        fieldData.read(value);
+        ++fieldCursor;
+        return value;
     }
 
     // We expose a shared payload in case the user wants to write it to file or otherwise 
     // store it on their own. For normal K23SI operations the user does not need to touch this
     Payload getSharedPayload();
 
+    SerializableDocument() = default;
+    SerializableDocument(const SerializableDocument& doc, bool copyPayload) : schemaID(doc.schemaID),
+        schemaVersion(doc.schemaVersion), fieldCursor(doc.fieldCursor), excludedFields(doc.excludedFields) {
+        if (copyPayload) {
+            fieldData = doc.fieldData.copy();
+            fieldData.seek(0);
+        } else {
+            fieldData = doc.fieldData.share();
+            fieldData.seek(0);
+        }
+    }
+
     // Bitmap of fields that are excluded because they are optional or this is for a partial update
-    std::vector<bool> excludedFields;
     uint64_t schemaID;
     uint32_t schemaVersion;
-
+    uint32_t fieldCursor = 0;
+    std::vector<bool> excludedFields;
     Payload fieldData;
 
-    SerializableDocument(String collectionName, const Schema& schema);
-    SerializableDocument() = default;
-    SerializableDocument(const SerializableDocument& doc, bool copyPayload);
-
-    String collectionName;
-    Schema schema;
-    uint32_t fieldCursor = 0;
-
+    // These functions construct the keys on-the-fly based on fieldData
     Key getPartitionKey();
     Key getRangeKey();
 
-    K2_PAYLOAD_FIELDS(excludedFields, schemaID, schemaVersion, fieldData);
+    K2_PAYLOAD_FIELDS(schemaID, schemaVersion, excludedFields, fieldData);
 };
 
-#define FOR_EACH_FIELD(document, func, ...) \
+
+#define DO_ON_NEXT_DOC_FIELD(document, schema, func, ...) \
     do { \
-    document.fieldCursor = 0; \
-    while (document.fieldCursor < document.schema.fields.size()) { \
-        switch (document.schema.fields[document.fieldCursor]) { \
-            case DocumentFieldType::STRING: \
-                func<String>(document.deserializeField<String>(document.fieldCursor), __VA_ARGS__); \
-                break; \
-            case DocumentFieldType::UINT32T: \
-                func<uint32_t>(document.deserializeField<uint32_t>(document.fieldCursor), __VA_ARGS__); \
-                break; \
-            default: \
-                throw new std::runtime_error("Unknown type"); \
+        switch ((schema).fields[(document).fieldCursor]) { \
+           case DocumentFieldType::STRING: \
+               func<String>((document).deserializeField<String>((document).fieldCursor), (schema), __VA_ARGS__); \
+               break; \
+           case DocumentFieldType::UINT32T: \
+               func<uint32_t>((document).deserializeField<uint32_t>((document).fieldCursor), (schema), __VA_ARGS__); \
+               break; \
+           default: \
+               throw new std::runtime_error("Unknown type"); \
         } \
-        document.fieldCursor++; \
-    } \
+    } while (0) \
+   
+
+// TODO excluded fields?
+#define FOR_EACH_DOC_FIELD(document, schema, func, ...) \
+    do { \
+        (document).fieldCursor = 0; \
+        (document).fieldData.seek(0); \
+        while ((document).fieldCursor < (schema).fields.size()) { \
+            DO_ON_NEXT_DOC_FIELD((document), (schema), func, __VA_ARGS__); \
+        } \
     } while (0) \
 
 } // ns dto

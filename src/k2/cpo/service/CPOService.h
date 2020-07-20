@@ -48,6 +48,16 @@ private:
     Status _saveCollection(dto::Collection& collection);
     void _handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request);
 
+    // Schema managemet
+    // Collection name -> nextSchemaID
+    std::unordered_map<String, uint64_t> nextSchemaID;
+    // Collection name, schema name -> nextVersionID
+    std::unordered_map<std::pair<String, String>, uint32_t> nextVersionID;
+    // For now, CPO does not need efficient lookup of schemas, it either gives all schemas to client 
+    // or pushes updates to servers as they happen
+    // Collection name -> schemas
+    std::unordered_map<String, std::vector<Schema>> schemas;
+
    public:  // application lifespan
     CPOService(DistGetter distGetter);
     ~CPOService();
@@ -61,6 +71,9 @@ private:
 
     seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
     handleGet(dto::CollectionGetRequest&& request);
+
+    seastar::future<std::tuple<Status, dto::SchemaCreateResponse>>
+    handleSchemaCreate(dto::SchemaCreateRequest&& request);
 };  // class CPOService
 
 } // namespace k2

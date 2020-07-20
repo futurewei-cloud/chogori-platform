@@ -202,7 +202,6 @@ struct CollectionMetadata {
 };
 
 struct Collection {
-    // TODO schemas
     PartitionMap partitionMap;
     std::unordered_map<String, String> userMetadata;
     CollectionMetadata metadata;

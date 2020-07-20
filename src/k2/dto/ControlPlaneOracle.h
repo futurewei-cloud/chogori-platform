@@ -63,14 +63,21 @@ struct CollectionGetResponse {
     K2_PAYLOAD_FIELDS(collection);
 };
 
+struct KeyFieldDef {
+    uint32_t index; // Field by index to use in key
+    bool descending; // Ascending or descending sort order
+    bool nullLast; // NULL first or last in sort order
+    K2_PAYLOAD_FIELDS_COPYABLE;
+};
+
 struct Schema {
     String name;
     uint64_t id;
     uint32_t version;
     std::vector<DocumentFieldType> fields;
     std::vector<String> fieldNames;
-    std::vector<uint32_t> partitionKeyFields; // Indices of the fields to use for the partitionKey
-    std::vector<uint32_t> rangeKeyFields; // Indices of the fields to use for the rangeKey
+    std::vector<KeyFieldDef> partitionKeyFields;
+    std::vector<KeyFieldDef> rangeKeyFields;
     K2_PAYLOAD_FIELDS(name, version, fields, fieldNames, partitionKeyFields, rangeKeyFields);
 };
 
