@@ -67,7 +67,7 @@ struct KeyFieldDef {
     uint32_t index; // Field by index to use in key
     bool descending; // Ascending or descending sort order
     bool nullLast; // NULL first or last in sort order
-    K2_PAYLOAD_FIELDS_COPYABLE;
+    K2_PAYLOAD_COPYABLE;
 };
 
 struct Schema {
@@ -91,7 +91,19 @@ struct CreateSchemaRequest {
 
 // Response to CreateSchemaRequest
 struct CreateSchemaResponse {
-    K2_PAYLOAD_EMPTY;
+    uint64_t id; // ID of the created schema, client has the rest already
+    K2_PAYLOAD_COPYABLE;
+};
+
+// Get all versions of all schemas associated with a collection
+struct GetSchemasRequest {
+    String collectionName;
+    K2_PAYLOAD_FIELDS(collectionName);
+};
+
+struct GetSchemasResponse {
+    std::vector<Schema> schemas;
+    K2_PAYLOAD_FIELDS(schemas);
 };
 
 }  // namespace dto

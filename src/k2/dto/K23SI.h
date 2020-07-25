@@ -27,6 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/Status.h>
 
 #include "Collection.h"
+#include "ControlPlaneOracle.h"
 #include "SerializableDocument.h"
 #include "Timestamp.h"
 
@@ -151,6 +152,15 @@ inline std::ostream& operator<<(std::ostream& os, const TxnRecordState& st) {
     }
     return os << strstate;
 }
+
+struct K23SIPushSchemaRequest {
+    Schema schema;
+    K2_PAYLOAD_FIELDS(schema);
+};
+
+struct K23SIPushSchemaResponse {
+    K2_PAYLOAD_EMPTY;
+};
 
 // The main READ DTO.
 struct K23SIReadRequest {
