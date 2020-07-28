@@ -39,6 +39,8 @@ public:  // application lifespan
     seastar::future<> runTest3();
     seastar::future<> runTest4();
     seastar::future<> runTest5();
+    seastar::future<> runTest6();
+    seastar::future<> runTest7();
 
 private:
     int exitcode = -1;

@@ -28,6 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/ControlPlaneOracle.h> // our DTO
 #include <k2/dto/AssignmentManager.h> // our DTO
 #include <k2/dto/MessageVerbs.h> // our DTO
+#include <k2/dto/K23SI.h> // our DTO
 #include <k2/transport/PayloadFileUtil.h>
 
 #include <fcntl.h>
@@ -67,6 +68,11 @@ seastar::future<> CPOService::start() {
 
     RPC().registerRPCObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, [this] (dto::CreateSchemaRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
+    });
+
+    RPC().registerRPCObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET,
+    [this] (dto::GetSchemasRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
     });
 
     if (seastar::engine().cpu_id() == 0) {
@@ -165,13 +171,13 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
         return RPCResponse(Statuses::S400_Bad_Request("Bad rangeEnds"), dto::CollectionCreateResponse());
     }
 
+    schemas[collection.metadata.name] = std::vector<dto::Schema>();
+    lastSchemaID[collection.metadata.name] = 0;
+
     auto status = _saveCollection(collection);
     if (!status.is2xxOK()) {
         return RPCResponse(std::move(status), dto::CollectionCreateResponse());
     }
-
-    schemas[collection.metadata.name] = std::vector<Schema>();
-    lastSchemaID[collection.metadata.name] = 0;
 
     K2INFO("Created collection: " << cpath);
     _assignCollection(collection);
@@ -204,7 +210,7 @@ Status basicSchemaValidation(const dto::Schema& schema) {
     }
 
     uint32_t last = 0;
-    for (const KeyFieldDef& keyField : schema.partitionKeyFields) {
+    for (const dto::KeyFieldDef& keyField : schema.partitionKeyFields) {
         if (last < keyField.index) {
             K2WARN("Bad CreateSchemaRequest: partitionKeyFields not in order");
             return Statuses::S400_Bad_Request("partitionKeyFields not in order");
@@ -219,7 +225,7 @@ Status basicSchemaValidation(const dto::Schema& schema) {
     }
 
     last = 0;
-    for (const KeyFieldDef& keyField : schema.rangeKeyFields) {
+    for (const dto::KeyFieldDef& keyField : schema.rangeKeyFields) {
         if (last < keyField.index) {
             K2WARN("Bad CreateSchemaRequest: rangeKeyFields not in order");
             return Statuses::S400_Bad_Request("rangeKeyFields not in order");
@@ -236,14 +242,14 @@ Status basicSchemaValidation(const dto::Schema& schema) {
     return Statuses::S200_OK("");
 }
 
-seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collection, const Schema& schema) {
-    std::vector<seastar::future<std::tuple<Status, dto::PushSchemaResponse>>> pushFutures;
+seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collection, const dto::Schema& schema) {
+    std::vector<seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>> pushFutures;
             
     for (const dto::Partition& part : collection.partitionMap.partitions) {
         auto endpoint = RPC().getTXEndpoint(*(part.endpoints.begin()));
         dto::K23SIPushSchemaRequest request { schema };
 
-        pushFutures.push_back(PRC().callRPC<dto::K23SIPushSchemaRequest, dto::K23SIPushSchemaResponse>
+        pushFutures.push_back(RPC().callRPC<dto::K23SIPushSchemaRequest, dto::K23SIPushSchemaResponse>
             (dto::Verbs::K23SI_SCHEMA_PUSH, request, *endpoint, 1s));
     }
 
@@ -265,35 +271,54 @@ seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collectio
     });
 }
 
+seastar::future<std::tuple<Status, dto::GetSchemasResponse>>
+CPOService::handleSchemasGet(dto::GetSchemasRequest&& request) {
+    auto it = schemas.find(request.collectionName);
+    if (it == schemas.end()) {
+        std::tuple<Status, dto::Collection> getResponse = _getCollection(request.collectionName);
+        if (!std::get<0>(getResponse).is2xxOK()) {
+            return RPCResponse(std::move(std::get<0>(getResponse)), dto::GetSchemasResponse{});
+        }
+
+        it = schemas.find(request.collectionName);
+        K2ASSERT(it != schemas.end(), "Schemas iterator is end after collection refresh");
+    }
+
+    return RPCResponse(Statuses::S200_OK("SchemasGet success"), dto::GetSchemasResponse { it->second });
+}
+
 seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
 CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
-    K2INFO("Received schema create request for " << request.collectionName << " : " request.schema.name);
+    K2INFO("Received schema create request for " << request.collectionName << " : " << request.schema.name);
 
-    // Start of validation
+    // 1. Stateless validation of request
 
     Status validation = basicSchemaValidation(request.schema);
     if (!validation.is2xxOK()) {
         return RPCResponse(std::move(validation), dto::CreateSchemaResponse{});
     }
 
+    // 2. Stateful validation
+
     std::tuple<Status, dto::Collection> getResponse = _getCollection(request.collectionName);
     if (!std::get<0>(getResponse).is2xxOK()) {
-        return RPCResponse(std::get<0>(getResponse), dto::CreateSchemaResponse{});
+        return RPCResponse(std::move(std::get<0>(getResponse)), dto::CreateSchemaResponse{});
     }
     dto::Collection& collection = std::get<1>(getResponse);
 
     auto lastSchemaIt = lastSchemaID.find(request.collectionName);
-    K2ASSERT(lastSchemaIt != lastSchemaID.end());
+    K2ASSERT(lastSchemaIt != lastSchemaID.end(), "collectionName not in lastSchemaID");
 
-    auto lastVersionIt = lastVersionID.find(std::make_pair(request.collectionName, request.schema.name));
+    String versionFindString = request.collectionName + ":" + request.schema.name;
+    auto lastVersionIt = lastVersionID.find(versionFindString);
 
     if ((lastVersionIt == lastVersionID.end() && request.schema.version != 1) ||
-        (lastVesrionIt != lastVersionID.end() && lastVersionIt->second + 1 != request.schema.version)) {
+        (lastVersionIt != lastVersionID.end() && lastVersionIt->second + 1 != request.schema.version)) {
         K2INFO("Wrong version in CreateSchemaRequest");
         return RPCResponse(Statuses::S403_Forbidden("Expected schema version does not match"), dto::CreateSchemaResponse());
     }
 
-    // End of validation
+    // 3. Update in memory
 
     uint64_t schemaID = request.schema.id;
     // If new schema, update lastSchemaID and insert new lastVersion
@@ -301,18 +326,21 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
         schemaID = lastSchemaIt->second + 1;
         request.schema.id = schemaID;
         lastSchemaID[request.collectionName] = schemaID;
-        lastVersionID[std::make_pair(request.collectionName, request.schema.name)] = 1;
+        lastVersionID[versionFindString] = 1;
     } else {
-        lastVersionID[std::make_pair(request.collectionName, request.schema.name)] = request.schema.version;
+        lastVersionID[versionFindString] = request.schema.version;
     }
 
     schemas[request.collectionName].push_back(std::move(request.schema));
+
+    // 4. Save to disk
     Status saved = _saveSchemas(request.collectionName);
     if (!saved.is2xxOK()) {
         schemas[request.collectionName].pop_back();
         return RPCResponse(std::move(saved), dto::CreateSchemaResponse{});
     }
 
+    // 5. Push to K2 nodes and respond to client
     return _pushSchema(collection, schemas[request.collectionName].back())
     .then([schemaID] (Status&& status) {
         return RPCResponse(std::move(status), dto::CreateSchemaResponse{ schemaID });
@@ -405,9 +433,47 @@ std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
     K2INFO("Found collection in: " << cpath);
     std::get<0>(result) = Statuses::S200_OK("collection found");
 
-    // TODO read and save schemas
+    // Check to see if we need to load schemas from file too
+    auto it = schemas.find(name);
+    if (it == schemas.end()) {
+        Status schemaStatus = _loadSchemas(name);
+        if (!schemaStatus.is2xxOK()) {
+            std::get<0>(result) = Statuses::S500_Internal_Server_Error("unable to read schema data");
+            return result;
+        }
+    }
 
     return result;
+}
+
+Status CPOService::_loadSchemas(const String& collectionName) {
+    auto cpath = _getCollectionPath(collectionName) + ".schemas";
+    Payload p;
+    std::vector<dto::Schema> loadedSchemas;
+    if (!fileutil::readFile(p, cpath)) {
+        return Statuses::S404_Not_Found("schemas not found");
+    }
+    if (!p.read(loadedSchemas)) {
+        return Statuses::S500_Internal_Server_Error("unable to read schema data");
+    }
+
+    uint64_t lastID = 0;
+    for (const dto::Schema& schema : loadedSchemas) {
+        lastID = std::max(lastID, schema.id);
+
+        String lastVersionString = collectionName + ":" + schema.name;
+        auto lastVersionIt = lastVersionID.find(lastVersionString);
+        if (lastVersionIt != lastVersionID.end()) {
+            lastVersionID[lastVersionString] = std::max(lastVersionID[lastVersionString], schema.version);
+        } else {
+            lastVersionID[lastVersionString] = schema.version;
+        }
+    }
+
+    lastSchemaID[collectionName] = lastID;
+    schemas[collectionName] = std::move(loadedSchemas);
+    
+    return Statuses::S200_OK("Schemas loaded");
 }
 
 Status CPOService::_saveCollection(dto::Collection& collection) {
@@ -419,13 +485,13 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
     }
 
     K2DEBUG("saved collection: " << cpath);
-    return Statuses::S201_Created("collection created");
+    return _saveSchemas(collection.metadata.name);
 }
 
 Status CPOService::_saveSchemas(const String& collectionName) {
     auto cpath = _getCollectionPath(collectionName) + ".schemas";
     Payload p([] { return Binary(4096); });
-    p.write(schemas[collection.metadata.name]);
+    p.write(schemas[collectionName]);
     if (!fileutil::writeFile(std::move(p), cpath)) {
         return Statuses::S500_Internal_Server_Error("unable to write schema data");
     }

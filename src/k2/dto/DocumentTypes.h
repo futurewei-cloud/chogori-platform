@@ -56,9 +56,9 @@ String DocumentFieldToKeyStringAscend(const T& field) {
 
 template <> String DocumentFieldToKeyStringAscend<String>(const String& field) {
     // Sizes will not match if there are exta null bytes
-    K2ASSERT(field.size() == strlen(field.c_str()));
+    K2ASSERT(field.size() == strlen(field.c_str()), "String has null bytes");
     String typeByte("0");
-    typeByte[0] = DocumentFieldType::STRING;
+    typeByte[0] = (char) DocumentFieldType::STRING;
     return typeByte+field;
 }
 
@@ -67,11 +67,11 @@ template <> String DocumentFieldToKeyStringAscend<uint32_t>(const uint32_t& fiel
 {
     // type byte + 4 bytes
     String s("12345");
-    s[0] = DocumentFieldType::UINT32T;
-    s[1] = (uint8_t)(field >> 24);
-    s[2] = (uint8_t)(field >> 16);
-    s[3] = (uint8_t)(field >> 8);
-    s[4] = (uint8_t)(field);
+    s[0] = (char) DocumentFieldType::UINT32T;
+    s[1] = (char)(field >> 24);
+    s[2] = (char)(field >> 16);
+    s[3] = (char)(field >> 8);
+    s[4] = (char)(field);
 
     return s;
 }

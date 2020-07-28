@@ -92,10 +92,10 @@ private:
                     dto::DocumentFieldType::STRING,
                     dto::DocumentFieldType::UINT32T};
             schema.fieldNames = std::vector<String>{"LastName", "FirstName", "Balance"};
-            // LastName is our partition key
-            schema.partitionKeyFields = std::vector<uint32_t>{0};
-            // FirstName is our range key
-            schema.rangeKeyFields = std::vector<uint32_t>{1};
+            // LastName is our partition key, ascending, NULL first
+            schema.partitionKeyFields = std::vector<dto::KeyFieldDef>{ dto::KeyFieldDef{0, false, false} };
+            // FirstName is our range key, ascending, NULL first
+            schema.rangeKeyFields = std::vector<dto::KeyFieldDef>{ dto::KeyFieldDef{1, false, false} };
 
             dto::CreateSchemaRequest request{ "demo", std::move(schema) };
             return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *(RPC().getTXEndpoint(_cpo())), 1s);
@@ -131,7 +131,7 @@ private:
                 uint32_t balance = result.getValue().deserializeField<uint32_t>("Balance");
                 K2ASSERT(balance == 777, "We did not read our write");
 
-                FOR_EACH_DOC_FIELD(result.getValue(), fieldVisitor, result.getValue().collectionName);
+                FOR_EACH_DOC_FIELD(result.getValue(), fieldVisitor, "test");
                 return std::move(txn);
             });
         })

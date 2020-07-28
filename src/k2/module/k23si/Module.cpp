@@ -560,6 +560,18 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     });
 }
 
+seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>
+K23SIPartitionModule::handlePushSchema(dto::K23SIPushSchemaRequest&& request) {
+    K2DEBUG("handlePushSchema for schemaID: " << request.schema.id);
+
+    auto it = _schemas.find(request.schema.id);
+    K2ASSERT(it == _schemas.end(), "SchemaID already exists on server");
+    _schemas[request.schema.id] = std::move(request.schema);
+
+    return RPCResponse(Statuses::S200_OK("push schema success"), dto::K23SIPushSchemaResponse{});
+}
+
+
 // For test and debug purposes, not normal transaction processsing
 // Returns all versions+WIs for a particular key
 seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
