@@ -234,16 +234,15 @@ seastar::future<> CPOTest::runTest6() {
 
     dto::Schema schema;
     schema.name = "test_schema";
-    schema.version = 1; // We expect to create version 1 of this schema
-    schema.fields = std::vector<dto::DocumentFieldType> {
-            dto::DocumentFieldType::STRING,
-            dto::DocumentFieldType::STRING,
-            dto::DocumentFieldType::UINT32T};
-    schema.fieldNames = std::vector<String>{"LastName", "FirstName", "Balance"};
-    // LastName is our partition key, ascending, NULL first
-    schema.partitionKeyFields = std::vector<dto::KeyFieldDef>{ dto::KeyFieldDef{0, false, false} };
-    // FirstName is our range key, ascending, NULL first
-    schema.rangeKeyFields = std::vector<dto::KeyFieldDef>{ dto::KeyFieldDef{1, false, false} };
+    schema.version = 1;
+    schema.fields = std::vector<dto::SchemaField> {
+            {dto::DocumentFieldType::STRING, "LastName", false, false},
+            {dto::DocumentFieldType::STRING, "FirstName", false, false},
+            {dto::DocumentFieldType::UINT32T, "Balance", false, false}
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
+    schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
 
     dto::CreateSchemaRequest request{ "collectionAssign", std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
@@ -269,17 +268,15 @@ seastar::future<> CPOTest::runTest7() {
 
     dto::Schema schema;
     schema.name = "invalid_schema";
-    schema.version = 1; // We expect to create version 1 of this schema
-    schema.fields = std::vector<dto::DocumentFieldType> {
-            dto::DocumentFieldType::STRING,
-            dto::DocumentFieldType::STRING,
-            dto::DocumentFieldType::UINT32T};
-    // Invalid because we don't name all fields
-    schema.fieldNames = std::vector<String>{"LastName", "FirstName"};
-    // LastName is our partition key, ascending, NULL first
-    schema.partitionKeyFields = std::vector<dto::KeyFieldDef>{ dto::KeyFieldDef{0, false, false} };
-    // FirstName is our range key, ascending, NULL first
-    schema.rangeKeyFields = std::vector<dto::KeyFieldDef>{ dto::KeyFieldDef{1, false, false} };
+    schema.version = 1;
+    schema.fields = std::vector<dto::SchemaField> {
+            {dto::DocumentFieldType::STRING, "LastName", false, false},
+            {dto::DocumentFieldType::STRING, "FirstName", false, false},
+            {dto::DocumentFieldType::UINT32T, "Balance", false, false}
+    };
+    schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
+    // Invalid schema because we did not set any partition key fields
+
 
     dto::CreateSchemaRequest request{ "collectionAssign", std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)

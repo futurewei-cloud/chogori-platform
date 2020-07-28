@@ -157,8 +157,8 @@ private: // members
     // read cache for keeping track of latest reads
     std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;
 
-    // schemaID -> schema
-    std::unordered_map<uint64_t, dto::Schema> _schemas;
+    // schema name -> (schema version -> schema)
+    std::unordered_map<String, std::unordered_map<uint32_t, dto::Schema>> _schemas;
 
     // config
     K23SIConfig _config;

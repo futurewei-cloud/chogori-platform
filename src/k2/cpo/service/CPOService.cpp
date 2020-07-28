@@ -172,7 +172,6 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     }
 
     schemas[collection.metadata.name] = std::vector<dto::Schema>();
-    lastSchemaID[collection.metadata.name] = 0;
 
     auto status = _saveCollection(collection);
     if (!status.is2xxOK()) {
@@ -199,9 +198,13 @@ CPOService::handleGet(dto::CollectionGetRequest&& request) {
 // Checks if the schema itself is well-formed (e.g. fields and fieldNames sizes match)
 // and returns a 400 status if not
 Status basicSchemaValidation(const dto::Schema& schema) {
-    if (schema.fields.size() != schema.fieldNames.size()) {
-        K2WARN("Bad CreateSchemaRequest: fields and fieldNames are not equal size");
-        return Statuses::S400_Bad_Request("fields and fieldNames are not equal size");
+    std::unordered_set<String> uniqueNames;
+    for (const dto::SchemaField& field : schema.fields) {
+        auto it = uniqueNames.find(field.name);
+        if (it != uniqueNames.end()) {
+            return Statuses::S400_Bad_Request("Duplicated field name in schema");
+        }
+        uniqueNames.insert(field.name);
     }
 
     if (schema.partitionKeyFields.size() == 0) {
@@ -209,49 +212,62 @@ Status basicSchemaValidation(const dto::Schema& schema) {
         return Statuses::S400_Bad_Request("No partitionKeyFields defined");
     }
 
-    uint32_t last = 0;
-    bool first = true;
-    for (const dto::KeyFieldDef& keyField : schema.partitionKeyFields) {
-        if (first) {
-            last = keyField.index;
-            first = false;
-        }
-
-        if (last < keyField.index) {
-            K2WARN("Bad CreateSchemaRequest: partitionKeyFields not in order");
-            return Statuses::S400_Bad_Request("partitionKeyFields not in order");
-        }
-
-        if (keyField.index >= schema.fields.size()) {
+    for (uint32_t keyIndex : schema.partitionKeyFields) {
+        if (keyIndex >= schema.fields.size()) {
             K2WARN("Bad CreateSchemaRequest: partitionKeyField index out of bounds");
             return Statuses::S400_Bad_Request("partitionKeyField index out of bounds");
         }
-
-        last = keyField.index;
     }
 
-    last = 0;
-    first = true;
-    for (const dto::KeyFieldDef& keyField : schema.rangeKeyFields) {
-        if (first) {
-            last = keyField.index;
-            first = false;
-        }
-
-        if (last < keyField.index) {
-            K2WARN("Bad CreateSchemaRequest: rangeKeyFields not in order");
-            return Statuses::S400_Bad_Request("rangeKeyFields not in order");
-        }
-
-        if (keyField.index >= schema.fields.size()) {
+    for (uint32_t keyIndex : schema.rangeKeyFields) {
+        if (keyIndex >= schema.fields.size()) {
             K2WARN("Bad CreateSchemaRequest: rangeKeyField index out of bounds");
             return Statuses::S400_Bad_Request("rangeKeyField index out of bounds");
         }
-
-        last = keyField.index;
     }
 
-    return Statuses::S200_OK("");
+    return Statuses::S200_OK("basic validation passed");
+}
+
+// Used to make sure that the partition and range key definitions do not change between versions
+Status validateSchemaMatchingKeyDefs(const dto::Schema& a, const dto::Schema& b) {
+    if (a.partitionKeyFields.size() != b.partitionKeyFields.size()) {
+        return Statuses::S403_Forbidden("partitionKey fields of schema versions do not match");
+    }
+
+    if (a.rangeKeyFields.size() != b.rangeKeyFields.size()) {
+        return Statuses::S403_Forbidden("rangeKey fields of schema versions do not match");
+    }
+
+    for (size_t i = 0; i < a.partitionKeyFields.size(); ++i) {
+        uint32_t a_fieldIndex = a.partitionKeyFields[i];
+        const String& a_name = a.fields[a_fieldIndex].name;
+        dto::DocumentFieldType a_type = a.fields[a_fieldIndex].type;
+
+        uint32_t b_fieldIndex = b.partitionKeyFields[i];
+        const String& b_name = b.fields[b_fieldIndex].name;
+        dto::DocumentFieldType b_type = b.fields[b_fieldIndex].type;
+
+        if (b_name != a_name || b_type != a_type) {
+            return Statuses::S403_Forbidden("partitionKey fields of schema versions do not match");
+        }
+    }
+
+    for (size_t i = 0; i < a.rangeKeyFields.size(); ++i) {
+        uint32_t a_fieldIndex = a.rangeKeyFields[i];
+        const String& a_name = a.fields[a_fieldIndex].name;
+        dto::DocumentFieldType a_type = a.fields[a_fieldIndex].type;
+
+        uint32_t b_fieldIndex = b.rangeKeyFields[i];
+        const String& b_name = b.fields[b_fieldIndex].name;
+        dto::DocumentFieldType b_type = b.fields[b_fieldIndex].type;
+
+        if (b_name != a_name || b_type != a_type) {
+            return Statuses::S403_Forbidden("rangeKey fields of schema versions do not match");
+        }
+    }
+
+    return Statuses::S200_OK("Key fields match");
 }
 
 seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collection, const dto::Schema& schema) {
@@ -312,36 +328,34 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // 2. Stateful validation
 
+    // getCollection to make sure in memory cache of schemas is up to date, and we need the 
+    // collection with partition map anyway to do the schema push
     std::tuple<Status, dto::Collection> getResponse = _getCollection(request.collectionName);
     if (!std::get<0>(getResponse).is2xxOK()) {
         return RPCResponse(std::move(std::get<0>(getResponse)), dto::CreateSchemaResponse{});
     }
     dto::Collection& collection = std::get<1>(getResponse);
 
-    auto lastSchemaIt = lastSchemaID.find(request.collectionName);
-    K2ASSERT(lastSchemaIt != lastSchemaID.end(), "collectionName not in lastSchemaID");
+    bool validatedKeys = false;
+    for (const dto::Schema& otherSchema : schemas[request.collectionName]) {
+        if (otherSchema.name == request.schema.name && otherSchema.version == request.schema.version) {
+            return RPCResponse(Statuses::S403_Forbidden("Schema name and version already exist"), dto::CreateSchemaResponse{});
+        }
 
-    String versionFindString = request.collectionName + ":" + request.schema.name;
-    auto lastVersionIt = lastVersionID.find(versionFindString);
+        // By induction, as long as we validate that the key fields match with at least one 
+        // other schema with the same name then they will always match
+        if (!validatedKeys && otherSchema.name == request.schema.name) {
+            validation = validateSchemaMatchingKeyDefs(otherSchema, request.schema);
+            if (!validation.is2xxOK()) {
+                return RPCResponse(std::move(validation), dto::CreateSchemaResponse{});
+            }
 
-    if ((lastVersionIt == lastVersionID.end() && request.schema.version != 1) ||
-        (lastVersionIt != lastVersionID.end() && lastVersionIt->second + 1 != request.schema.version)) {
-        K2INFO("Wrong version in CreateSchemaRequest");
-        return RPCResponse(Statuses::S403_Forbidden("Expected schema version does not match"), dto::CreateSchemaResponse());
+            validatedKeys = true;
+        }
     }
+
 
     // 3. Update in memory
-
-    uint64_t schemaID = request.schema.id;
-    // If new schema, update lastSchemaID and insert new lastVersion
-    if (lastVersionIt == lastVersionID.end()) {
-        schemaID = lastSchemaIt->second + 1;
-        request.schema.id = schemaID;
-        lastSchemaID[request.collectionName] = schemaID;
-        lastVersionID[versionFindString] = 1;
-    } else {
-        lastVersionID[versionFindString] = request.schema.version;
-    }
 
     schemas[request.collectionName].push_back(std::move(request.schema));
 
@@ -354,8 +368,8 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // 5. Push to K2 nodes and respond to client
     return _pushSchema(collection, schemas[request.collectionName].back())
-    .then([schemaID] (Status&& status) {
-        return RPCResponse(std::move(status), dto::CreateSchemaResponse{ schemaID });
+    .then([] (Status&& status) {
+        return RPCResponse(std::move(status), dto::CreateSchemaResponse{});
     });
 }
 
@@ -469,20 +483,6 @@ Status CPOService::_loadSchemas(const String& collectionName) {
         return Statuses::S500_Internal_Server_Error("unable to read schema data");
     }
 
-    uint64_t lastID = 0;
-    for (const dto::Schema& schema : loadedSchemas) {
-        lastID = std::max(lastID, schema.id);
-
-        String lastVersionString = collectionName + ":" + schema.name;
-        auto lastVersionIt = lastVersionID.find(lastVersionString);
-        if (lastVersionIt != lastVersionID.end()) {
-            lastVersionID[lastVersionString] = std::max(lastVersionID[lastVersionString], schema.version);
-        } else {
-            lastVersionID[lastVersionString] = schema.version;
-        }
-    }
-
-    lastSchemaID[collectionName] = lastID;
     schemas[collectionName] = std::move(loadedSchemas);
     
     return Statuses::S200_OK("Schemas loaded");
