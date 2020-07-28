@@ -27,6 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/Status.h>
 
 #include "Collection.h"
+#include "ControlPlaneOracle.h"
 #include "Timestamp.h"
 
 namespace k2 {
@@ -357,5 +358,15 @@ struct K23SITxnFinalizeRequest {
 struct K23SITxnFinalizeResponse {
     K2_PAYLOAD_EMPTY;
 };
+
+struct K23SIPushSchemaRequest {
+    Schema schema;
+    K2_PAYLOAD_FIELDS(schema);
+};
+
+struct K23SIPushSchemaResponse {
+    K2_PAYLOAD_EMPTY;
+};
+
 } // ns dto
 } // ns k2

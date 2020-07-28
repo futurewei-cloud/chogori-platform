@@ -74,6 +74,9 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
     handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request);
 
+    seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>
+    handlePushSchema(dto::K23SIPushSchemaRequest&& request);
+
     // For test and debug purposes, not normal transaction processsing
     seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
     handleInspectRecords(dto::K23SIInspectRecordsRequest&& request);
@@ -153,6 +156,9 @@ private: // members
 
     // read cache for keeping track of latest reads
     std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;
+
+    // schemaID -> schema
+    std::unordered_map<uint64_t, dto::Schema> _schemas;
 
     // config
     K23SIConfig _config;

@@ -22,30 +22,21 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
-#include <k2/appbase/Appbase.h>
-#include <k2/appbase/AppEssentials.h>
 
-class CPOTest {
-public:  // application lifespan
-    CPOTest();
-    ~CPOTest();
+#include <cstdint>
+#include <cstring>
 
-    // required for seastar::distributed interface
-    seastar::future<> gracefulStop();
-    seastar::future<> start();
+#include <k2/common/Log.h>
+#include <k2/common/Common.h>
 
-    seastar::future<> runTest1();
-    seastar::future<> runTest2();
-    seastar::future<> runTest3();
-    seastar::future<> runTest4();
-    seastar::future<> runTest5();
-    seastar::future<> runTest6();
-    seastar::future<> runTest7();
+namespace k2 {
+namespace dto {
 
-private:
-    int exitcode = -1;
-    std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
-    k2::ConfigVar<std::vector<k2::String>> _k2ConfigEps{"k2_endpoints"};
-    seastar::future<> _testFuture = seastar::make_ready_future();
-    seastar::timer<> _testTimer;
+enum class DocumentFieldType : uint8_t {
+    NULL_T = 0,
+    STRING = 1,
+    UINT32T = 2,
 };
+
+} // ns dto
+} // ns k2
