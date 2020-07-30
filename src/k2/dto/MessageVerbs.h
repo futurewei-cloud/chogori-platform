@@ -34,6 +34,8 @@ enum Verbs : k2::Verb {
     CPO_COLLECTION_CREATE = 10,
     // ControlPlaneOracle: asked to return an existing collection
     CPO_COLLECTION_GET,
+    CPO_SCHEMA_CREATE,
+    CPO_SCHEMAS_GET,
 
     /************ Assignment *****************/
     // K2Assignment: CPO asks K2 to assign a partition
@@ -54,6 +56,7 @@ enum Verbs : k2::Verb {
     K23SI_TXN_HEARTBEAT,
     // sent to finalize a K23SI write
     K23SI_TXN_FINALIZE,
+    K23SI_PUSH_SCHEMA,
 
     /************ K23SI Persistence *****************/
     K23SI_Persist = 40,

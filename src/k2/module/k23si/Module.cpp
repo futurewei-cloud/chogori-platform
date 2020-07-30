@@ -84,6 +84,11 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleTxnFinalize(std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::K23SIPushSchemaRequest, dto::K23SIPushSchemaResponse>
+    (dto::Verbs::K23SI_PUSH_SCHEMA, [this](dto::K23SIPushSchemaRequest&& request) {
+        return handlePushSchema(std::move(request));
+    });
+
     RPC().registerRPCObserver<dto::K23SIInspectRecordsRequest, dto::K23SIInspectRecordsResponse>
     (dto::Verbs::K23SI_INSPECT_RECORDS, [this](dto::K23SIInspectRecordsRequest&& request) {
         return handleInspectRecords(std::move(request));
@@ -559,6 +564,18 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     return _persistence.makeCall(dto::K23SI_PersistencePartialUpdate{}, _config.persistenceTimeout()).then([]{
         return RPCResponse(dto::K23SIStatus::OK("persistence call succeeded"), dto::K23SITxnFinalizeResponse{});
     });
+}
+
+seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>
+K23SIPartitionModule::handlePushSchema(dto::K23SIPushSchemaRequest&& request) {
+    K2DEBUG("handlePushSchema for schema: " << request.schema.name);
+    if (_cmeta.name != request.collectionName) {
+        return RPCResponse(Statuses::S403_Forbidden("Collection names in partition and request do not match"), dto::K23SIPushSchemaResponse{});
+    }
+
+    _schemas[request.schema.name][request.schema.version] = std::move(request.schema);
+
+    return RPCResponse(Statuses::S200_OK("push schema success"), dto::K23SIPushSchemaResponse{});
 }
 
 // For test and debug purposes, not normal transaction processsing
