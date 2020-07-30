@@ -21,31 +21,47 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#pragma once
-
 #include <cstdint>
 #include <cstring>
 
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
 
+#include "DocumentTypes.h"
+
 namespace k2 {
 namespace dto {
 
-enum class DocumentFieldType : uint8_t {
-    NULL_T = 0,
-    STRING = 1,
-    UINT32T = 2,
-};
+template <> DocumentFieldType TToDocumentFieldType<String>() { return DocumentFieldType::STRING; }
+template <> DocumentFieldType TToDocumentFieldType<uint32_t>() { return DocumentFieldType::UINT32T; }
 
-template <typename T>
-DocumentFieldType TToDocumentFieldType();
+template <> String DocumentFieldToKeyStringAscend<String>(const String& field) {
+    // Sizes will not match if there are exta null bytes
+    K2ASSERT(field.size() == strlen(field.c_str()), "String has null bytes");
+    String typeByte("0");
+    typeByte[0] = (char) DocumentFieldType::STRING;
+    return typeByte+field;
+}
 
-// Converts a document field type to a string suitable for being part of a key
-template <typename T>
-String DocumentFieldToKeyStringAscend(const T& field);
+// Simple conversion to big-endian
+template <> String DocumentFieldToKeyStringAscend<uint32_t>(const uint32_t& field)
+{
+    // type byte + 4 bytes
+    String s("12345");
+    s[0] = (char) DocumentFieldType::UINT32T;
+    s[1] = (char)(field >> 24);
+    s[2] = (char)(field >> 16);
+    s[3] = (char)(field >> 8);
+    s[4] = (char)(field);
 
-String NullToKeyStringAscend();
+    return s;
+}
+
+String NullToKeyStringAscend() {
+    // TODO double check this is two NULL bytes
+    String s("\0");
+    return s;
+}
 
 } // ns dto
 } // ns k2
