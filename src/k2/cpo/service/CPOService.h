@@ -40,6 +40,7 @@ private:
     DistGetter _dist;
     ConfigVar<String> _dataDir{"data_dir"};
     String _getCollectionPath(String name);
+    String _getSchemasPath(String collectionName);
     void _assignCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
     ConfigDuration _collectionHeartbeatDeadline{"heartbeat_deadline", 100ms};

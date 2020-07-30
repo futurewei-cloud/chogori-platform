@@ -195,87 +195,16 @@ CPOService::handleGet(dto::CollectionGetRequest&& request) {
     return RPCResponse(std::move(status), std::move(response));
 }
 
-// Checks if the schema itself is well-formed (e.g. fields and fieldNames sizes match)
-// and returns a 400 status if not
-Status basicSchemaValidation(const dto::Schema& schema) {
-    std::unordered_set<String> uniqueNames;
-    for (const dto::SchemaField& field : schema.fields) {
-        auto it = uniqueNames.find(field.name);
-        if (it != uniqueNames.end()) {
-            return Statuses::S400_Bad_Request("Duplicated field name in schema");
-        }
-        uniqueNames.insert(field.name);
-    }
-
-    if (schema.partitionKeyFields.size() == 0) {
-        K2WARN("Bad CreateSchemaRequest: No partitionKeyFields defined");
-        return Statuses::S400_Bad_Request("No partitionKeyFields defined");
-    }
-
-    for (uint32_t keyIndex : schema.partitionKeyFields) {
-        if (keyIndex >= schema.fields.size()) {
-            K2WARN("Bad CreateSchemaRequest: partitionKeyField index out of bounds");
-            return Statuses::S400_Bad_Request("partitionKeyField index out of bounds");
-        }
-    }
-
-    for (uint32_t keyIndex : schema.rangeKeyFields) {
-        if (keyIndex >= schema.fields.size()) {
-            K2WARN("Bad CreateSchemaRequest: rangeKeyField index out of bounds");
-            return Statuses::S400_Bad_Request("rangeKeyField index out of bounds");
-        }
-    }
-
-    return Statuses::S200_OK("basic validation passed");
-}
-
-// Used to make sure that the partition and range key definitions do not change between versions
-Status validateSchemaMatchingKeyDefs(const dto::Schema& a, const dto::Schema& b) {
-    if (a.partitionKeyFields.size() != b.partitionKeyFields.size()) {
-        return Statuses::S403_Forbidden("partitionKey fields of schema versions do not match");
-    }
-
-    if (a.rangeKeyFields.size() != b.rangeKeyFields.size()) {
-        return Statuses::S403_Forbidden("rangeKey fields of schema versions do not match");
-    }
-
-    for (size_t i = 0; i < a.partitionKeyFields.size(); ++i) {
-        uint32_t a_fieldIndex = a.partitionKeyFields[i];
-        const String& a_name = a.fields[a_fieldIndex].name;
-        dto::DocumentFieldType a_type = a.fields[a_fieldIndex].type;
-
-        uint32_t b_fieldIndex = b.partitionKeyFields[i];
-        const String& b_name = b.fields[b_fieldIndex].name;
-        dto::DocumentFieldType b_type = b.fields[b_fieldIndex].type;
-
-        if (b_name != a_name || b_type != a_type) {
-            return Statuses::S403_Forbidden("partitionKey fields of schema versions do not match");
-        }
-    }
-
-    for (size_t i = 0; i < a.rangeKeyFields.size(); ++i) {
-        uint32_t a_fieldIndex = a.rangeKeyFields[i];
-        const String& a_name = a.fields[a_fieldIndex].name;
-        dto::DocumentFieldType a_type = a.fields[a_fieldIndex].type;
-
-        uint32_t b_fieldIndex = b.rangeKeyFields[i];
-        const String& b_name = b.fields[b_fieldIndex].name;
-        dto::DocumentFieldType b_type = b.fields[b_fieldIndex].type;
-
-        if (b_name != a_name || b_type != a_type) {
-            return Statuses::S403_Forbidden("rangeKey fields of schema versions do not match");
-        }
-    }
-
-    return Statuses::S200_OK("Key fields match");
-}
-
 seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collection, const dto::Schema& schema) {
     std::vector<seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>> pushFutures;
             
     for (const dto::Partition& part : collection.partitionMap.partitions) {
         auto endpoint = RPC().getTXEndpoint(*(part.endpoints.begin()));
-        dto::K23SIPushSchemaRequest request { schema };
+        if (!endpoint) {
+            return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("Partition endpoint was null"));
+        }
+
+        dto::K23SIPushSchemaRequest request { collection.metadata.name, schema };
 
         pushFutures.push_back(RPC().callRPC<dto::K23SIPushSchemaRequest, dto::K23SIPushSchemaResponse>
             (dto::Verbs::K23SI_PUSH_SCHEMA, request, *endpoint, 1s));
@@ -303,9 +232,9 @@ seastar::future<std::tuple<Status, dto::GetSchemasResponse>>
 CPOService::handleSchemasGet(dto::GetSchemasRequest&& request) {
     auto it = schemas.find(request.collectionName);
     if (it == schemas.end()) {
-        std::tuple<Status, dto::Collection> getResponse = _getCollection(request.collectionName);
-        if (!std::get<0>(getResponse).is2xxOK()) {
-            return RPCResponse(std::move(std::get<0>(getResponse)), dto::GetSchemasResponse{});
+        auto [status, collection] = _getCollection(request.collectionName);
+        if (!status.is2xxOK()) {
+            return RPCResponse(std::move(status), dto::GetSchemasResponse{});
         }
 
         it = schemas.find(request.collectionName);
@@ -321,7 +250,7 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // 1. Stateless validation of request
 
-    Status validation = basicSchemaValidation(request.schema);
+    Status validation = request.schema.basicValidation();
     if (!validation.is2xxOK()) {
         return RPCResponse(std::move(validation), dto::CreateSchemaResponse{});
     }
@@ -330,11 +259,10 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // getCollection to make sure in memory cache of schemas is up to date, and we need the 
     // collection with partition map anyway to do the schema push
-    std::tuple<Status, dto::Collection> getResponse = _getCollection(request.collectionName);
-    if (!std::get<0>(getResponse).is2xxOK()) {
-        return RPCResponse(std::move(std::get<0>(getResponse)), dto::CreateSchemaResponse{});
+    auto [status, collection] = _getCollection(request.collectionName);
+    if (!status.is2xxOK()) {
+        return RPCResponse(std::move(status), dto::CreateSchemaResponse{});
     }
-    dto::Collection& collection = std::get<1>(getResponse);
 
     bool validatedKeys = false;
     for (const dto::Schema& otherSchema : schemas[request.collectionName]) {
@@ -342,10 +270,10 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
             return RPCResponse(Statuses::S403_Forbidden("Schema name and version already exist"), dto::CreateSchemaResponse{});
         }
 
-        // By induction, as long as we validate that the key fields match with at least one 
+        // As long as we validate that the key fields match with at least one 
         // other schema with the same name then they will always match
         if (!validatedKeys && otherSchema.name == request.schema.name) {
-            validation = validateSchemaMatchingKeyDefs(otherSchema, request.schema);
+            validation = otherSchema.canUpgradeTo(request.schema);
             if (!validation.is2xxOK()) {
                 return RPCResponse(std::move(validation), dto::CreateSchemaResponse{});
             }
@@ -354,17 +282,14 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
         }
     }
 
-
-    // 3. Update in memory
-
-    schemas[request.collectionName].push_back(std::move(request.schema));
-
-    // 4. Save to disk
+    // 3. Save to disk
     Status saved = _saveSchemas(request.collectionName);
     if (!saved.is2xxOK()) {
-        schemas[request.collectionName].pop_back();
         return RPCResponse(std::move(saved), dto::CreateSchemaResponse{});
     }
+
+    // 4. Update in memory
+    schemas[request.collectionName].push_back(std::move(request.schema));
 
     // 5. Push to K2 nodes and respond to client
     return _pushSchema(collection, schemas[request.collectionName].back())
@@ -375,6 +300,10 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
 String CPOService::_getCollectionPath(String name) {
     return _dataDir() + "/" + name + ".collection";
+}
+
+String CPOService::_getSchemasPath(String collectionName) {
+    return _getCollectionPath(collectionName) + ".schemas";
 }
 
 void CPOService::_assignCollection(dto::Collection& collection) {
@@ -473,7 +402,7 @@ std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
 }
 
 Status CPOService::_loadSchemas(const String& collectionName) {
-    auto cpath = _getCollectionPath(collectionName) + ".schemas";
+    auto cpath = _getSchemasPath(collectionName);
     Payload p;
     std::vector<dto::Schema> loadedSchemas;
     if (!fileutil::readFile(p, cpath)) {
@@ -501,7 +430,7 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
 }
 
 Status CPOService::_saveSchemas(const String& collectionName) {
-    auto cpath = _getCollectionPath(collectionName) + ".schemas";
+    auto cpath = _getSchemasPath(collectionName);
     Payload p([] { return Binary(4096); });
     p.write(schemas[collectionName]);
     if (!fileutil::writeFile(std::move(p), cpath)) {

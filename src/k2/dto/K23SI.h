@@ -360,8 +360,9 @@ struct K23SITxnFinalizeResponse {
 };
 
 struct K23SIPushSchemaRequest {
+    String collectionName;
     Schema schema;
-    K2_PAYLOAD_FIELDS(schema);
+    K2_PAYLOAD_FIELDS(collectionName, schema);
 };
 
 struct K23SIPushSchemaResponse {

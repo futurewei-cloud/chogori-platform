@@ -569,6 +569,9 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
 seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>
 K23SIPartitionModule::handlePushSchema(dto::K23SIPushSchemaRequest&& request) {
     K2DEBUG("handlePushSchema for schema: " << request.schema.name);
+    if (_cmeta.name != request.collectionName) {
+        return RPCResponse(Statuses::S403_Forbidden("Collection names in partition and request do not match"), dto::K23SIPushSchemaResponse{});
+    }
 
     _schemas[request.schema.name][request.schema.version] = std::move(request.schema);
 
