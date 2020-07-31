@@ -77,7 +77,7 @@ public:  // application lifespan
         _cpo_client = CPOClient(_cpoConfigEp());
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
-            _testFuture = runScenarioUnassignedNodes()
+            _testFuture = seastar::make_ready_future()
             .then([this] {
                 K2INFO("Creating test collection...");
                 auto request = dto::CollectionCreateRequest{
@@ -117,6 +117,7 @@ public:  // application lifespan
                 K2EXPECT(status, Statuses::S200_OK);
                 _pgetter = dto::PartitionGetter(std::move(resp.collection));
             })
+            .then([this] { return runScenario00(); })
             .then([this] { return runScenario01(); })
             .then([this] { return runScenario02(); })
             .then([this] { return runScenario03(); })
@@ -241,8 +242,8 @@ private:
 
 public: // tests
 
-seastar::future<> runScenarioUnassignedNodes() {
-    K2INFO("runScenarioUnassignedNodes");
+seastar::future<> runScenario00() {
+    K2INFO("Scenario 00: unassigned nodes");
     return seastar::make_ready_future();
 }
 
