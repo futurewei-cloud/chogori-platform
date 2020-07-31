@@ -51,10 +51,12 @@ OP means each one of (READ, WRITE, PUSH, END, FINALIZE, HEARTBEAT)
 ### Test setup
 - start a cluster and assign collection.
 - write the following data, and keep the records in the given state
-> ("SC02_pkey1","", v1) -> commited
-    ("SC02_pkey2","range1", v1) -> commited
-    ("SC02_pkey3","", v1) -> WI
-    ("SC02_pkey4","", v1) -> aborted but not cleaned
+```
+("SC02_pkey1","", v1) -> commited
+("SC02_pkey2","range1", v1) -> commited
+("SC02_pkey3","", v1) -> WI
+("SC02_pkey4","", v1) -> aborted but not cleaned
+```
 
 Notes:
 - "aborted but not cleaned" will require some test capability to keep records in the FINALIZING state without automatic advance to perform finalization
