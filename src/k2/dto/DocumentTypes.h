@@ -36,6 +36,7 @@ enum class DocumentFieldType : uint8_t {
     NULL_T = 0,
     STRING = 1,
     UINT32T = 2,
+    NULL_LAST = 255
 };
 
 template <typename T>
@@ -43,9 +44,10 @@ DocumentFieldType TToDocumentFieldType();
 
 // Converts a document field type to a string suitable for being part of a key
 template <typename T>
-String DocumentFieldToKeyStringAscend(const T& field);
+String DocumentFieldToKeyString(const T& field);
 
-String NullToKeyStringAscend();
+String NullFirstToKeyString();
+String NullLastToKeyString();
 
 } // ns dto
 } // ns k2

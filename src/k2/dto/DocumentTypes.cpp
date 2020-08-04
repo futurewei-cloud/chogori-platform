@@ -32,34 +32,50 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
+static constexpr char TERM = '\0';
+
 template <> DocumentFieldType TToDocumentFieldType<String>() { return DocumentFieldType::STRING; }
 template <> DocumentFieldType TToDocumentFieldType<uint32_t>() { return DocumentFieldType::UINT32T; }
 
-template <> String DocumentFieldToKeyStringAscend<String>(const String& field) {
+// All conversion assume ascending ordering
+
+template <> String DocumentFieldToKeyString<String>(const String& field) {
     // Sizes will not match if there are exta null bytes
     K2ASSERT(field.size() == strlen(field.c_str()), "String has null bytes");
-    String typeByte("0");
+    String typeByte("1");
     typeByte[0] = (char) DocumentFieldType::STRING;
-    return typeByte+field;
+
+    String nullString("1");
+    nullString[0] = TERM;
+    return typeByte + field + nullString;
 }
 
 // Simple conversion to big-endian
-template <> String DocumentFieldToKeyStringAscend<uint32_t>(const uint32_t& field)
+template <> String DocumentFieldToKeyString<uint32_t>(const uint32_t& field)
 {
-    // type byte + 4 bytes
-    String s("12345");
+    // type byte + 4 bytes + TERM
+    String s("123456");
     s[0] = (char) DocumentFieldType::UINT32T;
     s[1] = (char)(field >> 24);
     s[2] = (char)(field >> 16);
     s[3] = (char)(field >> 8);
     s[4] = (char)(field);
+    s[6] = TERM;
 
     return s;
 }
 
-String NullToKeyStringAscend() {
-    // TODO double check this is two NULL bytes
-    String s("\0");
+String NullFirstToKeyString() {
+    String s("12");
+    s[0] = (char) DocumentFieldType::NULL_T;
+    s[1] = TERM;
+    return s;
+}
+
+String NullLastToKeyString() {
+    String s("12");
+    s[0] = (char) DocumentFieldType::NULL_LAST;
+    s[1] = TERM;
     return s;
 }
 

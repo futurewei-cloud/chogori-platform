@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <optional>
 
+#include <k2/appbase/AppEssentials.h>
 #include <k2/dto/SerializableDocument.h>
 
 namespace k2 {
@@ -31,6 +32,16 @@ namespace dto {
 void SerializableDocument::skipNext() {
     if (fieldCursor >= schema.fields.size()) {
         throw new std::runtime_error("Schema not followed in document serialization");
+    }
+
+    for (size_t i = 0; i < schema.partitionKeyFields.size(); ++i) {
+        if (schema.partitionKeyFields[i] == fieldCursor) {
+            partitionKeys[i] = schema.fields[i].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+        }
+
+        if (schema.rangeKeyFields[i] == fieldCursor) {
+            rangeKeys[i] = schema.fields[i].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+        }
     }
 
     if (excludedFields.size() == 0) {
@@ -43,12 +54,13 @@ void SerializableDocument::skipNext() {
 
 // NoOp function to be used with the convience macros to get document fields
 template <typename T>
-void NoOp(std::optional<T> value, int n) {
+void NoOp(std::optional<T> value, const String& fieldName, int n) {
     (void) value;
+    (void) fieldName;
     (void) n;
 };
 
-void SerializableDocument::seekDocument(uint32_t fieldIndex) {
+void SerializableDocument::seekField(uint32_t fieldIndex) {
     if (fieldIndex == fieldCursor) {
         return;
     }
@@ -57,7 +69,7 @@ void SerializableDocument::seekDocument(uint32_t fieldIndex) {
         throw new std::runtime_error("Tried to seek outside bounds");
     }
 
-    if (fieldIndex > fieldCursor) {
+    if (fieldIndex < fieldCursor) {
         fieldCursor = 0;
         fieldData.seek(0);
     }
@@ -76,6 +88,37 @@ void SerializableDocument::seekDocument(uint32_t fieldIndex) {
 // store it on their own. For normal K23SI operations the user does not need to touch this
 Payload SerializableDocument::getSharedPayload() {
     return fieldData.share();
+}
+
+SerializableDocument::SerializableDocument(const String& collection, Schema s) : 
+            collectionName(collection), schemaName(s.name), schemaVersion(s.version), schema(s) {
+    fieldData = Payload([] () { return Binary(DEFAULT_SEGMENT_SIZE); });
+    partitionKeys.resize(schema.partitionKeyFields.size());
+    rangeKeys.resize(schema.partitionKeyFields.size());
+}
+
+String SerializableDocument::getPartitionKey() {
+    String partitionKey("");
+    for (const String& key : partitionKeys) {
+        if (key == "") {
+            throw new std::runtime_error("partition key field not set");
+        }
+        partitionKey += key;
+    }
+
+    return partitionKey;
+}
+
+String SerializableDocument::getRangeKey() {
+    String rangeKey("");
+    for (const String& key : rangeKeys) {
+        if (key == "") {
+            throw new std::runtime_error("partition key field not set");
+        }
+        rangeKey += key;
+    }
+
+    return rangeKey;
 }
 
 } // ns dto

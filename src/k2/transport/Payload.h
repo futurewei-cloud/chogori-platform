@@ -34,6 +34,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
+constexpr uint32_t DEFAULT_SEGMENT_SIZE = 8192;
+
 // Serialize-helper class which allows the user to serialize a custom type as a Payload type.
 // This allows any reader to read this field as a Payload, and deserialize a custom type from
 // it at a later point. In particular, we use this to send/receive generic records in K2.
