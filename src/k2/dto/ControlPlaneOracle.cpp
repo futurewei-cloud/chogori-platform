@@ -134,7 +134,7 @@ Status Schema::canUpgradeTo(const dto::Schema& other) const {
     for (size_t i = 0; i < partitionKeyFields.size(); ++i) {
         uint32_t a_fieldIndex = partitionKeyFields[i];
         const String& a_name = fields[a_fieldIndex].name;
-        dto::DocumentFieldType a_type = fields[a_fieldIndex].type;
+        dto::FieldType a_type = fields[a_fieldIndex].type;
 
         uint32_t b_fieldIndex = other.partitionKeyFields[i];
         if (a_fieldIndex != b_fieldIndex) {
@@ -142,7 +142,7 @@ Status Schema::canUpgradeTo(const dto::Schema& other) const {
         }
 
         const String& b_name = other.fields[b_fieldIndex].name;
-        dto::DocumentFieldType b_type = other.fields[b_fieldIndex].type;
+        dto::FieldType b_type = other.fields[b_fieldIndex].type;
 
         if (b_name != a_name || b_type != a_type) {
             return Statuses::S409_Conflict("partitionKey fields of schema versions do not match");
@@ -152,7 +152,7 @@ Status Schema::canUpgradeTo(const dto::Schema& other) const {
     for (size_t i = 0; i < rangeKeyFields.size(); ++i) {
         uint32_t a_fieldIndex = rangeKeyFields[i];
         const String& a_name = fields[a_fieldIndex].name;
-        dto::DocumentFieldType a_type = fields[a_fieldIndex].type;
+        dto::FieldType a_type = fields[a_fieldIndex].type;
 
         uint32_t b_fieldIndex = other.rangeKeyFields[i];
         if (a_fieldIndex != b_fieldIndex) {
@@ -160,7 +160,7 @@ Status Schema::canUpgradeTo(const dto::Schema& other) const {
         }
 
         const String& b_name = other.fields[b_fieldIndex].name;
-        dto::DocumentFieldType b_type = other.fields[b_fieldIndex].type;
+        dto::FieldType b_type = other.fields[b_fieldIndex].type;
 
         if (b_name != a_name || b_type != a_type) {
             return Statuses::S409_Conflict("rangeKey fields of schema versions do not match");

@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <iostream>
 
-#include <k2/dto/SerializableDocument.h>
+#include <k2/dto/SKVRecord.h>
 
 #include "catch2/catch.hpp"
 
@@ -52,20 +52,20 @@ void Test1Visitor<uint32_t>(std::optional<uint32_t> value, const k2::String& fie
 }
 
 // Simple partition and range keys, happy path tests
-TEST_CASE("Test1: Basic serializable document tests") {
+TEST_CASE("Test1: Basic SKVRecord tests") {
     k2::dto::Schema schema;
     schema.name = "test_schema";
     schema.version = 1;
     schema.fields = std::vector<k2::dto::SchemaField> {
-            {k2::dto::DocumentFieldType::STRING, "LastName", false, false},
-            {k2::dto::DocumentFieldType::STRING, "FirstName", false, false},
-            {k2::dto::DocumentFieldType::UINT32T, "Balance", false, false}
+            {k2::dto::FieldType::STRING, "LastName", false, false},
+            {k2::dto::FieldType::STRING, "FirstName", false, false},
+            {k2::dto::FieldType::UINT32T, "Balance", false, false}
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
     schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
 
-    k2::dto::SerializableDocument doc("collection", std::move(schema));
+    k2::dto::SKVRecord doc("collection", std::move(schema));
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<k2::String>("Bilbo");
@@ -105,10 +105,10 @@ TEST_CASE("Test1: Basic serializable document tests") {
         REQUIRE(expectedRangeKey[i] == (uint8_t)rangeKey[i]);
     }
 
-    // Note that the following is not a normal use case of SerializableDocument.
-    // Normally a user will not serialize and deserialize out of the same Document, they
-    // will serialize for a read or write request, and then deserialize a different SerializeableDocument
-    // for a read result. Here we are manually rewinding the Document so that we can test 
+    // Note that the following is not a normal use case of SKVRecord.
+    // Normally a user will not serialize and deserialize out of the same SKVRecord, they
+    // will serialize for a read or write request, and then deserialize a different SKVRecord
+    // for a read result. Here we are manually rewinding the record so that we can test 
     // deserialization
     doc.seekField(0);
 
@@ -124,7 +124,7 @@ TEST_CASE("Test1: Basic serializable document tests") {
     REQUIRE(true);
 
     doc.seekField(0);
-    FOR_EACH_DOC_FIELD(doc, Test1Visitor, 0); // Macro requires at least 1 extra arg, we just use "0"
+    FOR_EACH_RECORD_FIELD(doc, Test1Visitor, 0); // Macro requires at least 1 extra arg, we just use "0"
 }
 
 TEST_CASE("Test2: invalid serialization tests") {
@@ -132,15 +132,15 @@ TEST_CASE("Test2: invalid serialization tests") {
     schema.name = "test_schema";
     schema.version = 1;
     schema.fields = std::vector<k2::dto::SchemaField> {
-            {k2::dto::DocumentFieldType::STRING, "LastName", false, false},
-            {k2::dto::DocumentFieldType::STRING, "FirstName", false, false},
-            {k2::dto::DocumentFieldType::UINT32T, "Balance", false, false}
+            {k2::dto::FieldType::STRING, "LastName", false, false},
+            {k2::dto::FieldType::STRING, "FirstName", false, false},
+            {k2::dto::FieldType::UINT32T, "Balance", false, false}
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
     schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
 
-    k2::dto::SerializableDocument doc("collection", std::move(schema));
+    k2::dto::SKVRecord doc("collection", std::move(schema));
 
     try {
         // Invalid serialization order, should throw exception

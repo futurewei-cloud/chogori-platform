@@ -27,23 +27,23 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
 
-#include "DocumentTypes.h"
+#include "FieldTypes.h"
 
 namespace k2 {
 namespace dto {
 
 static constexpr char TERM = '\0';
 
-template <> DocumentFieldType TToDocumentFieldType<String>() { return DocumentFieldType::STRING; }
-template <> DocumentFieldType TToDocumentFieldType<uint32_t>() { return DocumentFieldType::UINT32T; }
+template <> FieldType TToFieldType<String>() { return FieldType::STRING; }
+template <> FieldType TToFieldType<uint32_t>() { return FieldType::UINT32T; }
 
 // All conversion assume ascending ordering
 
-template <> String DocumentFieldToKeyString<String>(const String& field) {
+template <> String FieldToKeyString<String>(const String& field) {
     // Sizes will not match if there are exta null bytes
     K2ASSERT(field.size() == strlen(field.c_str()), "String has null bytes");
     String typeByte("1");
-    typeByte[0] = (char) DocumentFieldType::STRING;
+    typeByte[0] = (char) FieldType::STRING;
 
     String nullString("1");
     nullString[0] = TERM;
@@ -51,11 +51,11 @@ template <> String DocumentFieldToKeyString<String>(const String& field) {
 }
 
 // Simple conversion to big-endian
-template <> String DocumentFieldToKeyString<uint32_t>(const uint32_t& field)
+template <> String FieldToKeyString<uint32_t>(const uint32_t& field)
 {
     // type byte + 4 bytes + TERM
     String s("123456");
-    s[0] = (char) DocumentFieldType::UINT32T;
+    s[0] = (char) FieldType::UINT32T;
     s[1] = (char)(field >> 24);
     s[2] = (char)(field >> 16);
     s[3] = (char)(field >> 8);
@@ -67,14 +67,14 @@ template <> String DocumentFieldToKeyString<uint32_t>(const uint32_t& field)
 
 String NullFirstToKeyString() {
     String s("12");
-    s[0] = (char) DocumentFieldType::NULL_T;
+    s[0] = (char) FieldType::NULL_T;
     s[1] = TERM;
     return s;
 }
 
 String NullLastToKeyString() {
     String s("12");
-    s[0] = (char) DocumentFieldType::NULL_LAST;
+    s[0] = (char) FieldType::NULL_LAST;
     s[1] = TERM;
     return s;
 }

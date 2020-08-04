@@ -24,14 +24,14 @@ Copyright(c) 2020 Futurewei Cloud
 #include <optional>
 
 #include <k2/appbase/AppEssentials.h>
-#include <k2/dto/SerializableDocument.h>
+#include <k2/dto/SKVRecord.h>
 
 namespace k2 {
 namespace dto {
 
-void SerializableDocument::skipNext() {
+void SKVRecord::skipNext() {
     if (fieldCursor >= schema.fields.size()) {
-        throw new std::runtime_error("Schema not followed in document serialization");
+        throw new std::runtime_error("Schema not followed in record serialization");
     }
 
     for (size_t i = 0; i < schema.partitionKeyFields.size(); ++i) {
@@ -60,7 +60,7 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
     (void) n;
 };
 
-void SerializableDocument::seekField(uint32_t fieldIndex) {
+void SKVRecord::seekField(uint32_t fieldIndex) {
     if (fieldIndex == fieldCursor) {
         return;
     }
@@ -80,24 +80,24 @@ void SerializableDocument::seekField(uint32_t fieldIndex) {
             continue;
         }
 
-        DO_ON_NEXT_DOC_FIELD((*this), NoOp, 0);
+        DO_ON_NEXT_RECORD_FIELD((*this), NoOp, 0);
     }
 }
 
 // We expose a shared payload in case the user wants to write it to file or otherwise 
 // store it on their own. For normal K23SI operations the user does not need to touch this
-Payload SerializableDocument::getSharedPayload() {
+Payload SKVRecord::getSharedPayload() {
     return fieldData.share();
 }
 
-SerializableDocument::SerializableDocument(const String& collection, Schema s) : 
+SKVRecord::SKVRecord(const String& collection, Schema s) : 
             collectionName(collection), schemaName(s.name), schemaVersion(s.version), schema(s) {
     fieldData = Payload([] () { return Binary(DEFAULT_SEGMENT_SIZE); });
     partitionKeys.resize(schema.partitionKeyFields.size());
     rangeKeys.resize(schema.partitionKeyFields.size());
 }
 
-String SerializableDocument::getPartitionKey() {
+String SKVRecord::getPartitionKey() {
     String partitionKey("");
     for (const String& key : partitionKeys) {
         if (key == "") {
@@ -109,7 +109,7 @@ String SerializableDocument::getPartitionKey() {
     return partitionKey;
 }
 
-String SerializableDocument::getRangeKey() {
+String SKVRecord::getRangeKey() {
     String rangeKey("");
     for (const String& key : rangeKeys) {
         if (key == "") {

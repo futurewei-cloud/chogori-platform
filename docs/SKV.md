@@ -15,19 +15,19 @@ richer schema-aware interface.
 ## Overview
 
 The interface between the K2 server and client is defined by the DTOs, and is similar to the previous. 
-KV interface. Requests are routed to partitions based on the partitionKey String. Uniqueness of a document 
+KV interface. Requests are routed to partitions based on the partitionKey String. Uniqueness of a record 
 is based on the combined partitionKey String, rangeKey String, and schema name. The schema name and version 
-are transmitted in the DTO as part of the SerializableDocument. The partitionKey and rangeKey are separate 
-fields in the request DTO but can be constructed from fields in the SerializableDocument (more details in 
-the SerializableDocument section).
+are transmitted in the DTO as part of the SKVRecord. The partitionKey and rangeKey are separate 
+fields in the request DTO but can be constructed from fields in the SKVRecord (more details in 
+the SKVRecord section).
 
 
-There are two main user-K23SI client interfaces. One is template-based document read/write operations where 
-the schema is known at compile time and can be expressed as a C++ type. The other is the SerializableDocument 
+There are two main user-K23SI client interfaces. One is template-based record read/write operations where 
+the schema is known at compile time and can be expressed as a C++ type. The other is the SKVRecord 
 class which allows the user to serialize/deserialize one field at a time. In both cases, as part of the 
 schema, the user defines which fields will be part of the partitionKey and which fields will be part of 
 the rangeKey. The client will automatically construct the partitionKey and rangeKey from the fields 
-serialized by the user. The two interfaces (template-based C++ types and SerializableDocument) are cross-
+serialized by the user. The two interfaces (template-based C++ types and SKVRecord) are cross-
 compatible.
 
 ## Schemas (see src/k2/dto/ControlPlaneOracle.h)
@@ -57,38 +57,38 @@ When the user creates a schema, it sends it as a request to the CPO. After valid
 the schema to all k2 storage nodes that own a partition of the collection. If this succeeds the CPO 
 responds with success to the user and the user can begin using the new schema.
 
-## SerializableDocument (see src/k2/dto/SerializableDocument.h)
+## SKVRecord (see src/k2/dto/SKVRecord.h)
 
-The SerializableDocument class is the main interface for the user to interact with the SKV. It is 
+The SKVRecord class is the main interface for the user to interact with the SKV. It is 
 used for creating a read request, creating a write request, and for a read response.
 
 
-The user starts by creating a SerializableDocument and associating it with a particular Schema. 
-Operations on the document will be validated against that schema to the extent possible (e.g. when 
+The user starts by creating a SKVRecord and associating it with a particular Schema. 
+Operations on the record will be validated against that schema to the extent possible (e.g. when 
 serializing a field the type must match the schema type for that field).
 
 
-Since the SerializableDocument will be used for nearly all data-path operations in the SKV system, 
-it must be efficient. To that end, the document type system is not inheritance-based and the 
+Since the SKVRecord will be used for nearly all data-path operations in the SKV system, 
+it must be efficient. To that end, the field type system is not inheritance-based and the 
 serialization approach for field data is based on the K2 Payload, which is one-shot, in-order, and 
-not self-describing. This requires some restrictions on the SerializableDocument interface.
+not self-describing. This requires some restrictions on the SKVRecord interface.
 
 
-To create a SerializableDocument for an SKV read or write request, the user must serialize the 
+To create a SKVRecord for an SKV read or write request, the user must serialize the 
 fields of the schema by calling serializeNext<> or skipNext (if the field data should be NULL). This 
 must be done in order of the schema. For a read request, the user can stop after serializing the 
 fields that are key fields (which must come first in the schema as described above). For a write 
 request all fields must be serialized or explicitly skipped.
 
 
-The SerializableDocument handles converting key fields into partition and range strings. To do this it 
-relies on the string conversion functions provided in src/k2/dto/DocumentFieldTypes.h.
+The SKVRecord handles converting key fields into partition and range strings. To do this it 
+relies on the string conversion functions provided in src/k2/dto/FieldTypes.h.
 
 
-When the user gets a SerializableDocument back as part of a read or query response, they must 
+When the user gets a SKVRecord back as part of a read or query response, they must 
 deserialize to get the field data. The deserializeNextOptional function can be used to do this 
 but since it is templated on the type of the field, the user needs to reference the schema, write a 
 switch statement on the type, and then call the correct template instantiation for the type. As a 
-convenience, the FOR\_EACH\_DOC\_FIELD and DO\_ON\_NEXT\_DOC\_FIELD macros can be used with a 
+convenience, the FOR\_EACH\_RECORD\_FIELD and DO\_ON\_NEXT\_RECORD\_FIELD macros can be used with a 
 templated visitor function, which provides the functionality of the switch statement for the user. 
 See the macro comments and definitions for more details.

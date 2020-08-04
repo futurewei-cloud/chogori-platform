@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/Status.h>
 
 #include "Collection.h"
-#include "DocumentTypes.h"
+#include "FieldTypes.h"
 
 // This file contains DTOs for K2 ControlPlaneOracle
 
@@ -66,7 +66,7 @@ struct CollectionGetResponse {
 };
 
 struct SchemaField {
-    DocumentFieldType type;
+    FieldType type;
     String name;
     // Ascending or descending sort order. Currently only relevant for 
     // key fields, but could be used for secondary index in the future

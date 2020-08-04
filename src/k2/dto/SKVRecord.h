@@ -25,29 +25,29 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <optional>
 
-#include <k2/dto/DocumentTypes.h>
+#include <k2/dto/FieldTypes.h>
 #include <k2/dto/ControlPlaneOracle.h>
 
 namespace k2 {
 namespace dto {
 
-class SerializableDocument {
+class SKVRecord {
 public:
-    // The document must be serialized in order. Schema will be enforced
-    template <typename FieldType>
-    void serializeNext(FieldType field) {
-        DocumentFieldType ft = TToDocumentFieldType<FieldType>();
+    // The record must be serialized in order. Schema will be enforced
+    template <typename T>
+    void serializeNext(T field) {
+        FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor].type) {
-            throw new std::runtime_error("Schema not followed in document serialization");
+            throw new std::runtime_error("Schema not followed in record serialization");
         }
 
         for (size_t i = 0; i < schema.partitionKeyFields.size(); ++i) {
             if (schema.partitionKeyFields[i] == fieldCursor) {
-                partitionKeys[i] = DocumentFieldToKeyString<FieldType>(field);
+                partitionKeys[i] = FieldToKeyString<T>(field);
             }
 
             if (schema.rangeKeyFields[i] == fieldCursor) {
-                rangeKeys[i] = DocumentFieldToKeyString<FieldType>(field);
+                rangeKeys[i] = FieldToKeyString<T>(field);
             }
         }
 
@@ -59,35 +59,35 @@ public:
     void skipNext();
 
     // Deserialization can be in any order, but the preferred method is in-order
-    template <typename FieldType>
-    FieldType deserializeField(const String& name) {
+    template <typename T>
+    T deserializeField(const String& name) {
         for (size_t i = 0; i < schema.fields.size(); ++i) {
             if (schema.fields[i].name == name) {
-                return deserializeField<FieldType>(i);
+                return deserializeField<T>(i);
             }
         }
 
-        throw new std::runtime_error("Schema not followed in document deserialization");
+        throw new std::runtime_error("Schema not followed in record deserialization");
     }
 
     void seekField(uint32_t fieldIndex);
 
-    template <typename FieldType>
-    FieldType deserializeField(uint32_t fieldIndex) {
+    template <typename T>
+    T deserializeField(uint32_t fieldIndex) {
         if (excludedFields.size() > 0 && excludedFields[fieldIndex]) {
             throw new std::runtime_error("Tried to deserialize an excluded field");
         }
 
-        DocumentFieldType ft = TToDocumentFieldType<FieldType>();
+        FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor].type) {
-            throw new std::runtime_error("Schema not followed in document deserialization");
+            throw new std::runtime_error("Schema not followed in record deserialization");
         }
 
         if (fieldIndex != fieldCursor) {
             seekField(fieldIndex);
         }
 
-        FieldType value;
+        T value;
         fieldData.read(value);
         ++fieldCursor;
         return value;
@@ -95,9 +95,9 @@ public:
 
     template <typename T>
     std::optional<T> deserializeNextOptional() {
-        DocumentFieldType ft = TToDocumentFieldType<T>();
+        FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor].type) {
-            throw new std::runtime_error("Schema not followed in document deserialization");
+            throw new std::runtime_error("Schema not followed in record deserialization");
         }
 
         if (excludedFields.size() && excludedFields[fieldCursor]) {
@@ -111,8 +111,8 @@ public:
     // store it on their own. For normal K23SI operations the user does not need to touch this
     Payload getSharedPayload();
 
-    SerializableDocument() = default;
-    SerializableDocument(const String& collection, Schema s);
+    SKVRecord() = default;
+    SKVRecord(const String& collection, Schema s);
 
     String collectionName;
     String schemaName;
@@ -134,24 +134,24 @@ public:
     K2_PAYLOAD_FIELDS(schemaName, schemaVersion, excludedFields, fieldData);
 };
 
-// Convience macro that does the switch statement on the document field type for the user
+// Convience macro that does the switch statement on the record field type for the user
 // "func" must be the name of a templatized function that can be instantiated for all 
-// docoument field types. The first arg to "func" is an optional of the field type,
+//  field types. The first arg to "func" is an optional of the field type,
 // the second is a string for the name of the field
 // and a variable number (at least 1) of arguments passed from the user
-#define DO_ON_NEXT_DOC_FIELD(document, func, ...) \
+#define DO_ON_NEXT_RECORD_FIELD(record, func, ...) \
     do { \
-        switch ((document).schema.fields[(document).fieldCursor].type) { \
-           case k2::dto::DocumentFieldType::STRING: \
+        switch ((record).schema.fields[(record).fieldCursor].type) { \
+           case k2::dto::FieldType::STRING: \
            { \
-               std::optional<k2::String> value = (document).deserializeNextOptional<k2::String>(); \
-               func<k2::String>(std::move(value), (document).schema.fields[(document).fieldCursor-1].name, __VA_ARGS__); \
+               std::optional<k2::String> value = (record).deserializeNextOptional<k2::String>(); \
+               func<k2::String>(std::move(value), (record).schema.fields[(record).fieldCursor-1].name, __VA_ARGS__); \
            } \
                break; \
-           case k2::dto::DocumentFieldType::UINT32T: \
+           case k2::dto::FieldType::UINT32T: \
            { \
-               std::optional<uint32_t> value = (document).deserializeNextOptional<uint32_t>(); \
-               func<uint32_t>(std::move(value), (document).schema.fields[(document).fieldCursor-1].name, __VA_ARGS__); \
+               std::optional<uint32_t> value = (record).deserializeNextOptional<uint32_t>(); \
+               func<uint32_t>(std::move(value), (record).schema.fields[(record).fieldCursor-1].name, __VA_ARGS__); \
            } \
                break; \
            default: \
@@ -160,11 +160,11 @@ public:
     } while (0) \
    
 
-#define FOR_EACH_DOC_FIELD(document, func, ...) \
+#define FOR_EACH_RECORD_FIELD(record, func, ...) \
     do { \
-        (document).seekField(0); \
-        while ((document).fieldCursor < (document).schema.fields.size()) { \
-            DO_ON_NEXT_DOC_FIELD((document), func, __VA_ARGS__); \
+        (record).seekField(0); \
+        while ((record).fieldCursor < (record).schema.fields.size()) { \
+            DO_ON_NEXT_RECORD_FIELD((record), func, __VA_ARGS__); \
         } \
     } while (0) \
 

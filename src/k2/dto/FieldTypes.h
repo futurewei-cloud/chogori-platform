@@ -32,7 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-enum class DocumentFieldType : uint8_t {
+enum class FieldType : uint8_t {
     NULL_T = 0,
     STRING = 1,
     UINT32T = 2,
@@ -40,11 +40,11 @@ enum class DocumentFieldType : uint8_t {
 };
 
 template <typename T>
-DocumentFieldType TToDocumentFieldType();
+FieldType TToFieldType();
 
-// Converts a document field type to a string suitable for being part of a key
+// Converts a field type to a string suitable for being part of a key
 template <typename T>
-String DocumentFieldToKeyString(const T& field);
+String FieldToKeyString(const T& field);
 
 String NullFirstToKeyString();
 String NullLastToKeyString();

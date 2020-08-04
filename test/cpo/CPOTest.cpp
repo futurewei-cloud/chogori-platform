@@ -236,9 +236,9 @@ seastar::future<> CPOTest::runTest6() {
     schema.name = "test_schema";
     schema.version = 1;
     schema.fields = std::vector<dto::SchemaField> {
-            {dto::DocumentFieldType::STRING, "LastName", false, false},
-            {dto::DocumentFieldType::STRING, "FirstName", false, false},
-            {dto::DocumentFieldType::UINT32T, "Balance", false, false}
+            {dto::FieldType::STRING, "LastName", false, false},
+            {dto::FieldType::STRING, "FirstName", false, false},
+            {dto::FieldType::UINT32T, "Balance", false, false}
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
@@ -270,9 +270,9 @@ seastar::future<> CPOTest::runTest7() {
     schema.name = "invalid_schema";
     schema.version = 1;
     schema.fields = std::vector<dto::SchemaField> {
-            {dto::DocumentFieldType::STRING, "LastName", false, false},
-            {dto::DocumentFieldType::STRING, "FirstName", false, false},
-            {dto::DocumentFieldType::UINT32T, "Balance", false, false}
+            {dto::FieldType::STRING, "LastName", false, false},
+            {dto::FieldType::STRING, "FirstName", false, false},
+            {dto::FieldType::UINT32T, "Balance", false, false}
     };
     schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
     // Invalid schema because we did not set any partition key fields
