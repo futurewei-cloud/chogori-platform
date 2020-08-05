@@ -21,6 +21,7 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
+#include <algorithm>
 #include <optional>
 
 #include <k2/appbase/AppEssentials.h>
@@ -36,11 +37,13 @@ void SKVRecord::skipNext() {
 
     for (size_t i = 0; i < schema.partitionKeyFields.size(); ++i) {
         if (schema.partitionKeyFields[i] == fieldCursor) {
-            partitionKeys[i] = schema.fields[i].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+            partitionKeys[i] = schema.fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
+    }
 
+    for (size_t i = 0; i < schema.rangeKeyFields.size(); ++i) {
         if (schema.rangeKeyFields[i] == fieldCursor) {
-            rangeKeys[i] = schema.fields[i].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+            rangeKeys[i] = schema.fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
@@ -92,30 +95,46 @@ Payload SKVRecord::getSharedPayload() {
 
 SKVRecord::SKVRecord(const String& collection, Schema s) : 
             collectionName(collection), schemaName(s.name), schemaVersion(s.version), schema(s) {
-    fieldData = Payload([] () { return Binary(DEFAULT_SEGMENT_SIZE); });
+    fieldData = Payload(Payload::DefaultAllocator);
     partitionKeys.resize(schema.partitionKeyFields.size());
     rangeKeys.resize(schema.partitionKeyFields.size());
 }
 
 String SKVRecord::getPartitionKey() {
-    String partitionKey("");
+    size_t keySize = 0;
+    for (const String& key : partitionKeys) {
+        keySize += key.size();
+    }
+
+    String partitionKey(String::initialized_later(), keySize);
+    size_t position = 0;
     for (const String& key : partitionKeys) {
         if (key == "") {
             throw new std::runtime_error("partition key field not set");
         }
-        partitionKey += key;
+
+        std::copy(key.begin(), key.end(), partitionKey.begin() + position);
+        position += key.size();
     }
 
     return partitionKey;
 }
 
 String SKVRecord::getRangeKey() {
-    String rangeKey("");
+    size_t keySize = 0;
+    for (const String& key : rangeKeys) {
+        keySize += key.size();
+    }
+
+    String rangeKey(String::initialized_later(), keySize);
+    size_t position = 0;
     for (const String& key : rangeKeys) {
         if (key == "") {
-            throw new std::runtime_error("partition key field not set");
+            throw new std::runtime_error("range key field not set");
         }
-        rangeKey += key;
+
+        std::copy(key.begin(), key.end(), rangeKey.begin() + position);
+        position += key.size();
     }
 
     return rangeKey;

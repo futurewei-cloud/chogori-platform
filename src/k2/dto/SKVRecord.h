@@ -45,7 +45,9 @@ public:
             if (schema.partitionKeyFields[i] == fieldCursor) {
                 partitionKeys[i] = FieldToKeyString<T>(field);
             }
+        }
 
+        for (size_t i = 0; i < schema.rangeKeyFields.size(); ++i) {
             if (schema.rangeKeyFields[i] == fieldCursor) {
                 rangeKeys[i] = FieldToKeyString<T>(field);
             }
@@ -60,7 +62,7 @@ public:
 
     // Deserialization can be in any order, but the preferred method is in-order
     template <typename T>
-    T deserializeField(const String& name) {
+    std::optional<T> deserializeField(const String& name) {
         for (size_t i = 0; i < schema.fields.size(); ++i) {
             if (schema.fields[i].name == name) {
                 return deserializeField<T>(i);
@@ -73,14 +75,14 @@ public:
     void seekField(uint32_t fieldIndex);
 
     template <typename T>
-    T deserializeField(uint32_t fieldIndex) {
-        if (excludedFields.size() > 0 && excludedFields[fieldIndex]) {
-            throw new std::runtime_error("Tried to deserialize an excluded field");
-        }
-
+    std::optional<T> deserializeField(uint32_t fieldIndex) {
         FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor].type) {
             throw new std::runtime_error("Schema not followed in record deserialization");
+        }
+
+        if (excludedFields.size() > 0 && excludedFields[fieldIndex]) {
+            return std::optional<T>();
         }
 
         if (fieldIndex != fieldCursor) {
@@ -94,17 +96,8 @@ public:
     }
 
     template <typename T>
-    std::optional<T> deserializeNextOptional() {
-        FieldType ft = TToFieldType<T>();
-        if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor].type) {
-            throw new std::runtime_error("Schema not followed in record deserialization");
-        }
-
-        if (excludedFields.size() && excludedFields[fieldCursor]) {
-            return std::optional<T>();
-        }
-
-        return std::optional<T>(deserializeField<T>(fieldCursor));
+    std::optional<T> deserializeNext() {
+        return deserializeField<T>(fieldCursor);
     }
 
     // We expose a shared payload in case the user wants to write it to file or otherwise 
@@ -144,13 +137,13 @@ public:
         switch ((record).schema.fields[(record).fieldCursor].type) { \
            case k2::dto::FieldType::STRING: \
            { \
-               std::optional<k2::String> value = (record).deserializeNextOptional<k2::String>(); \
+               std::optional<k2::String> value = (record).deserializeNext<k2::String>(); \
                func<k2::String>(std::move(value), (record).schema.fields[(record).fieldCursor-1].name, __VA_ARGS__); \
            } \
                break; \
            case k2::dto::FieldType::UINT32T: \
            { \
-               std::optional<uint32_t> value = (record).deserializeNextOptional<uint32_t>(); \
+               std::optional<uint32_t> value = (record).deserializeNext<uint32_t>(); \
                func<uint32_t>(std::move(value), (record).schema.fields[(record).fieldCursor-1].name, __VA_ARGS__); \
            } \
                break; \

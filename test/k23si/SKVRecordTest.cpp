@@ -112,13 +112,13 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
     // deserialization
     doc.seekField(0);
 
-    std::optional<k2::String> lastName = doc.deserializeNextOptional<k2::String>();
+    std::optional<k2::String> lastName = doc.deserializeNext<k2::String>();
     REQUIRE(lastName);
     REQUIRE(*lastName == "Baggins");
-    std::optional<k2::String> firstName = doc.deserializeNextOptional<k2::String>();
+    std::optional<k2::String> firstName = doc.deserializeNext<k2::String>();
     REQUIRE(firstName);
     REQUIRE(*firstName == "Bilbo");
-    std::optional<uint32_t> balance = doc.deserializeNextOptional<uint32_t>();
+    std::optional<uint32_t> balance = doc.deserializeNext<uint32_t>();
     REQUIRE(balance);
     REQUIRE(*balance == 777);
     REQUIRE(true);

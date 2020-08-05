@@ -21,6 +21,7 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 
@@ -42,38 +43,39 @@ template <> FieldType TToFieldType<uint32_t>() { return FieldType::UINT32T; }
 template <> String FieldToKeyString<String>(const String& field) {
     // Sizes will not match if there are exta null bytes
     K2ASSERT(field.size() == strlen(field.c_str()), "String has null bytes");
-    String typeByte("1");
-    typeByte[0] = (char) FieldType::STRING;
 
-    String nullString("1");
-    nullString[0] = TERM;
-    return typeByte + field + nullString;
+    String keyString(String::initialized_later(), field.size() + 2);
+    keyString[0] = (char) FieldType::STRING;
+    std::copy(field.begin(), field.end(), keyString.begin()+1);
+    keyString[field.size() + 1] = TERM;
+
+    return keyString;
 }
 
 // Simple conversion to big-endian
 template <> String FieldToKeyString<uint32_t>(const uint32_t& field)
 {
     // type byte + 4 bytes + TERM
-    String s("123456");
+    String s(String::initialized_later(), 6);
     s[0] = (char) FieldType::UINT32T;
     s[1] = (char)(field >> 24);
     s[2] = (char)(field >> 16);
     s[3] = (char)(field >> 8);
     s[4] = (char)(field);
-    s[6] = TERM;
+    s[5] = TERM;
 
     return s;
 }
 
 String NullFirstToKeyString() {
-    String s("12");
+    String s(String::initialized_later(), 2);
     s[0] = (char) FieldType::NULL_T;
     s[1] = TERM;
     return s;
 }
 
 String NullLastToKeyString() {
-    String s("12");
+    String s(String::initialized_later(), 2);
     s[0] = (char) FieldType::NULL_LAST;
     s[1] = TERM;
     return s;
