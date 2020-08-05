@@ -32,11 +32,22 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-enum class DocumentFieldType : uint8_t {
+enum class FieldType : uint8_t {
     NULL_T = 0,
     STRING = 1,
     UINT32T = 2,
+    NULL_LAST = 255
 };
+
+template <typename T>
+FieldType TToFieldType();
+
+// Converts a field type to a string suitable for being part of a key
+template <typename T>
+String FieldToKeyString(const T& field);
+
+String NullFirstToKeyString();
+String NullLastToKeyString();
 
 } // ns dto
 } // ns k2

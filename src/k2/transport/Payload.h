@@ -93,6 +93,7 @@ public: // types
 public: // Lifecycle
     // Create a blank payload which can grow by allocating with the given allocator
     Payload(BinaryAllocatorFunctor allocator);
+    static Binary DefaultAllocator();
 
     Payload(Payload&&) = default;
     Payload& operator=(Payload&& other) = default;
