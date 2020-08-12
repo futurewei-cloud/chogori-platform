@@ -133,6 +133,20 @@ Then each of the encoded fields in the key are simply concatenated in the order 
 This fulfills all five of our desired properties.
 
 
+### Implementation Notes
+
+The client library is responsible for encoding the partition and range keys from the record's field values. 
+It must do this for the partition key so that the request can be routed, so for simplicity it will also 
+do this for the range key. When the server gets a request it concatenates SCHEMA\_NAME + TERMINATOR + 
+PARTITION\_KEY + RANGE\_KEY for indexer operations. The server does not need to do further encoding beyond 
+this for normal read or write requests. The schema name is required to differentiate records for different 
+schemas and to keep records from the same schema together for efficient query operations. It is not part 
+of the partition key because the user may want to keep data from different schemas local to a partition.
+
+
+For query predicates that reference a key field, the client library will also need to encode those 
+predicate literals using the same methods it does for keys.
+
 ### References
 
 - https://github.com/cockroachdb/cockroach/blob/master/pkg/util/encoding/encoding.go
