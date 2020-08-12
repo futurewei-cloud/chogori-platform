@@ -33,7 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/K23SIInspect.h>
 #include <k2/common/Chrono.h>
 #include <k2/cpo/client/CPOClient.h>
-#include <k2/tso/client_lib/tso_clientlib.h>
+#include <k2/tso/client/tso_clientlib.h>
 
 #include "ReadCache.h"
 #include "TxnManager.h"

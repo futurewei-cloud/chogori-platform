@@ -14,6 +14,6 @@ target_link_libraries (txbench_combine PRIVATE k2appbase k2transport k2common Se
 target_link_libraries (rpcbench_client PRIVATE k2appbase k2transport k2common Seastar::seastar)
 target_link_libraries (rpcbench_server PRIVATE k2appbase k2transport k2common Seastar::seastar)
 
-target_link_libraries (k23sibench_client PRIVATE k2appbase tso_clientlib k2cpo_client k23si_client)
+target_link_libraries (k23sibench_client PRIVATE k2appbase k2tso_client k2cpo_client k23si_client)
 
-install (TARGETS txbench_client txbench_server txbench_combine rpcbench_client rpcbench_server DESTINATION bin)
+install (TARGETS txbench_client txbench_server txbench_combine rpcbench_client rpcbench_server k23sibench_client DESTINATION bin)

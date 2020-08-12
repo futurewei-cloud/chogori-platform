@@ -39,7 +39,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/Collection.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
-#include <k2/tso/client_lib/tso_clientlib.h>
+#include <k2/tso/client/tso_clientlib.h>
 #include <k2/common/Timer.h>
 
 

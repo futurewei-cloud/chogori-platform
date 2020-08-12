@@ -4,3 +4,6 @@ file(GLOB SOURCES "*.cpp")
 add_library(k23si STATIC ${HEADERS} ${SOURCES})
 target_link_libraries (k23si PRIVATE k2indexer k2common k2transport k2dto k2cpo_client)
 add_subdirectory (client)
+
+install(TARGETS k23si DESTINATION lib/k2)
+install(FILES ${HEADERS} DESTINATION include/k2/module/k23si)
