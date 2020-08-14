@@ -28,7 +28,9 @@ These are not limits of the system, but we design the system to operate under th
 ## Transaction flow
 ![TxnFlow](./images/HighLevelTxn.png)
 
-Our transaction flow is pretty standard from high-level. Users begin() a transaction, and then commit() after some number of read() and write() operations. Note how we obtain a timestamp for the transaction only once since all operations will be recorded to have occurred at that time.
+Our transaction flow is pretty standard from high-level. Users begin() a transaction, and then commit() after some number of read() and write() operations. Note how we obtain a timestamp for the transaction only once at transaction start time since all operations will be recorded to have occurred at that time.
+
+We name our distributed transaction protocol as <b>K2-3SI</b>, where 3SI is abbrevation for <b>S</b>equential consistent, <b>S</b>erializable <b>S</b>napshot <b>I</b>solation. As later on discribed in this document, our transaction is at Serializable Snpshot Isoltion level, with Sequential consistency, further more gurantees external causal relationship where "external" means such relationship is out side of our system thus not known to the system. With K2-3SI, there should be no anomaly so that upper layer application developer enjoys simplified transaction logic. K2-3SI is inspired by Google's Percolater distrubted 2-PC and CockroachDB's distributed transaction with major improvement of a) not using HLC but high available and efficient K2TSO/K2Timestamp thus support global transaction as well, and b) elimination of anomaly. Compare with Google Spanner's 2-PC distributed transaction protocol, where there are two network roundtrips needed to commit a transaction and latency is increased as the data lock is still hold to wait out uncertainty window of TrueTime, K2-3SI just need on network roundtrip to commit a transaction and there is no need to wait after commit. 
 
 # Definitions
 
@@ -150,8 +152,8 @@ If a transaction commits or aborts, we record this fact in the TR and have to pe
     - If the record is still a WI, we convert it to aborted and proceed as if we found an aborted record in the first place. Note that the scenario "find WI -> perform PUSH -> find no TR -> forceAbort -> find WI" cannot be racing with a fast "commit TR -> finalize TR -> delete TR" scenario since if there was a successful finalization performed while we were trying to push, then by the time we get back the record cannot be in WI state. Therefore it is safe to simply abort the WI.
     - If the record is committed/aborted, proceed as if we found a committed/aborted record in the first place
 
-## Data Retention
-Our system is fundamentally MVCC-based. In order to satisfy concurrent transactions correctly, we require that multiple versions of records are present to cover the span of these transactions in time. Moreover, we alow users to perform snapshot reads (reads from a snapshot of the data at a particular point in time) which means that we need to have data retention for the record versions in order to allow those reads.
+## Data Retention/RetentionWindow
+Our system is fundamentally MVCC-based. In order to satisfy concurrent transactions correctly, we require that multiple versions of records are present to cover the span of these transactions in time. Moreover, our transaction isolation level is snapshot (read operations of transaction is applied on a snapshot of the data at a particular point in time, which is the transaction starting time) which means that we need to have data retention for the record versions in order to allow those read operations during a transaction.
 
 To remain correct, we allow the users to specify the data retention window. Nodes use their local TSOs to obtain a current timestamp and using this retentionWindow, perform a few tasks and impose some restrictions:
 1. The retentionWindow has minimum value sufficient to cover the node-local TSO uncertainty window + polling interval. Typically, we obtain a fresh TIME_NOW from the TSO every 1min so the minimum retention period in this scenario would be ~20us + 2min
@@ -159,6 +161,8 @@ To remain correct, we allow the users to specify the data retention window. Node
 1. Any operation issued with `ts < time.NOW - retentionWindow` will be automatically aborted.
 1. Any transaction commit with `ts < time.NOW - retentionWindow` will be aborted
 1. Any in-progress transactions running longer than the retentionWindow will be aborted (`ForcedAbort`)
+
+Normally a transaction has to start and finish within the retention window. It is usually not an issue for update kind of OLTP transactions which is typically short running. For for long running OLAP read-only transactions, such retention window may not provide long enoug time. One possible solution is that the user could first take a snapshot (and bear the cost of it) and issue the read-only transaction on the user created snapshot. 
 
 # Outline of approach
 We've chosen a modified Serializable Snapshot Isolation approach, modified to execute in a NO-WAIT fashion - that is, we abort transactions as soon as possible in cases of potential conflict. Roughly, we use MVCC to achieve snapshot isolation, and we enhance the server-side handling and book-keeping to make it serializable, as described in the paper by [Serializable SI - CockroachDB](https://www.cockroachlabs.com/blog/serializable-lockless-distributed-isolation-cockroachdb/) and  [Serializable Isolation for Snapshot Databases](./papers/SerializableSnapshotIsolation-fekete-sigmod2008.pdf). Causality is guaranteed by our approach to timestamp generation (see TSO above). The following sections dive in each aspect of performing transactions.
