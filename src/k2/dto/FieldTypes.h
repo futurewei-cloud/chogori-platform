@@ -34,7 +34,7 @@ namespace dto {
 
 enum class FieldType : uint8_t {
     NULL_T = 0,
-    STRING = 1,
+    STRING = 1, // NULL characters in string is OK
     UINT32T = 2,
     NULL_LAST = 255
 };

@@ -33,7 +33,9 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-static constexpr char TERM = '\0';
+static constexpr char ESCAPE = '\0';
+static constexpr char TERM = 0x01;
+static constexpr char ESCAPED_NULL = 0xFF;
 
 template <> FieldType TToFieldType<String>() { return FieldType::STRING; }
 template <> FieldType TToFieldType<uint32_t>() { return FieldType::UINT32T; }
@@ -41,43 +43,73 @@ template <> FieldType TToFieldType<uint32_t>() { return FieldType::UINT32T; }
 // All conversion assume ascending ordering
 
 template <> String FieldToKeyString<String>(const String& field) {
-    // Sizes will not match if there are exta null bytes
-    K2ASSERT(field.size() == strlen(field.c_str()), "String has null bytes");
+    size_t pos = 0;
+    std::vector<size_t> foundNulls;
 
-    String keyString(String::initialized_later(), field.size() + 2);
-    keyString[0] = (char) FieldType::STRING;
-    std::copy(field.begin(), field.end(), keyString.begin()+1);
-    keyString[field.size() + 1] = TERM;
+    while (pos != String::npos && pos < field.size()) {
+        pos = field.find(ESCAPE, pos);
+        if (pos != String::npos) {
+            foundNulls.push_back(pos);
+            ++pos;
+        }
+    }
 
-    return keyString;
+    // Size is original +1 type byte +1 byte per null and +2 terminator bytes
+    String escapedString(String::initialized_later(), field.size() + foundNulls.size() + 3);
+    size_t originalCursor = 0;
+    size_t escapedCursor = 1;
+    for (size_t nullPos : foundNulls) {
+        std::copy(field.begin() + originalCursor, field.begin() + nullPos + 1, 
+                  escapedString.begin() + escapedCursor);
+
+        size_t count = nullPos - originalCursor + 1;
+        originalCursor += count;
+        escapedCursor += count;
+        escapedString[escapedCursor] = ESCAPED_NULL;
+        ++escapedCursor;
+    }
+
+    if (originalCursor < field.size()) {
+        std::copy(field.begin() + originalCursor, field.end(), 
+                  escapedString.begin() + escapedCursor);
+    }
+
+    escapedString[0] = (char) FieldType::STRING;
+    escapedString[escapedString.size() - 2] = ESCAPE;
+    escapedString[escapedString.size() - 1] = TERM;
+
+    return escapedString;
 }
 
 // Simple conversion to big-endian
 template <> String FieldToKeyString<uint32_t>(const uint32_t& field)
 {
-    // type byte + 4 bytes + TERM
-    String s(String::initialized_later(), 6);
+    // type byte + 4 bytes + ESCAPE + TERM
+    String s(String::initialized_later(), 7);
     s[0] = (char) FieldType::UINT32T;
     s[1] = (char)(field >> 24);
     s[2] = (char)(field >> 16);
     s[3] = (char)(field >> 8);
     s[4] = (char)(field);
-    s[5] = TERM;
+    s[5] = ESCAPE;
+    s[6] = TERM;
 
     return s;
 }
 
 String NullFirstToKeyString() {
-    String s(String::initialized_later(), 2);
+    String s(String::initialized_later(), 3);
     s[0] = (char) FieldType::NULL_T;
-    s[1] = TERM;
+    s[1] = ESCAPE;
+    s[2] = TERM;
     return s;
 }
 
 String NullLastToKeyString() {
-    String s(String::initialized_later(), 2);
+    String s(String::initialized_later(), 3);
     s[0] = (char) FieldType::NULL_LAST;
-    s[1] = TERM;
+    s[1] = ESCAPE;
+    s[2] = TERM;
     return s;
 }
 

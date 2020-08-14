@@ -23,8 +23,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #define CATCH_CONFIG_MAIN
 
-#include <iostream>
-
 #include <k2/dto/SKVRecord.h>
 
 #include "catch2/catch.hpp"
@@ -80,7 +78,8 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
         105, // 'i'
         110, // 'n'
         115, // 's'
-        0, // Null separator
+        0, // Terminator
+        1, // Terminator
     };
     k2::String partitionKey = doc.getPartitionKey();
 
@@ -96,7 +95,8 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
         108, // 'l'
         98, // 'b'
         111, // 'o'
-        0, // Null separator
+        0, // Terminator
+        1, // Terminator
     };
     k2::String rangeKey = doc.getRangeKey();
 
