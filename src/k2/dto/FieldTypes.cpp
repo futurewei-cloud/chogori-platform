@@ -42,7 +42,7 @@ template <> FieldType TToFieldType<uint32_t>() { return FieldType::UINT32T; }
 
 // All conversion assume ascending ordering
 
-static String escapeKeyString(const String& field) {
+template <> String FieldToKeyString<String>(const String& field) {
     size_t pos = 0;
     std::vector<size_t> foundNulls;
 
@@ -54,9 +54,10 @@ static String escapeKeyString(const String& field) {
         }
     }
 
-    String escapedString(String::initialized_later(), field.size() + foundNulls.size());
+    // Size is original +1 type byte +1 byte per null and +2 terminator bytes
+    String escapedString(String::initialized_later(), field.size() + foundNulls.size() + 3);
     size_t originalCursor = 0;
-    size_t escapedCursor = 0;
+    size_t escapedCursor = 1;
     for (size_t nullPos : foundNulls) {
         std::copy(field.begin() + originalCursor, field.begin() + nullPos + 1, 
                   escapedString.begin() + escapedCursor);
@@ -73,26 +74,11 @@ static String escapeKeyString(const String& field) {
                   escapedString.begin() + escapedCursor);
     }
 
+    escapedString[0] = (char) FieldType::STRING;
+    escapedString[escapedString.size() - 2] = ESCAPE;
+    escapedString[escapedString.size() - 1] = TERM;
+
     return escapedString;
-}
-
-template <> String FieldToKeyString<String>(const String& field) {
-    bool didEscape = false;
-    String escapedString;
-    if (field.size() != strlen(field.c_str())) {
-        didEscape = true;
-        escapedString = escapeKeyString(field);
-    }
-    // Trying to make a fast-path that minimizes copies if no escape is needed
-    const String& fieldString = didEscape ? escapedString : field;
-
-    String keyString(String::initialized_later(), fieldString.size() + 3);
-    keyString[0] = (char) FieldType::STRING;
-    std::copy(fieldString.begin(), fieldString.end(), keyString.begin()+1);
-    keyString[fieldString.size() + 1] = ESCAPE;
-    keyString[fieldString.size() + 2] = TERM;
-
-    return keyString;
 }
 
 // Simple conversion to big-endian
