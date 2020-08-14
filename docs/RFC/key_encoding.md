@@ -77,15 +77,15 @@ needs to be {0x00, 0x01}. Consider a key schema with two Bytes fields, {("Region
 second because the "Region" field in the first record is a prefix of the second record's field.
 
 
-Now we escape, and demonstrate what happens with using only 0x00 as a separator. The encoded keys become: 
-(0x03 0x00 0xFF 0x01) and (0x03 0x00 0xFF 0x00 0x02). The second record will be considered less than 
+Now we escape, and demonstrate what happens with using only 0x00 as terminator. The encoded keys become: 
+(0x03 0x00 0xFF 0x01 0x00) and (0x03 0x00 0xFF 0x00 0x02 0x00). The second record will be considered less than 
 the first because the fourth byte compares less than, which is incorrect. The root cause is that the 
 1-byte terminator cannot be distinguished from the escaped sequence.
 
 
 Now, escaping and using the two-byte terminator we get:
-(0x03 0x00 0x01 0xFF 0x01) and (0x03 0x00 0xFF 0x00 0x01 0x02). Now the records are ordered correctly 
-because our 0x01 byte in the terminator compares less than our 0xFF byte in the escape sequence.
+(0x03 0x00 0x01 0xFF 0x01 0x00 0x01) and (0x03 0x00 0xFF 0x00 0x01 0x02 0x00 0x001). Now the records are 
+ordered correctly because our 0x01 byte in the terminator compares less than our 0xFF byte in the escape sequence.
 
 
 The escape sequence also preserves ordering within a field because the un-encoded 0x00 byte must have 
