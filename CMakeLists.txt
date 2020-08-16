@@ -20,3 +20,14 @@ find_package (yaml-cpp REQUIRED) # required for configuration file parsing
 
 add_subdirectory (src)
 add_subdirectory (test)
+
+# install the cmake config for the entire project so that it can be used by upstream
+# via find_package(k2 REQUIRED)
+# and pulling individual dependencies like so:
+# DEPENDS ..... k2::appbase k2::transport
+install(
+    EXPORT k2Targets
+    FILE k2-config.cmake
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/cmake/k2"
+	NAMESPACE k2::
+)

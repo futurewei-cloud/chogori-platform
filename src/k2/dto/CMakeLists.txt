@@ -1,8 +1,11 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(k2dto STATIC ${HEADERS} ${SOURCES})
-target_link_libraries (k2dto PRIVATE k2common)
+add_library(dto STATIC ${HEADERS} ${SOURCES})
+target_link_libraries (dto PRIVATE common)
 
-install(TARGETS k2dto DESTINATION lib/k2)
+# export the library in the common k2Targets
+install(TARGETS dto EXPORT k2Targets DESTINATION lib/k2)
 install(FILES ${HEADERS} DESTINATION include/k2/dto)
+# export the cmake config in the build tree for any users who want to use this project from source
+export(TARGETS dto NAMESPACE k2:: FILE dto-config.cmake)
