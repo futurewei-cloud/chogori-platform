@@ -34,7 +34,11 @@ enum Verbs : k2::Verb {
     CPO_COLLECTION_CREATE = 10,
     // ControlPlaneOracle: asked to return an existing collection
     CPO_COLLECTION_GET,
-
+    // ControlPlaneOracle: asked to register a persistence server
+    CPO_PERSISTENCE_REGISTER,
+    // ControlPlaneOracle: asked to return a collection of persistence servers
+    CPO_PERSISTENCE_GET,
+    
     /************ Assignment *****************/
     // K2Assignment: CPO asks K2 to assign a partition
     K2_ASSIGNMENT_CREATE = 20,
@@ -57,6 +61,10 @@ enum Verbs : k2::Verb {
 
     /************ K23SI Persistence *****************/
     K23SI_Persist = 40,
+    K23SI_PERSISTENT_CREATE,
+    K23SI_PERSISTENT_APPEND,
+    K23SI_PERSISTENT_READ,
+    K23SI_PERSISTENT_SEAL,
     
     /************* TSO *******************/
     // API from TSO client to any TSO instance to get master instance URL

@@ -79,6 +79,14 @@ void K2TxnHandle::makeHeartbeatTimer() {
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     if (!_write_set.size()) {
         _client->successful_txns++;
+
+        if (_failed && shouldCommit) {
+            // This means a bug in the application because there is no heartbeat for a RO txn,
+            // so the app should have seen the failure on a read and aborted
+            K2WARN("Tried to commit a failed RO transaction, mtr: " << _mtr);
+            return seastar::make_ready_future<EndResult>(EndResult(_failed_status));
+        }
+
         return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
     }
 
@@ -98,12 +106,23 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     return _cpo_client->PartitionRequest
         <dto::K23SITxnEndRequest, dto::K23SITxnEndResponse, dto::Verbs::K23SI_TXN_END>
         (Deadline<>(_txn_end_deadline), *request).
-        then([this] (auto&& response) {
+        then([this, shouldCommit] (auto&& response) {
             auto& [status, k2response] = response;
             if (status.is2xxOK() && !_failed) {
                 _client->successful_txns++;
             } else if (!status.is2xxOK()){
                 K2WARN("TxnEndRequest failed: " << status << " mtr: " << _mtr);
+            }
+
+            if (_failed && shouldCommit && status.is2xxOK()) {
+                // This could either be a bug in the application, where the failure was a read/write op
+                // and the app should know to abort, or it is a normal scenario where there was a 
+                // failure on the heartbeat and the app was not aware.
+                //
+                // Either way, we aborted the transaction but we need to indicate to the app that
+                // it was not commited
+                K2DEBUG("Tried to commit a failed transaction, _mtr: " << _mtr);
+                status = _failed_status;
             }
 
             return _heartbeat_timer.stop().then([this, s=std::move(status)] () {

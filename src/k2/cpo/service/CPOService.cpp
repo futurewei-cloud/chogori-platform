@@ -52,6 +52,8 @@ seastar::future<> CPOService::gracefulStop() {
         futs.push_back(std::move(v));
     }
     _assignments.clear();
+    _avaliable_persistence_services.clear();
+    _assigned_persistence_services.clear();
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
@@ -65,12 +67,23 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::PlogServerRegisterRequest, dto::PlogServerRegisterResponse>(dto::Verbs::CPO_PERSISTENCE_REGISTER, [this](dto::PlogServerRegisterRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePlogServerRegister, std::move(request));
+    });
+
+    RPC().registerRPCObserver<dto::PlogServerGetRequest, dto::PlogServerGetResponse>(dto::Verbs::CPO_PERSISTENCE_GET, [this](dto::PlogServerGetRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePlogServerGet, std::move(request));
+    });
+
     if (seastar::engine().cpu_id() == 0) {
         // only core 0 handles CPO business
         if (!fileutil::makeDir(_dataDir())) {
             throw std::runtime_error("unable to create data directory");
         }
     }
+
+    _avaliable_persistence_services.clear();
+    _assigned_persistence_services.clear();
     return seastar::make_ready_future<>();
 }
 
@@ -281,6 +294,39 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
 
     K2DEBUG("saved collection: " << cpath);
     return Statuses::S201_Created("collection created");
+}
+
+seastar::future<std::tuple<Status, dto::PlogServerRegisterResponse>>
+CPOService::handlePlogServerRegister(dto::PlogServerRegisterRequest&& request){
+    K2INFO("Received Plog Server Register request for " << request.endpoint);
+    if (std::count(_avaliable_persistence_services.begin(), _avaliable_persistence_services.end(), request.endpoint) ||  std::count(_assigned_persistence_services.begin(), _assigned_persistence_services.end(), request.endpoint)){
+        return RPCResponse(Statuses::S400_Bad_Request("plog server alreadly registered"), dto::PlogServerRegisterResponse());
+    }
+    _avaliable_persistence_services.push_back(std::move(request.endpoint));
+    return RPCResponse(Statuses::S200_OK("plog server registered successfully"), dto::PlogServerRegisterResponse());
+}
+
+seastar::future<std::tuple<Status, dto::PlogServerGetResponse>>
+CPOService::handlePlogServerGet(dto::PlogServerGetRequest&& request) {
+    K2INFO("Received Plog Server Get request for " << request.PlogServerAmount << " Servers");
+    if (request.PlogServerAmount <= 0){
+        return RPCResponse(Statuses::S400_Bad_Request("illegal server amount"), dto::PlogServerGetResponse());
+    }
+    if (_avaliable_persistence_services.size() < request.PlogServerAmount){
+        return RPCResponse(Statuses::S403_Forbidden("no enough availabe plog servers"), dto::PlogServerGetResponse());
+    }
+
+    dto::PlogServerGetResponse response;
+    response.PlogServerEndpoints.clear();
+
+    for (uint32_t i=0; i < request.PlogServerAmount; ++i){
+        String endpoint = _avaliable_persistence_services.back();
+        //_avaliable_persistence_services.pop_back();
+        response.PlogServerEndpoints.push_back(endpoint);
+        //_assigned_persistence_services.push_back(std::move(endpoint));
+    }
+    response.PlogServerAmount = std::move(request.PlogServerAmount);
+    return RPCResponse(Statuses::S200_OK("plog server assigned"), std::move(response));
 }
 
 } // namespace k2
