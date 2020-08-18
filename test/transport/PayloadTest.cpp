@@ -148,6 +148,8 @@ SCENARIO("test multi-buffer serialization") {
 
     String q;
     dst.seek(0);
+    REQUIRE(dst.getSize() == 105); // s.size() + 4 bytes for size, 1 byte for '\0'
+    REQUIRE(dst.getCapacity() == 110); // 10 binaries allocated at 11b each
     REQUIRE(dst.read(q));
     REQUIRE(q.size() == s.size());
     REQUIRE(q == s);
@@ -155,6 +157,7 @@ SCENARIO("test multi-buffer serialization") {
     dst.seek(0);
     Payload dst2([]() { return Binary(23); });
     dst2.write(dst);
+    REQUIRE(dst2.getSize() == 113); // 8 bytes for size + 105 bytes from dst
     dst2.write(s);
     dst2.write(dst);
 
@@ -173,6 +176,16 @@ SCENARIO("test multi-buffer serialization") {
     REQUIRE(pa == dst);
     REQUIRE(pb == dst);
     REQUIRE(pa == pb);
+
+    Payload p1([]() { return Binary(4096); });
+    Payload p2([]() { return Binary(20); });
+    int32_t a = 10;
+    p1.write(a);
+    p2.write(p1);
+    REQUIRE(p1.getSize() == 4);
+    REQUIRE(p1.getCapacity() == 4096);
+    REQUIRE(p2.getSize() == 12);
+    REQUIRE(p2.getCapacity() == 12);
 }
 
 void checkSize(Payload& p) {

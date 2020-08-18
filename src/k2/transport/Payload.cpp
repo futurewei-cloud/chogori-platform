@@ -283,6 +283,7 @@ void Payload::write(const Payload& other) {
     truncateToCurrent();
 
     // now we can extend our buffer list with shared buffers from the other payload
+    // note that the share() call gives us a payload trimmed to contain exactly the data it should (size==capacity)
     for (auto& buf : const_cast<Payload*>(&other)->share()._buffers) {
         auto sz = buf.size();
         if (sz == 0) continue;

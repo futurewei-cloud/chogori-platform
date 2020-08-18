@@ -46,7 +46,7 @@ namespace k2 {
 class PLOGService {
 public:  // application lifespan
 
-    
+
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
         K2INFO("stop");
