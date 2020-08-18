@@ -22,18 +22,63 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
-#include <k2/common/Common.h>
+#include <map>
+#include <deque>
+#include <utility>
 
+#include <k2/common/Common.h>
+#include <k2/dto/Collection.h>
+#include <k2/dto/K23SI.h>
 namespace k2
 {
 //
 //  K2 internal MVCC representation
 //
-template<typename ValueType>
-struct VersionedTreeNode {
-    uint64_t version;
-    ValueType value;
-    std::unique_ptr<VersionedTreeNode<ValueType>> next;
+
+template<typename IndexerType, typename ValueType>
+class Indexer
+{
+private:
+  IndexerType idx;
+
+public:
+    typename IndexerType::iterator insert(dto::Key key);
+    typename IndexerType::iterator find(dto::Key &key);
+    typename IndexerType::iterator begin();
+    typename IndexerType::iterator end();
+
+    void erase(typename IndexerType::iterator it);
+    size_t size();
 };
 
+template<typename IndexerType, typename ValueType>
+inline typename IndexerType::iterator Indexer<IndexerType, ValueType>::insert(dto::Key key) {
+    auto ret = idx.insert(std::pair<dto::Key, std::deque<ValueType>>(key, std::deque<ValueType>()));
+    return ret.first;
+}
+
+template<typename IndexerType, typename ValueType>
+inline typename IndexerType::iterator Indexer<IndexerType, ValueType>::find(dto::Key &key) {
+    return idx.find(key);
+}
+
+template<typename IndexerType, typename ValueType>
+inline typename IndexerType::iterator Indexer<IndexerType, ValueType>::begin() {
+    return idx.begin();
+}
+
+template<typename IndexerType, typename ValueType>
+inline typename IndexerType::iterator Indexer<IndexerType, ValueType>::end() {
+    return idx.end();
+}
+
+template<typename IndexerType, typename ValueType>
+inline void Indexer<IndexerType, ValueType>::erase(typename IndexerType::iterator it) {
+    idx.erase(it);
+}
+
+template<typename IndexerType, typename ValueType>
+inline size_t Indexer<IndexerType, ValueType>::size() {
+    return idx.size();
+}
 }

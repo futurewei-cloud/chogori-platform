@@ -34,6 +34,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/tso/client/tso_clientlib.h>
+#include <k2/indexer/MapIndexer.h>
 
 #include "ReadCache.h"
 #include "TxnManager.h"
@@ -149,7 +150,7 @@ private: // members
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
     // (newest item is at front of the deque)
     // Duplicates are not allowed
-    std::map<dto::Key, std::deque<dto::DataRecord>> _indexer;
+    k2::Indexer<std::map<dto::Key, std::deque<dto::DataRecord>>, dto::DataRecord> _indexer;
 
     // to store transactions
     TxnManager _txnMgr;

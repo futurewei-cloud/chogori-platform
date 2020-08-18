@@ -292,7 +292,12 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest<Payload>&& request, dto
         });
     }
 
-    auto& versions = _indexer[request.key];
+    auto fiter = _indexer.find(request.key);
+    if (fiter == _indexer.end()) {
+        // Entry does not exist, create an empty entry
+        fiter = _indexer.insert(request.key);
+    }
+    auto& versions = fiter->second;
     if (!_validateStaleWrite(request, versions)) {
         K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIWriteResponse{});
