@@ -21,15 +21,35 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <k2/appbase/Appbase.h>
-#include <k2/common/Common.h>
-#include <k2/persistence/plog/PlogServer.h>
+#include "Collection.h"
 
-int main(int argc, char** argv) {
-    k2::App app("PlogServer");
-    app.addApplet<k2::PlogServer>();
-    app.addOptions()
-        ("cpo_url", bpo::value<k2::String>()->default_value(""), "The URL of the CPO");
-    return app.start(argc, argv);
-}
+#pragma once
+// This file contains DTOs for K2 Persistence Service
 
+namespace k2 {
+namespace dto {
+
+// Request to create a Partition Group
+struct PartitionGroupCreateRequest {
+    String partitionName;
+    std::vector<String> plogServerEndpoints;
+    K2_PAYLOAD_FIELDS(partitionName, plogServerEndpoints);
+};
+
+struct PartitionGroupCreateResponse {
+    K2_PAYLOAD_EMPTY;
+};
+
+// Request to obtain the Partition Group Map
+struct PartitionMapGetRequest {
+    uint32_t offset;
+    K2_PAYLOAD_FIELDS(offset);
+};
+
+struct PartitionMapGetResponse {
+    std::unordered_map<String, std::vector<String>> partitionMap;
+    K2_PAYLOAD_FIELDS(partitionMap);
+};
+
+}  // namespace dto
+}  // namespace k2

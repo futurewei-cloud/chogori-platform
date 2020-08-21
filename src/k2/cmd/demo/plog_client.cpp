@@ -68,7 +68,7 @@ public:  // application lifespan
             K2INFO(payload.getSize());
             payload.write("1234567890");
             K2INFO(payload.getSize());
-            return client.append(std::move(plogId), 100, std::move(payload));
+            return client.append(std::move(plogId), 0, std::move(payload));
         })
         .then([&] (auto&& resp){
             auto& [status, offset] = resp;

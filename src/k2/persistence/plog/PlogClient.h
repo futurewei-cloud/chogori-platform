@@ -54,7 +54,6 @@ public:
 
     seastar::future<> GetPlogServerUrls();
 
-
     seastar::future<std::tuple<Status, String>> create();
 
     seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);

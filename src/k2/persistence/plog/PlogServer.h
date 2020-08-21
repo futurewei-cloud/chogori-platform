@@ -58,8 +58,6 @@ class PlogServer
 private:
     uint32_t PLOG_MAX_SIZE = 2 * 1024 * 1024;
 
-    CPOClient _cpo;
-
     std::unordered_map<String, PlogPage> _plogMap;
 
     seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
@@ -73,9 +71,6 @@ private:
 
     seastar::future<std::tuple<Status, dto::PlogSealResponse>>
     handleSeal(dto::PlogSealRequest&& request);
-
-    ConfigVar<String> _cpo_url{"cpo_url", ""};
-    ConfigDuration register_plog_server_deadline{"register_plog_server_deadline", 1s};
     
 public:
      PlogServer();

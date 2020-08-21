@@ -52,8 +52,6 @@ seastar::future<> CPOService::gracefulStop() {
         futs.push_back(std::move(v));
     }
     _assignments.clear();
-    _avaliable_persistence_services.clear();
-    _assigned_persistence_services.clear();
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
@@ -67,12 +65,12 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogServerRegisterRequest, dto::PlogServerRegisterResponse>(dto::Verbs::CPO_PERSISTENCE_REGISTER, [this](dto::PlogServerRegisterRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handlePlogServerRegister, std::move(request));
+    RPC().registerRPCObserver<dto::PartitionGroupCreateRequest, dto::PartitionGroupCreateResponse>(dto::Verbs::CPO_PERSISTENCE_REGISTER, [this](dto::PartitionGroupCreateRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePartitionGroupCreate, std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogServerGetRequest, dto::PlogServerGetResponse>(dto::Verbs::CPO_PERSISTENCE_GET, [this](dto::PlogServerGetRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handlePlogServerGet, std::move(request));
+    RPC().registerRPCObserver<dto::PartitionMapGetRequest, dto::PartitionMapGetResponse>(dto::Verbs::CPO_PERSISTENCE_GET, [this](dto::PartitionMapGetRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePartitionMapGet, std::move(request));
     });
 
     if (seastar::engine().cpu_id() == 0) {
@@ -82,8 +80,6 @@ seastar::future<> CPOService::start() {
         }
     }
 
-    _avaliable_persistence_services.clear();
-    _assigned_persistence_services.clear();
     return seastar::make_ready_future<>();
 }
 
@@ -200,6 +196,11 @@ String CPOService::_getCollectionPath(String name) {
     return _dataDir() + "/" + name + ".collection";
 }
 
+String CPOService::_getPartitionMapPath() {
+    return _dataDir() + "/partition_map.txt";
+}
+
+
 void CPOService::_assignCollection(dto::Collection& collection) {
     auto &name = collection.metadata.name;
     K2INFO("Assigning collection " << name << ", to " << collection.partitionMap.partitions.size() << " nodes");
@@ -296,37 +297,48 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
     return Statuses::S201_Created("collection created");
 }
 
-seastar::future<std::tuple<Status, dto::PlogServerRegisterResponse>>
-CPOService::handlePlogServerRegister(dto::PlogServerRegisterRequest&& request){
-    K2INFO("Received Plog Server Register request for " << request.endpoint);
-    if (std::count(_avaliable_persistence_services.begin(), _avaliable_persistence_services.end(), request.endpoint) ||  std::count(_assigned_persistence_services.begin(), _assigned_persistence_services.end(), request.endpoint)){
-        return RPCResponse(Statuses::S400_Bad_Request("plog server alreadly registered"), dto::PlogServerRegisterResponse());
+seastar::future<std::tuple<Status, dto::PartitionGroupCreateResponse>>
+CPOService::handlePartitionGroupCreate(dto::PartitionGroupCreateRequest&& request){
+    K2INFO(request.partitionName);
+
+    auto cpath = _getPartitionMapPath();
+    std::unordered_map<String, std::vector<String>> partitionMap;
+    Payload p;
+    if (!fileutil::readFile(p, cpath)) {
+        partitionMap.clear();
     }
-    _avaliable_persistence_services.push_back(std::move(request.endpoint));
-    return RPCResponse(Statuses::S200_OK("plog server registered successfully"), dto::PlogServerRegisterResponse());
+    else{
+        if (!p.read(partitionMap)) {
+            return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read partition map data"), dto::PartitionGroupCreateResponse());
+        };
+    }
+
+    partitionMap[std::move(request.partitionName)] = std::move(request.plogServerEndpoints);
+
+    Payload q([] { return Binary(4096); });
+    q.write(partitionMap);
+    if (!fileutil::writeFile(std::move(q), cpath)) {
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write partition map data"), dto::PartitionGroupCreateResponse());
+    }
+    return RPCResponse(Statuses::S201_Created("partition group create successfully"), dto::PartitionGroupCreateResponse());
 }
 
-seastar::future<std::tuple<Status, dto::PlogServerGetResponse>>
-CPOService::handlePlogServerGet(dto::PlogServerGetRequest&& request) {
-    K2INFO("Received Plog Server Get request for " << request.PlogServerAmount << " Servers");
-    if (request.PlogServerAmount <= 0){
-        return RPCResponse(Statuses::S400_Bad_Request("illegal server amount"), dto::PlogServerGetResponse());
+seastar::future<std::tuple<Status, dto::PartitionMapGetResponse>>
+CPOService::handlePartitionMapGet(dto::PartitionMapGetRequest&& request) {
+    K2INFO("Received partition map get request with offset " << request.offset);
+    auto cpath = _getPartitionMapPath();
+    std::unordered_map<String, std::vector<String>> partitionMap;
+    Payload p;
+    if (!fileutil::readFile(p, cpath)) {
+        return RPCResponse(Statuses::S404_Not_Found("partition map not found"), dto::PartitionMapGetResponse());
     }
-    if (_avaliable_persistence_services.size() < request.PlogServerAmount){
-        return RPCResponse(Statuses::S403_Forbidden("no enough availabe plog servers"), dto::PlogServerGetResponse());
-    }
+    if (!p.read(partitionMap)) {
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read partition map data"), dto::PartitionMapGetResponse());
+    };
 
-    dto::PlogServerGetResponse response;
-    response.PlogServerEndpoints.clear();
-
-    for (uint32_t i=0; i < request.PlogServerAmount; ++i){
-        String endpoint = _avaliable_persistence_services.back();
-        //_avaliable_persistence_services.pop_back();
-        response.PlogServerEndpoints.push_back(endpoint);
-        //_assigned_persistence_services.push_back(std::move(endpoint));
-    }
-    response.PlogServerAmount = std::move(request.PlogServerAmount);
-    return RPCResponse(Statuses::S200_OK("plog server assigned"), std::move(response));
+    K2INFO("Found partition map in: " << cpath);
+    dto::PartitionMapGetResponse response{.partitionMap=std::move(partitionMap)};
+    return RPCResponse(Statuses::S200_OK("partition map found"), std::move(response));
 }
 
 } // namespace k2

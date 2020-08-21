@@ -74,13 +74,7 @@ seastar::future<> PlogServer::start() {
     });
     _plogMap.clear();
 
-    _cpo = CPOClient(String(_cpo_url()));
-    auto ep = (seastar::engine()._rdma_stack?
-        k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
-        k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
-    K2INFO(ep->getURL());
-    //return seastar::make_ready_future<>();
-    return _cpo.RegisterPlogServer(Deadline<>(register_plog_server_deadline()), ep->getURL()).discard_result();
+    return seastar::make_ready_future<>();
 }
 
 seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
@@ -105,7 +99,6 @@ PlogServer::handleAppend(dto::PlogAppendRequest&& request){
          return RPCResponse(Statuses::S400_Bad_Request("plog is sealed"), dto::PlogAppendResponse());
     }
     if (iter->second.offset != request.offset){
-        K2INFO("offset inconsistent");
         return RPCResponse(Statuses::S400_Bad_Request("offset inconsistent"), dto::PlogAppendResponse());
     }
     if (iter->second.offset + request.payload.getSize() > PLOG_MAX_SIZE){
