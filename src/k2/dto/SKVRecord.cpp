@@ -64,12 +64,12 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
 };
 
 void SKVRecord::seekField(uint32_t fieldIndex) {
-    if (fieldIndex == fieldCursor) {
-        return;
-    }
-
     if (fieldIndex >= schema.fields.size()) {
         throw new std::runtime_error("Tried to seek outside bounds");
+    }
+
+    if (fieldIndex == fieldCursor) {
+        return;
     }
 
     if (fieldIndex < fieldCursor) {
