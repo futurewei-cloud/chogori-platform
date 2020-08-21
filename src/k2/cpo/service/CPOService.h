@@ -40,13 +40,20 @@ private:
     DistGetter _dist;
     ConfigVar<String> _dataDir{"data_dir"};
     String _getCollectionPath(String name);
+    String _getSchemasPath(String collectionName);
     void _assignCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
     ConfigDuration _collectionHeartbeatDeadline{"heartbeat_deadline", 100ms};
     std::unordered_map<String, seastar::future<>> _assignments;
     std::tuple<Status, dto::Collection> _getCollection(String name);
     Status _saveCollection(dto::Collection& collection);
+    Status _saveSchemas(const String& collectionName);
+    Status _loadSchemas(const String& collectionName);
+    seastar::future<Status> _pushSchema(const dto::Collection& collection, const dto::Schema& schema);
     void _handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request);
+
+    // Collection name -> schemas
+    std::unordered_map<String, std::vector<dto::Schema>> schemas;
 
    public:  // application lifespan
     CPOService(DistGetter distGetter);
@@ -61,6 +68,12 @@ private:
 
     seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
     handleGet(dto::CollectionGetRequest&& request);
+
+    seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
+    handleCreateSchema(dto::CreateSchemaRequest&& request);
+
+    seastar::future<std::tuple<Status, dto::GetSchemasResponse>>
+    handleSchemasGet(dto::GetSchemasRequest&& request);
 };  // class CPOService
 
 } // namespace k2

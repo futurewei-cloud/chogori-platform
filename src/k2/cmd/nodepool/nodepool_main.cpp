@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/collectionMetadataCache/CollectionMetadataCache.h>
 #include <k2/nodePoolMonitor/NodePoolMonitor.h>
 #include <k2/partitionManager/PartitionManager.h>
-#include <k2/tso/client_lib/tso_clientlib.h>
+#include <k2/tso/client/tso_clientlib.h>
 
 int main(int argc, char** argv) {
     k2::App app("NodePoolService");

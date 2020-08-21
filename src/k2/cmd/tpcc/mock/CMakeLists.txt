@@ -1,5 +1,8 @@
-add_executable (mock_server mock_server.cpp)
+file(GLOB HEADERS "*.h")
+file(GLOB SOURCES "*.cpp")
 
-target_link_libraries (mock_server PRIVATE k2appbase k2transport k2common Seastar::seastar)
+add_executable (mock_server ${HEADERS} ${SOURCES})
+
+target_link_libraries (mock_server PRIVATE appbase transport common Seastar::seastar)
 
 install (TARGETS mock_server DESTINATION bin)

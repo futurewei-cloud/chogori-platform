@@ -259,7 +259,7 @@ private:
             [this] { return _stopped; },
             [this] { // body of loop
                 if (canSend()) {
-                    send();
+                    return send();
                 }
                 else {
                     assert(!_haveSendPromise);
@@ -281,7 +281,7 @@ private:
                _session.unackedCount < _session.config.pipelineCount;
     }
 
-    void send() {
+    seastar::future<> send() {
         auto payload = _session.client.newPayload();
         auto padding = sizeof(_session.sessionID) + sizeof(_session.totalCount);
         assert(padding < _session.config.responseSize);
@@ -294,7 +294,7 @@ private:
         payload->write((void*)&_session.totalCount, sizeof(_session.totalCount));
         payload->write(_data, _session.config.responseSize - padding );
         _requestIssueTimes[_session.totalCount % _session.config.pipelineCount] = k2::Clock::now();
-        k2::RPC().send(REQUEST, std::move(payload), _session.client);
+        return k2::RPC().send(REQUEST, std::move(payload), _session.client);
     }
 
 private:

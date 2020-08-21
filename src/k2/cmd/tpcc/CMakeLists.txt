@@ -1,7 +1,9 @@
 add_subdirectory (mock)
+file(GLOB HEADERS "*.h")
+file(GLOB SOURCES "*.cpp")
 
-add_executable (tpcc_client tpcc_client.cpp)
+add_executable (tpcc_client ${HEADERS} ${SOURCES})
 
-target_link_libraries (tpcc_client PRIVATE tso_clientlib k2appbase k2transport k2common k2cpo_client k23si_client Seastar::seastar)
+target_link_libraries (tpcc_client PRIVATE tso_client appbase transport common cpo_client k23si_client Seastar::seastar)
 
 install (TARGETS tpcc_client DESTINATION bin)

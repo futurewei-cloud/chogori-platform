@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/transport/RetryStrategy.h>
+#include <k2/common/Timer.h>
 
 namespace k2 {
 // implements an example RPC Service which can send/receive messages
@@ -39,7 +40,7 @@ public: // public types
 public:  // application lifespan
     Service():
         _updateTimer([this]{
-            this->sendHeartbeat();
+            return this->sendHeartbeat();
         }),
         _msgCount(0) {
         // Constructors should not do much more than just remembering the passed state because
@@ -55,13 +56,15 @@ public:  // application lifespan
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
         K2INFO("stop");
-        _updateTimer.cancel();
-        // unregistar all observers
-        RPC().registerMessageObserver(MsgVerbs::POST, nullptr);
-        RPC().registerMessageObserver(MsgVerbs::GET, nullptr);
-        RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
-        RPC().registerLowTransportMemoryObserver(nullptr);
-        return seastar::make_ready_future<>();
+        return _updateTimer.stop().
+        then([] () {
+            // unregister all observers
+            RPC().registerMessageObserver(MsgVerbs::POST, nullptr);
+            RPC().registerMessageObserver(MsgVerbs::GET, nullptr);
+            RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
+            RPC().registerLowTransportMemoryObserver(nullptr);
+            return seastar::make_ready_future<>();
+        });
     }
 
     // called after construction
@@ -75,17 +78,14 @@ public:  // application lifespan
         }
 
         K2INFO("Registering message handlers");
-
         RPC().registerMessageObserver(MsgVerbs::POST,
             [this](Request&& request) mutable {
-                this->handlePOST(std::move(request));
+                return this->handlePOST(std::move(request));
             });
-
         RPC().registerMessageObserver(MsgVerbs::GET,
             [this](Request&& request) mutable {
-                this->handleGET(std::move(request));
+                return this->handleGET(std::move(request));
             });
-
         RPC().registerMessageObserver(MsgVerbs::ACK,
             [this](Request&& request) mutable {
                 auto received = getPayloadString(request.payload.get());
@@ -104,22 +104,19 @@ public:  // application lifespan
     }
 
 public: // Work generators
-    void sendHeartbeat() {
+    seastar::future<> sendHeartbeat() {
         K2INFO("Sending reqid="<< _msgCount);
         // send a GET
-        {
-            String msg("Requesting GET reqid=");
-            msg += std::to_string(_msgCount++);
+        String msg("Requesting GET reqid=");
+        msg += std::to_string(_msgCount++);
 
-            std::unique_ptr<Payload> request = _heartbeatTXEndpoint->newPayload();
-            request->write(msg.c_str(), msg.size()+1);
-            // straight Send sends requests without any form of retry. Underlying transport may or may not
-            // attempt redelivery (e.g. TCP packet reliability)
-            RPC().send(GET, std::move(request), *_heartbeatTXEndpoint);
-        }
-
-        // send a POST where we expect to receive a reply
-        {
+        std::unique_ptr<Payload> request = _heartbeatTXEndpoint->newPayload();
+        request->write(msg.c_str(), msg.size()+1);
+        // straight Send sends requests without any form of retry. Underlying transport may or may not
+        // attempt redelivery (e.g. TCP packet reliability)
+        return RPC().send(GET, std::move(request), *_heartbeatTXEndpoint).
+        then([this] (){
+            // send a POST where we expect to receive a reply
             _msgCount++;
             auto msground = _msgCount;
 
@@ -130,7 +127,7 @@ public: // Work generators
             // NB: since seastar future continuations may be scheduled to run at later points,
             // it may be possible that the Service instance goes away in a middle of a retry.
             // To avoid a segmentation fault, either use copies, or as in this example - weak reference
-            (void) retryStrategy->run([self=weak_from_this(), msground](size_t retriesLeft, Duration timeout) {
+            return retryStrategy->run([self=weak_from_this(), msground](size_t retriesLeft, Duration timeout) {
                 K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
                        << timeout.count() << ", in reqid="<< msground);
                 if (!self) {
@@ -174,12 +171,14 @@ public: // Work generators
                     self->_updateTimer.arm(_updateTimerInterval);
                 }
             });
-        }
+        });
+
+        
     }
 
 public:
     // Message handlers
-    void handlePOST(Request&& request) {
+    seastar::future<> handlePOST(Request&& request) {
         auto received = getPayloadString(request.payload.get());
         K2INFO("Received POST message from endpoint: " << request.endpoint.getURL()
               << ", with payload: " << received);
@@ -189,10 +188,10 @@ public:
         std::unique_ptr<Payload> msg = request.endpoint.newPayload();
         msg->write(msgData.c_str(), msgData.size()+1);
         // respond to the client's request
-        RPC().sendReply(std::move(msg), request);
+        return RPC().sendReply(std::move(msg), request);
     }
 
-    void handleGET(Request&& request) {
+    seastar::future<> handleGET(Request&& request) {
         auto received = getPayloadString(request.payload.get());
         K2INFO("Received GET message from endpoint: " << request.endpoint.getURL()
               << ", with payload: " << received);
@@ -203,7 +202,7 @@ public:
         msg->write(msgData.c_str(), msgData.size()+1);
 
         // Here we just forward the message using a straight Send and we don't expect any responses to our forward
-        RPC().send(ACK, std::move(msg), request.endpoint);
+        return RPC().send(ACK, std::move(msg), request.endpoint);
     }
 
 private:
@@ -227,7 +226,7 @@ private:
         return result;
     }
 
-    seastar::timer<> _updateTimer;
+    SingleTimer _updateTimer;
     static constexpr auto _updateTimerInterval = 1s;
     std::unique_ptr<TXEndpoint> _heartbeatTXEndpoint;
     // send around our message count
