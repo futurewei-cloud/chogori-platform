@@ -34,7 +34,7 @@ void Compare(std::optional<T> value, const k2::String& fieldName, k2::dto::SKVRe
 template <>
 void Compare<k2::String>(std::optional<k2::String> value, const k2::String& fieldName, k2::dto::SKVRecord* record) {
 	if (value == std::nullopt) {		
-		k2::String cursorfield = record->schema.fields[record->fieldCursor].name;
+		k2::String cursorfield = record->schema.fields[record->fieldCursor - 1].name;
 		if (cursorfield != "FirstName" && cursorfield != "Job") {
 			REQUIRE(false);
 		}		
@@ -92,7 +92,7 @@ TEST_CASE("Test1: Serialize a record with composite partition and range keys") {
 
 	std::vector<uint8_t> expectedPKey {
 		(uint8_t)k2::dto::FieldType::STRING, // Type string
-		(uint8_t)'B', 
+		'B', 
 		(uint8_t)'a', 
 		(uint8_t)'g', 
 		(uint8_t)'g', 
@@ -321,6 +321,7 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
 	doc.serializeNext<uint32_t>(100);
 	doc.skipNext();
 	doc.serializeNext<uint32_t>(36);
+    doc.seekField(0);
 
 	// out of order Deserialize, using "deserializeFiled(String&)" function
 	std::optional<uint32_t> balance = doc.deserializeField<uint32_t>("Balance");
@@ -329,7 +330,14 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
 	REQUIRE(job == std::nullopt);
 	std::optional<uint32_t> age = doc.deserializeField<uint32_t>("Age");
 	REQUIRE(*age == 36);
-	std::optional<k2::String> lastName = doc.deserializeField<k2::String>("LastName");
+
+    /* NOTE HERE: if Cursor for some reason is bigger(>=) than schema.fields.size(),
+    ** deserializeField<>(String &) will throw an exception, Even though the name 
+    ** string is in the schema fields. Here may need to be fixed for convenient usage.
+    */
+    doc.seekField(0);
+
+    std::optional<k2::String> lastName = doc.deserializeField<k2::String>("LastName");
 	REQUIRE(*lastName == "Baggins");
 	std::optional<k2::String> firstName = doc.deserializeField<k2::String>("FirstName");
 	REQUIRE(firstName == std::nullopt);
