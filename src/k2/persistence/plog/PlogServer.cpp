@@ -34,8 +34,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/TXEndpoint.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
-#include <k2/transport/BaseTypes.h>
-#include <k2/transport/TXEndpoint.h>
 
 
 namespace k2 {
@@ -61,7 +59,6 @@ seastar::future<> PlogServer::start() {
     });
 
     RPC().registerRPCObserver<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::K23SI_PERSISTENT_APPEND, [this](dto::PlogAppendRequest&& request) {
-        K2INFO("Received Payload size " << request.payload.getSize() << " and offest " << request.offset);
         return handleAppend(std::move(request));
     });
 
@@ -79,18 +76,18 @@ seastar::future<> PlogServer::start() {
 
 seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
 PlogServer::handleCreate(dto::PlogCreateRequest&& request){
-    K2INFO("Received create request for " << request.plogId);
+    K2DEBUG("Received create request for " << request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter != _plogMap.end()) {
         return RPCResponse(Statuses::S400_Bad_Request("plog already exists"), dto::PlogCreateResponse());
     }
     _plogMap.insert(std::pair<String,PlogPage >(std::move(request.plogId), PlogPage()));
-    return RPCResponse(Statuses::S200_OK("OK"), dto::PlogCreateResponse());
+    return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse());
 };
 
 seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
 PlogServer::handleAppend(dto::PlogAppendRequest&& request){
-    K2INFO("Received append request for " << request.plogId << " with size" << request.payload.getSize() << " and offset " << request.offset);
+    K2DEBUG("Received append request for " << request.plogId << " with size" << request.payload.getSize() + 8 << " and offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogAppendResponse());
@@ -101,16 +98,15 @@ PlogServer::handleAppend(dto::PlogAppendRequest&& request){
     if (iter->second.offset != request.offset){
         return RPCResponse(Statuses::S400_Bad_Request("offset inconsistent"), dto::PlogAppendResponse());
     }
-    if (iter->second.offset + request.payload.getSize() > PLOG_MAX_SIZE){
+    if (iter->second.offset + request.payload.getSize() + 8 > PLOG_MAX_SIZE){
          return RPCResponse(Statuses::S400_Bad_Request("exceeds pLog limit"), dto::PlogAppendResponse());
     }
 
     dto::PlogAppendResponse response;
-    response.offset = iter->second.offset + request.payload.getSize();
-    response.bytes_appended = request.payload.getSize();
-    K2INFO(response.offset << " " << response.bytes_appended);
+    response.offset = iter->second.offset + request.payload.getSize() + 8;
+    response.bytes_appended = request.payload.getSize() + 8;
 
-    iter->second.offset += request.payload.getSize();
+    iter->second.offset += request.payload.getSize() + 8;
     iter->second.payload.write(request.payload.copy());
     request.payload.clear();
     
@@ -120,22 +116,21 @@ PlogServer::handleAppend(dto::PlogAppendRequest&& request){
 
 seastar::future<std::tuple<Status, dto::PlogReadResponse>>
 PlogServer::handleRead(dto::PlogReadRequest&& request){
-    K2INFO("Received read request for " << request.plogId);
+    K2DEBUG("Received read request for " << request.plogId << " with offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogReadResponse());
     }
-    if (iter->second.offset < request.offset + request.size){
-         return RPCResponse(Statuses::S400_Bad_Request("exceeds the length of plog"), dto::PlogReadResponse());
+    if (iter->second.offset < request.offset){
+         return RPCResponse(Statuses::S400_Bad_Request("exceed the maximun length"), dto::PlogReadResponse());
     }
     
-    Binary binary(request.size);
     Payload payload;
-
     iter->second.payload.seek(request.offset);
-    iter->second.payload.read(binary, request.size);
-    payload.appendBinary(std::move(binary));
-
+    if (!iter->second.payload.read(payload)){
+        return RPCResponse(Statuses::S500_Internal_Server_Error("cannot read from payload"), dto::PlogReadResponse());
+    }
+    
     dto::PlogReadResponse response;
     response.payload = std::move(payload);
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
@@ -144,18 +139,20 @@ PlogServer::handleRead(dto::PlogReadRequest&& request){
 
 seastar::future<std::tuple<Status, dto::PlogSealResponse>>
 PlogServer::handleSeal(dto::PlogSealRequest&& request){
-    K2INFO("Received seal request for " << request.plogId);
+    K2DEBUG("Received seal request for " << request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogSealResponse());
     }
-    if (_plogMap[request.plogId].sealed){
-        return RPCResponse(Statuses::S400_Bad_Request("plog already sealed"), dto::PlogSealResponse());
+    if (iter->second.sealed){
+        dto::PlogSealResponse response{.offset=iter->second.offset};
+        return RPCResponse(Statuses::S400_Bad_Request("plog already sealed"), std::move(response));
     }
+
     dto::PlogSealResponse response; 
-    _plogMap[request.plogId].sealed = true;
-    if (_plogMap[request.plogId].offset < request.offset){
-        response.offset = _plogMap[request.plogId].offset;
+    iter->second.sealed = true;
+    if (iter->second.offset < request.offset){
+        response.offset = iter->second.offset;
         return RPCResponse(Statuses::S200_OK("sealed offset inconsistent"), std::move(response));
     }
 

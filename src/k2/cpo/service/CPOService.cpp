@@ -299,8 +299,7 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
 
 seastar::future<std::tuple<Status, dto::PartitionGroupCreateResponse>>
 CPOService::handlePartitionGroupCreate(dto::PartitionGroupCreateRequest&& request){
-    K2INFO(request.partitionName);
-
+    K2INFO("Received partition group create request for " << request.partitionName);
     auto cpath = _getPartitionMapPath();
     std::unordered_map<String, std::vector<String>> partitionMap;
     Payload p;
@@ -313,6 +312,10 @@ CPOService::handlePartitionGroupCreate(dto::PartitionGroupCreateRequest&& reques
         };
     }
 
+    auto iter = partitionMap.find(request.partitionName);
+    if (iter != partitionMap.end()) {
+        return RPCResponse(Statuses::S400_Bad_Request("partition group name already exists"), dto::PartitionGroupCreateResponse());
+    }
     partitionMap[std::move(request.partitionName)] = std::move(request.plogServerEndpoints);
 
     Payload q([] { return Binary(4096); });
@@ -320,7 +323,7 @@ CPOService::handlePartitionGroupCreate(dto::PartitionGroupCreateRequest&& reques
     if (!fileutil::writeFile(std::move(q), cpath)) {
         return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write partition map data"), dto::PartitionGroupCreateResponse());
     }
-    return RPCResponse(Statuses::S201_Created("partition group create successfully"), dto::PartitionGroupCreateResponse());
+    return RPCResponse(Statuses::S201_Created("partition group creates successfully"), dto::PartitionGroupCreateResponse());
 }
 
 seastar::future<std::tuple<Status, dto::PartitionMapGetResponse>>
@@ -337,7 +340,7 @@ CPOService::handlePartitionMapGet(dto::PartitionMapGetRequest&& request) {
     };
 
     K2INFO("Found partition map in: " << cpath);
-    dto::PartitionMapGetResponse response{.partitionMap=std::move(partitionMap)};
+    dto::PartitionMapGetResponse response{.partitionMap=partitionMap};
     return RPCResponse(Statuses::S200_OK("partition map found"), std::move(response));
 }
 

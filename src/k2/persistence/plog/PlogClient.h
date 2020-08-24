@@ -35,8 +35,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/TXEndpoint.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
-#include <k2/transport/BaseTypes.h>
-#include <k2/transport/TXEndpoint.h>
 
 
 namespace k2 {
@@ -49,24 +47,23 @@ public:
     seastar::future<> gracefulStop();
     seastar::future<> start();
 
+    void GetPlogServerEndpoint();
 
-    void GetPlogServerEndpoint(String plog_server_url);
-
-    seastar::future<> GetPlogServerUrls();
+    seastar::future<> GetPartitionMap();
 
     seastar::future<std::tuple<Status, String>> create();
 
     seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);
 
-    template <typename ClockT=Clock>
-    seastar::future<std::tuple<Status, dto::PlogReadResponse>> read(Deadline<ClockT> deadline, String&& plogId, uint32_t offset, uint32_t size);
+    seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset);
 
-    template <typename ClockT=Clock>
-    seastar::future<std::tuple<Status, dto::PlogSealResponse>> seal(Deadline<ClockT> deadline, String&& plogId, uint32_t offset);
+    seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
 
 private:
-    std::unique_ptr<TXEndpoint> plog;
-    std::vector<String> plog_server_endpoints;
+    std::unordered_map<String, std::vector<String>> _partitionMap;
+    std::unordered_map<String, std::vector<std::unique_ptr<TXEndpoint>>> _partitionMapEndpoints;
+    std::vector<String> _partitionNameList;
+    uint32_t _partition_map_pointer;
 
     CPOClient _cpo;
     String generate_plogId();

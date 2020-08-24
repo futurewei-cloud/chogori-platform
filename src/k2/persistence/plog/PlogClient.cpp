@@ -53,31 +53,38 @@ PlogClient::~PlogClient() {
     K2INFO("~dtor");
 }
 
-void PlogClient::GetPlogServerEndpoint(String plog_server_url) {
-    K2INFO("Get new address" << plog_server_endpoints[0]);
-    plog = RPC().getTXEndpoint(plog_server_url);
+void PlogClient::GetPlogServerEndpoint() {
+    for(auto& v : _partitionMap){
+        K2INFO("Partition Group: " << v.first);
+        _partitionNameList.push_back(v.first);
+        
+        std::vector<std::unique_ptr<TXEndpoint>> endpoints;
+        for (auto& url: v.second){
+            K2INFO("Partition Group Server Url: " << url);
+            auto ep = RPC().getTXEndpoint(url);
+            endpoints.push_back(std::move(ep));
+        }
+
+        _partitionMapEndpoints[std::move(v.first)] = std::move(endpoints);
+    }
 }
 
 seastar::future<> 
-PlogClient::GetPlogServerUrls(){
+PlogClient::GetPartitionMap(){
     _cpo = CPOClient(String(_cpo_url()));
-
-    uint32_t PlogServerAmount = 1;
-    return _cpo.GetPlogServer(Deadline<>(get_plog_server_deadline()), PlogServerAmount).
-    then([this, PlogServerAmount] (auto&& result) {
+    return _cpo.GetPartitionMap(Deadline<>(get_plog_server_deadline())).
+    then([this] (auto&& result) {
         auto& [status, response] = result;
 
-        if (!status.is2xxOK() || PlogServerAmount!=response.PlogServerAmount) {
-            K2INFO("Failed to obtain Plog Servers" << status);
-            return seastar::make_exception_future<>(std::runtime_error("Failed to obtain Plog Servers"));
+        if (!status.is2xxOK()) {
+            K2INFO("Failed to obtain Partition Map" << status);
+            return seastar::make_exception_future<>(std::runtime_error("Failed to obtain Partition Map"));
         }
 
-        plog_server_endpoints.clear();
-        for (uint32_t i=0; i < response.PlogServerAmount; ++i){
-            plog_server_endpoints.push_back(response.PlogServerEndpoints[i]);
-            K2INFO("Client address: " << response.PlogServerEndpoints[i]);
-        }
-        GetPlogServerEndpoint(plog_server_endpoints[0]);
+        _partitionMap = std::move(response.partitionMap);
+        _partition_map_pointer = rand() % _partitionMap.size();
+        _partitionMapEndpoints.clear();
+        GetPlogServerEndpoint();
         return seastar::make_ready_future<>();
     });
 }
@@ -85,65 +92,83 @@ PlogClient::GetPlogServerUrls(){
 seastar::future<std::tuple<Status, String>> PlogClient::create(){
     String plogId = generate_plogId();
     dto::PlogCreateRequest request{.plogId = plogId};
-    Duration timeout = plog_request_timeout();
-
-    return RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::K23SI_PERSISTENT_CREATE, request, *plog, timeout).
-    then([this, plogId] (auto&& result) {
-        auto& [status, response] = result;
-
-        return seastar::make_ready_future<std::tuple<Status, String> >(std::tuple<Status, String>(std::move(status), std::move(plogId)));
-    });
+    
+    std::vector<seastar::future<std::tuple<Status, dto::PlogCreateResponse> > > createFutures;
+    for (auto& ep:_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]]){
+        createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::K23SI_PERSISTENT_CREATE, request, *ep, plog_request_timeout()));
+    }
+    return seastar::when_all_succeed(createFutures.begin(), createFutures.end())
+        .then([this, plogId](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
+            Status return_status;
+            for (auto& result: results){
+                auto& [status, response] = result;
+                return_status = std::move(status);
+                if (!return_status.is2xxOK()) 
+                    break;
+            }
+            return seastar::make_ready_future<std::tuple<Status, String> >(std::tuple<Status, String>(std::move(return_status), std::move(plogId)));
+        });
 }
 
 seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, uint32_t offset, Payload payload){
-    K2INFO("Payload Size" << payload.getSize());
+    uint32_t expected_offset = offset + payload.getSize() + 8;
+    uint32_t appended_offset = payload.getSize() + 8;
     dto::PlogAppendRequest request{.plogId = std::move(plogId), .offset=offset, .payload=std::move(payload)};
-    Duration timeout = plog_request_timeout();
-    K2INFO("Payload Size and offset " << request.payload.getSize() << " " << request.offset);
 
-    return RPC().callRPC<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::K23SI_PERSISTENT_APPEND, request, *plog, timeout).
-        then([this, &request] (auto&& result) {
-            auto& [status, response] = result;
-            
-            return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(status), std::move(response.offset)));
-        });
-}
+    std::vector<seastar::future<std::tuple<Status, dto::PlogAppendResponse> > > appendFutures;
+    for (auto& ep:_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]]){
+        appendFutures.push_back(RPC().callRPC<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::K23SI_PERSISTENT_APPEND, request, *ep, plog_request_timeout()));
+    }
 
-template <typename ClockT=Clock>
-seastar::future<std::tuple<Status, dto::PlogReadResponse>> PlogClient::read(Deadline<ClockT> deadline, String&& plogId, uint32_t offset, uint32_t size){
-    dto::PlogReadRequest request{.plogId = std::move(plogId), .offset=offset, .size=size};
-    Duration timeout = std::min(deadline.getRemaining(), plog_request_timeout());
-
-    return RPC().callRPC<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::K23SI_PERSISTENT_READ, request, *plog, timeout).
-        then([this, &request, deadline] (auto&& result) {
-            auto& [status, response] = result;
-
-            if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
-                status = Statuses::S408_Request_Timeout("create plog deadline exceeded");
-                return RPCResponse(std::move(status), dto::PlogReadResponse());
+    return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
+        .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) { 
+            Status return_status;
+            for (auto& result: results){
+                auto& [status, response] = result;
+                return_status = std::move(status);
+                if (!return_status.is2xxOK()) 
+                    break;
+                if (response.offset != expected_offset || response.bytes_appended != appended_offset){
+                    return_status = Statuses::S500_Internal_Server_Error("offset inconsistent");
+                    break;
+                }
             }
-
-            return RPCResponse(std::move(status), std::move(response));
+            return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(expected_offset)));
         });
 }
 
-template <typename ClockT=Clock>
-seastar::future<std::tuple<Status, dto::PlogSealResponse>> PlogClient::seal(Deadline<ClockT> deadline, String&& plogId, uint32_t offset){
+
+seastar::future<std::tuple<Status, Payload>> PlogClient::read(String plogId, uint32_t offset){
+    dto::PlogReadRequest request{.plogId = std::move(plogId), .offset=offset};
+
+    return RPC().callRPC<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::K23SI_PERSISTENT_READ, request, *_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]][0], plog_request_timeout()).
+        then([this] (auto&& result) {
+            auto& [status, response] = result;
+
+            return seastar::make_ready_future<std::tuple<Status, Payload> >(std::tuple<Status, Payload>(std::move(status), std::move(response.payload)));
+        });
+}
+
+seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, uint32_t offset){
     dto::PlogSealRequest request{.plogId = std::move(plogId), .offset=offset};
-    Duration timeout = std::min(deadline.getRemaining(), plog_request_timeout());
 
-    return RPC().callRPC<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::K23SI_PERSISTENT_SEAL, request, *plog, timeout).
-        then([this, &request, deadline] (auto&& result) {
-            auto& [status, response] = result;
+    std::vector<seastar::future<std::tuple<Status, dto::PlogSealResponse> > > sealFutures;
+    for (auto& ep:_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]]){
+        sealFutures.push_back(RPC().callRPC<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::K23SI_PERSISTENT_SEAL, request, *ep, plog_request_timeout()));
+    }
 
-            if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
-                status = Statuses::S408_Request_Timeout("create plog deadline exceeded");
-                return RPCResponse(std::move(status), dto::PlogSealResponse());
+    return seastar::when_all_succeed(sealFutures.begin(), sealFutures.end())
+        .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) { 
+            Status return_status;
+            uint32_t sealed_offset;
+            for (auto& result: results){
+                auto& [status, response] = result;
+                return_status = std::move(status);
+                sealed_offset = response.offset;
+                if (!return_status.is2xxOK()) 
+                    break;
             }
-
-            return RPCResponse(std::move(status), std::move(response));
+            return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(sealed_offset)));
         });
 }
 

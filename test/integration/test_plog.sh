@@ -14,7 +14,7 @@ cpo_child_pid=$!
 sleep 2
 
 # start plog
-./build/src/k2/cmd/demo/plog_test --cpo_url ${CPO} --tcp_endpoints 12345 --prometheus_port=63001 &
+./build/src/k2/cmd/demo/plog_server -c 3 --tcp_endpoints 10000 10001 10002 --prometheus_port=63001 &
 plog_child_pid=$!
 sleep 2
 
@@ -33,4 +33,4 @@ function finish {
 trap finish EXIT
 
 
-./build/src/k2/cmd/demo/plog_client  --cpo_url ${CPO} --tcp_endpoints 12346 --prometheus_port=63002
+./build/test/plog/plog_test  --cpo_url ${CPO} --tcp_endpoints 12345 --plog_server_endpoints tcp+k2rpc://0.0.0.0:10000 tcp+k2rpc://0.0.0.0:10001 tcp+k2rpc://0.0.0.0:10002 --prometheus_port=63002

@@ -54,8 +54,7 @@ struct PlogAppendResponse {
 struct PlogReadRequest {
     String plogId;
     uint32_t offset;
-    uint32_t size;
-    K2_PAYLOAD_FIELDS(plogId, offset, size);
+    K2_PAYLOAD_FIELDS(plogId, offset);
 };
 
 struct PlogReadResponse {

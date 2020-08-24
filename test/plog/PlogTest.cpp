@@ -50,8 +50,7 @@ seastar::future<> PlogTest::start() {
 
     // let start() finish and then run the tests
     _testTimer.set_callback([this] {
-        _testFuture = runTest1()
-        .then([this] { return runTest2(); })
+        _testFuture = runTest2()
         .then([this] { return runTest3(); })
         .then([this] {
             K2INFO("======= All tests passed ========");
@@ -101,14 +100,84 @@ seastar::future<> PlogTest::runTest2() {
 
 seastar::future<> PlogTest::runTest3() {
     K2INFO(">>> Test3: read the partition group we created in test2");
-    auto request = dto::PartitionMapGetRequest{.offset=0};
-    return RPC()
-        .callRPC<dto::PartitionMapGetRequest, dto::PartitionMapGetResponse>(dto::Verbs::CPO_PERSISTENCE_GET, request, *_cpoEndpoint, 100ms)
-        .then([](auto&& response) {
-            auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
-            auto& md = resp.partitionMap;
-            auto& group = md["Group1"];
-            K2INFO(group[0]<<" "<<group[1]<<" "<<group[2]);
-        });
+    return client.GetPartitionMap()
+    .then([this] () {
+        return client.create();
+    })
+    .then([this] (auto&& response){
+        auto& [status, resp] = response;
+        K2EXPECT(status, Statuses::S201_Created);
+        _plogId = resp;
+        
+        Payload payload([] { return Binary(4096); });
+        payload.write("1234567890");
+        return client.append(_plogId, 0, std::move(payload));
+    })
+    .then([this] (auto&& response){
+        auto& [status, offset] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(offset, 23);
+
+        Payload payload([] { return Binary(4096); });
+        payload.write("0987654321");
+        return client.append(_plogId, 23, std::move(payload));
+    })
+    .then([this] (auto&& response){
+        auto& [status, offset] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(offset, 46);
+
+        Payload payload([] { return Binary(4096); });
+        payload.write("1234567890");
+        return client.append(_plogId, 100, std::move(payload));
+    })
+    .then([this] (auto&& response){
+        auto& [status, offset] = response;
+        K2EXPECT(status, Statuses::S400_Bad_Request);
+        return client.read(_plogId, 0);
+    })
+    .then([this] (auto&& response){
+        auto& [status, payload] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        String str;
+        payload.seek(0);
+        payload.read(str);
+        K2EXPECT(str, "1234567890");
+        return client.read(_plogId, 23);
+    })
+    .then([this] (auto&& response){
+        auto& [status, payload] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        String str;
+        payload.seek(0);
+        payload.read(str);
+        K2EXPECT(str, "0987654321");
+        return client.read(_plogId, 11);
+    })
+    .then([this] (auto&& response){
+        auto& [status, payload] = response;
+        K2EXPECT(status, Statuses::S500_Internal_Server_Error);
+        return client.seal(_plogId, 46);
+    })
+    .then([this] (auto&& response){
+        auto& [status, offset] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(offset, 46);
+        return client.seal(_plogId, 23);
+    })
+    .then([this] (auto&& response){
+        auto& [status, offset] = response;
+        K2EXPECT(status, Statuses::S400_Bad_Request);
+        K2EXPECT(offset, 46);
+        
+        Payload payload([] { return Binary(4096); });
+        payload.write("1234567890");
+        return client.append(_plogId, 46, std::move(payload));
+    })
+    .then([this] (auto&& response){
+        auto& [status, offset] = response;
+        K2EXPECT(status, Statuses::S400_Bad_Request);
+        K2EXPECT(status.message, "plog is sealed");
+        return seastar::make_ready_future<>();
+    });
 }
