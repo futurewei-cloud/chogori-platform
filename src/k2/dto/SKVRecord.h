@@ -77,21 +77,22 @@ public:
     template <typename T>
     std::optional<T> deserializeField(uint32_t fieldIndex) {
         FieldType ft = TToFieldType<T>();
-        if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldCursor].type) {
+        if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldIndex].type) {
             throw new std::runtime_error("Schema not followed in record deserialization");
-        }
-
-        if (excludedFields.size() > 0 && excludedFields[fieldIndex]) {
-            return std::optional<T>();
         }
 
         if (fieldIndex != fieldCursor) {
             seekField(fieldIndex);
         }
 
+        ++fieldCursor;
+
+        if (excludedFields.size() > 0 && excludedFields[fieldIndex]) {
+            return std::optional<T>();
+        }
+
         T value;
         fieldData.read(value);
-        ++fieldCursor;
         return value;
     }
 
