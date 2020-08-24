@@ -29,20 +29,15 @@ Copyright(c) 2020 Futurewei Cloud
 #include "catch2/catch.hpp"
 
 template <typename T>
-void Compare(std::optional<T> value, const k2::String& fieldName, ...);
+void Compare(std::optional<T> value, const k2::String& fieldName, k2::dto::SKVRecord* record);
 
 template <>
-void Compare<k2::String>(std::optional<k2::String> value, const k2::String& fieldName, ...) {
-	va_list argPtr;
-	va_start(argPtr, fieldName);
-	k2::dto::SKVRecord* record = va_arg(argPtr, k2::dto::SKVRecord*);
-
-	if (value == std::nullopt) {  // deal with fieldCursor for NULL Field deserialize		
+void Compare<k2::String>(std::optional<k2::String> value, const k2::String& fieldName, k2::dto::SKVRecord* record) {
+	if (value == std::nullopt) {		
 		k2::String cursorfield = record->schema.fields[record->fieldCursor].name;
 		if (cursorfield != "FirstName" && cursorfield != "Job") {
 			REQUIRE(false);
 		}		
-		record->fieldCursor ++;		
 	}
 	else if (fieldName == "LastName") {
 		REQUIRE(*value == "Baggins");		
@@ -50,12 +45,12 @@ void Compare<k2::String>(std::optional<k2::String> value, const k2::String& fiel
 	else {
 		REQUIRE(false);
 	}
-	va_end(argPtr);
 }
 
 template <>
-void Compare<uint32_t>(std::optional<uint32_t> value, const k2::String& fieldName, ...) {
-	if (fieldName == "Balance") {
+void Compare<uint32_t>(std::optional<uint32_t> value, const k2::String& fieldName, k2::dto::SKVRecord* record) {
+    (void) record;
+    if (fieldName == "Balance") {
 		REQUIRE(*value == 100);
 	}
 	else if (fieldName == "Age") {
@@ -96,18 +91,28 @@ TEST_CASE("Test1: Serialize a record with composite partition and range keys") {
 	doc.serializeNext<uint32_t>(36);
 
 	std::vector<uint8_t> expectedPKey {
-		1, // Type string
-		66, 97, 103, 103, 105, 110, 115, // B,a,g,g,i,n,s
-		0, // ESCAPE
-		1, // TERM
-		2, // Type u32
-		1, 52, 63, 18, // 20201234
-		0, // ESCAPE
-		1, // TERM
-		1, // Type string
-		66, 105, 108, 98, 111, // B,i,l,b,o
-		0, // ESCAPE
-		1, // TERM
+		(uint8_t)k2::dto::FieldType::STRING, // Type string
+		(uint8_t)'B', 
+		(uint8_t)'a', 
+		(uint8_t)'g', 
+		(uint8_t)'g', 
+		(uint8_t)'i', 
+		(uint8_t)'n', 
+		(uint8_t)'s', 		// B,a,g,g,i,n,s
+		0, 				// ESCAPE '\0'
+		1, 				// TERM 0x01
+		(uint8_t)k2::dto::FieldType::UINT32T, // Type u32
+		1, 52, 63, 18, 	// 20201234, bit: 24|16|8|0
+		0, 				// ESCAPE
+		1, 				// TERM
+		(uint8_t)k2::dto::FieldType::STRING, // Type string
+		(uint8_t)'B',
+		(uint8_t)'i',
+		(uint8_t)'l',
+		(uint8_t)'b',
+		(uint8_t)'o',       // B,i,l,b,o
+		0, 				// ESCAPE
+		1               // TERM
 	};
 	k2::String partitionKey = doc.getPartitionKey();
 	REQUIRE(expectedPKey.size() == partitionKey.size());
@@ -117,18 +122,24 @@ TEST_CASE("Test1: Serialize a record with composite partition and range keys") {
 	std::cout << "Test1: All encoded Partition Key matches." << std::endl;
 
 	std::vector<uint8_t> expectedRKey {
-		2, // Type u32
-		0, 0, 0, 100, // 100
-		0, // ESCAPE
-		1, // TERM 
-		1, // Type string
-		84, 101, 97, 99, 104, 101, 114, // T,e,a,c,h,e,r
-		0, // ESCAPE
-		1, // TERM
-		2, // Type u32
-		0, 0, 0, 36, // 36
-		0, // ESCAPE
-		1, // TERM
+		(uint8_t)k2::dto::FieldType::UINT32T, // Type u32
+		0, 0, 0, 100, 	// 100, bit: 24|16|8|0
+		0, 				// ESCAPE
+		1, 				// TERM 
+		(uint8_t)k2::dto::FieldType::STRING, // Type string
+		(uint8_t)'T',
+		(uint8_t)'e',
+		(uint8_t)'a',
+		(uint8_t)'c',
+		(uint8_t)'h',
+		(uint8_t)'e',
+		(uint8_t)'r',		// T,e,a,c,h,e,r
+		0, 				// ESCAPE
+		1,	 			// TERM
+		(uint8_t)k2::dto::FieldType::UINT32T, // Type u32
+		0, 0, 0, 36, 	// 36, bit: 24|16|8|0
+		0, 				// ESCAPE
+		1, 				// TERM
 	};
 	k2::String rangeKey = doc.getRangeKey();
 	REQUIRE(expectedRKey.size() == rangeKey.size());
@@ -162,20 +173,26 @@ TEST_CASE("Test2: Serialize a record with a composite partition key and one key 
 	doc.skipNext();
 	
 	std::vector<uint8_t> expectedPKey {
-		1, // Type string
-		66, 97, 103, 103, 105, 110, 115, // B,a,g,g,i,n,s
-		0, // ESCAPE
-		1, // TERM
-		2, // Type u32
-		1, 52, 63, 18, // 20201234
-		0, // ESCAPE
-		1, // TERM
-		0, // Type NULL_T
-		0, // ESCAPE
-		1, // TERM
-		0, // Type NULL_T
-		0, // ESCAPE
-		1, // TERM
+		(uint8_t)k2::dto::FieldType::STRING, // Type string
+		(uint8_t)'B', 
+		(uint8_t)'a', 
+		(uint8_t)'g', 
+		(uint8_t)'g', 
+		(uint8_t)'i', 
+		(uint8_t)'n', 
+		(uint8_t)'s', 		// B,a,g,g,i,n,s
+		0, 				// ESCAPE
+		1, 				// TERM
+		(uint8_t)k2::dto::FieldType::UINT32T, // Type u32
+		1, 52, 63, 18, 	// 20201234, bit: 24|16|8|0
+		0,		 		// ESCAPE
+		1, 				// TERM
+		(uint8_t)k2::dto::FieldType::NULL_T,	// Type NULL_T
+		0, 				// ESCAPE
+		1, 				// TERM
+		(uint8_t)k2::dto::FieldType::NULL_T, // Type NULL_T
+		0, 				// ESCAPE
+		1, 				// TERM
 	};
 	k2::String partitionKey = doc.getPartitionKey();
 	REQUIRE(expectedPKey.size() == partitionKey.size());
@@ -209,20 +226,26 @@ TEST_CASE("Test3: Serialize a record with a composite partition key and one key 
 	doc.skipNext();
 	
 	std::vector<uint8_t> expectedPKey {
-		1, // Type string
-		66, 97, 103, 103, 105, 110, 115, // B,a,g,g,i,n,s
-		0, // ESCAPE
-		1, // TERM
-		2, // Type u32
-		1, 52, 63, 18, // 20201234
-		0, // ESCAPE
-		1, // TERM
-		0, // Type NULL_T
-		0, // ESCAPE
-		1, // TERM
-		255, // Type NULL_Last
-		0, // ESCAPE
-		1, // TERM
+		(uint8_t)k2::dto::FieldType::STRING, 	// Type string
+		(uint8_t)'B', 
+		(uint8_t)'a', 
+		(uint8_t)'g', 
+		(uint8_t)'g', 
+		(uint8_t)'i', 
+		(uint8_t)'n', 
+		(uint8_t)'s', 		// B,a,g,g,i,n,s
+		0, 					// ESCAPE
+		1, 					// TERM
+		(uint8_t)k2::dto::FieldType::UINT32T, 	// Type u32
+		1, 52, 63, 18, 		// 20201234, bit: 24|16|8|0
+		0, 					// ESCAPE
+		1, 					// TERM
+		(uint8_t)k2::dto::FieldType::NULL_T,		// Type NULL_T
+		0, 					// ESCAPE
+		1, 					// TERM
+		(uint8_t)k2::dto::FieldType::NULL_LAST,	// Type NULL_Last
+		0, 					// ESCAPE
+		1, 					// TERM
 	};
 	k2::String partitionKey = doc.getPartitionKey();
 	REQUIRE(expectedPKey.size() == partitionKey.size());
@@ -261,12 +284,10 @@ TEST_CASE("Test4: Serialize a record with one value field skipped") {
 	REQUIRE(*lastName == "Baggins");
 	std::optional<k2::String> firstName = doc.deserializeNext<k2::String>();
 	REQUIRE(firstName == std::nullopt);
-	doc.fieldCursor ++;		// have to move fieldCursor to chase the field
 	std::optional<uint32_t> balance = doc.deserializeNext<uint32_t>();
     REQUIRE(*balance == 100);
 	std::optional<k2::String> job = doc.deserializeNext<k2::String>();
 	REQUIRE(job == std::nullopt);
-	doc.fieldCursor ++;
 	std::optional<uint32_t> age = doc.deserializeNext<uint32_t>();
 	REQUIRE(*age == 36);
 	std::cout << "Test4: Deserialize by \"deserializeNext\" function success." << std::endl;
@@ -302,23 +323,14 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
 	doc.serializeNext<uint32_t>(36);
 
 	// out of order Deserialize, using "deserializeFiled(String&)" function
-	doc.seekField(2);
 	std::optional<uint32_t> balance = doc.deserializeField<uint32_t>("Balance");
 	REQUIRE(*balance == 100);
-	
-	doc.seekField(3);
 	std::optional<k2::String> job = doc.deserializeField<k2::String>("Job");
 	REQUIRE(job == std::nullopt);
-	
-	doc.seekField(4);
 	std::optional<uint32_t> age = doc.deserializeField<uint32_t>("Age");
 	REQUIRE(*age == 36);
-
-	doc.seekField(0);
 	std::optional<k2::String> lastName = doc.deserializeField<k2::String>("LastName");
 	REQUIRE(*lastName == "Baggins");
-
-	doc.seekField(1);
 	std::optional<k2::String> firstName = doc.deserializeField<k2::String>("FirstName");
 	REQUIRE(firstName == std::nullopt);
 
