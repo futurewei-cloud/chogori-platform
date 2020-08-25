@@ -25,6 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <crc32c/crc32c.h>
 
 namespace k2 {
+
 Payload::PayloadPosition::PayloadPosition():PayloadPosition(0, 0, 0) {
 }
 
@@ -50,6 +51,10 @@ Payload::Payload():
     _size(0),
     _capacity(0),
     _allocator(nullptr) {
+}
+
+Binary Payload::DefaultAllocator() {
+    return Binary(8192);
 }
 
 bool Payload::isEmpty() const {

@@ -7,12 +7,21 @@ K2 TimeStamp is a specific designed data structure for timeStamp used for markin
 The design goals of K2 Timestamp and K2 TSO are
 - Functionality: support K2 global distributed transaction, at Sequencial consistent Serializable Snashot Isolation level(K2-3SI transaction protocol) and external causal relationship, with optimization for within datacenter avg 20 microsecond latency transactions.
 - Performance: Issuing of K2 TimeStamp within the same data center should take less than 10 microsecond, ideally avg less than 5 microsecond.
-- Scalability: Single TSO service can provide 50-100 million timestamps per second for the system, essentially support 50-100 million transactions per second(roughly 50 -100X current top TPCC record holder at 68 million tpmc).
+- Scalability: Single TSO service can provide 50-100 million timestamps per second for the system, essentially support 50-100 million transactions per second(roughly 50 -100X current top TPCC record holder at 60 million tpmc or roughtly 1 million txn/s). 
 - Availability: K2 TSO as logical single point of failure, should be designed with high availability >= 99.999%. Designed no down time for software upgrade, no down time for single physical server replacement, minimal unavailable time(ideally <200 millisecond) for server crash recover. 
 
-Besides general distributed system requirement, e.g. high availability, hgih scalability, low latency requirement etc. for K2 TSO design, K2 TSO is distinctively designed to support 
-#####a) K2 specific transaction protocol, K2-3SI. 
-#####b) Microsecond level latency(within same data center) but still support cross geo region transactions.
+```
+Note(06/28/2020): Above goals were original set as for 1/1/2020, since then, TPCC new latest record as of today 
+is 707 million tpmc (or roughly 11 million txn/s). Originally TSO was thought to be a single active instance 
+system, thus single TSO service goal was set to be 50 - 100x of TPCC record then and such goal is still 5 -10 
+times of this new record. But as later this design specified, TSO service is a scale-out design (supporting 
+concurrent multi-active instances) and is not limit by single TSO instance throughput. Thus, together with other 
+sub-systems, whole Chogori(K2) is a fully scale-out system at data plane.
+```
+
+Besides general distributed system requirement, e.g. high availability, high scalability, low latency requirement etc. for K2 TSO design, K2 TSO is distinctively designed to support 
+##### a) K2 specific transaction protocol, K2-3SI. 
+##### b) Microsecond level latency(within same data center) but still support cross geo region transactions.
 
 Of course, speed of light issue will causes unavoidable physical millisecond level network traffic latency across geo regions, such transaction latency will be more than unavoidable network latency. It worth to note here that these two distinctive characters impact TSO design significantly, especially on design assumption and simplification. We will explain more in detail in following sections.
 
@@ -22,7 +31,7 @@ With design goals above, let's derive some more detailed design key points.
 ### 2.1 Timestamp ordinal requirement from K2-3SI
 First, we need to take a careful look at the requirement of transaction/event order and timstamp resulting from support K2-3SI. K2-3SI detailed analysis is at [K2 Transaction Design Spec](./TXN.md). Here we only give a summary of key points to related with TSO to help derive the design. 
 
-Following distributed transactional system consistency model explained by [https://jepsen.io/consistency],![alt](./images/jepsenconsistency.jpg) K2-3SI, on isolation side (left side on the Jepsen model), supports [Serializable snapshot Isolation](https://jepsen.io/consistency/models/serializable); on the consistency side (right side on the Jepsen model), K2-3SI supports [Sequential Consistency](https://jepsen.io/consistency/models/sequential), just one level down from the top [Linearizable](https://jepsen.io/consistency/models/linearizable) to avoid expensive real time synchronization. To support transaction atomicity and cross transaction isolation, all operations in a transaction is marked with a "transaction time" (which can be a sequence number like LSN in MySQL, or a TimeStamp in Google's Spanner"). Typically, such "transaction time" is record of the commit time(or commit record LSN) of a transaction. In K2-3SI, to minimize the distributed transaction latency and increase the throughput, we choose the transaction start time as the "transaction time". This indicates the order of transactions (for isolation) is based on the start time of each transaction and operations/transaction confliction and resolution is based on such time as well. To support Sequential consistency, this "transaction time" also need provide total ordinal relationship between any two transactions which gives same order of any two transaction at any partition of the distributed system. 
+Following distributed transactional system consistency model explained by [<img src="./images/JepsenConsistency.jpg">](https://jepsen.io/consistency) K2-3SI, on isolation side (left side on the Jepsen model), supports [Serializable snapshot Isolation](https://jepsen.io/consistency/models/serializable); on the consistency side (right side on the Jepsen model), K2-3SI supports [Sequential Consistency](https://jepsen.io/consistency/models/sequential), just one level down from the top [Linearizable](https://jepsen.io/consistency/models/linearizable) to avoid expensive real time synchronization. To support transaction atomicity and cross transaction isolation, all operations in a transaction is marked with a "transaction time" (which can be a sequence number like LSN in MySQL, or a TimeStamp in Google's Spanner"). Typically, such "transaction time" is record of the commit time(or commit record LSN) of a transaction. In K2-3SI, to minimize the distributed transaction latency and increase the throughput, we choose the transaction start time as the "transaction time". This indicates the order of transactions (for isolation) is based on the start time of each transaction and operations/transaction confliction and resolution is based on such time as well. To support Sequential consistency, this "transaction time" also need provide total ordinal relationship between any two transactions which gives same order of any two transaction at any partition of the distributed system. 
 
 Assuming there is only single TSO at any moment for the whole system serving all other servers, the "transaction time" could be either a sequence number or a machine (system) time issued from the TSO. On theory, this simple approach would fulfill the requirement mentioned above. But there are three major engineering issue we need to solve/optimize. 
 - First, such singele TSO become system's single point of failure; 

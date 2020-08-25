@@ -29,7 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
-#include <k2/tso/client_lib/tso_clientlib.h>
+#include <k2/tso/client/tso_clientlib.h>
 #include <seastar/core/sleep.hh>
 
 #include "schema.h"

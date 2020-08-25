@@ -55,6 +55,8 @@ seastar::future<> CPOTest::start() {
         .then([this] { return runTest3(); })
         .then([this] { return runTest4(); })
         .then([this] { return runTest5(); })
+        .then([this] { return runTest6(); })
+        .then([this] { return runTest7(); })
         .then([this] {
             K2INFO("======= All tests passed ========");
             exitcode = 0;
@@ -225,4 +227,61 @@ seastar::future<> CPOTest::runTest5() {
                 K2EXPECT(*p.endpoints.begin(), _k2ConfigEps()[i]);
             }
         });
+}
+
+seastar::future<> CPOTest::runTest6() {
+    K2INFO(">>> Test6: Add a schema and get it back");
+
+    dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<dto::SchemaField> {
+            {dto::FieldType::STRING, "LastName", false, false},
+            {dto::FieldType::STRING, "FirstName", false, false},
+            {dto::FieldType::UINT32T, "Balance", false, false}
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
+    schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
+
+    dto::CreateSchemaRequest request{ "collectionAssign", std::move(schema) };
+    return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+    .then([this] (auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+
+        dto::GetSchemasRequest request { "collectionAssign" };
+        return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
+    })
+    .then([] (auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(resp.schemas.size(), 1);
+        K2EXPECT(resp.schemas[0].name, "test_schema");
+        
+        return seastar::make_ready_future<>();
+    });
+}
+
+seastar::future<> CPOTest::runTest7() {
+    K2INFO(">>> Test7: Try to add an invalid schema");
+
+    dto::Schema schema;
+    schema.name = "invalid_schema";
+    schema.version = 1;
+    schema.fields = std::vector<dto::SchemaField> {
+            {dto::FieldType::STRING, "LastName", false, false},
+            {dto::FieldType::STRING, "FirstName", false, false},
+            {dto::FieldType::UINT32T, "Balance", false, false}
+    };
+    schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
+    // Invalid schema because we did not set any partition key fields
+
+
+    dto::CreateSchemaRequest request{ "collectionAssign", std::move(schema) };
+    return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+    .then([this] (auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(status.is2xxOK(), false);
+    });
 }
