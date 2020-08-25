@@ -311,18 +311,14 @@ String CPOService::_getCollectionPath(String name) {
     return _dataDir() + "/" + name + ".collection";
 }
 
-<<<<<<< HEAD
 String CPOService::_getPartitionMapPath() {
     return _dataDir() + "/partition_map.txt";
 }
 
-
-=======
 String CPOService::_getSchemasPath(String collectionName) {
     return _getCollectionPath(collectionName) + ".schemas";
 }
 
->>>>>>> origin/master
 void CPOService::_assignCollection(dto::Collection& collection) {
     auto &name = collection.metadata.name;
     K2INFO("Assigning collection " << name << ", to " << collection.partitionMap.partitions.size() << " nodes");
