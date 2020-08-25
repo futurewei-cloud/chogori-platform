@@ -37,10 +37,11 @@ namespace k2 {
 struct DataRec {
     String f1;
     String f2;
-    K2_PAYLOAD_FIELDS(f1, f2);
+
     bool operator==(const DataRec& o) {
         return f1 == o.f1 && f2 == o.f2;
     }
+
     friend std::ostream& operator<<(std::ostream& os, const DataRec& r) {
         return os << "{f1=" << r.f1 << ", f2=" << r.f2 << "}";
     }
@@ -117,6 +118,26 @@ public:  // application lifespan
                 K2EXPECT(status, Statuses::S200_OK);
                 _pgetter = dto::PartitionGetter(std::move(resp.collection));
             })
+            .then([this] () {
+                _schema.name = "schema";
+                _schema.version = 1;
+                _schema.fields = std::vector<dto::SchemaField> {
+                        {dto::FieldType::STRING, "partition", false, false},
+                        {dto::FieldType::STRING, "range", false, false},
+                        {dto::FieldType::STRING, "f1", false, false},
+                        {dto::FieldType::STRING, "f2", false, false},
+                };
+
+                _schema.setPartitionKeyFieldsByName(std::vector<String>{"partition"});
+                _schema.setRangeKeyFieldsByName(std::vector<String> {"range"});
+                
+                dto::CreateSchemaRequest request{ collname, _schema };
+                return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s);
+            })
+            .then([] (auto&& response) {
+                auto& [status, resp] = response;
+                K2EXPECT(status, Statuses::S200_OK);
+            })
             .then([this] { return runScenario00(); })
             .then([this] { return runScenario01(); })
             .then([this] { return runScenario02(); })
@@ -161,14 +182,19 @@ private:
 
     CPOClient _cpo_client;
     dto::PartitionGetter _pgetter;
+    dto::Schema _schema;
     uint64_t txnids = 10000;
 
-    template <typename DataType>
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-    doWrite(const dto::Key& key, const DataType& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH) {
+    doWrite(const dto::Key& key, const DataRec& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH) {
+        SKVRecord record(cname, _schema);
+        record.serializeNext<String>(key.partitionKey);
+        record.serializeNext<String>(key.rangeKey);
+        record.serializeNext<String>(data.f1);
+        record.serializeNext<String>(data.f2);
         K2DEBUG("key=" << key << ",partition hash=" << key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
-        dto::K23SIWriteRequest<DataType> request;
+        dto::K23SIWriteRequest request;
         request.pvid = part.partition->pvid;
         request.collectionName = cname;
         request.mtr = mtr;
@@ -176,23 +202,22 @@ private:
         request.isDelete = isDelete;
         request.designateTRH = isTRH;
         request.key = key;
-        request.value.val = data;
-        return RPC().callRPC<dto::K23SIWriteRequest<DataType>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms);
+        request.value = std::move(record.storage);
+        return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms);
     }
 
-    template <typename ResponseType>
-    seastar::future<std::tuple<Status, dto::K23SIReadResponse<ResponseType>>>
+    seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
     doRead(const dto::Key& key, const dto::K23SI_MTR& mtr, const String& cname) {
         K2DEBUG("key=" << key << ",partition hash=" << key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
-        // read wrong collection
         dto::K23SIReadRequest request {
             .pvid = part.partition->pvid,
             .collectionName = cname,
+            "schema",
             .mtr =mtr,
             .key=key
         };
-        return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<ResponseType>>
+        return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse>
             (dto::Verbs::K23SI_READ, request, *part.preferredEndpoint, 100ms);
     }
 
@@ -260,7 +285,7 @@ seastar::future<> runScenario01() {
         });
     })
     .then([this] {
-        return doRead<Payload>({"Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
+        return doRead({"Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
     })
     .then([](auto&& response) {
         auto& [status, resp] = response;
@@ -349,7 +374,7 @@ cases requiring client to refresh collection pmap
             dto::Key{.partitionKey = "Key1", .rangeKey = "rKey1"},
             DataRec{.f1="field1", .f2="field2"},
             [this] (dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec) {
-                return doWrite<DataRec>(key, rec, mtr, trh, collname, false, true)
+                return doWrite(key, rec, mtr, trh, collname, false, true)
                 .then([this](auto&& response) {
                     auto& [status, resp] = response;
                     K2EXPECT(status, dto::K23SIStatus::Created);
@@ -382,7 +407,7 @@ cases requiring client to refresh collection pmap
                 .then([this, &key, &mtr](auto&& response) {
                     auto& [status, resp] = response;
                     K2EXPECT(status, dto::K23SIStatus::OK);
-                    return doRead<DataRec>(key, mtr, collname);
+                    return doRead(key, mtr, collname);
                 })
                 .then([&rec](auto&& response) {
                     auto& [status, resp] = response;
@@ -410,7 +435,7 @@ seastar::future<> runScenario04() {
                     m1.txnid = txnids++;
                     m1.timestamp = ts;
                     m1.priority = dto::TxnPriority::Medium;
-                    return doWrite<DataRec>(k1, {"fk1", "f2"}, m1, k1, collname, false, true);
+                    return doWrite(k1, {"fk1", "f2"}, m1, k1, collname, false, true);
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
@@ -421,7 +446,7 @@ seastar::future<> runScenario04() {
                     m2.txnid = txnids++;
                     m2.timestamp = ts;
                     m2.priority = dto::TxnPriority::Medium;
-                    return doWrite<DataRec>(k2, {"fk2", "f2"}, m2, k2, collname, false, true);
+                    return doWrite(k2, {"fk2", "f2"}, m2, k2, collname, false, true);
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
@@ -463,7 +488,7 @@ seastar::future<> runScenario04() {
                     auto& [status, resp] = result;
                     K2EXPECT(status, dto::K23SIStatus::OK);
 
-                    return seastar::when_all(doRead<DataRec>(k1, m1, collname), doRead<DataRec>(k2, m2, collname));
+                    return seastar::when_all(doRead(k1, m1, collname), doRead(k2, m2, collname));
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;
@@ -490,7 +515,7 @@ seastar::future<> runScenario05() {
                     m1.txnid = txnids++;
                     m1.timestamp = ts;
                     m1.priority = dto::TxnPriority::Medium;
-                    return doWrite<DataRec>(k1, {"fk1","f2"}, m1, k1, collname, false, true);
+                    return doWrite(k1, {"fk1","f2"}, m1, k1, collname, false, true);
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
@@ -501,7 +526,7 @@ seastar::future<> runScenario05() {
                     m2.txnid = txnids++;
                     m2.timestamp = ts;
                     m2.priority = dto::TxnPriority::Medium;
-                    return doWrite<DataRec>(k2, {"fk2", "f2"}, m2, k2, collname, false, true);
+                    return doWrite(k2, {"fk2", "f2"}, m2, k2, collname, false, true);
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
@@ -530,7 +555,7 @@ seastar::future<> runScenario05() {
                     auto [status2, result2] = r2.get0();
                     K2EXPECT(status1, dto::K23SIStatus::OK);
                     K2EXPECT(status2, dto::K23SIStatus::OK);
-                    return seastar::when_all(doRead<DataRec>(k1, m1, collname), doRead<DataRec>(k2, m2, collname));
+                    return seastar::when_all(doRead(k1, m1, collname), doRead(k2, m2, collname));
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;

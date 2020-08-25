@@ -56,11 +56,11 @@ K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::P
 
 seastar::future<> K23SIPartitionModule::start() {
     K2DEBUG("Starting for partition: " << _partition);
-    RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
+    RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
         return handleRead(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.readTimeout()));
     });
 
-    RPC().registerRPCObserver<dto::K23SIWriteRequest<Payload>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest<Payload>&& request) {
+    RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
         return handleWrite(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
     });
 
@@ -148,23 +148,23 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
     return seastar::when_all_succeed(std::move(_retentionRefresh), _txnMgr.gracefulStop()).discard_result().then([]{K2INFO("stopped");});
 }
 
-seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
+seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
 _makeReadOK(dto::DataRecord* rec) {
     if (rec == nullptr || rec->isTombstone) {
-        return RPCResponse(dto::K23SIStatus::KeyNotFound("read did not find key"), dto::K23SIReadResponse<Payload>{});
+        return RPCResponse(dto::K23SIStatus::KeyNotFound("read did not find key"), dto::K23SIReadResponse{});
     }
 
-    auto response = dto::K23SIReadResponse<Payload>();
-    response.value.val = rec->value.val.shareAll();
+    auto response = dto::K23SIReadResponse();
+    response.value = rec->value.share();
     return RPCResponse(dto::K23SIStatus::OK("read succeeded"), std::move(response));
 }
 
-seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
+seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
 K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received read " << request);
     if (!_validateRequestPartition(request)) {
         // tell client their collection partition is gone
-        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in read"), dto::K23SIReadResponse<Payload>{});
+        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in read"), dto::K23SIReadResponse{});
     }
     if (!_validateRequestParameter(request)){
         // do not allow empty partition key
@@ -172,7 +172,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     }
     if (!_validateRetentionWindow(request)) {
         // the request is outside the retention window
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in read"), dto::K23SIReadResponse<Payload>{});
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in read"), dto::K23SIReadResponse{});
     }
     // sitMTR will be ZERO for original requests or non-zero for post-PUSH reads
     // update the read cache to lock out any future writers which may attempt to modify the key range
@@ -210,7 +210,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
             .then([this, sitMTR, request=std::move(request), deadline](auto&& winnerMTR) mutable {
                 if (winnerMTR == sitMTR) {
                     // sitting transaction won. Abort the incoming request
-                    return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse<Payload>{});
+                    return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse{});
                 }
                 // incoming request won. re-run read logic
                 return handleRead(std::move(request), sitMTR, deadline);
@@ -227,7 +227,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     return _makeReadOK(versions.begin() == versions.end() ? nullptr : &(versions[0]));
 }
 
-bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest<Payload>& request, std::deque<dto::DataRecord>& versions) {
+bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions) {
     if (!_validateRetentionWindow(request)) {
         // the request is outside the retention window
         return false;
@@ -268,7 +268,7 @@ bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest<Payload>& 
 }
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest<Payload>&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
+K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
     // NB: failures in processing a write do not require that we set the TR state to aborted at the TRH. We rely on
     //     the client to do the correct thing and issue an abort on a failure.
     // NB: sitMTR will be ZERO for original requests or non-zero for post-PUSH, winning writes.
@@ -495,12 +495,12 @@ void K23SIPartitionModule::_queueWICleanup(dto::DataRecord&& rec) {
 }
 
 seastar::future<>
-K23SIPartitionModule::_createWI(dto::K23SIWriteRequest<Payload>&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
+K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", creating WI: " << request);
     dto::DataRecord rec;
     rec.key = std::move(request.key);
     // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
-    rec.value.val = request.value.val.copy();
+    rec.value = request.value.copy();
     rec.isTombstone = request.isDelete;
     rec.txnId = dto::TxnId{.trh = std::move(request.trh), .mtr = std::move(request.mtr)};
     rec.status = dto::DataRecord::WriteIntent;
@@ -616,7 +616,7 @@ K23SIPartitionModule::handleInspectRecords(dto::K23SIInspectRecordsRequest&& req
     for (dto::DataRecord& rec : versions) {
         dto::DataRecord copy {
             rec.key,
-            rec.value.val.shareAll(),
+            rec.value.share(),
             rec.isTombstone,
             rec.txnId,
             rec.status
@@ -670,7 +670,7 @@ K23SIPartitionModule::handleInspectWIs(dto::K23SIInspectWIsRequest&& request) {
 
             dto::DataRecord copy {
                 rec.key,
-                rec.value.val.shareAll(),
+                rec.value.share(),
                 rec.isTombstone,
                 rec.txnId,
                 rec.status

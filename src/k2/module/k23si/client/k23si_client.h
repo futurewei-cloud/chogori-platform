@@ -59,15 +59,10 @@ public:
 template<typename ValueType>
 class ReadResult {
 public:
-    ReadResult(Status s, dto::K23SIReadResponse<ValueType>&& r) : status(std::move(s)), response(std::move(r)) {}
-
-    ValueType& getValue() {
-        return response.value.val;
-    }
+    ReadResult(Status s, dto::K23SIReadResponse&& r) : status(std::move(s)) {}
 
     Status status;
-private:
-    dto::K23SIReadResponse<ValueType> response;
+    ValueType value;
 };
 
 class WriteResult{
@@ -103,6 +98,7 @@ public:
     seastar::future<> gracefulStop();
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
+    seastar::future<SKVRecord> makeSKVRecord(const String& collectionName, const String& schemaName, int64_t schemaVersion = -1);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -122,6 +118,8 @@ private:
     std::mt19937 _gen;
     std::uniform_int_distribution<uint64_t> _rnd;
     std::vector<String> _k2endpoints;
+    // collection name -> (schema name -> (schema version -> schema))
+    std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, dto::Schema>>> _schemas;
     CPOClient _cpo_client;
 };
 
@@ -136,39 +134,46 @@ public:
     K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
-    template <typename ValueType>
-    seastar::future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
+    template <class T>
+    seastar::future<ReadResult<T>> read(SKVRecord record) {
         if (!_started) {
-            return seastar::make_exception_future<ReadResult<ValueType>>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<ReadResult<T>>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
 
         if (_failed) {
-            return seastar::make_ready_future<ReadResult<ValueType>>(ReadResult<ValueType>(_failed_status, dto::K23SIReadResponse<ValueType>()));
+            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, dto::K23SIReadResponse()));
         }
 
         _client->read_ops++;
 
         auto* request = new dto::K23SIReadRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            collection,
+            record.collectionName,
+            record.storage.schemaName,
             _mtr,
-            std::move(key)
+            dto::Key { record.getPartitionKey(), record.getRangeKey() }
         };
 
         return _cpo_client->PartitionRequest
-            <dto::K23SIReadRequest, dto::K23SIReadResponse<ValueType>, dto::Verbs::K23SI_READ>
+            <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
             then([this] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
-                auto userResponse = ReadResult<ValueType>(std::move(status), std::move(k2response));
-                return seastar::make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
+                if constexpr (std::is_same<T, dto::SKVRecord>()) {
+                    auto userResponse = ReadResult<SKVRecord>(std::move(status));
+                    userResponse.value = std::move(k2response.value);
+                    return seastar::make_ready_future<ReadResult<SKVRecord>>(std::move(userResponse));
+                } else {
+                    auto userResponse = ReadResult<T>(std::move(status));
+                    // TODO construct user type
+                    return seastar::make_ready_future<ReadResult<T>>(std::move(userResponse));
+                }
             }).finally([request] () { delete request; });
     }
 
-    template <typename ValueType>
-    seastar::future<WriteResult> write(dto::Key key, const String& collection, const ValueType& value, bool erase=false) {
+    seastar::future<WriteResult> write(SKVRecord&& record, bool erase=false) {
         if (!_started) {
             return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
@@ -177,26 +182,31 @@ public:
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
 
+        dto::Key key {
+            record.getPartitionKey(),
+            record.getRangeKey(),
+        };
+
         if (!_write_set.size()) {
             _trh_key = key;
-            _trh_collection = collection;
+            _trh_collection = record.collectionName;
         }
         _write_set.push_back(key);
         _client->write_ops++;
 
-        auto* request = new dto::K23SIWriteRequest<ValueType>{
+        auto* request = new dto::K23SIWriteRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            collection,
             _mtr,
+            record.collectionName,
             _trh_key,
             erase,
             _write_set.size() == 1,
-            std::move(key),
-            SerializeAsPayload<ValueType>{value}
+            key,
+            std::move(record.storage)
         };
 
         return _cpo_client->PartitionRequest
-            <dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
+            <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
             then([this] (auto&& response) {
                 auto& [status, k2response] = response;
@@ -214,7 +224,7 @@ public:
             }).finally([request] () { delete request; });
     }
 
-    seastar::future<WriteResult> erase(dto::Key key, const String& collection);
+    seastar::future<WriteResult> erase(SKVRecord&& record);
 
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed

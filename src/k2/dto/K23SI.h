@@ -28,6 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Collection.h"
 #include "ControlPlaneOracle.h"
+#include "SKVRecord.h"
 #include "Timestamp.h"
 
 namespace k2 {
@@ -118,7 +119,7 @@ namespace dto {
 // A record in the 3SI version cache.
 struct DataRecord {
     dto::Key key;
-    SerializeAsPayload<Payload> value;
+    SKVRecord::Storage value;
     bool isTombstone = false;
     dto::TxnId txnId;
     enum Status: uint8_t {
@@ -156,10 +157,11 @@ inline std::ostream& operator<<(std::ostream& os, const TxnRecordState& st) {
 struct K23SIReadRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName; // the name of the collection
+    String schemaName;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key to read
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, schemaName, mtr, key);
     friend std::ostream& operator<<(std::ostream& os, const K23SIReadRequest& r) {
         return os << "{" << "pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", key=" << r.key << "}";
@@ -167,9 +169,8 @@ struct K23SIReadRequest {
 };
 
 // The response for READs
-template<typename ValueType>
 struct K23SIReadResponse {
-    SerializeAsPayload<ValueType> value; // the value we found
+    SKVRecord::Storage value; // the value we found
     K2_PAYLOAD_FIELDS(value);
 };
 
@@ -185,11 +186,10 @@ struct K23SIStatus {
     static const inline Status BadParameter=k2::Statuses::S422_Unprocessable_Entity;
 };
 
-template <typename ValueType>
 struct K23SIWriteRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName; // the name of the collection
     K23SI_MTR mtr; // the MTR for the issuing transaction
+    String collectionName; // the name of the collection
     // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
     // the first write (the write for which designateTRH was set to true)
     // Note that this is not an unique identifier for a transaction record - transaction records are
@@ -199,12 +199,12 @@ struct K23SIWriteRequest {
     bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
-    SerializeAsPayload<ValueType> value; // the value of the write
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
-    friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest<ValueType>& r) {
+    SKVRecord::Storage value; // the value of the write
+    K2_PAYLOAD_FIELDS(pvid, mtr, trh, isDelete, designateTRH, key, value);
+    friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
-                  << r.isDelete << ", designate=" <<r.designateTRH << "}";
+                  << r.isDelete << ", designate=" << r.designateTRH << "}";
     }
 };
 

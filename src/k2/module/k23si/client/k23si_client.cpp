@@ -140,8 +140,8 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         }).finally([request] () { delete request; });
 }
 
-seastar::future<WriteResult> K2TxnHandle::erase(dto::Key key, const String& collection) {
-    return write<int>(std::move(key), collection, 0, true);
+seastar::future<WriteResult> K2TxnHandle::erase(SKVRecord&& record) {
+    return write(std::move(record), true);
 }
 
 K23SIClient::K23SIClient(const K23SIClientConfig &) :
@@ -186,6 +186,12 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection, st
     };
 
     return _cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
+}
+
+seastar::future<SKVRecord> makeSKVRecord(const String& collectionName, const String& schemaName) {
+    (void) collectionName;
+    (void) schemaName;
+    return seastar::make_ready_future<SKVRecord>(SKVRecord{});
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {

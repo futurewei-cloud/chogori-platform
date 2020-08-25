@@ -53,7 +53,7 @@ public:
             }
         }
 
-        fieldData.write(field);
+        storage.fieldData.write(field);
         ++fieldCursor;
     }
 
@@ -87,12 +87,12 @@ public:
 
         ++fieldCursor;
 
-        if (excludedFields.size() > 0 && excludedFields[fieldIndex]) {
+        if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldIndex]) {
             return std::optional<T>();
         }
 
         T value;
-        bool success = fieldData.read(value);
+        bool success = storage.fieldData.read(value);
         if (!success) {
             throw new std::runtime_error("Deserialization of payload in SKVRecord failed");
         }
@@ -112,15 +112,23 @@ public:
     SKVRecord() = default;
     SKVRecord(const String& collection, Schema s);
 
-    String collectionName;
-    String schemaName;
-    uint32_t schemaVersion = 0;
-    // Bitmap of fields that are excluded because they are optional or this is for a partial update
-    std::vector<bool> excludedFields;
-    Payload fieldData;
+    // These are fields actually stored by the Chogori storage node, and returned
+    // by a read request
+    struct Storage {
+        // Bitmap of fields that are excluded because they are optional or this is for a partial update
+        std::vector<bool> excludedFields;
+        Payload fieldData;
+        String schemaName;
+        uint32_t schemaVersion = 0;
+
+        Storage share();
+        Storage copy();
+        K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaName, schemaVersion);
+    } storage;
 
     // These fields are used by the client to build a request but are not serialized on the wire
     Schema schema;
+    String collectionName;
     std::vector<String> partitionKeys;
     std::vector<String> rangeKeys;
     uint32_t fieldCursor = 0;
@@ -129,7 +137,7 @@ public:
     String getPartitionKey();
     String getRangeKey();
 
-    K2_PAYLOAD_FIELDS(schemaName, schemaVersion, excludedFields, fieldData);
+    K2_PAYLOAD_FIELDS(storage);
 };
 
 // Convience macro that does the switch statement on the record field type for the user

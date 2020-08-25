@@ -47,11 +47,11 @@ void SKVRecord::skipNext() {
         }
     }
 
-    if (excludedFields.size() == 0) {
-        excludedFields = std::vector<bool>(schema.fields.size(), false);
+    if (storage.excludedFields.size() == 0) {
+        storage.excludedFields = std::vector<bool>(schema.fields.size(), false);
     }
 
-    excludedFields[fieldCursor] = true;
+    storage.excludedFields[fieldCursor] = true;
     ++fieldCursor;
 }
 
@@ -74,11 +74,11 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
 
     if (fieldIndex < fieldCursor) {
         fieldCursor = 0;
-        fieldData.seek(0);
+        storage.fieldData.seek(0);
     }
 
     while(fieldIndex != fieldCursor) {
-        if (excludedFields.size() > 0 && excludedFields[fieldCursor]) {
+        if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldCursor]) {
             ++fieldCursor;
             continue;
         }
@@ -90,12 +90,14 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
 // We expose a shared payload in case the user wants to write it to file or otherwise 
 // store it on their own. For normal K23SI operations the user does not need to touch this
 Payload SKVRecord::getSharedPayload() {
-    return fieldData.shareAll();
+    return storage.fieldData.shareAll();
 }
 
 SKVRecord::SKVRecord(const String& collection, Schema s) : 
-            collectionName(collection), schemaName(s.name), schemaVersion(s.version), schema(s) {
-    fieldData = Payload(Payload::DefaultAllocator);
+            schema(s), collectionName(collection) {
+    storage.schemaVersion = s.version; 
+    storage.schemaName = s.name;
+    storage.fieldData = Payload(Payload::DefaultAllocator);
     partitionKeys.resize(schema.partitionKeyFields.size());
     rangeKeys.resize(schema.partitionKeyFields.size());
 }
@@ -138,6 +140,24 @@ String SKVRecord::getRangeKey() {
     }
 
     return rangeKey;
+}
+
+SKVRecord::Storage SKVRecord::Storage::share() {
+    return SKVRecord::Storage {
+        excludedFields,
+        fieldData.share(),
+        schemaName,
+        schemaVersion
+    };
+}
+
+SKVRecord::Storage SKVRecord::Storage::copy() {
+    return SKVRecord::Storage {
+        excludedFields,
+        fieldData.copy(),
+        schemaName,
+        schemaVersion
+    };
 }
 
 } // ns dto
