@@ -77,7 +77,7 @@ public:
     template <typename T>
     std::optional<T> deserializeField(uint32_t fieldIndex) {
         FieldType ft = TToFieldType<T>();
-        if (fieldCursor >= schema.fields.size() || ft != schema.fields[fieldIndex].type) {
+        if (fieldIndex >= schema.fields.size() || ft != schema.fields[fieldIndex].type) {
             throw new std::runtime_error("Schema not followed in record deserialization");
         }
 
@@ -92,7 +92,11 @@ public:
         }
 
         T value;
-        fieldData.read(value);
+        bool success = fieldData.read(value);
+        if (!success) {
+            throw new std::runtime_error("Deserialization of payload in SKVRecord failed");
+        }
+
         return value;
     }
 

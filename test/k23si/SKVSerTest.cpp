@@ -321,7 +321,6 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
 	doc.serializeNext<uint32_t>(100);
 	doc.skipNext();
 	doc.serializeNext<uint32_t>(36);
-    doc.seekField(0);
 
 	// out of order Deserialize, using "deserializeFiled(String&)" function
 	std::optional<uint32_t> balance = doc.deserializeField<uint32_t>("Balance");
@@ -330,12 +329,6 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
 	REQUIRE(job == std::nullopt);
 	std::optional<uint32_t> age = doc.deserializeField<uint32_t>("Age");
 	REQUIRE(*age == 36);
-
-    /* NOTE HERE: if Cursor for some reason is bigger(>=) than schema.fields.size(),
-    ** deserializeField<>(String &) will throw an exception, Even though the name 
-    ** string is in the schema fields. Here may need to be fixed for convenient usage.
-    */
-    doc.seekField(0);
 
     std::optional<k2::String> lastName = doc.deserializeField<k2::String>("LastName");
 	REQUIRE(*lastName == "Baggins");
@@ -417,7 +410,6 @@ TEST_CASE("Test8: deserializeField(string name) on a name that is not in schema"
 	doc.serializeNext<uint32_t>(100);
 
 	try {	// using "deserializeFiled(String&)" function with a wrong name
-		doc.seekField(0);
 		std::optional<k2::String> lastName = doc.deserializeField<k2::String>("Job");
 		REQUIRE(false);
 	} catch (...) {
@@ -471,8 +463,7 @@ TEST_CASE("Test10: Deserialize a field that has not been serialized for the docu
 	try {
 		// deserialize a field which has not been serialized
 		std::optional<k2::String> lastName = doc.deserializeNext<k2::String>();
-		REQUIRE(*lastName == "");
-		throw new std::runtime_error("deserialize a non-serialized field");
+        REQUIRE(false);
 	} catch (...) {
 		std::cout << "Test10: Deserialize a field which has not been serialized." << std::endl;
 	}
