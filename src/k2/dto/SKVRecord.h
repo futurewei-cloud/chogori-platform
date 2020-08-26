@@ -136,8 +136,6 @@ public:
     // These functions construct the keys on-the-fly based on the stringified individual fields
     String getPartitionKey();
     String getRangeKey();
-
-    K2_PAYLOAD_FIELDS(storage);
 };
 
 // Convience macro that does the switch statement on the record field type for the user

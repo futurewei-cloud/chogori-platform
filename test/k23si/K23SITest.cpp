@@ -206,7 +206,7 @@ private:
         return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms);
     }
 
-    seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
+    seastar::future<std::tuple<Status, DataRec>>
     doRead(const dto::Key& key, const dto::K23SI_MTR& mtr, const String& cname) {
         K2DEBUG("key=" << key << ",partition hash=" << key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
@@ -218,7 +218,34 @@ private:
             .key=key
         };
         return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse>
-            (dto::Verbs::K23SI_READ, request, *part.preferredEndpoint, 100ms);
+            (dto::Verbs::K23SI_READ, request, *part.preferredEndpoint, 100ms)
+        .then([this] (auto&& response) {
+            K2INFO("did read");
+            auto& [status, resp] = response;
+            if (!status.is2xxOK()) {
+                return std::make_tuple(std::move(status), DataRec{});
+            }
+
+            SKVRecord record(collname, _schema);
+            record.storage = std::move(resp.value);
+            K2INFO("size: " << record.storage.fieldData.getSize() << " cursor: " << record.fieldCursor);
+            record.seekField(2);
+            K2INFO("did seek");
+            try {
+                DataRec rec = { *(record.deserializeNext<String>()), *(record.deserializeNext<String>()) };
+                K2INFO("made DataRec");
+                return std::make_tuple(std::move(status), std::move(rec));
+            }
+            catch (const std::exception& exc) {
+                K2ERROR_EXC("caught exception: ", std::make_exception_ptr(exc));
+                return std::make_tuple(std::move(status), DataRec{});
+            }
+            catch (...) {
+                K2INFO("exception");
+                return std::make_tuple(std::move(status), DataRec{});
+            }
+
+        });
     }
 
     seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
@@ -281,6 +308,7 @@ seastar::future<> runScenario01() {
             auto& [status, k2response] = response;
             K2EXPECT(status, Statuses::S404_Not_Found);
             K2EXPECT(k2response.records.size(), 0);
+            K2INFO("doRequestRecords done");
             return seastar::make_ready_future<>();
         });
     })
@@ -290,6 +318,7 @@ seastar::future<> runScenario01() {
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S410_Gone);
+        K2INFO("doRead done");
     });
     /*
     Scenario 1: empty node:
@@ -410,9 +439,9 @@ cases requiring client to refresh collection pmap
                     return doRead(key, mtr, collname);
                 })
                 .then([&rec](auto&& response) {
-                    auto& [status, resp] = response;
+                    auto& [status, value] = response;
                     K2EXPECT(status, dto::K23SIStatus::OK);
-                    K2EXPECT(resp.value.val, rec);
+                    K2EXPECT(value, rec);
                 });
         });
     });
@@ -492,12 +521,12 @@ seastar::future<> runScenario04() {
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;
-                    auto [status1, result1] = r1.get0();
-                    auto [status2, result2] = r2.get0();
+                    auto [status1, value1] = r1.get0();
+                    auto [status2, value2] = r2.get0();
                     K2EXPECT(status1, dto::K23SIStatus::KeyNotFound);
                     K2EXPECT(status2, dto::K23SIStatus::OK);
                     DataRec d2{"fk2", "f2"};
-                    K2EXPECT(result2.value.val, d2);
+                    K2EXPECT(value2, d2);
                 });
         });
 }
@@ -559,14 +588,14 @@ seastar::future<> runScenario05() {
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;
-                    auto [status1, result1] = r1.get0();
-                    auto [status2, result2] = r2.get0();
+                    auto [status1, value1] = r1.get0();
+                    auto [status2, value2] = r2.get0();
                     K2EXPECT(status1, dto::K23SIStatus::OK);
                     K2EXPECT(status2, dto::K23SIStatus::OK);
                     DataRec d1{"fk1", "f2"};
                     DataRec d2{"fk2", "f2"};
-                    K2EXPECT(result1.value.val, d1);
-                    K2EXPECT(result2.value.val, d2);
+                    K2EXPECT(value1, d1);
+                    K2EXPECT(value2, d2);
                 });
         });
 }
