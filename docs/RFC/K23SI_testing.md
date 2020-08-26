@@ -1,6 +1,6 @@
 This document describes test scenarios for the K23SI transaction.
 # Background
-The K23SI transaction is described in detail in the [design doc here](../TXN.md)
+The K23SI transaction is described in detail in the [design doc here](../K2-3SI-TXN.md)
 
 The test cases currently are constructed in a form of an integration test. The tests are in the test runner `chogori-platform/test/k23si/K23SITest.cpp`, which is a stand-alone application that can send/receive messages against a K2 cluster. The tests are currently executed via the integration tester `chogori-platform/test/integration/test_k23si.sh`
 
