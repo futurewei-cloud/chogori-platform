@@ -192,17 +192,18 @@ private:
         record.serializeNext<String>(key.rangeKey);
         record.serializeNext<String>(data.f1);
         record.serializeNext<String>(data.f2);
-        K2DEBUG("key=" << key << ",partition hash=" << key.partitionHash())
+        K2DEBUG("cname: " << cname << " key=" << key << ",partition hash=" << key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
-        dto::K23SIWriteRequest request;
-        request.pvid = part.partition->pvid;
-        request.collectionName = cname;
-        request.mtr = mtr;
-        request.trh = trh;
-        request.isDelete = isDelete;
-        request.designateTRH = isTRH;
-        request.key = key;
-        request.value = std::move(record.storage);
+        dto::K23SIWriteRequest request {
+            .pvid = part.partition->pvid,
+            .collectionName = cname,
+            .mtr = mtr,
+            .trh = trh,
+            .isDelete = isDelete,
+            .designateTRH = isTRH,
+            .key = key,
+            .value = std::move(record.storage)
+        };
         return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms);
     }
 
@@ -213,14 +214,13 @@ private:
         dto::K23SIReadRequest request {
             .pvid = part.partition->pvid,
             .collectionName = cname,
-            "schema",
             .mtr =mtr,
             .key=key
         };
+
         return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse>
             (dto::Verbs::K23SI_READ, request, *part.preferredEndpoint, 100ms)
         .then([this] (auto&& response) {
-            K2INFO("did read");
             auto& [status, resp] = response;
             if (!status.is2xxOK()) {
                 return std::make_tuple(std::move(status), DataRec{});
@@ -228,28 +228,14 @@ private:
 
             SKVRecord record(collname, _schema);
             record.storage = std::move(resp.value);
-            K2INFO("size: " << record.storage.fieldData.getSize() << " cursor: " << record.fieldCursor);
             record.seekField(2);
-            K2INFO("did seek");
-            try {
-                DataRec rec = { *(record.deserializeNext<String>()), *(record.deserializeNext<String>()) };
-                K2INFO("made DataRec");
-                return std::make_tuple(std::move(status), std::move(rec));
-            }
-            catch (const std::exception& exc) {
-                K2ERROR_EXC("caught exception: ", std::make_exception_ptr(exc));
-                return std::make_tuple(std::move(status), DataRec{});
-            }
-            catch (...) {
-                K2INFO("exception");
-                return std::make_tuple(std::move(status), DataRec{});
-            }
-
+            DataRec rec = { *(record.deserializeNext<String>()), *(record.deserializeNext<String>()) };
+            return std::make_tuple(std::move(status), std::move(rec));
         });
     }
 
     seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
-    doEnd(dto::Key trh, dto::K23SI_MTR mtr, String cname, bool isCommit, std::vector<dto::Key> wkeys) {
+    doEnd(dto::Key trh, dto::K23SI_MTR mtr, const String& cname, bool isCommit, std::vector<dto::Key> wkeys) {
         K2DEBUG("key=" << trh << ",partition hash=" << trh.partitionHash())
         auto& part = _pgetter.getPartitionForKey(trh);
         dto::K23SITxnEndRequest request;
@@ -303,7 +289,7 @@ seastar::future<> runScenario01() {
     K2INFO("Scenario 01: empty node");
     return seastar::make_ready_future()
     .then([this] {
-        return doRequestRecords({"Key1", "rKey1"}).
+        return doRequestRecords({"schema", "Key1", "rKey1"}).
         then([this] (auto&& response) {
             auto& [status, k2response] = response;
             K2EXPECT(status, Statuses::S404_Not_Found);
@@ -313,12 +299,11 @@ seastar::future<> runScenario01() {
         });
     })
     .then([this] {
-        return doRead({"Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
+        return doRead({"schema", "Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
     })
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S410_Gone);
-        K2INFO("doRead done");
     });
     /*
     Scenario 1: empty node:
@@ -399,8 +384,8 @@ cases requiring client to refresh collection pmap
                 .txnid = txnids++,
                 .timestamp = std::move(ts),
                 .priority = dto::TxnPriority::Medium},
-            dto::Key{.partitionKey = "Key1", .rangeKey = "rKey1"},
-            dto::Key{.partitionKey = "Key1", .rangeKey = "rKey1"},
+            dto::Key{.schemaName = "schema", .partitionKey = "Key1", .rangeKey = "rKey1"},
+            dto::Key{.schemaName = "schema", .partitionKey = "Key1", .rangeKey = "rKey1"},
             DataRec{.f1="field1", .f2="field2"},
             [this] (dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec) {
                 return doWrite(key, rec, mtr, trh, collname, false, true)
@@ -455,9 +440,9 @@ seastar::future<> runScenario04() {
     K2INFO("Scenario 04: concurrent transactions same keys");
     return seastar::do_with(
         dto::K23SI_MTR{},
-        dto::Key{"s04-pkey1", "rkey1"},
+        dto::Key{"schema", "s04-pkey1", "rkey1"},
         dto::K23SI_MTR{},
-        dto::Key{"s04-pkey1", "rkey1"},
+        dto::Key{"schema", "s04-pkey1", "rkey1"},
         [this](auto& m1, auto& k1, auto& m2, auto& k2) {
             return getTimeNow()
                 .then([&](dto::Timestamp&& ts) {
@@ -535,9 +520,9 @@ seastar::future<> runScenario05() {
     K2INFO("Scenario 05: concurrent transactions different keys");
     return seastar::do_with(
         dto::K23SI_MTR{},
-        dto::Key{"s05-pkey1", "rkey1"},
+        dto::Key{"schema", "s05-pkey1", "rkey1"},
         dto::K23SI_MTR{},
-        dto::Key{"s05-pkey1", "rkey2"},
+        dto::Key{"schema", "s05-pkey1", "rkey2"},
         [this](auto& m1, auto& k1, auto& m2, auto& k2) {
             return getTimeNow()
                 .then([&](dto::Timestamp&& ts) {

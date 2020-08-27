@@ -96,7 +96,6 @@ Payload SKVRecord::getSharedPayload() {
 SKVRecord::SKVRecord(const String& collection, Schema s) : 
             schema(s), collectionName(collection) {
     storage.schemaVersion = s.version; 
-    storage.schemaName = s.name;
     storage.fieldData = Payload(Payload::DefaultAllocator);
     partitionKeys.resize(schema.partitionKeyFields.size());
     rangeKeys.resize(schema.partitionKeyFields.size());
@@ -146,7 +145,6 @@ SKVRecord::Storage SKVRecord::Storage::share() {
     return SKVRecord::Storage {
         excludedFields,
         fieldData.share(),
-        schemaName,
         schemaVersion
     };
 }
@@ -155,7 +153,6 @@ SKVRecord::Storage SKVRecord::Storage::copy() {
     return SKVRecord::Storage {
         excludedFields,
         fieldData.copy(),
-        schemaName,
         schemaVersion
     };
 }

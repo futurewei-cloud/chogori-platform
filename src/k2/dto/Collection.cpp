@@ -34,6 +34,11 @@ namespace k2 {
 namespace dto {
 
 int Key::compare(const Key& o) const noexcept {
+    auto scomp = schemaName.compare(o.schemaName);
+    if (scomp != 0) {
+        return scomp;
+    }
+
     auto pkcomp = partitionKey.compare(o.partitionKey);
     if (pkcomp == 0) {
         // if the partition keys are equal, return the comparison of the range keys
@@ -58,7 +63,7 @@ bool Key::operator==(const Key& o) const noexcept {
     return compare(o) == 0;
 }
 size_t Key::hash() const noexcept {
-    return std::hash<k2::String>()(partitionKey) + std::hash<k2::String>()(rangeKey);
+    return std::hash<k2::String>()(schemaName) + std::hash<k2::String>()(partitionKey) + std::hash<k2::String>()(rangeKey);
 }
 size_t Key::partitionHash() const noexcept {
     uint32_t c32c = crc32c::Crc32c(partitionKey.c_str(), partitionKey.size());

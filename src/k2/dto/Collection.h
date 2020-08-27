@@ -38,6 +38,9 @@ namespace dto {
 // we store the data against a compound key of ${partitionKey}:${rangeKey} to allow user ability to group records
 // on the same partition
 struct Key {
+    // schemaName is needed in the key for uniqueness between records of different schemas
+    String schemaName;
+
     // The key used to determine owner partition
     String partitionKey;
 
@@ -56,10 +59,10 @@ struct Key {
     // partitioning hash used in K2
     size_t partitionHash() const noexcept;
 
-    K2_PAYLOAD_FIELDS(partitionKey, rangeKey);
+    K2_PAYLOAD_FIELDS(schemaName, partitionKey, rangeKey);
 
     friend std::ostream& operator<<(std::ostream& os, const Key& key) {
-        return os << "{pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
+        return os << "{schema= " << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
     }
 };
 

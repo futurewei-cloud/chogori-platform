@@ -118,12 +118,11 @@ public:
         // Bitmap of fields that are excluded because they are optional or this is for a partial update
         std::vector<bool> excludedFields;
         Payload fieldData;
-        String schemaName;
         uint32_t schemaVersion = 0;
 
         Storage share();
         Storage copy();
-        K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaName, schemaVersion);
+        K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaVersion);
     } storage;
 
     // These fields are used by the client to build a request but are not serialized on the wire

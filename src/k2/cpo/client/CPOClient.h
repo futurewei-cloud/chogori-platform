@@ -64,7 +64,8 @@ public:
             if (status == Statuses::S403_Forbidden || status.is2xxOK()) {
                 Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
                 return seastar::sleep(s).then([this, name, deadline]() -> seastar::future<Status> {
-                    return GetAssignedPartitionWithRetry(deadline, name, dto::Key{.partitionKey = "", .rangeKey = ""});
+                    return GetAssignedPartitionWithRetry(deadline, name, 
+                        dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""});
                 });
             }
 

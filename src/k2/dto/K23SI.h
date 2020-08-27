@@ -157,11 +157,10 @@ inline std::ostream& operator<<(std::ostream& os, const TxnRecordState& st) {
 struct K23SIReadRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName; // the name of the collection
-    String schemaName;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key to read
-    K2_PAYLOAD_FIELDS(pvid, collectionName, schemaName, mtr, key);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
     friend std::ostream& operator<<(std::ostream& os, const K23SIReadRequest& r) {
         return os << "{" << "pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", key=" << r.key << "}";
@@ -188,8 +187,8 @@ struct K23SIStatus {
 
 struct K23SIWriteRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    K23SI_MTR mtr; // the MTR for the issuing transaction
     String collectionName; // the name of the collection
+    K23SI_MTR mtr; // the MTR for the issuing transaction
     // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
     // the first write (the write for which designateTRH was set to true)
     // Note that this is not an unique identifier for a transaction record - transaction records are
@@ -200,7 +199,7 @@ struct K23SIWriteRequest {
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
-    K2_PAYLOAD_FIELDS(pvid, mtr, trh, isDelete, designateTRH, key, value);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
     friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="

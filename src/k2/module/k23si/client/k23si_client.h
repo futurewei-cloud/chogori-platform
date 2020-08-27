@@ -146,12 +146,13 @@ public:
 
         _client->read_ops++;
 
+        dto::Key key {record.schema.name, record.getPartitionKey(), record.getRangeKey()};
+
         auto* request = new dto::K23SIReadRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
             record.collectionName,
-            record.storage.schemaName,
             _mtr,
-            dto::Key { record.getPartitionKey(), record.getRangeKey() }
+            std::move(key)
         };
 
         return _cpo_client->PartitionRequest
@@ -183,6 +184,7 @@ public:
         }
 
         dto::Key key {
+            record.schema.name,
             record.getPartitionKey(),
             record.getRangeKey(),
         };
@@ -196,8 +198,8 @@ public:
 
         auto* request = new dto::K23SIWriteRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            _mtr,
             record.collectionName,
+            _mtr,
             _trh_key,
             erase,
             _write_set.size() == 1,
