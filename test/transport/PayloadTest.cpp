@@ -289,6 +289,33 @@ SCENARIO("test empty payload serialization after some data") {
         REQUIRE(dst2.copy() == dst2);
     }
 }
+
+SCENARIO("test cooy from payload") {
+    std::vector<data<embeddedComplex>> testCases;
+    String s(100000, 'x');
+    testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11, Duration(10ms)));
+    testCases.push_back(makeData(11,22,'b', 444, 'g', 1231234, "hya", 1241234, 's', "1", "", 101, Duration(11us)));
+    testCases.push_back(makeData(111,2222,'c', 4444, 'h', 12312345, "hya", 1241245, 's', s.c_str(), "", 107, Duration(13ns)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
+    for (auto& d: testCases) {
+        Payload dst([] { return Binary(111); });
+        dst.write(d);
+        dst.seek(0);
+        auto chksum = dst.computeCrc32c();
+
+        Payload dst2([] { return Binary(111); });
+        dst2.copyFromPayload(dst, dst.getSize());
+        dst2.seek(0);
+
+        REQUIRE(chksum == dst2.computeCrc32c());
+
+        checkSize(dst);
+        checkSize(dst2);
+        REQUIRE(dst.copy() == dst);
+        REQUIRE(dst2.copy() == dst2);
+    }
+}
 /*
 SCENARIO("rpc parsing") {
     RPCParser([] { return false; }, false) parseNoCRC;

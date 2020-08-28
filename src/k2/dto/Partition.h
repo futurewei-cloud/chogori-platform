@@ -21,13 +21,47 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <k2/appbase/Appbase.h>
-#include <k2/common/Common.h>
-#include <k2/persistence/plog/PlogServer.h>
+#include "Collection.h"
 
-int main(int argc, char** argv) {
-    k2::App app("PlogServer");
-    app.addApplet<k2::PlogServer>();
-    return app.start(argc, argv);
-}
+#pragma once
 
+namespace k2 {
+namespace dto {
+
+struct ParitionGroup{
+    String name;
+    std::vector<String> plogServerEndpoints;
+    K2_PAYLOAD_FIELDS(name, plogServerEndpoints);
+};
+
+
+struct PartitionCluster{
+    String name;
+    std::vector<ParitionGroup> partitionGroupVector;
+    K2_PAYLOAD_FIELDS(name, partitionGroupVector);
+};
+
+
+// Request to create a Partition Cluster
+struct PartitionClusterCreateRequest {
+    PartitionCluster cluster;
+    K2_PAYLOAD_FIELDS(cluster);
+};
+
+struct PartitionClusterCreateResponse {
+    K2_PAYLOAD_EMPTY;
+};
+
+// Request to obtain a Partition Cluster
+struct PartitionClusterGetRequest {
+    String name;
+    K2_PAYLOAD_FIELDS(name);
+};
+
+struct PartitionClusterGetResponse {
+    PartitionCluster cluster;
+    K2_PAYLOAD_FIELDS(cluster);
+};
+
+}  // namespace dto
+}  // namespace k2

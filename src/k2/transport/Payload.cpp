@@ -217,7 +217,6 @@ bool Payload::copyFromPayload(Payload& src, size_t toCopy) {
         size_t needToCopySize = std::min(toCopy, currentBufferRemaining);
 
         write(buffer.get() + src._currentPosition.bufferOffset, needToCopySize);
-        _advancePosition(needToCopySize);
         src._advancePosition(needToCopySize);
         toCopy -= needToCopySize;
     }

@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
-#include <k2/persistence/plog/PlogClient.h>
+#include <k2/persistence/plog_client/PlogClient.h>
 
 class PlogTest {
 public:  // application lifespan

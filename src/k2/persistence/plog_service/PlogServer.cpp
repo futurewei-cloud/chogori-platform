@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sharded.hh>
 #include <k2/transport/Payload.h>
 #include <k2/transport/Status.h>
-#include <k2/dto/Persistence.h>
+#include <k2/dto/Plog.h>
 #include <k2/common/Common.h>
 #include <k2/config/Config.h>
 #include <k2/cpo/client/CPOClient.h>
@@ -87,7 +87,7 @@ PlogServer::handleCreate(dto::PlogCreateRequest&& request){
 
 seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
 PlogServer::handleAppend(dto::PlogAppendRequest&& request){
-    K2DEBUG("Received append request for " << request.plogId << " with size" << request.payload.getSize() + 8 << " and offset " << request.offset);
+    K2DEBUG("Received append request for " << request.plogId << " with size" << request.payload.getSize() << " and offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogAppendResponse());
@@ -98,16 +98,16 @@ PlogServer::handleAppend(dto::PlogAppendRequest&& request){
     if (iter->second.offset != request.offset){
         return RPCResponse(Statuses::S400_Bad_Request("offset inconsistent"), dto::PlogAppendResponse());
     }
-    if (iter->second.offset + request.payload.getSize() + 8 > PLOG_MAX_SIZE){
+    if (iter->second.offset + request.payload.getSize() > PLOG_MAX_SIZE){
          return RPCResponse(Statuses::S400_Bad_Request("exceeds pLog limit"), dto::PlogAppendResponse());
     }
 
     dto::PlogAppendResponse response;
-    response.offset = iter->second.offset + request.payload.getSize() + 8;
-    response.bytes_appended = request.payload.getSize() + 8;
+    response.offset = iter->second.offset + request.payload.getSize();
+    response.bytes_appended = request.payload.getSize();
 
-    iter->second.offset += request.payload.getSize() + 8;
-    iter->second.payload.write(request.payload.copy());
+    iter->second.offset += request.payload.getSize();
+    iter->second.payload.copyFromPayload(request.payload, request.payload.getSize());
     request.payload.clear();
     
     return RPCResponse(Statuses::S200_OK("append cuccess"), std::move(response));
@@ -121,13 +121,14 @@ PlogServer::handleRead(dto::PlogReadRequest&& request){
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogReadResponse());
     }
-    if (iter->second.offset < request.offset){
+    if (iter->second.offset < request.offset + request.size){
          return RPCResponse(Statuses::S400_Bad_Request("exceed the maximun length"), dto::PlogReadResponse());
     }
     
-    Payload payload;
+    Payload payload([size=request.size] { return Binary(size); });
+    payload.seek(0);
     iter->second.payload.seek(request.offset);
-    if (!iter->second.payload.read(payload)){
+    if (!payload.copyFromPayload(iter->second.payload, request.size)){
         return RPCResponse(Statuses::S500_Internal_Server_Error("cannot read from payload"), dto::PlogReadResponse());
     }
     

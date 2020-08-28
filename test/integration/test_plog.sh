@@ -14,7 +14,7 @@ cpo_child_pid=$!
 sleep 2
 
 # start plog
-./build/src/k2/cmd/demo/k2_demo_plog_server -c 3 --tcp_endpoints 10000 10001 10002 --prometheus_port=63001 &
+./build/src/k2/cmd/plog/plog_main -c 3 --tcp_endpoints 10000 10001 10002 --prometheus_port=63001 &
 plog_child_pid=$!
 sleep 2
 

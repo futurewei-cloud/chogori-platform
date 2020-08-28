@@ -27,57 +27,51 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sharded.hh>
 #include <k2/transport/Payload.h>
 #include <k2/transport/Status.h>
-#include <k2/dto/Persistence.h>
+#include <k2/dto/Plog.h>
 #include <k2/common/Common.h>
 #include <k2/config/Config.h>
 #include <k2/cpo/client/CPOClient.h>
-#include <k2/appbase/AppEssentials.h>
-#include <k2/appbase/Appbase.h>
 #include <k2/transport/BaseTypes.h>
 #include <k2/transport/TXEndpoint.h>
+#include <k2/appbase/AppEssentials.h>
+#include <k2/appbase/Appbase.h>
 
-namespace k2
-{
 
-struct PlogPage {
-    PlogPage(){
-        sealed=false;
-        offset=0;
-        payload = Payload(([] { return Binary(2 * 1024 * 1024); }));
-    }
+namespace k2 {
 
-    bool sealed;
-    uint32_t offset;
-    Payload payload;
-};
-
-class PlogServer
-{
-private:
-    uint32_t PLOG_MAX_SIZE = 2 * 1024 * 1024;
-
-    std::unordered_map<String, PlogPage> _plogMap;
-
-    seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
-    handleCreate(dto::PlogCreateRequest&& request);
-
-    seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
-    handleAppend(dto::PlogAppendRequest&& request);
-
-    seastar::future<std::tuple<Status, dto::PlogReadResponse>>
-    handleRead(dto::PlogReadRequest&& request);
-
-    seastar::future<std::tuple<Status, dto::PlogSealResponse>>
-    handleSeal(dto::PlogSealRequest&& request);
-    
+class PlogClient {
 public:
-     PlogServer();
-    ~PlogServer();
+    PlogClient();
+    ~PlogClient();
 
-    // required for seastar::distributed interface
     seastar::future<> gracefulStop();
     seastar::future<> start();
 
-};//  class PlogServer
+    void GetPlogServerEndpoint();
 
-} //  namespace k2
+    seastar::future<> GetPartitionCluster(String name);
+
+    seastar::future<std::tuple<Status, String>> create();
+
+    seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);
+
+    seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset, uint32_t size);
+
+    seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
+
+private:
+    dto::PartitionCluster _partitionCluster;
+    std::unordered_map<String, std::vector<std::unique_ptr<TXEndpoint>>> _partitionMapEndpoints;
+    std::vector<String> _partitionNameList;
+    uint32_t _partition_map_pointer;
+
+    CPOClient _cpo;
+    String generate_plogId();
+
+    ConfigDuration get_plog_server_deadline{"get_plog_server_deadline", 1s};
+    ConfigDuration plog_request_timeout{"plog_request_timeout", 100ms};
+    ConfigVar<String> _cpo_url{"cpo_url", ""};
+
+};
+
+} // k2

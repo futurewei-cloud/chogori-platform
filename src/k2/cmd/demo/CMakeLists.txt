@@ -3,14 +3,12 @@ add_executable (k2_demo_rpc_echo rpc_echo.cpp)
 add_executable (k2_demo_rpc_service rpc_service.cpp)
 add_executable (k2_demo_tso tso_sample_app.cpp)
 add_executable (k2_demo_txn_client txn_client_demo.cpp)
-add_executable (k2_demo_plog_server plog_server.cpp)
 
 target_link_libraries (k2_demo_service PRIVATE appbase transport common Seastar::seastar)
 target_link_libraries (k2_demo_rpc_echo PRIVATE appbase transport common Seastar::seastar)
 target_link_libraries (k2_demo_rpc_service PRIVATE appbase transport common Seastar::seastar)
 target_link_libraries (k2_demo_tso PRIVATE tso_service tso_client appbase transport common Seastar::seastar)
 target_link_libraries (k2_demo_txn_client PRIVATE common Seastar::seastar)
-target_link_libraries (k2_demo_plog_server PRIVATE appbase common plog Seastar::seastar)
 
-install (TARGETS k2_demo_service k2_demo_rpc_echo k2_demo_rpc_service k2_demo_tso k2_demo_txn_client k2_demo_plog_server DESTINATION bin)
+install (TARGETS k2_demo_service k2_demo_rpc_echo k2_demo_rpc_service k2_demo_tso k2_demo_txn_client DESTINATION bin)
 

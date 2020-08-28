@@ -24,31 +24,74 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Collection.h"
 
 #pragma once
-// This file contains DTOs for K2 Persistence Service
+// This file contains DTOs for K2 Plog Service
 
 namespace k2 {
 namespace dto {
 
-// Request to create a Partition Group
-struct PartitionGroupCreateRequest {
-    String partitionName;
-    std::vector<String> plogServerEndpoints;
-    K2_PAYLOAD_FIELDS(partitionName, plogServerEndpoints);
+struct PlogCreateRequest {
+    String plogId;
+    K2_PAYLOAD_FIELDS(plogId);
 };
 
-struct PartitionGroupCreateResponse {
+struct PlogCreateResponse {
     K2_PAYLOAD_EMPTY;
 };
 
-// Request to obtain the Partition Group Map
-struct PartitionMapGetRequest {
+struct PlogAppendRequest {
+    String plogId;
+    uint32_t offset;
+    Payload payload;
+    K2_PAYLOAD_FIELDS(plogId, offset, payload);
+};
+
+struct PlogAppendResponse {
+    uint32_t offset;
+    uint32_t bytes_appended;
+    K2_PAYLOAD_FIELDS(offset, bytes_appended);
+};
+
+struct PlogReadRequest {
+    String plogId;
+    uint32_t offset;
+    uint32_t size;
+    K2_PAYLOAD_FIELDS(plogId, offset, size);
+};
+
+struct PlogReadResponse {
+    Payload payload;
+    K2_PAYLOAD_FIELDS(payload);
+};
+
+struct PlogSealRequest {
+    String plogId;
+    uint32_t offset;
+    K2_PAYLOAD_FIELDS(plogId, offset);
+};
+
+struct PlogSealResponse {
     uint32_t offset;
     K2_PAYLOAD_FIELDS(offset);
 };
 
-struct PartitionMapGetResponse {
-    std::unordered_map<String, std::vector<String>> partitionMap;
-    K2_PAYLOAD_FIELDS(partitionMap);
+struct PlogServerRegisterRequest{
+    String endpoint;
+    K2_PAYLOAD_FIELDS(endpoint);
+};
+
+struct PlogServerRegisterResponse{
+    K2_PAYLOAD_EMPTY;
+};
+
+struct PlogServerGetRequest{
+    uint32_t PlogServerAmount;
+    K2_PAYLOAD_FIELDS(PlogServerAmount);
+};
+
+struct PlogServerGetResponse{
+    std::vector<String> PlogServerEndpoints;
+    uint32_t PlogServerAmount;
+    K2_PAYLOAD_FIELDS(PlogServerEndpoints, PlogServerAmount);
 };
 
 }  // namespace dto

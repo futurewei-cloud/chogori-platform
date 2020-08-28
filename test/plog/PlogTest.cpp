@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "PlogTest.h"
 #include <seastar/core/reactor.hh>
 #include <seastar/core/sleep.hh>
-#include <k2/dto/PartitionGroup.h>
+#include <k2/dto/Partition.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/appbase/AppEssentials.h>
 
@@ -77,10 +77,10 @@ seastar::future<> PlogTest::start() {
 }
 
 seastar::future<> PlogTest::runTest1() {
-    K2INFO(">>> Test1: get non-existent partition map");
-    auto request = dto::PartitionMapGetRequest{.offset=0};
+    K2INFO(">>> Test1: get non-existent partition cluster");
+    auto request = dto::PartitionClusterGetRequest{.name="Cluster1"};
     return RPC()
-    .callRPC<dto::PartitionMapGetRequest, dto::PartitionMapGetResponse>(dto::Verbs::CPO_PERSISTENCE_GET, request, *_cpoEndpoint, 100ms)
+    .callRPC<dto::PartitionClusterGetRequest, dto::PartitionClusterGetResponse>(dto::Verbs::CPO_PARTITION_CLUSTER_GET, request, *_cpoEndpoint, 100ms)
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S404_Not_Found);
@@ -88,10 +88,15 @@ seastar::future<> PlogTest::runTest1() {
 }
 
 seastar::future<> PlogTest::runTest2() {
-    K2INFO(">>> Test2: create a partition map");
-    auto request = dto::PartitionGroupCreateRequest{.partitionName = "Group1", .plogServerEndpoints = _plogConfigEps()};
+    K2INFO(">>> Test2: create a partition cluster");
+    dto::ParitionGroup group1{.name="Group1", .plogServerEndpoints = _plogConfigEps()};
+    dto::PartitionCluster cluster1;
+    cluster1.name="Cluster1";
+    cluster1.partitionGroupVector.push_back(group1);
+
+    auto request = dto::PartitionClusterCreateRequest{.cluster=std::move(cluster1)};
     return RPC()
-    .callRPC<dto::PartitionGroupCreateRequest, dto::PartitionGroupCreateResponse>(dto::Verbs::CPO_PERSISTENCE_REGISTER, request, *_cpoEndpoint, 1s)
+    .callRPC<dto::PartitionClusterCreateRequest, dto::PartitionClusterCreateResponse>(dto::Verbs::CPO_PARTITION_CLUSTER_CREATE, request, *_cpoEndpoint, 1s)
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S201_Created);
@@ -100,11 +105,13 @@ seastar::future<> PlogTest::runTest2() {
 
 seastar::future<> PlogTest::runTest3() {
     K2INFO(">>> Test3: read the partition group we created in test2");
-    return client.GetPartitionMap()
+    return client.GetPartitionCluster("Cluster1")
     .then([this] () {
+        K2INFO("Test3.1: create a plog");
         return client.create();
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.2: append a plog");
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S201_Created);
         _plogId = resp;
@@ -114,65 +121,79 @@ seastar::future<> PlogTest::runTest3() {
         return client.append(_plogId, 0, std::move(payload));
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.3: append a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
-        K2EXPECT(offset, 23);
+        K2EXPECT(offset, 15);
 
         Payload payload([] { return Binary(4096); });
         payload.write("0987654321");
-        return client.append(_plogId, 23, std::move(payload));
+        return client.append(_plogId, 15, std::move(payload));
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.4: append a plog with wrong offset");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
-        K2EXPECT(offset, 46);
+        K2EXPECT(offset, 30);
 
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
         return client.append(_plogId, 100, std::move(payload));
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.5: read a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S400_Bad_Request);
-        return client.read(_plogId, 0);
+        return client.read(_plogId, 0, 15);
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.6: read a plog");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str;
         payload.seek(0);
         payload.read(str);
         K2EXPECT(str, "1234567890");
-        return client.read(_plogId, 23);
+        return client.read(_plogId, 15, 15);
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.7: read multiple payloads");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str;
         payload.seek(0);
         payload.read(str);
         K2EXPECT(str, "0987654321");
-        return client.read(_plogId, 11);
+        return client.read(_plogId, 0, 30);
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.8: seal a plog");
         auto& [status, payload] = response;
-        K2EXPECT(status, Statuses::S500_Internal_Server_Error);
-        return client.seal(_plogId, 46);
+        K2EXPECT(status, Statuses::S200_OK);
+        String str, str2;
+        payload.seek(0);
+        payload.read(str);
+        K2EXPECT(str, "1234567890");
+        payload.read(str2);
+        K2EXPECT(str2, "0987654321");
+        return client.seal(_plogId, 30);
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.9: seal a sealed plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
-        K2EXPECT(offset, 46);
-        return client.seal(_plogId, 23);
+        K2EXPECT(offset, 30);
+        return client.seal(_plogId, 15);
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.10: append a sealed plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S400_Bad_Request);
-        K2EXPECT(offset, 46);
+        K2EXPECT(offset, 30);
         
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
-        return client.append(_plogId, 46, std::move(payload));
+        return client.append(_plogId, 30, std::move(payload));
     })
     .then([this] (auto&& response){
         auto& [status, offset] = response;

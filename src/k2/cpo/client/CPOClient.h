@@ -33,7 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
-#include <k2/dto/PartitionGroup.h>
+#include <k2/dto/Partition.h>
 #include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RPCTypes.h>
 #include <k2/transport/Status.h>
@@ -235,37 +235,18 @@ public:
     }
 
     template<typename ClockT=Clock>
-    seastar::future<Status> CreatePartitionGroup(Deadline<ClockT> deadline, String partitionName, std::vector<String> plogServerEndpoints) {
-        dto::PartitionGroupCreateRequest request{.partitionName = std::move(partitionName), .plogServerEndpoints=std::move(plogServerEndpoints)};
-
-        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        K2DEBUG("making call to CPO with timeout " << timeout);
-        return RPC().callRPC<dto::PartitionGroupCreateRequest, dto::PartitionGroupCreateResponse>(dto::Verbs::CPO_PERSISTENCE_REGISTER, request, *cpo, timeout)
-        .then([this, deadline](auto&& response) {
-            auto& [status, k2response] = response;
-
-            if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
-                status = Statuses::S408_Request_Timeout("partition group deadline exceeded");
-                return seastar::make_ready_future<Status>(std::move(status));
-            }
-            return seastar::make_ready_future<Status>(std::move(status));
-        });
-    }
-
-    template<typename ClockT=Clock>
-    seastar::future<std::tuple<Status, dto::PartitionMapGetResponse>> GetPartitionMap(Deadline<ClockT> deadline) {
-        dto::PartitionMapGetRequest request{.offset = 0};
+    seastar::future<std::tuple<Status, dto::PartitionClusterGetResponse>> GetPartitionCluster(Deadline<ClockT> deadline, String name) {
+        dto::PartitionClusterGetRequest request{.name = std::move(name)};
         
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        return RPC().callRPC<dto::PartitionMapGetRequest, dto::PartitionMapGetResponse>(dto::Verbs::CPO_PERSISTENCE_GET, request, *cpo, timeout)
+        return RPC().callRPC<dto::PartitionClusterGetRequest, dto::PartitionClusterGetResponse>(dto::Verbs::CPO_PARTITION_CLUSTER_GET, request, *cpo, timeout)
         .then([this, &request, deadline] (auto&& result) {
             auto& [status, k2response] = result;
 
             if (deadline.isOver()) {
                 K2DEBUG("Deadline exceeded");
                 status = Statuses::S408_Request_Timeout("partition deadline exceeded");
-                return RPCResponse(std::move(status), dto::PartitionMapGetResponse());
+                return RPCResponse(std::move(status), dto::PartitionClusterGetResponse());
             }
 
             return RPCResponse(std::move(status), std::move(k2response));
