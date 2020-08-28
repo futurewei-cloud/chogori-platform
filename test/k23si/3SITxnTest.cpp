@@ -38,6 +38,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2{
 const char* collname = "3si_txn_collection";
+const dto::HashScheme hashScheme = dto::HashScheme::HashCRC32C; 
 
 struct DataRec {
     String f1;
@@ -82,7 +83,7 @@ public:		// application
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
             _testFuture = testScenario00()
-            //.then([this] { return testScenario01(); })
+            //.then([this] { return testScenario00(); })
             //.then([this] { return testScenario02(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
@@ -121,62 +122,7 @@ private:
 	std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
 	std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
-	dto::PartitionGetter _pgetter;
 	uint64_t txnids = 1029;
-
-	seastar::future<int> checkCollection(const String& cname){
-		// check whether cname collection is exist
-		auto request = dto::CollectionGetRequest{.name = cname};
-		auto str = _cpoEndpoint->getURL();
-		K2INFO("f_checkCollection, CPO_endpoint:" << str << " CollName:" << cname);
-		return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 300ms)
-	    .then([cname](auto&& response) {
-	    	// command: CPO_COLLECTION_GET 
-	        auto& [status, resp] = response;
-			std::cout << "status.code: " << status.code << ", status.msg: " << status.message << ".\n";
-			std::cout << "resp.collection.metadata.name:\"" << resp.collection.metadata.name << "\".\n";
-			if(status.code != Statuses::S200_OK.code){
-				K2INFO("collection \"" << cname << "\" is not exist. doWrite exit(1) with error CODE: "
-					<< status.code << " with error MESG: " << status.message);
-			}
-			else{
-				K2INFO("")
-			}
-			K2INFO("status code:" << status.code);
-			return status.code;
-	    });
-	}
-
-	template <typename DataType>
-    seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-    doWrite(const dto::Key& key, const DataType& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH) {			
-    	K2INFO("FIRST: do_write() check WHETHER the dest collection is exist?");
-		return checkCollection(collname)
-			.then([&](auto&& retCode) {
-				// response: checkCollection
-				K2INFO("doWrite::checkCollection::retCode:" << retCode);
-				if(retCode == Statuses::S200_OK.code){
-					K2INFO("doWrite::checkCollection success. DO_WRITE with original kv-interface, key=" << key << ",partition hash=" << key.partitionHash());
-			        auto& part = _pgetter.getPartitionForKey(key);
-			        dto::K23SIWriteRequest<DataType> request;
-			        request.pvid = part.partition->pvid;
-			        request.collectionName = cname;
-			        request.mtr = mtr;
-			        request.trh = trh;
-			        request.isDelete = isDelete;
-			        request.designateTRH = isTRH;
-			        request.key = key;
-			        request.value.val = data;
-			        return RPC().callRPC<dto::K23SIWriteRequest<DataType>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms);
-				} else {
-					K2INFO("doWrite::checkCollection failed. collection \"" << cname << "\" is not exist. doWrite exit(1) with error CODE: " << retCode);
-					Status s{.code = retCode, .message=""};
-					dto::K23SIWriteResponse r;
-					return RPCResponse(std::move(s), std::move(r));
-				}
-			});	
-	}
-
 
 public:		// test	scenario
 
@@ -184,70 +130,141 @@ public:		// test	scenario
 // example of command: CPO_COLLECTION_GET & K23SI_WRITE
 seastar::future<> testScenario00() {
 	K2INFO("+++++++ TestScenario 00: unassigned nodes +++++++");
-	K2INFO("--->Test SETUP: start a cluster but don't create a collection. Example of command: CPO_COLLECTION_GET & K23SI_WRITE");
+	K2INFO("--->Test SETUP: start a cluster but don't create a collection. Any requests observe a timeout.");
 	
-	auto request = dto::CollectionGetRequest{.name=collname};
-	return checkCollection(collname)	// command: CPO_COLLECTION_GET 
-		// response: CPO_COLLECTION_GET 
-		.then([](auto&& retCode) {
-			K2EXPECT(retCode, Statuses::S404_Not_Found.code);
-			K2INFO("retCode:" << retCode);
-		})
-		.then([this] {
-			// command: K23SI_WRITE
-			K2INFO("command: K23SI_WRITE");
-			return getTimeNow()
-				.then([&](dto::Timestamp&& ts) {
-					return seastar::do_with(
-						dto::K23SI_MTR{
-							.txnid = txnids++,
-							.timestamp = std::move(ts),
-							.priority = dto::TxnPriority::Medium
-						},
-						dto::Key{.partitionKey = "pKey1", .rangeKey = "rKey1"},
-						dto::Key{.partitionKey = "pKey1", .rangeKey = "rKey1"},
-						DataRec{.f1="field1", .f2="field2"},
-						[this](dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec){
-							return doWrite<DataRec>(key, rec, mtr, trh, collname, false, true);
-						}
-					);
-				});
-			
-		})
-		.then([this](auto&& response) {
-			// response: K23SI_WRITE
-			auto& [status, resp] = response;
-			K2INFO("response: K23SI_WRITE. " << "status: " << status.code);
-		});
+	return seastar::make_ready_future()	
+	.then([this] {
+		// command: K23SI_WRITE
+		K2INFO("Test case SC00_1: K23SI_WRITE");
+		return getTimeNow()
+		.then([&](dto::Timestamp&& ts) {
+			return seastar::do_with(
+				dto::K23SI_MTR{
+					.txnid = txnids++,
+					.timestamp = std::move(ts),
+					.priority = dto::TxnPriority::Medium
+				},
+				dto::Key{.partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
+				dto::Key{.partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
+				DataRec{.f1="field1", .f2="field2"},
+				[this](dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec){
+					dto::K23SIWriteRequest<DataRec> request;
+                    request.collectionName = collname;
+                    request.mtr = mtr;
+                    request.trh = trh;
+                    request.isDelete = false;
+                    request.designateTRH = true;
+                    request.key = key;
+                    request.value.val = rec;
+                    return RPC().callRPC<dto::K23SIWriteRequest<DataRec>, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *_k2Endpoints[0], 100ms)
+                    .then([this](auto&& response) {
+                		// response: K23SI_WRITE
+                		auto& [status, resp] = response;
+                        K2EXPECT(status, Statuses::S503_Service_Unavailable);
+                		K2INFO("response: K23SI_WRITE. " << "status: " << status.code << " with error MESG: " << status.message);
+                	});
+				}
+			);
+		});	
+	}) // end K23SI_WRITE
+    .then([this] {
+        // command: K23SI_READ     
+        K2INFO("Test case SC00_2: K23SI_READ");
+        dto::Partition::PVID pvid0;
+        dto::K23SIReadRequest request {
+            .pvid = pvid0,
+            .collectionName = collname,
+            .mtr = {txnids++, dto::Timestamp(20200828, 1, 1000), dto::TxnPriority::Medium},
+            .key = {"SC00_pKey1", "SC00_rKey1"}
+        };
+        return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse<Payload>>
+                (dto::Verbs::K23SI_READ, request, *_k2Endpoints[0], 100ms)
+        .then([](auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(status, Statuses::S503_Service_Unavailable);
+            K2INFO("response: K23SI_READ. " << "status: " << status.code << " with error MESG: " << status.message);
+        });
+    }) // end  K23SI_READ 
+    .then([this] {
+        // command: K23SI_TXN_PUSH
+        K2INFO("Test case SC00_3: K23SI_TXN_PUSH");        
+        dto::Partition::PVID pvid0;
+        dto::K23SITxnPushRequest request {
+            .pvid = pvid0,
+            .collectionName = collname,
+            .key = {"SC00_pKey1", "SC00_rKey1"},
+            .incumbentMTR = {txnids-1, dto::Timestamp(20200828, 1, 1000), dto::TxnPriority::Medium},
+            .challengerMTR = {txnids-2, dto::Timestamp(20200101, 1, 1000), dto::TxnPriority::Medium}
+        };
+        return RPC().callRPC<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
+                (dto::Verbs::K23SI_TXN_PUSH, request, *_k2Endpoints[0], 100ms)
+        .then([](auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(status, Statuses::S503_Service_Unavailable);
+            K2INFO("response: K23SI_TXN_PUSH. " << "status: " << status.code << " with error MESG: " << status.message);
+        });
+    }) // end K23SI_TXN_PUSH
+    .then([this] {
+        // command: K23SI_TXN_END
+        K2INFO("Test case SC00_4: K23SI_TXN_END");        
+        dto::Partition::PVID pvid0;
+        dto::K23SITxnEndRequest request {
+            .pvid = pvid0,
+            .collectionName = collname,
+            .key = {"SC00_pKey1", "SC00_rKey1"},
+            .mtr = {txnids-1, dto::Timestamp(20200828, 1, 1000), dto::TxnPriority::Medium},
+            .action = dto::EndAction::Abort,
+            .writeKeys = {{"SC00_pKey1", "SC00_rKey1"}},
+            .syncFinalize = false
+        };
+        return RPC().callRPC<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
+                (dto::Verbs::K23SI_TXN_END, request, *_k2Endpoints[0], 100ms)
+        .then([](auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(status, Statuses::S503_Service_Unavailable);
+            K2INFO("response: K23SI_TXN_END. " << "status: " << status.code << " with error MESG: " << status.message);
+        });
+    }) // end K23SI_TXN_END
+    .then([this] {
+        // command: K23SI_TXN_FINALIZE
+        K2INFO("Test case SC00_5: K23SI_TXN_FINALIZE");        
+        dto::Partition::PVID pvid0;
+        dto::K23SITxnFinalizeRequest request {
+            .pvid = pvid0,
+            .collectionName = collname,
+            .trh = {"SC00_pKey1", "SC00_rKey1"},
+            .mtr = {txnids-1, dto::Timestamp(20200828, 1, 1000), dto::TxnPriority::Medium},
+            .key = {"SC00_pKey1", "SC00_rKey1"},
+            .action = dto::EndAction::Abort
+        };
+        return RPC().callRPC<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
+                (dto::Verbs::K23SI_TXN_FINALIZE, request, *_k2Endpoints[0], 100ms)
+        .then([](auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(status, Statuses::S503_Service_Unavailable);
+            K2INFO("response: K23SI_TXN_FINALIZE. " << "status: " << status.code << " with error MESG: " << status.message);
+        });       
+    }) // end K23SI_TXN_FINALIZE
+    .then([this] {
+        // command: K23SI_TXN_HEARTBEAT
+        K2INFO("Test case SC00_6: K23SI_TXN_HEARTBEAT");        
+        dto::Partition::PVID pvid0;
+        dto::K23SITxnHeartbeatRequest request {
+            .pvid = pvid0,
+            .collectionName = collname,
+            .key = {"SC00_pKey1", "SC00_rKey1"},
+            .mtr = {txnids-1, dto::Timestamp(20200828, 1, 1000), dto::TxnPriority::Medium},
+        };
+        return RPC().callRPC<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>
+                (dto::Verbs::K23SI_TXN_HEARTBEAT, request, *_k2Endpoints[0], 100ms)
+        .then([](auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(status, Statuses::S503_Service_Unavailable);
+            K2INFO("response: K23SI_TXN_HEARTBEAT. " << "status: " << status.code << " with error MESG: " << status.message);
+        });       
+        
+    });
 }
-
-
-// create a collection and then get the collection
-/*seastar::future<> testScenario01() {
-	K2INFO(">>> TestScenario 00: assigned node with no data");
-	K2INFO("--->Test setup: start a cluster and assign collection. Do not write any data.");
-
-	
-}
-
-
-
-seastar::future<> testScenario02() {
-	
-}
-
-seastar::future<> testScenario03() {
-	
-}
-
-seastar::future<> testScenario04() {
-
-}
-
-seastar::future<> testScenario05() {
-
-}
-*/
 
 
 };	// class k23si_testing
