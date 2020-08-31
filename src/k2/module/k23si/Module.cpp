@@ -174,6 +174,11 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
         // the request is outside the retention window
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in read"), dto::K23SIReadResponse{});
     }
+    if (_schemas.find(request.key.schemaName) == _schemas.end()) {
+        // server does not have schema
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIReadResponse{});
+    }
+
     // sitMTR will be ZERO for original requests or non-zero for post-PUSH reads
     // update the read cache to lock out any future writers which may attempt to modify the key range
     // before this read's timestamp
@@ -282,6 +287,16 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         // do not allow empty partition key
         return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in write"), dto::K23SIWriteResponse{});
     }
+
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    if (schemaIt == _schemas.end()) {
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIWriteResponse{});
+    }
+    if (schemaIt->second.find(request.value.schemaVersion) == schemaIt->second.end()) {
+        // server does not have schema
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIWriteResponse{});
+    }
+
     // at this point the request is valid. Check to see if we should be creating a TR
     // we want to create the TR now even if the write may fail due to some other constraints. In case
     // of such failure, the client is expected to come in and end the transaction with Abort

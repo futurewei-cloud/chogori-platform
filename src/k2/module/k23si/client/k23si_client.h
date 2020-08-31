@@ -59,7 +59,7 @@ public:
 template<typename ValueType>
 class ReadResult {
 public:
-    ReadResult(Status s, dto::K23SIReadResponse&& r) : status(std::move(s)) {}
+    ReadResult(Status s) : status(std::move(s)) {}
 
     Status status;
     ValueType value;
@@ -98,7 +98,8 @@ public:
     seastar::future<> gracefulStop();
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
-    seastar::future<SKVRecord> makeSKVRecord(const String& collectionName, const String& schemaName, int64_t schemaVersion = -1);
+    static constexpr int64_t ANY_VERSION = -1;
+    seastar::future<Schema> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -134,31 +135,45 @@ public:
     K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
+    dto::K23SIReadRequest* makeReadRequest(const dto::SKVRecord& record) const {
+        return new dto::K23SIReadRequest{
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            record.collectionName,
+            _mtr,
+            record.getKey()
+        };
+    }
+
     template <class T>
-    seastar::future<ReadResult<T>> read(SKVRecord record) {
+    dto::K23SIReadRequest* makeReadRequest(const T& user_record) const {
+        dto::SKVRecord record(user_record.collectionName, user_record.schema);
+        user_record.__writeFields(record);
+
+        return new dto::K23SIReadRequest{
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            record.collectionName,
+            _mtr,
+            record.getKey()
+        };
+    }
+
+    template <class T>
+    seastar::future<ReadResult<T>> read(T record) {
         if (!_started) {
             return seastar::make_exception_future<ReadResult<T>>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
-
         if (_failed) {
-            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, dto::K23SIReadResponse()));
+            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status));
         }
 
         _client->read_ops++;
 
-        dto::Key key {record.schema.name, record.getPartitionKey(), record.getRangeKey()};
-
-        auto* request = new dto::K23SIReadRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            record.collectionName,
-            _mtr,
-            std::move(key)
-        };
+        dto::K23SIReadRequest* request = makeReadRequest(record);
 
         return _cpo_client->PartitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
-            then([this] (auto&& response) {
+            then([this, request_schema=record.schema, request_cname=record.collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
@@ -168,35 +183,28 @@ public:
                     return seastar::make_ready_future<ReadResult<SKVRecord>>(std::move(userResponse));
                 } else {
                     auto userResponse = ReadResult<T>(std::move(status));
-                    // TODO construct user type
+                    T userResponseRecord;
+                    SKVRecord skv_record(request_cname, request_schema);
+                    skv_record.storage = std::move(k2response.value);
+
+                    userResponseRecord.__readFields(skv_record);
+                    userResponse.value = std::move(userResponseRecord);
+
                     return seastar::make_ready_future<ReadResult<T>>(std::move(userResponse));
                 }
             }).finally([request] () { delete request; });
     }
 
-    seastar::future<WriteResult> write(SKVRecord&& record, bool erase=false) {
-        if (!_started) {
-            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
-        }
-
-        if (_failed) {
-            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
-        }
-
-        dto::Key key {
-            record.schema.name,
-            record.getPartitionKey(),
-            record.getRangeKey(),
-        };
+    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord&& record, bool erase) {
+        dto::Key key = record.getKey();
 
         if (!_write_set.size()) {
             _trh_key = key;
             _trh_collection = record.collectionName;
         }
         _write_set.push_back(key);
-        _client->write_ops++;
 
-        auto* request = new dto::K23SIWriteRequest{
+        return new dto::K23SIWriteRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
             record.collectionName,
             _mtr,
@@ -206,6 +214,26 @@ public:
             key,
             std::move(record.storage)
         };
+    }
+
+    template <class T>
+    seastar::future<WriteResult> write(T&& record, bool erase=false) {
+        if (!_started) {
+            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+        }
+        if (_failed) {
+            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
+        }
+        _client->write_ops++;
+
+        dto::K23SIWriteRequest* request = nullptr;
+        if constexpr (std::is_same<T, dto::SKVRecord>()) {
+            request = makeWriteRequest(std::move(record), erase);
+        } else {
+            SKVRecord skv_record(record.collectionName, record.schema);
+            record.__writeFields(skv_record);
+            request = makeWriteRequest(std::move(skv_record), erase);
+        }
 
         return _cpo_client->PartitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>

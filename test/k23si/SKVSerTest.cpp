@@ -34,7 +34,7 @@ void Compare(std::optional<T> value, const k2::String& fieldName, k2::dto::SKVRe
 template <>
 void Compare<k2::String>(std::optional<k2::String> value, const k2::String& fieldName, k2::dto::SKVRecord* record) {
 	if (value == std::nullopt) {		
-		k2::String cursorfield = record->schema.fields[record->fieldCursor - 1].name;
+		k2::String cursorfield = record->schema->fields[record->fieldCursor - 1].name;
 		if (cursorfield != "FirstName" && cursorfield != "Job") {
 			REQUIRE(false);
 		}		
@@ -81,7 +81,7 @@ TEST_CASE("Test1: Serialize a record with composite partition and range keys") {
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "UserId", "FirstName"});
     schema.setRangeKeyFieldsByName(std::vector<k2::String>{"Balance", "Job", "Age"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 
 	doc.serializeNext<k2::String>("Baggins");
 	doc.serializeNext<uint32_t>(20201234);
@@ -165,7 +165,7 @@ TEST_CASE("Test2: Serialize a record with a composite partition key and one key 
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "UserId", "FirstName", "Balance"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 	
 	doc.serializeNext<k2::String>("Baggins");
 	doc.serializeNext<uint32_t>(20201234);
@@ -218,7 +218,7 @@ TEST_CASE("Test3: Serialize a record with a composite partition key and one key 
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "UserId", "FirstName", "Balance"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 	
 	doc.serializeNext<k2::String>("Baggins");
 	doc.serializeNext<uint32_t>(20201234);
@@ -270,7 +270,7 @@ TEST_CASE("Test4: Serialize a record with one value field skipped") {
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 	
 	doc.serializeNext<k2::String>("Baggins");
 	doc.skipNext();
@@ -314,7 +314,7 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 	
 	doc.serializeNext<k2::String>("Baggins");
 	doc.skipNext();
@@ -354,7 +354,7 @@ TEST_CASE("Test6: getPartitionKey() is called before all partition key fields ar
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
     schema.setRangeKeyFieldsByName(std::vector<k2::String>{"Balance"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 
 	doc.serializeNext<k2::String>("Baggins");
 
@@ -380,7 +380,7 @@ TEST_CASE("Test7: getRangeKey() is called before all range key fields are serial
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
     schema.setRangeKeyFieldsByName(std::vector<k2::String>{"Balance"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 
 	try {
 		k2::String rangeKey = doc.getRangeKey();
@@ -403,7 +403,7 @@ TEST_CASE("Test8: deserializeField(string name) on a name that is not in schema"
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 	
 	doc.serializeNext<k2::String>("Baggins");
 	doc.serializeNext<k2::String>("Bilbo");
@@ -430,7 +430,7 @@ TEST_CASE("Test9: seekField() with a field index out-of-bounds for the schema") 
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 	
 	doc.serializeNext<k2::String>("Baggins");
 	doc.serializeNext<k2::String>("Bilbo");
@@ -458,7 +458,7 @@ TEST_CASE("Test10: Deserialize a field that has not been serialized for the docu
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
 
-	k2::dto::SKVRecord doc("collection", std::move(schema));
+	k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 	
 	try {
 		// deserialize a field which has not been serialized

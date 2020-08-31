@@ -31,24 +31,24 @@ namespace k2 {
 namespace dto {
 
 void SKVRecord::skipNext() {
-    if (fieldCursor >= schema.fields.size()) {
+    if (fieldCursor >= schema->fields.size()) {
         throw new std::runtime_error("Schema not followed in record serialization");
     }
 
-    for (size_t i = 0; i < schema.partitionKeyFields.size(); ++i) {
-        if (schema.partitionKeyFields[i] == fieldCursor) {
-            partitionKeys[i] = schema.fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+    for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
+        if (schema->partitionKeyFields[i] == fieldCursor) {
+            partitionKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
-    for (size_t i = 0; i < schema.rangeKeyFields.size(); ++i) {
-        if (schema.rangeKeyFields[i] == fieldCursor) {
-            rangeKeys[i] = schema.fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+    for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
+        if (schema->rangeKeyFields[i] == fieldCursor) {
+            rangeKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
     if (storage.excludedFields.size() == 0) {
-        storage.excludedFields = std::vector<bool>(schema.fields.size(), false);
+        storage.excludedFields = std::vector<bool>(schema->fields.size(), false);
     }
 
     storage.excludedFields[fieldCursor] = true;
@@ -64,7 +64,7 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
 };
 
 void SKVRecord::seekField(uint32_t fieldIndex) {
-    if (fieldIndex >= schema.fields.size()) {
+    if (fieldIndex >= schema->fields.size()) {
         throw new std::runtime_error("Tried to seek outside bounds");
     }
 
@@ -93,15 +93,15 @@ Payload SKVRecord::getSharedPayload() {
     return storage.fieldData.shareAll();
 }
 
-SKVRecord::SKVRecord(const String& collection, Schema s) : 
+SKVRecord::SKVRecord(const String& collection, seastar::lw_shared_ptr<Schema> s) : 
             schema(s), collectionName(collection) {
-    storage.schemaVersion = s.version; 
+    storage.schemaVersion = schema->version; 
     storage.fieldData = Payload(Payload::DefaultAllocator);
-    partitionKeys.resize(schema.partitionKeyFields.size());
-    rangeKeys.resize(schema.partitionKeyFields.size());
+    partitionKeys.resize(schema->partitionKeyFields.size());
+    rangeKeys.resize(schema->partitionKeyFields.size());
 }
 
-String SKVRecord::getPartitionKey() {
+String SKVRecord::getPartitionKey() const {
     size_t keySize = 0;
     for (const String& key : partitionKeys) {
         keySize += key.size();
@@ -121,7 +121,7 @@ String SKVRecord::getPartitionKey() {
     return partitionKey;
 }
 
-String SKVRecord::getRangeKey() {
+String SKVRecord::getRangeKey() const {
     size_t keySize = 0;
     for (const String& key : rangeKeys) {
         keySize += key.size();
@@ -139,6 +139,14 @@ String SKVRecord::getRangeKey() {
     }
 
     return rangeKey;
+}
+
+dto::Key SKVRecord::getKey() const {
+    return dto::Key {
+        .schemaName = FieldToKeyString<String>(schema->name),
+        .partitionKey = getPartitionKey(),
+        .rangeKey = getRangeKey()
+    };
 }
 
 SKVRecord::Storage SKVRecord::Storage::share() {

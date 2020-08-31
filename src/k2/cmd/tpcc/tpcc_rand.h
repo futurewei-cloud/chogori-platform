@@ -83,6 +83,15 @@ public:
         }
     }
 
+    k2::String RandomString(uint32_t min, uint32_t max)
+    {
+        uint32_t length = UniformRandom(min, max);
+        k2::String randString(k2::String::initialize_later{}, length);
+        RandomString(lenght, length, randString.c_str());
+
+        return randString;
+    }
+
     void RandomNumericString(uint32_t min, uint32_t max, char str[])
     {
         uint32_t length = UniformRandom(min, max);
@@ -93,6 +102,15 @@ public:
         }
     }
 
+    k2::String RandomNumericString(uint32_t min, uint32_t max)
+    {
+        uint32_t length = UniformRandom(min, max);
+        k2::String randString(k2::String::initialize_later{}, length);
+        RandomNumericString(lenght, length, randString.c_str());
+
+        return randString;
+    }
+
     void RandomZipString(char zip[])
     {
         RandomNumericString(4, 4, zip);
@@ -100,6 +118,14 @@ public:
             zip[i] = '1';
         }
         zip[9] = 0;
+    }
+
+    k2::String RandomZipString()
+    {
+        k2::String randString(k2::String::initialize_later{}, 4);
+        RandomZipString(lenght, length, randString.c_str());
+
+        return randString;
     }
 
 private:

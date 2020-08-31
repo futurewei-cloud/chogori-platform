@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 
 // stl
+#include <optional>
 #include <random>
 
 #include <k2/appbase/AppEssentials.h>
@@ -31,21 +32,37 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/tso/client/tso_clientlib.h>
 
 #include <seastar/core/sleep.hh>
+
 const char* collname="K23SIBench";
+k2::dto::Schema _schema;
+
+struct DataRec{
+    std::optional<k2::String> partitionKey;
+    std::optional<k2::String> rangeKey;
+    std::optional<k2::String> data;
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    k2::String collectionName;
+    SKV_RECORD_FIELDS(partitionKey, rangeKey, data);
+};
+
 
 class KeyGen {
 public:
     KeyGen(size_t start) : _start(start), _idx(start) {}
 
-    k2::dto::Key next() {
+    DataRec next() {
         k2::String stridx = std::to_string(_idx);
         _idx ++;
 
-        k2::dto::Key key{
+        DataRec record{
             .partitionKey = "partkey:" + stridx,
-            .rangeKey = stridx
+            .rangeKey = stridx,
+            .data = std::nullopt,
+            .schema = seastar::make_lw_shared(_schema),
+            .collectionName = collname
         };
-        return key;
+
+        return record;
     }
     void reset() {
         _idx = _start;
@@ -53,12 +70,6 @@ public:
 private:
     size_t _start;
     size_t _idx;
-};
-
-
-struct DataRec{
-    k2::String data;
-    K2_PAYLOAD_FIELDS(data);
 };
 
 class Client {
@@ -81,7 +92,7 @@ public:  // application lifespan
             ", with writes=" << _writes() <<
             ", with pipelineDepth=" << _pipelineDepth() <<
             ", with testDuration=" << _testDuration());
-        _data.data = k2::String('.', _dataSize());
+        _data = k2::String('.', _dataSize());
         _stopped = false;
         auto myid = seastar::engine().cpu_id();
 
@@ -92,7 +103,24 @@ public:  // application lifespan
         if (myid == 0) {
             K2INFO("Creating collection...");
             _benchFut = _benchFut.then([this] {
-                return _client.makeCollection(collname).discard_result();
+                return _client.makeCollection(collname).discard_result()
+                .then([this] () {
+                    _schema.name = "bench_schema";
+                    _schema.version = 1;
+                    _schema.fields = std::vector<k2::dto::SchemaField> {
+                            {k2::dto::FieldType::STRING, "partitionKey", false, false},
+                            {k2::dto::FieldType::STRING, "rangeKey", false, false},
+                            {k2::dto::FieldType::UINT32T, "data", false, false}
+                    };
+
+                    _schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partitionKey"});
+                    _schema.setRangeKeyFieldsByName(std::vector<k2::String>{"rangeKey"});
+                    k2::dto::CreateSchemaRequest request{ collname, _schema };
+                    auto cpo_endpoint = k2::RPC().getTXEndpoint(_cpo_url());
+                    return k2::RPC().callRPC<k2::dto::CreateSchemaRequest, k2::dto::CreateSchemaResponse>(k2::dto::Verbs::CPO_SCHEMA_CREATE, request, *cpo_endpoint, 1s);
+                }).discard_result();
+
+
             });
         } else {
             _benchFut = _benchFut.then([] { return seastar::sleep(5s); });
@@ -202,7 +230,7 @@ private:
     seastar::future<> _doRead(k2::K2TxnHandle& txn, KeyGen& keygen) {
         ++_totalReads;
         return seastar::do_with(k2::Clock::now(), [this, &txn, &keygen] (auto& start) {
-            return txn.read<DataRec>(keygen.next(), collname)
+            return txn.read<DataRec>(keygen.next())
             .then([this, start](auto&& result) {
                 _readLatency.add(k2::Clock::now() - start);
                 if (!result.status.is2xxOK() && result.status != k2::dto::K23SIStatus::KeyNotFound) {
@@ -219,7 +247,9 @@ private:
     seastar::future<> _doWrite(k2::K2TxnHandle& txn, KeyGen& keygen) {
         ++_totalWrites;
         return seastar::do_with(k2::Clock::now(), [this, &txn, &keygen](auto& start) {
-            return txn.write<DataRec>(keygen.next(), collname, _data)
+            DataRec record = keygen.next();
+            record.data = _data;
+            return txn.write<DataRec>(std::move(record))
                 .then([this, start](auto&& result) {
                     _writeLatency.add(k2::Clock::now() - start);
                     if (!result.status.is2xxOK()) {
@@ -274,6 +304,7 @@ private://metrics
     uint64_t _failWrites = 0;
 
    private:
+    k2::ConfigVar<k2::String> _cpo_url{"cpo"};
     k2::ConfigVar<uint32_t> _dataSize{"data_size"};
     k2::ConfigVar<uint32_t> _reads{"reads"};
     k2::ConfigVar<uint32_t> _writes{"writes"};
@@ -285,7 +316,7 @@ private://metrics
     seastar::future<> _benchFut = seastar::make_ready_future();
     bool _stopped = true;
     k2::K23SIClient _client;
-    DataRec _data;
+    k2::String _data;
     std::mt19937 _gen;
     std::uniform_int_distribution<> _dist;
 };  // class Client

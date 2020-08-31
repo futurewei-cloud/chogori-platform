@@ -69,17 +69,20 @@ seastar::future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle&
 struct Address {
     Address () = default;
     Address (RandomContext& random) {
-        random.RandomString(10, 20, Street_1);
-        random.RandomString(10, 20, Street_2);
-        random.RandomString(10, 20, City);
-        random.RandomString(2, 2, State);
-        random.RandomZipString(Zip);
+        Street_1 = random.RandomString(10, 20);
+        Street_2 = random.RandomString(10, 20);
+        City = random.RandomString(10, 20);
+        State = random.RandomString(2, 2);
+        Zip = random.RandomZipString();
     }
-    char Street_1[21];
-    char Street_2[21];
-    char City[21];
-    char State[3];
-    char Zip[10];
+
+    std::optional<k2::String> Street_1;
+    std::optional<k2::String> Street_2;
+    std::optional<k2::String> City;
+    std::optional<k2::String> State;
+    std::optional<k2::String> Zip;
+
+    SKV_RECORD_FIELDS(Street_1, Street_2, City, State, Zip);
 };
 
 uint64_t getDate()
@@ -90,34 +93,23 @@ uint64_t getDate()
 class Warehouse {
 public:
     Warehouse(RandomContext& random, uint32_t id) : WarehouseID(id) {
-        random.RandomString(6, 10, data.Name);
-        data.address = Address(random);
-        data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        data.YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
+        Name = random.RandomString(6, 10);
+        address = Address(random);
+        Tax = random.UniformRandom(0, 2000) / 10000.0f;
+        YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
     }
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return ""; }
-    static k2::dto::Key getKey(uint32_t w_id) {
-        k2::dto::Key key = {
-            .partitionKey = WIDToString(w_id),
-            .rangeKey = ""
-        };
-        return key;
-    }
-
-    uint32_t WarehouseID;
-    struct Data {
-        float Tax; // TODO Needs to be fixed point to be in spec
-        uint32_t YTD; // "Fixed point", first two digits are cents
-        char Name[11];
-        Address address;
-        K2_PAYLOAD_COPYABLE;
-    } data;
+    std::optional<uint32_t> WarehouseID;
+    std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
+    std::optional<uint32_t> YTD; // "Fixed point", first two digits are cents
+    std::optional<k2::String> Name;
+    Address address;
 
     Warehouse(const Warehouse::Data& d, uint32_t id) : WarehouseID(id) {
         data = d;
     }
+
+    SKV_RECORD_FIELDS(WarehouseID, Tax, YTD, Name, address);
 
 private:
     k2::ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
@@ -126,38 +118,27 @@ private:
 
 class District {
 public:
-    District(RandomContext& random, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
-        random.RandomString(6, 10, data.Name);
-        data.address = Address(random);
-        data.Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        data.YTD = _customers_per_district() * 1000;
-        data.NextOrderID = _customers_per_district()+1;
+    District(RandomContext& random, uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
+        Name = random.RandomString(6, 10);        
+        address = Address(random);
+        Tax = random.UniformRandom(0, 2000) / 10000.0f;
+        YTD = _customers_per_district() * 1000;
+        NextOrderID = _customers_per_district()+1;  
     }
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return "DIST:" + std::to_string(DistrictID); }
-    static k2::dto::Key getKey(uint32_t w_id, uint16_t id) {
-        k2::dto::Key key = {
-            .partitionKey = WIDToString(w_id),
-            .rangeKey = "DIST:" + std::to_string(id)
-        };
-        return key;
-    }
+    std::optional<uint32_t> WarehouseID;
+    std::optional<uint32_t> DistrictID;
+    std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
+    std::optional<uint32_t> YTD; // "Fixed point", first two digits are cents
+    std::optional<uint32_t> NextOrderID;
+    std::optional<k2::String> Name;
+    Address address;
 
-    uint32_t WarehouseID;
-    uint16_t DistrictID;
-    struct Data {
-        float Tax; // TODO Needs to be fixed point to be in spec
-        uint32_t YTD; // "Fixed point", first two digits are cents
-        uint32_t NextOrderID;
-        char Name[11];
-        Address address;
-        K2_PAYLOAD_COPYABLE;
-    } data;
-
-   District(const District::Data& d, uint32_t w_id, uint16_t id) : WarehouseID(w_id), DistrictID(id) {
+   District(const District::Data& d, uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
        data = d;
    }
+
+   SKV_RECORD_FIELDS(WarehouseID, DistrictID, Tax, YTD, NextOrderID, Name, address);
 
 private:
    k2::ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};

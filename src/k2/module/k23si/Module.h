@@ -115,8 +115,6 @@ private: // methods
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
     bool _validateRequestPartition(const RequestT& req) const {
-
-        // TODO validate schema is in cache
         auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid && _partition.owns(req.key);
         K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
                 << ", for request=" << req);
