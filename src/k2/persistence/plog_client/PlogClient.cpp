@@ -35,15 +35,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstdlib>
 #include <cctype>
 #include <algorithm>
+#include <random>
 
 namespace k2 {
-
-char Rand_alnum()
-{
-    char c;
-    while (!std::isdigit(c = static_cast<char>(std::rand())));
-    return c;
-}
 
 PlogClient::PlogClient() {
     K2INFO("dtor");
@@ -53,26 +47,34 @@ PlogClient::~PlogClient() {
     K2INFO("~dtor");
 }
 
-void PlogClient::GetPlogServerEndpoint() {
+seastar::future<> 
+PlogClient::getPlogPartitionMap() {
     for(auto& v : _partitionCluster.partitionGroupVector){
         K2INFO("Partition Group: " << v.name);
+        _partitionNameMap[v.name] = _partitionNameList.size();
         _partitionNameList.push_back(v.name);
         
         std::vector<std::unique_ptr<TXEndpoint>> endpoints;
         for (auto& url: v.plogServerEndpoints){
             K2INFO("Plog Server Url: " << url);
             auto ep = RPC().getTXEndpoint(url);
-            endpoints.push_back(std::move(ep));
+            if (ep){
+                endpoints.push_back(std::move(ep));
+            }
         }
-
+        if (endpoints.size() == 0){
+            K2INFO("Failed to obtain the Endpoint of Plog Servers");
+            return seastar::make_exception_future<>(std::runtime_error("Failed to obtain the Endpoint of Plog Servers"));
+        }
         _partitionMapEndpoints[std::move(v.name)] = std::move(endpoints);
     }
+    return seastar::make_ready_future<>();
 }
 
 seastar::future<> 
-PlogClient::GetPartitionCluster(String name){
+PlogClient::getPartitionCluster(String name){
     _cpo = CPOClient(String(_cpo_url()));
-    return _cpo.GetPartitionCluster(Deadline<>(get_plog_server_deadline()), std::move(name)).
+    return _cpo.GetPartitionCluster(Deadline<>(_cpo_timeout()), std::move(name)).
     then([this] (auto&& result) {
         auto& [status, response] = result;
 
@@ -84,8 +86,7 @@ PlogClient::GetPartitionCluster(String name){
         _partitionCluster = std::move(response.cluster);
         _partition_map_pointer = rand() % _partitionCluster.partitionGroupVector.size();
         _partitionMapEndpoints.clear();
-        GetPlogServerEndpoint();
-        return seastar::make_ready_future<>();
+        return getPlogPartitionMap();
     });
 }
 
@@ -95,7 +96,7 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(){
     
     std::vector<seastar::future<std::tuple<Status, dto::PlogCreateResponse> > > createFutures;
     for (auto& ep:_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]]){
-        createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::K23SI_PERSISTENT_CREATE, request, *ep, plog_request_timeout()));
+        createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::K23SI_PERSISTENT_CREATE, request, *ep, _plog_timeout()));
     }
     return seastar::when_all_succeed(createFutures.begin(), createFutures.end())
         .then([this, plogId](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
@@ -117,7 +118,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
 
     std::vector<seastar::future<std::tuple<Status, dto::PlogAppendResponse> > > appendFutures;
     for (auto& ep:_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]]){
-        appendFutures.push_back(RPC().callRPC<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::K23SI_PERSISTENT_APPEND, request, *ep, plog_request_timeout()));
+        appendFutures.push_back(RPC().callRPC<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::K23SI_PERSISTENT_APPEND, request, *ep, _plog_timeout()));
     }
 
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
@@ -141,7 +142,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
 seastar::future<std::tuple<Status, Payload>> PlogClient::read(String plogId, uint32_t offset, uint32_t size){
     dto::PlogReadRequest request{.plogId = std::move(plogId), .offset=offset, .size=size};
 
-    return RPC().callRPC<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::K23SI_PERSISTENT_READ, request, *_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]][0], plog_request_timeout()).
+    return RPC().callRPC<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::K23SI_PERSISTENT_READ, request, *_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]][0], _plog_timeout()).
         then([this] (auto&& result) {
             auto& [status, response] = result;
 
@@ -154,7 +155,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
 
     std::vector<seastar::future<std::tuple<Status, dto::PlogSealResponse> > > sealFutures;
     for (auto& ep:_partitionMapEndpoints[_partitionNameList[_partition_map_pointer]]){
-        sealFutures.push_back(RPC().callRPC<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::K23SI_PERSISTENT_SEAL, request, *ep, plog_request_timeout()));
+        sealFutures.push_back(RPC().callRPC<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::K23SI_PERSISTENT_SEAL, request, *ep, _plog_timeout()));
     }
 
     return seastar::when_all_succeed(sealFutures.begin(), sealFutures.end())
@@ -173,10 +174,20 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
 }
 
 String PlogClient::generate_plogId(){
-    std::string appendix;
-    appendix.resize(10);
-    generate_n(std::back_inserter(appendix), 10, Rand_alnum);
-    String plogId = "TPCC_CLIENT_plog_" + appendix;
-    return plogId;
+    String plogid = "TPCC_CLIENT_plog_0123456789";
+    std::mt19937 g(std::rand());
+    std::shuffle(plogid.begin()+18, plogid.end(), g);
+    return plogid;
 }
+
+bool PlogClient::selectPartitionGroup(String name){
+    auto iter = _partitionNameMap.find(name);
+    if (iter == _partitionNameMap.end()) {
+        return false;
+    }
+    _partition_map_pointer = iter->second;
+    return true;
+}
+
+
 } // k2

@@ -47,9 +47,11 @@ public:
     seastar::future<> gracefulStop();
     seastar::future<> start();
 
-    void GetPlogServerEndpoint();
+    seastar::future<> getPlogPartitionMap();
 
-    seastar::future<> GetPartitionCluster(String name);
+    seastar::future<> getPartitionCluster(String name);
+
+    bool selectPartitionGroup(String name);
 
     seastar::future<std::tuple<Status, String>> create();
 
@@ -62,14 +64,15 @@ public:
 private:
     dto::PartitionCluster _partitionCluster;
     std::unordered_map<String, std::vector<std::unique_ptr<TXEndpoint>>> _partitionMapEndpoints;
+    std::unordered_map<String, uint32_t> _partitionNameMap;
     std::vector<String> _partitionNameList;
     uint32_t _partition_map_pointer;
 
     CPOClient _cpo;
     String generate_plogId();
 
-    ConfigDuration get_plog_server_deadline{"get_plog_server_deadline", 1s};
-    ConfigDuration plog_request_timeout{"plog_request_timeout", 100ms};
+    ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
+    ConfigDuration _plog_timeout{"plog_timeout", 100ms};
     ConfigVar<String> _cpo_url{"cpo_url", ""};
 
 };

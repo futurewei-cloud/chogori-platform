@@ -120,6 +120,9 @@ public: // memory management
     // the underlying data will not be destroyed until all shared payloads are destroyed.
     Payload share();
 
+    // Same as shart(), but just share nbytes
+    Payload share(size_t nbytes);
+
     // Creates a new payload as a copy of this payload. The underlying data is copied over to the new payload
     Payload copy();
 

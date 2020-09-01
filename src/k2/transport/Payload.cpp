@@ -391,6 +391,34 @@ Payload Payload::share() {
     return shared;
 }
 
+
+Payload Payload::share(size_t nbytes) {
+    if (getDataRemaining() < nbytes){
+        nbytes = getDataRemaining();
+    }  
+    Payload shared(_allocator);
+    shared._size = nbytes;
+    shared._capacity = nbytes; // the capacity of the new payload stops with the current data written
+
+    size_t toShare = nbytes;
+    size_t curBufIndex = _currentPosition.bufferIndex;
+    size_t curBufOffset = _currentPosition.bufferOffset;
+    while(toShare > 0) {
+        auto& curBuf = _buffers[curBufIndex];
+        auto shareSizeFromCurBuf = std::min(toShare, curBuf.size()-curBufOffset);
+        auto fullSharedBuf = curBuf.share();
+
+        // only share exactly what we need for the new payload
+        fullSharedBuf.trim_front(curBufOffset);
+        fullSharedBuf.trim(shareSizeFromCurBuf);
+        shared._buffers.push_back(std::move(fullSharedBuf));
+        toShare -= shareSizeFromCurBuf;
+        curBufIndex++;
+        curBufOffset = 0;
+    }
+    return shared;
+}
+
 Payload Payload::copy() {
     Payload copied;
     Binary b(_size); // allocate a single binary for all the data we need to copy

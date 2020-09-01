@@ -290,7 +290,7 @@ SCENARIO("test empty payload serialization after some data") {
     }
 }
 
-SCENARIO("test cooy from payload") {
+SCENARIO("test copy from payload") {
     std::vector<data<embeddedComplex>> testCases;
     String s(100000, 'x');
     testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11, Duration(10ms)));

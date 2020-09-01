@@ -54,7 +54,7 @@ struct PlogPage {
 class PlogServer
 {
 private:
-    uint32_t PLOG_MAX_SIZE = 2 * 1024 * 1024;
+    const uint32_t PLOG_MAX_SIZE = 2 * 1024 * 1024;
 
     std::unordered_map<String, PlogPage> _plogMap;
 

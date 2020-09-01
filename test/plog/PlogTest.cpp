@@ -105,7 +105,7 @@ seastar::future<> PlogTest::runTest2() {
 
 seastar::future<> PlogTest::runTest3() {
     K2INFO(">>> Test3: read the partition group we created in test2");
-    return client.GetPartitionCluster("Cluster1")
+    return client.getPartitionCluster("Cluster1")
     .then([this] () {
         K2INFO("Test3.1: create a plog");
         return client.create();
@@ -131,23 +131,33 @@ seastar::future<> PlogTest::runTest3() {
         return client.append(_plogId, 15, std::move(payload));
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.4: append a plog with wrong offset");
+        K2INFO("Test3.4: append a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
         K2EXPECT(offset, 30);
+
+        Payload payload([] { return Binary(4096); });
+        payload.write("2333333333");
+        return client.append(_plogId, 30, std::move(payload));
+    })
+    .then([this] (auto&& response){
+        K2INFO("Test3.5: append a plog with wrong offset");
+        auto& [status, offset] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(offset, 45);
 
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
         return client.append(_plogId, 100, std::move(payload));
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.5: read a plog");
+        K2INFO("Test3.6: read a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S400_Bad_Request);
         return client.read(_plogId, 0, 15);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.6: read a plog");
+        K2INFO("Test3.7: read a plog");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str;
@@ -157,17 +167,27 @@ seastar::future<> PlogTest::runTest3() {
         return client.read(_plogId, 15, 15);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.7: read multiple payloads");
+        K2INFO("Test3.8: read a plog");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str;
         payload.seek(0);
         payload.read(str);
         K2EXPECT(str, "0987654321");
+        return client.read(_plogId, 30, 15);
+    })
+    .then([this] (auto&& response){
+        K2INFO("Test3.9: read multiple payloads");
+        auto& [status, payload] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        String str;
+        payload.seek(0);
+        payload.read(str);
+        K2EXPECT(str, "2333333333");
         return client.read(_plogId, 0, 30);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.8: seal a plog");
+        K2INFO("Test3.10: seal a plog");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str, str2;
@@ -176,28 +196,28 @@ seastar::future<> PlogTest::runTest3() {
         K2EXPECT(str, "1234567890");
         payload.read(str2);
         K2EXPECT(str2, "0987654321");
-        return client.seal(_plogId, 30);
+        return client.seal(_plogId, 45);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.9: seal a sealed plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
-        K2EXPECT(offset, 30);
+        K2EXPECT(offset, 45);
         return client.seal(_plogId, 15);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.10: append a sealed plog");
         auto& [status, offset] = response;
-        K2EXPECT(status, Statuses::S400_Bad_Request);
-        K2EXPECT(offset, 30);
+        K2EXPECT(status, Statuses::S409_Conflict);
+        K2EXPECT(offset, 45);
         
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
-        return client.append(_plogId, 30, std::move(payload));
+        return client.append(_plogId, 45, std::move(payload));
     })
     .then([this] (auto&& response){
         auto& [status, offset] = response;
-        K2EXPECT(status, Statuses::S400_Bad_Request);
+        K2EXPECT(status, Statuses::S409_Conflict);
         K2EXPECT(status.message, "plog is sealed");
         return seastar::make_ready_future<>();
     });

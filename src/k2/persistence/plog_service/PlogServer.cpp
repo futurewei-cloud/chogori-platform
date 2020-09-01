@@ -79,7 +79,7 @@ PlogServer::handleCreate(dto::PlogCreateRequest&& request){
     K2DEBUG("Received create request for " << request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter != _plogMap.end()) {
-        return RPCResponse(Statuses::S400_Bad_Request("plog already exists"), dto::PlogCreateResponse());
+        return RPCResponse(Statuses::S409_Conflict("plog already exists"), dto::PlogCreateResponse());
     }
     _plogMap.insert(std::pair<String,PlogPage >(std::move(request.plogId), PlogPage()));
     return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse());
@@ -90,10 +90,10 @@ PlogServer::handleAppend(dto::PlogAppendRequest&& request){
     K2DEBUG("Received append request for " << request.plogId << " with size" << request.payload.getSize() << " and offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogAppendResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogAppendResponse());
     }
     if (iter->second.sealed){
-         return RPCResponse(Statuses::S400_Bad_Request("plog is sealed"), dto::PlogAppendResponse());
+         return RPCResponse(Statuses::S409_Conflict("plog is sealed"), dto::PlogAppendResponse());
     }
     if (iter->second.offset != request.offset){
         return RPCResponse(Statuses::S400_Bad_Request("offset inconsistent"), dto::PlogAppendResponse());
@@ -108,9 +108,8 @@ PlogServer::handleAppend(dto::PlogAppendRequest&& request){
 
     iter->second.offset += request.payload.getSize();
     iter->second.payload.copyFromPayload(request.payload, request.payload.getSize());
-    request.payload.clear();
     
-    return RPCResponse(Statuses::S200_OK("append cuccess"), std::move(response));
+    return RPCResponse(Statuses::S200_OK("append scuccess"), std::move(response));
 };
 
 
@@ -119,21 +118,14 @@ PlogServer::handleRead(dto::PlogReadRequest&& request){
     K2DEBUG("Received read request for " << request.plogId << " with offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogReadResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogReadResponse());
     }
     if (iter->second.offset < request.offset + request.size){
          return RPCResponse(Statuses::S400_Bad_Request("exceed the maximun length"), dto::PlogReadResponse());
     }
     
-    Payload payload([size=request.size] { return Binary(size); });
-    payload.seek(0);
     iter->second.payload.seek(request.offset);
-    if (!payload.copyFromPayload(iter->second.payload, request.size)){
-        return RPCResponse(Statuses::S500_Internal_Server_Error("cannot read from payload"), dto::PlogReadResponse());
-    }
-    
-    dto::PlogReadResponse response;
-    response.payload = std::move(payload);
+    dto::PlogReadResponse response{.payload=iter->second.payload.share(request.size)};
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
 
@@ -141,16 +133,16 @@ PlogServer::handleRead(dto::PlogReadRequest&& request){
 seastar::future<std::tuple<Status, dto::PlogSealResponse>>
 PlogServer::handleSeal(dto::PlogSealRequest&& request){
     K2DEBUG("Received seal request for " << request.plogId);
+    dto::PlogSealResponse response;
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S400_Bad_Request("plog does not exist"), dto::PlogSealResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), std::move(response));
     }
     if (iter->second.sealed){
-        dto::PlogSealResponse response{.offset=iter->second.offset};
-        return RPCResponse(Statuses::S400_Bad_Request("plog already sealed"), std::move(response));
+        response.offset = iter->second.offset;
+        return RPCResponse(Statuses::S409_Conflict("plog already sealed"), std::move(response));
     }
 
-    dto::PlogSealResponse response; 
     iter->second.sealed = true;
     if (iter->second.offset < request.offset){
         response.offset = iter->second.offset;
