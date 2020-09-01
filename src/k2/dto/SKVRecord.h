@@ -62,9 +62,15 @@ public:
     void skipNext();
 
     // Used as part of the SKV_RECORD_FIELDS macro for converting to user-defined types
-    // All fields must be wrapped in std::optional
+    // All primitive fields must be wrapped in std::optional
     template <typename T, typename... ArgsT>
     void writeMany(T& value, ArgsT&... args) {
+        // For nested type support
+        if constexpr(isPayloadSerializableType<T>()) {
+            value.__writeFields(*this);
+            writeMany(args...);
+        }
+
         if (!value) {
             skipNext();
         } else {
@@ -121,9 +127,15 @@ public:
     }
 
     // Used as part of the SKV_RECORD_FIELDS macro for converting to user-defined types
-    // All fields must be wrapped in std::optional
+    // All primitive fields must be wrapped in std::optional
     template <typename T, typename... ArgsT>
     void readMany(T& value, ArgsT&... args) {
+        // For nested type support
+        if constexpr(isPayloadSerializableType<T>()) {
+            value.__readFields(*this);
+            readMany(args...);
+        }
+
         value = deserializeNext<typename std::decay_t<decltype(value)>::value_type>();
         readMany(args...);
     }
@@ -200,8 +212,10 @@ public:
 
 // This macro is used to implement the templated read and write operations that
 // automatically convert an SKVRecrod to a user-defined type. Fields must be declared
-// in order of the schema and each field must be wrapped in std::optional
+// in order of the schema and each primitive field must be wrapped in std::optional. It
+// borrows the PayloadSerializableTrait machinery for nested support.
 #define SKV_RECORD_FIELDS(...)                     \
+    struct __K2PayloadSerializableTraitTag__ {};   \
     void __writeFields(k2::dto::SKVRecord& __record__) const {   \
         __record__.writeMany(__VA_ARGS__);            \
     }                                              \

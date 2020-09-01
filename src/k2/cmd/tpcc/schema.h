@@ -32,6 +32,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "tpcc_rand.h"
 
+static const k2::String tpccCollectionName = "TPCC";
+
 #define CHECK_READ_STATUS(read_result) \
     do { \
         if (!((read_result).status.is2xxOK())) { \
@@ -41,22 +43,10 @@ Copyright(c) 2020 Futurewei Cloud
     } \
     while (0) \
 
-k2::String WIDToString(uint32_t id) {
-    char chars[8];
-    // We need leading 0s for lexographic ordering
-    // Apparently snprintf is faster than stringstream
-    snprintf(chars, 8, "%04u", id);
-    return k2::String(chars);
-}
-
 template<typename ValueType>
 seastar::future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
 {
-    k2::dto::Key key = {};
-    key.partitionKey = row.getPartitionKey();
-    key.rangeKey = row.getRowKey();
-
-    return txn.write(std::move(key), "TPCC", row.data).then([] (k2::WriteResult&& result) {
+    return txn.write<ValueType>(row).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2DEBUG("writeRow failed: " << result.status);
             return seastar::make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
@@ -92,7 +82,26 @@ uint64_t getDate()
 
 class Warehouse {
 public:
+    static inline k2::dto::Schema warehouse_schema {
+		.name = "warehouse",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::FLOAT, "Tax", false, false},
+				{k2::dto::FieldType::UINT32T, "YTD", false, false},
+				{k2::dto::FieldType::STRING, "Name", false, false},
+				{k2::dto::FieldType::STRING, "Street1", false, false},
+				{k2::dto::FieldType::STRING, "Street2", false, false},
+				{k2::dto::FieldType::STRING, "City", false, false},
+				{k2::dto::FieldType::STRING, "State", false, false},
+				{k2::dto::FieldType::STRING, "Zip", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> {}
+    };
+
+
     Warehouse(RandomContext& random, uint32_t id) : WarehouseID(id) {
+        schema = seastar::make_lw_shared(warehouse_schema);
         Name = random.RandomString(6, 10);
         address = Address(random);
         Tax = random.UniformRandom(0, 2000) / 10000.0f;
@@ -105,9 +114,8 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-    Warehouse(const Warehouse::Data& d, uint32_t id) : WarehouseID(id) {
-        data = d;
-    }
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, Tax, YTD, Name, address);
 
@@ -118,7 +126,27 @@ private:
 
 class District {
 public:
+    static inline k2::dto::Schema district_schema {
+		.name = "district",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT32T, "DID", false, false},
+				{k2::dto::FieldType::FLOAT, "Tax", false, false},
+				{k2::dto::FieldType::UINT32T, "YTD", false, false},
+				{k2::dto::FieldType::UINT32T, "NextOID", false, false},
+				{k2::dto::FieldType::STRING, "Name", false, false},
+				{k2::dto::FieldType::STRING, "Street1", false, false},
+				{k2::dto::FieldType::STRING, "Street2", false, false},
+				{k2::dto::FieldType::STRING, "City", false, false},
+				{k2::dto::FieldType::STRING, "State", false, false},
+				{k2::dto::FieldType::STRING, "Zip", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1 }
+    };
+
     District(RandomContext& random, uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
+        schema = seastar::make_lw_shared(district_schema);
         Name = random.RandomString(6, 10);        
         address = Address(random);
         Tax = random.UniformRandom(0, 2000) / 10000.0f;
@@ -134,11 +162,10 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-   District(const District::Data& d, uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
-       data = d;
-   }
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
 
-   SKV_RECORD_FIELDS(WarehouseID, DistrictID, Tax, YTD, NextOrderID, Name, address);
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, Tax, YTD, NextOrderID, Name, address);
 
 private:
    k2::ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
@@ -146,163 +173,214 @@ private:
 
 class Customer {
 public:
+    static inline k2::dto::Schema customer_schema {
+		.name = "customer",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT32T, "DID", false, false},
+				{k2::dto::FieldType::UINT32T, "CID", false, false},
+				{k2::dto::FieldType::UINT64T, "SinceDate", false, false},
+				{k2::dto::FieldType::FLOAT, "CreditLimit", false, false},
+				{k2::dto::FieldType::FLOAT, "Discount", false, false},
+				{k2::dto::FieldType::INT32T, "Balance", false, false},
+				{k2::dto::FieldType::UINT32T, "YTDPayment", false, false},
+				{k2::dto::FieldType::UINT32T, "PaymentCount", false, false},
+				{k2::dto::FieldType::UINT32T, "DeliveryCount", false, false},
+				{k2::dto::FieldType::STRING, "FirstName", false, false},
+				{k2::dto::FieldType::STRING, "MiddleName", false, false},
+				{k2::dto::FieldType::STRING, "LastName", false, false},
+				{k2::dto::FieldType::STRING, "Phone", false, false},
+				{k2::dto::FieldType::STRING, "Credit", false, false},
+				{k2::dto::FieldType::STRING, "Info", false, false},
+				{k2::dto::FieldType::STRING, "Street1", false, false},
+				{k2::dto::FieldType::STRING, "Street2", false, false},
+				{k2::dto::FieldType::STRING, "City", false, false},
+				{k2::dto::FieldType::STRING, "State", false, false},
+				{k2::dto::FieldType::STRING, "Zip", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
+    };
+
     Customer(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) :
             WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        random.RandomString(5, 5, data.LastName); // TODO needs to use special non-uniform function
-        strcpy(data.MiddleName, "OE");
-        random.RandomString(8, 16, data.FirstName);
-        data.address = Address(random);
-        random.RandomNumericString(16, 16, data.Phone);
-        data.SinceDate = getDate();
+        schema = seastar::make_lw_shared(customer_schema);
+
+        LastName = random.RandomString(5, 5); // TODO needs to use special non-uniform function
+        MiddleName = "OE";
+        FirstName = random.RandomString(8, 16);
+        address = Address(random);
+        Phone = random.RandomNumericString(16, 16);
+        SinceDate = getDate();
 
         uint32_t creditRoll = random.UniformRandom(1, 10);
         if (creditRoll == 1) {
-            strcpy(data.Credit, "BC");
+            Credit = "BC";
         } else {
-            strcpy(data.Credit, "GC");
+            Credit = "GC";
         }
 
-        data.CreditLimit = 50000.0f;
-        data.Discount = random.UniformRandom(0, 5000) / 10000.0f;
-        data.Balance = -1000;
-        data.YTDPayment = 1000;
-        data.PaymentCount = 1;
-        data.DeliveryCount = 0;
-        random.RandomString(300, 500, data.Info);
+        CreditLimit = 50000.0f;
+        Discount = random.UniformRandom(0, 5000) / 10000.0f;
+        Balance = -1000;
+        YTDPayment = 1000;
+        PaymentCount = 1;
+        DeliveryCount = 0;
+        Info = random.RandomString(300, 500);
     }
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return "CUST:" + std::to_string(DistrictID) + ":" + std::to_string(CustomerID); }
-    static k2::dto::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t c_id) {
-        k2::dto::Key key = {
-            .partitionKey = WIDToString(w_id),
-            .rangeKey = "CUST:" + std::to_string(d_id) + ":" + std::to_string(c_id)
-        };
-        return key;
-    }
+    std::optional<uint32_t> WarehouseID;
+    std::optional<uint32_t> DistrictID;
+    std::optional<uint32_t> CustomerID;
+    std::optional<uint64_t> SinceDate;
+    std::optional<float> CreditLimit; // TODO Needs to be fixed point to be in spec
+    std::optional<float> Discount;
+    std::optional<int32_t> Balance;
+    std::optional<uint32_t> YTDPayment;
+    std::optional<uint32_t> PaymentCount;
+    std::optional<uint32_t> DeliveryCount;
+    std::optional<k2::String> FirstName;
+    std::optional<k2::String> MiddleName;
+    std::optional<k2::String> LastName;
+    std::optional<k2::String> Phone;
+    std::optional<k2::String> Credit; // "GC" or "BC"
+    std::optional<k2::String> Info;
+    Address address;
 
-    uint32_t WarehouseID;
-    uint16_t DistrictID;
-    uint32_t CustomerID;
-    struct Data {
-        uint64_t SinceDate;
-        float CreditLimit; // TODO Needs to be fixed point to be in spec
-        float Discount;
-        int32_t Balance;
-        uint32_t YTDPayment;
-        uint16_t PaymentCount;
-        uint16_t DeliveryCount;
-        char FirstName[17];
-        char MiddleName[3];
-        char LastName[17];
-        Address address;
-        char Phone[17];
-        char Credit[3]; // "GC" or "BC"
-        char Info[501];
-        K2_PAYLOAD_COPYABLE;
-    } data;
-
-    Customer(const Customer::Data& d, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        data = d;
-    }
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, CustomerID, SinceDate, CreditLimit, Discount, Balance,
+        YTDPayment, DeliveryCount, FirstName, MiddleName, LastName, Phone, Credit, Info, address);
 };
 
 class History {
 public:
+    static inline k2::dto::Schema history_schema {
+		.name = "history",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT64T, "Date", false, false},
+				{k2::dto::FieldType::UINT32T, "CID", false, false},
+				{k2::dto::FieldType::UINT32T, "CWID", false, false},
+				{k2::dto::FieldType::UINT32T, "Amount", false, false},
+				{k2::dto::FieldType::UINT32T, "CDID", false, false},
+				{k2::dto::FieldType::UINT32T, "DID", false, false},
+				{k2::dto::FieldType::STRING, "Info", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1 }
+    };
+
     // For initial population
     History(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id) {
-        data.CustomerID = c_id;
-        data.CustomerWarehouseID = w_id;
-        data.CustomerDistrictID = d_id;
-        data.Date = getDate();
-        data.Amount = 1000;
-        random.RandomString(12, 24, data.Info);
+        schema = seastar::make_lw_shared(history_schema);
+
+        CustomerID = c_id;
+        CustomerWarehouseID = w_id;
+        CustomerDistrictID = d_id;
+        Date = getDate();
+        Amount = 1000;
+        Info = random.RandomString(12, 24);
     }
 
     // For payment transaction
     History(uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t c_w_id, uint16_t c_d_id, float amount,
                 const char w_name[], const char d_name[]) : WarehouseID(w_id) {
+        schema = seastar::make_lw_shared(history_schema);
 
-        data.Date = getDate();
-        data.CustomerID = c_id;
-        data.CustomerWarehouseID = c_w_id;
-        data.Amount = amount;
-        data.CustomerDistrictID = c_d_id;
-        data.DistrictID = d_id;
+        Date = getDate();
+        CustomerID = c_id;
+        CustomerWarehouseID = c_w_id;
+        Amount = amount;
+        CustomerDistrictID = c_d_id;
+        DistrictID = d_id;
 
-        strcpy(data.Info, w_name);
+        Info = w_name;
         uint32_t offset = strlen(w_name);
         const char separator[] = "    ";
-        strcpy(data.Info+offset, separator);
+        strcpy((char*)Info->c_str() + offset, separator);
         offset += strlen(separator);
-        strcpy(data.Info+offset, d_name);
+        strcpy((char*)Info->c_str() + offset, d_name);
     }
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return "HIST:" + std::to_string(data.Date); }
+    std::optional<uint32_t> WarehouseID;
+    std::optional<uint64_t> Date;
+    std::optional<uint32_t> CustomerID;
+    std::optional<uint32_t> CustomerWarehouseID;
+    std::optional<uint32_t> Amount;
+    std::optional<uint32_t> CustomerDistrictID;
+    std::optional<uint32_t> DistrictID;
+    std::optional<k2::String> Info;
 
-    uint32_t WarehouseID;
-    struct Data {
-        uint64_t Date;
-        uint32_t CustomerID;
-        uint32_t CustomerWarehouseID;
-        uint32_t Amount;
-        uint16_t CustomerDistrictID;
-        uint16_t DistrictID;
-        char Info[25];
-        K2_PAYLOAD_COPYABLE;
-    } data;
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, Date, CustomerID, CustomerWarehouseID, Amount, CustomerDistrictID,
+        DistrictID, Info);
 };
 
 class Order {
 public:
+    static inline k2::dto::Schema order_schema {
+		.name = "order",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT32T, "DID", false, false},
+				{k2::dto::FieldType::UINT32T, "OID", false, false},
+				{k2::dto::FieldType::UINT32T, "LineCount", false, false},
+				{k2::dto::FieldType::UINT64T, "EntryDate", false, false},
+				{k2::dto::FieldType::UINT32T, "CID", false, false},
+				{k2::dto::FieldType::UINT32T, "CarrierID", false, false},
+				{k2::dto::FieldType::UINT32T, "AllLocal", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
+    };
+
     // For initial population
     Order(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t id) :
-            WarehouseID(w_id), OrderID(id), DistrictID(d_id) {
-        data.CustomerID = c_id;
-        data.EntryDate = 0; // TODO
+            WarehouseID(w_id), DistrictID(d_id), OrderID(id) {
+        schema = seastar::make_lw_shared(order_schema);
+
+        CustomerID = c_id;
+        EntryDate = 0; // TODO
         if (id < 2101) {
-            data.CarrierID = random.UniformRandom(1, 10);
+            CarrierID = random.UniformRandom(1, 10);
         } else {
-            data.CarrierID = 0;
+            CarrierID = 0;
         }
         OrderLineCount = random.UniformRandom(5, 15);
-        data.AllLocal = true;
+        AllLocal = 1;
     }
 
     // For NewOrder transaction
     Order(RandomContext& random, uint32_t w_id) : WarehouseID(w_id) {
+        schema = seastar::make_lw_shared(order_schema);
+
         DistrictID = random.UniformRandom(1, _districts_per_warehouse());
-        data.CustomerID = random.NonUniformRandom(1023, 1, _customers_per_district());
+        CustomerID = random.NonUniformRandom(1023, 1, _customers_per_district());
         OrderLineCount = random.UniformRandom(5, 15);
-        data.EntryDate = getDate();
-        data.CarrierID = 0;
+        EntryDate = getDate();
+        CarrierID = 0;
         // OrderID and AllLocal to be filled in by the transaction
     }
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return "ORDER:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
-    static k2::dto::Key getKey(uint32_t w_id, uint16_t d_id, uint32_t o_id) {
-        k2::dto::Key key = {
-            .partitionKey = WIDToString(w_id),
-            .rangeKey = "ORDER:" + std::to_string(d_id) + ":" + std::to_string(o_id)
-        };
-        return key;
+    Order(uint32_t w_id, uint16_t d_id, uint32_t o_id) : WarehouseID(w_id), DistrictID(d_id), OrderID(o_id) {
+        schema = seastar::make_lw_shared(order_schema);
     }
 
-
     uint32_t WarehouseID;
+    uint32_t DistrictID;
     uint32_t OrderID;
-    uint16_t DistrictID;
-    uint16_t OrderLineCount;
+    uint32_t OrderLineCount;
+    uint64_t EntryDate;
+    uint32_t CustomerID;
+    uint32_t CarrierID;
+    uint32_t AllLocal; // boolean, 0 or 1
 
-    struct Data {
-        uint64_t EntryDate;
-        uint32_t CustomerID;
-        uint16_t CarrierID;
-        bool AllLocal;
-        K2_PAYLOAD_COPYABLE;
-    } data;
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineCount, EntryDate, CustomerID, 
+        CarrierID, AllLocal);
 
 private:
     k2::ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
@@ -311,224 +389,261 @@ private:
 
 class NewOrder {
 public:
-    NewOrder(const Order& order) : WarehouseID(order.WarehouseID), OrderID(order.OrderID), DistrictID(order.DistrictID) {}
+    static inline k2::dto::Schema neworder_schema {
+		.name = "neworder",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT32T, "DID", false, false},
+				{k2::dto::FieldType::UINT32T, "OID", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
+    };
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return "NEW:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID); }
+    NewOrder(const Order& order) : WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID) {
+        schema = seastar::make_lw_shared(neworder_schema);
+    }
 
     uint32_t WarehouseID;
+    uint32_t DistrictID;
     uint32_t OrderID;
-    uint16_t DistrictID;
+
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID);
 };
-
-// NewOrder does not have data, so specialize and write an empty Payload
-template<>
-seastar::future<k2::WriteResult> writeRow<NewOrder>(const NewOrder& row, k2::K2TxnHandle& txn)
-{
-    k2::dto::Key key = {};
-    key.partitionKey = row.getPartitionKey();
-    key.rangeKey = row.getRowKey();
-
-    return txn.write(std::move(key), "TPCC", 0).then([] (k2::WriteResult&& result) {
-        if (!result.status.is2xxOK()) {
-            K2DEBUG("writeRow failed: " << result.status);
-            return seastar::make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
-        }
-
-        return seastar::make_ready_future<k2::WriteResult>(std::move(result));
-    });
-}
-
 
 class OrderLine {
 public:
+    static inline k2::dto::Schema orderline_schema {
+		.name = "orderline",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT32T, "DID", false, false},
+				{k2::dto::FieldType::UINT32T, "OID", false, false},
+				{k2::dto::FieldType::UINT32T, "LineNumber", false, false},
+				{k2::dto::FieldType::UINT64T, "DeliveryDate", false, false},
+				{k2::dto::FieldType::UINT32T, "ItemID", false, false},
+				{k2::dto::FieldType::UINT32T, "SupplyWID", false, false},
+				{k2::dto::FieldType::FLOAT, "Amount", false, false},
+				{k2::dto::FieldType::UINT32T, "Quantity", false, false},
+				{k2::dto::FieldType::STRING, "DistInfo", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3 }
+    };
+
     // For initial population
     OrderLine(RandomContext& random, const Order& order, uint16_t line_num) :
-            WarehouseID(order.WarehouseID), OrderID(order.OrderID), DistrictID(order.DistrictID), OrderLineNumber(line_num) {
-        data.ItemID = random.UniformRandom(1, 100000);
-        data.SupplyWarehouseID = WarehouseID;
+            WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID), OrderLineNumber(line_num) {
+        schema = seastar::make_lw_shared(orderline_schema);
+
+        ItemID = random.UniformRandom(1, 100000);
+        SupplyWarehouseID = WarehouseID;
 
         if (order.OrderID < 2101) {
-            data.DeliveryDate = order.data.EntryDate;
-            data.Amount = 0.0f;
+            DeliveryDate = order.EntryDate;
+            Amount = 0.0f;
         } else {
-            data.DeliveryDate = 0;
-            data.Amount = random.UniformRandom(1, 999999) / 100.0f;
+            DeliveryDate = 0;
+            Amount = random.UniformRandom(1, 999999) / 100.0f;
         }
 
-        data.Quantity = 5;
-        random.RandomString(24, 24, data.DistInfo);
+        Quantity = 5;
+        DistInfo = random.RandomString(24, 24);
     }
 
     // For New-Order transaction
     // Amount and DistInfo must be filled in during transaction
     // ItemID must be changed if it needs to be a rollback transactiom
     OrderLine(RandomContext& random, const Order& order, uint16_t line_num, uint32_t max_warehouse_id) :
-            WarehouseID(order.WarehouseID), OrderID(order.OrderID), DistrictID(order.DistrictID), OrderLineNumber(line_num) {
-        data.ItemID = random.NonUniformRandom(8191, 1, 100000);
+            WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID), OrderLineNumber(line_num) {
+        schema = seastar::make_lw_shared(orderline_schema);
+
+        ItemID = random.NonUniformRandom(8191, 1, 100000);
 
         uint32_t homeRoll = random.UniformRandom(1, 100);
         if (homeRoll == 1 && max_warehouse_id > 1) {
             do {
-                data.SupplyWarehouseID = random.UniformRandom(1, max_warehouse_id);
-            } while (data.SupplyWarehouseID == WarehouseID);
+                SupplyWarehouseID = random.UniformRandom(1, max_warehouse_id);
+            } while (SupplyWarehouseID == WarehouseID);
         } else {
-            data.SupplyWarehouseID = WarehouseID;
+            SupplyWarehouseID = WarehouseID;
         }
 
-        data.Quantity = random.UniformRandom(1, 10);
-        data.Amount = 0.0f;
+        Quantity = random.UniformRandom(1, 10);
+        Amount = 0.0f;
     }
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return "ORDERLINE:" + std::to_string(DistrictID) + ":" + std::to_string(OrderID) + ":" + std::to_string(OrderLineNumber); }
+    std::optional<uint32_t> WarehouseID;
+    std::optional<uint32_t> DistrictID;
+    std::optional<uint32_t> OrderID;
+    std::optional<uint32_t> OrderLineNumber;
+    std::optional<uint64_t> DeliveryDate;
+    std::optional<uint32_t> ItemID;
+    std::optional<uint32_t> SupplyWarehouseID;
+    std::optional<float> Amount; // TODO
+    std::optional<uint32_t> Quantity;
+    std::optional<k2::String> DistInfo;
 
-    uint32_t WarehouseID;
-    uint32_t OrderID;
-    uint16_t DistrictID;
-    uint16_t OrderLineNumber;
-
-    struct Data {
-        uint64_t DeliveryDate;
-        uint32_t ItemID;
-        uint32_t SupplyWarehouseID;
-        float Amount; // TODO
-        uint16_t Quantity;
-        char DistInfo[25];
-        K2_PAYLOAD_COPYABLE;
-    } data;
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineNumber, DeliveryDate, ItemID, 
+        SupplyWarehouseID, Amount, Quantity, DistInfo);
 };
 
 class Item {
 public:
     static const uint32_t InvalidID = 999999;
+    static inline k2::dto::Schema item_schema {
+		.name = "item",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT32T, "ImageID", false, false},
+				{k2::dto::FieldType::FLOAT, "Price", false, false},
+				{k2::dto::FieldType::STRING, "Name", false, false},
+				{k2::dto::FieldType::STRING, "Info", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> {}
+    };
 
     Item(RandomContext& random, uint32_t id) : ItemID(id) {
-        data.ImageID = random.UniformRandom(1, 10000);
-        random.RandomString(14, 24, data.Name);
-        data.Price = random.UniformRandom(100, 10000) / 100.0f;
-        random.RandomString(26, 50, data.Info);
+        schema = seastar::make_lw_shared(item_schema);
+
+        ImageID = random.UniformRandom(1, 10000);
+        Name = random.RandomString(14, 24);
+        Price = random.UniformRandom(100, 10000) / 100.0f;
+        Info = random.RandomString(26, 50);
         uint32_t originalRoll = random.UniformRandom(1, 10);
         if (originalRoll == 1) {
             const char original[] = "ORIGINAL";
-            uint32_t length = strlen(data.Info);
+            uint32_t length = Info->size();
             uint32_t originalStart = random.UniformRandom(0, length-8);
-            memcpy(data.Info+originalStart, original, 8);
+            memcpy((char*)Info->c_str() + originalStart, original, 8);
         }
     }
 
-    k2::String getPartitionKey() const { return "ITEM:" + std::to_string(ItemID); }
-    k2::String getRowKey() const { return ""; }
-    static k2::dto::Key getKey(uint32_t id) {
-        k2::dto::Key key = {
-            .partitionKey = "ITEM:" + std::to_string(id),
-            .rangeKey = ""
-        };
-        return key;
+    Item(uint32_t id) : ItemID(id) {
+        schema = seastar::make_lw_shared(item_schema);
     }
 
-    uint32_t ItemID;
+    std::optional<uint32_t> ItemID;
+    std::optional<uint32_t> ImageID;
+    std::optional<float> Price; // TODO
+    std::optional<k2::String> Name;
+    std::optional<k2::String> Info;
 
-    struct Data {
-        uint32_t ImageID;
-        float Price; // TODO
-        char Name[25];
-        char Info[51];
-        K2_PAYLOAD_COPYABLE;
-    } data;
-
-    Item(const Item::Data& d, uint32_t id) : ItemID(id) {
-        data = d;
-    }
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(ItemID, ImageID, Price, Name, Info);
 };
 
 class Stock {
 public:
+    static inline k2::dto::Schema stock_schema {
+		.name = "stock",
+		.version = 1,
+		.fields = std::vector<k2::dto::SchemaField> {
+				{k2::dto::FieldType::UINT32T, "ID", false, false},
+				{k2::dto::FieldType::UINT32T, "ItemID", false, false},
+				{k2::dto::FieldType::FLOAT, "YTD", false, false},
+				{k2::dto::FieldType::UINT32T, "OrderCount", false, false},
+				{k2::dto::FieldType::UINT32T, "RemoteCount", false, false},
+				{k2::dto::FieldType::UINT32T, "Quantity", false, false},
+				{k2::dto::FieldType::STRING, "Dist_01", false, false},
+				{k2::dto::FieldType::STRING, "Dist_02", false, false},
+				{k2::dto::FieldType::STRING, "Dist_03", false, false},
+				{k2::dto::FieldType::STRING, "Dist_04", false, false},
+				{k2::dto::FieldType::STRING, "Dist_05", false, false},
+				{k2::dto::FieldType::STRING, "Dist_06", false, false},
+				{k2::dto::FieldType::STRING, "Dist_07", false, false},
+				{k2::dto::FieldType::STRING, "Dist_08", false, false},
+				{k2::dto::FieldType::STRING, "Dist_09", false, false},
+				{k2::dto::FieldType::STRING, "Dist_10", false, false},
+				{k2::dto::FieldType::STRING, "Info", false, false}},
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1 }
+    };
+
     Stock(RandomContext& random, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
-        data.Quantity = random.UniformRandom(10, 100);
-        random.RandomString(24, 24, data.Dist_01);
-        random.RandomString(24, 24, data.Dist_02);
-        random.RandomString(24, 24, data.Dist_03);
-        random.RandomString(24, 24, data.Dist_04);
-        random.RandomString(24, 24, data.Dist_05);
-        random.RandomString(24, 24, data.Dist_06);
-        random.RandomString(24, 24, data.Dist_07);
-        random.RandomString(24, 24, data.Dist_08);
-        random.RandomString(24, 24, data.Dist_09);
-        random.RandomString(24, 24, data.Dist_10);
-        data.YTD = 0.0f;
-        data.OrderCount = 0;
-        data.RemoteCount = 0;
-        random.RandomString(26, 50, data.Info);
+        schema = seastar::make_lw_shared(stock_schema);
+
+        Quantity = random.UniformRandom(10, 100);
+        Dist_01 = random.RandomString(24, 24);
+        Dist_02 = random.RandomString(24, 24);
+        Dist_03 = random.RandomString(24, 24);
+        Dist_04 = random.RandomString(24, 24);
+        Dist_05 = random.RandomString(24, 24);
+        Dist_06 = random.RandomString(24, 24);
+        Dist_07 = random.RandomString(24, 24);
+        Dist_08 = random.RandomString(24, 24);
+        Dist_09 = random.RandomString(24, 24);
+        Dist_10 = random.RandomString(24, 24);
+        YTD = 0.0f;
+        OrderCount = 0;
+        RemoteCount = 0;
+        Info = random.RandomString(26, 50);
         uint32_t originalRoll = random.UniformRandom(1, 10);
         if (originalRoll == 1) {
             const char original[] = "ORIGINAL";
-            uint32_t length = strlen(data.Info);
+            uint32_t length = Info->size();
             uint32_t originalStart = random.UniformRandom(0, length-8);
-            memcpy(data.Info+originalStart, original, 8);
+            memcpy((char*)Info->c_str() + originalStart, original, 8);
         }
     }
 
-    k2::String getPartitionKey() const { return WIDToString(WarehouseID); }
-    k2::String getRowKey() const { return "STOCK:" + std::to_string(ItemID); }
-    static k2::dto::Key getKey(uint32_t w_id, uint32_t i_id) {
-        k2::dto::Key key = {
-            .partitionKey = WIDToString(w_id),
-            .rangeKey = "STOCK:" + std::to_string(i_id)
-        };
-        return key;
+    Stock(uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
+        schema = seastar::make_lw_shared(stock_schema);
     }
 
-    const char* getDistInfo(uint16_t d_id) {
+    const char* getDistInfo(uint32_t d_id) {
         switch(d_id) {
             case 1:
-                return data.Dist_01;
+                return Dist_01->c_str();
             case 2:
-                return data.Dist_02;
+                return Dist_02->c_str();
             case 3:
-                return data.Dist_03;
+                return Dist_03->c_str();
             case 4:
-                return data.Dist_04;
+                return Dist_04->c_str();
             case 5:
-                return data.Dist_05;
+                return Dist_05->c_str();
             case 6:
-                return data.Dist_06;
+                return Dist_06->c_str();
             case 7:
-                return data.Dist_07;
+                return Dist_07->c_str();
             case 8:
-                return data.Dist_08;
+                return Dist_08->c_str();
             case 9:
-                return data.Dist_09;
+                return Dist_09->c_str();
             case 10:
-                return data.Dist_10;
+                return Dist_10->c_str();
             default:
                 throw 0;
         }
     }
 
-    uint32_t WarehouseID;
-    uint32_t ItemID;
+    std::optional<uint32_t> WarehouseID;
+    std::optional<uint32_t> ItemID;
+    std::optional<float> YTD; // TODO
+    std::optional<uint32_t> OrderCount;
+    std::optional<uint32_t> RemoteCount;
+    std::optional<uint32_t> Quantity;
+    std::optional<k2::String> Dist_01;
+    std::optional<k2::String> Dist_02;
+    std::optional<k2::String> Dist_03;
+    std::optional<k2::String> Dist_04;
+    std::optional<k2::String> Dist_05;
+    std::optional<k2::String> Dist_06;
+    std::optional<k2::String> Dist_07;
+    std::optional<k2::String> Dist_08;
+    std::optional<k2::String> Dist_09;
+    std::optional<k2::String> Dist_10;
+    std::optional<k2::String> Info;
 
-    struct Data {
-        float YTD; // TODO
-        uint16_t OrderCount;
-        uint16_t RemoteCount;
-        uint16_t Quantity;
-        char Dist_01[25];
-        char Dist_02[25];
-        char Dist_03[25];
-        char Dist_04[25];
-        char Dist_05[25];
-        char Dist_06[25];
-        char Dist_07[25];
-        char Dist_08[25];
-        char Dist_09[25];
-        char Dist_10[25];
-        char Info[51];
-        K2_PAYLOAD_COPYABLE;
-    } data;
-
-    Stock(const Stock::Data& d, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
-        data = d;
-    }
+    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline k2::String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, ItemID, YTD, OrderCount, RemoteCount, Quantity, Dist_01, Dist_02,
+        Dist_03, Dist_04, Dist_05, Dist_06, Dist_07, Dist_08, Dist_09, Dist_10, Info);
 };

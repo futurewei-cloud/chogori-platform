@@ -73,59 +73,40 @@ public:
         return (((UniformRandom(0, A) | UniformRandom(min, max)) + C) % (max - min + 1)) + min;
     }
 
-    void RandomString(uint32_t min, uint32_t max, char str[])
+    k2::String RandomString(uint32_t min, uint32_t max)
     {
         uint32_t length = UniformRandom(min, max);
-        bzero(str, length+1);
+        k2::String str(k2::String::initialized_later{}, length);
 
         for (uint32_t i=0; i<length; ++i) {
             str[i] = (char)UniformRandom(33, 126); // Non-whitespace and non-control ASCII characters
         }
-    }
 
-    k2::String RandomString(uint32_t min, uint32_t max)
-    {
-        uint32_t length = UniformRandom(min, max);
-        k2::String randString(k2::String::initialize_later{}, length);
-        RandomString(lenght, length, randString.c_str());
-
-        return randString;
-    }
-
-    void RandomNumericString(uint32_t min, uint32_t max, char str[])
-    {
-        uint32_t length = UniformRandom(min, max);
-        memset(str, 0, length+1);
-
-        for (uint32_t i=0; i<length; ++i) {
-            str[i] = (char)UniformRandom(48, 57); // 0-9 ASCII
-        }
+        return str;
     }
 
     k2::String RandomNumericString(uint32_t min, uint32_t max)
     {
         uint32_t length = UniformRandom(min, max);
-        k2::String randString(k2::String::initialize_later{}, length);
-        RandomNumericString(lenght, length, randString.c_str());
+        k2::String str(k2::String::initialized_later{}, length);
 
-        return randString;
-    }
-
-    void RandomZipString(char zip[])
-    {
-        RandomNumericString(4, 4, zip);
-        for (int i=4; i<9; ++i) {
-            zip[i] = '1';
+        for (uint32_t i=0; i<length; ++i) {
+            str[i] = (char)UniformRandom(48, 57); // 0-9 ASCII
         }
-        zip[9] = 0;
+
+        return str;
     }
 
     k2::String RandomZipString()
     {
-        k2::String randString(k2::String::initialize_later{}, 4);
-        RandomZipString(lenght, length, randString.c_str());
+        k2::String zip = RandomNumericString(10, 10);
 
-        return randString;
+        for (int i=4; i<9; ++i) {
+            zip[i] = '1';
+        }
+        zip[9] = 0;
+
+        return zip;
     }
 
 private:
