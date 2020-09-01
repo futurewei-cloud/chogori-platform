@@ -55,19 +55,19 @@ seastar::future<> PlogServer::gracefulStop() {
 seastar::future<> PlogServer::start() {
     K2INFO("Registering message handlers");
     RPC().registerRPCObserver<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::K23SI_PERSISTENT_CREATE, [this](dto::PlogCreateRequest&& request) {
-        return handleCreate(std::move(request));
+        return _handleCreate(std::move(request));
     });
 
     RPC().registerRPCObserver<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::K23SI_PERSISTENT_APPEND, [this](dto::PlogAppendRequest&& request) {
-        return handleAppend(std::move(request));
+        return _handleAppend(std::move(request));
     });
 
     RPC().registerRPCObserver<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::K23SI_PERSISTENT_READ, [this](dto::PlogReadRequest&& request) {
-        return handleRead(std::move(request));
+        return _handleRead(std::move(request));
     });
 
     RPC().registerRPCObserver<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::K23SI_PERSISTENT_SEAL, [this](dto::PlogSealRequest&& request) {
-        return handleSeal(std::move(request));
+        return _handleSeal(std::move(request));
     });
     _plogMap.clear();
 
@@ -75,7 +75,7 @@ seastar::future<> PlogServer::start() {
 }
 
 seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
-PlogServer::handleCreate(dto::PlogCreateRequest&& request){
+PlogServer::_handleCreate(dto::PlogCreateRequest&& request){
     K2DEBUG("Received create request for " << request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter != _plogMap.end()) {
@@ -86,7 +86,7 @@ PlogServer::handleCreate(dto::PlogCreateRequest&& request){
 };
 
 seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
-PlogServer::handleAppend(dto::PlogAppendRequest&& request){
+PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
     K2DEBUG("Received append request for " << request.plogId << " with size" << request.payload.getSize() << " and offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
@@ -114,7 +114,7 @@ PlogServer::handleAppend(dto::PlogAppendRequest&& request){
 
 
 seastar::future<std::tuple<Status, dto::PlogReadResponse>>
-PlogServer::handleRead(dto::PlogReadRequest&& request){
+PlogServer::_handleRead(dto::PlogReadRequest&& request){
     K2DEBUG("Received read request for " << request.plogId << " with offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
@@ -131,7 +131,7 @@ PlogServer::handleRead(dto::PlogReadRequest&& request){
 
 
 seastar::future<std::tuple<Status, dto::PlogSealResponse>>
-PlogServer::handleSeal(dto::PlogSealRequest&& request){
+PlogServer::_handleSeal(dto::PlogSealRequest&& request){
     K2DEBUG("Received seal request for " << request.plogId);
     dto::PlogSealResponse response;
     auto iter = _plogMap.find(request.plogId);

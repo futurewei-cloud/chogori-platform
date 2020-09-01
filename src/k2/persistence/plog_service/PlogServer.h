@@ -59,16 +59,16 @@ private:
     std::unordered_map<String, PlogPage> _plogMap;
 
     seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
-    handleCreate(dto::PlogCreateRequest&& request);
+    _handleCreate(dto::PlogCreateRequest&& request);
 
     seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
-    handleAppend(dto::PlogAppendRequest&& request);
+    _handleAppend(dto::PlogAppendRequest&& request);
 
     seastar::future<std::tuple<Status, dto::PlogReadResponse>>
-    handleRead(dto::PlogReadRequest&& request);
+    _handleRead(dto::PlogReadRequest&& request);
 
     seastar::future<std::tuple<Status, dto::PlogSealResponse>>
-    handleSeal(dto::PlogSealRequest&& request);
+    _handleSeal(dto::PlogSealRequest&& request);
     
 public:
      PlogServer();

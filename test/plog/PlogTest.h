@@ -42,7 +42,7 @@ public:  // application lifespan
 private:
     int exitcode = -1;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
-    k2::PlogClient client;
+    k2::PlogClient _client;
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;

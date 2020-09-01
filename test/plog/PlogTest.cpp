@@ -105,10 +105,10 @@ seastar::future<> PlogTest::runTest2() {
 
 seastar::future<> PlogTest::runTest3() {
     K2INFO(">>> Test3: read the persistence group we created in test2");
-    return client.getPersistenceCluster("Cluster1")
+    return _client.getPersistenceCluster("Cluster1")
     .then([this] () {
         K2INFO("Test3.1: create a plog");
-        return client.create();
+        return _client.create();
     })
     .then([this] (auto&& response){
         K2INFO("Test3.2: append a plog");
@@ -118,7 +118,7 @@ seastar::future<> PlogTest::runTest3() {
         
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
-        return client.append(_plogId, 0, std::move(payload));
+        return _client.append(_plogId, 0, std::move(payload));
     })
     .then([this] (auto&& response){
         K2INFO("Test3.3: append a plog");
@@ -128,7 +128,7 @@ seastar::future<> PlogTest::runTest3() {
 
         Payload payload([] { return Binary(4096); });
         payload.write("0987654321");
-        return client.append(_plogId, 15, std::move(payload));
+        return _client.append(_plogId, 15, std::move(payload));
     })
     .then([this] (auto&& response){
         K2INFO("Test3.4: append a plog");
@@ -138,7 +138,7 @@ seastar::future<> PlogTest::runTest3() {
 
         Payload payload([] { return Binary(4096); });
         payload.write("2333333333");
-        return client.append(_plogId, 30, std::move(payload));
+        return _client.append(_plogId, 30, std::move(payload));
     })
     .then([this] (auto&& response){
         K2INFO("Test3.5: append a plog with wrong offset");
@@ -148,13 +148,13 @@ seastar::future<> PlogTest::runTest3() {
 
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
-        return client.append(_plogId, 100, std::move(payload));
+        return _client.append(_plogId, 100, std::move(payload));
     })
     .then([this] (auto&& response){
         K2INFO("Test3.6: read a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S400_Bad_Request);
-        return client.read(_plogId, 0, 15);
+        return _client.read(_plogId, 0, 15);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.7: read a plog");
@@ -164,7 +164,7 @@ seastar::future<> PlogTest::runTest3() {
         payload.seek(0);
         payload.read(str);
         K2EXPECT(str, "1234567890");
-        return client.read(_plogId, 15, 15);
+        return _client.read(_plogId, 15, 15);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.8: read a plog");
@@ -174,7 +174,7 @@ seastar::future<> PlogTest::runTest3() {
         payload.seek(0);
         payload.read(str);
         K2EXPECT(str, "0987654321");
-        return client.read(_plogId, 30, 15);
+        return _client.read(_plogId, 30, 15);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.9: read multiple payloads");
@@ -184,7 +184,7 @@ seastar::future<> PlogTest::runTest3() {
         payload.seek(0);
         payload.read(str);
         K2EXPECT(str, "2333333333");
-        return client.read(_plogId, 0, 30);
+        return _client.read(_plogId, 0, 30);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.10: seal a plog");
@@ -196,14 +196,14 @@ seastar::future<> PlogTest::runTest3() {
         K2EXPECT(str, "1234567890");
         payload.read(str2);
         K2EXPECT(str2, "0987654321");
-        return client.seal(_plogId, 45);
+        return _client.seal(_plogId, 45);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.9: seal a sealed plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
         K2EXPECT(offset, 45);
-        return client.seal(_plogId, 15);
+        return _client.seal(_plogId, 15);
     })
     .then([this] (auto&& response){
         K2INFO("Test3.10: append a sealed plog");
@@ -213,7 +213,7 @@ seastar::future<> PlogTest::runTest3() {
         
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
-        return client.append(_plogId, 45, std::move(payload));
+        return _client.append(_plogId, 45, std::move(payload));
     })
     .then([this] (auto&& response){
         auto& [status, offset] = response;
