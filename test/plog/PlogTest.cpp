@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "PlogTest.h"
 #include <seastar/core/reactor.hh>
 #include <seastar/core/sleep.hh>
-#include <k2/dto/Partition.h>
+#include <k2/dto/PersistenceGroup.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/appbase/AppEssentials.h>
 
@@ -77,10 +77,10 @@ seastar::future<> PlogTest::start() {
 }
 
 seastar::future<> PlogTest::runTest1() {
-    K2INFO(">>> Test1: get non-existent partition cluster");
-    auto request = dto::PartitionClusterGetRequest{.name="Cluster1"};
+    K2INFO(">>> Test1: get non-existent persistence cluster");
+    auto request = dto::PersistenceClusterGetRequest{.name="Cluster1"};
     return RPC()
-    .callRPC<dto::PartitionClusterGetRequest, dto::PartitionClusterGetResponse>(dto::Verbs::CPO_PARTITION_CLUSTER_GET, request, *_cpoEndpoint, 100ms)
+    .callRPC<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, request, *_cpoEndpoint, 100ms)
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S404_Not_Found);
@@ -88,15 +88,15 @@ seastar::future<> PlogTest::runTest1() {
 }
 
 seastar::future<> PlogTest::runTest2() {
-    K2INFO(">>> Test2: create a partition cluster");
-    dto::ParitionGroup group1{.name="Group1", .plogServerEndpoints = _plogConfigEps()};
-    dto::PartitionCluster cluster1;
+    K2INFO(">>> Test2: create a persistence cluster");
+    dto::PersistenceGroup group1{.name="Group1", .plogServerEndpoints = _plogConfigEps()};
+    dto::PersistenceCluster cluster1;
     cluster1.name="Cluster1";
-    cluster1.partitionGroupVector.push_back(group1);
+    cluster1.persistenceGroupVector.push_back(group1);
 
-    auto request = dto::PartitionClusterCreateRequest{.cluster=std::move(cluster1)};
+    auto request = dto::PersistenceClusterCreateRequest{.cluster=std::move(cluster1)};
     return RPC()
-    .callRPC<dto::PartitionClusterCreateRequest, dto::PartitionClusterCreateResponse>(dto::Verbs::CPO_PARTITION_CLUSTER_CREATE, request, *_cpoEndpoint, 1s)
+    .callRPC<dto::PersistenceClusterCreateRequest, dto::PersistenceClusterCreateResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_CREATE, request, *_cpoEndpoint, 1s)
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S201_Created);
@@ -104,8 +104,8 @@ seastar::future<> PlogTest::runTest2() {
 }
 
 seastar::future<> PlogTest::runTest3() {
-    K2INFO(">>> Test3: read the partition group we created in test2");
-    return client.getPartitionCluster("Cluster1")
+    K2INFO(">>> Test3: read the persistence group we created in test2");
+    return client.getPersistenceCluster("Cluster1")
     .then([this] () {
         K2INFO("Test3.1: create a plog");
         return client.create();

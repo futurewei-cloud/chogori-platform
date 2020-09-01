@@ -28,38 +28,38 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-struct ParitionGroup{
+struct PersistenceGroup{
     String name;
     std::vector<String> plogServerEndpoints;
     K2_PAYLOAD_FIELDS(name, plogServerEndpoints);
 };
 
 
-struct PartitionCluster{
+struct PersistenceCluster{
     String name;
-    std::vector<ParitionGroup> partitionGroupVector;
-    K2_PAYLOAD_FIELDS(name, partitionGroupVector);
+    std::vector<PersistenceGroup> persistenceGroupVector;
+    K2_PAYLOAD_FIELDS(name, persistenceGroupVector);
 };
 
 
 // Request to create a Partition Cluster
-struct PartitionClusterCreateRequest {
-    PartitionCluster cluster;
+struct PersistenceClusterCreateRequest {
+    PersistenceCluster cluster;
     K2_PAYLOAD_FIELDS(cluster);
 };
 
-struct PartitionClusterCreateResponse {
+struct PersistenceClusterCreateResponse {
     K2_PAYLOAD_EMPTY;
 };
 
 // Request to obtain a Partition Cluster
-struct PartitionClusterGetRequest {
+struct PersistenceClusterGetRequest {
     String name;
     K2_PAYLOAD_FIELDS(name);
 };
 
-struct PartitionClusterGetResponse {
-    PartitionCluster cluster;
+struct PersistenceClusterGetResponse {
+    PersistenceCluster cluster;
     K2_PAYLOAD_FIELDS(cluster);
 };
 

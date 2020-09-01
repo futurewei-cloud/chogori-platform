@@ -66,12 +66,12 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PartitionClusterCreateRequest, dto::PartitionClusterCreateResponse>(dto::Verbs::CPO_PARTITION_CLUSTER_CREATE, [this](dto::PartitionClusterCreateRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handlePartitionClusterCreate, std::move(request));
+    RPC().registerRPCObserver<dto::PersistenceClusterCreateRequest, dto::PersistenceClusterCreateResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_CREATE, [this](dto::PersistenceClusterCreateRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePersistenceClusterCreate, std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PartitionClusterGetRequest, dto::PartitionClusterGetResponse>(dto::Verbs::CPO_PARTITION_CLUSTER_GET, [this](dto::PartitionClusterGetRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handlePartitionClusterGet, std::move(request));
+    RPC().registerRPCObserver<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, [this](dto::PersistenceClusterGetRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePersistenceClusterGet, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, [this] (dto::CreateSchemaRequest&& request) {
@@ -311,8 +311,8 @@ String CPOService::_getCollectionPath(String name) {
     return _dataDir() + "/" + name + ".collection";
 }
 
-String CPOService::_getPartitionClusterMapPath() {
-    return _dataDir() + "/partition_map.txt";
+String CPOService::_getPersistenceClusterMapPath() {
+    return _dataDir() + "/persistence_map.txt";
 }
 
 String CPOService::_getSchemasPath(String collectionName) {
@@ -454,56 +454,56 @@ Status CPOService::_saveSchemas(const String& collectionName) {
     return Statuses::S201_Created("schema written");
 }
 
-seastar::future<std::tuple<Status, dto::PartitionClusterCreateResponse>>
-CPOService::handlePartitionClusterCreate(dto::PartitionClusterCreateRequest&& request){
-    K2INFO("Received partition cluster create request for " << request.cluster.name);
-    auto cpath = _getPartitionClusterMapPath();
-    std::unordered_map<String, dto::PartitionCluster> partitionClusterMap;
+seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
+CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request){
+    K2INFO("Received persistence cluster create request for " << request.cluster.name);
+    auto cpath = _getPersistenceClusterMapPath();
+    std::unordered_map<String, dto::PersistenceCluster> persistenceClusterMap;
     Payload p;
     if (!fileutil::readFile(p, cpath)) {
-        partitionClusterMap.clear();
+        persistenceClusterMap.clear();
     }
     else{
-        if (!p.read(partitionClusterMap)) {
-            return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read partition cluster map data"), dto::PartitionClusterCreateResponse());
+        if (!p.read(persistenceClusterMap)) {
+            return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster map data"), dto::PersistenceClusterCreateResponse());
         };
     }
 
-    auto iter = partitionClusterMap.find(request.cluster.name);
-    if (iter != partitionClusterMap.end()) {
-        return RPCResponse(Statuses::S400_Bad_Request("partition cluster name already exists"), dto::PartitionClusterCreateResponse());
+    auto iter = persistenceClusterMap.find(request.cluster.name);
+    if (iter != persistenceClusterMap.end()) {
+        return RPCResponse(Statuses::S400_Bad_Request("persistence cluster name already exists"), dto::PersistenceClusterCreateResponse());
     }
-    partitionClusterMap[request.cluster.name] = std::move(request.cluster);
+    persistenceClusterMap[request.cluster.name] = std::move(request.cluster);
 
     Payload q([] { return Binary(4096); });
-    q.write(partitionClusterMap);
+    q.write(persistenceClusterMap);
     if (!fileutil::writeFile(std::move(q), cpath)) {
-        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write partition cluster map data"), dto::PartitionClusterCreateResponse());
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write persistence cluster map data"), dto::PersistenceClusterCreateResponse());
     }
-    return RPCResponse(Statuses::S201_Created("partition cluster creates successfully"), dto::PartitionClusterCreateResponse());
+    return RPCResponse(Statuses::S201_Created("persistence cluster creates successfully"), dto::PersistenceClusterCreateResponse());
 }
 
-seastar::future<std::tuple<Status, dto::PartitionClusterGetResponse>>
-CPOService::handlePartitionClusterGet(dto::PartitionClusterGetRequest&& request) {
-    K2INFO("Received partition cluster get request with name " << request.name);
-    auto cpath = _getPartitionClusterMapPath();
-    std::unordered_map<String, dto::PartitionCluster> partitionClusterMap;
+seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
+CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request) {
+    K2INFO("Received persistence cluster get request with name " << request.name);
+    auto cpath = _getPersistenceClusterMapPath();
+    std::unordered_map<String, dto::PersistenceCluster> persistenceClusterMap;
     Payload p;
     if (!fileutil::readFile(p, cpath)) {
-        return RPCResponse(Statuses::S404_Not_Found("partition cluster map not found"), dto::PartitionClusterGetResponse());
+        return RPCResponse(Statuses::S404_Not_Found("persistence cluster map not found"), dto::PersistenceClusterGetResponse());
     }
-    if (!p.read(partitionClusterMap)) {
-        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read partition cluster map data"), dto::PartitionClusterGetResponse());
+    if (!p.read(persistenceClusterMap)) {
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster map data"), dto::PersistenceClusterGetResponse());
     };
 
-    auto iter = partitionClusterMap.find(request.name);
-    if (iter == partitionClusterMap.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("partition cluster name not found"), dto::PartitionClusterGetResponse());
+    auto iter = persistenceClusterMap.find(request.name);
+    if (iter == persistenceClusterMap.end()) {
+        return RPCResponse(Statuses::S404_Not_Found("partpersistenceition cluster name not found"), dto::PersistenceClusterGetResponse());
     }
 
-    K2INFO("Found partition map in: " << cpath);
-    dto::PartitionClusterGetResponse response{.cluster=iter->second};
-    return RPCResponse(Statuses::S200_OK("partition cluster map found"), std::move(response));
+    K2INFO("Found persistence map in: " << cpath);
+    dto::PersistenceClusterGetResponse response{.cluster=iter->second};
+    return RPCResponse(Statuses::S200_OK("persistence cluster map found"), std::move(response));
 }
 
 } // namespace k2

@@ -220,6 +220,8 @@ String Status::getDescription() const {
             return "Railgun Error";
         case 529:
             return "Site is overloaded";
+        case 530:
+            return "PlogId is duplicatedd";
         case 598:
             return "Network read timeout error";
 

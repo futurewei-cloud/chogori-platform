@@ -79,7 +79,7 @@ PlogServer::handleCreate(dto::PlogCreateRequest&& request){
     K2DEBUG("Received create request for " << request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter != _plogMap.end()) {
-        return RPCResponse(Statuses::S409_Conflict("plog already exists"), dto::PlogCreateResponse());
+        return RPCResponse(Statuses::S530_PlogId_is_duplicated("plog id already exists"), dto::PlogCreateResponse());
     }
     _plogMap.insert(std::pair<String,PlogPage >(std::move(request.plogId), PlogPage()));
     return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse());

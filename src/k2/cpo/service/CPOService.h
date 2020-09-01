@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/AssignmentManager.h>
-#include <k2/dto/Partition.h>
+#include <k2/dto/PersistenceGroup.h>
 #include <k2/transport/Status.h>
 
 namespace k2 {
@@ -41,7 +41,7 @@ private:
     DistGetter _dist;
     ConfigVar<String> _dataDir{"data_dir"};
     String _getCollectionPath(String name);
-    String _getPartitionClusterMapPath();
+    String _getPersistenceClusterMapPath();
     String _getSchemasPath(String collectionName);
     void _assignCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
@@ -71,11 +71,11 @@ private:
     seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
     handleGet(dto::CollectionGetRequest&& request);
 
-    seastar::future<std::tuple<Status, dto::PartitionClusterCreateResponse>>
-    handlePartitionClusterCreate(dto::PartitionClusterCreateRequest&& request);
+    seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
+    handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request);
 
-    seastar::future<std::tuple<Status, dto::PartitionClusterGetResponse>>
-    handlePartitionClusterGet(dto::PartitionClusterGetRequest&& request);
+    seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
+    handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request);
     
     seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
     handleCreateSchema(dto::CreateSchemaRequest&& request);

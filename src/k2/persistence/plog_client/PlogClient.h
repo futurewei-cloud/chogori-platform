@@ -45,13 +45,14 @@ public:
     ~PlogClient();
 
     seastar::future<> gracefulStop();
+
     seastar::future<> start();
 
-    seastar::future<> getPlogPartitionMap();
+    seastar::future<> getPlogPersistenceMap();
 
-    seastar::future<> getPartitionCluster(String name);
+    seastar::future<> getPersistenceCluster(String name);
 
-    bool selectPartitionGroup(String name);
+    bool selectPersistenceGroup(String name);
 
     seastar::future<std::tuple<Status, String>> create();
 
@@ -62,14 +63,14 @@ public:
     seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
 
 private:
-    dto::PartitionCluster _partitionCluster;
-    std::unordered_map<String, std::vector<std::unique_ptr<TXEndpoint>>> _partitionMapEndpoints;
-    std::unordered_map<String, uint32_t> _partitionNameMap;
-    std::vector<String> _partitionNameList;
-    uint32_t _partition_map_pointer;
+    dto::PersistenceCluster _persistenceCluster;
+    std::unordered_map<String, std::vector<std::unique_ptr<TXEndpoint>>> _persistenceMapEndpoints;
+    std::unordered_map<String, uint32_t> _persistenceNameMap;
+    std::vector<String> _persistenceNameList;
+    uint32_t _persistenceMapPointer;
 
     CPOClient _cpo;
-    String generate_plogId();
+    String _generatePlogId();
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 100ms};
