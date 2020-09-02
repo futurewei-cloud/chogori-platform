@@ -524,7 +524,7 @@ seastar::future<> testScenario01() {
                     .readIOPs = 100000,
                     .writeIOPs = 100000
                 },
-                .retentionPeriod = Duration(1h)
+                .retentionPeriod = Duration(500ms)
             },
             .clusterEndpoints = _k2ConfigEps(),
             .rangeEnds{}
@@ -1280,7 +1280,67 @@ seastar::future<> testScenario01() {
                     });
             });
         }); 
-    }); // end sc-01 case-12
+    }) // end sc-01 case-12
+    .then([this] {
+    // SC01 case13: FINALIZE outside of the retention window
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC01.case 13 (FINALIZE outside of the retention window) -------");
+        // #1 finalize a write intent using the staled mtr
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.partitionKey = "SC01_pKey1", .rangeKey = "SC01_rKey1" }, 
+            dto::Key {.partitionKey = "SC01_pKey1", .rangeKey = "SC01_rKey1" }, 
+            // write same Keys with different Values
+            DataRec {.f1="SC01_finalize_field1", .f2="SC01_finalize_field2"},
+            [this](dto::K23SI_MTR& mtr, dto::Key& key1, dto::Key& trh, DataRec& rec1) {
+                return doWrite<DataRec>(key1, rec1, mtr, trh, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2INFO("SC01.case13::OP_Write_Key1_with_diff_rec. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, Statuses::S201_Created);
+                    return seastar::sleep(5s);
+                })
+                .then([this, &trh, &key1, &mtr] {
+                    return doFinalize(trh, key1, mtr, collname, true, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2INFO("SC01.case13::OP_Finalize_Commit_outside_retention_window. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, Statuses::S200_OK);
+                    });
+                });
+        });
+    })    
+    // #2 read Txn to validate
+    .then([this] {
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.partitionKey = "SC01_pKey1", .rangeKey = "SC01_rKey1" }, 
+            dto::Key {.partitionKey = "SC01_diff_pKey2", .rangeKey = "SC01_diff_rKey2" }, 
+            DataRec {.f1="SC01_finalize_field1", .f2="SC01_finalize_field2"},
+            DataRec {.f1="SC01_field3", .f2="SC01_field4"},
+            [this](auto& mtr, auto& key1, auto& key2, auto& cmpRec1, auto& cmpRec2) {
+                return seastar::when_all(doRead<DataRec>(key1, mtr, collname, ErrorCaseOpt::NoInjection), doRead<DataRec>(key2, mtr, collname, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) mutable {
+                    auto& [resp1, resp2] = response;
+                    // move resp out of the incoming futures sice get0() returns an rvalue
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2INFO("SC01.case13::OP_READ_Key1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC01.case13::OP_READ_Key2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2INFO("Value of Key1: " << val1.value.val << ". Value of key2: " << val2.value.val);
+                    K2EXPECT(status1, Statuses::S200_OK);
+                    K2EXPECT(status2, Statuses::S200_OK);
+                    K2EXPECT(val1.value.val, cmpRec1);
+                    K2EXPECT(val2.value.val, cmpRec2);
+                });
+        });
+    }); // end sc-01 case-13
 }
 
 
