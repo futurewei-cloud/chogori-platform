@@ -129,6 +129,29 @@ private: // methods
         return result;
     }
 
+    // validate 2 Txns in PUSH requests are within the retention window for the collection. 
+    // return 0 if request is valid. 1 if incumbent mtr is stale, 2 if incubent mtr is stale, 3 if both are stale.
+    template <typename RequestT>
+    uint8_t _validatePushRetention(const RequestT& req) const {
+        bool result1 = req.incumbentMTR.timestamp.compareCertain(_retentionTimestamp) >= 0;
+        bool result2 = req.challengerMTR.timestamp.compareCertain(_retentionTimestamp) >= 0;
+        if (result1 == false && result2 == false) {
+            return 3;
+        } else if (result2 == false) {
+            return 2;
+        } else if (result1 == false) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
+    // validate keys in the requests must include non-empty partitionKey. return 0 if request parameter is valid
+    template <typename RequestT>
+    bool _validateRequestParameter(const RequestT& req) const {
+        return req.key.partitionKey.empty();
+    }
+
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     bool _validateStaleWrite(dto::K23SIWriteRequest<Payload>& request, std::deque<dto::DataRecord>& versions);
