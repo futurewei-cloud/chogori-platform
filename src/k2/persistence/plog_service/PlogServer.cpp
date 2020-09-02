@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sharded.hh>
 #include <k2/transport/Payload.h>
 #include <k2/transport/Status.h>
-#include <k2/dto/Plog.h>
+#include <k2/dto/Persistence.h>
 #include <k2/common/Common.h>
 #include <k2/config/Config.h>
 #include <k2/cpo/client/CPOClient.h>
@@ -54,19 +54,19 @@ seastar::future<> PlogServer::gracefulStop() {
 
 seastar::future<> PlogServer::start() {
     K2INFO("Registering message handlers");
-    RPC().registerRPCObserver<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::K23SI_PERSISTENT_CREATE, [this](dto::PlogCreateRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, [this](dto::PlogCreateRequest&& request) {
         return _handleCreate(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::K23SI_PERSISTENT_APPEND, [this](dto::PlogAppendRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::PERSISTENT_APPEND, [this](dto::PlogAppendRequest&& request) {
         return _handleAppend(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::K23SI_PERSISTENT_READ, [this](dto::PlogReadRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::PERSISTENT_READ, [this](dto::PlogReadRequest&& request) {
         return _handleRead(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::K23SI_PERSISTENT_SEAL, [this](dto::PlogSealRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PERSISTENT_SEAL, [this](dto::PlogSealRequest&& request) {
         return _handleSeal(std::move(request));
     });
     _plogMap.clear();
@@ -79,7 +79,7 @@ PlogServer::_handleCreate(dto::PlogCreateRequest&& request){
     K2DEBUG("Received create request for " << request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter != _plogMap.end()) {
-        return RPCResponse(Statuses::S530_PlogId_is_duplicated("plog id already exists"), dto::PlogCreateResponse());
+        return RPCResponse(Statuses::S409_Conflict("plog id already exists"), dto::PlogCreateResponse());
     }
     _plogMap.insert(std::pair<String,PlogPage >(std::move(request.plogId), PlogPage()));
     return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse());
@@ -96,17 +96,17 @@ PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
          return RPCResponse(Statuses::S409_Conflict("plog is sealed"), dto::PlogAppendResponse());
     }
     if (iter->second.offset != request.offset){
-        return RPCResponse(Statuses::S400_Bad_Request("offset inconsistent"), dto::PlogAppendResponse());
+        return RPCResponse(Statuses::S403_Forbidden("offset inconsistent"), dto::PlogAppendResponse());
     }
     if (iter->second.offset + request.payload.getSize() > PLOG_MAX_SIZE){
-         return RPCResponse(Statuses::S400_Bad_Request("exceeds pLog limit"), dto::PlogAppendResponse());
+         return RPCResponse(Statuses::S413_Payload_Too_Large("exceeds pLog limit"), dto::PlogAppendResponse());
     }
 
     dto::PlogAppendResponse response;
-    response.offset = iter->second.offset + request.payload.getSize();
-    response.bytes_appended = request.payload.getSize();
+    response.newOffset = iter->second.offset + request.payload.getSize();
 
     iter->second.offset += request.payload.getSize();
+    // We want to use copy in order to prevent memory fragmentation. If we use shareAll() instead of copy, the payload we obtained will occupy a entire 8K block
     iter->second.payload.copyFromPayload(request.payload, request.payload.getSize());
     
     return RPCResponse(Statuses::S200_OK("append scuccess"), std::move(response));
@@ -121,11 +121,11 @@ PlogServer::_handleRead(dto::PlogReadRequest&& request){
         return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogReadResponse());
     }
     if (iter->second.offset < request.offset + request.size){
-         return RPCResponse(Statuses::S400_Bad_Request("exceed the maximun length"), dto::PlogReadResponse());
+         return RPCResponse(Statuses::S413_Payload_Too_Large("exceed the maximun length"), dto::PlogReadResponse());
     }
     
     iter->second.payload.seek(request.offset);
-    dto::PlogReadResponse response{.payload=iter->second.payload.share(request.size)};
+    dto::PlogReadResponse response{.payload=iter->second.payload.shareRegion(iter->second.payload.getCurrentPosition(), request.size)};
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
 
@@ -139,21 +139,21 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
         return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), std::move(response));
     }
     if (iter->second.sealed){
-        response.offset = iter->second.offset;
+        response.sealedOffset = iter->second.offset;
         return RPCResponse(Statuses::S409_Conflict("plog already sealed"), std::move(response));
     }
 
     iter->second.sealed = true;
-    if (iter->second.offset < request.offset){
-        response.offset = iter->second.offset;
+    if (iter->second.offset < request.truncateOffset){
+        response.sealedOffset = iter->second.offset;
         return RPCResponse(Statuses::S200_OK("sealed offset inconsistent"), std::move(response));
     }
 
-    _plogMap[request.plogId].offset = request.offset;
-    _plogMap[request.plogId].payload.seek(request.offset);
+    _plogMap[request.plogId].offset = request.truncateOffset;
+    _plogMap[request.plogId].payload.seek(request.truncateOffset);
     _plogMap[request.plogId].payload.truncateToCurrent();
 
-    response.offset = request.offset;
+    response.sealedOffset = request.truncateOffset;
     return RPCResponse(Statuses::S200_OK("sealed success"), std::move(response));
 };
 

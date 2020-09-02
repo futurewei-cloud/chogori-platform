@@ -99,7 +99,7 @@ SCENARIO("test empty payload serialization") {
     REQUIRE(src.getCapacity() == 0);
     REQUIRE(src.computeCrc32c() == 0);
 
-    Payload shared(src.share());
+    Payload shared(src.shareAll());
     REQUIRE(shared.getCurrentPosition().bufferIndex == 0);
     REQUIRE(shared.getCurrentPosition().bufferOffset == 0);
     REQUIRE(shared.getCurrentPosition().offset == 0);
@@ -120,7 +120,7 @@ SCENARIO("test empty payload serialization") {
     dst.seek(0);
     REQUIRE(dst.computeCrc32c() == 2351477386);
 
-    Payload sharedDst(dst.share());
+    Payload sharedDst(dst.shareAll());
     REQUIRE(sharedDst.getCurrentPosition().bufferIndex == 0);
     REQUIRE(sharedDst.getCurrentPosition().bufferOffset == 0);
     REQUIRE(sharedDst.getCurrentPosition().offset == 0);

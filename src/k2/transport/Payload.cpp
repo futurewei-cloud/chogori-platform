@@ -288,7 +288,7 @@ void Payload::write(const Payload& other) {
 
     // now we can extend our buffer list with shared buffers from the other payload
     // note that the share() call gives us a payload trimmed to contain exactly the data it should (size==capacity)
-    for (auto& buf : const_cast<Payload*>(&other)->share()._buffers) {
+    for (auto& buf : const_cast<Payload*>(&other)->shareAll()._buffers) {
         auto sz = buf.size();
         if (sz == 0) continue;
         _buffers.push_back(std::move(buf));
@@ -369,40 +369,20 @@ uint32_t Payload::computeCrc32c() {
     return checksum;
 }
 
-Payload Payload::share() {
-    Payload shared(_allocator);
-    shared._size = _size;
-    shared._capacity = _size; // the capacity of the new payload stops with the current data written
 
-    // share exactly the data we need
-    size_t toShare = _size;
-    size_t curBufIndex =0;
-    while(toShare > 0) {
-        auto& curBuf = _buffers[curBufIndex];
-        auto shareSizeFromCurBuf = std::min(toShare, curBuf.size());
-        auto fullSharedBuf = curBuf.share();
-
-        // only share exactly what we need for the new payload
-        fullSharedBuf.trim(shareSizeFromCurBuf);
-        shared._buffers.push_back(std::move(fullSharedBuf));
-        toShare -= shareSizeFromCurBuf;
-        curBufIndex++;
-    }
-    return shared;
+Payload Payload::shareAll() {
+    return shareRegion(PayloadPosition(0,0,0), getSize());
 }
 
-
-Payload Payload::share(size_t nbytes) {
-    if (getDataRemaining() < nbytes){
-        nbytes = getDataRemaining();
-    }  
+Payload Payload::shareRegion(PayloadPosition start, size_t nbytes){
+    nbytes = std::min(_size - start.offset, nbytes);
     Payload shared(_allocator);
     shared._size = nbytes;
     shared._capacity = nbytes; // the capacity of the new payload stops with the current data written
 
     size_t toShare = nbytes;
-    size_t curBufIndex = _currentPosition.bufferIndex;
-    size_t curBufOffset = _currentPosition.bufferOffset;
+    size_t curBufIndex = start.bufferIndex;
+    size_t curBufOffset = start.bufferOffset;
     while(toShare > 0) {
         auto& curBuf = _buffers[curBufIndex];
         auto shareSizeFromCurBuf = std::min(toShare, curBuf.size()-curBufOffset);

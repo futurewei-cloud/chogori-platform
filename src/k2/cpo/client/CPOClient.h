@@ -33,7 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
-#include <k2/dto/PersistenceGroup.h>
+#include <k2/dto/PersistenceCluster.h>
 #include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RPCTypes.h>
 #include <k2/transport/Status.h>

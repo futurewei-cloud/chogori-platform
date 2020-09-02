@@ -64,10 +64,10 @@ enum Verbs : k2::Verb {
 
     /************ K23SI Persistence *****************/
     K23SI_Persist = 40,
-    K23SI_PERSISTENT_CREATE,
-    K23SI_PERSISTENT_APPEND,
-    K23SI_PERSISTENT_READ,
-    K23SI_PERSISTENT_SEAL,
+    PERSISTENT_CREATE,
+    PERSISTENT_APPEND,
+    PERSISTENT_READ,
+    PERSISTENT_SEAL,
 
     /************ K23SI Inspection ******************/
     K23SI_INSPECT_RECORDS = 45,

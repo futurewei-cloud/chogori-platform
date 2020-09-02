@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sharded.hh>
 #include <k2/transport/Payload.h>
 #include <k2/transport/Status.h>
-#include <k2/dto/Plog.h>
+#include <k2/dto/Persistence.h>
 #include <k2/common/Common.h>
 #include <k2/config/Config.h>
 #include <k2/cpo/client/CPOClient.h>
@@ -44,13 +44,7 @@ public:
     PlogClient();
     ~PlogClient();
 
-    seastar::future<> gracefulStop();
-
-    seastar::future<> start();
-
-    seastar::future<> getPlogPersistenceMap();
-
-    seastar::future<> getPersistenceCluster(String name);
+    seastar::future<> init(String clusterName);
 
     bool selectPersistenceGroup(String name);
 
@@ -71,6 +65,8 @@ private:
 
     CPOClient _cpo;
     String _generatePlogId();
+    seastar::future<> _getPlogServerEndpoints();
+    seastar::future<> _getPersistenceCluster(String clusterName);
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 100ms};

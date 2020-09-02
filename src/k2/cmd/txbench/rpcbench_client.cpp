@@ -142,7 +142,7 @@ private:
                 }
                 else {
                     TXBenchRequest<k2::Payload> req;
-                    req.data.val = _session.dataShare.share();
+                    req.data.val = _session.dataShare.shareAll();
                     req.sessionId = _session.sessionId;
                     auto started = k2::Clock::now();
                     return k2::RPC().callRPC<TXBenchRequest<k2::Payload>, TXBenchResponse<k2::Payload>>(MsgVerbs::REQUEST, req, ep, 1s)

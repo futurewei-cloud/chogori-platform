@@ -58,7 +58,7 @@ public:  // application lifespan
             }
 
             auto& session = siditer->second;
-            response.data.val = session.dataShare.share();
+            response.data.val = session.dataShare.shareAll();
             return k2::RPCResponse(k2::Statuses::S200_OK("received"), std::move(response));
         });
 

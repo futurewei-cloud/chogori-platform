@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sharded.hh>
 #include <k2/transport/Payload.h>
 #include <k2/transport/Status.h>
-#include <k2/dto/Plog.h>
+#include <k2/dto/Persistence.h>
 #include <k2/common/Common.h>
 #include <k2/config/Config.h>
 #include <k2/cpo/client/CPOClient.h>

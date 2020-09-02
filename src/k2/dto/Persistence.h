@@ -46,9 +46,8 @@ struct PlogAppendRequest {
 };
 
 struct PlogAppendResponse {
-    uint32_t offset;
-    uint32_t bytes_appended;
-    K2_PAYLOAD_FIELDS(offset, bytes_appended);
+    uint32_t newOffset;
+    K2_PAYLOAD_FIELDS(newOffset);
 };
 
 struct PlogReadRequest {
@@ -65,33 +64,13 @@ struct PlogReadResponse {
 
 struct PlogSealRequest {
     String plogId;
-    uint32_t offset;
-    K2_PAYLOAD_FIELDS(plogId, offset);
+    uint32_t truncateOffset;
+    K2_PAYLOAD_FIELDS(plogId, truncateOffset);
 };
 
 struct PlogSealResponse {
-    uint32_t offset;
-    K2_PAYLOAD_FIELDS(offset);
-};
-
-struct PlogServerRegisterRequest{
-    String endpoint;
-    K2_PAYLOAD_FIELDS(endpoint);
-};
-
-struct PlogServerRegisterResponse{
-    K2_PAYLOAD_EMPTY;
-};
-
-struct PlogServerGetRequest{
-    uint32_t PlogServerAmount;
-    K2_PAYLOAD_FIELDS(PlogServerAmount);
-};
-
-struct PlogServerGetResponse{
-    std::vector<String> PlogServerEndpoints;
-    uint32_t PlogServerAmount;
-    K2_PAYLOAD_FIELDS(PlogServerEndpoints, PlogServerAmount);
+    uint32_t sealedOffset;
+    K2_PAYLOAD_FIELDS(sealedOffset);
 };
 
 }  // namespace dto

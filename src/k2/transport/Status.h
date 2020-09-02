@@ -450,11 +450,6 @@ static const inline Status S527_Railgun_Error{.code=527, .message=""};
 // Used by Qualys in the SSLLabs server testing API to signal that the site can't process the request.
 static const inline Status S529_Site_is_overloaded{.code=529, .message=""};
 
-// 530 Plog Id is duplicated 
-// Used by Plog Server to signal that the Plog Id is duplicated
-static const inline Status S530_PlogId_is_duplicated{.code=530, .message=""};
-
-
 // 598 (Informal convention) Network read timeout error
 // Used by some HTTP proxies to signal a network read timeout behind the proxy to a client in front of the proxy.
 static const inline Status S598_Network_read_timeout_error{.code=598, .message=""};

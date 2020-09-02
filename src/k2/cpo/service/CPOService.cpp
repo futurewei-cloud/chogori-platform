@@ -311,8 +311,8 @@ String CPOService::_getCollectionPath(String name) {
     return _dataDir() + "/" + name + ".collection";
 }
 
-String CPOService::_getPersistenceClusterMapPath() {
-    return _dataDir() + "/persistence_map.txt";
+String CPOService::_getPersistenceClusterPath(String clusterName) {
+    return _dataDir() + "/" + clusterName;
 }
 
 String CPOService::_getSchemasPath(String collectionName) {
@@ -457,28 +457,17 @@ Status CPOService::_saveSchemas(const String& collectionName) {
 seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
 CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request){
     K2INFO("Received persistence cluster create request for " << request.cluster.name);
-    auto cpath = _getPersistenceClusterMapPath();
-    std::unordered_map<String, dto::PersistenceCluster> persistenceClusterMap;
+    auto cpath = _getPersistenceClusterPath(request.cluster.name);
+    dto::PersistenceCluster persistenceCluster;
     Payload p;
-    if (!fileutil::readFile(p, cpath)) {
-        persistenceClusterMap.clear();
+    if (fileutil::readFile(p, cpath)) {
+        return RPCResponse(Statuses::S409_Conflict("persistence cluster already exists"), dto::PersistenceClusterCreateResponse());
     }
-    else{
-        if (!p.read(persistenceClusterMap)) {
-            return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster map data"), dto::PersistenceClusterCreateResponse());
-        };
-    }
-
-    auto iter = persistenceClusterMap.find(request.cluster.name);
-    if (iter != persistenceClusterMap.end()) {
-        return RPCResponse(Statuses::S400_Bad_Request("persistence cluster name already exists"), dto::PersistenceClusterCreateResponse());
-    }
-    persistenceClusterMap[request.cluster.name] = std::move(request.cluster);
 
     Payload q([] { return Binary(4096); });
-    q.write(persistenceClusterMap);
+    q.write(request.cluster);
     if (!fileutil::writeFile(std::move(q), cpath)) {
-        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write persistence cluster map data"), dto::PersistenceClusterCreateResponse());
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write persistence cluster data"), dto::PersistenceClusterCreateResponse());
     }
     return RPCResponse(Statuses::S201_Created("persistence cluster creates successfully"), dto::PersistenceClusterCreateResponse());
 }
@@ -486,23 +475,18 @@ CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&
 seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
 CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request) {
     K2INFO("Received persistence cluster get request with name " << request.name);
-    auto cpath = _getPersistenceClusterMapPath();
-    std::unordered_map<String, dto::PersistenceCluster> persistenceClusterMap;
+    auto cpath = _getPersistenceClusterPath(request.name);
+    dto::PersistenceCluster persistenceCluster;
     Payload p;
     if (!fileutil::readFile(p, cpath)) {
-        return RPCResponse(Statuses::S404_Not_Found("persistence cluster map not found"), dto::PersistenceClusterGetResponse());
+        return RPCResponse(Statuses::S404_Not_Found("persistence cluster not found"), dto::PersistenceClusterGetResponse());
     }
-    if (!p.read(persistenceClusterMap)) {
+    if (!p.read(persistenceCluster)) {
         return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster map data"), dto::PersistenceClusterGetResponse());
     };
 
-    auto iter = persistenceClusterMap.find(request.name);
-    if (iter == persistenceClusterMap.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("partpersistenceition cluster name not found"), dto::PersistenceClusterGetResponse());
-    }
-
-    K2INFO("Found persistence map in: " << cpath);
-    dto::PersistenceClusterGetResponse response{.cluster=iter->second};
+    K2INFO("Found persistence cluster in: " << cpath);
+    dto::PersistenceClusterGetResponse response{.cluster=std::move(persistenceCluster)};
     return RPCResponse(Statuses::S200_OK("persistence cluster map found"), std::move(response));
 }
 

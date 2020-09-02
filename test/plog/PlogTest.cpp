@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "PlogTest.h"
 #include <seastar/core/reactor.hh>
 #include <seastar/core/sleep.hh>
-#include <k2/dto/PersistenceGroup.h>
+#include <k2/dto/PersistenceCluster.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/appbase/AppEssentials.h>
 
@@ -105,7 +105,7 @@ seastar::future<> PlogTest::runTest2() {
 
 seastar::future<> PlogTest::runTest3() {
     K2INFO(">>> Test3: read the persistence group we created in test2");
-    return _client.getPersistenceCluster("Cluster1")
+    return _client.init("Cluster1")
     .then([this] () {
         K2INFO("Test3.1: create a plog");
         return _client.create();
@@ -153,7 +153,7 @@ seastar::future<> PlogTest::runTest3() {
     .then([this] (auto&& response){
         K2INFO("Test3.6: read a plog");
         auto& [status, offset] = response;
-        K2EXPECT(status, Statuses::S400_Bad_Request);
+        K2EXPECT(status, Statuses::S403_Forbidden);
         return _client.read(_plogId, 0, 15);
     })
     .then([this] (auto&& response){
