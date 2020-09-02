@@ -40,7 +40,6 @@ namespace k2{
 const char* collname = "3si_txn_collection";
 const char* badCname = "bad_collection_name";
 const dto::HashScheme hashScheme = dto::HashScheme::HashCRC32C; 
-const String wrongPart = "tcp+k2rpc://0.0.0.0:10066";
 
 struct DataRec {
     String f1;
@@ -130,6 +129,7 @@ private:
 	
 	std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
 	std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
+
     int exitcode = -1;
     uint64_t txnids = 1029;
 	
@@ -137,8 +137,6 @@ private:
 
     // injection parameters for error cases
     dto::Key wrongkey{.partitionKey = "SC00_wrong_pKey1", .rangeKey = "SC00_wrong_rKey1"}; // wrong partition: id(p1) against p2
-    //std::unique_ptr<k2::TXEndpoint> _wrongEndpoint;
-    //std::unique_ptr<k2::TXEndpoint> _emptyEndpoint;
 
     template <typename DataType>
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
