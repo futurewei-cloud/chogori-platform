@@ -124,8 +124,10 @@ PlogServer::_handleRead(dto::PlogReadRequest&& request){
          return RPCResponse(Statuses::S413_Payload_Too_Large("exceed the maximun length"), dto::PlogReadResponse());
     }
     
+    auto currentPosition = iter->second.payload.getCurrentPosition();
     iter->second.payload.seek(request.offset);
     dto::PlogReadResponse response{.payload=iter->second.payload.shareRegion(iter->second.payload.getCurrentPosition(), request.size)};
+    iter->second.payload.seek(currentPosition);
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
 
