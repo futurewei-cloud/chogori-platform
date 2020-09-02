@@ -371,18 +371,21 @@ uint32_t Payload::computeCrc32c() {
 
 
 Payload Payload::shareAll() {
-    return shareRegion(PayloadPosition(0,0,0), getSize());
+    return shareRegion(0, getSize());
 }
 
-Payload Payload::shareRegion(PayloadPosition start, size_t nbytes){
-    nbytes = std::min(_size - start.offset, nbytes);
+Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
+    auto previousPosition = getCurrentPosition();
+    seek(startOffset);
+    nbytes = std::min(_size - _currentPosition.offset, nbytes);
+
     Payload shared(_allocator);
     shared._size = nbytes;
     shared._capacity = nbytes; // the capacity of the new payload stops with the current data written
 
     size_t toShare = nbytes;
-    size_t curBufIndex = start.bufferIndex;
-    size_t curBufOffset = start.bufferOffset;
+    size_t curBufIndex = _currentPosition.bufferIndex;
+    size_t curBufOffset = _currentPosition.bufferOffset;
     while(toShare > 0) {
         auto& curBuf = _buffers[curBufIndex];
         auto shareSizeFromCurBuf = std::min(toShare, curBuf.size()-curBufOffset);
@@ -396,6 +399,8 @@ Payload Payload::shareRegion(PayloadPosition start, size_t nbytes){
         curBufIndex++;
         curBufOffset = 0;
     }
+
+    seek(previousPosition);
     return shared;
 }
 

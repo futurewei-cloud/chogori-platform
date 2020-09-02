@@ -118,12 +118,12 @@ public: // memory management
     // - any new data appended to either payload will not be visible to any other payload
     // - any changes on the common data will be visible to both
     // the underlying data will not be destroyed until all shared payloads are destroyed.
-    
+
     // share entire payload
     Payload shareAll();
 
     // share a particular region from the payload.
-    Payload shareRegion(PayloadPosition start, size_t nbytes);
+    Payload shareRegion(size_t startOffset, size_t nbytes);
 
     // Creates a new payload as a copy of this payload. The underlying data is copied over to the new payload
     Payload copy();
