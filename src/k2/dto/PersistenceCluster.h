@@ -20,9 +20,6 @@ Copyright(c) 2020 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-
-#include "Collection.h"
-
 #pragma once
 
 namespace k2 {

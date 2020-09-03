@@ -86,7 +86,7 @@ PlogClient::_getPersistenceCluster(String clusterName){
 
         if (!status.is2xxOK()) {
             K2INFO("Failed to obtain Persistence Cluster" << status);
-            return seastar::make_exception_future<>(std::runtime_error("Failed to obtain Persistence Cluster Map"));
+            return seastar::make_exception_future<>(std::runtime_error("Failed to obtain Persistence Cluster"));
         }
 
         _persistenceCluster = std::move(response.cluster);
@@ -97,7 +97,7 @@ PlogClient::_getPersistenceCluster(String clusterName){
 }
 
 // TODO: If the create call fails, we should try and create the plog in another persistence group.
-seastar::future<std::tuple<Status, String>> PlogClient::create(){
+seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
     String plogId = _generatePlogId();
     dto::PlogCreateRequest request{.plogId = plogId};
     
@@ -106,7 +106,7 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(){
         createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, _plog_timeout()));
     }
     return seastar::when_all_succeed(createFutures.begin(), createFutures.end())
-        .then([this, plogId](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
+        .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
             Status return_status;
             for (auto& result: results){
                 auto& [status, response] = result;
@@ -114,8 +114,8 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(){
                 if (!return_status.is2xxOK()) 
                     break;
             }
-            if (return_status.code == 530){
-                return create();
+            if (return_status.code == 409 && retries > 0){
+                    return create(retries-1);
             }
             return seastar::make_ready_future<std::tuple<Status, String> >(std::tuple<Status, String>(std::move(return_status), std::move(plogId)));
         });

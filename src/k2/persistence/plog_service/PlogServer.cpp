@@ -139,7 +139,12 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
     }
     if (iter->second.sealed){
         response.sealedOffset = iter->second.offset;
-        return RPCResponse(Statuses::S409_Conflict("plog already sealed"), std::move(response));
+        if (request.truncateOffset == iter->second.offset){
+            return RPCResponse(Statuses::S200_OK("sealed success"), std::move(response));
+        }
+        else{
+            return RPCResponse(Statuses::S409_Conflict("plog already sealed"), std::move(response));
+        }
     }
 
     iter->second.sealed = true;

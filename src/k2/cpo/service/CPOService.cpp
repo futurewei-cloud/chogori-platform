@@ -312,7 +312,7 @@ String CPOService::_getCollectionPath(String name) {
 }
 
 String CPOService::_getPersistenceClusterPath(String clusterName) {
-    return _dataDir() + "/" + clusterName;
+    return _dataDir() + "/" + clusterName + ".persistence";
 }
 
 String CPOService::_getSchemasPath(String collectionName) {
@@ -482,12 +482,12 @@ CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& requ
         return RPCResponse(Statuses::S404_Not_Found("persistence cluster not found"), dto::PersistenceClusterGetResponse());
     }
     if (!p.read(persistenceCluster)) {
-        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster map data"), dto::PersistenceClusterGetResponse());
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster data"), dto::PersistenceClusterGetResponse());
     };
 
     K2INFO("Found persistence cluster in: " << cpath);
     dto::PersistenceClusterGetResponse response{.cluster=std::move(persistenceCluster)};
-    return RPCResponse(Statuses::S200_OK("persistence cluster map found"), std::move(response));
+    return RPCResponse(Statuses::S200_OK("persistence cluster found"), std::move(response));
 }
 
 } // namespace k2

@@ -316,6 +316,55 @@ SCENARIO("test copy from payload") {
         REQUIRE(dst2.copy() == dst2);
     }
 }
+
+SCENARIO("test shareAll() and shareRegion()") {
+    std::vector<data<embeddedComplex>> testCases;
+    String s(100000, 'x');
+    testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11, Duration(10ms)));
+    testCases.push_back(makeData(11,22,'b', 444, 'g', 1231234, "hya", 1241234, 's', "1", "", 101, Duration(11us)));
+    testCases.push_back(makeData(111,2222,'c', 4444, 'h', 12312345, "hya", 1241245, 's', s.c_str(), "", 107, Duration(13ns)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
+
+    Payload dst([] { return Binary(4096); });
+    std::vector<uint32_t> offsetCheckPoint;
+    for (auto& d: testCases) {
+        offsetCheckPoint.push_back(dst.getSize());
+        dst.write(d);
+    }
+    offsetCheckPoint.push_back(dst.getSize());
+
+    Payload sharedDst = dst.shareAll();
+    sharedDst.seek(0);
+    for (auto& d: testCases) {
+        data<Payload> parsedAsPayload;
+        REQUIRE(sharedDst.read(parsedAsPayload));
+        REQUIRE((parsedAsPayload.a == d.a && parsedAsPayload.b == d.b && parsedAsPayload.x == d.x && parsedAsPayload.y == d.y && parsedAsPayload.z == d.z && parsedAsPayload.c == d.c && parsedAsPayload.d == d.d));
+        embeddedComplex cmplx;
+        REQUIRE(parsedAsPayload.w.val.read(cmplx));
+        REQUIRE(cmplx == d.w.val);
+    }
+
+    for (long unsigned int i=0; i < testCases.size(); ++i)
+        for (long unsigned int j=i; j < testCases.size(); ++j){
+            auto offset = offsetCheckPoint[i];
+            auto size = offsetCheckPoint[j+1] - offsetCheckPoint[i];
+            Payload sharedDst = dst.shareRegion(offset, size);
+            sharedDst.seek(0);
+
+            for (long unsigned int k=i; k <= j; ++k){
+                auto& d = testCases[k];
+                data<Payload> parsedAsPayload;
+                REQUIRE(sharedDst.read(parsedAsPayload));
+                REQUIRE((parsedAsPayload.a == d.a && parsedAsPayload.b == d.b && parsedAsPayload.x == d.x && parsedAsPayload.y == d.y && parsedAsPayload.z == d.z && parsedAsPayload.c == d.c && parsedAsPayload.d == d.d));
+                embeddedComplex cmplx;
+                REQUIRE(parsedAsPayload.w.val.read(cmplx));
+                REQUIRE(cmplx == d.w.val);
+            }
+        }
+}
+
+
 /*
 SCENARIO("rpc parsing") {
     RPCParser([] { return false; }, false) parseNoCRC;

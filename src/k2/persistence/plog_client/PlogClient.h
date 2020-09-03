@@ -44,29 +44,41 @@ public:
     PlogClient();
     ~PlogClient();
 
+    // obtain the persistence cluster for a given name from the cpo and obtain the endpoints of the plog server
     seastar::future<> init(String clusterName);
 
+    // allow users to select a specific persistence group by its name
     bool selectPersistenceGroup(String name);
 
-    seastar::future<std::tuple<Status, String>> create();
+    // create a plog with retry times
+    seastar::future<std::tuple<Status, String>> create(uint8_t retries = 1);
 
+    // append a payload into a plog at the given offset 
     seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);
 
+    // read a payload 
     seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset, uint32_t size);
 
+    //seal a payload
     seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
 
 private:
-    dto::PersistenceCluster _persistenceCluster;
-    std::unordered_map<String, std::vector<std::unique_ptr<TXEndpoint>>> _persistenceMapEndpoints;
-    std::unordered_map<String, uint32_t> _persistenceNameMap;
-    std::vector<String> _persistenceNameList;
-    uint32_t _persistenceMapPointer;
+    dto::PersistenceCluster _persistenceCluster; // the current persistence cluster the client holds
+    std::unordered_map<String, std::vector<std::unique_ptr<TXEndpoint>>> _persistenceMapEndpoints; // the map of persistence group name and plog server endpoints
+    std::unordered_map<String, uint32_t> _persistenceNameMap; // key - name, value - the index of the name in _persistenceNameList
+    std::vector<String> _persistenceNameList; // a list to store all the names of persistence groups in current persistence cluster
+    uint32_t _persistenceMapPointer; // indicate the current used persistence group
 
     CPOClient _cpo;
+
+    // generate the plog id
     String _generatePlogId();
-    seastar::future<> _getPlogServerEndpoints();
-    seastar::future<> _getPersistenceCluster(String clusterName);
+
+    // obtain the endpoints of the plog server
+    seastar::future<> _getPlogServerEndpoints(); 
+
+    // obtain the persistence cluster for a given name from the cpo
+    seastar::future<> _getPersistenceCluster(String clusterName); 
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 100ms};
