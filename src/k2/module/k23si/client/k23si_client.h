@@ -114,6 +114,8 @@ public:
     uint64_t abort_conflicts{0};
     uint64_t abort_too_old{0};
     uint64_t heartbeats{0};
+
+    CPOClient cpo_client;
 private:
     sm::metric_groups _metric_groups;
     std::mt19937 _gen;
@@ -121,7 +123,6 @@ private:
     std::vector<String> _k2endpoints;
     // collection name -> (schema name -> (schema version -> schema))
     std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, dto::Schema>>> _schemas;
-    CPOClient _cpo_client;
 };
 
 

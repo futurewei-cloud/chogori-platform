@@ -115,9 +115,8 @@ public:  // application lifespan
 
                     _schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partitionKey"});
                     _schema.setRangeKeyFieldsByName(std::vector<k2::String>{"rangeKey"});
-                    k2::dto::CreateSchemaRequest request{ collname, _schema };
-                    auto cpo_endpoint = k2::RPC().getTXEndpoint(_cpo_url());
-                    return k2::RPC().callRPC<k2::dto::CreateSchemaRequest, k2::dto::CreateSchemaResponse>(k2::dto::Verbs::CPO_SCHEMA_CREATE, request, *cpo_endpoint, 1s);
+
+                    return _client.cpo_client.createSchema(collname, _schema);
                 }).discard_result();
 
 
@@ -304,7 +303,6 @@ private://metrics
     uint64_t _failWrites = 0;
 
    private:
-    k2::ConfigVar<k2::String> _cpo_url{"cpo"};
     k2::ConfigVar<uint32_t> _dataSize{"data_size"};
     k2::ConfigVar<uint32_t> _reads{"reads"};
     k2::ConfigVar<uint32_t> _writes{"writes"};

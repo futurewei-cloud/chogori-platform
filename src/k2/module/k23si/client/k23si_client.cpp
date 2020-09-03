@@ -164,7 +164,7 @@ seastar::future<> K23SIClient::start() {
         _k2endpoints.push_back(String(*it));
     }
     K2INFO("_cpo: " << _cpo());
-    _cpo_client = CPOClient(String(_cpo()));
+    cpo_client = CPOClient(String(_cpo()));
 
     return seastar::make_ready_future<>();
 }
@@ -185,7 +185,7 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection, st
         .retentionPeriod = Duration(retention_window())
     };
 
-    return _cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
+    return cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
 }
 
 seastar::future<SKVRecord> makeSKVRecord(const String& collectionName, const String& schemaName) {
@@ -205,7 +205,7 @@ seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) 
         };
 
         total_txns++;
-        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), std::move(options), &_cpo_client, this, txn_end_deadline(), start_time));
+        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), std::move(options), &cpo_client, this, txn_end_deadline(), start_time));
     });
 }
 
