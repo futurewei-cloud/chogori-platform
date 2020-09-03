@@ -199,5 +199,4 @@ bool PlogClient::selectPersistenceGroup(String name){
     return true;
 }
 
-
 } // k2

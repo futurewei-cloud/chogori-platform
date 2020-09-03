@@ -59,7 +59,7 @@ public:
     // read a payload 
     seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset, uint32_t size);
 
-    //seal a payload
+    // seal a payload
     seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
 
 private:

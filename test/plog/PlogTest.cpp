@@ -111,17 +111,28 @@ seastar::future<> PlogTest::runTest3() {
         return _client.create();
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.2: append a plog");
+        K2INFO("Test3.2: double-create an exist plog");
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S201_Created);
         _plogId = resp;
+        
+        dto::PlogCreateRequest request{.plogId = _plogId};
+        std::vector<String> plogServerEndpoints = _plogConfigEps();
+        auto ep = RPC().getTXEndpoint(plogServerEndpoints[0]);
+        
+        return RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, 1s);
+    })
+    .then([this] (auto&& response){
+        K2INFO("Test3.3: append a plog");
+        auto& [status, resp] = response;
+        K2EXPECT(status, Statuses::S409_Conflict);
         
         Payload payload([] { return Binary(4096); });
         payload.write("1234567890");
         return _client.append(_plogId, 0, std::move(payload));
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.3: append a plog");
+        K2INFO("Test3.4: append a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
         K2EXPECT(offset, 15);
@@ -131,7 +142,7 @@ seastar::future<> PlogTest::runTest3() {
         return _client.append(_plogId, 15, std::move(payload));
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.4: append a plog");
+        K2INFO("Test3.5: append a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
         K2EXPECT(offset, 30);
@@ -141,7 +152,7 @@ seastar::future<> PlogTest::runTest3() {
         return _client.append(_plogId, 30, std::move(payload));
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.5: append a plog with wrong offset");
+        K2INFO("Test3.6: append a plog with wrong offset");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
         K2EXPECT(offset, 45);
@@ -151,13 +162,13 @@ seastar::future<> PlogTest::runTest3() {
         return _client.append(_plogId, 100, std::move(payload));
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.6: read a plog");
+        K2INFO("Test3.7: read a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S403_Forbidden);
         return _client.read(_plogId, 0, 15);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.7: read a plog");
+        K2INFO("Test3.8: read a plog");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str;
@@ -167,7 +178,7 @@ seastar::future<> PlogTest::runTest3() {
         return _client.read(_plogId, 15, 15);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.8: read a plog");
+        K2INFO("Test3.9: read a plog");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str;
@@ -177,7 +188,7 @@ seastar::future<> PlogTest::runTest3() {
         return _client.read(_plogId, 30, 15);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.9: read multiple payloads");
+        K2INFO("Test3.10: read multiple payloads");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str;
@@ -187,7 +198,7 @@ seastar::future<> PlogTest::runTest3() {
         return _client.read(_plogId, 0, 30);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.10: seal a plog");
+        K2INFO("Test3.11: seal a plog");
         auto& [status, payload] = response;
         K2EXPECT(status, Statuses::S200_OK);
         String str, str2;
@@ -199,14 +210,14 @@ seastar::future<> PlogTest::runTest3() {
         return _client.seal(_plogId, 45);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.9: seal a sealed plog");
+        K2INFO("Test3.12: seal a sealed plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S200_OK);
         K2EXPECT(offset, 45);
         return _client.seal(_plogId, 15);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.10: append a sealed plog");
+        K2INFO("Test3.13: append a sealed plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S409_Conflict);
         K2EXPECT(offset, 45);
