@@ -46,10 +46,10 @@ namespace k2 {
 
 template<typename ValueType>
 struct KeyValuePairKeyExtractor {
-	typedef const std::string& KeyType;
+	typedef const std::string* KeyType;
 
 	inline size_t getKeyLength(ValueType const &value) const {
-		return value->first.length();
+		return value->first->length();
 	}
 
     inline KeyType operator()(ValueType const &value) const {
@@ -165,7 +165,7 @@ private: // members
     // (newest item is at front of the deque)
     // Duplicates are not allowed
     //std::map<dto::Key, std::deque<dto::DataRecord>> _indexer;
-    hot::singlethreaded::HOTSingleThreaded<std::pair<const std::string, std::deque<dto::DataRecord>>*, KeyValuePairKeyExtractor> _indexer;
+    hot::singlethreaded::HOTSingleThreaded<const std::pair<const std::string*, std::deque<dto::DataRecord>&>*, KeyValuePairKeyExtractor> _indexer;
 
     // to store transactions
     TxnManager _txnMgr;

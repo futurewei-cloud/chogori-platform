@@ -182,11 +182,12 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     }
 
     // find the version deque for the key
-    auto fiter = _indexer.find(generateKey(request.key));
-    if (fiter == _indexer.end()) {
+    auto key = generateKey(request.key);
+    auto fiter = _indexer.lookup(&key, key.length());
+    if (!fiter.mIsValid) {
         return _makeReadOK(nullptr);
     }
-    auto& versions = (*fiter)->second;
+    auto& versions = (fiter.mValue)->second;
     auto viter = versions.begin();
     // position the version iterator at the version we should be returning
     while(viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
@@ -232,6 +233,7 @@ bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest<Payload>& 
         // the request is outside the retention window
         return false;
     }
+
     // check read cache for R->W conflicts
     auto ts = _readCache->checkInterval(request.key, request.key);
     if (request.mtr.timestamp.compareCertain(ts) < 0) {
@@ -297,17 +299,24 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest<Payload>&& request, dto
     }
 
     auto key = generateKey(request.key);
-    auto fiter = _indexer.find(key);
-     if (fiter == _indexer.end()) {
-         // Entry does not exist, create an empty entry
-        std::pair<const std::string, std::deque<dto::DataRecord>> kvpair = {key, std::deque<dto::DataRecord>()};
-        if (!_indexer.insert(&kvpair)) {
+    auto fiter = _indexer.lookup(&key, key.length());
+     if (!fiter.mIsValid) {
+        K2DEBUG("Partition: Key " << key << " not found so create one!");
+        // Entry does not exist, create an empty entry
+        std::string *mkey = new std::string(generateKey(request.key));
+        std::deque<dto::DataRecord> *data = new std::deque<dto::DataRecord>();
+        std::pair<const std::string *, std::deque<dto::DataRecord>&>* kvpair = new std::pair<const std::string *, std::deque<dto::DataRecord>&>{mkey, *data};
+        if (!_indexer.insert(kvpair, key.length())) {
             K2DEBUG("Partition: failed to insert " << key << " in the indexer");
+            return RPCResponse(dto::K23SIStatus::KeyNotFound("Key not inserted in indexer"), dto::K23SIWriteResponse{});
         }
-        fiter = _indexer.find(key);
     }
-
-    auto& versions = (*fiter)->second;
+    fiter = _indexer.lookup(&key, key.length());
+    if (!fiter.mIsValid) {
+        K2ERROR("Partition: Key " << key << "not found in the indexer");
+        return RPCResponse(dto::K23SIStatus::KeyNotFound("Key not found in indexer"), dto::K23SIWriteResponse{});
+    }
+    auto& versions = (fiter.mValue)->second;
     if (!_validateStaleWrite(request, versions)) {
         K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIWriteResponse{});
@@ -518,8 +527,8 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     // find the version deque for the key
     K2DEBUG("Partition: " << _partition << ", txn finalize: " << request);
     auto key = generateKey(request.key);
-    auto fiter = _indexer.find(key);
-    if (fiter == _indexer.end() || (*fiter)->second.empty()) {
+    auto fiter = _indexer.lookup(&key, key.length());
+    if (!fiter.mIsValid || (fiter.mValue)->second.empty()) {
         if (request.action == dto::EndAction::Abort) {
             // we don't have it but it was an abort anyway
             K2DEBUG("Partition: " << _partition << ", abort for missing key " << request.key << ", in txn " << request.mtr);
@@ -529,7 +538,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         K2DEBUG("Partition: " << _partition << ", rejecting commit for missing key " << request.key << ", in txn " << request.mtr);
         return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"), dto::K23SITxnFinalizeResponse());
     }
-    auto& versions = (*fiter)->second;
+    auto& versions = (fiter.mValue)->second;
     auto viter = versions.begin();
     // position the version iterator at the version we should be converting
     while (viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
@@ -573,7 +582,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         versions.erase(viter);
         if (versions.empty()) {
             // if there are no versions left, erase the key from indexer
-            _indexer.remove(key);
+            _indexer.remove(&key, key.length());
         }
     }
     // send a partiall update
@@ -600,11 +609,13 @@ seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
 K23SIPartitionModule::handleInspectRecords(dto::K23SIInspectRecordsRequest&& request) {
     K2DEBUG("handleInspectRecords for: " << request.key);
 
-    auto it = _indexer.find(generateKey(request.key));
-    if (it == _indexer.end()) {
+    auto key = generateKey(request.key);
+    auto t = _indexer.lookup(&key, key.length());
+    if (!t.mIsValid) {
         return RPCResponse(dto::K23SIStatus::KeyNotFound("Key not found in indexer"), dto::K23SIInspectRecordsResponse{});
     }
-    auto& versions = (*it)->second;
+
+    auto& versions = (t.mValue)->second;
 
     std::vector<dto::DataRecord> records;
     records.reserve(versions.size());
@@ -714,13 +725,10 @@ K23SIPartitionModule::handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& req
     //keys.reserve(_indexer.size());
     // Fixed number added for testing. As HOT does not support size
     keys.reserve(8192);
-/*
-     for (auto it = _indexer.begin(); it != _indexer.end(); ++it) {
--        keys.push_back(it->first);
-+        keys.push_back((*it)->first);
-     }
--
-+*/
+
+    for (auto it = _indexer.begin(); it != _indexer.end(); ++it) {
+       // keys.push_back((*it)->first);
+    }
 
     dto::K23SIInspectAllKeysResponse response { std::move(keys) };
     return RPCResponse(dto::K23SIStatus::OK("Inspect AllKeys success"), std::move(response));
