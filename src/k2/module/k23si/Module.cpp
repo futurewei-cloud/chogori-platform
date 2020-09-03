@@ -116,7 +116,7 @@ seastar::future<> K23SIPartitionModule::start() {
 
 
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
-        K2DEBUG("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
+        K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
                                       << _config.minimumRetentionPeriod() << "). Extending retention to minimum");
         _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
     }
