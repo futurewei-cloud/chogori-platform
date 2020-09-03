@@ -116,7 +116,7 @@ seastar::future<> K23SIPartitionModule::start() {
 
 
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
-        K2WARN("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
+        K2DEBUG("Requested retention(" << _cmeta.retentionPeriod << ") is lower than minimum("
                                       << _config.minimumRetentionPeriod() << "). Extending retention to minimum");
         _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
     }
@@ -166,7 +166,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
         // tell client their collection partition is gone
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in read"), dto::K23SIReadResponse<Payload>{});
     }
-    if (_validateRequestParameter(request)){
+    if (!_validateRequestParameter(request)){
         // do not allow empty partition key
         return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in read"), dto::K23SIReadResponse<Payload>{});
     }
@@ -278,7 +278,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest<Payload>&& request, dto
         K2DEBUG("Partition: " << _partition << ", failed validation for " << request.key);
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in write"), dto::K23SIWriteResponse{});
     }
-    if (_validateRequestParameter(request)){
+    if (!_validateRequestParameter(request)){
         // do not allow empty partition key
         return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in write"), dto::K23SIWriteResponse{});
     }
@@ -350,26 +350,10 @@ K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
         // tell client their collection partition is gone
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in push"), dto::K23SITxnPushResponse());
     }
-    uint8_t pushRet = _validatePushRetention(request);
-    switch (pushRet) {
-    case 0: break;
-    case 1: {
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("incumbent MTR too old in push"), dto::K23SITxnPushResponse());
-        break;
+    if (!_validatePushRetention(request)){
+        // the request is outside the retention window
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request(challenger MTR) too old in push"), dto::K23SITxnPushResponse());
     }
-    case 2: {
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("challenger MTR too old in push"), dto::K23SITxnPushResponse());
-        break;
-    }
-    case 3: {
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("both MTRs too old in push"), dto::K23SITxnPushResponse());
-        break;
-    }
-    default: {
-        K2ASSERT(false, "invalid push retention result.");
-        break;
-    }
-    } // end switch
     dto::TxnId txnId{.trh=std::move(request.key), .mtr=std::move(request.incumbentMTR)};
     TxnRecord& incumbent = _txnMgr.getTxnRecord(txnId);
     // the only state for which we'd directly abort is the Created state (we didn't have this txn)
@@ -534,7 +518,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         // tell client their collection partition is gone
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in finalize"), dto::K23SITxnFinalizeResponse());
     }
-    if (_validateRequestParameter(request)){
+    if (!_validateRequestParameter(request)){
         // do not allow empty partition key
         return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in finalize"), dto::K23SITxnFinalizeResponse());
     }
