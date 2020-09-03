@@ -35,12 +35,27 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/tso/client/tso_clientlib.h>
 
+#include <hot/singlethreaded/HOTSingleThreaded.hpp>
+
 #include "ReadCache.h"
 #include "TxnManager.h"
 #include "Config.h"
 #include "Persistence.h"
 
 namespace k2 {
+
+template<typename ValueType>
+struct KeyValuePairKeyExtractor {
+	typedef const std::string& KeyType;
+
+	inline size_t getKeyLength(ValueType const &value) const {
+		return value->first.length();
+	}
+
+    inline KeyType operator()(ValueType const &value) const {
+        return value->first;
+    }
+};
 
 class K23SIPartitionModule {
 public: // lifecycle
@@ -149,7 +164,8 @@ private: // members
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
     // (newest item is at front of the deque)
     // Duplicates are not allowed
-    std::map<dto::Key, std::deque<dto::DataRecord>> _indexer;
+    //std::map<dto::Key, std::deque<dto::DataRecord>> _indexer;
+    hot::singlethreaded::HOTSingleThreaded<std::pair<const std::string, std::deque<dto::DataRecord>>*, KeyValuePairKeyExtractor> _indexer;
 
     // to store transactions
     TxnManager _txnMgr;

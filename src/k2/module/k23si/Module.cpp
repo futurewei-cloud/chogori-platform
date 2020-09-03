@@ -159,6 +159,10 @@ _makeReadOK(dto::DataRecord* rec) {
     return RPCResponse(dto::K23SIStatus::OK("read succeeded"), std::move(response));
 }
 
+inline std::string generateKey(dto::Key key) {
+    return std::string(key.partitionKey + ":" + key.rangeKey);
+}
+
 seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
 K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received read " << request);
@@ -178,11 +182,11 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     }
 
     // find the version deque for the key
-    auto fiter = _indexer.find(request.key);
+    auto fiter = _indexer.find(generateKey(request.key));
     if (fiter == _indexer.end()) {
         return _makeReadOK(nullptr);
     }
-    auto& versions = fiter->second;
+    auto& versions = (*fiter)->second;
     auto viter = versions.begin();
     // position the version iterator at the version we should be returning
     while(viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
@@ -292,7 +296,18 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest<Payload>&& request, dto
         });
     }
 
-    auto& versions = _indexer[request.key];
+    auto key = generateKey(request.key);
+    auto fiter = _indexer.find(key);
+     if (fiter == _indexer.end()) {
+         // Entry does not exist, create an empty entry
+        std::pair<const std::string, std::deque<dto::DataRecord>> kvpair = {key, std::deque<dto::DataRecord>()};
+        if (!_indexer.insert(&kvpair)) {
+            K2DEBUG("Partition: failed to insert " << key << " in the indexer");
+        }
+        fiter = _indexer.find(key);
+    }
+
+    auto& versions = (*fiter)->second;
     if (!_validateStaleWrite(request, versions)) {
         K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIWriteResponse{});
@@ -502,8 +517,9 @@ seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
 K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) {
     // find the version deque for the key
     K2DEBUG("Partition: " << _partition << ", txn finalize: " << request);
-    auto fiter = _indexer.find(request.key);
-    if (fiter == _indexer.end() || fiter->second.empty()) {
+    auto key = generateKey(request.key);
+    auto fiter = _indexer.find(key);
+    if (fiter == _indexer.end() || (*fiter)->second.empty()) {
         if (request.action == dto::EndAction::Abort) {
             // we don't have it but it was an abort anyway
             K2DEBUG("Partition: " << _partition << ", abort for missing key " << request.key << ", in txn " << request.mtr);
@@ -513,7 +529,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         K2DEBUG("Partition: " << _partition << ", rejecting commit for missing key " << request.key << ", in txn " << request.mtr);
         return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"), dto::K23SITxnFinalizeResponse());
     }
-    auto& versions = fiter->second;
+    auto& versions = (*fiter)->second;
     auto viter = versions.begin();
     // position the version iterator at the version we should be converting
     while (viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
@@ -557,7 +573,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         versions.erase(viter);
         if (versions.empty()) {
             // if there are no versions left, erase the key from indexer
-            _indexer.erase(fiter);
+            _indexer.remove(key);
         }
     }
     // send a partiall update
@@ -584,11 +600,11 @@ seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
 K23SIPartitionModule::handleInspectRecords(dto::K23SIInspectRecordsRequest&& request) {
     K2DEBUG("handleInspectRecords for: " << request.key);
 
-    auto it = _indexer.find(request.key);
+    auto it = _indexer.find(generateKey(request.key));
     if (it == _indexer.end()) {
         return RPCResponse(dto::K23SIStatus::KeyNotFound("Key not found in indexer"), dto::K23SIInspectRecordsResponse{});
     }
-    auto& versions = it->second;
+    auto& versions = (*it)->second;
 
     std::vector<dto::DataRecord> records;
     records.reserve(versions.size());
@@ -642,7 +658,7 @@ K23SIPartitionModule::handleInspectWIs(dto::K23SIInspectWIsRequest&& request) {
     std::vector<dto::DataRecord> records;
 
     for (auto it = _indexer.begin(); it != _indexer.end(); ++it) {
-        auto& versions = it->second;
+        auto& versions = (*it)->second;
         for (dto::DataRecord& rec : versions) {
             if (rec.status != dto::DataRecord::Status::WriteIntent) {
                 continue;
@@ -695,11 +711,16 @@ K23SIPartitionModule::handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& req
     (void) request;
     K2DEBUG("handleInspectAllKeys");
     std::vector<dto::Key> keys;
-    keys.reserve(_indexer.size());
-
-    for (auto it = _indexer.begin(); it != _indexer.end(); ++it) {
-        keys.push_back(it->first);
-    }
+    //keys.reserve(_indexer.size());
+    // Fixed number added for testing. As HOT does not support size
+    keys.reserve(8192);
+/*
+     for (auto it = _indexer.begin(); it != _indexer.end(); ++it) {
+-        keys.push_back(it->first);
++        keys.push_back((*it)->first);
+     }
+-
++*/
 
     dto::K23SIInspectAllKeysResponse response { std::move(keys) };
     return RPCResponse(dto::K23SIStatus::OK("Inspect AllKeys success"), std::move(response));
