@@ -44,7 +44,7 @@ static const k2::String tpccCollectionName = "TPCC";
     while (0) \
 
 template<typename ValueType>
-seastar::future<k2::WriteResult> writeRow(const ValueType& row, k2::K2TxnHandle& txn)
+seastar::future<k2::WriteResult> writeRow(ValueType& row, k2::K2TxnHandle& txn)
 {
     return txn.write<ValueType>(row).then([] (k2::WriteResult&& result) {
         if (!result.status.is2xxOK()) {
@@ -108,6 +108,14 @@ public:
         YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
     }
 
+    Warehouse(uint32_t id) : WarehouseID(id) {
+        schema = seastar::make_lw_shared(warehouse_schema);
+    }
+
+    Warehouse() {
+        schema = seastar::make_lw_shared(warehouse_schema);
+    };
+
     std::optional<uint32_t> WarehouseID;
     std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
     std::optional<uint32_t> YTD; // "Fixed point", first two digits are cents
@@ -152,6 +160,14 @@ public:
         Tax = random.UniformRandom(0, 2000) / 10000.0f;
         YTD = _customers_per_district() * 1000;
         NextOrderID = _customers_per_district()+1;  
+    }
+
+    District(uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
+        schema = seastar::make_lw_shared(district_schema);
+    }
+
+    District() {
+        schema = seastar::make_lw_shared(district_schema);
     }
 
     std::optional<uint32_t> WarehouseID;
@@ -226,7 +242,16 @@ public:
         YTDPayment = 1000;
         PaymentCount = 1;
         DeliveryCount = 0;
-        Info = random.RandomString(300, 500);
+        Info = random.RandomString(500, 500);
+    }
+
+    Customer(uint32_t w_id, uint16_t d_id, uint32_t c_id) :
+            WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
+        schema = seastar::make_lw_shared(customer_schema);
+    }
+
+    Customer() {
+        schema = seastar::make_lw_shared(customer_schema);
     }
 
     std::optional<uint32_t> WarehouseID;
@@ -303,6 +328,10 @@ public:
         strcpy((char*)Info->c_str() + offset, d_name);
     }
 
+    History() {
+        schema = seastar::make_lw_shared(history_schema);
+    }
+
     std::optional<uint32_t> WarehouseID;
     std::optional<uint64_t> Date;
     std::optional<uint32_t> CustomerID;
@@ -368,14 +397,18 @@ public:
         schema = seastar::make_lw_shared(order_schema);
     }
 
-    uint32_t WarehouseID;
-    uint32_t DistrictID;
-    uint32_t OrderID;
-    uint32_t OrderLineCount;
-    uint64_t EntryDate;
-    uint32_t CustomerID;
-    uint32_t CarrierID;
-    uint32_t AllLocal; // boolean, 0 or 1
+    Order () {
+        schema = seastar::make_lw_shared(order_schema);
+    }
+
+    std::optional<uint32_t> WarehouseID;
+    std::optional<uint32_t> DistrictID;
+    std::optional<uint32_t> OrderID;
+    std::optional<uint32_t> OrderLineCount;
+    std::optional<uint64_t> EntryDate;
+    std::optional<uint32_t> CustomerID;
+    std::optional<uint32_t> CarrierID;
+    std::optional<uint32_t> AllLocal; // boolean, 0 or 1
 
     seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
@@ -404,14 +437,18 @@ public:
         schema = seastar::make_lw_shared(neworder_schema);
     }
 
-    uint32_t WarehouseID;
-    uint32_t DistrictID;
-    uint32_t OrderID;
+    NewOrder() {
+        schema = seastar::make_lw_shared(neworder_schema);
+    }
 
+    std::optional<uint32_t> WarehouseID;
+    std::optional<uint32_t> DistrictID;
+    std::optional<uint32_t> OrderID;
+    
     seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID);
-};
+};  
 
 class OrderLine {
 public:
@@ -475,6 +512,10 @@ public:
         Amount = 0.0f;
     }
 
+    OrderLine() {
+        schema = seastar::make_lw_shared(orderline_schema);
+    }
+
     std::optional<uint32_t> WarehouseID;
     std::optional<uint32_t> DistrictID;
     std::optional<uint32_t> OrderID;
@@ -525,6 +566,10 @@ public:
     }
 
     Item(uint32_t id) : ItemID(id) {
+        schema = seastar::make_lw_shared(item_schema);
+    }
+
+    Item() {
         schema = seastar::make_lw_shared(item_schema);
     }
 
@@ -594,6 +639,10 @@ public:
     }
 
     Stock(uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
+        schema = seastar::make_lw_shared(stock_schema);
+    }
+
+    Stock() {
         schema = seastar::make_lw_shared(stock_schema);
     }
 

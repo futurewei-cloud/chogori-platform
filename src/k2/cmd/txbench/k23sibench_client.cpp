@@ -249,7 +249,7 @@ private:
         return seastar::do_with(k2::Clock::now(), [this, &txn, &keygen](auto& start) {
             DataRec record = keygen.next();
             record.data = _data;
-            return txn.write<DataRec>(std::move(record))
+            return txn.write<DataRec>(record)
                 .then([this, start](auto&& result) {
                     _writeLatency.add(k2::Clock::now() - start);
                     if (!result.status.is2xxOK()) {

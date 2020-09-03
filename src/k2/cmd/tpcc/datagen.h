@@ -43,8 +43,8 @@ struct TPCCDataGen {
 
         for (int i=1; i<=100000; ++i) {
             auto item = Item(random, i);
-            data.push_back([_item=std::move(item)] (k2::K2TxnHandle& txn) {
-                return writeRow<Item>(std::move(_item), txn);
+            data.push_back([_item=std::move(item)] (k2::K2TxnHandle& txn) mutable {
+                return writeRow<Item>(_item, txn);
             });
         }
 
@@ -55,13 +55,13 @@ struct TPCCDataGen {
     {
         for (uint16_t i=1; i <= _customers_per_district(); ++i) {
             auto customer = Customer(random, w_id, d_id, i);
-            data.push_back([_customer=std::move(customer)] (k2::K2TxnHandle& txn) {
-                return writeRow<Customer>(std::move(_customer), txn);
+            data.push_back([_customer=std::move(customer)] (k2::K2TxnHandle& txn) mutable {
+                return writeRow<Customer>(_customer, txn);
             });
 
             auto history = History(random, w_id, d_id, i);
-            data.push_back([_history=std::move(history)] (k2::K2TxnHandle& txn) {
-                return writeRow<History>(std::move(_history), txn);
+            data.push_back([_history=std::move(history)] (k2::K2TxnHandle& txn) mutable {
+                return writeRow<History>(_history, txn);
             });
         }
     }
@@ -82,20 +82,20 @@ struct TPCCDataGen {
 
             for (int j=1; j<=order.OrderLineCount; ++j) {
                 auto order_line = OrderLine(random, order, j);
-                data.push_back([_order_line=std::move(order_line)] (k2::K2TxnHandle& txn) {
-                    return writeRow<OrderLine>(std::move(_order_line), txn);
+                data.push_back([_order_line=std::move(order_line)] (k2::K2TxnHandle& txn) mutable {
+                    return writeRow<OrderLine>(_order_line, txn);
                 });
             }
 
             if (i >= 2101) {
                 auto new_order = NewOrder(order);
-                data.push_back([_new_order=std::move(new_order)] (k2::K2TxnHandle& txn) {
-                    return writeRow<NewOrder>(std::move(_new_order), txn);
+                data.push_back([_new_order=std::move(new_order)] (k2::K2TxnHandle& txn) mutable {
+                    return writeRow<NewOrder>(_new_order, txn);
                 });
             }
 
-            data.push_back([_order=std::move(order)] (k2::K2TxnHandle& txn) {
-                return writeRow<Order>(std::move(_order), txn);
+            data.push_back([_order=std::move(order)] (k2::K2TxnHandle& txn) mutable {
+                return writeRow<Order>(_order, txn);
             });
         }
     }
@@ -120,21 +120,21 @@ struct TPCCDataGen {
         for (uint32_t i=id_start; i < id_end; ++i) {
             auto warehouse = Warehouse(random, i);
 
-            data.push_back([_warehouse=std::move(warehouse)] (k2::K2TxnHandle& txn) {
-                return writeRow<Warehouse>(std::move(_warehouse), txn);
+            data.push_back([_warehouse=std::move(warehouse)] (k2::K2TxnHandle& txn) mutable {
+                return writeRow<Warehouse>(_warehouse, txn);
             });
 
             for (uint32_t j=1; j<100001; ++j) {
                 auto stock = Stock(random, i, j);
-                data.push_back([_stock=std::move(stock)] (k2::K2TxnHandle& txn) {
-                    return writeRow<Stock>(std::move(_stock), txn);
+                data.push_back([_stock=std::move(stock)] (k2::K2TxnHandle& txn) mutable {
+                    return writeRow<Stock>(_stock, txn);
                 });
             }
 
             for (uint16_t j=1; j <= _districts_per_warehouse(); ++j) {
                 auto district = District(random, i, j);
-                data.push_back([_district=std::move(district)] (k2::K2TxnHandle& txn) {
-                    return writeRow<District>(std::move(_district), txn);
+                data.push_back([_district=std::move(district)] (k2::K2TxnHandle& txn) mutable {
+                    return writeRow<District>(_district, txn);
                 });
 
                 generateCustomerData(data, random, i, j);

@@ -69,14 +69,14 @@ public:
         if constexpr(isPayloadSerializableType<T>()) {
             value.__writeFields(*this);
             writeMany(args...);
-        }
-
-        if (!value) {
-            skipNext();
         } else {
-            serializeNext<typename std::decay_t<decltype(value)>::value_type>(*value);
+            if (!value) {
+                skipNext();
+            } else {
+                serializeNext<typename std::decay_t<decltype(value)>::value_type>(*value);
+            }
+            writeMany(args...);
         }
-        writeMany(args...);
     }
     // no-arg version to satisfy the template expansion above in the terminal case
     void writeMany() {}
@@ -134,10 +134,10 @@ public:
         if constexpr(isPayloadSerializableType<T>()) {
             value.__readFields(*this);
             readMany(args...);
+        } else {
+            value = deserializeNext<typename std::decay_t<decltype(value)>::value_type>();
+            readMany(args...);
         }
-
-        value = deserializeNext<typename std::decay_t<decltype(value)>::value_type>();
-        readMany(args...);
     }
     // no-arg version to satisfy the template expansion above in the terminal case
     void readMany() {}

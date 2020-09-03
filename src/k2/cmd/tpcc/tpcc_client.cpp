@@ -27,6 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
+#include <k2/dto/FieldTypes.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
 #include <k2/tso/client/tso_clientlib.h>
@@ -49,8 +50,9 @@ std::vector<String> getRangeEnds(uint32_t numPartitions, uint32_t numWarehouses)
 
     // Warehouse IDs start at 1, and range end is open interval
     for (uint32_t i = 1; i <= numPartitions; ++i) {
-        K2DEBUG("RangeEnd: " << WIDToString((i*share)+1));
-        rangeEnds.push_back(WIDToString((i*share)+1));
+        String range_end = FieldToKeyString<uint32_t>((i*share)+1);
+        K2DEBUG("RangeEnd: " << range_end);
+        rangeEnds.push_back(range_end);
     }
     rangeEnds[numPartitions-1] = "";
 

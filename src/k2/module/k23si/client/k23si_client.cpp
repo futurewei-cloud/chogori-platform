@@ -140,8 +140,8 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         }).finally([request] () { delete request; });
 }
 
-seastar::future<WriteResult> K2TxnHandle::erase(SKVRecord&& record) {
-    return write(std::move(record), true);
+seastar::future<WriteResult> K2TxnHandle::erase(SKVRecord& record) {
+    return write(record, true);
 }
 
 K23SIClient::K23SIClient(const K23SIClientConfig &) :

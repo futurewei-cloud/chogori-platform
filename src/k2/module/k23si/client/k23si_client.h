@@ -183,10 +183,10 @@ public:
                     return seastar::make_ready_future<ReadResult<SKVRecord>>(std::move(userResponse));
                 } else {
                     auto userResponse = ReadResult<T>(std::move(status));
-                    T userResponseRecord;
                     SKVRecord skv_record(request_cname, request_schema);
                     skv_record.storage = std::move(k2response.value);
 
+                    T userResponseRecord;
                     userResponseRecord.__readFields(skv_record);
                     userResponse.value = std::move(userResponseRecord);
 
@@ -195,7 +195,7 @@ public:
             }).finally([request] () { delete request; });
     }
 
-    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord&& record, bool erase) {
+    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord& record, bool erase) {
         dto::Key key = record.getKey();
 
         if (!_write_set.size()) {
@@ -212,12 +212,12 @@ public:
             erase,
             _write_set.size() == 1,
             key,
-            std::move(record.storage)
+            record.storage.share()
         };
     }
 
     template <class T>
-    seastar::future<WriteResult> write(T&& record, bool erase=false) {
+    seastar::future<WriteResult> write(T& record, bool erase=false) {
         if (!_started) {
             return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
@@ -228,11 +228,11 @@ public:
 
         dto::K23SIWriteRequest* request = nullptr;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
-            request = makeWriteRequest(std::move(record), erase);
+            request = makeWriteRequest(record, erase);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = makeWriteRequest(std::move(skv_record), erase);
+            request = makeWriteRequest(skv_record, erase);
         }
 
         return _cpo_client->PartitionRequest
@@ -254,7 +254,7 @@ public:
             }).finally([request] () { delete request; });
     }
 
-    seastar::future<WriteResult> erase(SKVRecord&& record);
+    seastar::future<WriteResult> erase(SKVRecord& record);
 
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed

@@ -120,6 +120,16 @@ template <> String FieldToKeyString<uint64_t>(const uint64_t& field)
     return s;
 }
 
+template <> String FieldToKeyString<int32_t>(const int32_t& field) {
+    (void) field;
+    throw new std::runtime_error("Key encoding for int32_t is not implemented yet");
+}
+
+template <> String FieldToKeyString<float>(const float& field) {
+    (void) field;
+    throw new std::runtime_error("Key encoding for float is not implemented yet");
+}
+
 String NullFirstToKeyString() {
     String s(String::initialized_later(), 3);
     s[0] = (char) FieldType::NULL_T;
