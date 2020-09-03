@@ -90,7 +90,7 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
 // We expose a shared payload in case the user wants to write it to file or otherwise 
 // store it on their own. For normal K23SI operations the user does not need to touch this
 Payload SKVRecord::getSharedPayload() {
-    return fieldData.share();
+    return fieldData.shareAll();
 }
 
 SKVRecord::SKVRecord(const String& collection, Schema s) : 

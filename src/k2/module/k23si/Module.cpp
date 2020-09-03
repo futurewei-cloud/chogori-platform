@@ -155,7 +155,7 @@ _makeReadOK(dto::DataRecord* rec) {
     }
 
     auto response = dto::K23SIReadResponse<Payload>();
-    response.value.val = rec->value.val.share();
+    response.value.val = rec->value.val.shareAll();
     return RPCResponse(dto::K23SIStatus::OK("read succeeded"), std::move(response));
 }
 
@@ -596,7 +596,7 @@ K23SIPartitionModule::handleInspectRecords(dto::K23SIInspectRecordsRequest&& req
     for (dto::DataRecord& rec : versions) {
         dto::DataRecord copy {
             rec.key,
-            rec.value.val.share(),
+            rec.value.val.shareAll(),
             rec.isTombstone,
             rec.txnId,
             rec.status
@@ -650,7 +650,7 @@ K23SIPartitionModule::handleInspectWIs(dto::K23SIInspectWIsRequest&& request) {
 
             dto::DataRecord copy {
                 rec.key,
-                rec.value.val.share(),
+                rec.value.val.shareAll(),
                 rec.isTombstone,
                 rec.txnId,
                 rec.status

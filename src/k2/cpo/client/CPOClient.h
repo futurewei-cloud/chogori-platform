@@ -33,6 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
+#include <k2/dto/PersistenceCluster.h>
 #include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RPCTypes.h>
 #include <k2/transport/Status.h>
@@ -230,6 +231,25 @@ public:
                     return PartitionRequest<RequestT, ResponseT, verb>(deadline, request, retries-1);
                 });
             });
+        });
+    }
+
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>> GetPersistenceCluster(Deadline<ClockT> deadline, String name) {
+        dto::PersistenceClusterGetRequest request{.name = std::move(name)};
+        
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, request, *cpo, timeout)
+        .then([this, &request, deadline] (auto&& result) {
+            auto& [status, k2response] = result;
+
+            if (deadline.isOver()) {
+                K2DEBUG("Deadline exceeded");
+                status = Statuses::S408_Request_Timeout("persistence deadline exceeded");
+                return RPCResponse(std::move(status), dto::PersistenceClusterGetResponse());
+            }
+
+            return RPCResponse(std::move(status), std::move(k2response));
         });
     }
 

@@ -2,7 +2,7 @@ file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
 add_library(plog STATIC ${HEADERS} ${SOURCES})
-target_link_libraries (plog PRIVATE transport common)
+target_link_libraries (plog PRIVATE transport common cpo_client)
 
 # export the library in the common k2Targets
 install(TARGETS plog EXPORT k2Targets DESTINATION lib/k2)
