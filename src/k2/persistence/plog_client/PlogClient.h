@@ -51,6 +51,7 @@ public:
     bool selectPersistenceGroup(String name);
 
     // create a plog with retry times
+    // TODO: revise this method, making this retry as an internal config variable instead of parameter. 
     seastar::future<std::tuple<Status, String>> create(uint8_t retries = 1);
 
     // append a payload into a plog at the given offset 
@@ -72,6 +73,7 @@ private:
     CPOClient _cpo;
 
     // generate the plog id
+    // TODO: change the method to generate the random plog id later
     String _generatePlogId();
 
     // obtain the endpoints of the plog server

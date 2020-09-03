@@ -183,6 +183,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
         });
 }
 
+// TODO: change the method to generate the random plog id later
 String PlogClient::_generatePlogId(){
     String plogid = "TPCC_CLIENT_plog_0123456789";
     std::mt19937 g(std::rand());
