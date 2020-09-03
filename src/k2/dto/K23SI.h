@@ -182,6 +182,7 @@ struct K23SIStatus {
     static const inline Status OK=k2::Statuses::S200_OK;
     static const inline Status Created=k2::Statuses::S201_Created;
     static const inline Status OperationNotAllowed=k2::Statuses::S405_Method_Not_Allowed;
+    static const inline Status BadParameter=k2::Statuses::S422_Unprocessable_Entity;
 };
 
 template <typename ValueType>

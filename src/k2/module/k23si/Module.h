@@ -129,6 +129,19 @@ private: // methods
         return result;
     }
 
+    // validate challengerMTR in PUSH requests is within the retention window for the collection. return true if request is valid
+    bool _validatePushRetention(const dto::K23SITxnPushRequest& req) const {
+        bool result = req.challengerMTR.timestamp.compareCertain(_retentionTimestamp) >= 0;
+        K2DEBUG("Partition: " << _partition << ", retention validation " << (result ? "passed" : "failed") << ", have=" << _retentionTimestamp << ", for request=" << req);
+        return result;
+    }
+
+    // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
+    template <typename RequestT>
+    bool _validateRequestParameter(const RequestT& req) const {
+        return !req.key.partitionKey.empty();
+    }
+
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     bool _validateStaleWrite(dto::K23SIWriteRequest<Payload>& request, std::deque<dto::DataRecord>& versions);
