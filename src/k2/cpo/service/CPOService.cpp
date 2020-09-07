@@ -66,6 +66,14 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::PersistenceClusterCreateRequest, dto::PersistenceClusterCreateResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_CREATE, [this](dto::PersistenceClusterCreateRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePersistenceClusterCreate, std::move(request));
+    });
+
+    RPC().registerRPCObserver<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, [this](dto::PersistenceClusterGetRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handlePersistenceClusterGet, std::move(request));
+    });
+
     RPC().registerRPCObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, [this] (dto::CreateSchemaRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
     });
@@ -81,6 +89,7 @@ seastar::future<> CPOService::start() {
             throw std::runtime_error("unable to create data directory");
         }
     }
+
     return seastar::make_ready_future<>();
 }
 
@@ -302,6 +311,10 @@ String CPOService::_getCollectionPath(String name) {
     return _dataDir() + "/" + name + ".collection";
 }
 
+String CPOService::_getPersistenceClusterPath(String clusterName) {
+    return _dataDir() + "/" + clusterName + ".persistence";
+}
+
 String CPOService::_getSchemasPath(String collectionName) {
     return _getCollectionPath(collectionName) + ".schemas";
 }
@@ -439,6 +452,42 @@ Status CPOService::_saveSchemas(const String& collectionName) {
 
     K2DEBUG("saved schemas: " << cpath);
     return Statuses::S201_Created("schema written");
+}
+
+seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
+CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request){
+    K2INFO("Received persistence cluster create request for " << request.cluster.name);
+    auto cpath = _getPersistenceClusterPath(request.cluster.name);
+    dto::PersistenceCluster persistenceCluster;
+    Payload p;
+    if (fileutil::readFile(p, cpath)) {
+        return RPCResponse(Statuses::S409_Conflict("persistence cluster already exists"), dto::PersistenceClusterCreateResponse());
+    }
+
+    Payload q([] { return Binary(4096); });
+    q.write(request.cluster);
+    if (!fileutil::writeFile(std::move(q), cpath)) {
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write persistence cluster data"), dto::PersistenceClusterCreateResponse());
+    }
+    return RPCResponse(Statuses::S201_Created("persistence cluster creates successfully"), dto::PersistenceClusterCreateResponse());
+}
+
+seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
+CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request) {
+    K2INFO("Received persistence cluster get request with name " << request.name);
+    auto cpath = _getPersistenceClusterPath(request.name);
+    dto::PersistenceCluster persistenceCluster;
+    Payload p;
+    if (!fileutil::readFile(p, cpath)) {
+        return RPCResponse(Statuses::S404_Not_Found("persistence cluster not found"), dto::PersistenceClusterGetResponse());
+    }
+    if (!p.read(persistenceCluster)) {
+        return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster data"), dto::PersistenceClusterGetResponse());
+    };
+
+    K2INFO("Found persistence cluster in: " << cpath);
+    dto::PersistenceClusterGetResponse response{.cluster=std::move(persistenceCluster)};
+    return RPCResponse(Statuses::S200_OK("persistence cluster found"), std::move(response));
 }
 
 } // namespace k2

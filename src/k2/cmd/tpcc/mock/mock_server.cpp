@@ -87,7 +87,7 @@ public:  // application lifespan
 
             auto iter = _data.find(hash_key);
             if (iter != _data.end()) {
-                response.value.val = iter->second.share();
+                response.value.val = iter->second.shareAll();
             }
             return RPCResponse(iter != _data.end() ? Statuses::S200_OK("get accepted") : Statuses::S404_Not_Found("get did not find key"), std::move(response));
         });

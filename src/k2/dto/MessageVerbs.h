@@ -34,6 +34,10 @@ enum Verbs : k2::Verb {
     CPO_COLLECTION_CREATE = 10,
     // ControlPlaneOracle: asked to return an existing collection
     CPO_COLLECTION_GET,
+    // ControlPlaneOracle: asked to register a persistence server
+    CPO_PERSISTENCE_CLUSTER_CREATE,
+    // ControlPlaneOracle: asked to return a collection of persistence servers
+    CPO_PERSISTENCE_CLUSTER_GET,
     CPO_SCHEMA_CREATE,
     CPO_SCHEMAS_GET,
 
@@ -60,6 +64,10 @@ enum Verbs : k2::Verb {
 
     /************ K23SI Persistence *****************/
     K23SI_Persist = 40,
+    PERSISTENT_CREATE,
+    PERSISTENT_APPEND,
+    PERSISTENT_READ,
+    PERSISTENT_SEAL,
 
     /************ K23SI Inspection ******************/
     K23SI_INSPECT_RECORDS = 45,

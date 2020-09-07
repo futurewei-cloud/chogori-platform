@@ -11,3 +11,4 @@ target_link_libraries (k2_demo_tso PRIVATE tso_service tso_client appbase transp
 target_link_libraries (k2_demo_txn_client PRIVATE common Seastar::seastar)
 
 install (TARGETS k2_demo_service k2_demo_rpc_echo k2_demo_rpc_service k2_demo_tso k2_demo_txn_client DESTINATION bin)
+

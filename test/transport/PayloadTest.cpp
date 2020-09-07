@@ -99,7 +99,7 @@ SCENARIO("test empty payload serialization") {
     REQUIRE(src.getCapacity() == 0);
     REQUIRE(src.computeCrc32c() == 0);
 
-    Payload shared(src.share());
+    Payload shared(src.shareAll());
     REQUIRE(shared.getCurrentPosition().bufferIndex == 0);
     REQUIRE(shared.getCurrentPosition().bufferOffset == 0);
     REQUIRE(shared.getCurrentPosition().offset == 0);
@@ -120,7 +120,7 @@ SCENARIO("test empty payload serialization") {
     dst.seek(0);
     REQUIRE(dst.computeCrc32c() == 2351477386);
 
-    Payload sharedDst(dst.share());
+    Payload sharedDst(dst.shareAll());
     REQUIRE(sharedDst.getCurrentPosition().bufferIndex == 0);
     REQUIRE(sharedDst.getCurrentPosition().bufferOffset == 0);
     REQUIRE(sharedDst.getCurrentPosition().offset == 0);
@@ -148,6 +148,8 @@ SCENARIO("test multi-buffer serialization") {
 
     String q;
     dst.seek(0);
+    REQUIRE(dst.getSize() == 105); // s.size() + 4 bytes for size, 1 byte for '\0'
+    REQUIRE(dst.getCapacity() == 110); // 10 binaries allocated at 11b each
     REQUIRE(dst.read(q));
     REQUIRE(q.size() == s.size());
     REQUIRE(q == s);
@@ -155,6 +157,7 @@ SCENARIO("test multi-buffer serialization") {
     dst.seek(0);
     Payload dst2([]() { return Binary(23); });
     dst2.write(dst);
+    REQUIRE(dst2.getSize() == 113); // 8 bytes for size + 105 bytes from dst
     dst2.write(s);
     dst2.write(dst);
 
@@ -173,6 +176,16 @@ SCENARIO("test multi-buffer serialization") {
     REQUIRE(pa == dst);
     REQUIRE(pb == dst);
     REQUIRE(pa == pb);
+
+    Payload p1([]() { return Binary(4096); });
+    Payload p2([]() { return Binary(20); });
+    int32_t a = 10;
+    p1.write(a);
+    p2.write(p1);
+    REQUIRE(p1.getSize() == 4);
+    REQUIRE(p1.getCapacity() == 4096);
+    REQUIRE(p2.getSize() == 12);
+    REQUIRE(p2.getCapacity() == 12);
 }
 
 void checkSize(Payload& p) {
@@ -276,6 +289,82 @@ SCENARIO("test empty payload serialization after some data") {
         REQUIRE(dst2.copy() == dst2);
     }
 }
+
+SCENARIO("test copy from payload") {
+    std::vector<data<embeddedComplex>> testCases;
+    String s(100000, 'x');
+    testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11, Duration(10ms)));
+    testCases.push_back(makeData(11,22,'b', 444, 'g', 1231234, "hya", 1241234, 's', "1", "", 101, Duration(11us)));
+    testCases.push_back(makeData(111,2222,'c', 4444, 'h', 12312345, "hya", 1241245, 's', s.c_str(), "", 107, Duration(13ns)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
+    for (auto& d: testCases) {
+        Payload dst([] { return Binary(111); });
+        dst.write(d);
+        dst.seek(0);
+        auto chksum = dst.computeCrc32c();
+
+        Payload dst2([] { return Binary(111); });
+        dst2.copyFromPayload(dst, dst.getSize());
+        dst2.seek(0);
+
+        REQUIRE(chksum == dst2.computeCrc32c());
+
+        checkSize(dst);
+        checkSize(dst2);
+        REQUIRE(dst.copy() == dst);
+        REQUIRE(dst2.copy() == dst2);
+    }
+}
+
+SCENARIO("test shareAll() and shareRegion()") {
+    std::vector<data<embeddedComplex>> testCases;
+    String s(100000, 'x');
+    testCases.push_back(makeData(1, 2, 'a', 44, 'f', 123, "hya", 124121123, 's', nullptr, "", 11, Duration(10ms)));
+    testCases.push_back(makeData(11,22,'b', 444, 'g', 1231234, "hya", 1241234, 's', "1", "", 101, Duration(11us)));
+    testCases.push_back(makeData(111,2222,'c', 4444, 'h', 12312345, "hya", 1241245, 's', s.c_str(), "", 107, Duration(13ns)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
+    testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
+
+    Payload dst([] { return Binary(4096); });
+    std::vector<uint32_t> offsetCheckPoint;
+    for (auto& d: testCases) {
+        offsetCheckPoint.push_back(dst.getSize());
+        dst.write(d);
+    }
+    offsetCheckPoint.push_back(dst.getSize());
+
+    Payload sharedDst = dst.shareAll();
+    sharedDst.seek(0);
+    for (auto& d: testCases) {
+        data<Payload> parsedAsPayload;
+        REQUIRE(sharedDst.read(parsedAsPayload));
+        REQUIRE((parsedAsPayload.a == d.a && parsedAsPayload.b == d.b && parsedAsPayload.x == d.x && parsedAsPayload.y == d.y && parsedAsPayload.z == d.z && parsedAsPayload.c == d.c && parsedAsPayload.d == d.d));
+        embeddedComplex cmplx;
+        REQUIRE(parsedAsPayload.w.val.read(cmplx));
+        REQUIRE(cmplx == d.w.val);
+    }
+
+    for (long unsigned int i=0; i < testCases.size(); ++i)
+        for (long unsigned int j=i; j < testCases.size(); ++j){
+            auto offset = offsetCheckPoint[i];
+            auto size = offsetCheckPoint[j+1] - offsetCheckPoint[i];
+            Payload sharedDst = dst.shareRegion(offset, size);
+            sharedDst.seek(0);
+
+            for (long unsigned int k=i; k <= j; ++k){
+                auto& d = testCases[k];
+                data<Payload> parsedAsPayload;
+                REQUIRE(sharedDst.read(parsedAsPayload));
+                REQUIRE((parsedAsPayload.a == d.a && parsedAsPayload.b == d.b && parsedAsPayload.x == d.x && parsedAsPayload.y == d.y && parsedAsPayload.z == d.z && parsedAsPayload.c == d.c && parsedAsPayload.d == d.d));
+                embeddedComplex cmplx;
+                REQUIRE(parsedAsPayload.w.val.read(cmplx));
+                REQUIRE(cmplx == d.w.val);
+            }
+        }
+}
+
+
 /*
 SCENARIO("rpc parsing") {
     RPCParser([] { return false; }, false) parseNoCRC;
