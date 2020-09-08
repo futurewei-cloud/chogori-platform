@@ -101,20 +101,15 @@ public:
 
 
     Warehouse(RandomContext& random, uint32_t id) : WarehouseID(id) {
-        schema = seastar::make_lw_shared(warehouse_schema);
         Name = random.RandomString(6, 10);
         address = Address(random);
         Tax = random.UniformRandom(0, 2000) / 10000.0f;
         YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
     }
 
-    Warehouse(uint32_t id) : WarehouseID(id) {
-        schema = seastar::make_lw_shared(warehouse_schema);
-    }
+    Warehouse(uint32_t id) : WarehouseID(id) {}
 
-    Warehouse() {
-        schema = seastar::make_lw_shared(warehouse_schema);
-    };
+    Warehouse() = default;
 
     std::optional<uint32_t> WarehouseID;
     std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
@@ -122,7 +117,7 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, Tax, YTD, Name, address);
@@ -154,7 +149,6 @@ public:
     };
 
     District(RandomContext& random, uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
-        schema = seastar::make_lw_shared(district_schema);
         Name = random.RandomString(6, 10);        
         address = Address(random);
         Tax = random.UniformRandom(0, 2000) / 10000.0f;
@@ -162,13 +156,9 @@ public:
         NextOrderID = _customers_per_district()+1;  
     }
 
-    District(uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
-        schema = seastar::make_lw_shared(district_schema);
-    }
+    District(uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {}
 
-    District() {
-        schema = seastar::make_lw_shared(district_schema);
-    }
+    District() = default;
 
     std::optional<uint32_t> WarehouseID;
     std::optional<uint32_t> DistrictID;
@@ -178,7 +168,7 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, Tax, YTD, NextOrderID, Name, address);
@@ -220,8 +210,6 @@ public:
 
     Customer(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) :
             WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        schema = seastar::make_lw_shared(customer_schema);
-
         LastName = random.RandomString(5, 5); // TODO needs to use special non-uniform function
         MiddleName = "OE";
         FirstName = random.RandomString(8, 16);
@@ -246,13 +234,9 @@ public:
     }
 
     Customer(uint32_t w_id, uint16_t d_id, uint32_t c_id) :
-            WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        schema = seastar::make_lw_shared(customer_schema);
-    }
+            WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {}
 
-    Customer() {
-        schema = seastar::make_lw_shared(customer_schema);
-    }
+    Customer() = default;
 
     std::optional<uint32_t> WarehouseID;
     std::optional<uint32_t> DistrictID;
@@ -272,7 +256,7 @@ public:
     std::optional<k2::String> Info;
     Address address;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, CustomerID, SinceDate, CreditLimit, Discount, Balance,
         YTDPayment, DeliveryCount, FirstName, MiddleName, LastName, Phone, Credit, Info, address);
@@ -298,8 +282,6 @@ public:
 
     // For initial population
     History(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id) {
-        schema = seastar::make_lw_shared(history_schema);
-
         CustomerID = c_id;
         CustomerWarehouseID = w_id;
         CustomerDistrictID = d_id;
@@ -311,8 +293,6 @@ public:
     // For payment transaction
     History(uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t c_w_id, uint16_t c_d_id, float amount,
                 const char w_name[], const char d_name[]) : WarehouseID(w_id) {
-        schema = seastar::make_lw_shared(history_schema);
-
         Date = getDate();
         CustomerID = c_id;
         CustomerWarehouseID = c_w_id;
@@ -328,9 +308,7 @@ public:
         strcpy((char*)Info->c_str() + offset, d_name);
     }
 
-    History() {
-        schema = seastar::make_lw_shared(history_schema);
-    }
+    History() = default;
 
     std::optional<uint32_t> WarehouseID;
     std::optional<uint64_t> Date;
@@ -341,7 +319,7 @@ public:
     std::optional<uint32_t> DistrictID;
     std::optional<k2::String> Info;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, Date, CustomerID, CustomerWarehouseID, Amount, CustomerDistrictID,
         DistrictID, Info);
@@ -368,8 +346,6 @@ public:
     // For initial population
     Order(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t id) :
             WarehouseID(w_id), DistrictID(d_id), OrderID(id) {
-        schema = seastar::make_lw_shared(order_schema);
-
         CustomerID = c_id;
         EntryDate = 0; // TODO
         if (id < 2101) {
@@ -383,8 +359,6 @@ public:
 
     // For NewOrder transaction
     Order(RandomContext& random, uint32_t w_id) : WarehouseID(w_id) {
-        schema = seastar::make_lw_shared(order_schema);
-
         DistrictID = random.UniformRandom(1, _districts_per_warehouse());
         CustomerID = random.NonUniformRandom(1023, 1, _customers_per_district());
         OrderLineCount = random.UniformRandom(5, 15);
@@ -393,13 +367,9 @@ public:
         // OrderID and AllLocal to be filled in by the transaction
     }
 
-    Order(uint32_t w_id, uint16_t d_id, uint32_t o_id) : WarehouseID(w_id), DistrictID(d_id), OrderID(o_id) {
-        schema = seastar::make_lw_shared(order_schema);
-    }
+    Order(uint32_t w_id, uint16_t d_id, uint32_t o_id) : WarehouseID(w_id), DistrictID(d_id), OrderID(o_id) {}
 
-    Order () {
-        schema = seastar::make_lw_shared(order_schema);
-    }
+    Order() = default;
 
     std::optional<uint32_t> WarehouseID;
     std::optional<uint32_t> DistrictID;
@@ -410,7 +380,7 @@ public:
     std::optional<uint32_t> CarrierID;
     std::optional<uint32_t> AllLocal; // boolean, 0 or 1
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineCount, EntryDate, CustomerID, 
         CarrierID, AllLocal);
@@ -433,19 +403,16 @@ public:
         .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
     };
 
-    NewOrder(const Order& order) : WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID) {
-        schema = seastar::make_lw_shared(neworder_schema);
-    }
+    NewOrder(const Order& order) : WarehouseID(order.WarehouseID), 
+            DistrictID(order.DistrictID), OrderID(order.OrderID) {}
 
-    NewOrder() {
-        schema = seastar::make_lw_shared(neworder_schema);
-    }
+    NewOrder() = default;
 
     std::optional<uint32_t> WarehouseID;
     std::optional<uint32_t> DistrictID;
     std::optional<uint32_t> OrderID;
     
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID);
 };  
@@ -473,8 +440,6 @@ public:
     // For initial population
     OrderLine(RandomContext& random, const Order& order, uint16_t line_num) :
             WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID), OrderLineNumber(line_num) {
-        schema = seastar::make_lw_shared(orderline_schema);
-
         ItemID = random.UniformRandom(1, 100000);
         SupplyWarehouseID = WarehouseID;
 
@@ -495,8 +460,6 @@ public:
     // ItemID must be changed if it needs to be a rollback transactiom
     OrderLine(RandomContext& random, const Order& order, uint16_t line_num, uint32_t max_warehouse_id) :
             WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID), OrderLineNumber(line_num) {
-        schema = seastar::make_lw_shared(orderline_schema);
-
         ItemID = random.NonUniformRandom(8191, 1, 100000);
 
         uint32_t homeRoll = random.UniformRandom(1, 100);
@@ -512,9 +475,7 @@ public:
         Amount = 0.0f;
     }
 
-    OrderLine() {
-        schema = seastar::make_lw_shared(orderline_schema);
-    }
+    OrderLine() {}
 
     std::optional<uint32_t> WarehouseID;
     std::optional<uint32_t> DistrictID;
@@ -527,7 +488,7 @@ public:
     std::optional<uint32_t> Quantity;
     std::optional<k2::String> DistInfo;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineNumber, DeliveryDate, ItemID, 
         SupplyWarehouseID, Amount, Quantity, DistInfo);
@@ -550,8 +511,6 @@ public:
     };
 
     Item(RandomContext& random, uint32_t id) : ItemID(id) {
-        schema = seastar::make_lw_shared(item_schema);
-
         ImageID = random.UniformRandom(1, 10000);
         Name = random.RandomString(14, 24);
         Price = random.UniformRandom(100, 10000) / 100.0f;
@@ -565,13 +524,9 @@ public:
         }
     }
 
-    Item(uint32_t id) : ItemID(id) {
-        schema = seastar::make_lw_shared(item_schema);
-    }
+    Item(uint32_t id) : ItemID(id) {}
 
-    Item() {
-        schema = seastar::make_lw_shared(item_schema);
-    }
+    Item() = default;
 
     std::optional<uint32_t> ItemID;
     std::optional<uint32_t> ImageID;
@@ -579,7 +534,7 @@ public:
     std::optional<k2::String> Name;
     std::optional<k2::String> Info;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(ItemID, ImageID, Price, Name, Info);
 };
@@ -612,8 +567,6 @@ public:
     };
 
     Stock(RandomContext& random, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
-        schema = seastar::make_lw_shared(stock_schema);
-
         Quantity = random.UniformRandom(10, 100);
         Dist_01 = random.RandomString(24, 24);
         Dist_02 = random.RandomString(24, 24);
@@ -638,13 +591,9 @@ public:
         }
     }
 
-    Stock(uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
-        schema = seastar::make_lw_shared(stock_schema);
-    }
+    Stock(uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {}
 
-    Stock() {
-        schema = seastar::make_lw_shared(stock_schema);
-    }
+    Stock() = default;
 
     const char* getDistInfo(uint32_t d_id) {
         switch(d_id) {
@@ -691,8 +640,21 @@ public:
     std::optional<k2::String> Dist_10;
     std::optional<k2::String> Info;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, ItemID, YTD, OrderCount, RemoteCount, Quantity, Dist_01, Dist_02,
         Dist_03, Dist_04, Dist_05, Dist_06, Dist_07, Dist_08, Dist_09, Dist_10, Info);
 };
+
+void setupSchemaPointers() {
+    Warehouse::schema = seastar::make_lw_shared(Warehouse::warehouse_schema);
+    District::schema = seastar::make_lw_shared(District::district_schema);
+    Customer::schema = seastar::make_lw_shared(Customer::customer_schema);
+    History::schema = seastar::make_lw_shared(History::history_schema);
+    Order::schema = seastar::make_lw_shared(Order::order_schema);
+    NewOrder::schema = seastar::make_lw_shared(NewOrder::neworder_schema);
+    OrderLine::schema = seastar::make_lw_shared(OrderLine::orderline_schema);
+    Item::schema = seastar::make_lw_shared(Item::item_schema);
+    Stock::schema = seastar::make_lw_shared(Stock::stock_schema);
+}
+

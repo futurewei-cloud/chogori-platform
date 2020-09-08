@@ -107,6 +107,11 @@ public:  // application lifespan
 
     seastar::future<> start() {
         _stopped = false;
+
+        if (seastar::engine().cpu_id() == 0) {
+            setupSchemaPointers();
+        }
+
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: " << ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
@@ -214,6 +219,9 @@ private:
                 K2INFO("Creating collection");
                 return _client.makeCollection("TPCC", getRangeEnds(_tcpRemotes().size(), _max_warehouses()));
             }).discard_result()
+            .then([this] () {
+                return _schema_load();
+            })
             .then([this] {
                 K2INFO("Starting item data load");
                 _item_loader = DataLoader(TPCCDataGen().generateItemData());

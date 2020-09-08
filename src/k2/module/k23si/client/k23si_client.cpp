@@ -188,12 +188,6 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection, st
     return cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
 }
 
-seastar::future<SKVRecord> makeSKVRecord(const String& collectionName, const String& schemaName) {
-    (void) collectionName;
-    (void) schemaName;
-    return seastar::make_ready_future<SKVRecord>(SKVRecord{});
-}
-
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
     auto start_time = Clock::now();
     return _tsoClient.GetTimestampFromTSO(start_time)

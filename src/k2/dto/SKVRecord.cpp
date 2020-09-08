@@ -107,6 +107,12 @@ String SKVRecord::getPartitionKey() const {
         keySize += key.size();
     }
 
+    // This should not be possible in practice but it is here defensively
+    if (schema->partitionKeyFields.size() == 0) {
+        K2WARN("SKVRecord schema has no partitionKeyFields");
+        return String("");
+    }
+
     String partitionKey(String::initialized_later(), keySize);
     size_t position = 0;
     for (const String& key : partitionKeys) {
@@ -125,6 +131,10 @@ String SKVRecord::getRangeKey() const {
     size_t keySize = 0;
     for (const String& key : rangeKeys) {
         keySize += key.size();
+    }
+
+    if (schema->rangeKeyFields.size() == 0) {
+        return String("");
     }
 
     String rangeKey(String::initialized_later(), keySize);
