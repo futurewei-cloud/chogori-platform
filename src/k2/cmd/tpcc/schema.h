@@ -117,7 +117,7 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, Tax, YTD, Name, address);
@@ -168,7 +168,7 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, Tax, YTD, NextOrderID, Name, address);
@@ -256,10 +256,11 @@ public:
     std::optional<k2::String> Info;
     Address address;
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, CustomerID, SinceDate, CreditLimit, Discount, Balance,
-        YTDPayment, DeliveryCount, FirstName, MiddleName, LastName, Phone, Credit, Info, address);
+        YTDPayment, PaymentCount, DeliveryCount, FirstName, MiddleName, LastName, Phone, Credit, 
+        Info, address);
 };
 
 class History {
@@ -319,7 +320,7 @@ public:
     std::optional<uint32_t> DistrictID;
     std::optional<k2::String> Info;
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, Date, CustomerID, CustomerWarehouseID, Amount, CustomerDistrictID,
         DistrictID, Info);
@@ -380,7 +381,7 @@ public:
     std::optional<uint32_t> CarrierID;
     std::optional<uint32_t> AllLocal; // boolean, 0 or 1
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineCount, EntryDate, CustomerID, 
         CarrierID, AllLocal);
@@ -412,7 +413,7 @@ public:
     std::optional<uint32_t> DistrictID;
     std::optional<uint32_t> OrderID;
     
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID);
 };  
@@ -475,7 +476,7 @@ public:
         Amount = 0.0f;
     }
 
-    OrderLine() {}
+    OrderLine() = default;
 
     std::optional<uint32_t> WarehouseID;
     std::optional<uint32_t> DistrictID;
@@ -488,7 +489,7 @@ public:
     std::optional<uint32_t> Quantity;
     std::optional<k2::String> DistInfo;
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineNumber, DeliveryDate, ItemID, 
         SupplyWarehouseID, Amount, Quantity, DistInfo);
@@ -534,7 +535,7 @@ public:
     std::optional<k2::String> Name;
     std::optional<k2::String> Info;
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(ItemID, ImageID, Price, Name, Info);
 };
@@ -640,7 +641,7 @@ public:
     std::optional<k2::String> Dist_10;
     std::optional<k2::String> Info;
 
-    static inline seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, ItemID, YTD, OrderCount, RemoteCount, Quantity, Dist_01, Dist_02,
         Dist_03, Dist_04, Dist_05, Dist_06, Dist_07, Dist_08, Dist_09, Dist_10, Info);

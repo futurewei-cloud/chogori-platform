@@ -98,7 +98,7 @@ SKVRecord::SKVRecord(const String& collection, seastar::lw_shared_ptr<Schema> s)
     storage.schemaVersion = schema->version; 
     storage.fieldData = Payload(Payload::DefaultAllocator);
     partitionKeys.resize(schema->partitionKeyFields.size());
-    rangeKeys.resize(schema->partitionKeyFields.size());
+    rangeKeys.resize(schema->rangeKeyFields.size());
 }
 
 String SKVRecord::getPartitionKey() const {

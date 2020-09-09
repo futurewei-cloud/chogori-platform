@@ -41,6 +41,11 @@ struct K23SIInspectRecordsRequest {
     String collectionName;
     Key key; // the key to gather all records for
     K2_PAYLOAD_FIELDS(pvid, collectionName, key);
+
+    friend std::ostream& operator<<(std::ostream& os, const K23SIInspectRecordsRequest& r) {
+        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                   << ", key=" << r.key << "}";
+    }
 };
 
 struct K23SIInspectRecordsResponse {
@@ -56,6 +61,11 @@ struct K23SIInspectTxnRequest {
     Key key; // the key of the THR to request
     K23SI_MTR mtr;
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
+
+    friend std::ostream& operator<<(std::ostream& os, const K23SIInspectTxnRequest& r) {
+        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr  << ", key=" << r.key << "}";
+    }
 };
 
 // Contains the TRH data (struct TxnRecord) without the internal

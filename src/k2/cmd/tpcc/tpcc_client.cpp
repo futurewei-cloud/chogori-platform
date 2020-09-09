@@ -232,8 +232,9 @@ private:
         }
 
         return f.then ([this, share, id] {
-            K2INFO("Starting load to server");
+            K2INFO("Starting data gen");
             _loader = DataLoader(TPCCDataGen().generateWarehouseData(1+(id*share), 1+(id*share)+share));
+            K2INFO("Starting load to server");
             return _loader.loadData(_client, _num_concurrent_txns());
         }).then ([this] {
             K2INFO("Data load done");
