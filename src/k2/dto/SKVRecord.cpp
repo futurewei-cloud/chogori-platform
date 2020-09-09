@@ -162,7 +162,7 @@ dto::Key SKVRecord::getKey() const {
 SKVRecord::Storage SKVRecord::Storage::share() {
     return SKVRecord::Storage {
         excludedFields,
-        fieldData.share(),
+        fieldData.shareAll(),
         schemaVersion
     };
 }

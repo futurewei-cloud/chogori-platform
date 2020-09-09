@@ -168,7 +168,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     }
     if (!_validateRequestParameter(request)){
         // do not allow empty partition key
-        return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in read"), dto::K23SIReadResponse<Payload>{});
+        return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in read"), dto::K23SIReadResponse{});
     }
     if (!_validateRetentionWindow(request)) {
         // the request is outside the retention window
