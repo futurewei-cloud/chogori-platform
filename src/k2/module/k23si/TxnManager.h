@@ -56,6 +56,8 @@ struct TxnRecord {
     seastar::future<> bgTaskFut = seastar::make_ready_future();
 
     bool syncFinalize = false;
+    // The interval from end to Finalize for a transaction
+    Duration timeToFinalize{0};
 
     friend std::ostream& operator<<(std::ostream& os, const TxnRecord& rec) {
         os << "{txnId=" << rec.txnId << ", writeKeys=[";

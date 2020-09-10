@@ -341,7 +341,7 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
         // enqueue in background tasks
         rec.bgTaskFut = rec.bgTaskFut
             .then([] {
-                return seastar::sleep(0us);
+                return seastar::sleep(rec.timeToFinalize);
             })
             .then([this, &rec]() {
                 // TODO Deadline based on transaction size
