@@ -340,7 +340,7 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
     else {
         // enqueue in background tasks
         rec.bgTaskFut = rec.bgTaskFut
-            .then([] {
+            .then([&rec] {
                 return seastar::sleep(rec.timeToFinalize);
             })
             .then([this, &rec]() {
