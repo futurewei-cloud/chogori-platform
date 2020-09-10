@@ -39,7 +39,20 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2{
 const char* collname = "3si_txn_collection";
 const char* badCname = "bad_collection_name";
-dto::Schema _schema{};
+dto::Schema _schema {
+            .name = "schema",
+            .version = 1,
+            .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::STRING, "partition", false, false},
+                {dto::FieldType::STRING, "range", false, false},
+                {dto::FieldType::STRING, "f1", false, false},
+                {dto::FieldType::STRING, "f2", false, false}
+            },
+            .partitionKeyFields = std::vector<uint32_t> { 0 },
+            .rangeKeyFields = std::vector<uint32_t> { 1 }
+};
+
+
 const dto::HashScheme hashScheme = dto::HashScheme::HashCRC32C; 
 
 struct DataRec {
@@ -217,13 +230,13 @@ private:
         } // end switch
         return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse>
                 (dto::Verbs::K23SI_READ, request, *part.preferredEndpoint, 100ms)
-        .then([] (auto&& response) {
+        .then([cname] (auto&& response) {
             auto& [status, resp] = response;
             if (!status.is2xxOK()) {
                 return std::make_tuple(std::move(status), DataRec{});
             }
 
-            SKVRecord record(collname, seastar::make_lw_shared(_schema));
+            SKVRecord record(cname, seastar::make_lw_shared(_schema));
             record.storage = std::move(resp.value);
             record.seekField(2);
             DataRec rec = { *(record.deserializeNext<String>()), *(record.deserializeNext<String>()) };
@@ -400,9 +413,18 @@ seastar::future<> testScenario00() {
 				},
 				dto::Key{.schemaName = "schema", .partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
 				dto::Key{.schemaName = "schema", .partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
-				DataRec{.f1="field1", .f2="field2"},
-				[this](dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec){
-                    return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::NoInjection)
+				[this](dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh){
+                    dto::Partition::PVID pvid0;
+                    dto::K23SIWriteRequest request;
+                    request.pvid = pvid0;
+                    request.collectionName = collname;
+                    request.mtr = mtr;
+                    request.trh = trh;
+                    request.isDelete = false;
+                    request.designateTRH = true;
+                    request.key = key;
+                    request.value = SKVRecord::Storage{};
+                    return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *_k2Endpoints[0], 100ms)
                     .then([this](auto&& response) {
                 		// response: K23SI_WRITE
                 		auto& [status, resp] = response;
@@ -557,18 +579,6 @@ seastar::future<> testScenario01() {
             _pgetter = dto::PartitionGetter(std::move(resp.collection));
         })
         .then([this] () {
-            _schema.name = "schema";
-            _schema.version = 1;
-            _schema.fields = std::vector<dto::SchemaField> {
-                    {dto::FieldType::STRING, "partition", false, false},
-                    {dto::FieldType::STRING, "range", false, false},
-                    {dto::FieldType::STRING, "f1", false, false},
-                    {dto::FieldType::STRING, "f2", false, false},
-            };
-
-            _schema.setPartitionKeyFieldsByName(std::vector<String>{"partition"});
-            _schema.setRangeKeyFieldsByName(std::vector<String> {"range"});
-            
             dto::CreateSchemaRequest request{ collname, _schema };
             return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s);
         })
@@ -1025,6 +1035,7 @@ seastar::future<> testScenario01() {
             DataRec {.f1="SC01_field1", .f2="SC01_field2"},
             [this](dto::K23SI_MTR& mtr, DataRec& rec) {
                 dto::Key onlyPartKey;
+                onlyPartKey.schemaName = "schema";
                 onlyPartKey.partitionKey = "SC01_pKey1";
                 return doWrite(onlyPartKey, rec, mtr, onlyPartKey, collname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
@@ -1034,6 +1045,7 @@ seastar::future<> testScenario01() {
                 })
                 .then([this, &mtr] {
                     dto::Key onlyPartKey;
+                    onlyPartKey.schemaName = "schema";
                     onlyPartKey.partitionKey = "SC01_pKey1";
                     return doRead(onlyPartKey, mtr, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
@@ -1044,6 +1056,7 @@ seastar::future<> testScenario01() {
                 })
                 .then([this, &mtr] {
                     dto::Key onlyPartKey;
+                    onlyPartKey.schemaName = "schema";
                     onlyPartKey.partitionKey = "SC01_pKey1";
                     return doFinalize(onlyPartKey, onlyPartKey, mtr, collname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
