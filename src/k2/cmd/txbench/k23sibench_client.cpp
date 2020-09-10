@@ -34,14 +34,25 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sleep.hh>
 
 const char* collname="K23SIBench";
-k2::dto::Schema _schema;
+k2::dto::Schema _schema {
+    .name = "bench_schema",
+    .version = 1,
+    .fields = std::vector<k2::dto::SchemaField> {
+     {k2::dto::FieldType::STRING, "partitionKey", false, false},
+     {k2::dto::FieldType::STRING, "rangeKey", false, false},
+     {k2::dto::FieldType::STRING, "data", false, false}
+    },
+    .partitionKeyFields = std::vector<uint32_t> { 0 },
+    .rangeKeyFields = std::vector<uint32_t> { 1 },
+};
+static thread_local seastar::lw_shared_ptr<k2::dto::Schema> schemaPtr;
 
 struct DataRec{
     std::optional<k2::String> partitionKey;
     std::optional<k2::String> rangeKey;
     std::optional<k2::String> data;
     seastar::lw_shared_ptr<k2::dto::Schema> schema;
-    k2::String collectionName;
+    static inline k2::String collectionName = collname;
     SKV_RECORD_FIELDS(partitionKey, rangeKey, data);
 };
 
@@ -58,8 +69,7 @@ public:
             .partitionKey = "partkey:" + stridx,
             .rangeKey = stridx,
             .data = std::nullopt,
-            .schema = seastar::make_lw_shared(_schema),
-            .collectionName = collname
+            .schema = schemaPtr
         };
 
         return record;
@@ -95,7 +105,7 @@ public:  // application lifespan
         _data = k2::String('.', _dataSize());
         _stopped = false;
         auto myid = seastar::engine().cpu_id();
-
+        schemaPtr = seastar::make_lw_shared(_schema);
         _gen.seed(myid);
 
         _benchFut = seastar::sleep(5s);
@@ -105,21 +115,8 @@ public:  // application lifespan
             _benchFut = _benchFut.then([this] {
                 return _client.makeCollection(collname).discard_result()
                 .then([this] () {
-                    _schema.name = "bench_schema";
-                    _schema.version = 1;
-                    _schema.fields = std::vector<k2::dto::SchemaField> {
-                            {k2::dto::FieldType::STRING, "partitionKey", false, false},
-                            {k2::dto::FieldType::STRING, "rangeKey", false, false},
-                            {k2::dto::FieldType::UINT32T, "data", false, false}
-                    };
-
-                    _schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partitionKey"});
-                    _schema.setRangeKeyFieldsByName(std::vector<k2::String>{"rangeKey"});
-
                     return _client.cpo_client.createSchema(collname, _schema);
                 }).discard_result();
-
-
             });
         } else {
             _benchFut = _benchFut.then([] { return seastar::sleep(5s); });
