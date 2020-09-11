@@ -38,8 +38,8 @@ TEST_CASE("Test1: Compound string keys with prefix") {
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
 
-    k2::dto::SKVRecord bob("collection", schema);
-    k2::dto::SKVRecord bo("collection", schema);
+    k2::dto::SKVRecord bob("collection", seastar::make_lw_shared(schema));
+    k2::dto::SKVRecord bo("collection", seastar::make_lw_shared(schema));
 
     bob.serializeNext<k2::String>("Bob");
     bob.serializeNext<k2::String>("urns");
@@ -63,7 +63,7 @@ TEST_CASE("Test2: Strings with NULL bytes") {
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
 
-    k2::dto::SKVRecord doc("collection", std::move(schema));
+    k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
     k2::String bytes("aaaaaaa");
     bytes[0] = '\0';
     bytes[4] = '\0';
@@ -103,11 +103,11 @@ TEST_CASE("Test3: uint32 and NULL key ordering") {
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
 
-    k2::dto::SKVRecord zero("collection", schema);
-    k2::dto::SKVRecord one("collection", schema);
-    k2::dto::SKVRecord small("collection", schema);
-    k2::dto::SKVRecord big("collection", schema);
-    k2::dto::SKVRecord null("collection", schema);
+    k2::dto::SKVRecord zero("collection", seastar::make_lw_shared(schema));
+    k2::dto::SKVRecord one("collection", seastar::make_lw_shared(schema));
+    k2::dto::SKVRecord small("collection", seastar::make_lw_shared(schema));
+    k2::dto::SKVRecord big("collection", seastar::make_lw_shared(schema));
+    k2::dto::SKVRecord null("collection", seastar::make_lw_shared(schema));
 
     zero.serializeNext<uint32_t>(0);
     one.serializeNext<uint32_t>(1);

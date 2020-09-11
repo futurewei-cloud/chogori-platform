@@ -23,6 +23,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "CPOClient.h"
 
+#include <k2/dto/FieldTypes.h>
+
 namespace k2 {
 
 CPOClient::CPOClient(String cpo_url) {
@@ -37,6 +39,17 @@ void CPOClient::FulfillWaiters(const String& name, const Status& status) {
     }
 
     requestWaiters.erase(name);
+}
+
+seastar::future<k2::Status> CPOClient::createSchema(const String& collectionName, k2::dto::Schema schema) {
+    schema.name = k2::dto::FieldToKeyString<String>(schema.name);
+
+    k2::dto::CreateSchemaRequest request{ collectionName, std::move(schema) };
+    return k2::RPC().callRPC<k2::dto::CreateSchemaRequest, k2::dto::CreateSchemaResponse>(k2::dto::Verbs::CPO_SCHEMA_CREATE, request, *cpo, schema_request_timeout())
+    .then([] (auto&& response) {
+        auto& [status, r] = response;
+        return status;
+    });
 }
 
 } // ns k2

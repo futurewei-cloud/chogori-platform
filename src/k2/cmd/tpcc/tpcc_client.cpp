@@ -27,6 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
+#include <k2/dto/FieldTypes.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
 #include <k2/tso/client/tso_clientlib.h>
@@ -49,8 +50,9 @@ std::vector<String> getRangeEnds(uint32_t numPartitions, uint32_t numWarehouses)
 
     // Warehouse IDs start at 1, and range end is open interval
     for (uint32_t i = 1; i <= numPartitions; ++i) {
-        K2DEBUG("RangeEnd: " << WIDToString((i*share)+1));
-        rangeEnds.push_back(WIDToString((i*share)+1));
+        String range_end = FieldToKeyString<uint32_t>((i*share)+1);
+        K2DEBUG("RangeEnd: " << range_end);
+        rangeEnds.push_back(range_end);
     }
     rangeEnds[numPartitions-1] = "";
 
@@ -105,6 +107,9 @@ public:  // application lifespan
 
     seastar::future<> start() {
         _stopped = false;
+
+        setupSchemaPointers();
+
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: " << ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
         });
@@ -145,6 +150,57 @@ public:  // application lifespan
     }
 
 private:
+    seastar::future<> _schema_load() {
+        std::vector<seastar::future<>> schema_futures;
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, Warehouse::warehouse_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, District::district_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, Customer::customer_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, History::history_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, Order::order_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, NewOrder::neworder_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, OrderLine::orderline_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, Item::item_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        schema_futures.push_back(_client.cpo_client.createSchema(tpccCollectionName, Stock::stock_schema)
+        .then([] (Status status) {
+            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        }));
+
+        return seastar::when_all_succeed(schema_futures.begin(), schema_futures.end());
+    }
+
     seastar::future<> _data_load() {
         K2INFO("Creating DataLoader");
         int cpus = seastar::smp::count;
@@ -161,6 +217,9 @@ private:
                 K2INFO("Creating collection");
                 return _client.makeCollection("TPCC", getRangeEnds(_tcpRemotes().size(), _max_warehouses()));
             }).discard_result()
+            .then([this] () {
+                return _schema_load();
+            })
             .then([this] {
                 K2INFO("Starting item data load");
                 _item_loader = DataLoader(TPCCDataGen().generateItemData());
@@ -171,8 +230,9 @@ private:
         }
 
         return f.then ([this, share, id] {
-            K2INFO("Starting load to server");
+            K2INFO("Starting data gen");
             _loader = DataLoader(TPCCDataGen().generateWarehouseData(1+(id*share), 1+(id*share)+share));
+            K2INFO("Starting load to server");
             return _loader.loadData(_client, _num_concurrent_txns());
         }).then ([this] {
             K2INFO("Data load done");

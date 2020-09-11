@@ -36,6 +36,9 @@ enum class FieldType : uint8_t {
     NULL_T = 0,
     STRING = 1, // NULL characters in string is OK
     UINT32T = 2,
+    UINT64T = 3,
+    INT32T = 4, // Not supported as key field for now
+    FLOAT = 5, // Not supported as key field for now
     NULL_LAST = 255
 };
 

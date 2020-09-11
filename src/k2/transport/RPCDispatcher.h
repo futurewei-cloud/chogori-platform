@@ -210,6 +210,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     if (!request.payload->read(rpcRequest)) {
                         auto reply = request.endpoint.newPayload();
                         reply->write(Statuses::S400_Bad_Request("unable to parse incoming request"));
+                        reply->write(Response_t());
                         return disp->sendReply(std::move(reply), request);
                     }
                     // if disp was still alive, it's safe to call observer

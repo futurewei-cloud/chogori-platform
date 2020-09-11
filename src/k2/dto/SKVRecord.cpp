@@ -31,27 +31,27 @@ namespace k2 {
 namespace dto {
 
 void SKVRecord::skipNext() {
-    if (fieldCursor >= schema.fields.size()) {
+    if (fieldCursor >= schema->fields.size()) {
         throw new std::runtime_error("Schema not followed in record serialization");
     }
 
-    for (size_t i = 0; i < schema.partitionKeyFields.size(); ++i) {
-        if (schema.partitionKeyFields[i] == fieldCursor) {
-            partitionKeys[i] = schema.fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+    for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
+        if (schema->partitionKeyFields[i] == fieldCursor) {
+            partitionKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
-    for (size_t i = 0; i < schema.rangeKeyFields.size(); ++i) {
-        if (schema.rangeKeyFields[i] == fieldCursor) {
-            rangeKeys[i] = schema.fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+    for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
+        if (schema->rangeKeyFields[i] == fieldCursor) {
+            rangeKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
-    if (excludedFields.size() == 0) {
-        excludedFields = std::vector<bool>(schema.fields.size(), false);
+    if (storage.excludedFields.size() == 0) {
+        storage.excludedFields = std::vector<bool>(schema->fields.size(), false);
     }
 
-    excludedFields[fieldCursor] = true;
+    storage.excludedFields[fieldCursor] = true;
     ++fieldCursor;
 }
 
@@ -64,7 +64,7 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
 };
 
 void SKVRecord::seekField(uint32_t fieldIndex) {
-    if (fieldIndex >= schema.fields.size()) {
+    if (fieldIndex >= schema->fields.size()) {
         throw new std::runtime_error("Tried to seek outside bounds");
     }
 
@@ -74,11 +74,11 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
 
     if (fieldIndex < fieldCursor) {
         fieldCursor = 0;
-        fieldData.seek(0);
+        storage.fieldData.seek(0);
     }
 
     while(fieldIndex != fieldCursor) {
-        if (excludedFields.size() > 0 && excludedFields[fieldCursor]) {
+        if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldCursor]) {
             ++fieldCursor;
             continue;
         }
@@ -90,20 +90,27 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
 // We expose a shared payload in case the user wants to write it to file or otherwise 
 // store it on their own. For normal K23SI operations the user does not need to touch this
 Payload SKVRecord::getSharedPayload() {
-    return fieldData.shareAll();
+    return storage.fieldData.shareAll();
 }
 
-SKVRecord::SKVRecord(const String& collection, Schema s) : 
-            collectionName(collection), schemaName(s.name), schemaVersion(s.version), schema(s) {
-    fieldData = Payload(Payload::DefaultAllocator);
-    partitionKeys.resize(schema.partitionKeyFields.size());
-    rangeKeys.resize(schema.partitionKeyFields.size());
+SKVRecord::SKVRecord(const String& collection, seastar::lw_shared_ptr<Schema> s) : 
+            schema(s), collectionName(collection) {
+    storage.schemaVersion = schema->version; 
+    storage.fieldData = Payload(Payload::DefaultAllocator);
+    partitionKeys.resize(schema->partitionKeyFields.size());
+    rangeKeys.resize(schema->rangeKeyFields.size());
 }
 
-String SKVRecord::getPartitionKey() {
+String SKVRecord::getPartitionKey() const {
     size_t keySize = 0;
     for (const String& key : partitionKeys) {
         keySize += key.size();
+    }
+
+    // This should not be possible in practice but it is here defensively
+    if (schema->partitionKeyFields.size() == 0) {
+        K2WARN("SKVRecord schema has no partitionKeyFields");
+        return String("");
     }
 
     String partitionKey(String::initialized_later(), keySize);
@@ -120,10 +127,14 @@ String SKVRecord::getPartitionKey() {
     return partitionKey;
 }
 
-String SKVRecord::getRangeKey() {
+String SKVRecord::getRangeKey() const {
     size_t keySize = 0;
     for (const String& key : rangeKeys) {
         keySize += key.size();
+    }
+
+    if (schema->rangeKeyFields.size() == 0) {
+        return String("");
     }
 
     String rangeKey(String::initialized_later(), keySize);
@@ -138,6 +149,30 @@ String SKVRecord::getRangeKey() {
     }
 
     return rangeKey;
+}
+
+dto::Key SKVRecord::getKey() const {
+    return dto::Key {
+        .schemaName = FieldToKeyString<String>(schema->name),
+        .partitionKey = getPartitionKey(),
+        .rangeKey = getRangeKey()
+    };
+}
+
+SKVRecord::Storage SKVRecord::Storage::share() {
+    return SKVRecord::Storage {
+        excludedFields,
+        fieldData.shareAll(),
+        schemaVersion
+    };
+}
+
+SKVRecord::Storage SKVRecord::Storage::copy() {
+    return SKVRecord::Storage {
+        excludedFields,
+        fieldData.copy(),
+        schemaVersion
+    };
 }
 
 } // ns dto

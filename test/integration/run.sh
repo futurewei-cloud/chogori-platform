@@ -4,7 +4,7 @@ cd ${topname}
 
 set -e
 
-for test in test_collection.sh test_k23si.sh; do
+for test in test_collection.sh test_k23si.sh test_3si_txn.sh test_schema_create.sh; do
     echo ">>> Running integration test: ${test}";
     ./${test};
     echo ">>> Done running test ${test}";

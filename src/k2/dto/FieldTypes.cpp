@@ -39,6 +39,9 @@ static constexpr char ESCAPED_NULL = 0xFF;
 
 template <> FieldType TToFieldType<String>() { return FieldType::STRING; }
 template <> FieldType TToFieldType<uint32_t>() { return FieldType::UINT32T; }
+template <> FieldType TToFieldType<uint64_t>() { return FieldType::UINT64T; }
+template <> FieldType TToFieldType<int32_t>() { return FieldType::INT32T; }
+template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
 
 // All conversion assume ascending ordering
 
@@ -95,6 +98,36 @@ template <> String FieldToKeyString<uint32_t>(const uint32_t& field)
     s[6] = TERM;
 
     return s;
+}
+
+// Simple conversion to big-endian
+template <> String FieldToKeyString<uint64_t>(const uint64_t& field)
+{
+    // type byte + 8 bytes + ESCAPE + TERM
+    String s(String::initialized_later(), 11);
+    s[0] = (char) FieldType::UINT32T;
+    s[1] = (char)(field >> 56);
+    s[2] = (char)(field >> 48);
+    s[3] = (char)(field >> 40);
+    s[4] = (char)(field >> 32);
+    s[5] = (char)(field >> 24);
+    s[6] = (char)(field >> 16);
+    s[7] = (char)(field >> 8);
+    s[8] = (char)(field);
+    s[9] = ESCAPE;
+    s[10] = TERM;
+
+    return s;
+}
+
+template <> String FieldToKeyString<int32_t>(const int32_t& field) {
+    (void) field;
+    throw new std::runtime_error("Key encoding for int32_t is not implemented yet");
+}
+
+template <> String FieldToKeyString<float>(const float& field) {
+    (void) field;
+    throw new std::runtime_error("Key encoding for float is not implemented yet");
 }
 
 String NullFirstToKeyString() {

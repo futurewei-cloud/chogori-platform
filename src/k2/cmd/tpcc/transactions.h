@@ -123,60 +123,57 @@ private:
     }
 
     future<> warehouseUpdate() {
-        return _txn.read<Warehouse::Data>(Warehouse::getKey(_w_id), "TPCC")
+        return _txn.read<Warehouse>(Warehouse(_w_id))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            Warehouse warehouse(result.getValue(), _w_id);
-            warehouse.data.YTD += _amount;
-            strcpy(_w_name, warehouse.data.Name);
-            return writeRow<Warehouse>(std::move(warehouse), _txn).discard_result();
+            *(result.value.YTD) += _amount;
+            _w_name = *(result.value.Name);
+            return writeRow<Warehouse>(result.value, _txn).discard_result();
         });
     }
 
     future<> districtUpdate() {
-        return _txn.read<District::Data>(District::getKey(_w_id, _d_id), "TPCC")
+        return _txn.read<District>(District(_w_id, _d_id))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            District district(result.getValue(), _w_id, _d_id);
-            district.data.YTD += _amount;
-            strcpy(_d_name, district.data.Name);
-            return writeRow<District>(std::move(district), _txn).discard_result();
+            *(result.value.YTD) += _amount;
+            _d_name = *(result.value.Name);
+            return writeRow<District>(result.value, _txn).discard_result();
         });
     }
 
     future<> customerUpdate() {
-        return _txn.read<Customer::Data>(Customer::getKey(_c_w_id, _c_d_id, _c_id), "TPCC")
+        return _txn.read<Customer>(Customer(_c_w_id, _c_d_id, _c_id))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            Customer customer(result.getValue(), _c_w_id, _c_d_id, _c_id);
 
-            customer.data.Balance -= _amount;
-            customer.data.YTDPayment += _amount;
-            customer.data.PaymentCount++;
+            *(result.value.Balance) -= _amount;
+            *(result.value.YTDPayment) += _amount;
+            (*(result.value.PaymentCount))++;
 
-            if (strcmp(customer.data.Credit, "BC") == 0) {
+            if (*(result.value.Credit) == "BC") {
                 size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
-                memmove(customer.data.Info + shift_size, customer.data.Info, 500-shift_size);
-                customer.data.Info[500] = '\0';
+                memmove((char*)result.value.Info->c_str() + shift_size, 
+                    (char*)result.value.Info->c_str(), 500-shift_size);
                 uint32_t offset = 0;
-                memcpy(customer.data.Info+offset, &_c_id, sizeof(_c_id));
+                memcpy((char*)result.value.Info->c_str() + offset, &_c_id, sizeof(_c_id));
                 offset += sizeof(_c_id);
-                memcpy(customer.data.Info+offset, &_c_d_id, sizeof(_c_d_id));
+                memcpy((char*)result.value.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
                 offset += sizeof(_c_d_id);
-                memcpy(customer.data.Info+offset, &_d_id, sizeof(_d_id));
+                memcpy((char*)result.value.Info->c_str() + offset, &_d_id, sizeof(_d_id));
                 offset += sizeof(_d_id);
-                memcpy(customer.data.Info+offset, &_w_id, sizeof(_w_id));
+                memcpy((char*)result.value.Info->c_str() + offset, &_w_id, sizeof(_w_id));
                 offset += sizeof(_w_id);
-                memcpy(customer.data.Info+offset, &_amount, sizeof(_amount));
+                memcpy((char*)result.value.Info->c_str() + offset, &_amount, sizeof(_amount));
             }
 
-            return writeRow<Customer>(std::move(customer), _txn).discard_result();
+            return writeRow<Customer>(result.value, _txn).discard_result();
         });
     }
 
     future<> historyUpdate() {
-        History history(_w_id, _d_id, _c_id, _c_w_id, _c_d_id, _amount, _w_name, _d_name);
-        return writeRow<History>(std::move(history), _txn).discard_result();
+        History history(_w_id, _d_id, _c_id, _c_w_id, _c_d_id, _amount, _w_name.c_str(), _d_name.c_str());
+        return writeRow<History>(history, _txn).discard_result();
     }
 
     K23SIClient& _client;
@@ -187,8 +184,8 @@ private:
     uint32_t _amount;
     uint16_t _d_id;
     uint16_t _c_d_id;
-    char _w_name[11];
-    char _d_name[11];
+    k2::String _w_name;
+    k2::String _d_name;
     bool _failed;
     bool _abort; // Used by verification test to force an abort
 
@@ -221,31 +218,30 @@ public:
 private:
     future<bool> runWithTxn() {
         // Get warehouse row, only used for tax rate in total amount calculation
-        future<> warehouse_f = _txn.read<Warehouse::Data>(Warehouse::getKey(_w_id), "TPCC")
+        future<> warehouse_f = _txn.read<Warehouse>(Warehouse(_w_id))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            _w_tax = result.getValue().Tax;
+            _w_tax = *(result.value.Tax);
             return make_ready_future();
         });
 
         // Get customer row, only used for discount rate in total amount calculation
-        future<> customer_f = _txn.read<Customer::Data>(Customer::getKey(_w_id, _order.DistrictID, _order.data.CustomerID), "TPCC")
+        future<> customer_f = _txn.read<Customer>(Customer(_w_id, *(_order.DistrictID), *(_order.CustomerID)))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            _c_discount = result.getValue().Discount;
+            _c_discount = *(result.value.Discount);
             return make_ready_future();
         });
 
-         future<> main_f = _txn.read<District::Data>(District::getKey(_w_id, _order.DistrictID), "TPCC")
+         future<> main_f = _txn.read<District>(District(_w_id, *(_order.DistrictID)))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
 
             // Get and write NextOrderID in district row
-            District district(result.getValue(), _w_id, _order.DistrictID);
-            _order.OrderID = district.data.NextOrderID;
-            _d_tax = district.data.Tax;
-            district.data.NextOrderID++;
-            future<WriteResult> district_update = writeRow<District>(district, _txn);
+            _order.OrderID = *(result.value.NextOrderID);
+            _d_tax = *(result.value.Tax);
+            (*(result.value.NextOrderID))++;
+            future<WriteResult> district_update = writeRow<District>(result.value, _txn);
 
             // Write NewOrder row
             NewOrder new_order(_order);
@@ -257,8 +253,8 @@ private:
             future<WriteResult> order_update = writeRow<Order>(_order, _txn);
 
             future<> line_updates = parallel_for_each(_lines.begin(), _lines.end(), [this] (OrderLine& line) {
-                return _txn.read<Item::Data>(Item::getKey(line.data.ItemID), "TPCC")
-                .then([this, i_id=line.data.ItemID] (auto&& result) {
+                return _txn.read<Item>(Item(*(line.ItemID)))
+                .then([this, i_id=*(line.ItemID)] (auto&& result) {
                     if (result.status == dto::K23SIStatus::KeyNotFound) {
                         return make_exception_future<Item>(std::runtime_error("Bad ItemID"));
                     } else if (!result.status.is2xxOK()) {
@@ -266,27 +262,27 @@ private:
                         return make_exception_future<Item>(std::runtime_error("Bad read status"));
                     }
 
-                    return make_ready_future<Item>(Item(result.getValue(), i_id));
+                    return make_ready_future<Item>(std::move(result.value));
 
-                }).then([this, supply_id=line.data.SupplyWarehouseID] (Item&& item) {
-                    return _txn.read<Stock::Data>(Stock::getKey(supply_id, item.ItemID), "TPCC")
+                }).then([this, supply_id=*(line.SupplyWarehouseID)] (Item&& item) {
+                    return _txn.read<Stock>(Stock(supply_id, *(item.ItemID)))
                     .then([item, supply_id] (auto&& result) {
                         if (!result.status.is2xxOK()) {
                             K2DEBUG("Bad read status: " << result.status);
                             return make_exception_future<std::pair<Item, Stock>>(std::runtime_error("Bad read status"));
                         }
-                        return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), Stock(result.getValue(), supply_id, item.ItemID)));
+                        return make_ready_future<std::pair<Item, Stock>>(std::make_pair(std::move(item), result.value));
                     });
 
                 }).then([this, line] (std::pair<Item, Stock>&& pair) mutable {
                     auto& [item, stock] = pair;
-                    line.data.Amount = item.data.Price * line.data.Quantity;
-                    _total_amount += line.data.Amount;
-                    strcpy(line.data.DistInfo, stock.getDistInfo(line.DistrictID));
+                    *(line.Amount) = *(item.Price) * *(line.Quantity);
+                    _total_amount += *(line.Amount);
+                    line.DistInfo = stock.getDistInfo(*(line.DistrictID));
                     updateStockRow(stock, line);
 
-                    auto line_update = writeRow<OrderLine>(std::move(line), _txn);
-                    auto stock_update = writeRow<Stock>(std::move(stock), _txn);
+                    auto line_update = writeRow<OrderLine>(line, _txn);
+                    auto stock_update = writeRow<Stock>(stock, _txn);
 
                     return when_all_succeed(std::move(line_update), std::move(stock_update)).discard_result();
                 });
@@ -327,30 +323,30 @@ private:
     }
 
     static void updateStockRow(Stock& stock, const OrderLine& line) {
-        if (stock.data.Quantity - line.data.Quantity >= 10) {
-            stock.data.Quantity -= line.data.Quantity;
+        if (*(stock.Quantity) - *(line.Quantity) >= 10) {
+            *(stock.Quantity) -= *(line.Quantity);
         } else {
-            stock.data.Quantity = stock.data.Quantity + 91 - line.data.Quantity;
+            *(stock.Quantity) = *(stock.Quantity) + 91 - *(line.Quantity);
         }
-        stock.data.YTD += line.data.Quantity;
-        stock.data.OrderCount++;
-        if (line.WarehouseID != line.data.SupplyWarehouseID) {
-            stock.data.RemoteCount++;
+        *(stock.YTD) += *(line.Quantity);
+        (*(stock.OrderCount))++;
+        if (*(line.WarehouseID) != *(line.SupplyWarehouseID)) {
+            (*(stock.RemoteCount))++;
         }
     }
 
     void makeOrderLines() {
-        _lines.reserve(_order.OrderLineCount);
-        _order.data.AllLocal = true;
-        for (int i=0; i<_order.OrderLineCount; ++i) {
+        _lines.reserve(*(_order.OrderLineCount));
+        _order.AllLocal = 1;
+        for (uint32_t i = 0; i < *(_order.OrderLineCount); ++i) {
             _lines.emplace_back(_random, _order, i, _max_w_id);
-            if (_lines.back().data.SupplyWarehouseID != _w_id) {
-                _order.data.AllLocal = false;
+            if (*(_lines.back().SupplyWarehouseID) != _w_id) {
+                _order.AllLocal = 0;
             }
         }
         uint32_t rollback = _random.UniformRandom(1, 100);
         if (rollback == 1) {
-            _lines.back().data.ItemID = Item::InvalidID;
+            _lines.back().ItemID = Item::InvalidID;
         }
     }
 

@@ -63,7 +63,7 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
     schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
 
-    k2::dto::SKVRecord doc("collection", std::move(schema));
+    k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<k2::String>("Bilbo");
@@ -140,7 +140,7 @@ TEST_CASE("Test2: invalid serialization tests") {
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
     schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
 
-    k2::dto::SKVRecord doc("collection", std::move(schema));
+    k2::dto::SKVRecord doc("collection", seastar::make_lw_shared(schema));
 
     try {
         // Invalid serialization order, should throw exception
