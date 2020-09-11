@@ -59,7 +59,7 @@ public:
 template<typename ValueType>
 class ReadResult {
 public:
-    ReadResult(Status s) : status(std::move(s)) {}
+    ReadResult(Status s, ValueType&& v) : status(std::move(s)), value(std::move(v)) {}
 
     Status status;
     ValueType value;
@@ -164,7 +164,7 @@ public:
             return seastar::make_exception_future<ReadResult<T>>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
-            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status));
+            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
         }
 
         _client->read_ops++;
@@ -179,19 +179,17 @@ public:
                 checkResponseStatus(status);
 
                 if constexpr (std::is_same<T, dto::SKVRecord>()) {
-                    auto userResponse = ReadResult<SKVRecord>(std::move(status));
-                    userResponse.value = std::move(k2response.value);
-                    return seastar::make_ready_future<ReadResult<SKVRecord>>(std::move(userResponse));
+                    return ReadResult<SKVRecord>(std::move(status), std::move(k2response.value));
                 } else {
-                    auto userResponse = ReadResult<T>(std::move(status));
-                    SKVRecord skv_record(request_cname, request_schema);
-                    skv_record.storage = std::move(k2response.value);
+                    T userResponseRecord{};
 
-                    T userResponseRecord;
-                    userResponseRecord.__readFields(skv_record);
-                    userResponse.value = std::move(userResponseRecord);
+                    if (status.is2xxOK()) {
+                        SKVRecord skv_record(request_cname, request_schema);
+                        skv_record.storage = std::move(k2response.value);
+                        userResponseRecord.__readFields(skv_record);
+                    }
 
-                    return seastar::make_ready_future<ReadResult<T>>(std::move(userResponse));
+                    return ReadResult<T>(std::move(status), std::move(userResponseRecord));
                 }
             }).finally([request] () { delete request; });
     }

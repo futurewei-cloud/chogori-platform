@@ -47,12 +47,15 @@ k2::dto::Schema _schema {
 };
 static thread_local seastar::lw_shared_ptr<k2::dto::Schema> schemaPtr;
 
-struct DataRec{
+class DataRec{
+public:
     std::optional<k2::String> partitionKey;
     std::optional<k2::String> rangeKey;
     std::optional<k2::String> data;
+
     seastar::lw_shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = collname;
+
     SKV_RECORD_FIELDS(partitionKey, rangeKey, data);
 };
 

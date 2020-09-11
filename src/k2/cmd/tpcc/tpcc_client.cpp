@@ -108,9 +108,7 @@ public:  // application lifespan
     seastar::future<> start() {
         _stopped = false;
 
-        if (seastar::engine().cpu_id() == 0) {
-            setupSchemaPointers();
-        }
+        setupSchemaPointers();
 
         k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
             K2WARN("We're low on memory in transport: " << ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
