@@ -150,12 +150,7 @@ public:
         dto::SKVRecord record(user_record.collectionName, user_record.schema);
         user_record.__writeFields(record);
 
-        return new dto::K23SIReadRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            record.collectionName,
-            _mtr,
-            record.getKey()
-        };
+        return makeReadRequest(record);
     }
 
     template <class T>
