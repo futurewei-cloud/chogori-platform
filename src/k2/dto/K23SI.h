@@ -322,7 +322,7 @@ struct K23SITxnEndRequest {
     // The interval from end to Finalize for a transaction
     Duration timeToFinalize{0};
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize, timeToFinalize);
     friend std::ostream& operator<<(std::ostream& os, const K23SITxnEndRequest& r) {
         os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", action=" << r.action << ", key=" << r.key << ", writeKeys=[";
