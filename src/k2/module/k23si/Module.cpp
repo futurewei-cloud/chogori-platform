@@ -442,6 +442,7 @@ K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
     TxnRecord& rec = _txnMgr.getTxnRecord(txnId);
     rec.writeKeys = std::move(request.writeKeys);
     rec.syncFinalize = request.syncFinalize;
+    rec.timeToFinalize = request.timeToFinalize;
 
     // and just execute the transition
     return _txnMgr.onAction(action, std::move(txnId))

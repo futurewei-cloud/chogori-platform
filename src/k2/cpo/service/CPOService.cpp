@@ -352,6 +352,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
             else {
                 // The node refused to accept the assignment. For now, just ignore this
                 K2WARN("assignment for collection " << name << " was refused by " << ep << ", due to: " << status);
+                _handleCompletedAssignment(name, std::move(resp));
             }
             return seastar::make_ready_future();
         })

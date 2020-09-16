@@ -37,8 +37,9 @@ Copyright(c) 2020 Futurewei Cloud
 
 
 namespace k2{
-const char* collname = "3si_txn_collection";
-const char* badCname = "bad_collection_name";
+const String badCname = "bad_collection_name";
+const String collname = "3si_txn_collection";
+const String s02nd_cname = "Second_" + collname;
 dto::Schema _schema {
             .name = "schema",
             .version = 1,
@@ -69,7 +70,8 @@ struct DataRec {
 
 enum class ErrorCaseOpt: uint8_t {
     NoInjection,
-    WrongPart,          // wrong partition 
+    WrongPartId,        // wrong partition index
+    WrongPartVer,       // wrong partition version
     PartMismatchKey,    // key doesn't belong to partition (based on hashing)
     ObsoletePart,       // out-of-date partition version
 };
@@ -105,7 +107,8 @@ public:		// application
         _testTimer.set_callback([this] {
             _testFuture = testScenario00()
             .then([this] { return testScenario01(); })
-            //.then([this] { return testScenario02(); })
+            .then([this] { return testScenario02(); })
+            .then([this] { return testScenario03(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -173,9 +176,8 @@ private:
         switch (errOpt) {
         case ErrorCaseOpt::NoInjection:
             break;
-        case ErrorCaseOpt::WrongPart: {
-            auto& wPart = _pgetter.getPartitionForKey(wrongkey); // wrong partition: id(p1) against p2
-            request.pvid = wPart.partition->pvid;
+        case ErrorCaseOpt::WrongPartId: {
+            request.pvid.id = (request.pvid.id + 1) % 3;
             break;
         }
         case ErrorCaseOpt::PartMismatchKey: {
@@ -209,9 +211,8 @@ private:
         switch (errOpt) {
         case ErrorCaseOpt::NoInjection:
             break;
-        case ErrorCaseOpt::WrongPart: {
-            auto& wPart = _pgetter.getPartitionForKey(wrongkey); // wrong partition: id(p1) against p2
-            request.pvid = wPart.partition->pvid;
+        case ErrorCaseOpt::WrongPartId: {
+            request.pvid.id = (request.pvid.id + 1) % 3;
             break;
         }
         case ErrorCaseOpt::PartMismatchKey: {
@@ -257,9 +258,8 @@ private:
         switch (errOpt) {
         case ErrorCaseOpt::NoInjection:
             break;
-        case ErrorCaseOpt::WrongPart: {
-            auto& wPart = _pgetter.getPartitionForKey(wrongkey); // wrong partition: id(p1) against p2
-            request.pvid = wPart.partition->pvid;
+        case ErrorCaseOpt::WrongPartId: {
+            request.pvid.id = (request.pvid.id + 1) % 3;
             break;
         }
         case ErrorCaseOpt::PartMismatchKey: {
@@ -281,7 +281,7 @@ private:
     }
 
     seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
-    doEnd(dto::Key trh, dto::K23SI_MTR mtr, String cname, bool isCommit, std::vector<dto::Key> wkeys, ErrorCaseOpt errOpt) {
+    doEnd(dto::Key trh, dto::K23SI_MTR mtr, String cname, bool isCommit, std::vector<dto::Key> wkeys, Duration dur, ErrorCaseOpt errOpt) {
         K2DEBUG("key=" << trh << ",partition hash=" << trh.partitionHash())
         auto& part = _pgetter.getPartitionForKey(trh);
         dto::K23SITxnEndRequest request;
@@ -291,12 +291,19 @@ private:
         request.key = trh;
         request.action = isCommit ? dto::EndAction::Commit : dto::EndAction::Abort;
         request.writeKeys = wkeys;
+        if(dur == Duration(0)) {
+            request.syncFinalize = true;
+            request.timeToFinalize = Duration(0);
+        } else {
+            request.syncFinalize = false;
+            request.timeToFinalize = dur;
+        }
+        
         switch (errOpt) {
         case ErrorCaseOpt::NoInjection:
             break;
-        case ErrorCaseOpt::WrongPart: {
-            auto& wPart = _pgetter.getPartitionForKey(wrongkey); // wrong partition: id(p1) against p2
-            request.pvid = wPart.partition->pvid;
+        case ErrorCaseOpt::WrongPartId: {
+            request.pvid.id = (request.pvid.id + 1) % 3;
             break;
         }
         case ErrorCaseOpt::PartMismatchKey: {
@@ -331,9 +338,8 @@ private:
         switch (errOpt) {
         case ErrorCaseOpt::NoInjection:
             break;
-        case ErrorCaseOpt::WrongPart: {
-            auto& wPart = _pgetter.getPartitionForKey(wrongkey); // wrong partition: id(p1) against p2
-            request.pvid = wPart.partition->pvid;
+        case ErrorCaseOpt::WrongPartId: {
+            request.pvid.id = (request.pvid.id + 1) % 3;
             break;
         }
         case ErrorCaseOpt::PartMismatchKey: {
@@ -366,9 +372,8 @@ private:
         switch (errOpt) {
         case ErrorCaseOpt::NoInjection:
             break;
-        case ErrorCaseOpt::WrongPart: {
-            auto& wPart = _pgetter.getPartitionForKey(wrongkey); // wrong partition: id(p1) against p2
-            request.pvid = wPart.partition->pvid;
+        case ErrorCaseOpt::WrongPartId: {
+            request.pvid.id = (request.pvid.id + 1) % 3;
             break;
         }
         case ErrorCaseOpt::PartMismatchKey: {
@@ -562,7 +567,7 @@ seastar::future<> testScenario01() {
         .then([](auto&& response) {
             // response for collection create
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S201_Created);
+            K2EXPECT(status, dto::K23SIStatus::Created);
             // wait for collection to get assigned
             return seastar::sleep(100ms);
         })
@@ -575,7 +580,7 @@ seastar::future<> testScenario01() {
         .then([this](auto&& response) {
             // check collection was assigned
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(status, dto::K23SIStatus::OK);
             _pgetter = dto::PartitionGetter(std::move(resp.collection));
         })
         .then([this] () {
@@ -606,7 +611,7 @@ seastar::future<> testScenario01() {
                 return doWrite(key, rec, mtr, trh, badCname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S410_Gone);               
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                     K2INFO("SC01.case01(bad collection name)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 // case"bad collection name"  --> OP:READ
@@ -614,7 +619,7 @@ seastar::future<> testScenario01() {
                     return doRead(key, mtr, badCname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case01(bad collection name)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -623,16 +628,16 @@ seastar::future<> testScenario01() {
                     return doPush(key, badCname, mtr, mtr, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case01(bad collection name)::OP_PUSH. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"bad collection name"  --> OP:END
                 .then([this, &trh, &key, &mtr] {
-                    return doEnd(trh, mtr, badCname, false, {key}, ErrorCaseOpt::NoInjection)
+                    return doEnd(trh, mtr, badCname, false, {key}, Duration(0s), ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case01(bad collection name)::OP_END. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -641,7 +646,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(trh, key, mtr, badCname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case01(bad collection name)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -650,7 +655,7 @@ seastar::future<> testScenario01() {
                     return doHeartbeat(key, mtr, badCname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case01(bad collection name)::OP_HEARTBEAT. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });           
@@ -674,24 +679,24 @@ seastar::future<> testScenario01() {
                 return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S403_Forbidden);               
                     K2INFO("SC01.case02(stale request)::OP_WRITE. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::AbortRequestTooOld);               
                 })
                 // case"stale request"  --> OP:READ
                 .then([this, &key, &mtr] {
                     return doRead(key, mtr, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S403_Forbidden);               
+                        K2EXPECT(status, dto::K23SIStatus::AbortRequestTooOld);               
                         K2INFO("SC01.case02(stale request)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"stale request"  --> OP:END
                 .then([this, &mtr, &trh, &key] {
-                    return doEnd(trh, mtr, collname, false, {key}, ErrorCaseOpt::NoInjection)
+                    return doEnd(trh, mtr, collname, false, {key}, Duration(0s), ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S403_Forbidden);               
+                        K2EXPECT(status, dto::K23SIStatus::AbortRequestTooOld);               
                         K2INFO("SC01.case02(stale request)::OP_END. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -700,7 +705,7 @@ seastar::future<> testScenario01() {
                     return doHeartbeat(key, mtr, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S403_Forbidden);               
+                        K2EXPECT(status, dto::K23SIStatus::AbortRequestTooOld);               
                         K2INFO("SC01.case02(stale request)::OP_HEARTBEAT. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -710,7 +715,7 @@ seastar::future<> testScenario01() {
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2INFO("SC01.case02(stale request)::OP_PUSH. " << "status: " << status.code << " with MESG: " << status.message);
-                        K2EXPECT(status, Statuses::S403_Forbidden)
+                        K2EXPECT(status, dto::K23SIStatus::AbortRequestTooOld)
                     });
                 })
                 // stale request for FINALIZE, test Finalize-commit & Finalize-abort
@@ -719,14 +724,14 @@ seastar::future<> testScenario01() {
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2INFO("SC01.case02::OP_Finalize_Commit. " << "status: " << status.code << " with MESG: " << status.message);
-                        K2EXPECT(status, Statuses::S405_Method_Not_Allowed)
+                        K2EXPECT(status, dto::K23SIStatus::OperationNotAllowed)
                     })
                     .then([this, &mtr, &key, &trh] {
                         return doFinalize(trh, key, mtr, collname, false, ErrorCaseOpt::NoInjection)
                         .then([](auto&& response) {
                             auto& [status, resp] = response;
                             K2INFO("SC01.case02::OP_Finalize_Abort. " << "status: " << status.code << " with MESG: " << status.message);
-                            K2EXPECT(status, Statuses::S200_OK)
+                            K2EXPECT(status, dto::K23SIStatus::OK)
                         });
                     });
                 });    
@@ -749,54 +754,54 @@ seastar::future<> testScenario01() {
             DataRec {.f1="SC01_field1", .f2="SC01_field2"},
             [this] (dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh, DataRec& rec) {
                 // case"wrong partition"  --> OP:WRITE
-                return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::WrongPart)
+                return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::WrongPartId)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S410_Gone);               
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                     K2INFO("SC01.case03(wrong partition)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 // case"wrong partition"  --> OP:READ
                 .then([this, &key, &mtr] {
-                    return doRead(key, mtr, collname, ErrorCaseOpt::WrongPart)
+                    return doRead(key, mtr, collname, ErrorCaseOpt::WrongPartId)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case03(bad collection name)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"wrong partition"  --> OP:PUSH
                 .then([this, &key, &mtr] {
-                    return doPush(key, collname, mtr, mtr, ErrorCaseOpt::WrongPart)
+                    return doPush(key, collname, mtr, mtr, ErrorCaseOpt::WrongPartId)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case03(bad collection name)::OP_PUSH. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"wrong partition"  --> OP:END
                 .then([this, &trh, &key, &mtr] {
-                    return doEnd(trh, mtr, collname, false, {key}, ErrorCaseOpt::WrongPart)
+                    return doEnd(trh, mtr, collname, false, {key}, Duration(0s), ErrorCaseOpt::WrongPartId)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case03(bad collection name)::OP_END. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"wrong partition"  --> OP:FINALIZE
                 .then([this, &trh, &key, &mtr] {
-                    return doFinalize(trh, key, mtr, collname, false, ErrorCaseOpt::WrongPart)
+                    return doFinalize(trh, key, mtr, collname, false, ErrorCaseOpt::WrongPartId)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case03(bad collection name)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"wrong partition"  --> OP:HEARTBEAT
                 .then([this, &key, &mtr] {
-                    return doHeartbeat(key, mtr, collname, ErrorCaseOpt::WrongPart)
+                    return doHeartbeat(key, mtr, collname, ErrorCaseOpt::WrongPartId)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case03(bad collection name)::OP_HEARTBEAT. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });
@@ -823,7 +828,7 @@ seastar::future<> testScenario01() {
                 return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::PartMismatchKey)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S410_Gone);               
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                     K2INFO("SC01.case04(mismatch of partition and key)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 // case"wrong partition"  --> OP:READ
@@ -831,7 +836,7 @@ seastar::future<> testScenario01() {
                     return doRead(key, mtr, collname, ErrorCaseOpt::PartMismatchKey)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case04(mismatch of partition and key)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -840,16 +845,16 @@ seastar::future<> testScenario01() {
                     return doPush(key, collname, mtr, mtr, ErrorCaseOpt::PartMismatchKey)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case04(mismatch of partition and key)::OP_PUSH. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"wrong partition"  --> OP:END
                 .then([this, &trh, &key, &mtr] {
-                    return doEnd(trh, mtr, collname, false, {key}, ErrorCaseOpt::PartMismatchKey)
+                    return doEnd(trh, mtr, collname, false, {key}, Duration(0s), ErrorCaseOpt::PartMismatchKey)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case04(mismatch of partition and key)::OP_END. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -858,7 +863,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(trh, key, mtr, collname, false, ErrorCaseOpt::PartMismatchKey)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case04(mismatch of partition and key)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -867,7 +872,7 @@ seastar::future<> testScenario01() {
                     return doHeartbeat(key, mtr, collname, ErrorCaseOpt::PartMismatchKey)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case04(mismatch of partition and key)::OP_HEARTBEAT. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });
@@ -894,7 +899,7 @@ seastar::future<> testScenario01() {
                 return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::ObsoletePart)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S410_Gone);               
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                     K2INFO("SC01.case05(Obsolete Partition)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 // case"wrong partition"  --> OP:READ
@@ -902,7 +907,7 @@ seastar::future<> testScenario01() {
                     return doRead(key, mtr, collname, ErrorCaseOpt::ObsoletePart)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case05(Obsolete Partition)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -911,16 +916,16 @@ seastar::future<> testScenario01() {
                     return doPush(key, collname, mtr, mtr, ErrorCaseOpt::ObsoletePart)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case05(Obsolete Partition)::OP_PUSH. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
                 // case"wrong partition"  --> OP:END
                 .then([this, &trh, &key, &mtr] {
-                    return doEnd(trh, mtr, collname, false, {key}, ErrorCaseOpt::ObsoletePart)
+                    return doEnd(trh, mtr, collname, false, {key}, Duration(0s), ErrorCaseOpt::ObsoletePart)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case05(Obsolete Partition)::OP_END. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -929,7 +934,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(trh, key, mtr, collname, false, ErrorCaseOpt::ObsoletePart)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case05(Obsolete Partition)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -938,7 +943,7 @@ seastar::future<> testScenario01() {
                     return doHeartbeat(key, mtr, collname, ErrorCaseOpt::ObsoletePart)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case05(Obsolete Partition)::OP_HEARTBEAT. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });
@@ -961,14 +966,14 @@ seastar::future<> testScenario01() {
                 return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S422_Unprocessable_Entity);
+                    K2EXPECT(status, dto::K23SIStatus::BadParameter);
                     K2INFO("SC01.case06(empty partition key, empty range key)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 .then([this, &key, &mtr] {
                     return doRead(key, mtr, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S422_Unprocessable_Entity);               
+                        K2EXPECT(status, dto::K23SIStatus::BadParameter);               
                         K2INFO("SC01.case06(empty partition key, empty range key)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -976,7 +981,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(trh, key, mtr, collname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S422_Unprocessable_Entity);
+                        K2EXPECT(status, dto::K23SIStatus::BadParameter);
                         K2INFO("SC01.case06(empty partition key, empty range key)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });
@@ -998,7 +1003,7 @@ seastar::future<> testScenario01() {
                 return doWrite(missPartKey, rec, mtr, missPartKey, collname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S422_Unprocessable_Entity);               
+                    K2EXPECT(status, dto::K23SIStatus::BadParameter);               
                     K2INFO("SC01.case07(empty partition key, non-empty range key)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 .then([this, &mtr] {
@@ -1007,7 +1012,7 @@ seastar::future<> testScenario01() {
                     return doRead(missPartKey, mtr, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S422_Unprocessable_Entity);               
+                        K2EXPECT(status, dto::K23SIStatus::BadParameter);               
                         K2INFO("SC01.case07(empty partition key, non-empty range key)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -1017,7 +1022,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(missPartKey, missPartKey, mtr, collname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S422_Unprocessable_Entity);
+                        K2EXPECT(status, dto::K23SIStatus::BadParameter);
                         K2INFO("SC01.case07(empty partition key, non-empty range key)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });
@@ -1040,7 +1045,7 @@ seastar::future<> testScenario01() {
                 return doWrite(onlyPartKey, rec, mtr, onlyPartKey, collname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S201_Created);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
                     K2INFO("SC01.case08(only partitionKey)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 .then([this, &mtr] {
@@ -1050,7 +1055,7 @@ seastar::future<> testScenario01() {
                     return doRead(onlyPartKey, mtr, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S200_OK);               
+                        K2EXPECT(status, dto::K23SIStatus::OK);               
                         K2INFO("SC01.case08(only partitionKey)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -1061,7 +1066,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(onlyPartKey, onlyPartKey, mtr, collname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S200_OK);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
                         K2INFO("SC01.case08(only partitionKey)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });
@@ -1083,14 +1088,14 @@ seastar::future<> testScenario01() {
                 return doWrite(key, rec, mtr, trh, collname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S201_Created);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
                     K2INFO("SC01.case09(partition and range key)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 .then([this, &key, &mtr] {
                     return doRead(key, mtr, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S200_OK);               
+                        K2EXPECT(status, dto::K23SIStatus::OK);               
                         K2INFO("SC01.case09(partition and range key)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -1098,7 +1103,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(trh, key, mtr, collname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S200_OK);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
                         K2INFO("SC01.case09(partition and range key)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });
@@ -1125,7 +1130,7 @@ seastar::future<> testScenario01() {
                 return doWrite(missPartKey, rec, mtr, trh, badCname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, Statuses::S410_Gone);               
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                     K2INFO("SC01.case10(bad coll name & missing partition key)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
                 })
                 // case"wrong partition"  --> OP:READ
@@ -1135,7 +1140,7 @@ seastar::future<> testScenario01() {
                     return doRead(missPartKey, mtr, badCname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case10(bad coll name & missing partition key)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 })
@@ -1146,7 +1151,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(trh, missPartKey, mtr, badCname, false, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(status, Statuses::S410_Gone);               
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
                         K2INFO("SC01.case10(bad coll name & missing partition key)::OP_FINALIZE. " << "status: " << status.code << " with MESG: " << status.message);
                     });
                 });            
@@ -1193,22 +1198,22 @@ seastar::future<> testScenario01() {
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
                     K2INFO("SC01.case11::OP_Write_Key1_in_Part2. " << "status: " << status.code << " with MESG: " << status.message);
-                    K2EXPECT(status, Statuses::S201_Created); 
+                    K2EXPECT(status, dto::K23SIStatus::Created); 
                 })
                 .then([this, &key2, &rec2, &mtr, &trh] {
                     return doWrite(key2, rec2, mtr, trh, collname, false, false, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2INFO("SC01.case11::OP_Write_Key2_in_Part1. " << "status: " << status.code << " with MESG: " << status.message);
-                        K2EXPECT(status, Statuses::S201_Created); 
+                        K2EXPECT(status, dto::K23SIStatus::Created); 
                     });
                 })
                 .then([this, &trh, &mtr, &key1, &key2] {
-                    return doEnd(trh, mtr, collname, true, {key1, key2}, ErrorCaseOpt::NoInjection)
+                    return doEnd(trh, mtr, collname, true, {key1, key2}, Duration(0s), ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2INFO("SC01.case11::OP_End_Commit. " << "status: " << status.code << " with MESG: " << status.message);
-                        K2EXPECT(status, Statuses::S200_OK); 
+                        K2EXPECT(status, dto::K23SIStatus::OK); 
                     });
                 })
                 .then([] {
@@ -1236,8 +1241,8 @@ seastar::future<> testScenario01() {
                         K2INFO("SC01.case11::OP_READ_Key1. " << "status: " << status1.code << " with MESG: " << status1.message);
                         K2INFO("SC01.case11::OP_READ_Key2. " << "status: " << status2.code << " with MESG: " << status2.message);
                         K2INFO("Value of Key1: " << val1 << ". Value of key2: " << val2);
-                        K2EXPECT(status1, Statuses::S200_OK);
-                        K2EXPECT(status2, Statuses::S200_OK);
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
                         K2EXPECT(val1, cmpRec1);
                         K2EXPECT(val2, cmpRec2);
                     });
@@ -1265,22 +1270,22 @@ seastar::future<> testScenario01() {
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
                     K2INFO("SC01.case12::OP_Write_Key1_in_Part2. " << "status: " << status.code << " with MESG: " << status.message);
-                    K2EXPECT(status, Statuses::S201_Created);               
+                    K2EXPECT(status, dto::K23SIStatus::Created);               
                 })
                 .then([this, &key2, &rec2, &mtr, &trh] {
                     return doWrite(key2, rec2, mtr, trh, collname, false, false, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2INFO("SC01.case12::OP_Write_Key2_in_Part1. " << "status: " << status.code << " with MESG: " << status.message);
-                        K2EXPECT(status, Statuses::S201_Created);               
+                        K2EXPECT(status, dto::K23SIStatus::Created);               
                     });
                 })
                 .then([this, &trh, &mtr, &key1, &key2] {
-                    return doEnd(trh, mtr, collname, false, {key1, key2}, ErrorCaseOpt::NoInjection)
+                    return doEnd(trh, mtr, collname, false, {key1, key2}, Duration(0s), ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2INFO("SC01.case12::OP_End_Abort. " << "status: " << status.code << " with MESG: " << status.message);
-                        K2EXPECT(status, Statuses::S200_OK);               
+                        K2EXPECT(status, dto::K23SIStatus::OK);               
                     });
                 })
                 .then([] {
@@ -1308,14 +1313,489 @@ seastar::future<> testScenario01() {
                         K2INFO("SC01.case11::OP_READ_Key1. " << "status: " << status1.code << " with MESG: " << status1.message);
                         K2INFO("SC01.case11::OP_READ_Key2. " << "status: " << status2.code << " with MESG: " << status2.message);
                         K2INFO("Value of Key1: " << val1 << ". Value of key2: " << val2);
-                        K2EXPECT(status1, Statuses::S200_OK);
-                        K2EXPECT(status2, Statuses::S200_OK);
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
                         K2EXPECT(val1, cmpRec1);
                         K2EXPECT(val2, cmpRec2);
                     });
             });
         }); 
     }); // end sc-01 case-12
+}
+
+seastar::future<> testScenario02() {
+    std::cout << std::endl << std::endl;
+	K2INFO("+++++++ TestScenario 02: assigned node with single version data +++++++");
+	K2INFO("--->Test SETUP: The following data have been written in the given state.");
+    std::cout << "(\"SC02_pkey1\",\"\", v1) -> commited" << std::endl \
+            << "(\"SC02_pkey2\",\"range1\", v1) -> commited" << std::endl \
+            << "(\"SC02_pkey3\",\"\", v1) -> WI" << std::endl \
+            << "(\"SC02_pkey4\",\"\", v1) -> aborted but not cleaned" << std::endl;
+
+    return seastar::make_ready_future()
+    // test setup
+    .then([this] {
+        auto request = dto::CollectionCreateRequest{
+            .metadata{
+                .name = s02nd_cname,
+                .hashScheme = dto::HashScheme::HashCRC32C,
+                .storageDriver = dto::StorageDriver::K23SI,
+                .capacity{
+                    .dataCapacityMegaBytes = 10,
+                    .readIOPs = 1000,
+                    .writeIOPs = 1000
+                },
+                .retentionPeriod = 5h,
+            },
+            .clusterEndpoints = _k2ConfigEps(),
+            .rangeEnds{}
+        };
+        return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
+                (dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
+        .then([](auto&& response) {
+            // response for collection create
+            auto& [status, resp] = response;
+            K2EXPECT(status, dto::K23SIStatus::Created);
+            // wait for collection to get assigned
+            return seastar::sleep(100ms);
+        })
+        .then([this] {
+            // check to make sure the collection is assigned
+            auto request = dto::CollectionGetRequest{.name = s02nd_cname};
+            return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
+                (dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
+        })
+        .then([this](auto&& response) {
+            // check collection was assigned
+            auto& [status, resp] = response;
+            K2INFO("SC02. " << "status: " << status.code << " with MESG: " << status.message);
+            K2INFO("sc02 collection name|hashScheme|retention|heartbeat: " << resp.collection.metadata.name << " | " << resp.collection.metadata.hashScheme << " | "\
+                    << resp.collection.metadata.retentionPeriod << " | " << resp.collection.metadata.heartbeatDeadline);
+            K2INFO("partition assignment state: p1|p2|p3: " << resp.collection.partitionMap.partitions[0].astate << " | "  \
+                    << resp.collection.partitionMap.partitions[1].astate << " | " << resp.collection.partitionMap.partitions[2].astate);
+            K2EXPECT(status, dto::K23SIStatus::OK);
+            K2EXPECT(resp.collection.partitionMap.partitions[0].astate, dto::AssignmentState::FailedAssignment);
+            K2EXPECT(resp.collection.partitionMap.partitions[1].astate, dto::AssignmentState::FailedAssignment);
+            K2EXPECT(resp.collection.partitionMap.partitions[2].astate, dto::AssignmentState::FailedAssignment);
+        });
+    })
+    .then([] {
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey1", .rangeKey = ""},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey2", .rangeKey = "range1"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey3", .rangeKey = ""},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey4", .rangeKey = ""},
+            DataRec {.f1="SC02_f1", .f2="SC02_f2"},
+            [this](auto& mtr, auto& k1, auto& k2, auto& k3, auto& k4, auto& v1) {
+                return seastar::when_all(doWrite(k1, v1, mtr, k1, collname, false, true, ErrorCaseOpt::NoInjection), doWrite(k2, v1, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) mutable {
+                    auto& [resp1, resp2] = response;
+                    // move resp out of the incoming futures sice get0() returns an rvalue
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2EXPECT(status1, dto::K23SIStatus::Created);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                })
+                .then([this, &mtr, &k1, &k2, &k3, &v1] {
+                    return seastar::when_all(doEnd(k1, mtr, collname, true, {k1,k2}, Duration(0s),ErrorCaseOpt::NoInjection), doWrite(k3, v1, mtr, k3, collname, false, true, ErrorCaseOpt::NoInjection));
+                })
+                .then([&](auto&& response) mutable {
+                    auto& [resp1, resp2] = response;
+                    // move resp out of the incoming futures sice get0() returns an rvalue
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2EXPECT(status1, dto::K23SIStatus::OK);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                })
+                .then([this, &mtr, &k4, &v1] {
+                    return doWrite(k4, v1, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::Created);               
+                    })
+                    .then([this, &mtr, &k4, &v1] {
+                        return doEnd(k4, mtr, collname, false, {k4}, Duration(500ms), ErrorCaseOpt::NoInjection)
+                        .then([](auto&& response) {
+                            auto& [status, resp] = response;
+                            K2EXPECT(status, dto::K23SIStatus::OK); 
+                        });
+                    });
+                });
+            }
+        );
+    }) // end test setup
+    .then([] {
+        K2INFO("Scenario-02 test setup done.");
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+    // SC02 case1: WRITE/READ with bad collection name    
+        std::cout << std::endl;
+        K2INFO("------- SC02.case 01 (WRITE/READ with bad collection name) -------");
+        return seastar::do_with(
+            dto::K23SI_MTR {
+                .txnid = txnids++,
+                .timestamp = std::move(ts),
+                .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey1", .rangeKey = ""},
+            DataRec {.f1="SC02_f3", .f2="SC02_f4"},
+            [this] (dto::K23SI_MTR& mtr, dto::Key& k1, DataRec& v2) {
+                // case"bad collection name"  --> OP:WRITE
+                return doWrite(k1, v2, mtr, k1, badCname, false, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
+                    K2INFO("SC02.case01(bad collection name)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
+                })
+                // case"bad collection name"  --> OP:READ
+                .then([this, &k1, &mtr] {
+                    return doRead(k1, mtr, badCname, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
+                        K2INFO("SC02.case01(bad collection name)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
+                    });
+                });
+            }
+        );
+    }) // end sc-02 case-01
+    .then([] {
+    // SC02 case02: READ/WRITE with wrong partition
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC02.case 02 (READ/WRITE with wrong partition index) -------");
+        return seastar::do_with(
+            dto::K23SI_MTR {
+                .txnid = txnids++,
+                .timestamp = std::move(ts),
+                .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey1", .rangeKey = ""},
+            DataRec {.f1="SC02_f3", .f2="SC02_f4"},
+            [this] (dto::K23SI_MTR& mtr, dto::Key& k1, DataRec& v2) {
+                // case"wrong partition"  --> OP:WRITE
+                return doWrite(k1, v2, mtr, k1, collname, false, true, ErrorCaseOpt::WrongPartId)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
+                    K2INFO("SC02.case02(wrong part id)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
+                })
+                // case"wrong partition"  --> OP:READ
+                .then([this, &k1, &mtr] {
+                    return doRead(k1, mtr, collname, ErrorCaseOpt::WrongPartId)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
+                        K2INFO("SC02.case02(bad part id)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
+                    });
+                });
+            }
+        );
+    }) // end sc-02 case-02
+    .then([] {
+    // SC02 case03: READ/WRITE with wrong partition version
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC02.case 03 (READ/WRITE with wrong partition version) -------");
+        return seastar::do_with(
+            dto::K23SI_MTR {
+                .txnid = txnids++,
+                .timestamp = std::move(ts),
+                .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey1", .rangeKey = ""},
+            DataRec {.f1="SC02_f3", .f2="SC02_f4"},
+            [this] (dto::K23SI_MTR& mtr, dto::Key& k1, DataRec& v2) {
+                // case"wrong partition"  --> OP:WRITE
+                return doWrite(k1, v2, mtr, k1, collname, false, true, ErrorCaseOpt::ObsoletePart)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
+                    K2INFO("SC02.case03(wrong part version)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
+                })
+                // case"wrong partition"  --> OP:READ
+                .then([this, &k1, &mtr] {
+                    return doRead(k1, mtr, collname, ErrorCaseOpt::ObsoletePart)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::RefreshCollection);               
+                        K2INFO("SC02.case03(bad part version)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
+                    });
+                });
+            }
+        );
+    }) // end sc-02 case-03
+    .then([] {
+    // SC02 case04: READ of all data records
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC02.case 04 (READ of all data records) -------");
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey1", .rangeKey = ""},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey2", .rangeKey = "range1"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey3", .rangeKey = ""},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey4", .rangeKey = ""},
+            DataRec {.f1="SC02_f1", .f2="SC02_f2"},
+            [this](auto& mtr, auto& k1, auto& k2, auto& k3, auto& k4, auto& v1) {
+                return seastar::when_all(doRead(k1, mtr, collname, ErrorCaseOpt::NoInjection), doRead(k2, mtr, collname, ErrorCaseOpt::NoInjection), \
+                        doRead(k3, mtr, collname, ErrorCaseOpt::NoInjection), doRead(k4, mtr, collname, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) mutable {
+                    auto& [resp1, resp2, resp3, resp4] = response;
+                    // move resp out of the incoming futures sice get0() returns an rvalue
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    auto [status3, val3] = resp3.get0();                    
+                    auto [status4, val4] = resp4.get0();
+                    K2INFO("SC02.case04::OP_READ_Key1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC02.case04::OP_READ_Key2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2INFO("SC02.case04::OP_READ_Key3. " << "status: " << status3.code << " with MESG: " << status3.message);
+                    K2INFO("SC02.case04::OP_READ_Key4. " << "status: " << status4.code << " with MESG: " << status4.message);
+                    K2INFO("Value of Key1: " << val1 << ". Value of key2: " << val2);
+                    K2INFO("Value of Key3: " << val3 << ". Value of key4: " << val4);
+                    K2EXPECT(status1, dto::K23SIStatus::OK);
+                    K2EXPECT(status2, dto::K23SIStatus::OK);
+                    K2EXPECT(status3, dto::K23SIStatus::KeyNotFound);
+                    K2EXPECT(status4, dto::K23SIStatus::AbortConflict);
+                    K2EXPECT(val1, v1);
+                    K2EXPECT(val2, v1);
+                    K2EXPECT(val3.f1, "");
+                    K2EXPECT(val3.f2, "");
+                    K2EXPECT(val4.f1, "");
+                    K2EXPECT(val4.f2, "");
+                });
+            }
+        );
+    }) // end sc-02 case-04
+    .then([] {
+        // SC02 case05&06: attempt to write in the past and write at same time
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC02.case 05&06 (for an existing key that has never been read, attempt to write in the past and write at same time) -------");
+        
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = {1000000, 123, 1000}, .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},          
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey5", .rangeKey = "range6"},
+            DataRec {.f1="SC02_f05", .f2="SC02_f06"},
+            DataRec {.f1="SC02_f07", .f2="SC02_f08"},
+            [this](auto& staleMTR, auto& incumbentMTR, auto& k5, auto& v2, auto& v3) {
+                 return doWrite(k5, v2, incumbentMTR, k5, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::Created);               
+                })
+               .then([this, &k5, &incumbentMTR] {
+                    return doEnd(k5, incumbentMTR, collname, true, {k5}, Duration(0us), ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::OK);               
+                    });
+                })
+                .then([this, &k5, &v3, &staleMTR] {
+                    return doWrite(k5, v3, staleMTR, k5, collname, false, true, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::AbortRequestTooOld);               
+                        K2INFO("SC02.case05(write in the past)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
+                    });
+                })
+                .then([this, &k5, &v3, &incumbentMTR] {
+                    dto::K23SI_MTR challengerMTR{
+                        .txnid = txnids++, 
+                        .timestamp = incumbentMTR.timestamp,
+                        .priority = dto::TxnPriority::Medium
+                    };
+                    return doWrite(k5, v3, challengerMTR, k5, collname, false, true, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::AbortRequestTooOld); 
+                        K2INFO("SC02.case06(write at the same time)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
+                    });
+                })
+                ; 
+        });
+    }) // end sc-02 case-05 & 06
+    .then([] {
+        // SC02 case07: attempt to write in the future
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC02.case 07 (for an existing key that has never been read, attempt to write in the future) -------");
+        
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},          
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey5", .rangeKey = "range6"},
+            DataRec {.f1="SC02_f07", .f2="SC02_f08"},
+            [this](auto& futureMTR, auto& k5, auto& v3) {
+                 return doWrite(k5, v3, futureMTR, k5, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::Created);               
+                    K2INFO("SC02.case07(write in the future)::OP_Write. " << "status: " << status.code << " with MESG: " << status.message);
+                })
+                .then([this, &k5, &futureMTR, &v3] {
+                    return doRead(k5, futureMTR, collname, ErrorCaseOpt::NoInjection)
+                    .then([&](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2INFO("SC02.case07()::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("Value of Key5: " << resp);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(resp, v3);
+                    });
+                });
+            }
+        );
+    }) // end sc-02 case-07
+    .then([] {
+        // SC02 case08 & 09 & 10: READ existing key at time before/equal/after the key
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC02.case08 & 09 & 10 (READ existing key at time before/equal/after the key) -------");
+
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey8", .rangeKey = "range8"},
+            DataRec {.f1="SC02_f08", .f2="SC02_f09"},
+            [this](auto& eqMTR, auto& k6, auto& v1) { 
+                return doWrite(k6, v1, eqMTR, k6, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) {
+                     auto& [status, resp] = response;
+                     K2EXPECT(status, dto::K23SIStatus::Created);               
+                })
+                .then([this, &k6, &eqMTR] {
+                    return doEnd(k6, eqMTR, collname, true, {k6}, Duration(0us), ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(status, dto::K23SIStatus::OK);               
+                    });
+                })
+                .then([this, &k6, &eqMTR] {
+                    dto::K23SI_MTR bfMTR{
+                        .txnid = txnids++, 
+                        .timestamp = {(eqMTR.timestamp.tEndTSECount() - 500000000), 123, 1000}, // 500ms earlier
+                        .priority = dto::TxnPriority::Medium};
+                    return doRead(k6, bfMTR, collname, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2INFO("SC02.case08(before)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::KeyNotFound);               
+                    });
+                }) // end sc-02 case-08
+                .then([this, &k6, &eqMTR, &v1] {
+                    return doRead(k6, eqMTR, collname, ErrorCaseOpt::NoInjection)
+                    .then([&v1](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2INFO("SC02.case09(equal)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);                        
+                        K2INFO("Value of Key6: " << resp);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(resp, v1);
+                    });
+                }) // end sc-02 case-09
+                .then([this, &k6, &eqMTR, &v1] {
+                    dto::K23SI_MTR afMTR{
+                        .txnid = txnids++, 
+                        .timestamp = {(eqMTR.timestamp.tEndTSECount() + 500000000), 123, 1000}, // 500ms later
+                        .priority = dto::TxnPriority::Medium};
+                    return doRead(k6, afMTR, collname, ErrorCaseOpt::NoInjection)
+                    .then([&v1](auto&& response) {
+                        auto& [status, resp] = response;
+                        K2INFO("SC02.case10(after)::OP_READ. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("Value of Key6: " << resp);
+                        K2EXPECT(status, dto::K23SIStatus::OK);                        
+                        K2EXPECT(resp, v1);
+                    });
+                }); // end sc-02 case-10
+            }
+        );
+    }) // end sc-02 case-08-09-10
+    .then([] {
+    // SC02 case11 & 12 & 13 & 14: Async END test (end-but-not-finalized key )
+    // case11: TXN with a WRITE and then END asynchronously with Commit. Finalize with abort for the same key at time interval.
+    // case12: TXN with a WRITE and then END asynchronously with Abort. Finalize with commit for the same key at time interval.
+    // case13: TXN with a WRITE and then END asynchronously with Abort. Validate with a read for the async_end_key.
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        std::cout << std::endl;
+        K2INFO("------- SC02.case11 & 12 & 13 (Async END test (end-but-not-finalized)) -------");
+        
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey11", .rangeKey = "range11"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey12", .rangeKey = "range12"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey13", .rangeKey = "range13"},
+            DataRec {.f1="SC02_f_end", .f2="SC02_f_end"}, // new value
+            [this](auto& mtr11, auto& mtr12, auto& mtr13, auto& k11, auto& k12, auto& k13, auto& v1) { 
+                return seastar::when_all(doWrite(k11, v1, mtr11, k11, collname, false, true, ErrorCaseOpt::NoInjection), doWrite(k12, v1, mtr12, k12, collname, false, true, ErrorCaseOpt::NoInjection), \
+                            doWrite(k13, v1, mtr13, k13, collname, false, true, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) mutable {
+                    auto& [resp1, resp2, resp3] = response;
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    auto [status3, val3] = resp3.get0();
+                    K2EXPECT(status1, dto::K23SIStatus::Created);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                    K2EXPECT(status3, dto::K23SIStatus::Created);
+                })
+                .then([this, &mtr11, &mtr12,&mtr13, &k11, &k12, &k13] {
+                    return seastar::when_all(doEnd(k11, mtr11, collname, true, {k11}, Duration(111ms),ErrorCaseOpt::NoInjection),\
+                            doEnd(k12, mtr12, collname, false, {k12}, Duration(112ms),ErrorCaseOpt::NoInjection), doEnd(k13, mtr13, collname, false, {k13}, Duration(113ms),ErrorCaseOpt::NoInjection))
+                    .then([&](auto&& response) mutable {
+                        auto& [resp1, resp2, resp3] = response;
+                        // move resp out of the incoming futures sice get0() returns an rvalue
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        auto [status3, val3] = resp3.get0();
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
+                        K2EXPECT(status3, dto::K23SIStatus::OK);
+                    });
+                })
+                .then([this, &k11, &k12, &k13, &mtr11, &mtr12, &mtr13, &v1] {
+                    return seastar::when_all(doFinalize(k11, k11, mtr11, collname, false, ErrorCaseOpt::NoInjection), doFinalize(k12, k12, mtr12, collname, true, ErrorCaseOpt::NoInjection), \
+                            doRead(k13, mtr13, collname, ErrorCaseOpt::NoInjection))
+                    .then([&](auto&& response) mutable {
+                        auto& [resp1, resp2, resp3] = response;
+                        // move resp out of the incoming futures sice get0() returns an rvalue
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        auto [status3, val3] = resp3.get0();
+                        K2INFO("SC02.case11::OP_Finalize(abort)_a_async_END(commit)_key. " << "status: " << status1.code << " with MESG: " << status1.message);
+                        K2INFO("SC02.case12::OP_Finalize(commit)_a_async_END(abort)_key. " << "status: " << status2.code << " with MESG: " << status2.message);
+                        K2INFO("SC02.case13::OP_READ_a_async_END(abort)_key. " << "status: " << status3.code << " with MESG: " << status3.message);
+                        K2INFO("Value of Key13: " << val3);
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
+                        K2EXPECT(status3, dto::K23SIStatus::OK);
+                        K2EXPECT(val3, v1);
+                    });
+                });
+            }
+        );
+    }); // end sc-02 case-11-12-13-14
+}
+
+seastar::future<> testScenario03() {
+    return seastar::make_ready_future()
+    .then([] {
+        return seastar::sleep(1s);
+    });
 }
 
 

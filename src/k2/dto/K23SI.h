@@ -318,8 +318,10 @@ struct K23SITxnEndRequest {
     // the commit, so it may choose to wait in order to get better performance.
     // This flag does not impact correctness, just performance for certain workloads
     bool syncFinalize=false;
+    // The interval from end to Finalize for a transaction
+    Duration timeToFinalize{0};
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize, timeToFinalize);
     friend std::ostream& operator<<(std::ostream& os, const K23SITxnEndRequest& r) {
         os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", action=" << r.action << ", key=" << r.key << ", writeKeys=[";
