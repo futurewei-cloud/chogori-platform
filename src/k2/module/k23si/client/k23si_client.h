@@ -59,15 +59,10 @@ public:
 template<typename ValueType>
 class ReadResult {
 public:
-    ReadResult(Status s, dto::K23SIReadResponse<ValueType>&& r) : status(std::move(s)), response(std::move(r)) {}
-
-    ValueType& getValue() {
-        return response.value.val;
-    }
+    ReadResult(Status s, ValueType&& v) : status(std::move(s)), value(std::move(v)) {}
 
     Status status;
-private:
-    dto::K23SIReadResponse<ValueType> response;
+    ValueType value;
 };
 
 class WriteResult{
@@ -103,6 +98,8 @@ public:
     seastar::future<> gracefulStop();
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
+    static constexpr int64_t ANY_VERSION = -1;
+    seastar::future<Schema> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -117,12 +114,15 @@ public:
     uint64_t abort_conflicts{0};
     uint64_t abort_too_old{0};
     uint64_t heartbeats{0};
+
+    CPOClient cpo_client;
 private:
     sm::metric_groups _metric_groups;
     std::mt19937 _gen;
     std::uniform_int_distribution<uint64_t> _rnd;
     std::vector<String> _k2endpoints;
-    CPOClient _cpo_client;
+    // collection name -> (schema name -> (schema version -> schema))
+    std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, dto::Schema>>> _schemas;
 };
 
 
@@ -136,67 +136,101 @@ public:
     K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
-    template <typename ValueType>
-    seastar::future<ReadResult<ValueType>> read(dto::Key key, const String& collection) {
-        if (!_started) {
-            return seastar::make_exception_future<ReadResult<ValueType>>(std::runtime_error("Invalid use of K2TxnHandle"));
-        }
+    dto::K23SIReadRequest* makeReadRequest(const dto::SKVRecord& record) const {
+        return new dto::K23SIReadRequest{
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            record.collectionName,
+            _mtr,
+            record.getKey()
+        };
+    }
 
+    template <class T>
+    dto::K23SIReadRequest* makeReadRequest(const T& user_record) const {
+        dto::SKVRecord record(user_record.collectionName, user_record.schema);
+        user_record.__writeFields(record);
+
+        return makeReadRequest(record);
+    }
+
+    template <class T>
+    seastar::future<ReadResult<T>> read(T record) {
+        if (!_started) {
+            return seastar::make_exception_future<ReadResult<T>>(std::runtime_error("Invalid use of K2TxnHandle"));
+        }
         if (_failed) {
-            return seastar::make_ready_future<ReadResult<ValueType>>(ReadResult<ValueType>(_failed_status, dto::K23SIReadResponse<ValueType>()));
+            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
         }
 
         _client->read_ops++;
 
-        auto* request = new dto::K23SIReadRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            collection,
-            _mtr,
-            std::move(key)
-        };
+        dto::K23SIReadRequest* request = makeReadRequest(record);
 
         return _cpo_client->PartitionRequest
-            <dto::K23SIReadRequest, dto::K23SIReadResponse<ValueType>, dto::Verbs::K23SI_READ>
+            <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
-            then([this] (auto&& response) {
+            then([this, request_schema=record.schema, request_cname=record.collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
-                auto userResponse = ReadResult<ValueType>(std::move(status), std::move(k2response));
-                return seastar::make_ready_future<ReadResult<ValueType>>(std::move(userResponse));
+                if constexpr (std::is_same<T, dto::SKVRecord>()) {
+                    return ReadResult<SKVRecord>(std::move(status), std::move(k2response.value));
+                } else {
+                    T userResponseRecord{};
+
+                    if (status.is2xxOK()) {
+                        SKVRecord skv_record(request_cname, request_schema);
+                        skv_record.storage = std::move(k2response.value);
+                        userResponseRecord.__readFields(skv_record);
+                    }
+
+                    return ReadResult<T>(std::move(status), std::move(userResponseRecord));
+                }
             }).finally([request] () { delete request; });
     }
 
-    template <typename ValueType>
-    seastar::future<WriteResult> write(dto::Key key, const String& collection, const ValueType& value, bool erase=false) {
-        if (!_started) {
-            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
-        }
-
-        if (_failed) {
-            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
-        }
+    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord& record, bool erase) {
+        dto::Key key = record.getKey();
 
         if (!_write_set.size()) {
             _trh_key = key;
-            _trh_collection = collection;
+            _trh_collection = record.collectionName;
         }
         _write_set.push_back(key);
-        _client->write_ops++;
 
-        auto* request = new dto::K23SIWriteRequest<ValueType>{
+        return new dto::K23SIWriteRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            collection,
+            record.collectionName,
             _mtr,
             _trh_key,
             erase,
             _write_set.size() == 1,
-            std::move(key),
-            SerializeAsPayload<ValueType>{value}
+            key,
+            record.storage.share()
         };
+    }
+
+    template <class T>
+    seastar::future<WriteResult> write(T& record, bool erase=false) {
+        if (!_started) {
+            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+        }
+        if (_failed) {
+            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
+        }
+        _client->write_ops++;
+
+        dto::K23SIWriteRequest* request = nullptr;
+        if constexpr (std::is_same<T, dto::SKVRecord>()) {
+            request = makeWriteRequest(record, erase);
+        } else {
+            SKVRecord skv_record(record.collectionName, record.schema);
+            record.__writeFields(skv_record);
+            request = makeWriteRequest(skv_record, erase);
+        }
 
         return _cpo_client->PartitionRequest
-            <dto::K23SIWriteRequest<ValueType>, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
+            <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
             then([this] (auto&& response) {
                 auto& [status, k2response] = response;
@@ -214,7 +248,7 @@ public:
             }).finally([request] () { delete request; });
     }
 
-    seastar::future<WriteResult> erase(dto::Key key, const String& collection);
+    seastar::future<WriteResult> erase(SKVRecord& record);
 
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed

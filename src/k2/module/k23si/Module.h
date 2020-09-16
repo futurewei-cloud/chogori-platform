@@ -56,11 +56,11 @@ public: // lifecycle
     // read (recursively). We only perform the recursive attempt to read if we won this PUSH operation.
     // If this is called after a push, sitMTR will be the mtr of the sitting(and now aborted) WI
     // compKey is the composite key we get from the dto Key
-    seastar::future<std::tuple<Status, dto::K23SIReadResponse<Payload>>>
+    seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
     handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-    handleWrite(dto::K23SIWriteRequest<Payload>&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+    handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
@@ -144,10 +144,10 @@ private: // methods
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
-    bool _validateStaleWrite(dto::K23SIWriteRequest<Payload>& request, std::deque<dto::DataRecord>& versions);
+    bool _validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest<Payload>&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
 
     // recover data upon startup
     seastar::future<> _recovery();

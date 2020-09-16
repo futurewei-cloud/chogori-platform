@@ -59,30 +59,27 @@ private:
         .then([this, &values] (K2TxnHandle&& txn) {
             _txn = K2TxnHandle(std::move(txn));
 
-            auto warehouse = _txn.read<Warehouse::Data>(Warehouse::getKey(1), "TPCC")
+            auto warehouse = _txn.read<Warehouse>(Warehouse(1))
             .then([this, &values] (auto&& result) {
                 CHECK_READ_STATUS(result);
-                Warehouse warehouse(result.getValue(), 1);
-                values.w_ytd = warehouse.data.YTD;
+                values.w_ytd = *(result.value.YTD);
                 return make_ready_future<>();
             });
 
-            auto district = _txn.read<District::Data>(District::getKey(1, _payment._d_id), "TPCC")
+            auto district = _txn.read<District>(District(1, _payment._d_id))
             .then([this, &values] (auto&& result) {
                 CHECK_READ_STATUS(result);
-                District district(result.getValue(), 1, _payment._d_id);
-                values.d_ytd = district.data.YTD;
+                values.d_ytd = *(result.value.YTD);
                 return make_ready_future<>();
             });
 
-            auto customer = _txn.read<Customer::Data>(Customer::getKey(_payment._c_w_id, _payment._c_d_id, _payment._c_id), "TPCC")
+            auto customer = _txn.read<Customer>(Customer(_payment._c_w_id, _payment._c_d_id, _payment._c_id))
             .then([this, &values] (auto&& result) {
                 CHECK_READ_STATUS(result);
-                Customer customer(result.getValue(), _payment._c_w_id, _payment._c_d_id, _payment._c_id);
 
-                values.c_balance = customer.data.Balance;
-                values.c_ytd = customer.data.YTDPayment;
-                values.c_payments = customer.data.PaymentCount;
+                values.c_balance = *(result.value.Balance);
+                values.c_ytd = *(result.value.YTDPayment);
+                values.c_payments = *(result.value.PaymentCount);
                 return make_ready_future<>();
             });
 
@@ -163,22 +160,20 @@ private:
             return do_until(
                     [this, &cur_d_id] () { return cur_d_id > _districts_per_warehouse(); },
                     [this, &cur_d_id, &total] () {
-                return _txn.read<District::Data>(District::getKey(_cur_w_id, cur_d_id), "TPCC")
+                return _txn.read<District>(District(_cur_w_id, cur_d_id))
                 .then([this, &total, &cur_d_id] (auto&& result) {
                     CHECK_READ_STATUS(result);
-                    District district(result.getValue(), _cur_w_id, cur_d_id);
-                    total += district.data.YTD;
+                    total += *(result.value.YTD);
 
                     cur_d_id++;
                     return make_ready_future<>();
                 });
             })
             .then([this, &total] () {
-                return _txn.read<Warehouse::Data>(Warehouse::getKey(_cur_w_id), "TPCC")
+                return _txn.read<Warehouse>(Warehouse(_cur_w_id))
                 .then([this, &total] (auto&& result) {
                     CHECK_READ_STATUS(result);
-                    Warehouse warehouse(result.getValue(), _cur_w_id);
-                    uint32_t w_total = warehouse.data.YTD;
+                    uint32_t w_total = *(result.value.YTD);
                     K2INFO("YTD consistency, w_total: " << w_total << " total: " << total);
                     K2ASSERT(w_total == total, "Warehouse and district YTD totals did not match!");
                     return make_ready_future<>();
@@ -195,15 +190,13 @@ private:
                     [this, &cur_d_id] () { return cur_d_id >= _districts_per_warehouse(); },
                     [this, &cur_d_id, &cur_o_id] () {
                 cur_d_id++;
-                return _txn.read<District::Data>(District::getKey(_cur_w_id, cur_d_id), "TPCC")
+                return _txn.read<District>(District(_cur_w_id, cur_d_id))
                 .then([this, &cur_d_id, &cur_o_id] (auto&& result) {
                     if (!(result.status.is2xxOK())) {
                         return make_exception_future<uint32_t>(std::runtime_error(k2::String("District should exist but does not")));
                     }
 
-                    District district(result.getValue(), _cur_w_id, cur_d_id);
-
-                    return make_ready_future<uint32_t>(district.data.NextOrderID);
+                    return make_ready_future<uint32_t>(*(result.value.NextOrderID));
                 })
                 .then([this, &cur_d_id, &cur_o_id] (uint32_t nextOrderID) {
                     cur_o_id = 1;
@@ -211,7 +204,7 @@ private:
                     return do_until(
                             [&cur_o_id, nextOrderID] () { return cur_o_id > nextOrderID + 5; },
                             [this, &cur_o_id, &cur_d_id, nextOrderID] () {
-                        return _txn.read<Order::Data>(Order::getKey(_cur_w_id, cur_d_id, cur_o_id), "TPCC")
+                        return _txn.read<Order>(Order(_cur_w_id, cur_d_id, cur_o_id))
                         .then([&cur_o_id, nextOrderID] (auto&& result) {
                             if (cur_o_id < nextOrderID) {
                                 CHECK_READ_STATUS(result);

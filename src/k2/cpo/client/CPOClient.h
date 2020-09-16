@@ -64,7 +64,8 @@ public:
             if (status == Statuses::S403_Forbidden || status.is2xxOK()) {
                 Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
                 return seastar::sleep(s).then([this, name, deadline]() -> seastar::future<Status> {
-                    return GetAssignedPartitionWithRetry(deadline, name, dto::Key{.partitionKey = "", .rangeKey = ""});
+                    return GetAssignedPartitionWithRetry(deadline, name, 
+                        dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""});
                 });
             }
 
@@ -253,10 +254,13 @@ public:
         });
     }
 
+    seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);
+
     std::unique_ptr<TXEndpoint> cpo;
     std::unordered_map<String, dto::PartitionGetter> collections;
 
     ConfigDuration partition_request_timeout{"partition_request_timeout", 100ms};
+    ConfigDuration schema_request_timeout{"schema_request_timeout", 1s};
     ConfigDuration cpo_request_timeout{"cpo_request_timeout", 100ms};
     ConfigDuration cpo_request_backoff{"cpo_request_backoff", 500ms};
 private:
