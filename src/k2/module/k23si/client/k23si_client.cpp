@@ -203,4 +203,73 @@ seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) 
     });
 }
 
+seastar::future<k2::Status> K23SIClient::refreshSchemaCache(const String& collectionName) {
+    return cpo_client.getSchemas(collectionName)
+    .then([this, collectionName] (auto&& response) {
+        auto& [status, collSchemas] = response;
+
+        if (!status.is2xxOK()) {
+            K2INFO("Failed to refresh schemas from CPO: " << status);
+            return status;
+        }
+
+        auto& schemaMap = schemas[collectionName];
+        for (const Schema& schema : collSchemas) {
+            auto& versionMap = schemaMap[schema.name];
+            versionMap[schema.version] = seastar::make_lw_shared<k2::dto::Schema>(schema);
+        }
+
+        return status;
+    });
+}
+
+seastar::future<seastar::lw_shared_ptr<dto::Schema>> K23SIClient::getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh) {
+    auto cIt = schemas.find(collectionName);
+    if (cIt == schemas.end() && !doCPORefresh) {
+        return seastar::make_ready_future<seastar::lw_shared_ptr<dto::Schema>>(nullptr);
+    } else if (cIt == schemas.end()) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            (void) status;
+            return getSchema(collectionName, schemaName, schemaVersion, false);
+        });
+    }
+
+    auto sIt = cIt->second.find(schemaName);
+    if (sIt == cIt->second.end() && !doCPORefresh) {
+        return seastar::make_ready_future<seastar::lw_shared_ptr<dto::Schema>>(nullptr);
+    } else if (sIt == cIt->second.end()) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            (void) status;
+            return getSchema(collectionName, schemaName, schemaVersion, false);
+        });
+    }
+
+    if (sIt->second.size() > 0 && schemaVersion == ANY_VERSION) {
+        return seastar::make_ready_future<seastar::lw_shared_ptr<dto::Schema>>(sIt->second.begin()->second);
+    } else if (schemaVersion == ANY_VERSION && doCPORefresh) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            (void) status;
+            return getSchema(collectionName, schemaName, schemaVersion, false);
+        });
+    } else if (schemaVersion == ANY_VERSION) {
+        return seastar::make_ready_future<seastar::lw_shared_ptr<dto::Schema>>(nullptr);
+    }
+
+    auto vIt = sIt->second.find(schemaVersion);
+    if (vIt == sIt->second.end() && !doCPORefresh) {
+        return seastar::make_ready_future<seastar::lw_shared_ptr<dto::Schema>>(nullptr);
+    } else if (vIt == sIt->second.end()) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            (void) status;
+            return getSchema(collectionName, schemaName, schemaVersion, false);
+        });
+    }
+
+    return seastar::make_ready_future<seastar::lw_shared_ptr<dto::Schema>>(vIt->second);
+}
+
 } // namespace k2

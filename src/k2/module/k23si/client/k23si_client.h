@@ -99,7 +99,8 @@ public:
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
     static constexpr int64_t ANY_VERSION = -1;
-    seastar::future<Schema> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
+    seastar::future<seastar::lw_shared_ptr<dto::Schema>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh=true);
+    seastar::future<Status> refreshSchemaCache(const String& collectionName);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -116,13 +117,14 @@ public:
     uint64_t heartbeats{0};
 
     CPOClient cpo_client;
+    // collection name -> (schema name -> (schema version -> schemaPtr))
+    std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, seastar::lw_shared_ptr<dto::Schema>>>> schemas;
+
 private:
     sm::metric_groups _metric_groups;
     std::mt19937 _gen;
     std::uniform_int_distribution<uint64_t> _rnd;
     std::vector<String> _k2endpoints;
-    // collection name -> (schema name -> (schema version -> schema))
-    std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, dto::Schema>>> _schemas;
 };
 
 
@@ -174,7 +176,20 @@ public:
                 checkResponseStatus(status);
 
                 if constexpr (std::is_same<T, dto::SKVRecord>()) {
-                    return ReadResult<SKVRecord>(std::move(status), std::move(k2response.value));
+                    if (!status.is2xxOK()) {
+                        return ReadResult<SKVRecord>(std::move(status), SKVRecord());
+                    }
+
+                    return _client->getSchema(request_cname, request_schema->name, k2response.value.schemaVersion)
+                    .then([s=std::move(status), storage=std::move(k2response.value), request_cname] (auto&& schema_ptr) {
+                        if (!schema_ptr) {
+                            return ReadResult<SKVRecord>(dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), SKVRecord());
+                        }
+
+                        SKVRecord skv_record(request_cname, schema_ptr);
+                        skv_record.storage = std::move(storage);
+                        return ReadResult<SKVRecord>(std::move(s), std::move(skv_record));
+                    });
                 } else {
                     T userResponseRecord{};
 
