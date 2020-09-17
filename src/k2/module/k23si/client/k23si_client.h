@@ -99,8 +99,7 @@ public:
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
     static constexpr int64_t ANY_VERSION = -1;
-    seastar::future<seastar::lw_shared_ptr<dto::Schema>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh=true);
-    seastar::future<Status> refreshSchemaCache(const String& collectionName);
+    seastar::future<std::tuple<k2::Status, seastar::lw_shared_ptr<dto::Schema>>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -121,6 +120,9 @@ public:
     std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, seastar::lw_shared_ptr<dto::Schema>>>> schemas;
 
 private:
+    seastar::future<Status> refreshSchemaCache(const String& collectionName);
+    seastar::future<std::tuple<k2::Status, seastar::lw_shared_ptr<dto::Schema>>> getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh=true);
+
     sm::metric_groups _metric_groups;
     std::mt19937 _gen;
     std::uniform_int_distribution<uint64_t> _rnd;
@@ -171,7 +173,7 @@ public:
         return _cpo_client->PartitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
-            then([this, request_schema=record.schema, request_cname=record.collectionName] (auto&& response) {
+            then([this, request_schema=record.schema, request] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
 
@@ -180,13 +182,16 @@ public:
                         return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(status), SKVRecord()));
                     }
 
-                    return _client->getSchema(request_cname, request_schema->name, k2response.value.schemaVersion)
-                    .then([s=std::move(status), storage=std::move(k2response.value), request_cname] (auto&& schema_ptr) mutable {
-                        if (!schema_ptr) {
+                    return _client->getSchema(request->collectionName, request_schema->name, k2response.value.schemaVersion)
+                    .then([s=std::move(status), storage=std::move(k2response.value), request] (auto&& response) mutable {
+                        auto& [status, schema_ptr] = response;
+                        K2EXPECT(status.is2xxOK(), true);
+
+                        if (!status.is2xxOK()) {
                             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), SKVRecord()));
                         }
 
-                        SKVRecord skv_record(request_cname, schema_ptr);
+                        SKVRecord skv_record(request->collectionName, schema_ptr);
                         skv_record.storage = std::move(storage);
                         return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(s), std::move(skv_record)));
                     });
@@ -194,7 +199,7 @@ public:
                     T userResponseRecord{};
 
                     if (status.is2xxOK()) {
-                        SKVRecord skv_record(request_cname, request_schema);
+                        SKVRecord skv_record(request->collectionName, request_schema);
                         skv_record.storage = std::move(k2response.value);
                         userResponseRecord.__readFields(skv_record);
                     }

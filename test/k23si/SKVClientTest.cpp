@@ -75,12 +75,6 @@ public:  // application lifespan
             .then([] (auto&& status) {
                 K2EXPECT(status.is2xxOK(), true);
             })
-            .then([this] () {
-                return _client.refreshSchemaCache(collname);
-            })
-            .then([] (k2::Status&& status) {
-                K2EXPECT(status.is2xxOK(), true);
-            })
             .then([this] { return runScenario01(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
@@ -127,8 +121,9 @@ seastar::future<> runScenario01() {
             std::move(txn),
             [this] (k2::K2TxnHandle& txnHandle) {
                 return _client.getSchema(collname, "schema", 1)
-                .then([this, &txnHandle] (auto&& schemaPtr) {
-                    K2EXPECT(!schemaPtr, false);
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
 
                     k2::dto::SKVRecord record(collname, schemaPtr);
                     record.serializeNext<k2::String>("partkey");
@@ -145,8 +140,9 @@ seastar::future<> runScenario01() {
                 .then([this] () {
                     return _client.getSchema(collname, "schema", k2::K23SIClient::ANY_VERSION);
                 })
-                .then([this, &txnHandle] (auto&& schemaPtr) {
-                    K2EXPECT(!schemaPtr, false);
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
 
                     k2::dto::SKVRecord record(collname, schemaPtr);
                     record.serializeNext<k2::String>("partkey");
