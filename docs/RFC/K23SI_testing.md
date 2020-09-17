@@ -31,7 +31,7 @@ Common notes:
 
 ### Test cases
 OP means each one of (READ, WRITE, PUSH, END, FINALIZE, HEARTBEAT)
-| test case | Expected result | Possible fix needed
+| test case | Expected result | Possible fix needed |
 |---|---|---|
 |OP with bad collection name | RefreshCollection | |
 |OP outside retention window | AbortRequestTooOld | |
@@ -64,7 +64,7 @@ Notes:
 ### Test cases
 - re-run the test cases from Scenario01 - we should get same results
 
-| test case | Expected result | Possible fix needed
+| test case | Expected result | Possible fix needed |
 |---|---|---|
 |READ/WRITE of a valid key but bad collection name | RefreshCollection | |
 |READ/WRITE of a valid key but wrong partition index| RefreshCollection | |
@@ -76,10 +76,63 @@ Notes:
 |READ existing key at time before the key| NotFound||
 |READ existing key at time equals to the key| OK||
 |READ existing key at time after the key| OK||
+| TXN with a WRITE and then END asynchronously with Commit. Finalize with abort for the same key at time interval. | persistence call succeeded |                     |
+| TXN with a WRITE and then END asynchronously with Abort. Finalize with commit for the same key at time interval. | persistence call succeeded |                     |
+| TXN with a WRITE and then END asynchronously with Abort. Validate with a read for the async_end_key. | read succeeded             |                     |
 
 ## Scenario 03 - read cache usage tests (read/write observed history)
+
+- 
 ## Scenario 04 - read your writes(a txn can see its own pending writes) and read-committed isolation(pending writes are not shown to other transactions)
+
+### Test setup
+
+- start a cluster and assign collection.
+- write the following data, and keep the records in the given state
+
+```
+("SC04_pkey1","rKey1", v0) -> committed
+```
+
+### Test cases
+
+- The test logic is shown below: 
+
+![image-20200917165740178](D:\CTO资料\美研所开源系统chogori-platform\test cases\image-20200917165740178.png)
+
+| test case                                                    | Expected result                                   | Possible fix needed |
+| ------------------------------------------------------------ | ------------------------------------------------- | ------------------- |
+| Txn READ of data records before it begins                    | read prior value                                  |                     |
+| Txn READ its own pending writes                              | read pending value                                |                     |
+| Txn with earlier timestamp READ other txn's pending writes   | could not read pending value (read prior value)   |                     |
+| Txn with older timestamp Read other txn's pending writes     | could not read pending value (NotFound)           |                     |
+| Txn with earlier timestamp Read other txn's committed writes | could not read committed value (read prior value) |                     |
+| Txn with older timestamp Read other txn's committed writes   | read committed value                              |                     |
+
+
 ## Scenario 05 - concurrent transactions
+
+### Test setup
+
+- start a cluster and assign collection.
+- write the following data, and keep the records in the given state
+
+```
+("SC05_pkey1","rKey1", v0) -> committed
+```
+
+### Test cases
+
+| category                 | test case                                                    | Expected result                        | Possible fix needed |
+| ------------------------ | ------------------------------------------------------------ | -------------------------------------- | ------------------- |
+| fake-read-write conflict | Earlier Read txn encounters a WI, two txns have the same priority and tsoId | OK (read prior value)                  |                     |
+| priority of Push()       | Txn with higher priority encounters a WI                     | created (challenger won the Push)      |                     |
+| priority of Push()       | Txn with lower priority encounters a WI                      | AbortConflict (incumbent won the Push) |                     |
+| timestamp of Push()      | Earlier WRITE Txn encounters a WI with the same priority     | AbortConflict (incumbent won the Push) |                     |
+| timestamp of Push()      | Older READ/WRITE Txn encounters a WI with the same priority  | created (challenger won the Push)      |                     |
+| tsoId of Push()          | WRITE Txn encounters a WI with the same priority and timestamp, but its tso ID is smaller | AbortConflict (incumbent won the Push) |                     |
+| tsoId of Push()          | WRITE Txn encounters a WI with the same priority and timestamp, but its tso ID is bigger | created (challenger won the Push)      |                     |
+
 ## Scenario 06 - finalization
 ## Scenario 07 - client-initiated txn abort
 ## Scenario 08 - server-initiated txn abort (PUSH/ retention window)
