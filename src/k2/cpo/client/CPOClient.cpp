@@ -42,8 +42,6 @@ void CPOClient::FulfillWaiters(const String& name, const Status& status) {
 }
 
 seastar::future<k2::Status> CPOClient::createSchema(const String& collectionName, k2::dto::Schema schema) {
-    schema.name = k2::dto::FieldToKeyString<String>(schema.name);
-
     k2::dto::CreateSchemaRequest request{ collectionName, std::move(schema) };
     return k2::RPC().callRPC<k2::dto::CreateSchemaRequest, k2::dto::CreateSchemaResponse>(k2::dto::Verbs::CPO_SCHEMA_CREATE, request, *cpo, schema_request_timeout())
     .then([] (auto&& response) {

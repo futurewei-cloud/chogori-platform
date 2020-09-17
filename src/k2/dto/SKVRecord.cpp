@@ -153,7 +153,7 @@ String SKVRecord::getRangeKey() const {
 
 dto::Key SKVRecord::getKey() const {
     return dto::Key {
-        .schemaName = FieldToKeyString<String>(schema->name),
+        .schemaName = schema->name,
         .partitionKey = getPartitionKey(),
         .rangeKey = getRangeKey()
     };

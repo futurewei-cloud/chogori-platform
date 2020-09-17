@@ -177,18 +177,18 @@ public:
 
                 if constexpr (std::is_same<T, dto::SKVRecord>()) {
                     if (!status.is2xxOK()) {
-                        return ReadResult<SKVRecord>(std::move(status), SKVRecord());
+                        return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(status), SKVRecord()));
                     }
 
                     return _client->getSchema(request_cname, request_schema->name, k2response.value.schemaVersion)
-                    .then([s=std::move(status), storage=std::move(k2response.value), request_cname] (auto&& schema_ptr) {
+                    .then([s=std::move(status), storage=std::move(k2response.value), request_cname] (auto&& schema_ptr) mutable {
                         if (!schema_ptr) {
-                            return ReadResult<SKVRecord>(dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), SKVRecord());
+                            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), SKVRecord()));
                         }
 
                         SKVRecord skv_record(request_cname, schema_ptr);
                         skv_record.storage = std::move(storage);
-                        return ReadResult<SKVRecord>(std::move(s), std::move(skv_record));
+                        return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(s), std::move(skv_record)));
                     });
                 } else {
                     T userResponseRecord{};
