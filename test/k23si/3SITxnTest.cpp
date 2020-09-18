@@ -111,6 +111,7 @@ public:		// application
             .then([this] { return testScenario03(); })
             .then([this] { return testScenario04(); })
             .then([this] { return testScenario05(); })
+            .then([this] { return testScenario06(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -334,7 +335,7 @@ private:
         request.pvid = part.partition->pvid;
         request.collectionName = cname;
         request.trh = trh;
-        request.key = trh;
+        request.key = key;
         request.mtr = mtr;        
         request.action = isCommit ? dto::EndAction::Commit : dto::EndAction::Abort;
         switch (errOpt) {
@@ -2102,6 +2103,334 @@ seastar::future<> testScenario05() {
     }); // end sc-05
 }
 
+seastar::future<> testScenario06() {
+    std::cout << std::endl << std::endl;
+    K2INFO("+++++++ TestScenario 06: finalization +++++++");
+    
+    return seastar::make_ready_future()
+    .then([] {
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkek1", .rangeKey = "rKey1"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey2", .rangeKey = "rKey2"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey3", .rangeKey = "rKey3"},
+            DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
+            [this](auto& mtr, auto& otherMtr, auto& k1, auto& k2, auto& k3, auto& v0) {
+            return doWrite(k1, v0, mtr, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+            .then([](auto&& response) {
+                auto& [status, resp] = response;
+                K2INFO("SC06.setup::OP_WI_k1. " << "status: " << status.code << " with MESG: " << status.message);
+                K2EXPECT(status, dto::K23SIStatus::Created);
+            })
+            .then([&] {
+                K2INFO("------- SC06.case1 (Finalize a non-exist record in this transaction) -------");
+                return doFinalize(k1, k2, mtr, collname, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2INFO("SC06.case1::OP_finalize_nonExist_rec. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OperationNotAllowed);
+                });
+            })
+            .then([&] {
+                return doWrite(k2, v0, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) mutable {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.setup::OP_WI_k2. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case2 ( Finalize_Commit partial record within this transaction ) -------");
+                return doFinalize(k1, k2, mtr, collname, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2INFO("SC06.case2::OP_finalize_partial_rec. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case3 ( Finalize a record whose status is commit ) -------");
+                return doFinalize(k3, k3, mtr, collname, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case3::OP_finalize_Commit_key. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OperationNotAllowed);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case4 ( Other transactions read finalize_commit record ) -------");
+                return doRead(k2, otherMtr, collname, ErrorCaseOpt::NoInjection)
+                .then([&](auto&& response) {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case4::OP_read_by_other_Txn. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2INFO("Value of k2: " << val);
+                    K2EXPECT(val, v0);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case5 ( After partial Finalize, txn continues and then Commit all records ) -------");
+                return doWrite(k3, v0, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case5::OP_WI_k3. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return doEnd(k1, mtr, collname, true, {k1, k2, k3}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC06.case5::OP_End_Commit_all_keys. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                    });
+                });
+            });
+        }); // end do-with
+    }) // end case 01-05
+    .then([&] {
+        K2INFO("------- SC06.case6 ( After partial Finalization_commit, txn continues and then End_Abort all records ) -------");
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkek1", .rangeKey = "rKey1"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey2", .rangeKey = "rKey2"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey3", .rangeKey = "rKey3"},
+            DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
+            [this](auto& mtr, auto& k1, auto& k2, auto& k3, auto& v0) {
+            return seastar::when_all(doWrite(k1, v0, mtr, k1, collname, false, true, ErrorCaseOpt::NoInjection), \
+                    doWrite(k2, v0, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection))
+            .then([](auto&& response) mutable {
+                auto& [resp1, resp2] = response;
+                auto [status1, val1] = resp1.get0();
+                auto [status2, val2] = resp2.get0();
+                K2INFO("SC06.case6::OP_WI_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                K2INFO("SC06.case6::OP_WI_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                K2EXPECT(status1, dto::K23SIStatus::Created);
+                K2EXPECT(status2, dto::K23SIStatus::Created);
+            })
+            .then([&] {
+                return doFinalize(k1, k2, mtr, collname, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case6::OP_finalize_commit_k2. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                return doWrite(k3, v0, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case6::OP_WI_k3. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+                });
+            })
+            .then([&] {
+                return doEnd(k1, mtr, collname, false, {k1, k2, k3}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case6::OP_End_abort_all_keys. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, Statuses::S500_Internal_Server_Error);
+                });
+            });
+        }); // end do-with
+    }) // end case 06
+    .then([&] {
+        K2INFO("------- SC06.case7 ( Finalize_Abort partial record within this transaction ) -------");
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkek4", .rangeKey = "rKey4"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey5", .rangeKey = "rKey5"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey6", .rangeKey = "rKey6"},
+            DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
+            [this](auto& mtr, auto& k4, auto& k5, auto& k6, auto& v0) {
+            return seastar::when_all(doWrite(k4, v0, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection), \
+                    doWrite(k5, v0, mtr, k4, collname, false, false, ErrorCaseOpt::NoInjection))
+            .then([](auto&& response) {
+                auto& [resp1, resp2] = response;
+                auto [status1, val1] = resp1.get0();
+                auto [status2, val2] = resp2.get0();
+                K2INFO("SC06.case7::OP_WI_k4(trh). " << "status: " << status1.code << " with MESG: " << status1.message);
+                K2INFO("SC06.case7::OP_WI_k5. " << "status: " << status2.code << " with MESG: " << status2.message);
+                K2EXPECT(status1, dto::K23SIStatus::Created);
+                K2EXPECT(status2, dto::K23SIStatus::Created);
+            })
+            .then([&] {
+                return doFinalize(k4, k4, mtr, collname, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case7::OP_finalize_Abort_k4. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case8 ( Record is read after it is Finalize_Abort  within the txn ) -------");
+                return doRead(k4, mtr, collname, ErrorCaseOpt::NoInjection)
+                .then([&](auto&& response) {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case8::OP_read_aborted_key. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2INFO("Value of k4: " << val);
+                    K2EXPECT(val.f1, "");
+                    K2EXPECT(val.f2, "");
+                    K2EXPECT(status, dto::K23SIStatus::KeyNotFound);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case9 ( Finalize a record who has already been finalized ) -------");
+                return doFinalize(k4, k4, mtr, collname, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case9::OP_finalize_finalized_k4. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case10 ( After Finalize_abort, txn continues and then Commit all records ) -------");
+                return doWrite(k6, v0, mtr, k4, collname, false, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case10::OP_WI_k6. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return doEnd(k4, mtr, collname, true, {k4, k5, k6}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC06.case10::OP_End_Commit_all_keys. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, Statuses::S500_Internal_Server_Error);
+                    });
+                });
+            });
+        }); // end do-with
+    }) // end case 07-10
+    .then([&] {
+        K2INFO("------- SC06.case11 ( After partial Finalization_abort, txn continues and then End_Abort all records ) -------");
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkek4", .rangeKey = "rKey4"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey5", .rangeKey = "rKey5"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey6", .rangeKey = "rKey6"},
+            DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
+            [this](auto& mtr, auto& k4, auto& k5, auto& k6, auto& v0) {
+            return seastar::when_all(doWrite(k4, v0, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection), \
+                    doWrite(k5, v0, mtr, k5, collname, false, false, ErrorCaseOpt::NoInjection))
+            .then([](auto&& response) mutable {
+                auto& [resp1, resp2] = response;
+                auto [status1, val1] = resp1.get0();
+                auto [status2, val2] = resp2.get0();
+                K2INFO("SC06.case11::OP_WI_k4. " << "status: " << status1.code << " with MESG: " << status1.message);
+                K2INFO("SC06.case11::OP_WI_k5. " << "status: " << status2.code << " with MESG: " << status2.message);
+                K2EXPECT(status1, dto::K23SIStatus::Created);
+                K2EXPECT(status2, dto::K23SIStatus::Created);
+            })
+            .then([&] {
+                return doFinalize(k4, k4, mtr, collname, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case11::OP_finalize_abort_k4. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                return doWrite(k6, v0, mtr, k4, collname, false, false, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case11::OP_WI_k6. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+                });
+            })
+            .then([&] {
+                return doEnd(k4, mtr, collname, false, {k4, k5, k6}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case11::OP_End_abort_all_keys. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            });
+        }); // end do-with
+    }) // end case 11    
+    .then([&] {
+        K2INFO("------- SC06.case12 ( The TRH and MTR parameters of Finalize do not match ) -------");
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkek7", .rangeKey = "rKey7"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey8", .rangeKey = "rKey8"},
+            DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
+            [this](auto& mtr, auto& otherMtr, auto& k7, auto& k8, auto& v0) {
+            return seastar::when_all(doWrite(k7, v0, mtr, k7, collname, false, true, ErrorCaseOpt::NoInjection), \
+                    doWrite(k8, v0, mtr, k7, collname, false, false, ErrorCaseOpt::NoInjection))
+            .then([](auto&& response) mutable {
+                auto& [resp1, resp2] = response;
+                auto [status1, val1] = resp1.get0();
+                auto [status2, val2] = resp2.get0();
+                K2INFO("SC06.case12::OP_WI_k7. " << "status: " << status1.code << " with MESG: " << status1.message);
+                K2INFO("SC06.case12::OP_WI_k8. " << "status: " << status2.code << " with MESG: " << status2.message);
+                K2EXPECT(status1, dto::K23SIStatus::Created);
+                K2EXPECT(status2, dto::K23SIStatus::Created);
+            })
+            .then([&] {
+                return doFinalize(k8, k8, mtr, collname, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case12::OP_finalize_mtr_trh_not_match. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OperationNotAllowed);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC06.case13 ( During async end_abort interval, finalize_commit those keys ) -------");
+                return doEnd(k7, mtr, collname, false, {k7, k8}, Duration{200ms}, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case13::OP_async_end_abort_k7_k8. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                return doFinalize(k7, k7, mtr, collname, true, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC06.case13::OP_finalize_commit_k7. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([] {
+                return seastar::sleep(200ms);
+            })
+            .then([&] {
+                return seastar::when_all(doRead(k7, otherMtr, collname, ErrorCaseOpt::NoInjection), doRead(k8, otherMtr, collname, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) mutable {
+                    auto& [resp1, resp2] = response;
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2INFO("SC06.case13::OP_read_k7. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC06.case13::OP_read_k8. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2INFO("Value of k7: " << val1);
+                    K2INFO("Value of k8: " << val2);
+                    K2EXPECT(status1, dto::K23SIStatus::OK);
+                    K2EXPECT(status2, dto::K23SIStatus::KeyNotFound);
+                    K2EXPECT(val1, v0);
+                    K2EXPECT(val2.f1, "");
+                    K2EXPECT(val2.f2, "");
+                });
+            });
+        }); // end do-with
+    }); // end case 12-13 end sc-06
+}
 
 
 };	// class k23si_testing

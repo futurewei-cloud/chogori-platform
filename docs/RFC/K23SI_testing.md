@@ -134,5 +134,30 @@ Notes:
 | tsoId of Push()          | WRITE Txn encounters a WI with the same priority and timestamp, but its tso ID is bigger | created (challenger won the Push)      |                     |
 
 ## Scenario 06 - finalization
+
+### Test setup
+
+- start a cluster and assign collection. 
+- Start a transaction that have not been End().
+
+### Test cases
+
+
+| test case                                                    | Expected result                                              | Possible fix needed |
+| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------- |
+| Finalize is a non-exist record in this transaction           | OperationNotAllowed                                          |                     |
+| Finalize_Commit partial record within this transaction       | OK                                                           |                     |
+| Finalize a record whose status is commit                     | OperationNotAllowed                                          |                     |
+| After Finalize_Commit partial record, other transactions read the record while this transaction is still in progress | OK                                                           |                     |
+| After partial Finalization_commit, txn continues and then End_Commit all records | OK                                                           |                     |
+| After partial Finalization_commit, txn continues and then End_Abort all records | S500_server caught exception processing request (partial finalize success) | need fix ？         |
+| Finalize_Abort partial record within this transaction        | OK                                                           |                     |
+| Record is read after it is Finalize_Abort  within the txn    | NotFound                                                     |                     |
+| Finalize_abort a record who has already been finalized_abort | OK                                                           |                     |
+| After partial Finalization_abort, txn continues and then End_Commit all records including the aborted records | S500_server caught exception processing request (partial finalize success) | need fix？          |
+| After partial Finalization_abort, txn continues and then End_Abort all records | OK                                                           |                     |
+| The TRH and MTR parameters of Finalize do not match          | OperationNotAllowed                                          |                     |
+| During async end_abort interval, finalize_commit partial keys, validate the keys with READ | OK (finalize_commit keys can be read)                        |                     |
+
 ## Scenario 07 - client-initiated txn abort
 ## Scenario 08 - server-initiated txn abort (PUSH/ retention window)
