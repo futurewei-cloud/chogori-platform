@@ -203,4 +203,90 @@ seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) 
     });
 }
 
+seastar::future<k2::Status> K23SIClient::refreshSchemaCache(const String& collectionName) {
+    return cpo_client.getSchemas(collectionName)
+    .then([this, collectionName] (auto&& response) {
+        auto& [status, collSchemas] = response;
+
+        if (!status.is2xxOK()) {
+            K2INFO("Failed to refresh schemas from CPO: " << status);
+            return status;
+        }
+
+        auto& schemaMap = schemas[collectionName];
+        for (const Schema& schema : collSchemas) {
+            schemaMap[schema.name][schema.version] = seastar::make_lw_shared<k2::dto::Schema>(schema);
+        }
+
+        return status;
+    });
+}
+
+seastar::future<std::tuple<k2::Status, seastar::lw_shared_ptr<dto::Schema>>> K23SIClient::getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion) {
+    return getSchemaInternal(collectionName, schemaName, schemaVersion, true);
+}
+
+seastar::future<std::tuple<k2::Status, seastar::lw_shared_ptr<dto::Schema>>> K23SIClient::getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh) {
+    auto cIt = schemas.find(collectionName);
+    if (cIt == schemas.end() && !doCPORefresh) {
+        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), seastar::lw_shared_ptr<dto::Schema>());
+    } else if (cIt == schemas.end()) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            if (!status.is2xxOK()) {
+                return k2::RPCResponse(std::move(status), seastar::lw_shared_ptr<dto::Schema>());
+            }
+
+            return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
+        });
+    }
+
+    auto sIt = cIt->second.find(schemaName);
+    if (sIt == cIt->second.end() && !doCPORefresh) {
+        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), seastar::lw_shared_ptr<dto::Schema>());
+    } else if (sIt == cIt->second.end()) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            if (!status.is2xxOK()) {
+                return k2::RPCResponse(std::move(status), seastar::lw_shared_ptr<dto::Schema>());
+            }
+
+            return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
+        });
+    }
+
+    if (sIt->second.size() > 0 && schemaVersion == ANY_VERSION) {
+        seastar::lw_shared_ptr<k2::dto::Schema> foundSchema = sIt->second.begin()->second;
+        return k2::RPCResponse(k2::Statuses::S200_OK("Found schema"), std::move(foundSchema));
+    } else if (schemaVersion == ANY_VERSION && doCPORefresh) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            if (!status.is2xxOK()) {
+                return k2::RPCResponse(std::move(status), seastar::lw_shared_ptr<dto::Schema>());
+            }
+
+            return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
+        });
+    } else if (schemaVersion == ANY_VERSION) {
+        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), seastar::lw_shared_ptr<dto::Schema>());
+    }
+
+    auto vIt = sIt->second.find(schemaVersion);
+    if (vIt == sIt->second.end() && !doCPORefresh) {
+        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), seastar::lw_shared_ptr<dto::Schema>());
+    } else if (vIt == sIt->second.end()) {
+        return refreshSchemaCache(collectionName)
+        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+            if (!status.is2xxOK()) {
+                return k2::RPCResponse(std::move(status), seastar::lw_shared_ptr<dto::Schema>());
+            }
+
+            return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
+        });
+    }
+
+    seastar::lw_shared_ptr<dto::Schema> foundSchema = vIt->second;
+    return k2::RPCResponse(k2::Statuses::S200_OK("Found schema"), std::move(foundSchema));
+}
+
 } // namespace k2

@@ -42,13 +42,20 @@ void CPOClient::FulfillWaiters(const String& name, const Status& status) {
 }
 
 seastar::future<k2::Status> CPOClient::createSchema(const String& collectionName, k2::dto::Schema schema) {
-    schema.name = k2::dto::FieldToKeyString<String>(schema.name);
-
     k2::dto::CreateSchemaRequest request{ collectionName, std::move(schema) };
     return k2::RPC().callRPC<k2::dto::CreateSchemaRequest, k2::dto::CreateSchemaResponse>(k2::dto::Verbs::CPO_SCHEMA_CREATE, request, *cpo, schema_request_timeout())
     .then([] (auto&& response) {
         auto& [status, r] = response;
         return status;
+    });
+}
+
+seastar::future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>> CPOClient::getSchemas(const String& collectionName) {
+    k2::dto::GetSchemasRequest request { collectionName };
+    return k2::RPC().callRPC<k2::dto::GetSchemasRequest, k2::dto::GetSchemasResponse>(k2::dto::Verbs::CPO_SCHEMAS_GET, request, *cpo, schema_request_timeout())
+    .then([] (auto && response) {
+        auto& [status, r] = response;
+        return std::tuple(std::move(status), std::move(r.schemas));
     });
 }
 

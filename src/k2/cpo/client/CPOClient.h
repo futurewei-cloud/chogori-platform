@@ -255,6 +255,7 @@ public:
     }
 
     seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);
+    seastar::future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>> getSchemas(const String& collectionName);
 
     std::unique_ptr<TXEndpoint> cpo;
     std::unordered_map<String, dto::PartitionGetter> collections;
