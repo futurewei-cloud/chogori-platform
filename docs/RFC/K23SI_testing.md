@@ -98,16 +98,16 @@ Notes:
 
 - The test logic is shown below: 
 
-![image-20200917165740178](D:\CTO资料\美研所开源系统chogori-platform\test cases\image-20200917165740178.png)
+  ![Scenario04-Test-Logic](../images/K23SI-Testing Scenario-04.png)
 
-| test case                                                    | Expected result                                   | Possible fix needed |
-| ------------------------------------------------------------ | ------------------------------------------------- | ------------------- |
-| Txn READ of data records before it begins                    | read prior value                                  |                     |
-| Txn READ its own pending writes                              | read pending value                                |                     |
-| Txn with earlier timestamp READ other txn's pending writes   | could not read pending value (read prior value)   |                     |
-| Txn with older timestamp Read other txn's pending writes     | could not read pending value (NotFound)           |                     |
-| Txn with earlier timestamp Read other txn's committed writes | could not read committed value (read prior value) |                     |
-| Txn with older timestamp Read other txn's committed writes   | read committed value                              |                     |
+| test case                                                   | Expected result                                   | Possible fix needed |
+| ----------------------------------------------------------- | ------------------------------------------------- | ------------------- |
+| Txn READ of data records before it begins                   | OK (read prior value)                             |                     |
+| Txn READ its own pending writes                             | OK (read pending value)                           |                     |
+| Txn with older timestamp READ other txn's pending writes    | could not read pending value (read prior value)   |                     |
+| Txn with newer timestamp Read other txn's pending writes    | could not read pending value (NotFound)           |                     |
+| Txn with older timestamp READ other txn's committed records | could not read committed value (read prior value) |                     |
+| Txn with newer timestamp READ other txn's committed writes  | read committed value                              |                     |
 
 
 ## Scenario 05 - concurrent transactions
@@ -143,21 +143,21 @@ Notes:
 ### Test cases
 
 
-| test case                                                    | Expected result                                              | Possible fix needed |
-| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------- |
-| Finalize is a non-exist record in this transaction           | OperationNotAllowed                                          |                     |
-| Finalize_Commit partial record within this transaction       | OK                                                           |                     |
-| Finalize a record whose status is commit                     | OperationNotAllowed                                          |                     |
-| After Finalize_Commit partial record, other transactions read the record while this transaction is still in progress | OK                                                           |                     |
-| After partial Finalization_commit, txn continues and then End_Commit all records | OK                                                           |                     |
-| After partial Finalization_commit, txn continues and then End_Abort all records | S500_server caught exception processing request (partial finalize success) | need fix ？         |
-| Finalize_Abort partial record within this transaction        | OK                                                           |                     |
-| Record is read after it is Finalize_Abort  within the txn    | NotFound                                                     |                     |
-| Finalize_abort a record who has already been finalized_abort | OK                                                           |                     |
-| After partial Finalization_abort, txn continues and then End_Commit all records including the aborted records | S500_server caught exception processing request (partial finalize success) | need fix？          |
-| After partial Finalization_abort, txn continues and then End_Abort all records | OK                                                           |                     |
-| The TRH and MTR parameters of Finalize do not match          | OperationNotAllowed                                          |                     |
-| During async end_abort interval, finalize_commit partial keys, validate the keys with READ | OK (finalize_commit keys can be read)                        |                     |
+| test case                                                    | Expected result                                              | Possible fix needed                                          |
+| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| Finalize is a non-exist record in this transaction           | OperationNotAllowed                                          |                                                              |
+| Finalize_Commit partial record within this transaction       | OK                                                           |                                                              |
+| Finalize a record whose status is commit                     | OperationNotAllowed                                          |                                                              |
+| After Finalize_Commit partial record, other transactions read the record while this transaction is still in progress | OK                                                           |                                                              |
+| After partial Finalization_commit, txn continues and then End_Commit all records | OK                                                           |                                                              |
+| After partial Finalization_commit, txn continues and then End_Abort all records | S500_server caught exception processing request (partial finalize success) | note：it is expected that the data will be in an inconsistent state |
+| Finalize_Abort partial record within this transaction        | OK                                                           |                                                              |
+| Record is read after it is Finalize_Abort  within the txn    | NotFound                                                     |                                                              |
+| Finalize_abort a record who has already been finalized_abort | OK                                                           |                                                              |
+| After partial Finalization_abort, txn continues and then End_Commit all records including the aborted records | S500_server caught exception processing request (partial finalize success) | note：it is expected that the data will be in an inconsistent state |
+| After partial Finalization_abort, txn continues and then End_Abort all records | OK                                                           |                                                              |
+| The TRH and MTR parameters of Finalize do not match          | OperationNotAllowed                                          |                                                              |
+| During async end_abort interval, finalize_commit partial keys, validate the keys with READ | OK (finalize_commit keys can be read)                        |                                                              |
 
 ## Scenario 07 - client-initiated txn abort
 ## Scenario 08 - server-initiated txn abort (PUSH/ retention window)
