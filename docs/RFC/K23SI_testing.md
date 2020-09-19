@@ -160,4 +160,24 @@ Notes:
 | During async end_abort interval, finalize_commit partial keys, validate the keys with READ | OK (finalize_commit keys can be read)                        |                                                              |
 
 ## Scenario 07 - client-initiated txn abort
+
+### Test setup
+
+- start a cluster and assign collection. 
+- Get multiple old and new timestamps to make Minimum Txn Records.
+
+### Test cases
+
+
+| test case | Expected result | NOTE         |
+| --- | --- | ------------------ |
+| Commit-End a transaction before it has any operations | OperationNotAllowed |  |
+| Abort-End a transaction before it has any operations | OK |  |
+| Commit-End a transaction, but misses some of the non-trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing non-trh keys status remain WI |
+| Commit-End a transaction, but misses the trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing trh key status remain WI |
+| Abort-End a transaction, but misses some of the non-trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing non-trh keys status remain WI |
+| Abort-End a transaction, but misses the trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing trh key status remain WI  |
+| Abort-Finalize all the keys in the transaction, and then inspect whether the transaction status turns to abort. | OK | txn status in_progress  |
+| Using a transaction with newer timestamp to Push() an old one. | OK | The older transaction is forced aborted |
+
 ## Scenario 08 - server-initiated txn abort (PUSH/ retention window)

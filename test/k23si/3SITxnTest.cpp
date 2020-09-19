@@ -112,6 +112,7 @@ public:		// application
             .then([this] { return testScenario04(); })
             .then([this] { return testScenario05(); })
             .then([this] { return testScenario06(); })
+            .then([this] { return testScenario07(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -2631,6 +2632,296 @@ seastar::future<> testScenario06() {
             });
         }); // end do-with
     }); // end case 12-13 end sc-06
+}
+
+seastar::future<> testScenario07() {
+    std::cout << std::endl << std::endl;
+    K2INFO("+++++++ TestScenario 07: client-initiated txn abort +++++++");
+    
+    return seastar::make_ready_future()
+    .then([] {
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            // multi MTRs are used for multiple transactions to execute. We use these MTRs in sequence
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 20000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 30000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 40000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 50000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 60000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::Key {.schemaName = "schema", .partitionKey = "SC07_pkey1", .rangeKey = "rKey1"},
+            dto::Key {.schemaName = "schema", .partitionKey = "SC07_pkey2", .rangeKey = "rKey2"},
+            DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
+            [this](auto& mtr, auto& mtr2, auto& mtr3, auto& mtr4, auto& mtr5, auto& mtr6, auto& k1, auto& k2, auto& v0) {
+            K2INFO("------- SC07.case01 ( Commit-End a transaction before it has any operations ) -------");
+            return doEnd(k1, mtr, collname, true, {k1}, Duration{0s}, ErrorCaseOpt::NoInjection)
+            .then([](auto&& response)  {
+                auto& [status, val] = response;
+                K2INFO("SC07.case01::OP_end_commit_onCreate. " << "status: " << status.code << " with MESG: " << status.message);
+                K2EXPECT(status, dto::K23SIStatus::OperationNotAllowed);
+            })
+            .then([&] {
+                K2INFO("------- SC07.case02 ( Abort-End a transaction before it has any operations ) -------");
+                return doEnd(k1, mtr, collname, false, {k1}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC07.case02::OP_end_abort_onCreate. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC07.case03 ( Commit-End a transaction missing some of the non-trh keys ) -------");
+                return seastar::when_all(doWrite(k1, v0, mtr, k1, collname, false, true, ErrorCaseOpt::NoInjection), \
+                        doWrite(k2, v0, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) {
+                    auto& [resp1, resp2] = response;
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2INFO("SC07.prepare::OP_WI_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC07.prepare::OP_WI_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2EXPECT(status1, dto::K23SIStatus::Created);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return doEnd(k1, mtr, collname, true, {k1}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC07.case03::OP_end_commit_miss_non_trh_keys. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                    });
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr, collname)
+                    .then([](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC07.case03::OP_inspect_txn_miss_non_trh_keys. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::KeyNotFound);
+                    });
+                })
+                .then([&] {
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    .then([&](auto&& response)  {
+                        auto& [resp1, resp2] = response;
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        K2INFO("SC07.case03.OP_inspect_record_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                        K2INFO("SC07.case03.OP_inspect_record_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                        for(auto& e : val1.records) {
+                            K2INFO("Versions of k1: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        for(auto& e : val2.records) {
+                            K2INFO("Versions of k2: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
+                        K2EXPECT(val1.records[0].txnId.mtr.txnid, mtr.txnid);
+                        K2EXPECT(val1.records[0].status, dto::DataRecord::Committed);
+                        K2EXPECT(val2.records[0].txnId.mtr.txnid, mtr.txnid);
+                        K2EXPECT(val2.records[0].status, dto::DataRecord::WriteIntent);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC07.case04 ( Commit-End a transaction missing the trh key ) -------");
+                return seastar::when_all(doWrite(k1, v0, mtr2, k1, collname, false, true, ErrorCaseOpt::NoInjection), \
+                        doWrite(k2, v0, mtr2, k1, collname, false, false, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) {
+                    auto& [resp1, resp2] = response;
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2INFO("SC07.prepare::OP_WI_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC07.prepare::OP_WI_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2EXPECT(status1, dto::K23SIStatus::Created);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return doEnd(k1, mtr2, collname, true, {k2}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC07.case04::OP_end_commit_miss_trh_key. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                    });
+                })
+                .then([&] {
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    .then([&](auto&& response)  {
+                        auto& [resp1, resp2] = response;
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        K2INFO("SC07.case04.OP_inspect_record_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                        K2INFO("SC07.case04.OP_inspect_record_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                        for(auto& e : val1.records) {
+                            K2INFO("Versions of k1: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        for(auto& e : val2.records) {
+                            K2INFO("Versions of k2: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
+                        K2EXPECT(val1.records[0].txnId.mtr.txnid, mtr2.txnid);
+                        K2EXPECT(val1.records[0].status, dto::DataRecord::WriteIntent);
+                        K2EXPECT(val2.records[0].txnId.mtr.txnid, mtr2.txnid);
+                        K2EXPECT(val2.records[0].status, dto::DataRecord::Committed);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC07.case05 ( Abort-End a transaction missing some of the non-trh keys ) -------");
+                return seastar::when_all(doWrite(k1, v0, mtr3, k1, collname, false, true, ErrorCaseOpt::NoInjection), \
+                        doWrite(k2, v0, mtr3, k1, collname, false, false, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) {
+                    auto& [resp1, resp2] = response;
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2INFO("SC07.prepare::OP_WI_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC07.prepare::OP_WI_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2EXPECT(status1, dto::K23SIStatus::Created);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return doEnd(k1, mtr3, collname, false, {k1}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC07.case05::OP_end_commit_miss_non_trh_keys. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                    });
+                })
+                .then([&] {
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    .then([&](auto&& response)  {
+                        auto& [resp1, resp2] = response;
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        K2INFO("SC07.case05.OP_inspect_record_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                        K2INFO("SC07.case05.OP_inspect_record_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                        for(auto& e : val1.records) {
+                            K2INFO("Versions of k1: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        for(auto& e : val2.records) {
+                            K2INFO("Versions of k2: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
+                        K2EXPECT(val1.records[0].txnId.mtr.txnid, mtr.txnid); // last txn id who committed k1 is mtr
+                        K2EXPECT(val1.records[0].status, dto::DataRecord::Committed);
+                        K2EXPECT(val2.records[0].txnId.mtr.txnid, mtr3.txnid); 
+                        K2EXPECT(val2.records[0].status, dto::DataRecord::WriteIntent);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC07.case06 ( Abort-End a transaction missing the trh key ) -------");
+                return seastar::when_all(doWrite(k1, v0, mtr4, k1, collname, false, true, ErrorCaseOpt::NoInjection), \
+                        doWrite(k2, v0, mtr4, k1, collname, false, false, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) {
+                    auto& [resp1, resp2] = response;
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2INFO("SC07.prepare::OP_WI_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC07.prepare::OP_WI_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2EXPECT(status1, dto::K23SIStatus::Created);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return doEnd(k1, mtr4, collname, false, {k2}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                    .then([](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC07.case06::OP_end_commit_miss_trh_key. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                    });
+                })
+                .then([&] {
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    .then([&](auto&& response)  {
+                        auto& [resp1, resp2] = response;
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        K2INFO("SC07.case06.OP_inspect_record_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                        K2INFO("SC07.case06.OP_inspect_record_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                        for(auto& e : val1.records) {
+                            K2INFO("Versions of k1: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        for(auto& e : val2.records) {
+                            K2INFO("Versions of k2: { key" << e.key << ", txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
+                        }
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
+                        K2EXPECT(val1.records[0].txnId.mtr.txnid, mtr4.txnid);
+                        K2EXPECT(val1.records[0].status, dto::DataRecord::WriteIntent);
+                        K2EXPECT(val2.records[0].txnId.mtr.txnid, mtr2.txnid); // last txn id who committed k2 is mtr2
+                        K2EXPECT(val2.records[0].status, dto::DataRecord::Committed);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC07.case07 ( Abort-Finalize all the keys in the transaction ) -------");
+                return seastar::when_all(doWrite(k1, v0, mtr5, k1, collname, false, true, ErrorCaseOpt::NoInjection), \
+                        doWrite(k2, v0, mtr5, k1, collname, false, false, ErrorCaseOpt::NoInjection))
+                .then([&](auto&& response) {
+                    auto& [resp1, resp2] = response;
+                    auto [status1, val1] = resp1.get0();
+                    auto [status2, val2] = resp2.get0();
+                    K2INFO("SC07.prepare::OP_WI_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                    K2INFO("SC07.prepare::OP_WI_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                    K2EXPECT(status1, dto::K23SIStatus::Created);
+                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return seastar::when_all(doFinalize(k1, k1, mtr5, collname, false, ErrorCaseOpt::NoInjection), \
+                            doFinalize(k1, k2, mtr5, collname, false, ErrorCaseOpt::NoInjection))
+                    .then([&](auto&& response) {
+                        auto& [resp1, resp2] = response;
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        K2INFO("SC07.prepare::OP_finalize_abort_k1. " << "status: " << status1.code << " with MESG: " << status1.message);
+                        K2INFO("SC07.prepare::OP_finalize_abort_k2. " << "status: " << status2.code << " with MESG: " << status2.message);
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::OK);
+                    });
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr5, collname)
+                    .then([&](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC07.case07::OP_inspect_txn_5. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn_5: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(val.state, dto::TxnRecordState::InProgress);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC07.case08 ( Using a transaction with newer timestamp to Push() an old one ) -------");
+                return doPush(k1, collname, mtr5, mtr6, ErrorCaseOpt::NoInjection)
+                .then([&](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC07.case08::OP_Push_txn5_txn6(older as challenger). " << "status: " << status.code << " with MESG: " << status.message);
+                    K2INFO(val);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                    K2EXPECT(val.winnerMTR, mtr6);
+                })
+                .then([&] {
+                    return seastar::when_all(doInspectTxn(k1, mtr5, collname), doInspectTxn(k1, mtr6, collname))
+                    .then([&](auto&& response) {
+                        auto& [resp1, resp2] = response;
+                        auto [status1, val1] = resp1.get0();
+                        auto [status2, val2] = resp2.get0();
+                        K2INFO("SC07.case08::OP_inspect_txn_5. " << "status: " << status1.code << " with MESG: " << status1.message);
+                        K2INFO("SC07.case08::OP_inspect_txn_6. " << "status: " << status2.code << " with MESG: " << status2.message);
+                        K2INFO("State of txn_5: " << val1.state);
+                        K2INFO("State of txn_6: " << val2.state);
+                        K2EXPECT(status1, dto::K23SIStatus::OK);
+                        K2EXPECT(status2, dto::K23SIStatus::KeyNotFound);
+                        K2EXPECT(val1.state, dto::TxnRecordState::ForceAborted);
+                        K2EXPECT(val2.state, dto::TxnRecordState::Created);
+                    });
+                });
+            });
+        }); // end do-with
+    }); // end sc-07
 }
 
 
