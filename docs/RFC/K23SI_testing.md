@@ -181,3 +181,27 @@ Notes:
 | Using a transaction with newer timestamp to Push() an old one. | OK | The older transaction is forced aborted |
 
 ## Scenario 08 - server-initiated txn abort (PUSH/ retention window)
+
+### Test setup
+
+- start a cluster and assign collection. 
+
+- write the following data, and keep the records in the given state
+
+  ```
+  WRTIE: ("SC08_pkey1","rKey1", v0) -> commited
+  WRITE: ("SC08_pkey1","rKey1", v0`) -> WI
+  READ : ("SC08_pkey1","rKey1"）
+  ```
+
+### Test cases
+
+
+| test case                                                    | Expected result | Inspect Txn status after Push() |
+| ------------------------------------------------------------ | --------------- | ------------------------------- |
+| Txn with a old timestamp WI is PUSHed by another txn's READ  | KeyNotFound     | ForceAborted                    |
+| Txn WRITE happens with the time older than the Read-Cache record | AbortConflict   | ForceAborted                    |
+| Txn WRITE timestamp is older than the latest committed record | AbortConflict   | ForceAborted                    |
+| Txn WRITE timestamp is older than the second latest version of the record, where the latest version of the record is WI | AbortConflict   | ForceAborted                    |
+| Txn timestamp is newer than all the  committed versions of the record, but earlier than the WI of the record | AbortConflict   | InProgress                      |
+

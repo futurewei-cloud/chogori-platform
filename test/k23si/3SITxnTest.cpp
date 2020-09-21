@@ -113,6 +113,7 @@ public:		// application
             .then([this] { return testScenario05(); })
             .then([this] { return testScenario06(); })
             .then([this] { return testScenario07(); })
+            .then([this] { return testScenario08(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -2922,6 +2923,174 @@ seastar::future<> testScenario07() {
             });
         }); // end do-with
     }); // end sc-07
+}
+
+seastar::future<> testScenario08() {
+    std::cout << std::endl << std::endl;
+    K2INFO("+++++++ TestScenario 08: server-initiated txn abort +++++++");
+    
+    return seastar::make_ready_future()
+    .then([] {
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& ts) {
+        return seastar::do_with(
+            // multi MTRs are used for multiple transactions to execute. We use these MTRs in sequence
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount()), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 20000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 30000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 40000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .txnid = txnids++, .timestamp = {(ts.tEndTSECount() + 50000), 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::Key {.schemaName = "schema", .partitionKey = "SC08_pkey1", .rangeKey = "rKey1"},
+            DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
+            [this](auto& mtr1, auto& mtr2, auto& mtr3, auto& mtr4, auto& mtr5, auto& k1, auto& v0) {
+            K2INFO("------- SC08.case01 ( Txn with a old timestamp WI is PUSHed by another txn's READ ) -------");
+            return doWrite(k1, v0, mtr1, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+            .then([](auto&& response)  {
+                auto& [status, val] = response;
+                K2INFO("SC08.prepare::OP_WI_old_k1. " << "status: " << status.code << " with MESG: " << status.message);
+                K2EXPECT(status, dto::K23SIStatus::Created);
+            })
+            .then([&] {
+                return doRead(k1, mtr2, collname, ErrorCaseOpt::NoInjection)
+                .then([](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC08.cases01::OP_read_face_old_WI. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::KeyNotFound);
+                });
+            })
+            .then([&] {
+                return doInspectTxn(k1, mtr1, collname)
+                .then([&](auto&& response)  {
+                    auto& [status, val] = response;
+                    K2INFO("SC08.case01::OP_inspect_txn_1. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2INFO("State of txn_1: " << val.state);
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+                    K2EXPECT(val.state, dto::TxnRecordState::ForceAborted);
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC08.case02 ( Txn WRITE happens before the Read-Cache record read time ) -------");
+                return doWrite(k1, v0, mtr1, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([&](auto&& response) {
+                    auto& [status, val] = response;
+                    K2INFO("SC08.cases02::OP_WRITE_ts_before_readCache. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::AbortConflict);
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr1, collname)
+                    .then([&](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case02::OP_inspect_txn_1. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn_1: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(val.state, dto::TxnRecordState::ForceAborted);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC08.case03 ( The timestamp is older than the latest committed record ) -------");
+                return doWrite(k1, v0, mtr3, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([&](auto&& response) {
+                    auto& [status, val] = response;
+                    K2INFO("SC08.prepare::OP_WI_mtr3_k1. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+                })
+                .then([&] {
+                    return doEnd(k1, mtr3, collname, true, {k1}, Duration{0s}, ErrorCaseOpt::NoInjection)
+                    .then([&](auto&& response) {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.prepare::OP_END_Commit_mtr3_k1. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                    });
+                })
+                .then([&]{ 
+                    return doWrite(k1, v0, mtr1, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+                    .then([&](auto&& response) {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case03::OP_write_TsOlder_than_committed_record. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::AbortConflict);
+                    });
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr1, collname)
+                    .then([&](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case03::OP_inspect_txn_1. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn_1: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(val.state, dto::TxnRecordState::ForceAborted);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC08.case04 ( WRITE timestamp is older than the second latest version of the record, where the latest version of the record is WI ) -------");
+                return doWrite(k1, v0, mtr5, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([&](auto&& response) {
+                    auto& [status, val] = response;
+                    K2INFO("SC08.prepare::OP_WI_mtr5_k1. " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+                })
+                .then([&]{ 
+                    return doWrite(k1, v0, mtr1, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+                    .then([&](auto&& response) {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case04::OP_write_olderTs. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2EXPECT(status, dto::K23SIStatus::AbortConflict);
+                    });
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr1, collname)
+                    .then([&](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case04::OP_inspect_txn_1. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn_1: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(val.state, dto::TxnRecordState::ForceAborted);
+                    });
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr5, collname)
+                    .then([&](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case04::OP_inspect_txn_5. " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn_5: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(val.state, dto::TxnRecordState::InProgress);
+                    });
+                });
+            })
+            .then([&] {
+                K2INFO("------- SC08.case05 ( The timestamp is newer than all the  committed version of the record, but earlier than the WI of the record ) -------");
+                return doWrite(k1, v0, mtr4, k1, collname, false, true, ErrorCaseOpt::NoInjection)
+                .then([&](auto&& response) {
+                    auto& [status, val] = response;
+                    K2INFO("SC08.case05::OP_WI_mtr4_k1(push inc mtr5). " << "status: " << status.code << " with MESG: " << status.message);
+                    K2EXPECT(status, dto::K23SIStatus::AbortConflict);
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr4, collname)
+                    .then([&](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case05::OP_inspect_txn_4(push loser). " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn_4: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(val.state, dto::TxnRecordState::InProgress);
+                    });
+                })
+                .then([&] {
+                    return doInspectTxn(k1, mtr5, collname)
+                    .then([&](auto&& response)  {
+                        auto& [status, val] = response;
+                        K2INFO("SC08.case04::OP_inspect_txn_5(push winner). " << "status: " << status.code << " with MESG: " << status.message);
+                        K2INFO("State of txn_5: " << val.state);
+                        K2EXPECT(status, dto::K23SIStatus::OK);
+                        K2EXPECT(val.state, dto::TxnRecordState::InProgress);
+                    });
+                });
+            });
+        }); // end do-with
+    }); // end sc-08
 }
 
 
