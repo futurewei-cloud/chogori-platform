@@ -93,7 +93,7 @@ Payload SKVRecord::getSharedPayload() {
     return storage.fieldData.shareAll();
 }
 
-SKVRecord::SKVRecord(const String& collection, seastar::lw_shared_ptr<Schema> s) : 
+SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) : 
             schema(s), collectionName(collection) {
     storage.schemaVersion = schema->version; 
     storage.fieldData = Payload(Payload::DefaultAllocator);

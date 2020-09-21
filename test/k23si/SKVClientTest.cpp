@@ -70,7 +70,7 @@ public:  // application lifespan
                 schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition"});
                 schema.setRangeKeyFieldsByName(std::vector<k2::String> {"range"});
                 
-                return _client.cpo_client.createSchema(collname, std::move(schema));
+                return _client.createSchema(collname, std::move(schema));
             })
             .then([] (auto&& status) {
                 K2EXPECT(status.is2xxOK(), true);

@@ -147,7 +147,7 @@ public:
     Payload getSharedPayload();
 
     SKVRecord() = default;
-    SKVRecord(const String& collection, seastar::lw_shared_ptr<Schema> s);
+    SKVRecord(const String& collection, std::shared_ptr<Schema> s);
 
     // These are fields actually stored by the Chogori storage node, and returned
     // by a read request
@@ -163,7 +163,7 @@ public:
     } storage;
 
     // These fields are used by the client to build a request but are not serialized on the wire
-    seastar::lw_shared_ptr<Schema> schema;
+    std::shared_ptr<Schema> schema;
     String collectionName;
     std::vector<String> partitionKeys;
     std::vector<String> rangeKeys;
