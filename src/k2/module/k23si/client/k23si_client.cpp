@@ -146,7 +146,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
 
             if (_failed && shouldCommit && status.is2xxOK()) {
                 // This could either be a bug in the application, where the failure was a read/write op
-                // and the app should know to abort, or it is a normal scenario where there was a 
+                // and the app should know to abort, or it is a normal scenario where there was a
                 // failure on the heartbeat and the app was not aware.
                 //
                 // Either way, we aborted the transaction but we need to indicate to the app that
@@ -321,6 +321,10 @@ seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> K23SIClien
 
     std::shared_ptr<dto::Schema> foundSchema = vIt->second;
     return k2::RPCResponse(k2::Statuses::S200_OK("Found schema"), std::move(foundSchema));
+}
+
+const dto::K23SI_MTR& K2TxnHandle::mtr() const {
+    return _mtr;
 }
 
 } // namespace k2
