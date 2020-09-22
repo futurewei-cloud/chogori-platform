@@ -78,14 +78,11 @@ public:  // application lifespan
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
         K2INFO("stop");
-        if (_stopped) {
-            return seastar::make_ready_future<>();
-        }
         _stopped = true;
         // unregister all observers
         k2::RPC().registerLowTransportMemoryObserver(nullptr);
 
-        return _stopPromise.get_future();
+        return std::move(_benchFuture);
     }
 
     void registerMetrics() {
@@ -115,7 +112,7 @@ public:  // application lifespan
         });
         registerMetrics();
 
-        return _client.start().then([this] () { return _benchmark(); })
+        _benchFuture = _client.start().then([this] () { return _benchmark(); })
         .handle_exception([this](auto exc) {
             K2ERROR_EXC("Unable to execute benchmark", exc);
             _stopped = true;
@@ -123,7 +120,6 @@ public:  // application lifespan
         }).finally([this]() {
             K2INFO("Done with benchmark");
             _stopped = true;
-            _stopPromise.set_value();
             cores_finished++;
             if (cores_finished == seastar::smp::count) {
                 if (_do_verification()) {
@@ -136,17 +132,19 @@ public:  // application lifespan
                                        [] (ConsistencyVerify& verify) {
                            return verify.run().then([] () {
                                K2INFO("Verify done, exiting");
-                               ::_exit(0);
+                               seastar::engine().exit(0);
                            });
                         });
                     });
                 } else {
-                    ::_exit(0);
+                    seastar::engine().exit(0);
                 }
             }
 
             return make_ready_future<>();
         });
+
+        return make_ready_future<>();
     }
 
 private:
@@ -309,14 +307,14 @@ private:
 private:
     K23SIClient _client;
     k2::Duration _testDuration;
-    bool _stopped;
-    seastar::promise<> _stopPromise;
+    bool _stopped = true;
     DataLoader _loader;
     DataLoader _item_loader;
     RandomContext _random;
     k2::TimePoint _start;
     seastar::timer<> _timer;
     std::vector<future<>> _tpcc_futures;
+    seastar::future<> _benchFuture = seastar::make_ready_future<>();
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<bool> _do_data_load{"data_load"};
