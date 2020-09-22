@@ -253,6 +253,10 @@ public:
     friend std::ostream& operator<<(std::ostream& os, const K2TxnHandle& h){
         return os << h._mtr;
     }
+
+    // use to obtain the MTR(which acts as a unique transaction identifier) for this transaction
+    const dto::K23SI_MTR& mtr() const;
+
 private:
     dto::K23SI_MTR _mtr;
     K2TxnOptions _options;
