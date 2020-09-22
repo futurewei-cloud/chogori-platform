@@ -12,11 +12,11 @@ CPO=tcp+k2rpc://0.0.0.0:9000
 TSO=tcp+k2rpc://0.0.0.0:13000
 
 # start CPO on 2 cores
-./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} 9001 --data_dir ${CPODIR} --heartbeat_deadline=30s --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63000 2>cpo.log &
+./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} 9001 --data_dir ${CPODIR} --heartbeat_deadline=10s --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63000 2>cpo.log &
 cpo_child_pid=$!
 
 # start nodepool on 3 cores
-./build/src/k2/cmd/nodepool/nodepool -c3 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} 2>nodepool.log &
+./build/src/k2/cmd/nodepool/nodepool -c3 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --partition_request_timeout=30s 2>nodepool.log &
 nodepool_child_pid=$!
 
 # start persistence on 1 cores

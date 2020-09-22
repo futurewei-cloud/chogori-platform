@@ -31,7 +31,7 @@ Common notes:
 
 ### Test cases
 OP means each one of (READ, WRITE, PUSH, END, FINALIZE, HEARTBEAT)
-| test case | Expected result | Possible fix needed
+| test case | Expected result | Possible fix needed |
 |---|---|---|
 |OP with bad collection name | RefreshCollection | |
 |OP outside retention window | AbortRequestTooOld | |
@@ -64,7 +64,7 @@ Notes:
 ### Test cases
 - re-run the test cases from Scenario01 - we should get same results
 
-| test case | Expected result | Possible fix needed
+| test case | Expected result | Possible fix needed |
 |---|---|---|
 |READ/WRITE of a valid key but bad collection name | RefreshCollection | |
 |READ/WRITE of a valid key but wrong partition index| RefreshCollection | |
@@ -76,10 +76,132 @@ Notes:
 |READ existing key at time before the key| NotFound||
 |READ existing key at time equals to the key| OK||
 |READ existing key at time after the key| OK||
+| TXN with a WRITE and then END asynchronously with Commit. Finalize with abort for the same key at time interval. | persistence call succeeded |                     |
+| TXN with a WRITE and then END asynchronously with Abort. Finalize with commit for the same key at time interval. | persistence call succeeded |                     |
+| TXN with a WRITE and then END asynchronously with Abort. Validate with a read for the async_end_key. | read succeeded             |                     |
 
 ## Scenario 03 - read cache usage tests (read/write observed history)
+
+- 
 ## Scenario 04 - read your writes(a txn can see its own pending writes) and read-committed isolation(pending writes are not shown to other transactions)
+
+### Test setup
+
+- start a cluster and assign collection.
+- write the following data, and keep the records in the given state
+
+```
+("SC04_pkey1","rKey1", v0) -> committed
+```
+
+### Test cases
+
+- The test logic is shown below: 
+
+  ![Scenario04-Test-Logic](../images/K23SI-Testing Scenario-04.png)
+
+| test case                                                   | Expected result                                   | Possible fix needed |
+| ----------------------------------------------------------- | ------------------------------------------------- | ------------------- |
+| Txn READ of data records before it begins                   | OK (read prior value)                             |                     |
+| Txn READ its own pending writes                             | OK (read pending value)                           |                     |
+| Txn with older timestamp READ other txn's pending writes    | could not read pending value (read prior value)   |                     |
+| Txn with newer timestamp Read other txn's pending writes    | could not read pending value (NotFound)           |                     |
+| Txn with older timestamp READ other txn's committed records | could not read committed value (read prior value) |                     |
+| Txn with newer timestamp READ other txn's committed writes  | read committed value                              |                     |
+
+
 ## Scenario 05 - concurrent transactions
+
+### Test setup
+
+- start a cluster and assign collection.
+- write the following data, and keep the records in the given state
+
+```
+("SC05_pkey1","rKey1", v0) -> committed
+```
+
+### Test cases
+
+| category                 | test case                                                    | Expected result                        | Possible fix needed |
+| ------------------------ | ------------------------------------------------------------ | -------------------------------------- | ------------------- |
+| fake-read-write conflict | Earlier Read txn encounters a WI, two txns have the same priority and tsoId | OK (read prior value)                  |                     |
+| priority of Push()       | Txn with higher priority encounters a WI                     | created (challenger won the Push)      |                     |
+| priority of Push()       | Txn with lower priority encounters a WI                      | AbortConflict (incumbent won the Push) |                     |
+| timestamp of Push()      | Earlier WRITE Txn encounters a WI with the same priority     | AbortConflict (incumbent won the Push) |                     |
+| timestamp of Push()      | Older READ/WRITE Txn encounters a WI with the same priority  | created (challenger won the Push)      |                     |
+| tsoId of Push()          | WRITE Txn encounters a WI with the same priority and timestamp, but its tso ID is smaller | AbortConflict (incumbent won the Push) |                     |
+| tsoId of Push()          | WRITE Txn encounters a WI with the same priority and timestamp, but its tso ID is bigger | created (challenger won the Push)      |                     |
+
 ## Scenario 06 - finalization
+
+### Test setup
+
+- start a cluster and assign collection. 
+- Start a transaction that have not been End().
+
+### Test cases
+
+
+| test case                                                    | Expected result                                              | Possible fix needed                                          |
+| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| Finalize is a non-exist record in this transaction           | OperationNotAllowed                                          |                                                              |
+| Finalize_Commit partial record within this transaction       | OK                                                           |                                                              |
+| Finalize a record whose status is commit                     | OperationNotAllowed                                          |                                                              |
+| After Finalize_Commit partial record, other transactions read the record while this transaction is still in progress | OK                                                           |                                                              |
+| After partial Finalization_commit, txn continues and then End_Commit all records | OK                                                           |                                                              |
+| After partial Finalization_commit, txn continues and then End_Abort all records | S500_server caught exception processing request (partial finalize success) | note：it is expected that the data will be in an inconsistent state |
+| Finalize_Abort partial record within this transaction        | OK                                                           |                                                              |
+| Record is read after it is Finalize_Abort  within the txn    | NotFound                                                     |                                                              |
+| Finalize_abort a record who has already been finalized_abort | OK                                                           |                                                              |
+| After partial Finalization_abort, txn continues and then End_Commit all records including the aborted records | S500_server caught exception processing request (partial finalize success) | note：it is expected that the data will be in an inconsistent state |
+| After partial Finalization_abort, txn continues and then End_Abort all records | OK                                                           |                                                              |
+| The TRH and MTR parameters of Finalize do not match          | OperationNotAllowed                                          |                                                              |
+| During async end_abort interval, finalize_commit partial keys, validate the keys with READ | OK (finalize_commit keys can be read)                        |                                                              |
+
 ## Scenario 07 - client-initiated txn abort
+
+### Test setup
+
+- start a cluster and assign collection. 
+- Get multiple old and new timestamps to make Minimum Txn Records.
+
+### Test cases
+
+
+| test case | Expected result | NOTE         |
+| --- | --- | ------------------ |
+| Commit-End a transaction before it has any operations | OperationNotAllowed |  |
+| Abort-End a transaction before it has any operations | OK |  |
+| Commit-End a transaction, but misses some of the non-trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing non-trh keys status remain WI |
+| Commit-End a transaction, but misses the trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing trh key status remain WI |
+| Abort-End a transaction, but misses some of the non-trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing non-trh keys status remain WI |
+| Abort-End a transaction, but misses the trh keys in the Wkeys field. And then use K23SIInspect verbs to check the status of the transaction and keys. | OK | the missing trh key status remain WI  |
+| Abort-Finalize all the keys in the transaction, and then inspect whether the transaction status turns to abort. | OK | txn status in_progress  |
+| Using a transaction with newer timestamp to Push() an old one. | OK | The older transaction is forced aborted |
+
 ## Scenario 08 - server-initiated txn abort (PUSH/ retention window)
+
+### Test setup
+
+- start a cluster and assign collection. 
+
+- write the following data, and keep the records in the given state
+
+  ```
+  WRTIE: ("SC08_pkey1","rKey1", v0) -> commited
+  WRITE: ("SC08_pkey1","rKey1", v0`) -> WI
+  READ : ("SC08_pkey1","rKey1"）
+  ```
+
+### Test cases
+
+
+| test case                                                    | Expected result    | Inspect Txn status after Push() |
+| ------------------------------------------------------------ | ------------------ | ------------------------------- |
+| Txn with a old timestamp WI is PUSHed by another txn's READ  | KeyNotFound        | ForceAborted                    |
+| Txn WRITE happens with the time older than the Read-Cache record | AbortRequestTooOld | InProgress                      |
+| Txn WRITE timestamp is older than the latest committed record | AbortRequestTooOld | InProgress                      |
+| Txn WRITE timestamp is older than the second latest version of the record, where the latest version of the record is WI | AbortRequestTooOld | InProgress                      |
+| Txn timestamp is newer than all the  committed versions of the record, but earlier than the WI of the record | AbortConflict      | InProgress                      |
+
