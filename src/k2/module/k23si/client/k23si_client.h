@@ -99,7 +99,9 @@ public:
     seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
     static constexpr int64_t ANY_VERSION = -1;
-    seastar::future<std::tuple<k2::Status, seastar::lw_shared_ptr<dto::Schema>>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
+    seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
+    seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);
+
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -117,11 +119,11 @@ public:
 
     CPOClient cpo_client;
     // collection name -> (schema name -> (schema version -> schemaPtr))
-    std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, seastar::lw_shared_ptr<dto::Schema>>>> schemas;
+    std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, std::shared_ptr<dto::Schema>>>> schemas;
 
 private:
     seastar::future<Status> refreshSchemaCache(const String& collectionName);
-    seastar::future<std::tuple<k2::Status, seastar::lw_shared_ptr<dto::Schema>>> getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh=true);
+    seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh=true);
 
     sm::metric_groups _metric_groups;
     std::mt19937 _gen;
@@ -134,20 +136,9 @@ class K2TxnHandle {
 private:
     void makeHeartbeatTimer();
     void checkResponseStatus(Status& status);
-public:
-    K2TxnHandle() = default;
-    K2TxnHandle(K2TxnHandle&& o) noexcept = default;
-    K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
-    K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
-    dto::K23SIReadRequest* makeReadRequest(const dto::SKVRecord& record) const {
-        return new dto::K23SIReadRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            record.collectionName,
-            _mtr,
-            record.getKey()
-        };
-    }
+    dto::K23SIReadRequest* makeReadRequest(const dto::SKVRecord& record) const;
+    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord& record, bool erase);
 
     template <class T>
     dto::K23SIReadRequest* makeReadRequest(const T& user_record) const {
@@ -156,6 +147,13 @@ public:
 
         return makeReadRequest(record);
     }
+
+
+public:
+    K2TxnHandle() = default;
+    K2TxnHandle(K2TxnHandle&& o) noexcept = default;
+    K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
+    K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
     template <class T>
     seastar::future<ReadResult<T>> read(T record) {
@@ -207,27 +205,6 @@ public:
                     return ReadResult<T>(std::move(status), std::move(userResponseRecord));
                 }
             }).finally([request] () { delete request; });
-    }
-
-    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord& record, bool erase) {
-        dto::Key key = record.getKey();
-
-        if (!_write_set.size()) {
-            _trh_key = key;
-            _trh_collection = record.collectionName;
-        }
-        _write_set.push_back(key);
-
-        return new dto::K23SIWriteRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            record.collectionName,
-            _mtr,
-            _trh_key,
-            erase,
-            _write_set.size() == 1,
-            key,
-            record.storage.share()
-        };
     }
 
     template <class T>

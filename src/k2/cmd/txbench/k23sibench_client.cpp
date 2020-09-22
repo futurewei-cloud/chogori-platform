@@ -45,7 +45,7 @@ k2::dto::Schema _schema {
     .partitionKeyFields = std::vector<uint32_t> { 0 },
     .rangeKeyFields = std::vector<uint32_t> { 1 },
 };
-static thread_local seastar::lw_shared_ptr<k2::dto::Schema> schemaPtr;
+static thread_local std::shared_ptr<k2::dto::Schema> schemaPtr;
 
 class DataRec{
 public:
@@ -53,7 +53,7 @@ public:
     std::optional<k2::String> rangeKey;
     std::optional<k2::String> data;
 
-    seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = collname;
 
     SKV_RECORD_FIELDS(partitionKey, rangeKey, data);
@@ -108,7 +108,7 @@ public:  // application lifespan
         _data = k2::String('.', _dataSize());
         _stopped = false;
         auto myid = seastar::engine().cpu_id();
-        schemaPtr = seastar::make_lw_shared(_schema);
+        schemaPtr = std::make_shared<k2::dto::Schema>(_schema);
         _gen.seed(myid);
 
         _benchFut = seastar::sleep(5s);
@@ -118,7 +118,7 @@ public:  // application lifespan
             _benchFut = _benchFut.then([this] {
                 return _client.makeCollection(collname).discard_result()
                 .then([this] () {
-                    return _client.cpo_client.createSchema(collname, _schema);
+                    return _client.createSchema(collname, _schema);
                 }).discard_result();
             });
         } else {

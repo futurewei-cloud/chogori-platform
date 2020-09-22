@@ -187,7 +187,7 @@ private:
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     doWrite(const dto::Key& key, const DataRec& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH) {
-        SKVRecord record(cname, seastar::make_lw_shared(_schema));
+        SKVRecord record(cname, std::make_shared<k2::dto::Schema>(_schema));
         record.serializeNext<String>(key.partitionKey);
         record.serializeNext<String>(key.rangeKey);
         record.serializeNext<String>(data.f1);
@@ -226,7 +226,7 @@ private:
                 return std::make_tuple(std::move(status), DataRec{});
             }
 
-            SKVRecord record(collname, seastar::make_lw_shared(_schema));
+            SKVRecord record(collname, std::make_shared<k2::dto::Schema>(_schema));
             record.storage = std::move(resp.value);
             record.seekField(2);
             DataRec rec = { *(record.deserializeNext<String>()), *(record.deserializeNext<String>()) };

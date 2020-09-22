@@ -117,7 +117,7 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, Tax, YTD, Name, address);
@@ -168,7 +168,7 @@ public:
     std::optional<k2::String> Name;
     Address address;
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, Tax, YTD, NextOrderID, Name, address);
@@ -256,7 +256,7 @@ public:
     std::optional<k2::String> Info;
     Address address;
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, CustomerID, SinceDate, CreditLimit, Discount, Balance,
         YTDPayment, PaymentCount, DeliveryCount, FirstName, MiddleName, LastName, Phone, Credit, 
@@ -320,7 +320,7 @@ public:
     std::optional<uint32_t> DistrictID;
     std::optional<k2::String> Info;
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, Date, CustomerID, CustomerWarehouseID, Amount, CustomerDistrictID,
         DistrictID, Info);
@@ -381,7 +381,7 @@ public:
     std::optional<uint32_t> CarrierID;
     std::optional<uint32_t> AllLocal; // boolean, 0 or 1
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineCount, EntryDate, CustomerID, 
         CarrierID, AllLocal);
@@ -413,7 +413,7 @@ public:
     std::optional<uint32_t> DistrictID;
     std::optional<uint32_t> OrderID;
     
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID);
 };  
@@ -489,7 +489,7 @@ public:
     std::optional<uint32_t> Quantity;
     std::optional<k2::String> DistInfo;
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineNumber, DeliveryDate, ItemID, 
         SupplyWarehouseID, Amount, Quantity, DistInfo);
@@ -535,7 +535,7 @@ public:
     std::optional<k2::String> Name;
     std::optional<k2::String> Info;
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(ItemID, ImageID, Price, Name, Info);
 };
@@ -641,21 +641,21 @@ public:
     std::optional<k2::String> Dist_10;
     std::optional<k2::String> Info;
 
-    static inline thread_local seastar::lw_shared_ptr<k2::dto::Schema> schema;
+    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, ItemID, YTD, OrderCount, RemoteCount, Quantity, Dist_01, Dist_02,
         Dist_03, Dist_04, Dist_05, Dist_06, Dist_07, Dist_08, Dist_09, Dist_10, Info);
 };
 
 void setupSchemaPointers() {
-    Warehouse::schema = seastar::make_lw_shared(Warehouse::warehouse_schema);
-    District::schema = seastar::make_lw_shared(District::district_schema);
-    Customer::schema = seastar::make_lw_shared(Customer::customer_schema);
-    History::schema = seastar::make_lw_shared(History::history_schema);
-    Order::schema = seastar::make_lw_shared(Order::order_schema);
-    NewOrder::schema = seastar::make_lw_shared(NewOrder::neworder_schema);
-    OrderLine::schema = seastar::make_lw_shared(OrderLine::orderline_schema);
-    Item::schema = seastar::make_lw_shared(Item::item_schema);
-    Stock::schema = seastar::make_lw_shared(Stock::stock_schema);
+    Warehouse::schema = std::make_shared<k2::dto::Schema>(Warehouse::warehouse_schema);
+    District::schema = std::make_shared<k2::dto::Schema>(District::district_schema);
+    Customer::schema = std::make_shared<k2::dto::Schema>(Customer::customer_schema);
+    History::schema = std::make_shared<k2::dto::Schema>(History::history_schema);
+    Order::schema = std::make_shared<k2::dto::Schema>(Order::order_schema);
+    NewOrder::schema = std::make_shared<k2::dto::Schema>(NewOrder::neworder_schema);
+    OrderLine::schema = std::make_shared<k2::dto::Schema>(OrderLine::orderline_schema);
+    Item::schema = std::make_shared<k2::dto::Schema>(Item::item_schema);
+    Stock::schema = std::make_shared<k2::dto::Schema>(Stock::stock_schema);
 }
 
