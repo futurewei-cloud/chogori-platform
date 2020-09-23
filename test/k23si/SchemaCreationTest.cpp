@@ -129,7 +129,7 @@ private:
 	        })
 	        .then([] {
 	            // wait for collection to get assigned
-	            return seastar::sleep(500ms);
+	            return seastar::sleep(200ms);
 	        })
 	        .then([this] {
 	            // check to make sure the collection is assigned

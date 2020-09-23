@@ -1218,7 +1218,7 @@ seastar::future<> testScenario01() {
                     });
                 })
                 .then([] {
-                    return seastar::sleep(500ms);
+                    return seastar::sleep(200ms);
                 });
         }) // end do-with
         // #2 read Txn to validate
@@ -1289,7 +1289,7 @@ seastar::future<> testScenario01() {
                     });
                 })
                 .then([] {
-                    return seastar::sleep(500ms);
+                    return seastar::sleep(200ms);
                 });
         }) // end do-with
         // #2 read Txn to validate
@@ -2300,7 +2300,7 @@ seastar::future<> testScenario06() {
                     K2EXPECT(status, dto::K23SIStatus::Created);
                 })
                 .then([&] {
-                    return doEnd(k1, mtr, collname, true, {k1, k2, k3}, Duration{1s}, ErrorCaseOpt::NoInjection)
+                    return doEnd(k1, mtr, collname, true, {k1, k2, k3}, Duration{0s}, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response)  {
                         auto& [status, val] = response;
                         K2INFO("SC06.case5::OP_End_Commit_all_keys. " << "status: " << status.code << " with MESG: " << status.message);
