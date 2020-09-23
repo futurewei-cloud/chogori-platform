@@ -76,6 +76,8 @@ public:  // application lifespan
                 K2EXPECT(status.is2xxOK(), true);
             })
             .then([this] { return runScenario01(); })
+            .then([this] { return runScenario02(); })
+            .then([this] { return runScenario03(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -106,6 +108,7 @@ private:
 
     seastar::timer<> _testTimer;
     seastar::future<> _testFuture = seastar::make_ready_future();
+    seastar::future<> _writeFuture = seastar::make_ready_future();
 
     k2::K23SIClient _client;
     uint64_t txnids = 10000;
@@ -169,6 +172,102 @@ seastar::future<> runScenario01() {
                 })
                 .then([](auto&& response) {
                     K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<>();
+                });
+        });
+    });
+}
+
+// Try to issue an end request in parallel with a write
+seastar::future<> runScenario02() {
+    K2INFO("Scenario 02");
+    return _client.beginTxn(k2::K2TxnOptions())
+    .then([this] (k2::K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn),
+            [this] (k2::K2TxnHandle& txnHandle) {
+                return _client.getSchema(collname, "schema", 1)
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+
+                    k2::dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<k2::String>("partkey_02");
+                    record.serializeNext<k2::String>("rangekey_02");
+                    record.serializeNext<k2::String>("data1");
+                    record.serializeNext<k2::String>("data2");
+
+                    _writeFuture = txnHandle.write<k2::dto::SKVRecord>(record).discard_result();
+                    return txnHandle.end(true);
+                })
+                .then([this](auto&& response) {
+                    (void) response;
+                    K2EXPECT(true, false); // We expect an exception
+                    // Need to wait to avoid errors in shutdown
+                    return std::move(_writeFuture);
+                }).
+                handle_exception([this] (auto&& e) {
+                    (void) e;
+                    K2INFO("Got expected exception in scenario 02");
+                    // Need to wait to avoid errors in shutdown
+                    return std::move(_writeFuture);
+                });
+        });
+    });
+}
+
+// Try to write after an end request
+seastar::future<> runScenario03() {
+    K2INFO("Scenario 03");
+    return _client.beginTxn(k2::K2TxnOptions())
+    .then([this] (k2::K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn),
+            [this] (k2::K2TxnHandle& txnHandle) {
+                return _client.getSchema(collname, "schema", 1)
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+
+                    k2::dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<k2::String>("partkey_s03");
+                    record.serializeNext<k2::String>("rangekey_s03");
+                    record.serializeNext<k2::String>("data1");
+                    record.serializeNext<k2::String>("data2");
+
+                    return txnHandle.write<k2::dto::SKVRecord>(record);
+                })
+                .then([this](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txnHandle] () {
+                    return txnHandle.end(true);
+                })
+                .then([this](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                    return _client.getSchema(collname, "schema", 1);
+                })
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+
+                    k2::dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<k2::String>("partkey_s03_2");
+                    record.serializeNext<k2::String>("rangekey_s03_2");
+                    record.serializeNext<k2::String>("data1");
+                    record.serializeNext<k2::String>("data2");
+
+                    return txnHandle.write<k2::dto::SKVRecord>(record);
+                })
+                .then([](auto&& response) {
+                    (void) response;
+                    K2EXPECT(false, true); // We expect an exception
+                    return seastar::make_ready_future<>();
+                })
+                .handle_exception( [] (auto&& e) {
+                    (void) e;
+                    K2INFO("Got expected exception with write after end request");
                     return seastar::make_ready_future<>();
                 });
         });

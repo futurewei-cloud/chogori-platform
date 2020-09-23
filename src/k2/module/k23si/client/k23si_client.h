@@ -157,7 +157,7 @@ public:
 
     template <class T>
     seastar::future<ReadResult<T>> read(T record) {
-        if (!_started) {
+        if (!_valid) {
             return seastar::make_exception_future<ReadResult<T>>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
@@ -165,6 +165,7 @@ public:
         }
 
         _client->read_ops++;
+        _ongoing_ops++;
 
         dto::K23SIReadRequest* request = makeReadRequest(record);
 
@@ -174,6 +175,7 @@ public:
             then([this, request_schema=record.schema, request] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
+                _ongoing_ops--;
 
                 if constexpr (std::is_same<T, dto::SKVRecord>()) {
                     if (!status.is2xxOK()) {
@@ -209,13 +211,14 @@ public:
 
     template <class T>
     seastar::future<WriteResult> write(T& record, bool erase=false) {
-        if (!_started) {
+        if (!_valid) {
             return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
         _client->write_ops++;
+        _ongoing_ops++;
 
         dto::K23SIWriteRequest* request = nullptr;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
@@ -232,6 +235,7 @@ public:
             then([this] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
+                _ongoing_ops--;
 
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
@@ -260,13 +264,14 @@ public:
 private:
     dto::K23SI_MTR _mtr;
     K2TxnOptions _options;
-    CPOClient* _cpo_client;
-    K23SIClient* _client;
-    bool _started;
-    bool _failed;
+    CPOClient* _cpo_client = nullptr;
+    K23SIClient* _client = nullptr;
+    bool _valid = false; // If false, then was not create by beginTxn() or end() has already been called
+    bool _failed = false;
     Status _failed_status;
     Duration _txn_end_deadline;
     TimePoint _start_time;
+    uint64_t _ongoing_ops = 0; // Used to track if there are operations in flight when end() is called
 
     Duration _heartbeat_interval;
     PeriodicTimer _heartbeat_timer;

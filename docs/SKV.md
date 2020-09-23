@@ -92,3 +92,25 @@ switch statement on the type, and then call the correct template instantiation f
 convenience, the FOR\_EACH\_RECORD\_FIELD and DO\_ON\_NEXT\_RECORD\_FIELD macros can be used with a 
 templated visitor function, which provides the functionality of the switch statement for the user. 
 See the macro comments and definitions for more details.
+
+
+## SKV Client
+
+
+The intended use of the SKV Client is to create a TxnHandle with beginTxn, issue read, write, or erase 
+requests, and then call end. End should be called exactly once by the user even if one of the read or 
+write operations has failed. This is to ensure that the transaction gets cleaned up server-side.
+
+
+If the transaction encounters an error on a read or write operation it will be recorded by the client, 
+and the client will make sure an abort is issued to the server. If the user tried to commit, they will get 
+an error status back. The SKV Client will try to prevent data inconsistency caused by user error. One 
+example is that the user should always chain the end call after any potential read or write operations. 
+This is so that any errors that should make the transaction abort are known by the client before the end 
+call is made. The SKV Client will count ongoing read or write operations and throw an exception if the user 
+did not wait for them. This indicates a bug in the user code and the transaction should be left to be 
+cleaned up by the retention window. The SKV Client cannot let the user issue an end request in parallel 
+with read or write requests because the SKV Client does not know if the user will issue more read or 
+write requests in the future, and so it does not have the information needed to know when to issue the end 
+request to the server. In the case where the user issues a read, write, or end request on a TxnHandle that 
+has already ened, the client will also throw an exception as this is also a bug in the user code.
