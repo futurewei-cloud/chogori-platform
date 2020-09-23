@@ -27,6 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Log.h>
 #include "Payload.h"
 #include "RPCHeader.h"
+#include <iostream>
 
 namespace k2 {
 // an endpoint has: three components: protocol, IP, and port. It can be represented in a string form (url) as
@@ -92,6 +93,10 @@ public: // API
     // Use to determine if this endpoint can allocate
     bool canAllocate() const;
 
+    // pretty print
+    friend std::ostream& operator<<(std::ostream& os, const TXEndpoint& ep) {
+        return os << ep._url;
+    }
 private: // fields
     String _url;
     String _protocol;

@@ -130,7 +130,7 @@ public:  // application lifespan
 
                 _schema.setPartitionKeyFieldsByName(std::vector<String>{"partition"});
                 _schema.setRangeKeyFieldsByName(std::vector<String> {"range"});
-                
+
                 dto::CreateSchemaRequest request{ collname, _schema };
                 return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s);
             })

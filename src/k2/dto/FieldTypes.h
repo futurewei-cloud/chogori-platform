@@ -54,3 +54,26 @@ String NullLastToKeyString();
 
 } // ns dto
 } // ns k2
+
+namespace std {
+    inline std::ostream& operator<<(std::ostream& os, const k2::dto::FieldType& ftype) {
+        switch(ftype) {
+        case k2::dto::FieldType::NULL_T:
+            return os << "NULL";
+        case k2::dto::FieldType::STRING:
+            return os << "STRING";
+        case k2::dto::FieldType::UINT32T:
+            return os << "UINT32T";
+        case k2::dto::FieldType::UINT64T:
+            return os << "UINT64T";
+        case k2::dto::FieldType::INT32T:
+            return os << "INT32T";
+        case k2::dto::FieldType::FLOAT:
+            return os << "FLOAT";
+        case k2::dto::FieldType::NULL_LAST:
+            return os << "NULL_LAST";
+        default:
+            return os << "UNKNOWN_FIELD_TYPE";
+        };
+    }
+}

@@ -185,7 +185,7 @@ seastar::future<WriteResult> K2TxnHandle::erase(SKVRecord& record) {
 }
 
 K23SIClient::K23SIClient(const K23SIClientConfig &) :
-        _tsoClient(AppBase().getDist<k2::TSO_ClientLib>().local()), _gen(std::random_device()()) {
+        _tsoClient(AppBase().getDist<TSO_ClientLib>().local()), _gen(std::random_device()()) {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
     _metric_groups.add_group("K23SI_client", {
@@ -213,7 +213,7 @@ seastar::future<> K23SIClient::gracefulStop() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<Status> K23SIClient::makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds) {
+seastar::future<Status> K23SIClient::makeCollection(const String& collection, std::vector<String>&& rangeEnds) {
     std::vector<String> endpoints = _k2endpoints;
     dto::HashScheme scheme = rangeEnds.size() ? dto::HashScheme::Range : dto::HashScheme::HashCRC32C;
 
@@ -243,11 +243,13 @@ seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) 
     });
 }
 
-seastar::future<k2::Status> K23SIClient::createSchema(const String& collectionName, k2::dto::Schema schema) {
-    return cpo_client.createSchema(collectionName, std::move(schema));
+seastar::future<CreateSchemaResult> K23SIClient::createSchema(const String& collectionName, dto::Schema schema) {
+    return cpo_client.createSchema(collectionName, std::move(schema)).then([](auto&& status) {
+        return CreateSchemaResult{.status=std::move(status)};
+    });
 }
 
-seastar::future<k2::Status> K23SIClient::refreshSchemaCache(const String& collectionName) {
+seastar::future<Status> K23SIClient::refreshSchemaCache(const String& collectionName) {
     return cpo_client.getSchemas(collectionName)
     .then([this, collectionName] (auto&& response) {
         auto& [status, collSchemas] = response;
@@ -259,26 +261,29 @@ seastar::future<k2::Status> K23SIClient::refreshSchemaCache(const String& collec
 
         auto& schemaMap = schemas[collectionName];
         for (const Schema& schema : collSchemas) {
-            schemaMap[schema.name][schema.version] = std::make_shared<k2::dto::Schema>(schema);
+            schemaMap[schema.name][schema.version] = std::make_shared<dto::Schema>(schema);
         }
 
         return status;
     });
 }
 
-seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> K23SIClient::getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion) {
-    return getSchemaInternal(collectionName, schemaName, schemaVersion, true);
+seastar::future<GetSchemaResult> K23SIClient::getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion) {
+    return getSchemaInternal(collectionName, schemaName, schemaVersion, true).then([](auto&& result) {
+        auto&& [status, schema] = std::move(result);
+        return GetSchemaResult{.status=std::move(status), .schema=std::move(schema)};
+    });
 }
 
-seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> K23SIClient::getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh) {
+seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh) {
     auto cIt = schemas.find(collectionName);
     if (cIt == schemas.end() && !doCPORefresh) {
-        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
+        return RPCResponse(Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
     } else if (cIt == schemas.end()) {
         return refreshSchemaCache(collectionName)
-        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+        .then([this, collectionName, schemaName, schemaVersion] (Status&& status) {
             if (!status.is2xxOK()) {
-                return k2::RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
+                return RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
             }
 
             return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
@@ -287,12 +292,12 @@ seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> K23SIClien
 
     auto sIt = cIt->second.find(schemaName);
     if (sIt == cIt->second.end() && !doCPORefresh) {
-        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
+        return RPCResponse(Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
     } else if (sIt == cIt->second.end()) {
         return refreshSchemaCache(collectionName)
-        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+        .then([this, collectionName, schemaName, schemaVersion] (Status&& status) {
             if (!status.is2xxOK()) {
-                return k2::RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
+                return RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
             }
 
             return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
@@ -300,29 +305,29 @@ seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> K23SIClien
     }
 
     if (sIt->second.size() > 0 && schemaVersion == ANY_VERSION) {
-        std::shared_ptr<k2::dto::Schema> foundSchema = sIt->second.begin()->second;
-        return k2::RPCResponse(k2::Statuses::S200_OK("Found schema"), std::move(foundSchema));
+        std::shared_ptr<dto::Schema> foundSchema = sIt->second.begin()->second;
+        return RPCResponse(Statuses::S200_OK("Found schema"), std::move(foundSchema));
     } else if (schemaVersion == ANY_VERSION && doCPORefresh) {
         return refreshSchemaCache(collectionName)
-        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+        .then([this, collectionName, schemaName, schemaVersion] (Status&& status) {
             if (!status.is2xxOK()) {
-                return k2::RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
+                return RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
             }
 
             return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
         });
     } else if (schemaVersion == ANY_VERSION) {
-        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
+        return RPCResponse(Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
     }
 
     auto vIt = sIt->second.find(schemaVersion);
     if (vIt == sIt->second.end() && !doCPORefresh) {
-        return k2::RPCResponse(k2::Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
+        return RPCResponse(Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
     } else if (vIt == sIt->second.end()) {
         return refreshSchemaCache(collectionName)
-        .then([this, collectionName, schemaName, schemaVersion] (k2::Status&& status) {
+        .then([this, collectionName, schemaName, schemaVersion] (Status&& status) {
             if (!status.is2xxOK()) {
-                return k2::RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
+                return RPCResponse(std::move(status), std::shared_ptr<dto::Schema>());
             }
 
             return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
@@ -330,7 +335,7 @@ seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> K23SIClien
     }
 
     std::shared_ptr<dto::Schema> foundSchema = vIt->second;
-    return k2::RPCResponse(k2::Statuses::S200_OK("Found schema"), std::move(foundSchema));
+    return RPCResponse(Statuses::S200_OK("Found schema"), std::move(foundSchema));
 }
 
 const dto::K23SI_MTR& K2TxnHandle::mtr() const {

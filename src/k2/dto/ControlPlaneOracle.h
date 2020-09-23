@@ -68,12 +68,15 @@ struct CollectionGetResponse {
 struct SchemaField {
     FieldType type;
     String name;
-    // Ascending or descending sort order. Currently only relevant for 
+    // Ascending or descending sort order. Currently only relevant for
     // key fields, but could be used for secondary index in the future
     bool descending = false;
-    // NULL first or last in sort order. Relevant for key fields and 
+    // NULL first or last in sort order. Relevant for key fields and
     // for open-ended filter predicates
     bool nullLast = false;
+    friend std::ostream& operator<<(std::ostream& os, const SchemaField& field) {
+        return os << "{name=" << field.name << ", type=" << field.type << ", descending=" << field.descending << ", nullLast=" << field.nullLast << "}";
+    }
     K2_PAYLOAD_FIELDS(type, name, descending, nullLast);
 };
 
@@ -82,7 +85,7 @@ struct Schema {
     uint32_t version = 0;
     std::vector<SchemaField> fields;
 
-    // All key fields must come before all value fields (by index), so that a key can be 
+    // All key fields must come before all value fields (by index), so that a key can be
     // constructed for a read request without knowing the schema version
     std::vector<uint32_t> partitionKeyFields;
     std::vector<uint32_t> rangeKeyFields;
@@ -96,6 +99,21 @@ struct Schema {
     // Used to make sure that the partition and range key definitions do not change between versions
     Status canUpgradeTo(const dto::Schema& other) const;
 
+    friend std::ostream& operator<<(std::ostream& os, const Schema& schema) {
+        os << "{name=" << schema.name << ", version=" << schema.version << ", fields={";
+        for(auto& field : schema.fields){
+            os << field.name << ",";
+        }
+        os << "}, partitionKeyFields={";
+        for (auto idx: schema.partitionKeyFields) {
+            os << schema.fields[idx] << ",";
+        }
+        os << "}, rangeKeyFields={";
+        for (auto idx : schema.rangeKeyFields) {
+            os << schema.fields[idx] << ",";
+        }
+        return os << "}";
+    }
     K2_PAYLOAD_FIELDS(name, version, fields, partitionKeyFields, rangeKeyFields);
 };
 

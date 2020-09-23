@@ -64,7 +64,7 @@ public:
             if (status == Statuses::S403_Forbidden || status.is2xxOK()) {
                 Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
                 return seastar::sleep(s).then([this, name, deadline]() -> seastar::future<Status> {
-                    return GetAssignedPartitionWithRetry(deadline, name, 
+                    return GetAssignedPartitionWithRetry(deadline, name,
                         dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""});
                 });
             }
@@ -91,8 +91,11 @@ public:
                     if (partition && partition->astate == dto::AssignmentState::Assigned) {
                         return seastar::make_ready_future<Status>(std::move(status));
                     }
+                    K2WARN("Partition found but still not completed assignment");
                 }
-                K2WARN("retry failed with status: " << status);
+                else {
+                    K2WARN("Partition not found with status: " << status);
+                }
 
                 if (!retries) {
                     status = Statuses::S408_Request_Timeout("get assigned partition retries exceeded");
@@ -238,7 +241,7 @@ public:
     template<typename ClockT=Clock>
     seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>> GetPersistenceCluster(Deadline<ClockT> deadline, String name) {
         dto::PersistenceClusterGetRequest request{.name = std::move(name)};
-        
+
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
         return RPC().callRPC<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, request, *cpo, timeout)
         .then([this, &request, deadline] (auto&& result) {

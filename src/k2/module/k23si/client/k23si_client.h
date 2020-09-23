@@ -80,6 +80,17 @@ public:
     Status status;
 };
 
+// This is the response to a getSchema request
+struct GetSchemaResult {
+    Status status;                        // the status of the response
+    std::shared_ptr<dto::Schema> schema;  // the schema if the response was OK
+};
+
+// This is the response to a createSchema request
+struct CreateSchemaResult {
+    Status status;  // the status of the response
+};
+
 class K23SIClientConfig {
 public:
     K23SIClientConfig(){};
@@ -91,16 +102,16 @@ class K23SIClient {
 public:
     K23SIClient(const K23SIClientConfig &);
 private:
-k2::TSO_ClientLib& _tsoClient;
+    TSO_ClientLib& _tsoClient;
 public:
 
     seastar::future<> start();
     seastar::future<> gracefulStop();
-    seastar::future<Status> makeCollection(const String& collection, std::vector<k2::String>&& rangeEnds=std::vector<k2::String>());
+    seastar::future<Status> makeCollection(const String& collection, std::vector<String>&& rangeEnds=std::vector<String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
     static constexpr int64_t ANY_VERSION = -1;
-    seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
-    seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);
+    seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
+    seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
 
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
@@ -123,7 +134,7 @@ public:
 
 private:
     seastar::future<Status> refreshSchemaCache(const String& collectionName);
-    seastar::future<std::tuple<k2::Status, std::shared_ptr<dto::Schema>>> getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh=true);
+    seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh = true);
 
     sm::metric_groups _metric_groups;
     std::mt19937 _gen;
@@ -254,6 +265,8 @@ public:
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed
     seastar::future<EndResult> end(bool shouldCommit);
+
+    // pretty print of the transaction handle
     friend std::ostream& operator<<(std::ostream& os, const K2TxnHandle& h){
         return os << h._mtr;
     }

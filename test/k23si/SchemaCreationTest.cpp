@@ -95,7 +95,7 @@ public:		// application lifespan
 }
 
 
-private:  
+private:
 	std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
     k2::ConfigVar<std::vector<k2::String>> _k2ConfigEps{"k2_endpoints"};
 	seastar::future<> _testFuture = seastar::make_ready_future();
@@ -194,7 +194,7 @@ seastar::future<> runScenario00() {
 
 		schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
 		schema.setRangeKeyFieldsByName(std::vector<String> {"FirstName"});
-		
+
 		dto::CreateSchemaRequest request{ collname, std::move(schema) };
 		return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 		.then([this] (auto&& response) {
@@ -213,35 +213,28 @@ seastar::future<> runScenario00() {
 			K2INFO("------- create schema success. -------");
 			return seastar::make_ready_future<>();
 		});
-	});	
+	});
 }
 
 // happy path test cases
 seastar::future<> runScenario01(){
 	K2INFO("+++++++ Schema Creation Test 01: Create a new version of an existing schema by renaming a (non-key) field +++++++");
-	
+
 	K2INFO("STEP1: get an existing Schema");
 	dto::GetSchemasRequest request { collname };
 	return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
 	.then([this](auto&& response) {
 		auto& [status, resp] = response;
 		K2EXPECT(status, Statuses::S200_OK);
-		std::cout << "schemas size: " << resp.schemas.size() << std::endl;
-		for(auto& schema : resp.schemas){
-			std::cout << "schema Name: " << schema.name << "    Version: " << schema.version << "    Fields: ";
-			for(auto& field : schema.fields){
-				std::cout << field.name << "  |  ";
-			}
-			std::cout << "PartitionKey: " << schema.partitionKeyFields << "    RangeKey: " << schema.rangeKeyFields << std::endl;
-		}
+
 
 		K2INFO("STEP2: renaming a non-key field and then create");
 		auto schema(resp.schemas[0]);
 		schema.version = 22;
 		schema.fields[2].name = "Age";
-		K2EXPECT(schema.basicValidation(), Statuses::S200_OK);	
+		K2EXPECT(schema.basicValidation(), Statuses::S200_OK);
 		K2EXPECT(resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
-		
+
 		dto::CreateSchemaRequest request{ collname, std::move(schema) };
 		return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 		.then([this] (auto&& response) {
@@ -254,15 +247,7 @@ seastar::future<> runScenario01(){
 		.then([] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S200_OK);
-			std::cout << "schemas size: " << resp.schemas.size() << std::endl;
-			for(auto& schema : resp.schemas){
-				std::cout << "schema Name: " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-				for(auto& field : schema.fields){
-					std::cout << field.name << "  |  ";
-				}
-				std::cout << "PartitionKey: " << schema.partitionKeyFields << "	  RangeKey: " << schema.rangeKeyFields << std::endl;
-			}
-			
+
 			K2INFO("------- create a new version of schema success. -------");
 			return seastar::make_ready_future<>();
 		});
@@ -271,29 +256,22 @@ seastar::future<> runScenario01(){
 
 seastar::future<> runScenario02(){
 	K2INFO("+++++++ Schema Creation Test 02: Create a new version of an existing schema by adding a new field +++++++");
-	
+
 	K2INFO("STEP1: get an existing Schema");
 	dto::GetSchemasRequest request { collname };
 	return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
 	.then([this](auto&& response) {
 		auto& [status, resp] = response;
 		K2EXPECT(status, Statuses::S200_OK);
-		std::cout << "schemas size: " << resp.schemas.size() << std::endl;
-		for(auto& schema : resp.schemas){
-			std::cout << "schema Name: " << schema.name << "    Version: " << schema.version << "    Fields: ";
-			for(auto& field : schema.fields){
-				std::cout << field.name << "  |  ";
-			}
-			std::cout << "PartitionKey: " << schema.partitionKeyFields << "    RangeKey: " << schema.rangeKeyFields << std::endl;
-		}
+
 
 		K2INFO("STEP2: using version1 to add a new field \"Age\" with \"UINT32_T\" fieldType");
 		auto schema(resp.schemas[0]);
 		schema.version = 333;
 		schema.fields.push_back( {dto::FieldType::UINT32T, "Age", false, false} );
-		K2EXPECT(schema.basicValidation(), Statuses::S200_OK);	
+		K2EXPECT(schema.basicValidation(), Statuses::S200_OK);
 		K2EXPECT(resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
-		
+
 		dto::CreateSchemaRequest request{ collname, std::move(schema) };
 		return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 		.then([this] (auto&& response) {
@@ -306,16 +284,6 @@ seastar::future<> runScenario02(){
 		.then([] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S200_OK);
-			std::cout << "schemas size: " << resp.schemas.size() << std::endl;
-			for(auto& schema : resp.schemas){
-				std::cout << "schema Name: " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-				for(auto& field : schema.fields){
-					std::cout << field.name << "  |  ";
-				}
-				std::cout << "PartitionKey: " << schema.partitionKeyFields << "	  RangeKey: " << schema.rangeKeyFields << std::endl;
-			}
-			
-			K2INFO("------- create a new version of schema success. -------");
 			return seastar::make_ready_future<>();
 		});
 	});
@@ -323,7 +291,7 @@ seastar::future<> runScenario02(){
 
 seastar::future<> runScenario03(){
 	K2INFO("+++++++ Schema Creation Test 03: Create a schema which does not have any range key fields set +++++++");
-	
+
 	dto::Schema schema;
 		schema.name = scWoRKey;
 		schema.version = 1;
@@ -337,7 +305,7 @@ seastar::future<> runScenario03(){
 		schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
 		// set partitionKeyFields by index 1
 		schema.partitionKeyFields.push_back(1);
-		
+
 		dto::CreateSchemaRequest request{ collname, std::move(schema) };
 		return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 		.then([this] (auto&& response) {
@@ -350,14 +318,6 @@ seastar::future<> runScenario03(){
 		.then([] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S200_OK);
-			std::cout << "schemas size: " << resp.schemas.size() << std::endl;
-			for(auto& schema : resp.schemas){
-				std::cout << "schema Name: " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-				for(auto& field : schema.fields){
-					std::cout << field.name << "  |  ";
-				}
-				std::cout << "PartitionKey: " << schema.partitionKeyFields << "	  RangeKey: " << schema.rangeKeyFields << std::endl;
-			}
 
 			K2INFO("------- create schema success. -------");
 			return seastar::make_ready_future<>();
@@ -376,38 +336,28 @@ seastar::future<> runScenario04(){
 					{dto::FieldType::STRING, "Grade", false, false},
 					{dto::FieldType::UINT32T, "Class", false, false}
 			};
-	
+
 			schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
-			
+
 			dto::CreateSchemaRequest request{ collname, std::move(schema) };
 			return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 			.then([this] (auto&& response) {
 				auto& [status, resp] = response;
 				K2EXPECT(status, Statuses::S400_Bad_Request);
-				std::cout << status << std::endl;
-	
+
 				dto::GetSchemasRequest request { collname };
 				return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
 			})
 			.then([] (auto&& response) {
 				auto& [status, resp] = response;
 				K2EXPECT(status, Statuses::S200_OK);
-				bool found = false;
-				for(auto& schema : resp.schemas){
-					if (schema.name == scETC){
-						found = true;
-						std::cout << "Found \"scETC\": " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-						for(auto& field : schema.fields){
-							std::cout << field.name << "  |  ";
-						}
-						std::cout << "PartitionKey: " << schema.partitionKeyFields << "	  RangeKey: " << schema.rangeKeyFields << std::endl;
-						break;
+
+				for(auto& schema : resp.schemas) {
+					if (schema.name == scETC) {
+						return seastar::make_ready_future();
 					}
 				}
-				if (!found){
-					std::cout << "\"" << scETC << "\" does not exist in result set from CPO_SCHEMAS_GET Request" << std::endl;
-				}
-				return seastar::make_ready_future<>();
+				K2FAIL("Schema not found"); // schema not found
 			});
 }
 
@@ -424,36 +374,27 @@ seastar::future<> runScenario05(){
 				// set partitionKeyFields manually by index, and an index is out of bounds of the fields
 				schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
 				schema.partitionKeyFields.push_back(3);
-				
+
 				dto::CreateSchemaRequest request{ collname, std::move(schema) };
 				return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 				.then([this] (auto&& response) {
 					auto& [status, resp] = response;
 					K2EXPECT(status, Statuses::S400_Bad_Request);
-					std::cout << status << std::endl;
-		
+
 					dto::GetSchemasRequest request { collname };
 					return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
 				})
 				.then([] (auto&& response) {
 					auto& [status, resp] = response;
 					K2EXPECT(status, Statuses::S200_OK);
-					bool found = false;
-					for(auto& schema : resp.schemas){
-						if (schema.name == scETC){
-							found = true;
-							std::cout << "Found \"scETC\": " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-							for(auto& field : schema.fields){
-								std::cout << field.name << "  |  ";
-							}
-							std::cout << "PartitionKey: " << schema.partitionKeyFields << "   RangeKey: " << schema.rangeKeyFields << std::endl;
-							break;
+
+					for(auto& schema : resp.schemas) {
+						if (schema.name == scETC) {
+							return seastar::make_ready_future();
 						}
 					}
-					if (!found){
-						std::cout << "\"" << scETC << "\" does not exist in result set from CPO_SCHEMAS_GET Request" << std::endl;
-					}
-					return seastar::make_ready_future<>();
+					K2FAIL("Schema not found"); // schema not found
+
 				});
 }
 
@@ -471,35 +412,26 @@ seastar::future<> runScenario06(){
 				// set partitionKeyFields manually by index, and index 0 is not a partition or range key field
 				schema.partitionKeyFields.push_back(1);
 				schema.rangeKeyFields.push_back(2);
-				
+
 				dto::CreateSchemaRequest request{ collname, std::move(schema) };
 				return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 				.then([this] (auto&& response) {
 					auto& [status, resp] = response;
 					K2EXPECT(status, Statuses::S400_Bad_Request);
-					std::cout << status << std::endl;
-		
+
 					dto::GetSchemasRequest request { collname };
 					return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
 				})
 				.then([] (auto&& response) {
 					auto& [status, resp] = response;
 					K2EXPECT(status, Statuses::S200_OK);
-					bool found = false;
-					for(auto& schema : resp.schemas){
-						if (schema.name == scETC){
-							found = true;
-							std::cout << "Found \"scETC\": " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-							for(auto& field : schema.fields){
-								std::cout << field.name << "  |  ";
-							}
-							std::cout << "PartitionKey: " << schema.partitionKeyFields << "   RangeKey: " << schema.rangeKeyFields << std::endl;
-							break;
+
+					for(auto& schema : resp.schemas) {
+						if (schema.name == scETC) {
+							return seastar::make_ready_future();
 						}
 					}
-					if (!found){
-						std::cout << "\"" << scETC << "\" does not exist in result set from CPO_SCHEMAS_GET Request" << std::endl;
-					}
+					K2FAIL("Schema not found"); // schema not found
 					return seastar::make_ready_future<>();
 				});
 }
@@ -514,43 +446,33 @@ seastar::future<> runScenario07(){
 		dto::Schema schema(resp.schemas[0]);
 		schema.version = 4444;
 		schema.fields[0].name = "Xing";
-		
+
 		dto::CreateSchemaRequest request{ collname, std::move(schema) };
 		return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
 		.then([this] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S409_Conflict);
-			std::cout << status << std::endl;
-		
+
 			dto::GetSchemasRequest request { collname };
 			return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
 		})
 		.then([this] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S200_OK);
-			bool found = false;
-			for(auto& schema : resp.schemas){
+
+			for(auto& schema : resp.schemas) {
 				if (schema.fields[0].name == "Xing"){
-					found = true;
-					std::cout << "Found: " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-					for(auto& field : schema.fields){
-						std::cout << field.name << "  |  ";
-					}
-					std::cout << "PartitionKey: " << schema.partitionKeyFields << "   RangeKey: " << schema.rangeKeyFields << std::endl;
-					break;
+					return seastar::make_ready_future();
 				}
 			}
-			if (!found){
-				std::cout << "Re-named Field \"Xing\" does not exist in result set" << std::endl;
-			}
-			return seastar::make_ready_future<>();
+			K2FAIL("Schema not found"); // schema not found
 		});
 	});
 }
 
 seastar::future<> runScenario08(){
 	K2INFO("+++++++ Schema Creation Test 08: Create a new version of an existing schema where the type of a key field changes +++++++");
-	
+
 	dto::GetSchemasRequest request { collname };
 	return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
 	.then([this] (auto&& response) {
@@ -560,9 +482,8 @@ seastar::future<> runScenario08(){
 		for(auto& schema : resp.schemas){
 			if (schema.name == scWoRKey){
 				sc = &schema;
-				std::cout << "Create a new version of \": " << scWoRKey << "\" and Changes a key field" << std::endl;
 				schema.version = 22;
-				// the type of a key field changes 
+				// the type of a key field changes
 				schema.fields[1].type = dto::FieldType::UINT32T;
 				break;
 			}
@@ -572,37 +493,26 @@ seastar::future<> runScenario08(){
 		.then([this] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S409_Conflict);
-			std::cout << status << std::endl;
-		
+
 			dto::GetSchemasRequest request { collname };
 			return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
 		})
 		.then([this] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S200_OK);
-			bool found = false;
-			for(auto& schema : resp.schemas){
-				if (schema.name == scWoRKey && schema.fields[1].type == dto::FieldType::UINT32T){
-					found = true;
-					std::cout << "Found: " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-					for(auto& field : schema.fields){
-						std::cout << field.name << "  |  ";
-					}
-					std::cout << "PartitionKey: " << schema.partitionKeyFields << "   RangeKey: " << schema.rangeKeyFields << std::endl;
-					break;
+			for(auto& schema : resp.schemas) {
+                if (schema.name == scWoRKey && schema.fields[1].type == dto::FieldType::UINT32T) {
+					return seastar::make_ready_future();
 				}
 			}
-			if (!found){
-				std::cout << "Schema: "<< scWoRKey << "with Re-typed Field[1] \"Uint32_t\" does not exist in result set" << std::endl;
-			}
-			return seastar::make_ready_future<>();
+			K2FAIL("Schema not found"); // schema not found
 		});
 	});
 }
 
 seastar::future<> runScenario09(){
 	K2INFO("+++++++ Schema Creation Test 09: Create a new version of an existing schema where a key field is removed +++++++");
-	
+
 	dto::GetSchemasRequest request { collname };
 	return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
 	.then([this] (auto&& response) {
@@ -612,7 +522,6 @@ seastar::future<> runScenario09(){
 		for(auto& schema : resp.schemas){
 			if (schema.name == scWoRKey){
 				sc = &schema;
-				std::cout << "Create a new version of \": " << scWoRKey << "\" and Remove a key field" << std::endl;
 				schema.version = 333;
 				//  Remove a key field[0]
 				std::vector<SchemaField>::iterator it = schema.fields.begin();
@@ -625,30 +534,19 @@ seastar::future<> runScenario09(){
 		.then([this] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S409_Conflict);
-			std::cout << status << std::endl;
-		
+
 			dto::GetSchemasRequest request { collname };
 			return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
 		})
 		.then([this] (auto&& response) {
 			auto& [status, resp] = response;
 			K2EXPECT(status, Statuses::S200_OK);
-			bool found = false;
-			for(auto& schema : resp.schemas){
+			for(auto& schema : resp.schemas) {
 				if (schema.name == scWoRKey && schema.version == 333){
-					found = true;
-					std::cout << "Found: " << schema.name << "	Version: " << schema.version << "	 Fields: ";
-					for(auto& field : schema.fields){
-						std::cout << field.name << "  |  ";
-					}
-					std::cout << "PartitionKey: " << schema.partitionKeyFields << "   RangeKey: " << schema.rangeKeyFields << std::endl;
-					break;
+					return seastar::make_ready_future();
 				}
 			}
-			if (!found){
-				std::cout << "Schema: "<< scWoRKey << "with Removed Key Field[0] \"School\" does not exist in result set" << std::endl;
-			}
-			return seastar::make_ready_future<>();
+			K2FAIL("Schema not found"); // schema not found
 		});
 	});
 }

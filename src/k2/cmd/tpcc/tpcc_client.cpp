@@ -152,48 +152,48 @@ private:
         std::vector<seastar::future<>> schema_futures;
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Warehouse::warehouse_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, District::district_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Customer::customer_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, History::history_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Order::order_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, NewOrder::neworder_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, OrderLine::orderline_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Item::item_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Stock::stock_schema)
-        .then([] (Status status) {
-            K2ASSERT(status.is2xxOK(), "Failed to create schema");
+        .then([] (auto&& result) {
+            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
         }));
 
         return seastar::when_all_succeed(schema_futures.begin(), schema_futures.end());
