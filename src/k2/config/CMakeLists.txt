@@ -4,8 +4,8 @@ file(GLOB SOURCES "*.cpp")
 add_library(config STATIC ${HEADERS} ${SOURCES})
 
 set_target_properties(config PROPERTIES
-	VERSION ${PROJECT_VERSION}
-	SOVERSION 1
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
 )
 
 target_link_libraries (config PRIVATE common)

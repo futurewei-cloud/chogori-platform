@@ -4,8 +4,8 @@ file(GLOB SOURCES "*.cpp")
 add_library(appbase STATIC ${HEADERS} ${SOURCES})
 
 set_target_properties(appbase PROPERTIES
-	VERSION ${PROJECT_VERSION}
-	SOVERSION 1
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
 )
 
 target_link_libraries (appbase PRIVATE config common transport Seastar::seastar )
