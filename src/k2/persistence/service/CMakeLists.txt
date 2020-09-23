@@ -4,8 +4,8 @@ file(GLOB SOURCES "*.cpp")
 add_library(persistence_service STATIC ${HEADERS} ${SOURCES})
 
 set_target_properties(persistence_service PROPERTIES
-	VERSION ${PROJECT_VERSION}
-	SOVERSION 1
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
 )
 
 target_link_libraries (persistence_service PRIVATE common transport Seastar::seastar )

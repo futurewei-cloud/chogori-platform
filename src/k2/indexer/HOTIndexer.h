@@ -42,9 +42,9 @@ struct KeyValuePair {
 
 template<typename ValueType>
 struct KeyValuePairKeyExtractor {
-	inline size_t getKeyLength(ValueType const &value) const {
-		return value->key.length();
-	}
+    inline size_t getKeyLength(ValueType const &value) const {
+        return value->key.length();
+    }
     inline const char* operator()(ValueType const &value) const {
         return value->key.c_str();
     }

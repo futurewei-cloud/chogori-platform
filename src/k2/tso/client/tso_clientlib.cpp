@@ -416,7 +416,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
     // issue replacement batch request
     if (!_pendingClientRequests.empty())
     {
-	uint16_t pendingClientRequestsCount = (uint16_t) _pendingClientRequests.size();
+    uint16_t pendingClientRequestsCount = (uint16_t) _pendingClientRequests.size();
         uint16_t expectedTSCount = 0;
         uint16_t batchSizeToRequest = 0;
         const auto& cTimestampBatchQue = _timestampBatchQue;
@@ -430,7 +430,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
 
         if (batchSizeToRequest > 0)
         {
-	        K2DEBUG("Need to request more batch due to unfulfilled pending client requests, count:" << batchSizeToRequest);
+            K2DEBUG("Need to request more batch due to unfulfilled pending client requests, count:" << batchSizeToRequest);
             // TODO: get config from appBase and use max batch size, default 32
             batchSizeToRequest = std::min(batchSizeToRequest, (uint16_t)32);
 

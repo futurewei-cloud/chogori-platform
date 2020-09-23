@@ -6,7 +6,7 @@ add_compile_options(-O3 -g -Werror -Wall -Wextra -march=skylake -mtune=skylake-a
 
 # K2_DEBUG_LOGGING enables some verbose logging for debug purposes.
 if(DEFINED ENV{K2_DEBUG_LOGGING})
-	set(K2_DEBUG_LOGGING $ENV{K2_DEBUG_LOGGING})
+    set(K2_DEBUG_LOGGING $ENV{K2_DEBUG_LOGGING})
 else()
     set(K2_DEBUG_LOGGING 0)
 endif()
@@ -29,5 +29,5 @@ install(
     EXPORT k2Targets
     FILE k2-config.cmake
     DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/cmake/k2"
-	NAMESPACE k2::
+    NAMESPACE k2::
 )

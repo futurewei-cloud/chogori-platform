@@ -4,8 +4,8 @@ file(GLOB SOURCES "*.cpp")
 add_library(common STATIC ${HEADERS} ${SOURCES})
 
 set_target_properties(common PROPERTIES
-	VERSION ${PROJECT_VERSION}
-	SOVERSION 1
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
 )
 target_link_libraries (common PRIVATE Seastar::seastar )
 
