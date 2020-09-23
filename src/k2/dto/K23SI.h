@@ -219,6 +219,44 @@ struct K23SIWriteResponse {
     K2_PAYLOAD_EMPTY;
 };
 
+enum class K23SIQueryOp : uint8_t {
+    EQ,
+    NEQ,
+    GT,
+    GTE,
+    LT,
+    LTE,
+    STARTS_WITH
+};
+
+struct K23SIQueryRequest {
+    Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    String collectionName;
+    K23SI_MTR mtr; // the MTR for the issuing transaction
+    // use the name "key" so that we can use common routing from CPO client
+    Key key; // key for routing and will be interpreted as exclusive start key by the server
+
+    int32_t recordLimit; // Max number of records server should return, negative is no limit
+    bool includeVersionMismatch; // Whether mismatched schema versions should be included in results
+
+    // Predicates to be ANDed together on server
+    std::vector<K23SIQueryOp> predicateOps;
+    std::vector<String> predicateFields;
+    std::vector<FieldType> predicateTypes;
+    // Predicates packed into one payload to reduce fragmentation
+    Payload predicateOperands;
+
+    std::vector<String> projection; // Fields by name to include in projection
+
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, recordLimit, includeVersionMismatch, predicateOps,
+            predicateFields, predicateTypes, predicateOperands, projection);
+};
+
+struct K23SIQueryResponse {
+    std::vector<SKVRecord::Storage> records;
+    K2_PAYLOAD_FIELDS(records);
+};
+
 struct K23SITxnHeartbeatRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;

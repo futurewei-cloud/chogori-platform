@@ -114,3 +114,32 @@ with read or write requests because the SKV Client does not know if the user wil
 write requests in the future, and so it does not have the information needed to know when to issue the end 
 request to the server. In the case where the user issues a read, write, or end request on a TxnHandle that 
 has already ened, the client will also throw an exception as this is also a bug in the user code.
+
+
+## SKV Query
+
+
+An SKV Query is a read-only scan operation with predicates and projection. It operates over a single 
+schema (but over all versions of that schema, see schema\_versioning.md for more details). The SKV 
+Query interface is a fixed-function API, not generic pushdown.
+
+
+Query predicates consist of a field name, an expected field type, a relational operator, and a literal 
+of the field type. For example, {"AGE", Int, LESS\_THAN, 25} represents a predicate that 
+selects for records where the AGE field is less than 25. By expressing predicate fields by name rather 
+than positionally we can support queries across schema versions more easily. Similarly, projection is 
+also expressed by field name. Predicates are logically ANDed together by the server.
+
+
+The result of a Query is a set of SKVRecords, which is paginated. The server decides how many records to 
+include in a single response but the user can specify a limit on the total number of records they want. 
+Pagination is implemented by an opaque (to the user) continuation token and does not require saving any 
+server-side state. A Query operation may span multiple partitions in which case it is possible for the 
+user to get zero records in a single call but they should still continue making calls with the 
+continuation token.
+
+
+For multi-partition Queries, the read cache on the servers will be updated individually on each partition 
+as the paginated request comes in. The alternative is to communicate with all potentially participating 
+partitions and insert into the read cache before returning any records to the user, but our current 
+understanding is that this is not necessary.

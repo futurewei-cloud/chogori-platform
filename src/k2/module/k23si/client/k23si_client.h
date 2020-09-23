@@ -67,11 +67,8 @@ public:
 
 class WriteResult{
 public:
-    WriteResult(Status s, dto::K23SIWriteResponse&& r) : status(std::move(s)), response(std::move(r)) {}
+    WriteResult(Status s) : status(std::move(s)) {}
     Status status;
-
-private:
-    dto::K23SIWriteResponse response;
 };
 
 class EndResult{
@@ -98,6 +95,39 @@ public:
 
 class K2TxnHandle;
 
+// Represents a new or in-progress query (aka read scan with predicate and projection)
+class Query {
+public:
+    Query() = default;
+
+    template <typename T>
+    void addPredicate(dto::K23SIQueryOp op, T operand, const String& fieldName);
+    void addProjection(const String& fieldName);
+
+    int32_t limitLeft = -1; // Negative means no limit
+    bool includeVersionMismatch = false;
+    bool isDone(); // If false, more results may be available
+
+private:
+    std::shared_ptr<dto::Schema> schema = nullptr;
+    bool done = false;
+    bool inprogress = false; // Used to prevent user from changing predicates after query has started
+    dto::Key continuationToken;
+    dto::K23SIQueryRequest request;
+
+    friend class K2TxnHandle;
+    friend class K23SIClient;
+};
+
+class QueryResult {
+public:
+    QueryResult(Status s, dto::K23SIQueryResponse&& r);
+
+    Status status;
+    std::vector<SKVRecord> records;
+};
+
+
 class K23SIClient {
 public:
     K23SIClient(const K23SIClientConfig &);
@@ -112,7 +142,7 @@ public:
     static constexpr int64_t ANY_VERSION = -1;
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
-
+    seastar::future<Query> createQuery(const String& collectionName, const String& schemaName);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -141,7 +171,6 @@ private:
     std::uniform_int_distribution<uint64_t> _rnd;
     std::vector<String> _k2endpoints;
 };
-
 
 class K2TxnHandle {
 private:
@@ -226,7 +255,7 @@ public:
             return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
-            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
+            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status));
         }
         _client->write_ops++;
         _ongoing_ops++;
@@ -256,7 +285,7 @@ public:
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
 
-                return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+                return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status)));
             }).finally([request] () { delete request; });
     }
 
@@ -265,6 +294,10 @@ public:
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed
     seastar::future<EndResult> end(bool shouldCommit);
+
+    // Get one set of paginated results for a query. User may need to call again with same query 
+    // object to get more results
+    seastar::future<QueryResult> query(Query& query);
 
     // pretty print of the transaction handle
     friend std::ostream& operator<<(std::ostream& os, const K2TxnHandle& h){

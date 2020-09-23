@@ -60,7 +60,7 @@ Query predicates consist of a field name, an expected field type, a relational o
 of the field type. For example, {"AGE", Int, LESS\_THAN, 25} could represent a predicate that 
 selects for records where the AGE field is less than 25. By expressing predicate fields by name rather 
 than positionally we can support queries across schema versions more easily. Similarly, projection is 
-also expressed by field name and expected type.
+also expressed by field name.
 
 
 The result set of a query (logically a list of SKVRecords), can contain SKVRecords written with 
