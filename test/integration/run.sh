@@ -8,5 +8,4 @@ for test in test_collection.sh test_k23si.sh test_3si_txn.sh test_schema_create.
     echo ">>> Running integration test: ${test}";
     ./${test};
     echo ">>> Done running test ${test}";
-    sleep 1
  done

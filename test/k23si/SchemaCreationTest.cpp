@@ -129,7 +129,7 @@ private:
 	        })
 	        .then([] {
 	            // wait for collection to get assigned
-	            return seastar::sleep(100ms);
+	            return seastar::sleep(200ms);
 	        })
 	        .then([this] {
 	            // check to make sure the collection is assigned
@@ -293,147 +293,146 @@ seastar::future<> runScenario03(){
 	K2INFO("+++++++ Schema Creation Test 03: Create a schema which does not have any range key fields set +++++++");
 
 	dto::Schema schema;
-		schema.name = scWoRKey;
-		schema.version = 1;
-		schema.fields = std::vector<dto::SchemaField> {
-				{dto::FieldType::STRING, "School", false, false},
-				{dto::FieldType::STRING, "Major", false, false},
-				{dto::FieldType::STRING, "Grade", false, false},
-				{dto::FieldType::UINT32T, "Class", false, false}
-		};
+	schema.name = scWoRKey;
+	schema.version = 1;
+	schema.fields = std::vector<dto::SchemaField> {
+			{dto::FieldType::STRING, "School", false, false},
+			{dto::FieldType::STRING, "Major", false, false},
+			{dto::FieldType::STRING, "Grade", false, false},
+			{dto::FieldType::UINT32T, "Class", false, false}
+	};
 
-		schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
-		// set partitionKeyFields by index 1
-		schema.partitionKeyFields.push_back(1);
+	schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
+	// set partitionKeyFields by index 1
+	schema.partitionKeyFields.push_back(1);
 
-		dto::CreateSchemaRequest request{ collname, std::move(schema) };
-		return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
-		.then([this] (auto&& response) {
-			auto& [status, resp] = response;
-			K2EXPECT(status, Statuses::S200_OK);
+	dto::CreateSchemaRequest request{ collname, std::move(schema) };
+	return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+	.then([this] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S200_OK);
 
-			dto::GetSchemasRequest request { collname };
-			return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
-		})
-		.then([] (auto&& response) {
-			auto& [status, resp] = response;
-			K2EXPECT(status, Statuses::S200_OK);
+		dto::GetSchemasRequest request { collname };
+		return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
+	})
+	.then([] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S200_OK);
 
-			K2INFO("------- create schema success. -------");
-			return seastar::make_ready_future<>();
-		});
+		K2INFO("------- create schema success. -------");
+		return seastar::make_ready_future<>();
+	});
 }
 
 // Error test cases
 seastar::future<> runScenario04(){
 	K2INFO("+++++++ Schema Creation Test 04: Create a schema with duplicate field names +++++++");
 	dto::Schema schema;
-			schema.name = scETC;
-			schema.version = 1;
-			schema.fields = std::vector<dto::SchemaField> {
-					{dto::FieldType::STRING, "School", false, false},
-					{dto::FieldType::STRING, "School", false, false},
-					{dto::FieldType::STRING, "Grade", false, false},
-					{dto::FieldType::UINT32T, "Class", false, false}
-			};
+	schema.name = scETC;
+	schema.version = 1;
+	schema.fields = std::vector<dto::SchemaField> {
+			{dto::FieldType::STRING, "School", false, false},
+			{dto::FieldType::STRING, "School", false, false},
+			{dto::FieldType::STRING, "Grade", false, false},
+			{dto::FieldType::UINT32T, "Class", false, false}
+	};
 
-			schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
+	schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
 
-			dto::CreateSchemaRequest request{ collname, std::move(schema) };
-			return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
-			.then([this] (auto&& response) {
-				auto& [status, resp] = response;
-				K2EXPECT(status, Statuses::S400_Bad_Request);
+	dto::CreateSchemaRequest request{ collname, std::move(schema) };
+	return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+	.then([this] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S400_Bad_Request);
 
-				dto::GetSchemasRequest request { collname };
-				return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
-			})
-			.then([] (auto&& response) {
-				auto& [status, resp] = response;
-				K2EXPECT(status, Statuses::S200_OK);
+		dto::GetSchemasRequest request { collname };
+		return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
+	})
+	.then([] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S200_OK);
 
-				for(auto& schema : resp.schemas) {
-					if (schema.name == scETC) {
-						return seastar::make_ready_future();
-					}
-				}
-				K2FAIL("Schema not found"); // schema not found
-			});
+		for(auto& schema : resp.schemas) {
+			if (schema.name == scETC) {
+				K2FAIL("Schema should not exist");
+			}
+		}
+		return seastar::make_ready_future();
+	});
 }
 
 seastar::future<> runScenario05(){
 	K2INFO("+++++++ Schema Creation Test 05: Create a schema by setting partitionKeyFields manually by index, and an index is out of bounds of the fields +++++++");
 	dto::Schema schema;
-				schema.name = scETC;
-				schema.version = 1;
-				schema.fields = std::vector<dto::SchemaField> {
-						{dto::FieldType::STRING, "School", false, false},
-						{dto::FieldType::STRING, "Grade", false, false},
-						{dto::FieldType::UINT32T, "Class", false, false}
-				};
-				// set partitionKeyFields manually by index, and an index is out of bounds of the fields
-				schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
-				schema.partitionKeyFields.push_back(3);
+	schema.name = scETC;
+	schema.version = 1;
+	schema.fields = std::vector<dto::SchemaField> {
+			{dto::FieldType::STRING, "School", false, false},
+			{dto::FieldType::STRING, "Grade", false, false},
+			{dto::FieldType::UINT32T, "Class", false, false}
+	};
+	// set partitionKeyFields manually by index, and an index is out of bounds of the fields
+	schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
+	schema.partitionKeyFields.push_back(3);
 
-				dto::CreateSchemaRequest request{ collname, std::move(schema) };
-				return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
-				.then([this] (auto&& response) {
-					auto& [status, resp] = response;
-					K2EXPECT(status, Statuses::S400_Bad_Request);
+	dto::CreateSchemaRequest request{ collname, std::move(schema) };
+	return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+	.then([this] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S400_Bad_Request);
 
-					dto::GetSchemasRequest request { collname };
-					return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
-				})
-				.then([] (auto&& response) {
-					auto& [status, resp] = response;
-					K2EXPECT(status, Statuses::S200_OK);
+		dto::GetSchemasRequest request { collname };
+		return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
+	})
+	.then([] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S200_OK);
 
-					for(auto& schema : resp.schemas) {
-						if (schema.name == scETC) {
-							return seastar::make_ready_future();
-						}
-					}
-					K2FAIL("Schema not found"); // schema not found
+		for(auto& schema : resp.schemas) {
+			if (schema.name == scETC) {
+				K2FAIL("Schema shoud not exist");
+			}
+		}
+        return seastar::make_ready_future();
 
-				});
+	});
 }
 
 seastar::future<> runScenario06(){
 	K2INFO("+++++++ Schema Creation Test 06: Create a schema where the field at index 0 is not a partition or range key field +++++++");
 	dto::Schema schema;
-				schema.name = scETC;
-				schema.version = 1;
-				schema.fields = std::vector<dto::SchemaField> {
-						{dto::FieldType::STRING, "School", false, false},
-						{dto::FieldType::STRING, "Major", false, false},
-						{dto::FieldType::STRING, "Grade", false, false},
-						{dto::FieldType::UINT32T, "Class", false, false}
-				};
-				// set partitionKeyFields manually by index, and index 0 is not a partition or range key field
-				schema.partitionKeyFields.push_back(1);
-				schema.rangeKeyFields.push_back(2);
+	schema.name = scETC;
+	schema.version = 1;
+	schema.fields = std::vector<dto::SchemaField> {
+			{dto::FieldType::STRING, "School", false, false},
+			{dto::FieldType::STRING, "Major", false, false},
+			{dto::FieldType::STRING, "Grade", false, false},
+			{dto::FieldType::UINT32T, "Class", false, false}
+	};
+	// set partitionKeyFields manually by index, and index 0 is not a partition or range key field
+	schema.partitionKeyFields.push_back(1);
+	schema.rangeKeyFields.push_back(2);
 
-				dto::CreateSchemaRequest request{ collname, std::move(schema) };
-				return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
-				.then([this] (auto&& response) {
-					auto& [status, resp] = response;
-					K2EXPECT(status, Statuses::S400_Bad_Request);
+	dto::CreateSchemaRequest request{ collname, std::move(schema) };
+	return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+	.then([this] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S400_Bad_Request);
 
-					dto::GetSchemasRequest request { collname };
-					return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
-				})
-				.then([] (auto&& response) {
-					auto& [status, resp] = response;
-					K2EXPECT(status, Statuses::S200_OK);
+		dto::GetSchemasRequest request { collname };
+		return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
+	})
+	.then([] (auto&& response) {
+		auto& [status, resp] = response;
+		K2EXPECT(status, Statuses::S200_OK);
 
-					for(auto& schema : resp.schemas) {
-						if (schema.name == scETC) {
-							return seastar::make_ready_future();
-						}
-					}
-					K2FAIL("Schema not found"); // schema not found
-					return seastar::make_ready_future<>();
-				});
+		for(auto& schema : resp.schemas) {
+			if (schema.name == scETC) {
+				K2FAIL("Schema should not exist but was found");
+			}
+		}
+		return seastar::make_ready_future<>();
+	});
 }
 
 seastar::future<> runScenario07(){
@@ -462,10 +461,10 @@ seastar::future<> runScenario07(){
 
 			for(auto& schema : resp.schemas) {
 				if (schema.fields[0].name == "Xing"){
-					return seastar::make_ready_future();
+					K2FAIL("Schema found but should not exist");
 				}
 			}
-			K2FAIL("Schema not found"); // schema not found
+			return seastar::make_ready_future();
 		});
 	});
 }
@@ -502,10 +501,10 @@ seastar::future<> runScenario08(){
 			K2EXPECT(status, Statuses::S200_OK);
 			for(auto& schema : resp.schemas) {
                 if (schema.name == scWoRKey && schema.fields[1].type == dto::FieldType::UINT32T) {
-					return seastar::make_ready_future();
+					K2FAIL("Schema found but should not exist");
 				}
 			}
-			K2FAIL("Schema not found"); // schema not found
+			return seastar::make_ready_future();
 		});
 	});
 }
@@ -543,10 +542,10 @@ seastar::future<> runScenario09(){
 			K2EXPECT(status, Statuses::S200_OK);
 			for(auto& schema : resp.schemas) {
 				if (schema.name == scWoRKey && schema.version == 333){
-					return seastar::make_ready_future();
+			    	K2FAIL("Schema found but should not exist");
 				}
 			}
-			K2FAIL("Schema not found"); // schema not found
+			return seastar::make_ready_future();
 		});
 	});
 }

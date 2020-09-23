@@ -1218,7 +1218,7 @@ seastar::future<> testScenario01() {
                     });
                 })
                 .then([] {
-                    return seastar::sleep(500ms);
+                    return seastar::sleep(200ms);
                 });
         }) // end do-with
         // #2 read Txn to validate
@@ -1289,7 +1289,7 @@ seastar::future<> testScenario01() {
                     });
                 })
                 .then([] {
-                    return seastar::sleep(500ms);
+                    return seastar::sleep(200ms);
                 });
         }) // end do-with
         // #2 read Txn to validate
