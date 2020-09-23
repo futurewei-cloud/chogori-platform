@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _started(true), _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time) {
+K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _valid(true), _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time) {
     K2DEBUG("ctor, mtr=" << _mtr);
 }
 
@@ -44,7 +44,7 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
 
     if (status == dto::K23SIStatus::AbortRequestTooOld) {
         _client->abort_too_old++;
-        K2WARN("Abort: txn too old: " << _mtr);
+        K2DEBUG("Abort: txn too old: " << _mtr);
     }
 }
 
@@ -107,6 +107,16 @@ dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bo
 }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
+    if (!_valid) {
+        return seastar::make_exception_future<EndResult>(std::runtime_error("Tried to end() an invalid TxnHandle"));
+    }    
+    // User is not allowed to call anything else on this TxnHandle after end()
+    _valid = false;
+
+    if (_ongoing_ops != 0) {
+        return seastar::make_exception_future<EndResult>(std::runtime_error("Tried to end() with ongoing ops"));
+    }
+
     if (!_write_set.size()) {
         _client->successful_txns++;
 
