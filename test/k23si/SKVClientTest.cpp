@@ -69,11 +69,11 @@ public:  // application lifespan
 
                 schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition"});
                 schema.setRangeKeyFieldsByName(std::vector<k2::String> {"range"});
-                
+
                 return _client.createSchema(collname, std::move(schema));
             })
-            .then([] (auto&& status) {
-                K2EXPECT(status.is2xxOK(), true);
+            .then([] (auto&& result) {
+                K2EXPECT(result.status.is2xxOK(), true);
             })
             .then([this] { return runScenario01(); })
             .then([this] {

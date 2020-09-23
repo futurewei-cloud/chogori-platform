@@ -1,5 +1,4 @@
 #!/bin/bash
-set -x
 topname=$(dirname "$0")
 cd ${topname}/../..
 set -e

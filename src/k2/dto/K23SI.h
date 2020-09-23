@@ -103,14 +103,22 @@ struct TxnId {
 } // ns dto
 } // ns d2
 
-// Define std::hash for TxnIds so that we can use them in hash maps/sets
+// Define std::hash for some objects so that we can use them in hash maps/sets
 namespace std {
+template <>
+struct hash<k2::dto::K23SI_MTR> {
+    size_t operator()(const k2::dto::K23SI_MTR& mtr) const {
+        return mtr.hash();
+    }
+};  // hash
+
 template <>
 struct hash<k2::dto::TxnId> {
     size_t operator()(const k2::dto::TxnId& txnId) const {
         return txnId.hash();
     }
 };  // hash
+
 } // ns std
 
 namespace k2 {
