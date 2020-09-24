@@ -260,6 +260,46 @@ public:
             }).finally([request] () { delete request; });
     }
 
+    template <class T>
+    seastar::future<WriteResult> partailUpdate(T& record) {
+        if (!_valid) {
+            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+        }
+        if (_failed) {
+            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
+        }
+        _client->write_ops++;
+        _ongoing_ops++;
+
+        dto::K23SIWriteRequest* request = nullptr;
+        if constexpr (std::is_same<T, dto::SKVRecord>()) {
+            request = makePartialUpdateRequest(record);
+        } else {
+            SKVRecord skv_record(record.collectionName, record.schema);
+            record.__writeFields(skv_record);
+            request = makePartialUpdateRequest(skv_record);
+        }
+
+        return _cpo_client->PartitionRequest
+            <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
+            (_options.deadline, *request).
+            then([this] (auto&& response) {
+                auto& [status, k2response] = response;
+                checkResponseStatus(status);
+                _ongoing_ops--;
+
+                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
+                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
+                    K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
+                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
+                    makeHeartbeatTimer();
+                    _heartbeat_timer.armPeriodic(_heartbeat_interval);
+                }
+
+                return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+            }).finally([request] () { delete request; });
+    }
+    
     seastar::future<WriteResult> erase(SKVRecord& record);
 
     // Must be called exactly once by application code and after all ongoing read and write

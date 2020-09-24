@@ -106,6 +106,30 @@ dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bo
     };
 }
 
+dto::K23SIPartialUpdateRequest* 
+K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record) {
+    dto::Key key = record.getKey();
+    
+    if (!_write_set.size()) {
+        _trh_key = key;
+        _trh_collection = record.collectionName;
+    }
+    _write_set.push_back(key);
+
+    
+
+    return new dto::K23SIPartialUpdateRequest{
+        dto::Partition::PVID(), // Will be filled in by PartitionRequest
+        record.collectionName,
+        _mtr,
+        _trh_key,
+        false, // Cannot be erase op
+        _write_set.size() == 1,
+        key,
+        
+    };
+}
+
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     if (!_valid) {
         return seastar::make_exception_future<EndResult>(std::runtime_error("Tried to end() an invalid TxnHandle"));
