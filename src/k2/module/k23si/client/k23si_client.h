@@ -74,6 +74,15 @@ private:
     dto::K23SIWriteResponse response;
 };
 
+class PartialUpdateResult{
+public:
+    PartialUpdateResult(Status s, dto::K23SIPartialUpdateResponse&& r) : status(std::move(s)), response(std::move(r)) {}
+    Status status;
+
+private:
+    dto::K23SIPartialUpdateResponse response;    
+};
+
 class EndResult{
 public:
     EndResult(Status s) : status(std::move(s)) {}
@@ -158,6 +167,38 @@ private:
 
         return makeReadRequest(record);
     }
+       
+    template <typename T>
+    dto::K23SIPartialUpdateRequest* makePartialUpdateRequest(dto::SKVRecord& record, std::vector<T> fieldsToUpdate) {
+        dto::Key key = record.getKey();
+        
+        if (!_write_set.size()) {
+            _trh_key = key;
+            _trh_collection = record.collectionName;
+        }
+        _write_set.push_back(key);
+    
+        // debug
+        std::cout << "{ PRINT _write_set } : " << std::endl;
+        for (auto e : _write_set) std::cout << e << ", ";
+        std::cout << std::endl;
+    
+        makeUpdateField(record, fieldsToUpdate);
+    
+        return new dto::K23SIPartialUpdateRequest{
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            record.collectionName,
+            _mtr,
+            _trh_key,
+            false, // Cannot be erase op
+            _write_set.size() == 1,
+            key,
+            record.storage.share()
+        };
+    }
+
+    bool makeUpdateField(dto::SKVRecord& record, std::vector<uint32_t> fieldsToUpdate);
+    bool makeUpdateField(dto::SKVRecord& record, std::vector<k2::String> fieldsToUpdate);
 
 
 public:
@@ -260,43 +301,44 @@ public:
             }).finally([request] () { delete request; });
     }
 
-    template <class T>
-    seastar::future<WriteResult> partailUpdate(T& record) {
+    template <typename T1, typename T2>
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<T2> fieldsToUpdate) {
         if (!_valid) {
-            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
-            return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
+            return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status, dto::K23SIPartialUpdateResponse()));
         }
         _client->write_ops++;
         _ongoing_ops++;
 
-        dto::K23SIWriteRequest* request = nullptr;
-        if constexpr (std::is_same<T, dto::SKVRecord>()) {
-            request = makePartialUpdateRequest(record);
+        dto::K23SIPartialUpdateRequest* request = nullptr;
+        if constexpr (std::is_same<T1, dto::SKVRecord>()) {
+            request = makePartialUpdateRequest(record, fieldsToUpdate);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
-            record.__writeFields(skv_record);
-            request = makePartialUpdateRequest(skv_record);
+            record.__updateFields(skv_record);
+            request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
         }
-
+        
         return _cpo_client->PartitionRequest
-            <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
+            <dto::K23SIPartialUpdateRequest, dto::K23SIPartialUpdateResponse, dto::Verbs::K23SI_PARTIAL_UPDATE>
             (_options.deadline, *request).
             then([this] (auto&& response) {
+                std::cout << "{get PartitionRequest result}" << std::endl;
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
-
+        
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
-                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
+                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
                     _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
-
-                return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+        
+                return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status), std::move(k2response)));
             }).finally([request] () { delete request; });
     }
     

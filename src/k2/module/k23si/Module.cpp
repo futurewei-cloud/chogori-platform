@@ -64,6 +64,10 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleWrite(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
     });
 
+    RPC().registerRPCObserver<dto::K23SIPartialUpdateRequest, dto::K23SIPartialUpdateResponse>(dto::Verbs::K23SI_PARTIAL_UPDATE, [this](dto::K23SIPartialUpdateRequest&& request) {
+        return handlePartialUpdate(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
+    });
+
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
         return handleTxnPush(std::move(request));
@@ -232,7 +236,8 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     return _makeReadOK(versions.begin() == versions.end() ? nullptr : &(versions[0]));
 }
 
-bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions) {
+template <typename RequestT>
+bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, std::deque<dto::DataRecord>& versions) {
     if (!_validateRetentionWindow(request)) {
         // the request is outside the retention window
         return false;
@@ -269,6 +274,195 @@ bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest& request, 
     }
 
     K2DEBUG("Partition: " << _partition << ", stale write check passed for key " << request.key);
+    return true;
+}
+
+std::size_t K23SIPartitionModule::_findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype) {
+    std::size_t fieldNumber = -1;
+    for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+        if (schema.fields[i].name == fieldName && schema.fields[i].type == fieldtype) {
+            return i;
+        }
+    }
+    return fieldNumber;
+}
+
+bool K23SIPartitionModule::_copyBaseToPayload(dto::SKVRecord::Storage& storage, Payload& payload, dto::FieldType type) {    
+    switch (type) {
+    case k2::dto::FieldType::STRING : {
+        k2::String value;
+        bool success = storage.fieldData.read(value);
+        if (!success) {
+            throw new std::runtime_error("_parsePartialRecord() read latest version of SKVRecord failed");
+            return false;
+        }
+        payload.write(value);
+        std::cout << "{excluded: print dst SKVRecord} FieldType:" << type << ", value:" << value << std::endl;
+        break;
+    }
+    case k2::dto::FieldType::UINT32T : {
+        break;
+    }
+    case k2::dto::FieldType::UINT64T : {
+        break;
+    }
+    default :
+        throw new std::runtime_error("_parsePartialRecord schema field type not correct");
+        return false;
+    }// end switch
+    return true;
+}
+
+bool K23SIPartitionModule::_copyUpdateToPayload(dto::SKVRecord::Storage& readButIgnore, dto::SKVRecord::Storage& storage, Payload& payload, dto::FieldType type) {    
+    switch (type) {
+    case k2::dto::FieldType::STRING : {
+        k2::String value;
+        bool success = readButIgnore.fieldData.read(value); // in order to _advancePosition of base payload
+        if (!success) {
+            throw new std::runtime_error("_parsePartialRecord() read latest version of SKVRecord failed");
+            return false;
+        }
+        std::cout << "{included: print origin SKVRecord} type:" << type << ", value:" << value << std::endl;
+        success = storage.fieldData.read(value);
+        if (!success) {
+            return false;
+        }
+        std::cout << "{included: print dst SKVRecord} type:" << type << ", value:" << value << std::endl;
+        payload.write(value);
+        break;
+    }
+    case k2::dto::FieldType::UINT32T : {
+        break;
+    }
+    case k2::dto::FieldType::UINT64T : {
+        break;
+    }
+    default :
+        throw new std::runtime_error("_parsePartialRecord schema field type not correct");
+        return false;
+    }// end switch
+    return true;
+}
+
+template <typename T>
+void K23SIPartitionModule::_copyMapToPayload(std::unordered_map<std::size_t, T>& map, std::size_t fieldIndex, Payload& payload) {
+    T value;
+    auto mapIt = map.find(fieldIndex);
+    if ( mapIt == map.end() ) {
+        throw new std::runtime_error("_copyMapToPayload cannot find value from map");
+    }
+    value = mapIt->second;
+    payload.write(value);
+}
+
+template <typename T>
+bool K23SIPartitionModule::_copyBaseToMap(dto::SKVRecord::Storage& storage, std::size_t fieldIndex, std::unordered_map<std::size_t, T>& map) {
+    T value;
+    bool success = storage.fieldData.read(value); 
+    if (!success) {
+        return false;
+    }
+    map.insert ({fieldIndex, value});
+    return true;
+}
+
+bool K23SIPartitionModule::_parsePartialRecord(dto::SKVRecord::Storage& storage, const k2::String& schemaName, std::deque<dto::DataRecord>& versions) {
+    // cannot parse partial record without a version
+    if (versions.size() == 0) return false;
+
+    auto schemaIt = _schemas.find(schemaName);
+    auto schemaVer = schemaIt->second.find(storage.schemaVersion);
+    dto::Schema schema = schemaVer->second;
+    Payload payload([&] { return Binary(4096); });
+
+    // based on the latest version
+    if (storage.schemaVersion == versions[0].value.schemaVersion) { 
+        // quick path --same schema version.
+        for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+            if (storage.excludedFields[i]) {
+                // use 'base skvrecord' value
+                if (!_copyBaseToPayload(versions[0].value, payload, schema.fields[i].type)) return false;
+            } else {
+                // use 'storage' value
+                if (!_copyUpdateToPayload(versions[0].value, storage, payload, schema.fields[i].type)) return false;
+            }
+        }
+        storage.fieldData = std::move(payload);
+        storage.fieldData.truncateToCurrent();
+        std::cout << "storage.fieldData.size()=" << storage.fieldData.getSize() << std::endl;
+    } else { 
+        // slow path--different schema version. 
+        auto lSchemaVer = schemaIt->second.find(versions[0].value.schemaVersion);
+        dto::Schema baseSchema = lSchemaVer->second;
+        std::unordered_map<std::size_t, k2::String> mapString; // unordered_map temporarily stores base SKVRecords
+        std::unordered_map<std::size_t, uint32_t> mapUint32;
+        std::unordered_map<std::size_t, uint64_t> mapUint64;
+        std::size_t baseCursor = 0; // indicate read cursor for base payload
+        std::size_t findField;
+        for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+            findField = -1;
+            if (storage.excludedFields[i]) {
+                // payload value comes from base SKVRecord
+                // find index of the field in base payload
+                findField = _findField(baseSchema, schema.fields[i].name, schema.fields[i].type);
+                if (findField == (std::size_t)-1) {
+                    return false; // if do not find any field, error return
+                } 
+
+                if (findField < baseCursor) {
+                    // Every fields' value whose index is lower than baseCursor is save in the unordered_maps
+                    // write() the i-th field to WI full record from unordered_map
+                    switch (baseSchema.fields[findField].type){
+                    case dto::FieldType::STRING: {
+                        _copyMapToPayload(mapString, findField, payload);
+                        break;
+                    }
+                    case dto::FieldType::UINT32T : {
+                        _copyMapToPayload(mapUint32, findField, payload);
+                        break;
+                    }
+                    case dto::FieldType::UINT64T : {
+                        _copyMapToPayload(mapUint64, findField, payload);
+                        break;
+                    }
+                    default :
+                        throw new std::runtime_error("_parsePartialRecord schema field type not correct");
+                        break;
+                    } // end switch
+                } else {
+                    // 1. save value in unordered_map from baseCursor to (findField-1) according to base SKVRecord;
+                    // 2. write 'findField' value from base SKVRecord to field 'i' of WI full record
+                    // 3. baseCursor = findField + 1
+                    for (; baseCursor < findField; ++baseCursor) {
+                        switch (baseSchema.fields[findField].type) {
+                        case dto::FieldType::STRING: {
+                            if(!_copyBaseToMap(versions[0].value, baseCursor, mapString)) return false;
+                            break;
+                        }
+                        case dto::FieldType::UINT32T: {
+                            if(!_copyBaseToMap(versions[0].value, baseCursor, mapUint32)) return false;
+                            break;
+                        }
+                        case dto::FieldType::UINT64T: {
+                            if(!_copyBaseToMap(versions[0].value, baseCursor, mapUint64)) return false;
+                            break;
+                        }
+                        default :
+                            throw new std::runtime_error("_parsePartialRecord schema field type not correct");
+                            break;
+                        } // end switch
+                    }
+
+                    if (!_copyBaseToPayload(versions[0].value, payload, baseSchema.fields[findField].type)) return false;
+                    baseCursor = findField + 1;
+                }
+            } else {
+                // Payload value comes from partial update -- 'storage'
+                if (!_copyBaseToPayload(storage, payload, schema.fields[i].type)) return false;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -329,6 +523,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         if (sitMTR == rec.txnId.mtr) {
             K2DEBUG("Partition: " << _partition << ", post-push winner for key " << request.key);
             // this is a post-PUSH request which won over the siting WI and we still have the WI in cache
+            std::cout << "{_queueWICleanup} mtr:" << sitMTR << std::endl;
             _queueWICleanup(std::move(rec));
             versions.pop_front();
         }
@@ -351,12 +546,123 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         }
     }
 
+    // debug
+    if (versions.size() > 0) {
+        for(uint32_t i = 0; i < versions.size(); ++i) {
+            std::cout << "{Print VERSIONS} key:" << versions[i].key << ", status:" << versions[i].status 
+                    << ", mtr:" << versions[i].txnId.mtr << std::endl;
+        }
+    }
+    
+    // Clean up if req and WI are the same transaction
+    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent && request.mtr == versions[0].txnId.mtr) {
+        _queueWICleanup(std::move(versions[0]));
+        versions.pop_front();
+    }
+
     // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
     return _createWI(std::move(request), versions, deadline).then([this]() mutable {
         K2DEBUG("Partition: " << _partition << ", WI created");
         return RPCResponse(dto::K23SIStatus::Created("wi created"), dto::K23SIWriteResponse{});
     });
 }
+
+seastar::future<std::tuple<Status, dto::K23SIPartialUpdateResponse>>
+K23SIPartitionModule:: handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
+    K2DEBUG("Partition: " << _partition << ", handle partial update: " << request);
+    std::cout << "{Module::handlePartialUpdate} Partition: " << _partition << ", handle partial update: " << request << std::endl;
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        K2DEBUG("Partition: " << _partition << ", failed validation for " << request.key);
+        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in partial update"), dto::K23SIPartialUpdateResponse{});
+    }
+    if (!_validateRequestParameter(request)){
+        // do not allow empty partition key
+        return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in partial update"), dto::K23SIPartialUpdateResponse{});
+    }
+
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    if (schemaIt == _schemas.end()) {
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIPartialUpdateResponse{});
+    }
+    if (schemaIt->second.find(request.value.schemaVersion) == schemaIt->second.end()) {
+        // server does not have schema
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIPartialUpdateResponse{});
+    }
+
+    // at this point the request is valid. Check to see if we should be creating a TR
+    // we want to create the TR now even if the write may fail due to some other constraints. In case
+    // of such failure, the client is expected to come in and end the transaction with Abort
+    if (request.designateTRH) {
+        K2DEBUG("Partition: " << _partition << ", designating trh for key " << request.key);
+        return _txnMgr.onAction(TxnRecord::Action::onCreate, {.trh=request.trh, .mtr=request.mtr})
+        .then([this, request=std::move(request), sitMTR=std::move(sitMTR), deadline]() mutable {
+            K2DEBUG("Partition: " << _partition << ", tr created and re-driving request for key " << request.key);
+            request.designateTRH = false; // unset the flag and re-run
+            return handlePartialUpdate(std::move(request), std::move(sitMTR), deadline);
+        })
+        .handle_exception_type([this](TxnManager::ClientError&) {
+            // Failed to create
+            K2DEBUG("Partition: " << _partition << ", failed creating TR");
+            return RPCResponse(dto::K23SIStatus::AbortConflict("txn too old in write"), dto::K23SIPartialUpdateResponse{});
+        });
+    }
+
+    auto& versions = _indexer[request.key];
+    if (!_validateStaleWrite(request, versions)) {
+        K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIPartialUpdateResponse{});
+    }
+
+    // check to see if we should push or if we're coming after a push and the WI is still here
+    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent) {
+        auto& rec = versions[0];
+        auto& rqmtr = request.mtr;
+
+        if (sitMTR == rec.txnId.mtr) {
+            K2DEBUG("Partition: " << _partition << ", post-push winner for key " << request.key);
+            // this is a post-PUSH request which won over the siting WI and we still have the WI in cache
+            _queueWICleanup(std::move(rec));
+            versions.pop_front();
+        }
+        else if (rec.txnId.mtr != rqmtr) {
+            // this is a update request finding a WI from a different transaction. Do another push with the remaining
+            // deadline time.
+            K2DEBUG("Partition: " << _partition << ", different WI found for key " << request.key);
+            sitMTR = rec.txnId.mtr;
+            return _doPush(request.collectionName, rec.txnId, request.mtr, deadline)
+                .then([this, sitMTR, request = std::move(request), deadline](auto&& winnerMTR) mutable {
+                    if (winnerMTR == sitMTR) {
+                        // sitting transaction won. Abort the incoming request
+                        K2DEBUG("Partition: " << _partition << ", push lost for key " << request.key);
+                        return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in update push"), dto::K23SIPartialUpdateResponse{});
+                    }
+                    // incoming request won. re-run write logic
+                    K2DEBUG("Partition: " << _partition << ", push won for key " << request.key);
+                    return handlePartialUpdate(std::move(request), sitMTR, deadline);
+                });
+        }
+    }
+
+    // parse the partial record to full record
+    if (!_parsePartialRecord(request.value, request.key.schemaName, versions)) {
+        K2DEBUG("Partition: " << _partition << ", can not parse partial record for key " << request.key);
+        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("can not parse partial record"), dto::K23SIPartialUpdateResponse{});
+    }
+
+    // Clean up if req and WI are the same transaction
+    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent && request.mtr == versions[0].txnId.mtr) {
+        _queueWICleanup(std::move(versions[0]));
+        versions.pop_front();
+    }
+    
+    // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
+    return _createWI(std::move(request), versions, deadline).then([this]() mutable {
+        K2DEBUG("Partition: " << _partition << ", WI created");
+        return RPCResponse(dto::K23SIStatus::Created("wi created"), dto::K23SIPartialUpdateResponse{});
+    });
+}
+
 
 seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
 K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
@@ -510,8 +816,9 @@ void K23SIPartitionModule::_queueWICleanup(dto::DataRecord&& rec) {
     dto::DataRecord(std::move(rec)); // move the record here so that we can drop it
 }
 
+template <typename RequestT>
 seastar::future<>
-K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
+K23SIPartitionModule::_createWI(RequestT&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", creating WI: " << request);
     dto::DataRecord rec;
     rec.key = std::move(request.key);

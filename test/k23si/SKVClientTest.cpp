@@ -286,51 +286,50 @@ seastar::future<> runScenario04() {
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(status.is2xxOK(), true);
-
-                    k2::dto::SKVRecord record(collname, schemaPtr);
-                    record.serializeNext<k2::String>("partkey_s04");
-                    record.serializeNext<k2::String>("rangekey_s04");
-                    record.serializeNext<k2::String>("data1");
-                    record.serializeNext<k2::String>("data2");
-                    k2::dto::SKVRecord::Storage storage = record.storage.share();
-                    std::cout << "[storage size record] " << ", sizeof(exFields):" << storage.excludedFields.size() << ", sizeof(fData):" << storage.fieldData.getCapacity() << ". excludeField:";
-                    for(auto e : storage.excludedFields) {
-                        std::cout << " " << e << "  ";
-                    }
-                    record.seekField(0);
-                    std::optional<k2::String> pk = record.deserializeNext<k2::String>();
-                    std::cout << "pk'" << *pk << "',  ";
-                    std::optional<k2::String> rk = record.deserializeNext<k2::String>();
-                    std::cout << "rk'" << *rk << "',  ";
-                    std::optional<k2::String> d1 = record.deserializeNext<k2::String>();
-                    std::cout << "data1'" << *d1 << "',  ";
-                    std::optional<k2::String> d2 = record.deserializeNext<k2::String>();
-                    std::cout << "data2'" << *d2 << "'.  ";
-                    std::cout << "ScVersion: " << storage.schemaVersion  << std::endl;
                     
-                    
+                    k2::dto::SKVRecord record1(collname, schemaPtr);
                     k2::dto::SKVRecord record2(collname, schemaPtr);
-                    record2.skipNext();
-                    record2.skipNext();
-                    record2.serializeNext<k2::String>("");
-                    record2.serializeNext<k2::String>("data3");
-                    k2::dto::SKVRecord::Storage storage2 = record2.storage.share();
-                    std::cout << "[storage size record2] " << ", sizeof(exFields):" << storage2.excludedFields.size() << ", sizeof(fData):" << storage2.fieldData.getCapacity() << ". excludeField:";
-                    for(auto e : storage2.excludedFields) {
-                        std::cout << " " << e << "  ";
-                    }
-                    record2.seekField(0);
-                    std::optional<k2::String> pk2 = record2.deserializeNext<k2::String>();
-                    std::cout << "pk'" << *pk2 << "',  ";
-                    std::optional<k2::String> rk2 = record2.deserializeNext<k2::String>();
-                    std::cout << "rk'" << *rk2 << "',  ";
-                    std::optional<k2::String> d12 = record2.deserializeNext<k2::String>();
-                    std::cout << "data1'" << *d12 << "',  ";
-                    std::optional<k2::String> d22 = record2.deserializeNext<k2::String>();
-                    std::cout << "data2'" << *d22 << "'.  ";
-                    std::cout << "ScVersion: " << storage2.schemaVersion  << std::endl;
+                    k2::dto::SKVRecord record3(collname, schemaPtr);
+                    
+                    record1.serializeNext<k2::String>("partkey_s04");
+                    record1.serializeNext<k2::String>("rangekey_s04");
+                    record1.serializeNext<k2::String>("data1_v1");
+                    record1.serializeNext<k2::String>("date2_v1");
+                    
+                    record2.serializeNext<k2::String>("partkey_s04_2");
+                    record2.serializeNext<k2::String>("rangekey_s04_2");
+                    record2.serializeNext<k2::String>("data3_v1");
+                    record2.serializeNext<k2::String>("date4_v1");
+                    
+                    record3.serializeNext<k2::String>("partkey_s04");
+                    record3.serializeNext<k2::String>("rangekey_s04");
+                    record3.serializeNext<k2::String>("data1_v2");
+                    record3.serializeNext<k2::String>("date2_v2");
+
+                    return seastar::do_with(
+                        std::move(record1),
+                        std::move(record2),
+                        std::move(record3),
+                        [this, &txnHandle] (auto& rec1, auto& rec2, auto& rec3) {
+                        return txnHandle.write<k2::dto::SKVRecord>(rec1)
+                        .then([](auto&& response) {
+                            K2INFO("write_rec1. status: " << response.status.code << " with MESG: " << response.status.message);
+                        })
+                        .then([&] {
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord, uint32_t>(rec2, {0,1,2,3} );
+                        })
+                        .then([](auto&& response) {
+                            K2INFO("partial_update_rec2. status: " << response.status.code << " with MESG: " << response.status.message);
+                        });
+//                        .then([&] {
+//                            return txnHandle.partialUpdate<k2::dto::SKVRecord, uint32_t>(rec3, {2,3} );
+//                        })
+//                        .then([](auto&& response) {
+//                            K2INFO("partial_update_rec3. status: " << response.status.code << " with MESG: " << response.status.message);
+//                        });
+                    }); // end do-with
                 });
-        });
+        }); // end do-with
     });
 }
 

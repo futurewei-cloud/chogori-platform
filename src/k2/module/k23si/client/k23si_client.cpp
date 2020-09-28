@@ -106,28 +106,129 @@ dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bo
     };
 }
 
-dto::K23SIPartialUpdateRequest* 
-K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record) {
-    dto::Key key = record.getKey();
-    
-    if (!_write_set.size()) {
-        _trh_key = key;
-        _trh_collection = record.collectionName;
+bool K2TxnHandle::makeUpdateField(dto::SKVRecord& record, std::vector<uint32_t> fieldsToUpdate) {
+    std::cout << "{makeUpdateField 0}" << std::endl;
+
+    std::vector<bool> exFields;
+    // Get original record.storage.excludedFields
+    if (record.storage.excludedFields.empty()) {
+        exFields = std::vector<bool>(record.schema->fields.size(), false);
+    } else {
+        exFields = record.storage.excludedFields;
     }
-    _write_set.push_back(key);
 
     
+    std::cout << "{makeUpdateField 1}" << std::endl;
 
-    return new dto::K23SIPartialUpdateRequest{
-        dto::Partition::PVID(), // Will be filled in by PartitionRequest
-        record.collectionName,
-        _mtr,
-        _trh_key,
-        false, // Cannot be erase op
-        _write_set.size() == 1,
-        key,
-        
-    };
+    // Make record.storage.excludedFields
+    // The value of excludedFields shall be determined by parameter-fieldsToUpdate
+    record.storage.excludedFields = std::vector<bool>(record.schema->fields.size(), true);
+    for (std::size_t i = 0; i < fieldsToUpdate.size(); ++i){
+        record.storage.excludedFields[fieldsToUpdate[i]] = false;
+    }
+
+    
+    std::cout << "{makeUpdateField 2}" << std::endl;
+
+    // Compare exFields and fieldsToUpdate, quick path if it is equal
+    if (exFields == record.storage.excludedFields) {
+        // debug
+        std::cout << "quick pass." << std::endl;
+        for(auto e : record.storage.excludedFields) {
+            std::cout << e << ", ";
+        }
+        std::cout << std::endl;
+        return true;
+    }
+
+    
+    std::cout << "{makeUpdateField 3}" << std::endl;
+    
+    // re-construct fieldData
+    record.seekField(0);
+    record.storage.fieldData.seek(0);
+    Payload payload([&record] { return Binary(record.storage.fieldData.getCapacity()); });
+    std::cout << "{makeUpdateField 3.8}" << std::endl;
+    for (std::size_t i = 0; i < record.schema->fields.size(); ++i) {
+        if (!exFields[i]) {
+            // have to read out if original field is not Skiped
+            switch (record.schema->fields[i].type) {
+            case k2::dto::FieldType::STRING : {
+                k2::String value;
+                bool success = record.storage.fieldData.read(value);
+                if (!success) {
+                    throw new std::runtime_error("makeUpdateField in SKVRecord failed");
+                }
+                
+                // re-construct fieldData. serialize if the field is included
+                if (!record.storage.excludedFields[i]) {
+                    payload.write(value);
+                } // Skip if the field is excluded
+                break;
+            }
+            case k2::dto::FieldType::UINT32T : {
+                break;
+            }
+            case k2::dto::FieldType::UINT64T : {
+                break;
+            }
+            default :
+                throw new std::runtime_error("makeUpdateField field type not correct");
+                break;
+            }
+        }
+    }
+    record.storage.fieldData = std::move(payload);
+    std::cout << "{Befor truncateToCurrent} payload capacity:" << record.storage.fieldData.getCapacity() << std::endl;
+    record.storage.fieldData.truncateToCurrent();
+    std::cout << "{After truncateToCurrent} payload capacity:" << record.storage.fieldData.getCapacity() << std::endl;
+
+    // debug
+    std::cout << "{print re-construct data} Version:" << record.storage.schemaVersion << ". excludedFields: ";
+    for (auto e : record.storage.excludedFields) {
+        std::cout << e << ",";
+    }
+    std::cout << "." << std::endl;
+    std::cout << "size:" << record.storage.fieldData.getSize() << ", capacity:" << record.storage.fieldData.getCapacity() 
+            << ", offset:" << record.storage.fieldData.getCurrentPosition().offset << std::endl;
+    
+    record.seekField(0);
+    record.storage.fieldData.seek(0);
+    std::optional<k2::String> p;
+    std::cout << "{makeUpdateField 4}" << std::endl;
+    p = record.deserializeNext<k2::String>();
+    std::cout << "field1'" << *p << "'" << std::endl;
+    p = record.deserializeNext<k2::String>();
+    std::cout << "field2'" << *p << "'" << std::endl;
+    p = record.deserializeNext<k2::String>();
+    std::cout << "field3'" << *p << "'" << std::endl;
+    p = record.deserializeNext<k2::String>();
+    std::cout << "field4'" << *p << "'" << std::endl;
+    
+    return true;
+}
+
+bool K2TxnHandle::makeUpdateField(dto::SKVRecord& record, std::vector<k2::String> fieldsName) {
+    std::vector<uint32_t> fieldsToUpdate;
+    bool find = false;
+    for (std::size_t i = 0; i < fieldsName.size(); ++i) {
+        find = false;
+        for (std::size_t j = 0; j < record.schema->fields.size(); ++j) {
+            if (fieldsName[i] == record.schema->fields[j].name) {
+                fieldsToUpdate.push_back(j);
+                find = true;
+                break;
+            }
+        }
+        if (find == false) return false;
+    }
+
+    // debug
+    std::cout << "fieldsName --> fieldsToUpdate{";
+    for(auto e : fieldsToUpdate)    std::cout << e << ",";
+    std::cout << "}" << std::endl;
+
+    return makeUpdateField(record, fieldsToUpdate);
 }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {

@@ -234,7 +234,7 @@ struct K23SIPartialUpdateRequest{
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
-    friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
+    friend std::ostream& operator<<(std::ostream& os, const K23SIPartialUpdateRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
                   << r.isDelete << ", designate=" << r.designateTRH << "}";

@@ -62,6 +62,9 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
+    seastar::future<std::tuple<Status, dto::K23SIPartialUpdateResponse>>
+    handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
 
@@ -144,11 +147,35 @@ private: // methods
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
-    bool _validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
+    template <typename RequestT>
+    bool _validateStaleWrite(const RequestT& req, std::deque<dto::DataRecord>& versions);
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    template <typename RequestT>
+    seastar::future<> _createWI(RequestT&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    
+    // method to parse the partial record to full record
+    // return turn if parse successful
+    bool _parsePartialRecord(dto::SKVRecord::Storage& storage, const k2::String& schemaName, std::deque<dto::DataRecord>& versions);
 
+    // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
+    std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
+
+    // Read() the next field from the Latest(base) Version data and write() in the next field of payload
+    bool _copyBaseToPayload(dto::SKVRecord::Storage& storage, Payload& payload, dto::FieldType type);
+
+    // Read() the next field from the storage(partialUpdate) date and write() in the next field of payload, 
+    // and advance readButIgnore(base version data) to the next field at the meantime.
+    bool _copyUpdateToPayload(dto::SKVRecord::Storage& readButIgnore, dto::SKVRecord::Storage& storage, Payload& payload, dto::FieldType type);
+
+    // find value in map<fieldIndex, value>, and write in the next field of payload
+    template <typename T>
+    void _copyMapToPayload(std::unordered_map<std::size_t, T>& map, std::size_t fieldIndex, Payload& payload);
+
+    // Read() the next field from the Latest(base) Version data and store in the unordered_map<fieldIndex, value>
+    template <typename T>
+    bool _copyBaseToMap(dto::SKVRecord::Storage& storage, std::size_t fieldIndex, std::unordered_map<std::size_t, T>& map);
+    
     // recover data upon startup
     seastar::future<> _recovery();
 

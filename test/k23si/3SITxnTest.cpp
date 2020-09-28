@@ -79,23 +79,23 @@ enum class ErrorCaseOpt: uint8_t {
 
 class txn_testing {
 
-public:		// application
-	txn_testing() { K2INFO("ctor"); }
-	~txn_testing(){ K2INFO("dtor"); }
+public: // application
+    txn_testing() { K2INFO("ctor"); }
+    ~txn_testing(){ K2INFO("dtor"); }
 
-	static seastar::future<dto::Timestamp> getTimeNow() {
+    static seastar::future<dto::Timestamp> getTimeNow() {
         // TODO call TSO service with timeout and retry logic
         auto nsecsSinceEpoch = sys_now_nsec_count();
         return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 123, 1000));
     }
 
-	// required for seastar::distributed interface
+    // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
         K2INFO("stop");
         return std::move(_testFuture);
     }
 
-	seastar::future<> start(){
+    seastar::future<> start(){
         K2INFO("start txn_testing..");
 
         K2EXPECT(_k2ConfigEps().size(), 3);
@@ -141,14 +141,14 @@ public:		// application
 
 
 private:
-	ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
-	ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
+    ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
+    ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
 
     seastar::future<> _testFuture = seastar::make_ready_future();
-	seastar::timer<> _testTimer;
+    seastar::timer<> _testTimer;
 
-	std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
-	std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
+    std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
+    std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
     int exitcode = -1;
     uint64_t txnids = 1029;
@@ -423,29 +423,29 @@ private:
     }
 
 
-public:		// test	scenario
+public: // test scenario
 
 // Any request (READ, WRITE, PUSH, END, FINALIZE, HEARTBEAT) should observe a timeout(404_not_found)
 // example of command: CPO_COLLECTION_GET & K23SI_WRITE
 seastar::future<> testScenario00() {
     K2INFO("+++++++ TestScenario 00: unassigned nodes +++++++");
-	K2INFO("--->Test SETUP: start a cluster but don't create a collection. Any requests observe a timeout.");
+    K2INFO("--->Test SETUP: start a cluster but don't create a collection. Any requests observe a timeout.");
 
-	return seastar::make_ready_future()
-	.then([this] {
-		// command: K23SI_WRITE
-		K2INFO("Test case SC00_1: K23SI_WRITE");
-		return getTimeNow()
-		.then([&](dto::Timestamp&& ts) {
-			return seastar::do_with(
-				dto::K23SI_MTR{
-					.txnid = txnids++,
-					.timestamp = std::move(ts),
-					.priority = dto::TxnPriority::Medium
-				},
-				dto::Key{.schemaName = "schema", .partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
-				dto::Key{.schemaName = "schema", .partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
-				[this](dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh){
+    return seastar::make_ready_future()
+    .then([this] {
+        // command: K23SI_WRITE
+        K2INFO("Test case SC00_1: K23SI_WRITE");
+        return getTimeNow()
+        .then([&](dto::Timestamp&& ts) {
+            return seastar::do_with(
+                dto::K23SI_MTR{
+                    .txnid = txnids++,
+                    .timestamp = std::move(ts),
+                    .priority = dto::TxnPriority::Medium
+                },
+                dto::Key{.schemaName = "schema", .partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
+                dto::Key{.schemaName = "schema", .partitionKey = "SC00_pKey1", .rangeKey = "SC00_rKey1"},
+                [this](dto::K23SI_MTR& mtr, dto::Key& key, dto::Key& trh){
                     dto::Partition::PVID pvid0;
                     dto::K23SIWriteRequest request;
                     request.pvid = pvid0;
@@ -458,15 +458,15 @@ seastar::future<> testScenario00() {
                     request.value = SKVRecord::Storage{};
                     return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *_k2Endpoints[0], 100ms)
                     .then([this](auto&& response) {
-                		// response: K23SI_WRITE
-                		auto& [status, resp] = response;
+                        // response: K23SI_WRITE
+                        auto& [status, resp] = response;
                         K2EXPECT(status, Statuses::S503_Service_Unavailable);
-                		K2INFO("response: K23SI_WRITE. " << "status: " << status.code << " with MESG: " << status.message);
-                	});
-				}
-			);
-		});
-	}) // end K23SI_WRITE
+                        K2INFO("response: K23SI_WRITE. " << "status: " << status.code << " with MESG: " << status.message);
+                    });
+                }
+            );
+        });
+    }) // end K23SI_WRITE
     .then([this] {
         // command: K23SI_READ
         K2INFO("Test case SC00_2: K23SI_READ");
@@ -567,8 +567,8 @@ seastar::future<> testScenario00() {
 }
 
 seastar::future<> testScenario01() {
-	K2INFO("+++++++ TestScenario 01: assigned node with no data +++++++");
-	K2INFO("--->Test SETUP: start a cluster and assign collection. Do not write any data.");
+    K2INFO("+++++++ TestScenario 01: assigned node with no data +++++++");
+    K2INFO("--->Test SETUP: start a cluster and assign collection. Do not write any data.");
 
     return seastar::make_ready_future()
     .then([this] {
@@ -1218,7 +1218,7 @@ seastar::future<> testScenario01() {
                     });
                 })
                 .then([] {
-                    return seastar::sleep(500ms);
+                    return seastar::sleep(200ms);
                 });
         }) // end do-with
         // #2 read Txn to validate
@@ -1289,7 +1289,7 @@ seastar::future<> testScenario01() {
                     });
                 })
                 .then([] {
-                    return seastar::sleep(500ms);
+                    return seastar::sleep(200ms);
                 });
         }) // end do-with
         // #2 read Txn to validate
@@ -1324,8 +1324,8 @@ seastar::future<> testScenario01() {
 }
 
 seastar::future<> testScenario02() {
-	K2INFO("+++++++ TestScenario 02: assigned node with single version data +++++++");
-	K2INFO("--->Test SETUP: The following data have been written in the given state.");
+    K2INFO("+++++++ TestScenario 02: assigned node with single version data +++++++");
+    K2INFO("--->Test SETUP: The following data have been written in the given state.");
     K2INFO("('SC02_pkey1','', v1) -> commited");
     K2INFO("('SC02_pkey2','range1', v1) -> commited");
     K2INFO("('SC02_pkey3','', v1) -> WI");
@@ -1368,10 +1368,13 @@ seastar::future<> testScenario02() {
             // check collection was assigned
             auto& [status, resp] = response;
             K2INFO("SC02. " << "status: " << status.code << " with MESG: " << status.message);
-            K2INFO("sc02 collection name|hashScheme|retention|heartbeat: " << resp.collection.metadata.name << " | " << resp.collection.metadata.hashScheme << " | "\
-                    << resp.collection.metadata.retentionPeriod << " | " << resp.collection.metadata.heartbeatDeadline);
-            K2INFO("partition assignment state: p1|p2|p3: " << resp.collection.partitionMap.partitions[0].astate << " | "  \
-                    << resp.collection.partitionMap.partitions[1].astate << " | " << resp.collection.partitionMap.partitions[2].astate);
+            K2INFO("sc02 collection name|hashScheme|retention|heartbeat: " << resp.collection.metadata.name << " | "
+                    << resp.collection.metadata.hashScheme << " | "
+                    << resp.collection.metadata.retentionPeriod << " | "
+                    << resp.collection.metadata.heartbeatDeadline);
+            K2INFO("partition assignment state: p1|p2|p3: " << resp.collection.partitionMap.partitions[0].astate << " | "
+                  << resp.collection.partitionMap.partitions[1].astate << " | "
+                  << resp.collection.partitionMap.partitions[2].astate);
             K2EXPECT(status, dto::K23SIStatus::OK);
             K2EXPECT(resp.collection.partitionMap.partitions[0].astate, dto::AssignmentState::FailedAssignment);
             K2EXPECT(resp.collection.partitionMap.partitions[1].astate, dto::AssignmentState::FailedAssignment);
@@ -1790,8 +1793,8 @@ seastar::future<> testScenario03() {
 }
 
 seastar::future<> testScenario04() {
-	K2INFO("+++++++ TestScenario 04: read your writes and read-committed isolation +++++++");
-	K2INFO("--->Test SETUP: initialization record, pKey('SC04_pkey1'), rKey('rKey1'), v0{f1=SC04_f1_zero, f2=SC04_f2_zero} -> committed");
+    K2INFO("+++++++ TestScenario 04: read your writes and read-committed isolation +++++++");
+    K2INFO("--->Test SETUP: initialization record, pKey('SC04_pkey1'), rKey('rKey1'), v0{f1=SC04_f1_zero, f2=SC04_f2_zero} -> committed");
 
     return seastar::make_ready_future()
     .then([] {
@@ -3090,14 +3093,14 @@ seastar::future<> testScenario08() {
 }
 
 
-};	// class k23si_testing
-}	// ns k2
+}; // class k23si_testing
+} // ns k2
 
 int main(int argc, char** argv){
-	k2::App app("txn_testing");
-	app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO service");
+    k2::App app("txn_testing");
+    app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO service");
     app.addOptions()("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "The endpoints of the k2 cluster");
-	app.addApplet<k2::txn_testing>();
-	return app.start(argc, argv);
+    app.addApplet<k2::txn_testing>();
+    return app.start(argc, argv);
 }
 
