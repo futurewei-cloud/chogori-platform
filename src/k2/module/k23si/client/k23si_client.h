@@ -177,13 +177,8 @@ private:
             _trh_collection = record.collectionName;
         }
         _write_set.push_back(key);
-    
-        // debug
-        std::cout << "{ PRINT _write_set } : " << std::endl;
-        for (auto e : _write_set) std::cout << e << ", ";
-        std::cout << std::endl;
-    
-        makeUpdateField(record, fieldsToUpdate);
+        
+        if ( !makeUpdateField(record, fieldsToUpdate) ) return nullptr;
     
         return new dto::K23SIPartialUpdateRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
@@ -320,12 +315,15 @@ public:
             record.__updateFields(skv_record);
             request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
         }
+        if (request == nullptr) {
+            return seastar::make_ready_future<PartialUpdateResult> (PartialUpdateResult
+                    (dto::K23SIStatus::BadParameter("error partialUpdate parameter"),  dto::K23SIPartialUpdateResponse{}));
+        }
         
         return _cpo_client->PartitionRequest
             <dto::K23SIPartialUpdateRequest, dto::K23SIPartialUpdateResponse, dto::Verbs::K23SI_PARTIAL_UPDATE>
             (_options.deadline, *request).
             then([this] (auto&& response) {
-                std::cout << "{get PartitionRequest result}" << std::endl;
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;

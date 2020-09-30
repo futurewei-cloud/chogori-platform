@@ -107,8 +107,13 @@ dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bo
 }
 
 bool K2TxnHandle::makeUpdateField(dto::SKVRecord& record, std::vector<uint32_t> fieldsToUpdate) {
-    std::cout << "{makeUpdateField 0}" << std::endl;
-
+    // if user don't assign fieldsToUpdate, treat partial updates as no field is updated
+    if (!fieldsToUpdate.size()) {
+        record.storage.excludedFields = std::vector<bool>(record.schema->fields.size(), true);
+        record.storage.fieldData.clear();
+        return true;
+    }
+    
     std::vector<bool> exFields;
     // Get original record.storage.excludedFields
     if (record.storage.excludedFields.empty()) {
@@ -117,38 +122,24 @@ bool K2TxnHandle::makeUpdateField(dto::SKVRecord& record, std::vector<uint32_t> 
         exFields = record.storage.excludedFields;
     }
 
-    
-    std::cout << "{makeUpdateField 1}" << std::endl;
-
-    // Make record.storage.excludedFields
-    // The value of excludedFields shall be determined by parameter-fieldsToUpdate
+    // Make record.storage.excludedFields.
+    // The value of excludedFields shall be determined by parameter-fieldsToUpdate.
+    // If fieldsToUpdate indicate a field shall be updated, but this field is skipped in the record, return BadParameter error
     record.storage.excludedFields = std::vector<bool>(record.schema->fields.size(), true);
     for (std::size_t i = 0; i < fieldsToUpdate.size(); ++i){
+        if (exFields[fieldsToUpdate[i]] == true) {
+            return false;
+        }
         record.storage.excludedFields[fieldsToUpdate[i]] = false;
     }
 
-    
-    std::cout << "{makeUpdateField 2}" << std::endl;
-
     // Compare exFields and fieldsToUpdate, quick path if it is equal
-    if (exFields == record.storage.excludedFields) {
-        // debug
-        std::cout << "quick pass." << std::endl;
-        for(auto e : record.storage.excludedFields) {
-            std::cout << e << ", ";
-        }
-        std::cout << std::endl;
-        return true;
-    }
-
-    
-    std::cout << "{makeUpdateField 3}" << std::endl;
+    if (exFields == record.storage.excludedFields) return true;
     
     // re-construct fieldData
     record.seekField(0);
     record.storage.fieldData.seek(0);
     Payload payload([&record] { return Binary(record.storage.fieldData.getCapacity()); });
-    std::cout << "{makeUpdateField 3.8}" << std::endl;
     for (std::size_t i = 0; i < record.schema->fields.size(); ++i) {
         if (!exFields[i]) {
             // have to read out if original field is not Skiped
@@ -158,6 +149,7 @@ bool K2TxnHandle::makeUpdateField(dto::SKVRecord& record, std::vector<uint32_t> 
                 bool success = record.storage.fieldData.read(value);
                 if (!success) {
                     throw new std::runtime_error("makeUpdateField in SKVRecord failed");
+                    return false;
                 }
                 
                 // re-construct fieldData. serialize if the field is included
@@ -167,43 +159,41 @@ bool K2TxnHandle::makeUpdateField(dto::SKVRecord& record, std::vector<uint32_t> 
                 break;
             }
             case k2::dto::FieldType::UINT32T : {
+                uint32_t value;
+                bool success = record.storage.fieldData.read(value);
+                if (!success) {
+                    throw new std::runtime_error("makeUpdateField in SKVRecord failed");
+                    return false;
+                }
+                
+                // re-construct fieldData. serialize if the field is included
+                if (!record.storage.excludedFields[i]) {
+                    payload.write(value);
+                } // Skip if the field is excluded
                 break;
             }
             case k2::dto::FieldType::UINT64T : {
+                uint64_t value;
+                bool success = record.storage.fieldData.read(value);
+                if (!success) {
+                    throw new std::runtime_error("makeUpdateField in SKVRecord failed");
+                    return false;
+                }
+                
+                // re-construct fieldData. serialize if the field is included
+                if (!record.storage.excludedFields[i]) {
+                    payload.write(value);
+                } // Skip if the field is excluded
                 break;
             }
             default :
                 throw new std::runtime_error("makeUpdateField field type not correct");
-                break;
+                return false;
             }
         }
     }
     record.storage.fieldData = std::move(payload);
-    std::cout << "{Befor truncateToCurrent} payload capacity:" << record.storage.fieldData.getCapacity() << std::endl;
     record.storage.fieldData.truncateToCurrent();
-    std::cout << "{After truncateToCurrent} payload capacity:" << record.storage.fieldData.getCapacity() << std::endl;
-
-    // debug
-    std::cout << "{print re-construct data} Version:" << record.storage.schemaVersion << ". excludedFields: ";
-    for (auto e : record.storage.excludedFields) {
-        std::cout << e << ",";
-    }
-    std::cout << "." << std::endl;
-    std::cout << "size:" << record.storage.fieldData.getSize() << ", capacity:" << record.storage.fieldData.getCapacity() 
-            << ", offset:" << record.storage.fieldData.getCurrentPosition().offset << std::endl;
-    
-    record.seekField(0);
-    record.storage.fieldData.seek(0);
-    std::optional<k2::String> p;
-    std::cout << "{makeUpdateField 4}" << std::endl;
-    p = record.deserializeNext<k2::String>();
-    std::cout << "field1'" << *p << "'" << std::endl;
-    p = record.deserializeNext<k2::String>();
-    std::cout << "field2'" << *p << "'" << std::endl;
-    p = record.deserializeNext<k2::String>();
-    std::cout << "field3'" << *p << "'" << std::endl;
-    p = record.deserializeNext<k2::String>();
-    std::cout << "field4'" << *p << "'" << std::endl;
     
     return true;
 }
@@ -222,11 +212,6 @@ bool K2TxnHandle::makeUpdateField(dto::SKVRecord& record, std::vector<k2::String
         }
         if (find == false) return false;
     }
-
-    // debug
-    std::cout << "fieldsName --> fieldsToUpdate{";
-    for(auto e : fieldsToUpdate)    std::cout << e << ",";
-    std::cout << "}" << std::endl;
 
     return makeUpdateField(record, fieldsToUpdate);
 }
