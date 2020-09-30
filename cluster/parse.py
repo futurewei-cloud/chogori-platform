@@ -48,19 +48,21 @@ class Runnable:
     def getDockerStop(self):
         return "sudo docker stop -t 30 " + self.name
 
+    def getDockerRemove(self):
+        return "sudo docker container rm " + self.name
+
     def getDockerLogs(self):
-        return "sudo docker logs --tail 500000 " + self.name
+        return "sudo docker logs --tail 5000 " + self.name
+       
 
-
-def parseRunnableConfig(runnable, config_files, cpus):
+def parseRunnableConfig(locals_filename, runnable, config_files, cpus, cpus_base):
     binary = ""
-    if cpus > 10:
-        print("Warning: script does not support cpus > 10 yet!")
 
     parsed_args = []
     for filename in config_files.split(' '):
-        config = configparser.ConfigParser()
-        config.read(filename)
+        config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+        config.read([locals_filename]+[filename])
+
         if "binary" in config["deployment"]:
             binary = config["deployment"]["binary"]
         if "image" in config["deployment"]:
@@ -77,24 +79,28 @@ def parseRunnableConfig(runnable, config_files, cpus):
             if value == "$cpus":
                 value = str(cpus)
             if value == "$cpus_expand":
-                value = "10-" + str(10+cpus-1)
+                value = str(cpus_base) + "-" + str(cpus_base+cpus-1)
             runnable.program_args += "--" + arg + " " + value + " "
 
     runnable.docker_args += "--name " + runnable.name + " " + runnable.image + " " + binary
+        
 
-
-def parseConfig(filename):
-    config = configparser.ConfigParser()
-    config.read(filename)
+def parseConfig(locals_filename, config_filename):
+    config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+    config.read([locals_filename, config_filename])
     all_to_run = []
+    cpuset_base = int(config["LocalConfig"]["cpuset_base"])
 
     for section in config.sections():
+        if (section == "LocalConfig"):
+            continue
+
         hosts = config[section]["hosts"].split(' ')
         for host in hosts:
             runnable = Runnable()
             runnable.name = section
             runnable.host = host
-            parseRunnableConfig(runnable, config[section]["configs"], int(config[section]["cpus"]))
+            parseRunnableConfig(locals_filename, runnable, config[section]["configs"], int(config[section]["cpus"]), cpuset_base)
             all_to_run.append(runnable)
 
     return all_to_run
