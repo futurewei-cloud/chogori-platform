@@ -268,6 +268,12 @@ struct K23SIQueryRequest {
              projection);
 };
 
+struct K23SIQueryResponse {
+    Key lastScanned; // For continuation token
+    std::vector<SKVRecord::Storage> results;
+    K2_PAYLOAD_FIELDS(lastScanned, results);
+};
+
 struct K23SITxnHeartbeatRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;

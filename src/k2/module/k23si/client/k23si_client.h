@@ -96,6 +96,41 @@ public:
     K23SIClientConfig(){};
 };
 
+// Represents a new or in-progress query (aka read scan with predicate and projection)
+class Query {
+public:
+    Query() = default;
+
+    template <typename T>
+    dto::K23SIQueryTreeNode makePredicateQueryNode(dto::K23SIBooleanOp, dto::K23SIPredicateOp op, T operand, const String& fieldName, std::vector<dto::K23SIQueryTreeNode>&& children);
+    dto::K23SIQueryTreeNode makeBooleanOnlyTreeNode(dto::K23SIBooleanOp, std::vector<dto::K23SIQueryTreeNode>&& children);
+    void setQueryTreeRoot(dto::K23SIQueryTreeNode&& root);
+
+    void addProjection(const String& fieldName);
+
+    int32_t limitLeft = -1; // Negative means no limit
+    bool includeVersionMismatch = false;
+    bool isDone(); // If false, more results may be available
+
+private:
+    std::shared_ptr<dto::Schema> schema = nullptr;
+    bool done = false;
+    bool inprogress = false; // Used to prevent user from changing predicates after query has started
+    dto::Key continuationToken;
+    dto::K23SIQueryRequest request;
+
+    friend class K2TxnHandle;
+    friend class K23SIClient;
+};
+
+class QueryResult {
+public:
+    QueryResult(Status s, dto::K23SIQueryResponse&& r);
+
+    Status status;
+    std::vector<SKVRecord> records;
+};
+
 class K2TxnHandle;
 
 class K23SIClient {
@@ -112,7 +147,7 @@ public:
     static constexpr int64_t ANY_VERSION = -1;
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
-
+    seastar::future<Query> createQuery(const String& collectionName, const String& schemaName);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -261,6 +296,10 @@ public:
     }
 
     seastar::future<WriteResult> erase(SKVRecord& record);
+
+    // Get one set of paginated results for a query. User may need to call again with same query
+    // object to get more results
+    seastar::future<QueryResult> query(Query& query);
 
     // Must be called exactly once by application code and after all ongoing read and write
     // operations are completed
