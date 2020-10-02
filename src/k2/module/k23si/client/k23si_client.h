@@ -102,9 +102,11 @@ public:
     Query() = default;
 
     template <typename T>
-    dto::K23SIQueryTreeNode makePredicateQueryNode(dto::K23SIBooleanOp, dto::K23SIPredicateOp op, T operand, const String& fieldName, std::vector<dto::K23SIQueryTreeNode>&& children);
-    dto::K23SIQueryTreeNode makeBooleanOnlyTreeNode(dto::K23SIBooleanOp, std::vector<dto::K23SIQueryTreeNode>&& children);
-    void setQueryTreeRoot(dto::K23SIQueryTreeNode&& root);
+    dto::K23SIFilterLeafNode makeFilterLiteralNode(T operand);
+    dto::K23SIFilterLeafNode makeFilterFieldRefNode(const String& fieldName, dto::FieldType fieldType);
+    dto::K23SIFilterOpNode makeFilterOpNode(dto::K23SIFilterOp, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren);
+
+    void setQueryTreeRoot(dto::K23SIFilterOpNode&& root);
 
     void addProjection(const String& fieldName);
 

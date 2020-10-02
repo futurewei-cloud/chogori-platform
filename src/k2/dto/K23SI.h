@@ -219,7 +219,7 @@ struct K23SIWriteResponse {
     K2_PAYLOAD_EMPTY;
 };
 
-enum class K23SIPredicateOp : uint8_t {
+enum class K23SIFilterOp : uint8_t {
     EQ,
     NEQ,
     GT,
@@ -228,27 +228,26 @@ enum class K23SIPredicateOp : uint8_t {
     LTE,
     STARTS_WITH,
     CONTAINS,
-    NOP
-};
-
-enum class K23SIBooleanOp : uint8_t {
     AND,
     OR,
     XOR,
     NOT
 };
 
-struct K23SIQueryTreeNode {
-    // The logicalOp will be applied serially on the value of all children and the predicate
-    K23SIBooleanOp logicalOp;
-    std::vector<K23SIQueryTreeNode> children;
+struct K23SIFilterLeafNode {
+    String fieldName;
+    FieldType fieldType;
+    Payload literal;
 
-    K23SIPredicateOp predicateOp;
-    String predicateField;
-    FieldType predicateType;
-    Payload predicateLiteral;
+    K2_PAYLOAD_FIELDS(fieldName, fieldType, literal);
+};
 
-    K2_PAYLOAD_FIELDS(logicalOp, children, predicateOp, predicateField, predicateType, predicateLiteral);
+struct K23SIFilterOpNode {
+    K23SIFilterOp op;
+    std::vector<K23SIFilterOpNode> opChildren;
+    std::vector<K23SIFilterLeafNode> leafChildren;
+
+    K2_PAYLOAD_FIELDS(op, opChildren, leafChildren);
 };
 
 struct K23SIQueryRequest {
@@ -261,10 +260,10 @@ struct K23SIQueryRequest {
     int32_t recordLimit; // Max number of records server should return, negative is no limit
     bool includeVersionMismatch; // Whether mismatched schema versions should be included in results
 
-    K23SIQueryTreeNode predicateTree;
+    K23SIFilterOpNode filterTree;
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, recordLimit, includeVersionMismatch, predicateTree,
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, recordLimit, includeVersionMismatch, filterTree,
              projection);
 };
 
