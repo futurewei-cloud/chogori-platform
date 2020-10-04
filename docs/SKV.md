@@ -114,3 +114,49 @@ with read or write requests because the SKV Client does not know if the user wil
 write requests in the future, and so it does not have the information needed to know when to issue the end 
 request to the server. In the case where the user issues a read, write, or end request on a TxnHandle that 
 has already ened, the client will also throw an exception as this is also a bug in the user code.
+
+
+## Query
+
+
+An SKV Query is a read-only range scan operation with filtering and projection. It operates over a single 
+schema (but over all versions of that schema, see schema\_versioning.md for more details). The SKV 
+Query interface is a fixed-function API, not generic pushdown.
+
+
+The Query filtering is expressed as an expression tree. Non-leaf nodes in the tree are operator nodes, 
+which could be boolean operators (e.g. AND, OR, etc.) or relational operators (e.g. greater than). Non-leaf 
+nodes can have other operator nodes as children to compose complex nested filtering expressions. Leaf nodes 
+are either a field reference (specified by field name and expected type) or a user-supplied literal value. 
+For example, the filter AGE > 20, would be composed as a field reference leaf node, a literal leaf node, and 
+a greater than operator node with the two leaf nodes as children. In the future, other node types could 
+be added such as an alias node which could represent a server-computed value.
+
+
+The inclusive start and exclusive end keys of the can are user specified and independent of the filter. 
+This means that if the user specifices a filter condition on a key field, it will not affect which records 
+are considered by the server but the filter will still be fully evaluated.
+
+
+The result of a Query is a set of SKVRecords, which is paginated. The server decides how many records to 
+include in a single response but the user can specify a limit on the total number of records they want. 
+Pagination is implemented by an opaque (to the user) continuation token and does not require saving any 
+server-side state. A Query operation may span multiple partitions in which case it is possible for the 
+user to get zero records in a single call but they should still continue making calls with the 
+continuation token.
+
+
+For multi-partition Queries, the read cache on the servers will be updated individually on each partition 
+as the paginated request comes in. The alternative is to communicate with all potentially participating 
+partitions and insert into the read cache before returning any records to the user, but our current 
+understanding is that this is not necessary.
+
+
+### Query Implementation Notes
+
+
+The expression tree filter is powerful but could have bad performance. Jumping around in the tree to 
+evaluate it is bad for branch prediction and for caching. In addition, the current implementation 
+keeps every literal as a separate Payload which causes memory fragmentation of the outgoing packets. This 
+can be addressed in the future, perhaps with an InlinePayload type, or a more complicated wire 
+representation that can put all of the literals into a single Payload.

@@ -106,13 +106,21 @@ public:
     dto::K23SIFilterLeafNode makeFilterFieldRefNode(const String& fieldName, dto::FieldType fieldType);
     dto::K23SIFilterOpNode makeFilterOpNode(dto::K23SIFilterOp, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren);
 
-    void setQueryTreeRoot(dto::K23SIFilterOpNode&& root);
+    void setFilterTreeRoot(dto::K23SIFilterOpNode&& root);
 
     void addProjection(const String& fieldName);
+    void addProjection(const std::vector<String>& fieldNames);
 
     int32_t limitLeft = -1; // Negative means no limit
     bool includeVersionMismatch = false;
     bool isDone(); // If false, more results may be available
+
+    // The user must specify the inclusive start and exclusive end keys for the range scan, but the client 
+    // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an 
+    // appropriate schema by the client createQuery function. The user is then expected to serialize the 
+    // key fields into the SKVRecords, similar to a single key read request.
+    dto::SKVRecord startScanRecord;
+    dto::SKVRecord endScanRecord;
 
 private:
     std::shared_ptr<dto::Schema> schema = nullptr;
