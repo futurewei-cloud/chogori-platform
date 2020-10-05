@@ -119,6 +119,10 @@ public:
     // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an 
     // appropriate schema by the client createQuery function. The user is then expected to serialize the 
     // key fields into the SKVRecords, similar to a single key read request.
+    //
+    // They must be a fully specified prefix of the key fields. For example, if the key fields are defined 
+    // as {ID, NAME, TIMESTAMP} then {ID = 1, TIMESTAMP = 10} is not a valid start or end scanRecord, but 
+    // {ID = 1, NAME = J} is valid.
     dto::SKVRecord startScanRecord;
     dto::SKVRecord endScanRecord;
 

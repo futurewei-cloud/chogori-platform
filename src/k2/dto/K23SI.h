@@ -221,11 +221,11 @@ struct K23SIWriteResponse {
 
 enum class K23SIFilterOp : uint8_t {
     EQ,
-    NEQ,
     GT,
     GTE,
     LT,
     LTE,
+    IS_NULL,
     STARTS_WITH,
     CONTAINS,
     AND,
@@ -247,9 +247,8 @@ struct K23SIFilterLeafNode {
 
 struct K23SIFilterOpNode {
     K23SIFilterOp op;
-    // A FilterOpNode should only have opChildren or leafChildren, not both. The op is applied in the order 
-    // that the children are in the vector. So a binary operator like LT would be applied as 
-    // leafChildren[0] < leafChildren[1]
+    // The op is applied in the order that the children are in the vector. So a binary operator like LT 
+    //would be applied as leafChildren[0] < leafChildren[1]
     std::vector<K23SIFilterOpNode> opChildren;
     std::vector<K23SIFilterLeafNode> leafChildren;
 
@@ -261,23 +260,24 @@ struct K23SIQueryRequest {
     String collectionName;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
-    Key startKey; // key for routing and will be interpreted as inclusive start key by the server
+    Key key; // key for routing and will be interpreted as inclusive start key by the server
     Key endKey; // exclusive scan end key
 
     int32_t recordLimit; // Max number of records server should return, negative is no limit
     bool includeVersionMismatch; // Whether mismatched schema versions should be included in results
+    bool reverseDirection; // If true, key should be high and endKey low
 
     K23SIFilterOpNode filterTree;
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, startKey, endKey, recordLimit, includeVersionMismatch, 
-                      filterTree, projection);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, recordLimit, includeVersionMismatch, 
+                      reverseDirection, filterTree, projection);
 };
 
 struct K23SIQueryResponse {
-    Key lastScanned; // For continuation token
+    Key nextToScan; // For continuation token
     std::vector<SKVRecord::Storage> results;
-    K2_PAYLOAD_FIELDS(lastScanned, results);
+    K2_PAYLOAD_FIELDS(nextToScan, results);
 };
 
 struct K23SITxnHeartbeatRequest {
