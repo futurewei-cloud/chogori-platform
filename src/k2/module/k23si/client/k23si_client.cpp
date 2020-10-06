@@ -381,14 +381,14 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
     bool emptyField = false;
     for (const String& key : query.startScanRecord.partitionKeys) {
         if (key == "") {
-            emptyField = true
+            emptyField = true;
         } else if (emptyField) {
             throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
         }
     }
     for (const String& key : query.startScanRecord.rangeKeys) {
         if (key == "") {
-            emptyField = true
+            emptyField = true;
         } else if (emptyField) {
             throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
         }
@@ -397,21 +397,21 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
     emptyField = false;
     for (const String& key : query.endScanRecord.partitionKeys) {
         if (key == "") {
-            emptyField = true
+            emptyField = true;
         } else if (emptyField) {
             throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
         }
     }
     for (const String& key : query.endScanRecord.rangeKeys) {
         if (key == "") {
-            emptyField = true
+            emptyField = true;
         } else if (emptyField) {
             throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
         }
     }
 
-    query.request.key = startScanRecord.getKey();
-    query.request.endKey = endScanRecord.getKey();
+    query.request.key = query.startScanRecord.getKey();
+    query.request.endKey = query.endScanRecord.getKey();
     if (query.request.key > query.request.endKey && !query.request.reverseDirection) {
         throw new std::runtime_error("Start key is greater than end key for forward direction query");
     } else if (query.request.key < query.request.endKey && query.request.reverseDirection) {
@@ -452,7 +452,7 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
 
         if (!status.is2xxOK()) {
             query.done = true;
-            return QueryResult(status);
+            return seastar::make_ready_future<QueryResult>(QueryResult(status));
         }
 
         if (k2response.nextToScan.partitionKey == "") {
@@ -461,14 +461,14 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
             query.request.key = std::move(k2response.nextToScan);
         }
 
-        if (query.request.limit >= 0) {
-            query.request.limit -= k2response.results.size();
-            if (query.request.limit == 0) {
+        if (query.request.recordLimit >= 0) {
+            query.request.recordLimit -= k2response.results.size();
+            if (query.request.recordLimit == 0) {
                 query.done = true;
             }
         }
 
-        return QueryResponse::makeQueryResponse(std::move(status), std::move(k2response));
+        return QueryResult::makeQueryResult(_client, query, std::move(status), std::move(k2response));
     });
 }
 

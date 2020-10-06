@@ -42,6 +42,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/tso/client/tso_clientlib.h>
 #include <k2/common/Timer.h>
 
+#include "query.h"
 
 namespace k2 {
 
@@ -102,60 +103,9 @@ public:
     K23SIClientConfig(){};
 };
 
-// Represents a new or in-progress query (aka read scan with predicate and projection)
-class Query {
-public:
-    Query() = default;
-
-    template <typename T>
-    dto::K23SIFilterLeafNode makeFilterLiteralNode(T operand);
-    dto::K23SIFilterLeafNode makeFilterFieldRefNode(const String& fieldName, dto::FieldType fieldType);
-    dto::K23SIFilterOpNode makeFilterOpNode(dto::K23SIFilterOp, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren);
-
-    void setFilterTreeRoot(dto::K23SIFilterOpNode&& root);
-    void setReverseDirection(bool reverseDirection);
-    void setIncludeVersionMismatch(bool includeVersionMismatch);
-    void setLimit(int32_t limit);
-
-    void addProjection(const String& fieldName);
-    void addProjection(const std::vector<String>& fieldNames);
-
-    bool isDone(); // If false, more results may be available
-
-    // The user must specify the inclusive start and exclusive end keys for the range scan, but the client 
-    // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an 
-    // appropriate schema by the client createQuery function. The user is then expected to serialize the 
-    // key fields into the SKVRecords, similar to a single key read request.
-    //
-    // They must be a fully specified prefix of the key fields. For example, if the key fields are defined 
-    // as {ID, NAME, TIMESTAMP} then {ID = 1, TIMESTAMP = 10} is not a valid start or end scanRecord, but 
-    // {ID = 1, NAME = J} is valid.
-    dto::SKVRecord startScanRecord;
-    dto::SKVRecord endScanRecord;
-
-private:
-    std::shared_ptr<dto::Schema> schema = nullptr;
-    bool done = false;
-    bool inprogress = false; // Used to prevent user from changing predicates after query has started
-    dto::Key continuationToken;
-    dto::K23SIQueryRequest request;
-
-    friend class K2TxnHandle;
-    friend class K23SIClient;
-};
-
 struct CreateQueryResult {
     Status status;                        // the status of the response
     Query query;  // the query if the response was OK
-};
-
-class QueryResult {
-public:
-    QueryResult(Status s) : status(std::move(s)) {}
-    static seastar::future<QueryResult> makeQueryResult(Status s, dto::K23SIQueryResponse&& response);
-
-    Status status;
-    std::vector<SKVRecord> records;
 };
 
 class K2TxnHandle;
@@ -243,6 +193,7 @@ private:
         };
     }
 
+    void prepareQueryRequest(Query& query);
 
 public:
     K2TxnHandle() = default;
