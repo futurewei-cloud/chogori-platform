@@ -22,7 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "k23si_client.h"
-
+#include "query.h"
 
 namespace k2 {
 
@@ -77,6 +77,17 @@ void K2TxnHandle::makeHeartbeatTimer() {
 }
 
 dto::K23SIReadRequest* K2TxnHandle::makeReadRequest(const dto::SKVRecord& record) const {
+    for (const String& key : record.partitionKeys) {
+        if (key == "") {
+            throw new std::runtime_error("Partition key field not set for read request");
+        }
+    }
+    for (const String& key : record.rangeKeys) {
+        if (key == "") {
+            throw new std::runtime_error("Range key field not set for read request");
+        }
+    }
+
     return new dto::K23SIReadRequest{
         dto::Partition::PVID(), // Will be filled in by PartitionRequest
         record.collectionName,
@@ -86,6 +97,17 @@ dto::K23SIReadRequest* K2TxnHandle::makeReadRequest(const dto::SKVRecord& record
 }
 
 dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase) {
+    for (const String& key : record.partitionKeys) {
+        if (key == "") {
+            throw new std::runtime_error("Partition key field not set for write request");
+        }
+    }
+    for (const String& key : record.rangeKeys) {
+        if (key == "") {
+            throw new std::runtime_error("Range key field not set for read request");
+        }
+    }
+
     dto::Key key = record.getKey();
 
     if (!_write_set.size()) {
@@ -336,6 +358,118 @@ seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::g
 
     std::shared_ptr<dto::Schema> foundSchema = vIt->second;
     return RPCResponse(Statuses::S200_OK("Found schema"), std::move(foundSchema));
+}
+
+seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collectionName, const String& schemaName) {
+    return getSchema(collectionName, schemaName, ANY_VERSION)
+    .then([collectionName] (auto&& response) {
+        if (!response.status.is2xxOK()) {
+            return CreateQueryResult{std::move(response.status), Query()};
+        }
+
+        Query query;
+        query.schema = response.schema;
+        query.startScanRecord = SKVRecord(collectionName, query.schema);
+        query.endScanRecord = SKVRecord(collectionName, query.schema);
+        query.request.collectionName = collectionName;
+        return CreateQueryResult{Statuses::S200_OK("Created query"), std::move(query)};
+    });
+}
+
+// Called the first time a Query object is used to validate and setup the request object
+void K2TxnHandle::prepareQueryRequest(Query& query) {
+    bool emptyField = false;
+    for (const String& key : query.startScanRecord.partitionKeys) {
+        if (key == "") {
+            emptyField = true
+        } else if (emptyField) {
+            throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
+        }
+    }
+    for (const String& key : query.startScanRecord.rangeKeys) {
+        if (key == "") {
+            emptyField = true
+        } else if (emptyField) {
+            throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
+        }
+    }
+
+    emptyField = false;
+    for (const String& key : query.endScanRecord.partitionKeys) {
+        if (key == "") {
+            emptyField = true
+        } else if (emptyField) {
+            throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
+        }
+    }
+    for (const String& key : query.endScanRecord.rangeKeys) {
+        if (key == "") {
+            emptyField = true
+        } else if (emptyField) {
+            throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
+        }
+    }
+
+    query.request.key = startScanRecord.getKey();
+    query.request.endKey = endScanRecord.getKey();
+    if (query.request.key > query.request.endKey && !query.request.reverseDirection) {
+        throw new std::runtime_error("Start key is greater than end key for forward direction query");
+    } else if (query.request.key < query.request.endKey && query.request.reverseDirection) {
+        throw new std::runtime_error("End key is greater than start key for reverse direction query");
+    }
+
+    query.request.mtr = _mtr;
+    query.inprogress = true;
+}
+
+// Get one set of paginated results for a query. User may need to call again with same query
+// object to get more results
+seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
+    if (!_valid) {
+        return seastar::make_exception_future<QueryResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+    }
+    if (_failed) {
+        return seastar::make_ready_future<QueryResult>(QueryResult(_failed_status));
+    }
+
+    if (query.done) {
+        return seastar::make_exception_future<QueryResult>(std::runtime_error("Tried to use Query that is done"));
+    }
+    if (!query.inprogress) {
+        prepareQueryRequest(query);
+    }
+
+    _client->query_ops++;
+    _ongoing_ops++;
+
+    return _cpo_client->PartitionRequest
+        <dto::K23SIQueryRequest, dto::K23SIQueryResponse, dto::Verbs::K23SI_QUERY>
+        (_options.deadline, query.request)
+    .then([this, &query] (auto&& response) {
+        auto& [status, k2response] = response;
+        checkResponseStatus(status);
+        _ongoing_ops--;
+
+        if (!status.is2xxOK()) {
+            query.done = true;
+            return QueryResult(status);
+        }
+
+        if (k2response.nextToScan.partitionKey == "") {
+            query.done = true;
+        } else {
+            query.request.key = std::move(k2response.nextToScan);
+        }
+
+        if (query.request.limit >= 0) {
+            query.request.limit -= k2response.results.size();
+            if (query.request.limit == 0) {
+                query.done = true;
+            }
+        }
+
+        return QueryResponse::makeQueryResponse(std::move(status), std::move(k2response));
+    });
 }
 
 const dto::K23SI_MTR& K2TxnHandle::mtr() const {

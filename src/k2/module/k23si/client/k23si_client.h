@@ -113,12 +113,13 @@ public:
     dto::K23SIFilterOpNode makeFilterOpNode(dto::K23SIFilterOp, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren);
 
     void setFilterTreeRoot(dto::K23SIFilterOpNode&& root);
+    void setReverseDirection(bool reverseDirection);
+    void setIncludeVersionMismatch(bool includeVersionMismatch);
+    void setLimit(int32_t limit);
 
     void addProjection(const String& fieldName);
     void addProjection(const std::vector<String>& fieldNames);
 
-    int32_t limitLeft = -1; // Negative means no limit
-    bool includeVersionMismatch = false;
     bool isDone(); // If false, more results may be available
 
     // The user must specify the inclusive start and exclusive end keys for the range scan, but the client 
@@ -143,9 +144,15 @@ private:
     friend class K23SIClient;
 };
 
+struct CreateQueryResult {
+    Status status;                        // the status of the response
+    Query query;  // the query if the response was OK
+};
+
 class QueryResult {
 public:
-    QueryResult(Status s, dto::K23SIQueryResponse&& r);
+    QueryResult(Status s) : status(std::move(s)) {}
+    static seastar::future<QueryResult> makeQueryResult(Status s, dto::K23SIQueryResponse&& response);
 
     Status status;
     std::vector<SKVRecord> records;
@@ -167,7 +174,7 @@ public:
     static constexpr int64_t ANY_VERSION = -1;
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
-    seastar::future<Query> createQuery(const String& collectionName, const String& schemaName);
+    seastar::future<CreateQueryResult> createQuery(const String& collectionName, const String& schemaName);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -177,6 +184,7 @@ public:
 
     uint64_t read_ops{0};
     uint64_t write_ops{0};
+    uint64_t query_ops{0};
     uint64_t total_txns{0};
     uint64_t successful_txns{0};
     uint64_t abort_conflicts{0};

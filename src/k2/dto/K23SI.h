@@ -257,7 +257,8 @@ enum class K23SIFilterOp : uint8_t {
     AND,
     OR,
     XOR,
-    NOT
+    NOT,
+    OP_MAX = 255
 };
 
 struct K23SIFilterLeafNode {
@@ -272,7 +273,7 @@ struct K23SIFilterLeafNode {
 };
 
 struct K23SIFilterOpNode {
-    K23SIFilterOp op;
+    K23SIFilterOp op = K23SIFilterOp::OP_MAX;
     // The op is applied in the order that the children are in the vector. So a binary operator like LT 
     //would be applied as leafChildren[0] < leafChildren[1]
     std::vector<K23SIFilterOpNode> opChildren;
@@ -289,9 +290,9 @@ struct K23SIQueryRequest {
     Key key; // key for routing and will be interpreted as inclusive start key by the server
     Key endKey; // exclusive scan end key
 
-    int32_t recordLimit; // Max number of records server should return, negative is no limit
-    bool includeVersionMismatch; // Whether mismatched schema versions should be included in results
-    bool reverseDirection; // If true, key should be high and endKey low
+    int32_t recordLimit = -1; // Max number of records server should return, negative is no limit
+    bool includeVersionMismatch = false; // Whether mismatched schema versions should be included in results
+    bool reverseDirection = false; // If true, key should be high and endKey low
 
     K23SIFilterOpNode filterTree;
     std::vector<String> projection; // Fields by name to include in projection
