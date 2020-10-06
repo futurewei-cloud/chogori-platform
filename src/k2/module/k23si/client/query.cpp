@@ -81,14 +81,14 @@ seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, c
     for (SKVRecord::Storage& storage : response.results) {
         futures.push_back(client->getSchema(query.request.collectionName, 
                     query.schema->name, storage.schemaVersion)
-        .then([&query, result, s=storage.share()] (GetSchemaResult&& get_response) mutable {
+        .then([&query, result, s=std::move(storage)] (GetSchemaResult&& get_response) mutable {
             if (!get_response.status.is2xxOK()) {
                 result->status = std::move(get_response.status);
                 return seastar::make_ready_future<>();
             }
 
             SKVRecord record(query.request.collectionName, get_response.schema);
-            record.storage = s.share();
+            record.storage = std::move(s);
             result->records.emplace_back(std::move(record));
             return seastar::make_ready_future<>();
         }));
