@@ -66,7 +66,7 @@ public: // lifecycle
     handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
-    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);

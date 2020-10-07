@@ -167,13 +167,30 @@ _makeReadOK(dto::DataRecord* rec) {
     return RPCResponse(dto::K23SIStatus::OK("read succeeded"), std::move(response));
 }
 
-// Helper for iterating over the indexer backward, returns end() if iterator would go past begin()
-reverseIteratorHelper(std::map<dto::Key, std::deque<dto::DataRecord>>::iterator& it, 
-            std::map<dto::Key, std::deque<dto::DataRecord>>& map) {
+// Helper for iterating over the indexer, returns end() if iterator would go past the target schema
+// or if it would go past begin() for reverse scan. Starting iterator must not be end() and must 
+// point to target record
+void scanAdvance(std::map<dto::Key, std::deque<dto::DataRecord>>::iterator& it, 
+            std::map<dto::Key, std::deque<dto::DataRecord>>& map, bool reverseDirection) {
+    const String& schema = it->first.schemaName;
+
+    if (!reverseDirection) {
+        ++it;
+        if (it != map.end() && it->first.schemaName != schema) {
+            it = map.end();
+        }
+
+        return;
+    }
+
     if (it == map.begin()) {
         it = map.end();
     } else {
         --it;
+
+        if (it->first.schemaName != schema) {
+            it = map.end();
+        }
     }
 }
 
@@ -183,7 +200,10 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
     Status validateStatus = _validateReadRequest(request);
     if (!validateStatus.is2xxOK()) {
-        return RPCResponse(std::move(validateStatus), dto::K23SIReadResponse{});
+        return RPCResponse(std::move(validateStatus), dto::K23SIQueryResponse{});
+    }
+    if (_partition.getHashScheme() != dto::HashScheme::Range) {
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Query is only allowed on range partitioned collection"), dto::K23SIQueryResponse{});
     }
 
     auto key_it = _indexer.lower_bound(request.key);
@@ -191,30 +211,29 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     // For reverse direction scan, key_it may not be in range because of how lower_bound works,
     // so fix that here
     if (request.reverseDirection && key_it != _indexer.end() && key_it->first > request.key) {
-        while (key_it->first > request.key) {
-            if (key_it == _indexer.begin()) {
-                key_it = _indexer.end();
-                break;
-            }
-
-            --key_it;
+        while (key_it != _indexer.end() && key_it->first > request.key) {
+            scanAdvance(key_it, _indexer, request.reverseDirection);
         }
     }
 
-    for (; key_it != _indexer.end(); request.reverseDirection ? reverseIteratorHelper(key_it, _indexer) : ++key_it) {
+    if (key_it != _indexer.end() && key_it->first.schemaName != request.key.schemaName) {
+        key_it = _indexer.end();
+    }
+
+    for (; key_it != _indexer.end(); scanAdvance(key_it, _indexer, request.reverseDirection)) {
         // Extra Termination conditions
         if (!request.reverseDirection && key_it->first >= request.endKey) {
             break;
         } else if (request.reverseDirection && key_it->first <= request.endKey) {
             break;
-        } else if (response.results.size() == request.recordLimit) {
+        } else if (request.recordLimit >= 0 && response.results.size() == (uint32_t)request.recordLimit) {
             break;
         } else if (response.results.size() == _config.paginationLimit()) {
             break;
         }
 
 
-        auto& versions = fiter->second;
+        auto& versions = key_it->second;
         auto viter = versions.begin();
         // position the version iterator at the version we should be returning
         while(viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
@@ -241,9 +260,12 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         }
 
         // Do a push but we need to save our place in the query
+        // TODO we can test the filter condition against the WI and last committed version and possibly
+        // avoid a push
         // Must update read cache before doing an async operation
-        request.reverseDirection ? _readCache.insertInterval(key_it->first, request.key, 
-            request.mtr.timestamp) : _readCache.insertInterval(request.key, key_it->first);
+        request.reverseDirection ? 
+            _readCache->insertInterval(key_it->first, request.key, request.mtr.timestamp) :
+            _readCache->insertInterval(request.key, key_it->first, request.mtr.timestamp);
 
         auto sitMTR = viter->txnId.mtr;
         return _doPush(request.collectionName, viter->txnId, request.mtr, deadline)
@@ -254,22 +276,74 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in query push"), dto::K23SIQueryResponse{});
             }
             // incoming request won. re-run query logic after removing WI if necessary
-            auto& wi_versions = _indexer->find(curKey)->second;
+            auto& wi_versions = _indexer.find(curKey)->second;
             if (wi_versions.size() > 0 && wi_versions.front().status == dto::DataRecord::WriteIntent) {
-                wi_version.pop_front();
+                wi_versions.pop_front();
             }
             request.key = curKey;
-            return handleQuery(std::move(request), std::move(response), deadline);
+            return handleQuery(std::move(request), std::move(resp), deadline);
         });
     }
 
-    // TODO read cache here
-    if (key_it == _indexer.end()) {
-        // we exhausted our partition
-        request.reverseDirection ? _readCache.insertInterval(request.endKey, request.key, 
-            request.mtr.timestamp) : _readCache.insertInterval(request.key, request.endKey);
-        request.reverseDirection ? response.nextToScan
+    // Because  the continuation token is the next key to scan, we need to advance in the indexer
+    // one extra place. Read cache will prevent any insertions between last returned record and this one
+    if (key_it != _indexer.end()) {
+        scanAdvance(key_it, _indexer, request.reverseDirection);
     }
+
+    // Read cache update block
+    dto::Key endInterval;
+    if (key_it == _indexer.end()) {
+        // For forward direction we need to lock the whole range of the schema, which we do 
+        // by appending a character, which may overshoot the range but is correct
+        endInterval.schemaName = request.reverseDirection ? request.key.schemaName : request.key.schemaName + "a";
+        endInterval.partitionKey = "";
+        endInterval.rangeKey = "";
+    } else {
+        endInterval = key_it->first;
+    }
+    request.reverseDirection ? 
+        _readCache->insertInterval(endInterval, request.key, request.mtr.timestamp) : 
+        _readCache->insertInterval(request.key, endInterval, request.mtr.timestamp);
+
+    // Continuation token block
+    // Three cases where scan is for sure done:
+    // 1. Record limit is reached
+    // 2. Iterator is not end() but is >= user endKey
+    // 3. Iterator is at end() and partition bounds contains endKey
+    // This works around seastars lack of operators on the string type
+    if ((request.recordLimit >= 0 && response.results.size() == (uint32_t)request.recordLimit) ||
+        (key_it != _indexer.end() && 
+            (request.reverseDirection ? key_it->first <= request.endKey : key_it->first >= request.endKey)) || 
+        (key_it == _indexer.end() && 
+            (request.reverseDirection ? 
+            _partition().startKey < request.endKey.partitionKey: 
+            request.endKey.partitionKey < _partition().endKey)) ||
+        (key_it == _indexer.end() && 
+            (request.reverseDirection ? 
+            request.endKey.partitionKey == _partition().startKey : 
+            request.endKey.partitionKey == _partition().endKey))) {
+        response.nextToScan = dto::Key();
+    }
+    else if (key_it != _indexer.end()) {
+        // This is the paginated case
+        response.nextToScan = key_it->first;
+    }
+    else {
+        // This is the multi-partition case
+        // TODO support this for reverseDirection scan for now return error
+        if (request.reverseDirection) {
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Multi-partition reverse scan not supported"), dto::K23SIQueryResponse{});
+        }
+
+        response.nextToScan = dto::Key {
+            request.key.schemaName,
+            _partition().endKey,
+            ""
+        };
+    }
+
+    return RPCResponse(dto::K23SIStatus::OK("Scan success"), std::move(response));
 }
 
 seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
