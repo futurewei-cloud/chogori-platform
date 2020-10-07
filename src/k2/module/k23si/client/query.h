@@ -38,7 +38,17 @@ public:
     Query() = default;
 
     template <typename T>
-    dto::K23SIFilterLeafNode makeFilterLiteralNode(T operand);
+    dto::K23SIFilterLeafNode makeFilterLiteralNode(T operand) {
+        Payload p;
+        p.write(operand);
+        return dto::K23SIFilterLeafNode {
+            "",
+            dto::TToFieldType<T>(),
+            std::move(p)
+        };
+    }
+
+    dto::K23SIFilterLeafNode makeNullFilterLiteralNode();
     dto::K23SIFilterLeafNode makeFilterFieldRefNode(const String& fieldName, dto::FieldType fieldType);
     dto::K23SIFilterOpNode makeFilterOpNode(dto::K23SIFilterOp, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren);
 

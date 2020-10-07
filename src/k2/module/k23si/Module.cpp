@@ -60,6 +60,10 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleRead(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.readTimeout()));
     });
 
+    RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>(dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
+        return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()));
+    });
+
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
         return handleWrite(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
     });
@@ -163,24 +167,118 @@ _makeReadOK(dto::DataRecord* rec) {
     return RPCResponse(dto::K23SIStatus::OK("read succeeded"), std::move(response));
 }
 
+// Helper for iterating over the indexer backward, returns end() if iterator would go past begin()
+reverseIteratorHelper(std::map<dto::Key, std::deque<dto::DataRecord>>::iterator& it, 
+            std::map<dto::Key, std::deque<dto::DataRecord>>& map) {
+    if (it == map.begin()) {
+        it = map.end();
+    } else {
+        --it;
+    }
+}
+
+seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
+K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline) {
+    K2DEBUG("Partition: " << _partition << ", received query " << request);
+
+    Status validateStatus = _validateReadRequest(request);
+    if (!validateStatus.is2xxOK()) {
+        return RPCResponse(std::move(validateStatus), dto::K23SIReadResponse{});
+    }
+
+    auto key_it = _indexer.lower_bound(request.key);
+
+    // For reverse direction scan, key_it may not be in range because of how lower_bound works,
+    // so fix that here
+    if (request.reverseDirection && key_it != _indexer.end() && key_it->first > request.key) {
+        while (key_it->first > request.key) {
+            if (key_it == _indexer.begin()) {
+                key_it = _indexer.end();
+                break;
+            }
+
+            --key_it;
+        }
+    }
+
+    for (; key_it != _indexer.end(); request.reverseDirection ? reverseIteratorHelper(key_it, _indexer) : ++key_it) {
+        // Extra Termination conditions
+        if (!request.reverseDirection && key_it->first >= request.endKey) {
+            break;
+        } else if (request.reverseDirection && key_it->first <= request.endKey) {
+            break;
+        } else if (response.results.size() == request.recordLimit) {
+            break;
+        } else if (response.results.size() == _config.paginationLimit()) {
+            break;
+        }
+
+
+        auto& versions = fiter->second;
+        auto viter = versions.begin();
+        // position the version iterator at the version we should be returning
+        while(viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
+            ++viter;
+        }
+        if (viter == versions.end()) {
+            // happy case: we either had no versions, or all versions were newer than the requested timestamp
+            continue;
+        }
+
+        // happy case: either committed, or txn is reading its own write
+        if ((viter->status == dto::DataRecord::Committed || viter->txnId.mtr == request.mtr) 
+                    && !viter->isTombstone) {
+            // TODO apply filter and projection
+            response.results.push_back(viter->value.share());
+            continue;
+        } else if (viter->status == dto::DataRecord::Committed || viter->txnId.mtr == request.mtr) {
+            continue;
+        }
+
+        // If we get here it is a conflict, first decide to push or return early
+        if (response.results.size() >= _config.queryPushLimit()) {
+            break;
+        }
+
+        // Do a push but we need to save our place in the query
+        // Must update read cache before doing an async operation
+        request.reverseDirection ? _readCache.insertInterval(key_it->first, request.key, 
+            request.mtr.timestamp) : _readCache.insertInterval(request.key, key_it->first);
+
+        auto sitMTR = viter->txnId.mtr;
+        return _doPush(request.collectionName, viter->txnId, request.mtr, deadline)
+        .then([this, curKey=key_it->first, sitMTR, request=std::move(request), 
+                        resp=std::move(response), deadline](auto&& winnerMTR) mutable {
+            if (winnerMTR == sitMTR) {
+                // sitting transaction won. Abort the incoming request
+                return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in query push"), dto::K23SIQueryResponse{});
+            }
+            // incoming request won. re-run query logic after removing WI if necessary
+            auto& wi_versions = _indexer->find(curKey)->second;
+            if (wi_versions.size() > 0 && wi_versions.front().status == dto::DataRecord::WriteIntent) {
+                wi_version.pop_front();
+            }
+            request.key = curKey;
+            return handleQuery(std::move(request), std::move(response), deadline);
+        });
+    }
+
+    // TODO read cache here
+    if (key_it == _indexer.end()) {
+        // we exhausted our partition
+        request.reverseDirection ? _readCache.insertInterval(request.endKey, request.key, 
+            request.mtr.timestamp) : _readCache.insertInterval(request.key, request.endKey);
+        request.reverseDirection ? response.nextToScan
+    }
+}
+
 seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
 K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received read " << request);
-    if (!_validateRequestPartition(request)) {
-        // tell client their collection partition is gone
-        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in read"), dto::K23SIReadResponse{});
-    }
-    if (!_validateRequestParameter(request)){
-        // do not allow empty partition key
-        return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in read"), dto::K23SIReadResponse{});
-    }
-    if (!_validateRetentionWindow(request)) {
-        // the request is outside the retention window
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in read"), dto::K23SIReadResponse{});
-    }
-    if (_schemas.find(request.key.schemaName) == _schemas.end()) {
-        // server does not have schema
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIReadResponse{});
+
+    Status validateStatus = _validateReadRequest(request);
+    if (!validateStatus.is2xxOK()) {
+        return RPCResponse(std::move(validateStatus), dto::K23SIReadResponse{});
     }
 
     // sitMTR will be ZERO for original requests or non-zero for post-PUSH reads

@@ -35,6 +35,14 @@ dto::K23SIFilterLeafNode Query::makeFilterFieldRefNode(const String& fieldName, 
     };
 }
 
+dto::K23SIFilterLeafNode makeNullFilterLiteralNode() {
+    return dto::K23SIFilterLeafNode {
+        "",
+        dto::FieldType::NULL_T,
+        Payload()
+    };
+}
+
 dto::K23SIFilterOpNode Query::makeFilterOpNode(dto::K23SIFilterOp op, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren) {
     return dto::K23SIFilterOpNode {
         op,

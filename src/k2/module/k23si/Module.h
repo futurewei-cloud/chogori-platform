@@ -65,6 +65,9 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SIPartialUpdateResponse>>
     handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
+    seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
+    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
 
@@ -149,6 +152,28 @@ private: // methods
     // return true if request is valid
     template <typename RequestT>
     bool _validateStaleWrite(const RequestT& req, std::deque<dto::DataRecord>& versions);
+
+    template <class RequestT>
+    Status _validateReadRequest(const RequestT& request) const {
+        if (!_validateRequestPartition(request)) {
+            // tell client their collection partition is gone
+            return dto::K23SIStatus::RefreshCollection("collection refresh needed in read-type request");
+        }
+        if (!_validateRequestParameter(request)){
+            // do not allow empty partition key
+            return dto::K23SIStatus::BadParameter("missing partition key in read-type request");
+        }
+        if (!_validateRetentionWindow(request)) {
+            // the request is outside the retention window
+            return dto::K23SIStatus::AbortRequestTooOld("request too old in read-type request");
+        }
+        if (_schemas.find(request.key.schemaName) == _schemas.end()) {
+            // server does not have schema
+            return dto::K23SIStatus::OperationNotAllowed("schema does not exist in read-type request");
+        }
+
+        return dto::K23SIStatus::OK("");
+    }
 
     // helper method used to create and persist a WriteIntent
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
