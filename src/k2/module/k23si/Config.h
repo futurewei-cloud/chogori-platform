@@ -61,7 +61,8 @@ struct K23SIConfig {
 
     // Min records in response needed to avoid a push during query processing,
     // and instead returning a paginated response early
-    ConfigVar<uint32_t> queryPushLimit{"k23si_query_push_limit", 1};
+    // Default is > paginiationLimit so it will always push
+    ConfigVar<uint32_t> queryPushLimit{"k23si_query_push_limit", 11};
 
     // the endpoint for our persistence
     ConfigVar<std::vector<String>> persistenceEndpoint{"k23si_persistence_endpoints"};

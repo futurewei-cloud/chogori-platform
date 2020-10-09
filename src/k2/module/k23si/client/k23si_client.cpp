@@ -412,9 +412,11 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
 
     query.request.key = query.startScanRecord.getKey();
     query.request.endKey = query.endScanRecord.getKey();
-    if (query.request.key > query.request.endKey && !query.request.reverseDirection) {
+    if (query.request.key > query.request.endKey && !query.request.reverseDirection && 
+                query.request.endKey.partitionKey != "") {
         throw new std::runtime_error("Start key is greater than end key for forward direction query");
-    } else if (query.request.key < query.request.endKey && query.request.reverseDirection) {
+    } else if (query.request.key < query.request.endKey && query.request.reverseDirection && 
+                query.request.key.partitionKey != "") {
         throw new std::runtime_error("End key is greater than start key for reverse direction query");
     }
 

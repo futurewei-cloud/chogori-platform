@@ -209,7 +209,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     auto key_it = _indexer.lower_bound(request.key);
 
     // For reverse direction scan, key_it may not be in range because of how lower_bound works,
-    // so fix that here
+    // so fix that here. TODO reverse scan with start key as "" ?
     if (request.reverseDirection && key_it != _indexer.end() && key_it->first > request.key) {
         while (key_it != _indexer.end() && key_it->first > request.key) {
             scanAdvance(key_it, _indexer, request.reverseDirection);
@@ -222,7 +222,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
     for (; key_it != _indexer.end(); scanAdvance(key_it, _indexer, request.reverseDirection)) {
         // Extra Termination conditions
-        if (!request.reverseDirection && key_it->first >= request.endKey) {
+        if (!request.reverseDirection && key_it->first >= request.endKey &&
+                   request.endKey.partitionKey != "") {
             break;
         } else if (request.reverseDirection && key_it->first <= request.endKey) {
             break;
@@ -267,6 +268,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
             _readCache->insertInterval(key_it->first, request.key, request.mtr.timestamp) :
             _readCache->insertInterval(request.key, key_it->first, request.mtr.timestamp);
 
+        K2INFO("About to PUSH in query request");
         auto sitMTR = viter->txnId.mtr;
         return _doPush(request.collectionName, viter->txnId, request.mtr, deadline)
         .then([this, curKey=key_it->first, sitMTR, request=std::move(request), 
@@ -283,12 +285,6 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
             request.key = curKey;
             return handleQuery(std::move(request), std::move(resp), deadline);
         });
-    }
-
-    // Because  the continuation token is the next key to scan, we need to advance in the indexer
-    // one extra place. Read cache will prevent any insertions between last returned record and this one
-    if (key_it != _indexer.end()) {
-        scanAdvance(key_it, _indexer, request.reverseDirection);
     }
 
     // Read cache update block
@@ -311,14 +307,14 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     // 1. Record limit is reached
     // 2. Iterator is not end() but is >= user endKey
     // 3. Iterator is at end() and partition bounds contains endKey
-    // This works around seastars lack of operators on the string type
+    // This also works around seastars lack of operators on the string type
     if ((request.recordLimit >= 0 && response.results.size() == (uint32_t)request.recordLimit) ||
         (key_it != _indexer.end() && 
-            (request.reverseDirection ? key_it->first <= request.endKey : key_it->first >= request.endKey)) || 
+            (request.reverseDirection ? key_it->first <= request.endKey : key_it->first >= request.endKey && request.endKey.partitionKey != "")) || 
         (key_it == _indexer.end() && 
             (request.reverseDirection ? 
-            _partition().startKey < request.endKey.partitionKey: 
-            request.endKey.partitionKey < _partition().endKey)) ||
+            _partition().startKey < request.endKey.partitionKey :
+            request.endKey.partitionKey < _partition().endKey && request.endKey.partitionKey != "")) ||
         (key_it == _indexer.end() && 
             (request.reverseDirection ? 
             request.endKey.partitionKey == _partition().startKey : 
@@ -343,6 +339,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         };
     }
 
+    K2DEBUG("nextToScan: " << response.nextToScan);
     return RPCResponse(dto::K23SIStatus::OK("Scan success"), std::move(response));
 }
 
