@@ -101,16 +101,19 @@ public:  // application lifespan
             });
         });
 
+        _testTimer.arm(0ms);
         return seastar::make_ready_future();
     }
 
 private:
     int exitcode = -1;
 
+    seastar::timer<> _testTimer;
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::future<> _writeFuture = seastar::make_ready_future();
 
     k2::K23SIClient _client;
+    uint64_t txnids = 10000;
 
 public: // tests
 
