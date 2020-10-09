@@ -268,7 +268,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
             _readCache->insertInterval(key_it->first, request.key, request.mtr.timestamp) :
             _readCache->insertInterval(request.key, key_it->first, request.mtr.timestamp);
 
-        K2INFO("About to PUSH in query request");
+        K2DEBUG("About to PUSH in query request");
         auto sitMTR = viter->txnId.mtr;
         return _doPush(request.collectionName, viter->txnId, request.mtr, deadline)
         .then([this, curKey=key_it->first, sitMTR, request=std::move(request), 
