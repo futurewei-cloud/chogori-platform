@@ -210,10 +210,10 @@ public:
             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
         }
 
+        dto::K23SIReadRequest* request = makeReadRequest(record);
+
         _client->read_ops++;
         _ongoing_ops++;
-
-        dto::K23SIReadRequest* request = makeReadRequest(record);
 
         return _cpo_client->PartitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
@@ -263,8 +263,6 @@ public:
         if (_failed) {
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
-        _client->write_ops++;
-        _ongoing_ops++;
 
         dto::K23SIWriteRequest* request = nullptr;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
@@ -274,6 +272,9 @@ public:
             record.__writeFields(skv_record);
             request = makeWriteRequest(skv_record, erase);
         }
+
+        _client->write_ops++;
+        _ongoing_ops++;
 
         return _cpo_client->PartitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>

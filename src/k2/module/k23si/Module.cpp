@@ -205,6 +205,9 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     if (_partition.getHashScheme() != dto::HashScheme::Range) {
             return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Query is only allowed on range partitioned collection"), dto::K23SIQueryResponse{});
     }
+    if (request.reverseDirection) {
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Reverse scan query not fully implemented"), dto::K23SIQueryResponse{});
+    }
 
     auto key_it = _indexer.lower_bound(request.key);
 
