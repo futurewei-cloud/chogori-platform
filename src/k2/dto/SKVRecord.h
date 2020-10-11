@@ -152,10 +152,6 @@ public:
     // These are fields actually stored by the Chogori storage node, and returned
     // by a read request
     struct Storage {
-        Storage() = default;
-        Storage(Storage&&) = default;
-        Storage& operator=(Storage&&) = default;
-
         // Bitmap of fields that are excluded because they are optional or this is for a partial update
         std::vector<bool> excludedFields;
         Payload fieldData;

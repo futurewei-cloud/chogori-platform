@@ -167,29 +167,29 @@ _makeReadOK(dto::DataRecord* rec) {
     return RPCResponse(dto::K23SIStatus::OK("read succeeded"), std::move(response));
 }
 
-// Helper for iterating over the indexer, returns end() if iterator would go past the target schema
+// Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
 // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must 
-// point to target record
-void scanAdvance(std::map<dto::Key, std::deque<dto::DataRecord>>::iterator& it, 
-            std::map<dto::Key, std::deque<dto::DataRecord>>& map, bool reverseDirection) {
+// point to a record with the target schema
+void K23SIPartitionModule::_scanAdvance(std::map<dto::Key, std::deque<dto::DataRecord>>::iterator& it, 
+            bool reverseDirection) {
     const String& schema = it->first.schemaName;
 
     if (!reverseDirection) {
         ++it;
-        if (it != map.end() && it->first.schemaName != schema) {
-            it = map.end();
+        if (it != _indexer.end() && it->first.schemaName != schema) {
+            it = _indexer.end();
         }
 
         return;
     }
 
-    if (it == map.begin()) {
-        it = map.end();
+    if (it == _indexer.begin()) {
+        it = _indexer.end();
     } else {
         --it;
 
         if (it->first.schemaName != schema) {
-            it = map.end();
+            it = _indexer.end();
         }
     }
 }
@@ -203,7 +203,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         return RPCResponse(std::move(validateStatus), dto::K23SIQueryResponse{});
     }
     if (_partition.getHashScheme() != dto::HashScheme::Range) {
-            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Query is only allowed on range partitioned collection"), dto::K23SIQueryResponse{});
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Query not implemented for hash partitioned collection"), dto::K23SIQueryResponse{});
     }
     if (request.reverseDirection) {
             return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Reverse scan query not fully implemented"), dto::K23SIQueryResponse{});
@@ -215,7 +215,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     // so fix that here. TODO reverse scan with start key as "" ?
     if (request.reverseDirection && key_it != _indexer.end() && key_it->first > request.key) {
         while (key_it != _indexer.end() && key_it->first > request.key) {
-            scanAdvance(key_it, _indexer, request.reverseDirection);
+            _scanAdvance(key_it, request.reverseDirection);
         }
     }
 
@@ -223,7 +223,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         key_it = _indexer.end();
     }
 
-    for (; key_it != _indexer.end(); scanAdvance(key_it, _indexer, request.reverseDirection)) {
+    for (; key_it != _indexer.end(); _scanAdvance(key_it, request.reverseDirection)) {
         // Extra Termination conditions
         if (!request.reverseDirection && key_it->first >= request.endKey &&
                    request.endKey.partitionKey != "") {
@@ -272,9 +272,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
             _readCache->insertInterval(request.key, key_it->first, request.mtr.timestamp);
 
         K2DEBUG("About to PUSH in query request");
-        auto sitMTR = viter->txnId.mtr;
         return _doPush(request.collectionName, viter->txnId, request.mtr, deadline)
-        .then([this, curKey=key_it->first, sitMTR, request=std::move(request), 
+        .then([this, curKey=key_it->first, sitMTR=viter->txnId.mtr, request=std::move(request), 
                         resp=std::move(response), deadline](auto&& winnerMTR) mutable {
             if (winnerMTR == sitMTR) {
                 // sitting transaction won. Abort the incoming request

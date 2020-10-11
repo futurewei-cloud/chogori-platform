@@ -202,6 +202,12 @@ private: // methods
     // recover data upon startup
     seastar::future<> _recovery();
 
+    // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
+    // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must 
+    // point to a record with the target schema
+    void _scanAdvance(std::map<dto::Key, std::deque<dto::DataRecord>>::iterator& it, 
+                bool reverseDirection);
+
 private: // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
