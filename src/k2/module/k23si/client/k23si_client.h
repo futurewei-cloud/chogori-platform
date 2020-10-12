@@ -76,11 +76,8 @@ private:
 
 class PartialUpdateResult{
 public:
-    PartialUpdateResult(Status s, dto::K23SIPartialUpdateResponse&& r) : status(std::move(s)), response(std::move(r)) {}
+    PartialUpdateResult(Status s) : status(std::move(s)) {}
     Status status;
-
-private:
-    dto::K23SIPartialUpdateResponse response;    
 };
 
 class EndResult{
@@ -168,8 +165,7 @@ private:
         return makeReadRequest(record);
     }
        
-    template <typename T>
-    dto::K23SIPartialUpdateRequest* makePartialUpdateRequest(dto::SKVRecord& record, std::vector<T> fieldsToUpdate) {
+    dto::K23SIPartialUpdateRequest* makePartialUpdateRequest(dto::SKVRecord& record, std::vector<uint32_t> fieldsToUpdate) {
         dto::Key key = record.getKey();
         
         if (!_write_set.size()) {
@@ -177,23 +173,18 @@ private:
             _trh_collection = record.collectionName;
         }
         _write_set.push_back(key);
-        
-        if ( !makeUpdateField(record, fieldsToUpdate) ) return nullptr;
-    
+            
         return new dto::K23SIPartialUpdateRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
             record.collectionName,
             _mtr,
             _trh_key,
-            false, // Cannot be erase op
             _write_set.size() == 1,
             key,
-            record.storage.share()
+            record.storage.share(),
+            fieldsToUpdate
         };
     }
-
-    bool makeUpdateField(dto::SKVRecord& record, std::vector<uint32_t> fieldsToUpdate);
-    bool makeUpdateField(dto::SKVRecord& record, std::vector<k2::String> fieldsToUpdate);
 
 
 public:
@@ -296,13 +287,33 @@ public:
             }).finally([request] () { delete request; });
     }
 
-    template <typename T1, typename T2>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<T2> fieldsToUpdate) {
+    template <typename T1>
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName) {
+        std::vector<uint32_t> fieldsToUpdate;
+        bool find = false;
+        for (std::size_t i = 0; i < fieldsName.size(); ++i) {
+            find = false;
+            for (std::size_t j = 0; j < record.schema->fields.size(); ++j) {
+                if (fieldsName[i] == record.schema->fields[j].name) {
+                    fieldsToUpdate.push_back(j);
+                    find = true;
+                    break;
+                }
+            }
+            if (find == false) return seastar::make_ready_future<PartialUpdateResult>(
+                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsToUpdate")) );
+        }
+
+        return partialUpdate(record, fieldsToUpdate);
+    }
+
+    template <typename T1>
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<uint32_t> fieldsToUpdate) {
         if (!_valid) {
             return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
-            return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status, dto::K23SIPartialUpdateResponse()));
+            return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status));
         }
         _client->write_ops++;
         _ongoing_ops++;
@@ -316,8 +327,8 @@ public:
             request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
         }
         if (request == nullptr) {
-            return seastar::make_ready_future<PartialUpdateResult> (PartialUpdateResult
-                    (dto::K23SIStatus::BadParameter("error partialUpdate parameter"),  dto::K23SIPartialUpdateResponse{}));
+            return seastar::make_ready_future<PartialUpdateResult> (
+                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error makePartialUpdateRequest()")) );
         }
         
         return _cpo_client->PartitionRequest
@@ -336,7 +347,7 @@ public:
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
         
-                return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status), std::move(k2response)));
+                return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
             }).finally([request] () { delete request; });
     }
     

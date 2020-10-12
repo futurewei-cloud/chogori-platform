@@ -228,16 +228,16 @@ struct K23SIPartialUpdateRequest{
     // Note that this is not an unique identifier for a transaction record - transaction records are
     // uniquely identified by the tuple (mtr, trh)
     Key trh;
-    bool isDelete = false; // is this a delete write?
     bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
+    std::vector<uint32_t> fieldsToUpdate; // the updated fields of the write
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, designateTRH, key, value, fieldsToUpdate);
     friend std::ostream& operator<<(std::ostream& os, const K23SIPartialUpdateRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
-                  << r.isDelete << ", designate=" << r.designateTRH << "}";
+                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key
+                  << ", designate=" << r.designateTRH << "}";
     }
 };
 

@@ -299,9 +299,15 @@ seastar::future<> runScenario04() {
                     k2::dto::SKVRecord rdrecord5(collname, schemaPtr);
                     rdrecord5.serializeNext<k2::String>("partkey_s04");
                     rdrecord5.serializeNext<k2::String>("rangekey_s04");
+                    k2::dto::SKVRecord rdrecord6(collname, schemaPtr);
+                    rdrecord6.serializeNext<k2::String>("partkey_s04");
+                    rdrecord6.serializeNext<k2::String>("rangekey_s04");
                     k2::dto::SKVRecord rdrecord7(collname, schemaPtr);
                     rdrecord7.serializeNext<k2::String>("partkey_s04");
                     rdrecord7.serializeNext<k2::String>("rangekey_s04");
+                    k2::dto::SKVRecord rdrecord8(collname, schemaPtr);
+                    rdrecord8.serializeNext<k2::String>("partkey_s04");
+                    rdrecord8.serializeNext<k2::String>("rangekey_s04");
 
                     // records for partial update
                     k2::dto::SKVRecord record0(collname, schemaPtr);
@@ -312,6 +318,7 @@ seastar::future<> runScenario04() {
                     k2::dto::SKVRecord record5(collname, schemaPtr);
                     k2::dto::SKVRecord record6(collname, schemaPtr);
                     k2::dto::SKVRecord record7(collname, schemaPtr);
+                    k2::dto::SKVRecord record8(collname, schemaPtr);
 
                     // initialization
                     record0.serializeNext<k2::String>("partkey_s04");
@@ -337,7 +344,7 @@ seastar::future<> runScenario04() {
                     record3.serializeNext<k2::String>("data1_v2");
                     record3.serializeNext<k2::String>("data2_v2");
 
-                    // case4: Partial update some value fields(data2) using field name to indicate the fieldsToUpdate
+                    // case4: Partial update some value fields(data2) using field name("f2") to indicate the fieldsToUpdate
                     record4.serializeNext<k2::String>("partkey_s04");
                     record4.serializeNext<k2::String>("rangekey_s04");
                     record4.skipNext();
@@ -349,18 +356,24 @@ seastar::future<> runScenario04() {
                     record5.serializeNext<k2::String>("data1_v3");
                     record5.skipNext();
 
-                    // case6: fieldsToUpdate indicate some fields(data1&2) shall be updated, but it(data2) is skipped in the record
+                    // case6: fieldsToUpdate indicate some fields(data1&2) shall be updated, and it(data2) is skipped in the record
                     record6.serializeNext<k2::String>("partkey_s04");
                     record6.serializeNext<k2::String>("rangekey_s04");
-                    record6.serializeNext<k2::String>("data1_v4");
+                    record6.serializeNext<k2::String>("data1_v3");
                     record6.skipNext();
 
                     // case7: fieldsToUpdate indicate some fields(data2) shall not be updated, but record has a value of this field
                     // fieldsToUpdate shall prevail
                     record7.serializeNext<k2::String>("partkey_s04");
                     record7.serializeNext<k2::String>("rangekey_s04");
-                    record7.serializeNext<k2::String>("data1_v4");
+                    record7.skipNext();
                     record7.serializeNext<k2::String>("data2_v4");
+
+                    // case8: Updates an null field while keeping other null fields null
+                    record8.serializeNext<k2::String>("partkey_s04");
+                    record8.serializeNext<k2::String>("rangekey_s04");
+                    record8.serializeNext<k2::String>("data1_v5");
+                    record8.skipNext();
 
                     return seastar::do_with(
                         std::move(record0),
@@ -371,34 +384,36 @@ seastar::future<> runScenario04() {
                         std::move(record5),
                         std::move(record6),
                         std::move(record7),
+                        std::move(record8),
                         std::move(rdrecord3),
                         std::move(rdrecord4),
                         std::move(rdrecord5),
+                        std::move(rdrecord6),
                         std::move(rdrecord7),
-                        [this, &txnHandle] (auto& rec0, auto& rec1, auto& rec2, auto& rec3, auto& rec4, auto& rec5, 
-                                auto& rec6, auto& rec7, auto& read3, auto& read4, auto& read5, auto& read7)  {
-                        (void) read4;
+                        std::move(rdrecord8),
+                        [this, &txnHandle] (auto& rec0, auto& rec1, auto& rec2, auto& rec3, auto& rec4, auto& rec5, auto& rec6, auto& rec7, auto& rec8,
+                                auto& read3, auto& read4, auto& read5, auto& read6, auto& read7, auto& read8)  {
                         return txnHandle.write<k2::dto::SKVRecord>(rec0)
                         .then([](auto&& response) {
                             K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                         })
                         .then([&] {
                             // case 1
-                            return txnHandle.partialUpdate<k2::dto::SKVRecord, uint32_t>(rec1, {0,1,2,3} )
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec1, {0,1,2,3} )
                             .then([](auto&& response) {
-                                K2EXPECT(response.status, k2::dto::K23SIStatus::BadParameter);
+                                K2EXPECT(response.status, k2::dto::K23SIStatus::KeyNotFound); // because of the serialization added fields
                             });
                         })
                         .then([&] {
                             // case 2
-                            return txnHandle.partialUpdate<k2::dto::SKVRecord, uint32_t>(rec2, {2,3} )
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec2, {2,3} )
                             .then([](auto&& response) {
                                 K2EXPECT(response.status, k2::dto::K23SIStatus::KeyNotFound);
                             });
                         })
                         .then([&] {
                             // case 3
-                            return txnHandle.partialUpdate<k2::dto::SKVRecord, uint32_t>(rec3, {2,3} )
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec3, {2,3} )
                             .then([](auto&& response) {
                                 K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                                 return seastar::make_ready_future<>();
@@ -423,7 +438,7 @@ seastar::future<> runScenario04() {
                         })
                         .then([&] {
                             // case 4
-                            return txnHandle.partialUpdate<k2::dto::SKVRecord, k2::String>(rec4, {"f2"})
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec4, (std::vector<k2::String>){"f2"})
                             .then([](auto&& response) {
                                 K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                                 return seastar::make_ready_future<>();
@@ -448,7 +463,7 @@ seastar::future<> runScenario04() {
                         })
                         .then([&] {
                             // case 5
-                            return txnHandle.partialUpdate<k2::dto::SKVRecord, k2::String>(rec5, {})
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec5, (std::vector<k2::String>){})
                             .then([](auto&& response) {
                                 K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                                 return seastar::make_ready_future<>();
@@ -465,7 +480,7 @@ seastar::future<> runScenario04() {
                                 std::optional<k2::String> data2 = response.value.deserializeNext<k2::String>();
                                 K2EXPECT(*partkey, "partkey_s04");
                                 K2EXPECT(*rangekey, "rangekey_s04");
-                                K2EXPECT(*data1, "data1_v2"); // null field is updated
+                                K2EXPECT(*data1, "data1_v2"); // "f1" field was not updated successfully
                                 K2EXPECT(*data2, "data2_v3");
                                 
                                 return seastar::make_ready_future<>();
@@ -473,15 +488,32 @@ seastar::future<> runScenario04() {
                         })
                         .then([&] {
                             // case 6
-                            return txnHandle.partialUpdate<k2::dto::SKVRecord, uint32_t>(rec6, {2,3})
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec6, {2,3})
                             .then([](auto&& response) {
-                                K2EXPECT(response.status, k2::dto::K23SIStatus::BadParameter);
+                                K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                                return seastar::make_ready_future<>();
+                            });
+                        })
+                        .then([&] {
+                            return txnHandle.read<k2::dto::SKVRecord>(std::move(read6))
+                            .then([](k2::ReadResult<k2::dto::SKVRecord>&& response) {
+                                K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                                
+                                std::optional<k2::String> partkey = response.value.deserializeNext<k2::String>();
+                                std::optional<k2::String> rangekey = response.value.deserializeNext<k2::String>();
+                                std::optional<k2::String> data1 = response.value.deserializeNext<k2::String>();
+                                std::optional<k2::String> data2 = response.value.deserializeNext<k2::String>();
+                                K2EXPECT(*partkey, "partkey_s04");
+                                K2EXPECT(*rangekey, "rangekey_s04");
+                                K2EXPECT(*data1, "data1_v3");   // "f1" field was updated to v3 
+                                K2EXPECT(*data2, "");           // "f2" field was updated to null
+                                
                                 return seastar::make_ready_future<>();
                             });
                         })
                         .then([&] {
                             // case 7
-                            return txnHandle.partialUpdate<k2::dto::SKVRecord, k2::String>(rec7, {"f1"})
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec7, (std::vector<k2::String>){"f1"})
                             .then([](auto&& response) {
                                 K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                                 return seastar::make_ready_future<>();
@@ -498,8 +530,33 @@ seastar::future<> runScenario04() {
                                 std::optional<k2::String> data2 = response.value.deserializeNext<k2::String>();
                                 K2EXPECT(*partkey, "partkey_s04");
                                 K2EXPECT(*rangekey, "rangekey_s04");
-                                K2EXPECT(*data1, "data1_v4"); // partial update field
-                                K2EXPECT(*data2, "data2_v3");
+                                K2EXPECT(*data1, ""); 
+                                K2EXPECT(*data2, "");
+                                
+                                return seastar::make_ready_future<>();
+                            });
+                        })
+                        .then([&] {
+                            // case 8
+                            return txnHandle.partialUpdate<k2::dto::SKVRecord>(rec8, (std::vector<k2::String>){"f1"})
+                            .then([](auto&& response) {
+                                K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                                return seastar::make_ready_future<>();
+                            });
+                        })
+                        .then([&] {
+                            return txnHandle.read<k2::dto::SKVRecord>(std::move(read8))
+                            .then([](k2::ReadResult<k2::dto::SKVRecord>&& response) {
+                                K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                                
+                                std::optional<k2::String> partkey = response.value.deserializeNext<k2::String>();
+                                std::optional<k2::String> rangekey = response.value.deserializeNext<k2::String>();
+                                std::optional<k2::String> data1 = response.value.deserializeNext<k2::String>();
+                                std::optional<k2::String> data2 = response.value.deserializeNext<k2::String>();
+                                K2EXPECT(*partkey, "partkey_s04");
+                                K2EXPECT(*rangekey, "rangekey_s04");
+                                K2EXPECT(*data1, "data1_v5"); // update a null field
+                                K2EXPECT(*data2, "");         // this field remains null
                                 
                                 return seastar::make_ready_future<>();
                             });
@@ -518,7 +575,7 @@ seastar::future<> runScenario05() {
     K2INFO("Scenario 05");
     return seastar::make_ready_future<>()
     .then([this] {
-        k2::dto::Schema schema2, schema3;        
+        k2::dto::Schema schema2, schema3;
         schema2.name = "schema";
         schema2.version = 2;
         schema2.fields = std::vector<k2::dto::SchemaField> {
@@ -586,7 +643,7 @@ seastar::future<> runScenario05() {
                     record1.serializeNext<k2::String>("partkey_s05");
                     record1.serializeNext<k2::String>("rangekey_s05");
                     
-                    return txnHandle.partialUpdate<k2::dto::SKVRecord, k2::String>(record1, {})
+                    return txnHandle.partialUpdate<k2::dto::SKVRecord>(record1, (std::vector<k2::String>){})
                     .then([](auto&& response) {
                         K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                     });
@@ -631,12 +688,12 @@ seastar::future<> runScenario05() {
                     record2.serializeNext<uint64_t>(64001234);
                     record2.skipNext();
                     record2.serializeNext<k2::String>("data1_v2");
-                    return txnHandle.partialUpdate<k2::dto::SKVRecord, uint32_t>(record2, {2,4})
+                    return txnHandle.partialUpdate<k2::dto::SKVRecord>(record2, {2,4})
                     .then([](auto&& response) {
                         K2EXPECT(response.status, k2::dto::K23SIStatus::BadParameter);
                     });
                 })
-                // case 3: add some fields, but leaving them not updated
+                // case 3: add some fields, but leaving them empty
                 .then([&] {
                     return _client.getSchema(collname, "schema", 3);
                 })
@@ -650,7 +707,7 @@ seastar::future<> runScenario05() {
                     record3.skipNext();
                     record3.serializeNext<uint32_t>(32001234);
                     record3.serializeNext<k2::String>("data1_v2");
-                    return txnHandle.partialUpdate<k2::dto::SKVRecord, k2::String>(record3, {"f1", "f2"})
+                    return txnHandle.partialUpdate<k2::dto::SKVRecord>(record3, (std::vector<k2::String>){"f1", "f2"})
                     .then([](auto&& response) {
                         K2EXPECT(response.status, k2::dto::K23SIStatus::BadParameter);
                     });
@@ -669,7 +726,7 @@ seastar::future<> runScenario05() {
                     record4.serializeNext<uint64_t>(64001234);
                     record4.serializeNext<uint32_t>(32001234);
                     record4.skipNext();
-                    return txnHandle.partialUpdate<k2::dto::SKVRecord, k2::String>(record4, {"f3", "f2"})
+                    return txnHandle.partialUpdate<k2::dto::SKVRecord>(record4, (std::vector<k2::String>){"f3", "f2"})
                     .then([](auto&& response) {
                         K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                     });
@@ -702,7 +759,7 @@ seastar::future<> runScenario05() {
                     K2EXPECT(*data2, 32001234); // partial update field
                     K2EXPECT(*data1, "data1_v1");
                 })
-                // case 5: decrease some fields, and update some fields
+                // case 5: decrease some fields, and update value-fields to null-fields
                 .then([&] {
                     return _client.getSchema(collname, "schema", 2);
                 })
@@ -713,9 +770,9 @@ seastar::future<> runScenario05() {
                     k2::dto::SKVRecord record5(collname, schemaPtr);
                     record5.serializeNext<k2::String>("partkey_s05");
                     record5.serializeNext<k2::String>("rangekey_s05");
-                    record5.serializeNext<k2::String>("data2_v2");
                     record5.skipNext();
-                    return txnHandle.partialUpdate<k2::dto::SKVRecord, k2::String>(record5, {"f2"})
+                    record5.skipNext();
+                    return txnHandle.partialUpdate<k2::dto::SKVRecord>(record5, (std::vector<k2::String>){"f2", "f1"})
                     .then([](auto&& response) {
                         K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                     });
@@ -743,8 +800,52 @@ seastar::future<> runScenario05() {
                                         
                     K2EXPECT(*partkey, "partkey_s05");
                     K2EXPECT(*rangekey, "rangekey_s05");
-                    K2EXPECT(*data2, "data2_v2"); // parital update field
-                    K2EXPECT(*data1, "data1_v1");
+                    K2EXPECT(*data2, ""); // parital update value-field to null
+                    K2EXPECT(*data1, ""); // parital update value-field to null
+                })
+                // case 6: update fields from null to null
+                .then([&] {
+                    return _client.getSchema(collname, "schema", 1);
+                })
+                .then([&](auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+                    
+                    k2::dto::SKVRecord record6(collname, schemaPtr);
+                    record6.serializeNext<k2::String>("partkey_s05");
+                    record6.serializeNext<k2::String>("rangekey_s05");
+                    record6.skipNext();
+                    record6.skipNext();
+                    return txnHandle.partialUpdate<k2::dto::SKVRecord>(record6, (std::vector<k2::String>){})
+                    .then([](auto&& response) {
+                        K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    });
+                })
+                .then([&] {
+                    return _client.getSchema(collname, "schema", 1);
+                })
+                .then([&](auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+                    
+                    k2::dto::SKVRecord read6(collname, schemaPtr);
+                    read6.serializeNext<k2::String>("partkey_s05");
+                    read6.serializeNext<k2::String>("rangekey_s05");
+                    
+                    return txnHandle.read<k2::dto::SKVRecord>(std::move(read6));
+                })
+                .then([this](k2::ReadResult<k2::dto::SKVRecord>&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                                
+                    std::optional<k2::String> partkey = response.value.deserializeNext<k2::String>();
+                    std::optional<k2::String> rangekey = response.value.deserializeNext<k2::String>();
+                    std::optional<k2::String> data1 = response.value.deserializeNext<k2::String>();
+                    std::optional<k2::String> data2 = response.value.deserializeNext<k2::String>();
+                                        
+                    K2EXPECT(*partkey, "partkey_s05");
+                    K2EXPECT(*rangekey, "rangekey_s05");
+                    K2EXPECT(*data1, ""); // parital update null-field to null
+                    K2EXPECT(*data2, ""); // parital update null-field to null
                 });
             }) // end do-with txnHandle
             .then([] {

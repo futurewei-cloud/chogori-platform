@@ -287,33 +287,30 @@ std::size_t K23SIPartitionModule::_findField(const dto::Schema schema, k2::Strin
     return fieldNumber;
 }
 
-bool K23SIPartitionModule::_copyBaseToPayload(dto::SKVRecord::Storage& storage, Payload& payload, dto::FieldType type) {    
+bool K23SIPartitionModule::_advancePayloadPosition(Payload& payload, dto::FieldType type) {
     switch (type) {
     case k2::dto::FieldType::STRING : {
         k2::String value;
-        bool success = storage.fieldData.read(value);
+        bool success = payload.read(value);
         if (!success) {
             return false;
         }
-        payload.write(value);
         break;
     }
     case k2::dto::FieldType::UINT32T : {
         uint32_t value;
-        bool success = storage.fieldData.read(value);
+        bool success = payload.read(value);
         if (!success) {
             return false;
         }
-        payload.write(value);
         break;
     }
     case k2::dto::FieldType::UINT64T : {
         uint64_t value;
-        bool success = storage.fieldData.read(value);
+        bool success = payload.read(value);
         if (!success) {
             return false;
         }
-        payload.write(value);
         break;
     }
     default :
@@ -322,45 +319,33 @@ bool K23SIPartitionModule::_copyBaseToPayload(dto::SKVRecord::Storage& storage, 
     return true;
 }
 
-bool K23SIPartitionModule::_copyUpdateToPayload(dto::SKVRecord::Storage& readButIgnore, dto::SKVRecord::Storage& storage, Payload& payload, dto::FieldType type) {    
+bool K23SIPartitionModule::_copyPayloadBaseToUpdate(Payload& base, Payload& update, dto::FieldType type) {    
     switch (type) {
     case k2::dto::FieldType::STRING : {
         k2::String value;
-        bool success = readButIgnore.fieldData.read(value); // in order to _advancePosition of base payload
+        bool success = base.read(value);
         if (!success) {
             return false;
         }
-        success = storage.fieldData.read(value);
-        if (!success) {
-            return false;
-        }
-        payload.write(value);
+        update.write(value);
         break;
     }
     case k2::dto::FieldType::UINT32T : {
         uint32_t value;
-        bool success = readButIgnore.fieldData.read(value); // in order to _advancePosition of base payload
+        bool success = base.read(value);
         if (!success) {
             return false;
         }
-        success = storage.fieldData.read(value);
-        if (!success) {
-            return false;
-        }
-        payload.write(value);
+        update.write(value);
         break;
     }
     case k2::dto::FieldType::UINT64T : {
         uint64_t value;
-        bool success = readButIgnore.fieldData.read(value); // in order to _advancePosition of base payload
+        bool success = base.read(value);
         if (!success) {
             return false;
         }
-        success = storage.fieldData.read(value);
-        if (!success) {
-            return false;
-        }
-        payload.write(value);
+        update.write(value);
         break;
     }
     default :
@@ -369,130 +354,203 @@ bool K23SIPartitionModule::_copyUpdateToPayload(dto::SKVRecord::Storage& readBut
     return true;
 }
 
-template <typename T>
-void K23SIPartitionModule::_copyMapToPayload(std::unordered_map<std::size_t, T>& map, std::size_t fieldIndex, Payload& payload) {
-    T value;
-    auto mapIt = map.find(fieldIndex);
-    if ( mapIt == map.end() ) {
-        throw new std::runtime_error("_copyMapToPayload cannot find value from map");
+bool K23SIPartitionModule::_isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsToUpdate) {
+    for(std::size_t i = 0; i < fieldsToUpdate.size(); ++i) {
+        if (fieldIdx == fieldsToUpdate[i]) return true;
     }
-    value = mapIt->second;
-    payload.write(value);
+    return false;
 }
 
-template <typename T>
-bool K23SIPartitionModule::_copyBaseToMap(dto::SKVRecord::Storage& storage, std::size_t fieldIndex, std::unordered_map<std::size_t, T>& map) {
-    T value;
-    bool success = storage.fieldData.read(value); 
-    if (!success) {
-        return false;
-    }
-    map.insert ({fieldIndex, value});
-    return true;
-}
-
-bool K23SIPartitionModule::_parsePartialRecord(dto::SKVRecord::Storage& storage, const k2::String& schemaName, std::deque<dto::DataRecord>& versions) {
-    auto schemaIt = _schemas.find(schemaName);
-    if (schemaIt == _schemas.end()) return false;
-    auto schemaVer = schemaIt->second.find(storage.schemaVersion);
-    if (schemaVer == schemaIt->second.end()) return false;
-    dto::Schema schema = schemaVer->second;
-    Payload payload([&] { return Binary(4096); });
-
+bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema schema, dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions) {
+    Payload basePayload = versions[0].value.fieldData.shareAll();   // base payload
+    Payload payload(Payload::DefaultAllocator);                     // payload for new record
     
-    // based on the latest version
-    if (storage.schemaVersion == versions[0].value.schemaVersion) { 
-        // quick path --same schema version.
-        for (std::size_t i = 0; i < schema.fields.size(); ++i) {
-            if (storage.excludedFields[i] && (versions[0].value.excludedFields.empty() || !versions[0].value.excludedFields[i]) ) {
-                // base SKVRecord has value of this field, and it does not update by the request.
-                // copy 'base skvrecord' value
-                if (!_copyBaseToPayload(versions[0].value, payload, schema.fields[i].type)) return false;
-                storage.excludedFields[i] = false;
-            } else if (!storage.excludedFields[i]) {
-                // this field is updated, then use 'storage' value
-                if (!_copyUpdateToPayload(versions[0].value, storage, payload, schema.fields[i].type)) return false;
-            } // else, base SKVRecord skipped this field, and this request does not update this field, do nothing
-        }
-        storage.fieldData = std::move(payload);
-        storage.fieldData.truncateToCurrent();
-    } else { 
-        // slow path--different schema version. 
-        auto latestSchemaVer = schemaIt->second.find(versions[0].value.schemaVersion);
-        if (latestSchemaVer == schemaIt->second.end()) return false;
-        dto::Schema baseSchema = latestSchemaVer->second;
-        std::unordered_map<std::size_t, k2::String> mapString; // unordered_map temporarily stores base SKVRecords
-        std::unordered_map<std::size_t, uint32_t> mapUint32;
-        std::unordered_map<std::size_t, uint64_t> mapUint64;
-        std::size_t baseCursor = 0; // indicate read cursor for base payload
-        std::size_t findField;
-        for (std::size_t i = 0; i < schema.fields.size(); ++i) {
-            findField = -1;
-            if (storage.excludedFields[i]) {
-                // payload value comes from base SKVRecord.
-                storage.excludedFields[i] = false;
-                
-                // find index of the field in base the payload
-                findField = _findField(baseSchema, schema.fields[i].name, schema.fields[i].type);
-                if (findField == (std::size_t)-1) {
-                    return false; // if do not find any field, error return
-                }
+    for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+        if (_isUpdatedField(i, request.fieldsToUpdate)) {
+            // this field is updated
+            if (request.value.excludedFields[i] == 0 && 
+                    (versions[0].value.excludedFields.empty() || versions[0].value.excludedFields[i] == 0)) {
+                // Request's payload has new value, AND
+                // base payload also has this field (empty()==true indicate that base payload contains every fields).
+                // Then use 'req' payload, at the mean time _advancePosition of base payload.
+                if (!_copyPayloadBaseToUpdate(request.value.fieldData, payload, schema.fields[i].type)) return false;
+                if (!_advancePayloadPosition(basePayload, schema.fields[i].type)) return false;
+            } else if (request.value.excludedFields[i] == 0 && 
+                    (!versions[0].value.excludedFields.empty() && versions[0].value.excludedFields[i] == 1)) {
+                // Request's payload has new value, AND 
+                // base payload skipped this field.
+                // Then use 'req' value, do not _advancePosition of base payload.
+                if (!_copyPayloadBaseToUpdate(request.value.fieldData, payload, schema.fields[i].type)) return false;
+            } else if (request.value.excludedFields[i] == 1 && 
+                    (versions[0].value.excludedFields.empty() || versions[0].value.excludedFields[i] == 0)) {
+                // Request's payload skipped this value(means the field is updated to NULL), AND
+                // base payload has this field.
+                // Then exclude this field, at the mean time _advancePosition of base payload.
+                request.value.excludedFields[i] = true;
+                if (!_advancePayloadPosition(basePayload, schema.fields[i].type)) return false;
+            } else {
+                // Request's payload skipped this value, AND base payload also skipped this field.
+                // set excludedFields[i]
+                request.value.excludedFields[i] = true;
+            }
+        } else {
+            // this field is NOT updated
+            if (request.value.excludedFields[i] == 0 &&
+                    (versions[0].value.excludedFields.empty() || versions[0].value.excludedFields[i] == 0)) {
+                // Request's payload contains this field, AND
+                // base SKVRecord also has value of this field.
+                // copy 'base skvRecord' value, at the mean time _advancePosition of 'req' payload.
+                if (!_copyPayloadBaseToUpdate(basePayload, payload, schema.fields[i].type)) return false;
+                if (!_advancePayloadPosition(request.value.fieldData, schema.fields[i].type)) return false;
+            } else if (request.value.excludedFields[i] == 0 && 
+                    (!versions[0].value.excludedFields.empty() && versions[0].value.excludedFields[i] == 1)) {
+                // Request's payload contains this field, AND
+                // base SKVRecord do NOT has this field.
+                // skip this field, at the mean time _advancePosition of 'req' payload.
+                request.value.excludedFields[i] = true;
+                if (!_advancePayloadPosition(request.value.fieldData, schema.fields[i].type)) return false;
+            } else if (request.value.excludedFields[i] == 1 && 
+                    (versions[0].value.excludedFields.empty() || versions[0].value.excludedFields[i] == 0)) {
+                // Request's payload do NOT contain this field, AND
+                // base SKVRecord has value of this field.
+                // copy 'base skvRecord' value.
+                if (!_copyPayloadBaseToUpdate(basePayload, payload, schema.fields[i].type)) return false;
+                request.value.excludedFields[i] = false;
+            } else {
+                // else, request payload skipped this field, AND base SKVRecord also skipped this field,
+                // set excludedFields[i]
+                request.value.excludedFields[i] = true;
+            }
+        }        
+    }
+    
+    request.value.fieldData = std::move(payload);
+    request.value.fieldData.truncateToCurrent();
+    return true;
+}
 
-                // base SKVRecord also excluded this field, continue processing next field
-                if (versions[0].value.excludedFields.size() > 0 && versions[0].value.excludedFields[findField]) continue;
+bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema schema, dto::Schema baseSchema, dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions) {
+    std::size_t findField; // find field index of base SKVRecord
+    std::vector<uint32_t> fieldsOffset(1); // every fields offset of base SKVRecord
+    std::size_t baseCursor = 0; // indicate fieldsOffset cursor
 
-                if (findField < baseCursor) {
-                    // Every fields' value whose index is lower than baseCursor is save in the unordered_maps
-                    // write() the i-th field to WI full record from unordered_map
-                    switch (baseSchema.fields[findField].type){
-                    case dto::FieldType::STRING: {
-                        _copyMapToPayload(mapString, findField, payload);
-                        break;
-                    }
-                    case dto::FieldType::UINT32T : {
-                        _copyMapToPayload(mapUint32, findField, payload);
-                        break;
-                    }
-                    case dto::FieldType::UINT64T : {
-                        _copyMapToPayload(mapUint64, findField, payload);
-                        break;
-                    }
-                    default :
-                        return false;
-                    } // end switch
+    Payload basePayload = versions[0].value.fieldData.shareAll();   // base payload
+    Payload payload(Payload::DefaultAllocator);                     // payload for new record
+    
+    // make every fields in schema for new full-record-WI
+    for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+        findField = -1;
+        if (!_isUpdatedField(i, request.fieldsToUpdate)) {
+            // if this field is NOT updated, payload value comes from base SKVRecord.
+            findField = _findField(baseSchema, schema.fields[i].name, schema.fields[i].type);
+            if (findField == (std::size_t)-1) {
+                return false; // if do not find any field, Error return
+            }
+    
+            // Each field's offset whose index is lower than baseCursor is save in the fieldsOffset
+            if (findField < baseCursor) {
+                if (request.value.excludedFields[i] == false) _advancePayloadPosition(request.value.fieldData, schema.fields[i].type); // have to do first
+                if (versions[0].value.excludedFields.empty() || versions[0].value.excludedFields[findField] == false) {
+                    // copy value from base
+                    basePayload.seek(fieldsOffset[findField]);
+                    if (!_copyPayloadBaseToUpdate(basePayload, payload, baseSchema.fields[findField].type)) return false;
+                    request.value.excludedFields[i] = false;
                 } else {
-                    // 1. save value in unordered_map from baseCursor to (findField-1) according to base SKVRecord;
-                    // 2. write 'findField' value from base SKVRecord to field 'i' of WI full record
-                    // 3. baseCursor = findField + 1
-                    for (; baseCursor < findField; ++baseCursor) {
+                    // set excludedFields==true
+                    request.value.excludedFields[i] = true;
+                }
+            } else {
+                // 1. save offsets in 'fieldsOffset' from baseCursor to findField according to base SKVRecord;
+                // note: add offset only if excludedField[i]==false.
+                // 2. write 'findField' value from base SKVRecord to payload to make full-record-WI;
+                // 3. baseCursor = findField + 1;
+                for (; baseCursor <= findField; ++baseCursor) {
+                    if (versions[0].value.excludedFields.empty() || versions[0].value.excludedFields[baseCursor] == false) {
                         switch (baseSchema.fields[baseCursor].type) {
                         case dto::FieldType::STRING: {
-                            if(!_copyBaseToMap(versions[0].value, baseCursor, mapString)) return false;
+                            uint32_t strLen;
+                            basePayload.seek(fieldsOffset[baseCursor]);
+                            if (!basePayload.read(strLen)) return false;
+                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint32_t) + strLen; // uint32_t for length; '\0' doesn't count
+                            fieldsOffset.push_back(tmpOffset);
                             break;
                         }
                         case dto::FieldType::UINT32T: {
-                            if(!_copyBaseToMap(versions[0].value, baseCursor, mapUint32)) return false;
+                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint32_t);
+                            fieldsOffset.push_back(tmpOffset);
                             break;
                         }
                         case dto::FieldType::UINT64T: {
-                            if(!_copyBaseToMap(versions[0].value, baseCursor, mapUint64)) return false;
+                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint64_t);
+                            fieldsOffset.push_back(tmpOffset);
                             break;
                         }
                         default :
                             return false;
                         } // end switch
+                    }else {
+                        fieldsOffset.push_back(fieldsOffset[baseCursor]);
                     }
-                    
-                    if (!_copyBaseToPayload(versions[0].value, payload, baseSchema.fields[findField].type)) return false;
-                    baseCursor = findField + 1;
                 }
-            }else { 
-                // Payload value comes from partial update -- 'storage'
-                if (!_copyBaseToPayload(storage, payload, schema.fields[i].type)) return false;
-            } 
-        }
-        storage.fieldData = std::move(payload);
-        storage.fieldData.truncateToCurrent();
+                
+                if (request.value.excludedFields[i] == false) _advancePayloadPosition(request.value.fieldData, schema.fields[i].type); // have to do first
+                if (versions[0].value.excludedFields.empty() || versions[0].value.excludedFields[findField] == false) {
+                    // copy value from base
+                    basePayload.seek(fieldsOffset[findField]);
+                    if (!_copyPayloadBaseToUpdate(basePayload, payload, baseSchema.fields[findField].type)) return false;
+                    request.value.excludedFields[i] = false;
+                } else {
+                    // set excludedFields[i]=true
+                    request.value.excludedFields[i] = true;
+                }
+                
+                baseCursor = findField + 1;
+            }
+        } else {
+            // this field is to be updated.
+            if (request.value.excludedFields[i] == false) {
+                // request's payload has a value.
+                // 1. write() value from req's SKVRecord to payload
+                if (!_copyPayloadBaseToUpdate(request.value.fieldData, payload, schema.fields[i].type)) return false;
+            } else {
+                // request's payload skips this field
+                // 1. set excludedField
+                request.value.excludedFields[i] = true;
+            }
+        } 
+    }
+    
+    request.value.fieldData = std::move(payload);
+    request.value.fieldData.truncateToCurrent();
+    return true;
+}
+
+bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions) {
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    if (schemaIt == _schemas.end()) return false;
+    auto schemaVer = schemaIt->second.find(request.value.schemaVersion);
+    if (schemaVer == schemaIt->second.end()) return false;
+    dto::Schema schema = schemaVer->second;
+    
+    if (!request.value.excludedFields.size()) {
+        request.value.excludedFields = std::vector<bool>(schema.fields.size(), false);
+    }
+    
+    Payload basePayload = versions[0].value.fieldData.shareAll();   // base payload
+    Payload payload(Payload::DefaultAllocator);                     // payload for new record
+
+    // based on the latest version to construct the new SKVRecord
+    if (request.value.schemaVersion == versions[0].value.schemaVersion) { 
+        // quick path --same schema version.
+        // make every fields in schema for new SKVRecord 
+        if(!_makeFieldsForSameVersion(schema, request, versions)) return false;
+    } else { 
+        // slow path --different schema version. 
+        auto latestSchemaVer = schemaIt->second.find(versions[0].value.schemaVersion);
+        if (latestSchemaVer == schemaIt->second.end()) return false;
+        dto::Schema baseSchema = latestSchemaVer->second;
+
+        if (!_makeFieldsForDiffVersion(schema, baseSchema, request, versions)) return false;
     }
 
     return true;
@@ -553,6 +611,12 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
     if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent) {
         auto& rec = versions[0];
         auto& rqmtr = request.mtr;
+    
+        // Clean up if req and WI are in the same transaction
+        if (rec.txnId.mtr == rqmtr) {
+            _queueWICleanup(std::move(versions[0]));
+            versions.pop_front();
+        }
 
         if (sitMTR == rec.txnId.mtr) {
             K2DEBUG("Partition: " << _partition << ", post-push winner for key " << request.key);
@@ -578,14 +642,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
                 });
         }
     }
-    
-    // Clean up if req and WI are the same transaction
-    // TODO might cause some tricky consistency issues
-    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent && request.mtr == versions[0].txnId.mtr) {
-        _queueWICleanup(std::move(versions[0]));
-        versions.pop_front();
-    }
-
+   
     // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
     return _createWI(std::move(request), versions, deadline).then([this]() mutable {
         K2DEBUG("Partition: " << _partition << ", WI created");
@@ -601,7 +658,7 @@ K23SIPartitionModule:: handlePartialUpdate(dto::K23SIPartialUpdateRequest&& requ
         K2DEBUG("Partition: " << _partition << ", failed validation for " << request.key);
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in partial update"), dto::K23SIPartialUpdateResponse{});
     }
-    
+
     if (!_validateRequestParameter(request)){
         // do not allow empty partition key
         return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in partial update"), dto::K23SIPartialUpdateResponse{});
@@ -645,7 +702,7 @@ K23SIPartitionModule:: handlePartialUpdate(dto::K23SIPartialUpdateRequest&& requ
     if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent) {
         auto& rec = versions[0];
         auto& rqmtr = request.mtr;
-
+    
         if (sitMTR == rec.txnId.mtr) {
             K2DEBUG("Partition: " << _partition << ", post-push winner for key " << request.key);
             // this is a post-PUSH request which won over the siting WI and we still have the WI in cache
@@ -676,15 +733,13 @@ K23SIPartitionModule:: handlePartialUpdate(dto::K23SIPartialUpdateRequest&& requ
         // cannot parse partial record without a version
         return RPCResponse(dto::K23SIStatus::KeyNotFound("can not partial update without a version"), dto::K23SIPartialUpdateResponse{});
     }
-    if (!_parsePartialRecord(request.value, request.key.schemaName, versions)) {
+    if (!_parsePartialRecord(request, versions)) {
         K2DEBUG("Partition: " << _partition << ", can not parse partial record for key " << request.key);
         versions[0].value.fieldData.seek(0);
         return RPCResponse(dto::K23SIStatus::BadParameter("missing fields or can not interpret partialUpdate"), dto::K23SIPartialUpdateResponse{});
     }
-    versions[0].value.fieldData.seek(0);
 
-    // Clean up if req and WI are the same transaction
-    // TODO might cause some tricky consistency issues
+    // Clean up if req and WI are in the same transaction
     if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent && request.mtr == versions[0].txnId.mtr) {
         _queueWICleanup(std::move(versions[0]));
         versions.pop_front();
@@ -850,10 +905,9 @@ void K23SIPartitionModule::_queueWICleanup(dto::DataRecord&& rec) {
     dto::DataRecord(std::move(rec)); // move the record here so that we can drop it
 }
 
-template <typename RequestT>
 seastar::future<>
-K23SIPartitionModule::_createWI(RequestT&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
-    K2DEBUG("Partition: " << _partition << ", creating WI: " << request);
+K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
+    K2DEBUG("Partition: " << _partition << ", Write Request creating WI: " << request);
     dto::DataRecord rec;
     rec.key = std::move(request.key);
     // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
@@ -866,6 +920,22 @@ K23SIPartitionModule::_createWI(RequestT&& request, std::deque<dto::DataRecord>&
     // TODO write to WAL
     return _persistence.makeCall(versions.front(), deadline);
 }
+
+seastar::future<>
+K23SIPartitionModule::_createWI(dto::K23SIPartialUpdateRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
+    K2DEBUG("Partition: " << _partition << ", PartialUpdate Request creating WI: " << request);
+    dto::DataRecord rec;
+    rec.key = std::move(request.key);
+    // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
+    rec.value = request.value.copy();
+    rec.txnId = dto::TxnId{.trh = std::move(request.trh), .mtr = std::move(request.mtr)};
+    rec.status = dto::DataRecord::WriteIntent;
+
+    versions.push_front(std::move(rec));
+    // TODO write to WAL
+    return _persistence.makeCall(versions.front(), deadline);
+}
+
 
 seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
 K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) {
