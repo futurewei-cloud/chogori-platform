@@ -245,6 +245,67 @@ struct K23SIPartialUpdateResponse {
     K2_PAYLOAD_EMPTY;
 };
 
+enum class K23SIFilterOp : uint8_t {
+    EQ,
+    GT,
+    GTE,
+    LT,
+    LTE,
+    IS_NULL,
+    STARTS_WITH,
+    CONTAINS,
+    AND,
+    OR,
+    XOR,
+    NOT
+};
+
+struct K23SIFilterLeafNode {
+    // A FilterLeafNode can be either a field reference (by name and type) or a liter (user-supplied 
+    // value). In both cases fieldType will be set. fieldName will only by non-empty if it the node 
+    // is a field reference. The Payload literal will ony have size > 0 if the node is a literal.
+    String fieldName;
+    FieldType fieldType;
+    Payload literal;
+
+    K2_PAYLOAD_FIELDS(fieldName, fieldType, literal);
+};
+
+struct K23SIFilterOpNode {
+    K23SIFilterOp op;
+    // The op is applied in the order that the children are in the vector. So a binary operator like LT 
+    //would be applied as leafChildren[0] < leafChildren[1]
+    std::vector<K23SIFilterOpNode> opChildren;
+    std::vector<K23SIFilterLeafNode> leafChildren;
+
+    K2_PAYLOAD_FIELDS(op, opChildren, leafChildren);
+};
+
+struct K23SIQueryRequest {
+    Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    String collectionName;
+    K23SI_MTR mtr; // the MTR for the issuing transaction
+    // use the name "key" so that we can use common routing from CPO client
+    Key key; // key for routing and will be interpreted as inclusive start key by the server
+    Key endKey; // exclusive scan end key
+
+    int32_t recordLimit; // Max number of records server should return, negative is no limit
+    bool includeVersionMismatch; // Whether mismatched schema versions should be included in results
+    bool reverseDirection; // If true, key should be high and endKey low
+
+    K23SIFilterOpNode filterTree;
+    std::vector<String> projection; // Fields by name to include in projection
+
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, recordLimit, includeVersionMismatch, 
+                      reverseDirection, filterTree, projection);
+};
+
+struct K23SIQueryResponse {
+    Key nextToScan; // For continuation token
+    std::vector<SKVRecord::Storage> results;
+    K2_PAYLOAD_FIELDS(nextToScan, results);
+};
+
 struct K23SITxnHeartbeatRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
