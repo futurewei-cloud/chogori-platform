@@ -161,37 +161,19 @@ private:
     void makeHeartbeatTimer();
     void checkResponseStatus(Status& status);
 
-    dto::K23SIReadRequest* makeReadRequest(const dto::SKVRecord& record) const;
-    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord& record, bool erase);
+    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::SKVRecord& record) const;
+    std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase);
 
     template <class T>
-    dto::K23SIReadRequest* makeReadRequest(const T& user_record) const {
+    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const T& user_record) const {
         dto::SKVRecord record(user_record.collectionName, user_record.schema);
         user_record.__writeFields(record);
 
         return makeReadRequest(record);
     }
        
-    dto::K23SIPartialUpdateRequest* makePartialUpdateRequest(dto::SKVRecord& record, std::vector<uint32_t> fieldsToUpdate) {
-        dto::Key key = record.getKey();
-        
-        if (!_write_set.size()) {
-            _trh_key = key;
-            _trh_collection = record.collectionName;
-        }
-        _write_set.push_back(key);
-            
-        return new dto::K23SIPartialUpdateRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            record.collectionName,
-            _mtr,
-            _trh_key,
-            _write_set.size() == 1,
-            key,
-            record.storage.share(),
-            fieldsToUpdate
-        };
-    }
+    std::unique_ptr<dto::K23SIPartialUpdateRequest> makePartialUpdateRequest(dto::SKVRecord& record, 
+            std::vector<uint32_t> fieldsToUpdate);
 
     void prepareQueryRequest(Query& query);
 
@@ -210,7 +192,7 @@ public:
             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
         }
 
-        dto::K23SIReadRequest* request = makeReadRequest(record);
+        std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(record);
 
         _client->read_ops++;
         _ongoing_ops++;
@@ -218,7 +200,7 @@ public:
         return _cpo_client->PartitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
-            then([this, request_schema=record.schema, request] (auto&& response) {
+            then([this, request_schema=record.schema, &collName=request->collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
@@ -228,8 +210,8 @@ public:
                         return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(status), SKVRecord()));
                     }
 
-                    return _client->getSchema(request->collectionName, request_schema->name, k2response.value.schemaVersion)
-                    .then([s=std::move(status), storage=std::move(k2response.value), request] (auto&& response) mutable {
+                    return _client->getSchema(collName, request_schema->name, k2response.value.schemaVersion)
+                    .then([s=std::move(status), storage=std::move(k2response.value), &collName] (auto&& response) mutable {
                         auto& [status, schema_ptr] = response;
                         K2EXPECT(status.is2xxOK(), true);
 
@@ -237,7 +219,7 @@ public:
                             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), SKVRecord()));
                         }
 
-                        SKVRecord skv_record(request->collectionName, schema_ptr);
+                        SKVRecord skv_record(collName, schema_ptr);
                         skv_record.storage = std::move(storage);
                         return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(s), std::move(skv_record)));
                     });
@@ -245,14 +227,14 @@ public:
                     T userResponseRecord{};
 
                     if (status.is2xxOK()) {
-                        SKVRecord skv_record(request->collectionName, request_schema);
+                        SKVRecord skv_record(collName, request_schema);
                         skv_record.storage = std::move(k2response.value);
                         userResponseRecord.__readFields(skv_record);
                     }
 
                     return ReadResult<T>(std::move(status), std::move(userResponseRecord));
                 }
-            }).finally([request] () { delete request; });
+            }).finally([r = std::move(request)] () { (void)r; });
     }
 
     template <class T>
@@ -264,7 +246,7 @@ public:
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
 
-        dto::K23SIWriteRequest* request = nullptr;
+        std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
             request = makeWriteRequest(record, erase);
         } else {
@@ -293,7 +275,7 @@ public:
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
-            }).finally([request] () { delete request; });
+            }).finally([r = std::move(request)] () { (void) r; });
     }
 
     template <typename T1>
@@ -327,7 +309,7 @@ public:
         _client->write_ops++;
         _ongoing_ops++;
 
-        dto::K23SIPartialUpdateRequest* request = nullptr;
+        std::unique_ptr<dto::K23SIPartialUpdateRequest> request = nullptr;
         if constexpr (std::is_same<T1, dto::SKVRecord>()) {
             request = makePartialUpdateRequest(record, fieldsToUpdate);
         } else {
@@ -357,7 +339,7 @@ public:
                 }
         
                 return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
-            }).finally([request] () { delete request; });
+            }).finally([r = std::move(request)] () { (void) r; });
     }
     
     seastar::future<WriteResult> erase(SKVRecord& record);

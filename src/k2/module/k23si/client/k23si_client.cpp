@@ -53,12 +53,12 @@ void K2TxnHandle::makeHeartbeatTimer() {
     _heartbeat_timer.setCallback([this] {
         _client->heartbeats++;
 
-        auto* request = new dto::K23SITxnHeartbeatRequest {
+        auto request = std::make_unique<dto::K23SITxnHeartbeatRequest>(dto::K23SITxnHeartbeatRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
             _trh_collection,
             _trh_key,
             _mtr
-        };
+        });
 
         K2DEBUG("send hb for " << _mtr);
 
@@ -70,13 +70,14 @@ void K2TxnHandle::makeHeartbeatTimer() {
                 K2DEBUG("txn failed: cancelling hb in " << _mtr);
                 _heartbeat_timer.cancel();
             }
-        }).finally([request, this] {
-            delete request;
+        }).finally([request=std::move(request)] {
+            (void)request;
+            // Memory freed after request is out of scope
         });
     });
 }
 
-dto::K23SIReadRequest* K2TxnHandle::makeReadRequest(const dto::SKVRecord& record) const {
+std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(const dto::SKVRecord& record) const {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
             throw new std::runtime_error("Partition key field not set for read request");
@@ -88,15 +89,15 @@ dto::K23SIReadRequest* K2TxnHandle::makeReadRequest(const dto::SKVRecord& record
         }
     }
 
-    return new dto::K23SIReadRequest{
+    return std::make_unique<dto::K23SIReadRequest>(dto::K23SIReadRequest{
         dto::Partition::PVID(), // Will be filled in by PartitionRequest
         record.collectionName,
         _mtr,
         record.getKey()
-    };
+    });
 }
 
-dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase) {
+std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
             throw new std::runtime_error("Partition key field not set for write request");
@@ -116,7 +117,7 @@ dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bo
     }
     _write_set.push_back(key);
 
-    return new dto::K23SIWriteRequest{
+    return std::make_unique<dto::K23SIWriteRequest>(dto::K23SIWriteRequest{
         dto::Partition::PVID(), // Will be filled in by PartitionRequest
         record.collectionName,
         _mtr,
@@ -125,8 +126,30 @@ dto::K23SIWriteRequest* K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bo
         _write_set.size() == 1,
         key,
         record.storage.share()
-    };
+    });
 }
+
+std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record, 
+                    std::vector<uint32_t> fieldsToUpdate) {
+        dto::Key key = record.getKey();
+        
+        if (!_write_set.size()) {
+            _trh_key = key;
+            _trh_collection = record.collectionName;
+        }
+        _write_set.push_back(key);
+            
+        return std::make_unique<dto::K23SIPartialUpdateRequest>(dto::K23SIPartialUpdateRequest{
+            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            record.collectionName,
+            _mtr,
+            _trh_key,
+            _write_set.size() == 1,
+            key,
+            record.storage.share(),
+            fieldsToUpdate
+        });
+    }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     if (!_valid) {
