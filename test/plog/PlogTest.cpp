@@ -78,7 +78,7 @@ seastar::future<> PlogTest::start() {
 
 seastar::future<> PlogTest::runTest1() {
     K2INFO(">>> Test1: get non-existent persistence cluster");
-    auto request = dto::PersistenceClusterGetRequest{.name="Cluster1"};
+    auto request = dto::PersistenceClusterGetRequest{.name="Persistence_Cluster_1"};
     return RPC()
     .callRPC<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, request, *_cpoEndpoint, 100ms)
     .then([](auto&& response) {
@@ -91,7 +91,7 @@ seastar::future<> PlogTest::runTest2() {
     K2INFO(">>> Test2: create a persistence cluster");
     dto::PersistenceGroup group1{.name="Group1", .plogServerEndpoints = _plogConfigEps()};
     dto::PersistenceCluster cluster1;
-    cluster1.name="Cluster1";
+    cluster1.name="Persistence_Cluster_1";
     cluster1.persistenceGroupVector.push_back(group1);
 
     auto request = dto::PersistenceClusterCreateRequest{.cluster=std::move(cluster1)};
@@ -104,8 +104,21 @@ seastar::future<> PlogTest::runTest2() {
 }
 
 seastar::future<> PlogTest::runTest3() {
+    Payload payload([] { return Binary(4096); });
+    K2INFO("AAAAAAAAAAAAAAAAAAA" << payload.getCapacity());
+    uint32_t offset = 100;
+    String plogId = "1234567890";
+    payload.write(offset);
+    payload.write(plogId);
+    uint32_t offset2;
+    String plogId2;
+    payload.seek(0);
+    payload.read(offset2);
+    payload.read(plogId2);
+    K2INFO("PlogId: " << plogId2 << " Offset: " << offset2);
+    ConfigVar<String> configEp("cpo_url");
     K2INFO(">>> Test3: read the persistence group we created in test2");
-    return _client.init("Cluster1")
+    return _client.init("Persistence_Cluster_1", configEp())
     .then([this] () {
         K2INFO("Test3.1: create a plog");
         return _client.create();
@@ -123,7 +136,7 @@ seastar::future<> PlogTest::runTest3() {
         return RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, 1s);
     })
     .then([this] (auto&& response){
-        K2INFO("Test3.3: append a plog");
+        K2INFO("Test3.3: append a plog with PlogId " << _plogId);
         auto& [status, resp] = response;
         K2EXPECT(status, Statuses::S409_Conflict);
         
@@ -227,9 +240,19 @@ seastar::future<> PlogTest::runTest3() {
         return _client.append(_plogId, 45, std::move(payload));
     })
     .then([this] (auto&& response){
+        K2INFO("Test3.14: get the information of a plog");
         auto& [status, offset] = response;
         K2EXPECT(status, Statuses::S409_Conflict);
         K2EXPECT(status.message, "plog is sealed");
+
+        return _client.info(_plogId);
+    })
+    .then([this] (auto&& response){
+        auto& [status, plogInfo] = response;
+        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(std::get<0>(plogInfo), 45);
+        K2EXPECT(std::get<1>(plogInfo), true);
+
         return seastar::make_ready_future<>();
     });
 }

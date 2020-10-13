@@ -34,6 +34,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/PersistenceCluster.h>
+#include <k2/dto/LogStream.h>
 #include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RPCTypes.h>
 #include <k2/transport/Status.h>
@@ -257,6 +258,62 @@ public:
         });
     }
 
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::MetadataLogStreamRegisterResponse>> RegisterMetadataStreamLog(Deadline<ClockT> deadline, String name, String plogId) {
+        dto::MetadataLogStreamRegisterRequest request{.name = std::move(name), .plogId=std::move(plogId)};
+
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::MetadataLogStreamRegisterRequest, dto::MetadataLogStreamRegisterResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_REGISTER, request, *cpo, timeout)
+        .then([this, &request, deadline] (auto&& result) {
+            auto& [status, k2response] = result;
+
+            if (deadline.isOver()) {
+                K2DEBUG("Deadline exceeded");
+                status = Statuses::S408_Request_Timeout("Metadata log stream deadline exceeded");
+                return RPCResponse(std::move(status), dto::MetadataLogStreamRegisterResponse());
+            }
+
+            return RPCResponse(std::move(status), std::move(k2response));
+        });
+    }
+
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::MetadataLogStreamUpdateResponse>> UpdateMetadataStreamLog(Deadline<ClockT> deadline, String name, uint32_t sealedOffset, String newPlogId) {
+        dto::MetadataLogStreamUpdateRequest request{.name = std::move(name), .sealedOffset=std::move(sealedOffset), .newPlogId=std::move(newPlogId)};
+
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::MetadataLogStreamUpdateRequest, dto::MetadataLogStreamUpdateResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_UPDATE, request, *cpo, timeout)
+        .then([this, &request, deadline] (auto&& result) {
+            auto& [status, k2response] = result;
+
+            if (deadline.isOver()) {
+                K2DEBUG("Deadline exceeded");
+                status = Statuses::S408_Request_Timeout("Metadata log stream deadline exceeded");
+                return RPCResponse(std::move(status), dto::MetadataLogStreamUpdateResponse());
+            }
+
+            return RPCResponse(std::move(status), std::move(k2response));
+        });
+    }
+
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::MetadataLogStreamGetResponse>> GetMetadataStreamLog(Deadline<ClockT> deadline, String name) {
+        dto::MetadataLogStreamGetRequest request{.name = std::move(name)};
+
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::MetadataLogStreamGetRequest, dto::MetadataLogStreamGetResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_GET, request, *cpo, timeout)
+        .then([this, &request, deadline] (auto&& result) {
+            auto& [status, k2response] = result;
+
+            if (deadline.isOver()) {
+                K2DEBUG("Deadline exceeded");
+                status = Statuses::S408_Request_Timeout("Metadata log stream deadline exceeded");
+                return RPCResponse(std::move(status), dto::MetadataLogStreamGetResponse());
+            }
+
+            return RPCResponse(std::move(status), std::move(k2response));
+        });
+    }
     seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);
     seastar::future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>> getSchemas(const String& collectionName);
 

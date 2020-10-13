@@ -39,17 +39,27 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
+
+struct PlogInfo {
+    String persistenceClusterName;
+    String persistenceGroupName;
+    String plogId;
+};
+
+
 class PlogClient {
 public:
     PlogClient();
     ~PlogClient();
 
     // obtain the persistence cluster for a given name from the cpo and obtain the endpoints of the plog server
-    seastar::future<> init(String clusterName);
+    seastar::future<> init(String clusterName, String cpo_url);
 
     // allow users to select a specific persistence group by its name
     bool selectPersistenceGroup(String name);
 
+    // return the metadata of a plogId
+    PlogInfo obtainPlogInfo(String plogId);
     // create a plog with retry times
     // TODO: revise this method, making this retry as an internal config variable instead of parameter. 
     seastar::future<std::tuple<Status, String>> create(uint8_t retries = 1);
@@ -62,6 +72,9 @@ public:
 
     // seal a payload
     seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
+
+    // obtain the current offset and status of a plog
+    seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> info(String plogId);
 
 private:
     dto::PersistenceCluster _persistenceCluster; // the current persistence cluster the client holds
@@ -80,12 +93,10 @@ private:
     seastar::future<> _getPlogServerEndpoints(); 
 
     // obtain the persistence cluster for a given name from the cpo
-    seastar::future<> _getPersistenceCluster(String clusterName); 
+    seastar::future<> _getPersistenceCluster(String clusterName, String cpo_url); 
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 100ms};
-    ConfigVar<String> _cpo_url{"cpo_url", ""};
-
 };
 
 } // k2

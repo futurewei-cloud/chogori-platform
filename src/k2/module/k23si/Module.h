@@ -34,13 +34,21 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/tso/client/tso_clientlib.h>
-
+#include <k2/persistence/logStream/LogStream.h>
 #include "ReadCache.h"
 #include "TxnManager.h"
 #include "Config.h"
 #include "Persistence.h"
 
 namespace k2 {
+
+enum class WALRecordType : uint8_t {
+    OnAction = 0,
+    Create,
+    Aborted,
+    Committed
+};
+
 
 class K23SIPartitionModule {
 public: // lifecycle
@@ -147,7 +155,7 @@ private: // methods
     bool _validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions);
 
     // recover data upon startup
     seastar::future<> _recovery();
@@ -189,6 +197,8 @@ private: // members
     Persistence _persistence;
 
     CPOClient _cpo;
+
+    LogStream _logstream;
 
     // get timeNow Timestamp from TSO
     seastar::future<dto::Timestamp> getTimeNow() {

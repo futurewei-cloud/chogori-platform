@@ -21,66 +21,47 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 #pragma once
-// This file contains DTOs for K2 Plog Service
 
 namespace k2 {
 namespace dto {
 
-struct PlogCreateRequest {
+// Request to create a Metadata Log Stream Record 
+struct MetadataLogStreamRegisterRequest {
+    String name;
     String plogId;
-    K2_PAYLOAD_FIELDS(plogId);
+    K2_PAYLOAD_FIELDS(name, plogId);
 };
 
-struct PlogCreateResponse {
+struct MetadataLogStreamRegisterResponse {
     K2_PAYLOAD_EMPTY;
 };
 
-struct PlogAppendRequest {
-    String plogId;
-    uint32_t offset;
-    Payload payload;
-    K2_PAYLOAD_FIELDS(plogId, offset, payload);
-};
-
-struct PlogAppendResponse {
-    uint32_t newOffset;
-    K2_PAYLOAD_FIELDS(newOffset);
-};
-
-struct PlogReadRequest {
-    String plogId;
-    uint32_t offset;
-    uint32_t size;
-    K2_PAYLOAD_FIELDS(plogId, offset, size);
-};
-
-struct PlogReadResponse {
-    Payload payload;
-    K2_PAYLOAD_FIELDS(payload);
-};
-
-struct PlogSealRequest {
-    String plogId;
-    uint32_t truncateOffset;
-    K2_PAYLOAD_FIELDS(plogId, truncateOffset);
-};
-
-struct PlogSealResponse {
+struct MetadataLogStreamUpdateRequest {
+    String name;
     uint32_t sealedOffset;
-    K2_PAYLOAD_FIELDS(sealedOffset);
+    String newPlogId;
+    K2_PAYLOAD_FIELDS(name, sealedOffset, newPlogId);
 };
 
-struct PlogInfoRequest {
-    String plogId;
-    K2_PAYLOAD_FIELDS(plogId);
+struct MetadataLogStreamUpdateResponse {
+    K2_PAYLOAD_EMPTY;
 };
 
-struct PlogInfoResponse {
-    uint32_t currentOffset;
-    bool sealed;
-    K2_PAYLOAD_FIELDS(currentOffset, sealed);
+struct MetadataLogStreamGetRequest {
+    String name;
+    K2_PAYLOAD_FIELDS(name);
 };
 
+struct MetadataElement{
+    String name;
+    uint32_t offset;
+    K2_PAYLOAD_FIELDS(name, offset);
+};
+
+struct MetadataLogStreamGetResponse {
+    std::vector<MetadataElement> streamLog;
+    K2_PAYLOAD_FIELDS(streamLog);
+};
 
 
 }  // namespace dto

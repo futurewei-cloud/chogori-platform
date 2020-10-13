@@ -69,6 +69,10 @@ seastar::future<> PlogServer::start() {
     RPC().registerRPCObserver<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PERSISTENT_SEAL, [this](dto::PlogSealRequest&& request) {
         return _handleSeal(std::move(request));
     });
+
+    RPC().registerRPCObserver<dto::PlogInfoRequest, dto::PlogInfoResponse>(dto::Verbs::PERSISTENT_INFO, [this](dto::PlogInfoRequest&& request) {
+        return _handleInfo(std::move(request));
+    });
     _plogMap.clear();
 
     return seastar::make_ready_future<>();
@@ -87,7 +91,7 @@ PlogServer::_handleCreate(dto::PlogCreateRequest&& request){
 
 seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
 PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
-    K2DEBUG("Received append request for " << request.plogId << " with size" << request.payload.getSize() << " and offset " << request.offset);
+    K2INFO("Received append request for " << request.plogId << " with size" << request.payload.getSize() << " and offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogAppendResponse());
@@ -159,6 +163,18 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
 
     response.sealedOffset = request.truncateOffset;
     return RPCResponse(Statuses::S200_OK("sealed success"), std::move(response));
+};
+
+seastar::future<std::tuple<Status, dto::PlogInfoResponse>>
+PlogServer::_handleInfo(dto::PlogInfoRequest&& request){
+    K2DEBUG("Received info request for " << request.plogId);
+    auto iter = _plogMap.find(request.plogId);
+    if (iter == _plogMap.end()) {
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogInfoResponse());
+    }
+    
+    dto::PlogInfoResponse response{.currentOffset=iter->second.offset, .sealed=iter->second.sealed};
+    return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
 
 

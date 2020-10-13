@@ -121,15 +121,22 @@ seastar::future<> K23SIPartitionModule::start() {
         _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
     }
 
-    // todo call TSO to get a timestamp
-    return getTimeNow()
-        .then([this](dto::Timestamp&& watermark) {
-            K2DEBUG("Cache watermark: " << watermark << ", period=" << _cmeta.retentionPeriod);
-            _retentionTimestamp = watermark - _cmeta.retentionPeriod;
-            _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
-            _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
-            return seastar::when_all_succeed(_recovery(), _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline)).discard_result();
-        });
+    K2INFO("CPO URL " << _config.cpoEndpoint() <<" ClusterName " << _config.persistenceClusrerName());
+    return _logstream.init(_config.cpoEndpoint(), _config.persistenceClusrerName())
+    .then([this] (){
+        return _logstream.create();
+    })
+    .then([this] (){
+        // todo call TSO to get a timestamp
+        return getTimeNow();
+    })
+    .then([this](dto::Timestamp&& watermark) {
+        K2DEBUG("Cache watermark: " << watermark << ", period=" << _cmeta.retentionPeriod);
+        _retentionTimestamp = watermark - _cmeta.retentionPeriod;
+        _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
+        _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
+        return seastar::when_all_succeed(_recovery(), _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline)).discard_result();
+    });
 }
 
 K23SIPartitionModule::~K23SIPartitionModule() {
@@ -352,7 +359,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
     }
 
     // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
-    return _createWI(std::move(request), versions, deadline).then([this]() mutable {
+    return _createWI(std::move(request), versions).then([this]() mutable {
         K2DEBUG("Partition: " << _partition << ", WI created");
         return RPCResponse(dto::K23SIStatus::Created("wi created"), dto::K23SIWriteResponse{});
     });
@@ -511,7 +518,7 @@ void K23SIPartitionModule::_queueWICleanup(dto::DataRecord&& rec) {
 }
 
 seastar::future<>
-K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
+K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions) {
     K2DEBUG("Partition: " << _partition << ", creating WI: " << request);
     dto::DataRecord rec;
     rec.key = std::move(request.key);
@@ -523,7 +530,10 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto
 
     versions.push_front(std::move(rec));
     // TODO write to WAL
-    return _persistence.makeCall(versions.front(), deadline);
+    Payload payload([] { return Binary(4096); });
+    payload.write(WALRecordType::Create);
+    payload.write(versions.front());
+    return _logstream.write(std::move(payload));
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>

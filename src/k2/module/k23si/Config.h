@@ -62,5 +62,11 @@ struct K23SIConfig {
 
     // the endpoint for the CPO
     ConfigVar<String> cpoEndpoint{"k23si_cpo_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
+
+    // the name of the persistence cluster
+    ConfigVar<String> persistenceClusrerName{"k23si_persistence_cluster", "Persistence_Cluster_1"};
+
+    // the name of the logstream
+    ConfigVar<String> logStreamName{"k23si_logstream_name", "Log_Stream_1"};
 };
 }

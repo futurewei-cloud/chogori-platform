@@ -39,24 +39,26 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2
 {
 
-// each PlogPage is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
-struct PlogPage {
-    PlogPage(){
-        sealed=false;
-        offset=0;
-        payload = Payload(([] { return Binary(2 * 1024 * 1024); }));
-    }
 
-    bool sealed;
-    uint32_t offset;
-    Payload payload; 
-};
 
 class PlogServer
 {
 private:
     // the maximum size of each plog
-    const uint32_t PLOG_MAX_SIZE = 2 * 1024 * 1024;
+    const static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
+
+    // each PlogPage is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
+    struct PlogPage {
+        PlogPage(){
+            sealed=false;
+            offset=0;
+            payload = Payload(([] { return Binary(PLOG_MAX_SIZE); }));
+        }
+
+        bool sealed;
+        uint32_t offset;
+        Payload payload; 
+    };
 
     // a map to store all the plogs based on plog id
     std::unordered_map<String, PlogPage> _plogMap;
@@ -76,6 +78,10 @@ private:
     //handle the seal request
     seastar::future<std::tuple<Status, dto::PlogSealResponse>>
     _handleSeal(dto::PlogSealRequest&& request);
+
+    //handle the seal request
+    seastar::future<std::tuple<Status, dto::PlogInfoResponse>>
+    _handleInfo(dto::PlogInfoRequest&& request);
     
 public:
      PlogServer();
