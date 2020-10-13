@@ -62,6 +62,9 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
+    seastar::future<std::tuple<Status, dto::K23SIPartialUpdateResponse>>
+    handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
 
@@ -144,11 +147,33 @@ private: // methods
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
-    bool _validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
+    template <typename RequestT>
+    bool _validateStaleWrite(const RequestT& req, std::deque<dto::DataRecord>& versions);
 
     // helper method used to create and persist a WriteIntent
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIPartialUpdateRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    
+    // method to parse the partial record to full record, return turn if parse successful
+    bool _parsePartialRecord(dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions);
 
+    // make every fields for a partial update request in the condition of same schema and same version
+    bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
+    // make every fields for a partial update request in the condition of same schema and different versions
+    bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
+    
+    // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
+    std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
+
+    // judge whether fieldIdx is in fieldsToUpdate. return true if yes(is in fieldsToUpdate). 
+    bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsToUpdate);
+
+    // advance payload position to the next field
+    bool _advancePayloadPosition(Payload& payload, dto::FieldType type);
+
+    // Read() the next field from the base payload and write() in the next field of new payload, 
+    bool _copyPayloadBaseToUpdate(Payload& base, Payload& update, dto::FieldType type);   
+    
     // recover data upon startup
     seastar::future<> _recovery();
 
