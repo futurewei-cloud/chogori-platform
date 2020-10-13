@@ -158,9 +158,9 @@ private: // methods
     bool _parsePartialRecord(dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions);
 
     // make every fields for a partial update request in the condition of same schema and same version
-    bool _makeFieldsForSameVersion(dto::Schema schema, dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions);
+    bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
     // make every fields for a partial update request in the condition of same schema and different versions
-    bool _makeFieldsForDiffVersion(dto::Schema schema, dto::Schema baseSchema, dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions);
+    bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
     
     // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
     std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);

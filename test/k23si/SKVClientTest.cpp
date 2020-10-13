@@ -506,7 +506,7 @@ seastar::future<> runScenario04() {
                                 K2EXPECT(*partkey, "partkey_s04");
                                 K2EXPECT(*rangekey, "rangekey_s04");
                                 K2EXPECT(*data1, "data1_v3");   // "f1" field was updated to v3 
-                                K2EXPECT(*data2, "");           // "f2" field was updated to null
+                                K2ASSERT(!data2, "data2 is nullOpt");         // "f2" field was updated to null
                                 
                                 return seastar::make_ready_future<>();
                             });

@@ -372,7 +372,7 @@ public:
             request = makePartialUpdateRequest(record, fieldsToUpdate);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
-            record.__updateFields(skv_record);
+            record.__writeFields(skv_record);
             request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
         }
         if (request == nullptr) {
