@@ -35,9 +35,9 @@ namespace dto {
 enum class FieldType : uint8_t {
     NULL_T = 0,
     STRING = 1, // NULL characters in string is OK
-    UINT32T = 2,
-    UINT64T = 3,
-    INT32T = 4, // Not supported as key field for now
+    INT16T = 2, 
+    INT32T = 3, 
+    INT64T = 4,
     FLOAT = 5, // Not supported as key field for now
     NULL_LAST = 255
 };
@@ -62,12 +62,12 @@ namespace std {
             return os << "NULL";
         case k2::dto::FieldType::STRING:
             return os << "STRING";
-        case k2::dto::FieldType::UINT32T:
-            return os << "UINT32T";
-        case k2::dto::FieldType::UINT64T:
-            return os << "UINT64T";
+        case k2::dto::FieldType::INT16T:
+            return os << "INT16T";
         case k2::dto::FieldType::INT32T:
             return os << "INT32T";
+        case k2::dto::FieldType::INT64T:
+            return os << "INT64T";
         case k2::dto::FieldType::FLOAT:
             return os << "FLOAT";
         case k2::dto::FieldType::NULL_LAST:
