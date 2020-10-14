@@ -80,6 +80,7 @@ public:  // application lifespan
             .then([this] { return runScenario03(); })
             .then([this] { return runScenario04(); })
             .then([this] { return runScenario05(); })
+            .then([this] { return runScenario06(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -851,6 +852,38 @@ seastar::future<> runScenario05() {
             .then([] {
                 K2INFO("scenario 05 partial update tests passed for different schema versions");
             });
+        });
+    });
+}
+
+seastar::future<> runScenario06() {
+    K2INFO("Scenario 06");
+    return _client.beginTxn(k2::K2TxnOptions())
+    .then([this] (k2::K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn),
+            [this] (k2::K2TxnHandle& txnHandle) {
+                return _client.getSchema(collname, "schema", 1)
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+
+                    k2::dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<k2::String>("partkey");
+                    // not specifying range key record.serializeNext<k2::String>("rangekey");
+
+                    return txnHandle.write<k2::dto::SKVRecord>(record);
+                })
+                .then([this, &txnHandle] (auto&& result) {
+                    (void) result;
+                    K2EXPECT(false, true); // We expect exception
+                    return seastar::make_ready_future<>();
+                })
+                .handle_exception( [] (auto&& e) {
+                    (void) e;
+                    K2INFO("Got expected exception with write after end request");
+                    return seastar::make_ready_future<>();
+                });
         });
     });
 }

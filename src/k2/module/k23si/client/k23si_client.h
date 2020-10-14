@@ -42,6 +42,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/tso/client/tso_clientlib.h>
 #include <k2/common/Timer.h>
 
+#include "query.h"
 
 namespace k2 {
 
@@ -102,53 +103,9 @@ public:
     K23SIClientConfig(){};
 };
 
-// Represents a new or in-progress query (aka read scan with predicate and projection)
-class Query {
-public:
-    Query() = default;
-
-    template <typename T>
-    dto::K23SIFilterLeafNode makeFilterLiteralNode(T operand);
-    dto::K23SIFilterLeafNode makeFilterFieldRefNode(const String& fieldName, dto::FieldType fieldType);
-    dto::K23SIFilterOpNode makeFilterOpNode(dto::K23SIFilterOp, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren);
-
-    void setFilterTreeRoot(dto::K23SIFilterOpNode&& root);
-
-    void addProjection(const String& fieldName);
-    void addProjection(const std::vector<String>& fieldNames);
-
-    int32_t limitLeft = -1; // Negative means no limit
-    bool includeVersionMismatch = false;
-    bool isDone(); // If false, more results may be available
-
-    // The user must specify the inclusive start and exclusive end keys for the range scan, but the client 
-    // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an 
-    // appropriate schema by the client createQuery function. The user is then expected to serialize the 
-    // key fields into the SKVRecords, similar to a single key read request.
-    //
-    // They must be a fully specified prefix of the key fields. For example, if the key fields are defined 
-    // as {ID, NAME, TIMESTAMP} then {ID = 1, TIMESTAMP = 10} is not a valid start or end scanRecord, but 
-    // {ID = 1, NAME = J} is valid.
-    dto::SKVRecord startScanRecord;
-    dto::SKVRecord endScanRecord;
-
-private:
-    std::shared_ptr<dto::Schema> schema = nullptr;
-    bool done = false;
-    bool inprogress = false; // Used to prevent user from changing predicates after query has started
-    dto::Key continuationToken;
-    dto::K23SIQueryRequest request;
-
-    friend class K2TxnHandle;
-    friend class K23SIClient;
-};
-
-class QueryResult {
-public:
-    QueryResult(Status s, dto::K23SIQueryResponse&& r);
-
-    Status status;
-    std::vector<SKVRecord> records;
+struct CreateQueryResult {
+    Status status;                        // the status of the response
+    Query query;  // the query if the response was OK
 };
 
 class K2TxnHandle;
@@ -167,7 +124,7 @@ public:
     static constexpr int64_t ANY_VERSION = -1;
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
-    seastar::future<Query> createQuery(const String& collectionName, const String& schemaName);
+    seastar::future<CreateQueryResult> createQuery(const String& collectionName, const String& schemaName);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -177,6 +134,7 @@ public:
 
     uint64_t read_ops{0};
     uint64_t write_ops{0};
+    uint64_t query_ops{0};
     uint64_t total_txns{0};
     uint64_t successful_txns{0};
     uint64_t abort_conflicts{0};
@@ -203,38 +161,21 @@ private:
     void makeHeartbeatTimer();
     void checkResponseStatus(Status& status);
 
-    dto::K23SIReadRequest* makeReadRequest(const dto::SKVRecord& record) const;
-    dto::K23SIWriteRequest* makeWriteRequest(dto::SKVRecord& record, bool erase);
+    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::SKVRecord& record) const;
+    std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase);
 
     template <class T>
-    dto::K23SIReadRequest* makeReadRequest(const T& user_record) const {
+    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const T& user_record) const {
         dto::SKVRecord record(user_record.collectionName, user_record.schema);
         user_record.__writeFields(record);
 
         return makeReadRequest(record);
     }
        
-    dto::K23SIPartialUpdateRequest* makePartialUpdateRequest(dto::SKVRecord& record, std::vector<uint32_t> fieldsToUpdate) {
-        dto::Key key = record.getKey();
-        
-        if (!_write_set.size()) {
-            _trh_key = key;
-            _trh_collection = record.collectionName;
-        }
-        _write_set.push_back(key);
-            
-        return new dto::K23SIPartialUpdateRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            record.collectionName,
-            _mtr,
-            _trh_key,
-            _write_set.size() == 1,
-            key,
-            record.storage.share(),
-            fieldsToUpdate
-        };
-    }
+    std::unique_ptr<dto::K23SIPartialUpdateRequest> makePartialUpdateRequest(dto::SKVRecord& record, 
+            std::vector<uint32_t> fieldsToUpdate);
 
+    void prepareQueryRequest(Query& query);
 
 public:
     K2TxnHandle() = default;
@@ -251,15 +192,15 @@ public:
             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
         }
 
+        std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(record);
+
         _client->read_ops++;
         _ongoing_ops++;
-
-        dto::K23SIReadRequest* request = makeReadRequest(record);
 
         return _cpo_client->PartitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
-            then([this, request_schema=record.schema, request] (auto&& response) {
+            then([this, request_schema=record.schema, &collName=request->collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
@@ -269,8 +210,8 @@ public:
                         return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(status), SKVRecord()));
                     }
 
-                    return _client->getSchema(request->collectionName, request_schema->name, k2response.value.schemaVersion)
-                    .then([s=std::move(status), storage=std::move(k2response.value), request] (auto&& response) mutable {
+                    return _client->getSchema(collName, request_schema->name, k2response.value.schemaVersion)
+                    .then([s=std::move(status), storage=std::move(k2response.value), &collName] (auto&& response) mutable {
                         auto& [status, schema_ptr] = response;
                         K2EXPECT(status.is2xxOK(), true);
 
@@ -278,7 +219,7 @@ public:
                             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), SKVRecord()));
                         }
 
-                        SKVRecord skv_record(request->collectionName, schema_ptr);
+                        SKVRecord skv_record(collName, schema_ptr);
                         skv_record.storage = std::move(storage);
                         return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(s), std::move(skv_record)));
                     });
@@ -286,14 +227,14 @@ public:
                     T userResponseRecord{};
 
                     if (status.is2xxOK()) {
-                        SKVRecord skv_record(request->collectionName, request_schema);
+                        SKVRecord skv_record(collName, request_schema);
                         skv_record.storage = std::move(k2response.value);
                         userResponseRecord.__readFields(skv_record);
                     }
 
                     return ReadResult<T>(std::move(status), std::move(userResponseRecord));
                 }
-            }).finally([request] () { delete request; });
+            }).finally([r = std::move(request)] () { (void)r; });
     }
 
     template <class T>
@@ -304,10 +245,8 @@ public:
         if (_failed) {
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
-        _client->write_ops++;
-        _ongoing_ops++;
 
-        dto::K23SIWriteRequest* request = nullptr;
+        std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
             request = makeWriteRequest(record, erase);
         } else {
@@ -315,6 +254,9 @@ public:
             record.__writeFields(skv_record);
             request = makeWriteRequest(skv_record, erase);
         }
+
+        _client->write_ops++;
+        _ongoing_ops++;
 
         return _cpo_client->PartitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
@@ -333,7 +275,7 @@ public:
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
-            }).finally([request] () { delete request; });
+            }).finally([r = std::move(request)] () { (void) r; });
     }
 
     template <typename T1>
@@ -367,7 +309,7 @@ public:
         _client->write_ops++;
         _ongoing_ops++;
 
-        dto::K23SIPartialUpdateRequest* request = nullptr;
+        std::unique_ptr<dto::K23SIPartialUpdateRequest> request = nullptr;
         if constexpr (std::is_same<T1, dto::SKVRecord>()) {
             request = makePartialUpdateRequest(record, fieldsToUpdate);
         } else {
@@ -397,7 +339,7 @@ public:
                 }
         
                 return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
-            }).finally([request] () { delete request; });
+            }).finally([r = std::move(request)] () { (void) r; });
     }
     
     seastar::future<WriteResult> erase(SKVRecord& record);

@@ -280,9 +280,11 @@ public:
     bool owns(const Key& key) const;
     Partition& operator()() { return _partition; }
     const Partition& operator()() const { return _partition; }
+    HashScheme getHashScheme() { return _scheme; }
     friend std::ostream& operator<<(std::ostream& os, const OwnerPartition& p) {
         return os << p._partition;
     }
+
 
 private:
     Partition _partition;

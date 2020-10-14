@@ -341,56 +341,6 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
 
 // Error test cases
 
-TEST_CASE("Test6: getPartitionKey() is called before all partition key fields are serialized") {
-    k2::dto::Schema schema;
-    schema.name = "test_schema";
-    schema.version = 1;
-    schema.fields = std::vector<k2::dto::SchemaField> {
-            {k2::dto::FieldType::STRING, "LastName", false, false},
-            {k2::dto::FieldType::STRING, "FirstName", false, false},
-            {k2::dto::FieldType::UINT32T, "Balance", false, false},
-    };
-
-    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
-    schema.setRangeKeyFieldsByName(std::vector<k2::String>{"Balance"});
-
-    k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
-
-    doc.serializeNext<k2::String>("Baggins");
-
-    try {
-        k2::String partitionKey = doc.getPartitionKey();
-        REQUIRE(false);
-    } catch (...) {
-        std::cout << "Test6: Partition key field not set." << std::endl;
-    }
-}
-
-
-TEST_CASE("Test7: getRangeKey() is called before all range key fields are serialized") {
-    k2::dto::Schema schema;
-    schema.name = "test_schema";
-    schema.version = 1;
-    schema.fields = std::vector<k2::dto::SchemaField> {
-            {k2::dto::FieldType::STRING, "LastName", false, false},
-            {k2::dto::FieldType::STRING, "FirstName", false, false},
-            {k2::dto::FieldType::UINT32T, "Balance", false, false},
-    };
-
-    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
-    schema.setRangeKeyFieldsByName(std::vector<k2::String>{"Balance"});
-
-    k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
-
-    try {
-        k2::String rangeKey = doc.getRangeKey();
-        REQUIRE(false);
-    } catch (...) {
-        std::cout << "Test7: Range key field not set." << std::endl;
-    }
-}
-
-
 TEST_CASE("Test8: deserializeField(string name) on a name that is not in schema") {
     k2::dto::Schema schema;
     schema.name = "test_schema";

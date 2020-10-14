@@ -56,6 +56,14 @@ struct K23SIConfig {
     // how many writes to finalize in parallel
     ConfigVar<uint64_t> finalizeBatchSize{"k23si_txn_finalize_batch_size", 20};
 
+    // Max number of records to return in a single query response
+    ConfigVar<uint32_t> paginationLimit{"k23si_query_pagination_limit", 10};
+
+    // Min records in response needed to avoid a push during query processing,
+    // and instead returning a paginated response early
+    // Default is > paginiationLimit so it will always push
+    ConfigVar<uint32_t> queryPushLimit{"k23si_query_push_limit", 11};
+
     // the endpoint for our persistence
     ConfigVar<std::vector<String>> persistenceEndpoint{"k23si_persistence_endpoints"};
     ConfigDuration persistenceTimeout{"k23si_persistence_timeout", 10s};
