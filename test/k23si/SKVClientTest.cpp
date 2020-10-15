@@ -593,8 +593,8 @@ seastar::future<> runScenario05() {
         schema3.fields = std::vector<k2::dto::SchemaField> {
                 {k2::dto::FieldType::STRING,  "partition", false, false},
                 {k2::dto::FieldType::STRING,  "range", false, false},
-                {k2::dto::FieldType::UINT64T, "f3", false, false},
-                {k2::dto::FieldType::UINT32T, "f2", false, false},
+                {k2::dto::FieldType::INT64T, "f3", false, false},
+                {k2::dto::FieldType::INT32T, "f2", false, false},
                 {k2::dto::FieldType::STRING,  "f1", false, false},
         };   
         schema3.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition"});
@@ -686,7 +686,7 @@ seastar::future<> runScenario05() {
                     k2::dto::SKVRecord record2(collname, schemaPtr);
                     record2.serializeNext<k2::String>("partkey_s05");
                     record2.serializeNext<k2::String>("rangekey_s05");
-                    record2.serializeNext<uint64_t>(64001234);
+                    record2.serializeNext<int64_t>(64001234);
                     record2.skipNext();
                     record2.serializeNext<k2::String>("data1_v2");
                     return txnHandle.partialUpdate<k2::dto::SKVRecord>(record2, {2,4})
@@ -706,7 +706,7 @@ seastar::future<> runScenario05() {
                     record3.serializeNext<k2::String>("partkey_s05");
                     record3.serializeNext<k2::String>("rangekey_s05");
                     record3.skipNext();
-                    record3.serializeNext<uint32_t>(32001234);
+                    record3.serializeNext<int32_t>(32001234);
                     record3.serializeNext<k2::String>("data1_v2");
                     return txnHandle.partialUpdate<k2::dto::SKVRecord>(record3, (std::vector<k2::String>){"f1", "f2"})
                     .then([](auto&& response) {
@@ -724,8 +724,8 @@ seastar::future<> runScenario05() {
                     k2::dto::SKVRecord record4(collname, schemaPtr);
                     record4.serializeNext<k2::String>("partkey_s05");
                     record4.serializeNext<k2::String>("rangekey_s05");
-                    record4.serializeNext<uint64_t>(64001234);
-                    record4.serializeNext<uint32_t>(32001234);
+                    record4.serializeNext<int64_t>(64001234);
+                    record4.serializeNext<int32_t>(32001234);
                     record4.skipNext();
                     return txnHandle.partialUpdate<k2::dto::SKVRecord>(record4, (std::vector<k2::String>){"f3", "f2"})
                     .then([](auto&& response) {
@@ -750,8 +750,8 @@ seastar::future<> runScenario05() {
                                 
                     std::optional<k2::String> partkey = response.value.deserializeNext<k2::String>();
                     std::optional<k2::String> rangekey = response.value.deserializeNext<k2::String>();
-                    std::optional<uint64_t> data3 = response.value.deserializeNext<uint64_t>();
-                    std::optional<uint32_t> data2 = response.value.deserializeNext<uint32_t>();
+                    std::optional<int64_t> data3 = response.value.deserializeNext<int64_t>();
+                    std::optional<int32_t> data2 = response.value.deserializeNext<int32_t>();
                     std::optional<k2::String> data1 = response.value.deserializeNext<k2::String>();
                     
                     K2EXPECT(*partkey, "partkey_s05");

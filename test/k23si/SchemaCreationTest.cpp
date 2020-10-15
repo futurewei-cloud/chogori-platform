@@ -189,7 +189,7 @@ seastar::future<> runScenario00() {
         schema.fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::STRING, "FirstName", false, false},
                 {dto::FieldType::STRING, "LastName", false, false},
-                {dto::FieldType::UINT32T, "Balance", false, false}
+                {dto::FieldType::INT32T, "Balance", false, false}
         };
 
         schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
@@ -265,10 +265,10 @@ seastar::future<> runScenario02(){
         K2EXPECT(status, Statuses::S200_OK);
 
 
-        K2INFO("STEP2: using version1 to add a new field \"Age\" with \"UINT32_T\" fieldType");
+        K2INFO("STEP2: using version1 to add a new field \"Age\" with \"INT32_T\" fieldType");
         auto schema(resp.schemas[0]);
         schema.version = 333;
-        schema.fields.push_back( {dto::FieldType::UINT32T, "Age", false, false} );
+        schema.fields.push_back( {dto::FieldType::INT32T, "Age", false, false} );
         K2EXPECT(schema.basicValidation(), Statuses::S200_OK);
         K2EXPECT(resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
 
@@ -299,7 +299,7 @@ seastar::future<> runScenario03(){
             {dto::FieldType::STRING, "School", false, false},
             {dto::FieldType::STRING, "Major", false, false},
             {dto::FieldType::STRING, "Grade", false, false},
-            {dto::FieldType::UINT32T, "Class", false, false}
+            {dto::FieldType::INT32T, "Class", false, false}
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
@@ -334,7 +334,7 @@ seastar::future<> runScenario04(){
             {dto::FieldType::STRING, "School", false, false},
             {dto::FieldType::STRING, "School", false, false},
             {dto::FieldType::STRING, "Grade", false, false},
-            {dto::FieldType::UINT32T, "Class", false, false}
+            {dto::FieldType::INT32T, "Class", false, false}
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
@@ -369,7 +369,7 @@ seastar::future<> runScenario05(){
     schema.fields = std::vector<dto::SchemaField> {
             {dto::FieldType::STRING, "School", false, false},
             {dto::FieldType::STRING, "Grade", false, false},
-            {dto::FieldType::UINT32T, "Class", false, false}
+            {dto::FieldType::INT32T, "Class", false, false}
     };
     // set partitionKeyFields manually by index, and an index is out of bounds of the fields
     schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
@@ -407,7 +407,7 @@ seastar::future<> runScenario06(){
             {dto::FieldType::STRING, "School", false, false},
             {dto::FieldType::STRING, "Major", false, false},
             {dto::FieldType::STRING, "Grade", false, false},
-            {dto::FieldType::UINT32T, "Class", false, false}
+            {dto::FieldType::INT32T, "Class", false, false}
     };
     // set partitionKeyFields manually by index, and index 0 is not a partition or range key field
     schema.partitionKeyFields.push_back(1);
@@ -483,7 +483,7 @@ seastar::future<> runScenario08(){
                 sc = &schema;
                 schema.version = 22;
                 // the type of a key field changes
-                schema.fields[1].type = dto::FieldType::UINT32T;
+                schema.fields[1].type = dto::FieldType::INT32T;
                 break;
             }
         }
@@ -500,7 +500,7 @@ seastar::future<> runScenario08(){
             auto& [status, resp] = response;
             K2EXPECT(status, Statuses::S200_OK);
             for(auto& schema : resp.schemas) {
-                if (schema.name == scWoRKey && schema.fields[1].type == dto::FieldType::UINT32T) {
+                if (schema.name == scWoRKey && schema.fields[1].type == dto::FieldType::INT32T) {
                     K2FAIL("Schema found but should not exist");
                 }
             }
