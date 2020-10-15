@@ -27,33 +27,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-dto::K23SIFilterLeafNode Query::makeFilterFieldRefNode(const String& fieldName, dto::FieldType fieldType) {
-    return dto::K23SIFilterLeafNode {
-        fieldName,
-        fieldType,
-        Payload()
-    };
-}
-
-dto::K23SIFilterLeafNode makeNullFilterLiteralNode() {
-    return dto::K23SIFilterLeafNode {
-        "",
-        dto::FieldType::NULL_T,
-        Payload()
-    };
-}
-
-dto::K23SIFilterOpNode Query::makeFilterOpNode(dto::K23SIFilterOp op, std::vector<dto::K23SIFilterLeafNode>&& leafChildren, std::vector<dto::K23SIFilterOpNode>&& opChildren) {
-    return dto::K23SIFilterOpNode {
-        op,
-        std::move(opChildren),
-        std::move(leafChildren)
-    };
-}
-
-
-void Query::setFilterTreeRoot(dto::K23SIFilterOpNode&& root) {
-    request.filterTree = std::move(root);
+void Query::setFilterExpression(dto::expression::Expression&& root) {
+    request.filterExpression = std::move(root);
 }
 
 void Query::setReverseDirection(bool reverseDirection) {
@@ -87,7 +62,7 @@ seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, c
     QueryResult* result = new QueryResult(std::move(status));
 
     for (SKVRecord::Storage& storage : response.results) {
-        futures.push_back(client->getSchema(query.request.collectionName, 
+        futures.push_back(client->getSchema(query.request.collectionName,
                     query.schema->name, storage.schemaVersion)
         .then([&query, result, s=std::move(storage)] (GetSchemaResult&& get_response) mutable {
             if (!get_response.status.is2xxOK()) {

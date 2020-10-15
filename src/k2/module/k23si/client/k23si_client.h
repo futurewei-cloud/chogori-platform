@@ -171,8 +171,8 @@ private:
 
         return makeReadRequest(record);
     }
-       
-    std::unique_ptr<dto::K23SIPartialUpdateRequest> makePartialUpdateRequest(dto::SKVRecord& record, 
+
+    std::unique_ptr<dto::K23SIPartialUpdateRequest> makePartialUpdateRequest(dto::SKVRecord& record,
             std::vector<uint32_t> fieldsToUpdate);
 
     void prepareQueryRequest(Query& query);
@@ -321,7 +321,7 @@ public:
             return seastar::make_ready_future<PartialUpdateResult> (
                     PartialUpdateResult(dto::K23SIStatus::BadParameter("error makePartialUpdateRequest()")) );
         }
-        
+
         return _cpo_client->PartitionRequest
             <dto::K23SIPartialUpdateRequest, dto::K23SIPartialUpdateResponse, dto::Verbs::K23SI_PARTIAL_UPDATE>
             (_options.deadline, *request).
@@ -329,7 +329,7 @@ public:
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
-        
+
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
@@ -337,11 +337,11 @@ public:
                     makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
-        
+
                 return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
             }).finally([r = std::move(request)] () { (void) r; });
     }
-    
+
     seastar::future<WriteResult> erase(SKVRecord& record);
 
     // Get one set of paginated results for a query. User may need to call again with same query

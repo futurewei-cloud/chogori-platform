@@ -90,7 +90,7 @@ public:
             }
         }
 
-        throw new std::runtime_error("Schema not followed in record deserialization");
+        return std::nullopt;
     }
 
     void seekField(uint32_t fieldIndex);
@@ -144,7 +144,7 @@ public:
     // no-arg version to satisfy the template expansion above in the terminal case
     void readMany() {}
 
-    // We expose a shared payload in case the user wants to write it to file or otherwise 
+    // We expose a shared payload in case the user wants to write it to file or otherwise
     // store it on their own. For normal K23SI operations the user does not need to touch this
     Payload getSharedPayload();
 
@@ -178,7 +178,7 @@ public:
 };
 
 // Convience macro that does the switch statement on the record field type for the user
-// "func" must be the name of a templatized function that can be instantiated for all 
+// "func" must be the name of a templatized function that can be instantiated for all
 //  field types. The first arg to "func" is an optional of the field type,
 // the second is a string for the name of the field
 // and a variable number (at least 1) of arguments passed from the user
@@ -219,7 +219,7 @@ public:
                throw new std::runtime_error("Unknown type"); \
         } \
     } while (0) \
-   
+
 
 #define FOR_EACH_RECORD_FIELD(record, func, ...) \
     do { \

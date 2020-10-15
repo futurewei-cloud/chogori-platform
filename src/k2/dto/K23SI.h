@@ -30,6 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "ControlPlaneOracle.h"
 #include "SKVRecord.h"
 #include "Timestamp.h"
+#include "Expression.h"
 
 namespace k2 {
 namespace dto {
@@ -191,6 +192,7 @@ struct K23SIStatus {
     static const inline Status Created=k2::Statuses::S201_Created;
     static const inline Status OperationNotAllowed=k2::Statuses::S405_Method_Not_Allowed;
     static const inline Status BadParameter=k2::Statuses::S422_Unprocessable_Entity;
+    static const inline Status BadFilterExpression=k2::Statuses::S406_Not_Acceptable;
 };
 
 struct K23SIWriteRequest {
@@ -245,43 +247,6 @@ struct K23SIPartialUpdateResponse {
     K2_PAYLOAD_EMPTY;
 };
 
-enum class K23SIFilterOp : uint8_t {
-    EQ,
-    GT,
-    GTE,
-    LT,
-    LTE,
-    IS_NULL,
-    STARTS_WITH,
-    CONTAINS,
-    AND,
-    OR,
-    XOR,
-    NOT,
-    OP_MAX = 255
-};
-
-struct K23SIFilterLeafNode {
-    // A FilterLeafNode can be either a field reference (by name and type) or a liter (user-supplied 
-    // value). In both cases fieldType will be set. fieldName will only by non-empty if it the node 
-    // is a field reference. The Payload literal will ony have size > 0 if the node is a literal.
-    String fieldName;
-    FieldType fieldType;
-    Payload literal;
-
-    K2_PAYLOAD_FIELDS(fieldName, fieldType, literal);
-};
-
-struct K23SIFilterOpNode {
-    K23SIFilterOp op = K23SIFilterOp::OP_MAX;
-    // The op is applied in the order that the children are in the vector. So a binary operator like LT 
-    //would be applied as leafChildren[0] < leafChildren[1]
-    std::vector<K23SIFilterOpNode> opChildren;
-    std::vector<K23SIFilterLeafNode> leafChildren;
-
-    K2_PAYLOAD_FIELDS(op, opChildren, leafChildren);
-};
-
 struct K23SIQueryRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName;
@@ -294,11 +259,11 @@ struct K23SIQueryRequest {
     bool includeVersionMismatch = false; // Whether mismatched schema versions should be included in results
     bool reverseDirection = false; // If true, key should be high and endKey low
 
-    K23SIFilterOpNode filterTree;
+    expression::Expression filterExpression; // the filter expression for this query
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, recordLimit, includeVersionMismatch, 
-                      reverseDirection, filterTree, projection);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, recordLimit, includeVersionMismatch,
+                      reverseDirection, filterExpression, projection);
 };
 
 struct K23SIQueryResponse {

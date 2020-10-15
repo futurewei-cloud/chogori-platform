@@ -45,6 +45,7 @@ template <> FieldType TToFieldType<int16_t>() { return FieldType::INT16T; }
 template <> FieldType TToFieldType<int32_t>() { return FieldType::INT32T; }
 template <> FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
 template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
+template <> FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
 
 // All conversion assume ascending ordering
 
@@ -65,7 +66,7 @@ template <> String FieldToKeyString<String>(const String& field) {
     size_t originalCursor = 0;
     size_t escapedCursor = 1;
     for (size_t nullPos : foundNulls) {
-        std::copy(field.begin() + originalCursor, field.begin() + nullPos + 1, 
+        std::copy(field.begin() + originalCursor, field.begin() + nullPos + 1,
                   escapedString.begin() + escapedCursor);
 
         size_t count = nullPos - originalCursor + 1;
@@ -76,7 +77,7 @@ template <> String FieldToKeyString<String>(const String& field) {
     }
 
     if (originalCursor < field.size()) {
-        std::copy(field.begin() + originalCursor, field.end(), 
+        std::copy(field.begin() + originalCursor, field.end(),
                   escapedString.begin() + escapedCursor);
     }
 

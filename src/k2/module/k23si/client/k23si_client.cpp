@@ -129,16 +129,16 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
     });
 }
 
-std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record, 
+std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record,
                     std::vector<uint32_t> fieldsToUpdate) {
         dto::Key key = record.getKey();
-        
+
         if (!_write_set.size()) {
             _trh_key = key;
             _trh_collection = record.collectionName;
         }
         _write_set.push_back(key);
-            
+
         return std::make_unique<dto::K23SIPartialUpdateRequest>(dto::K23SIPartialUpdateRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
             record.collectionName,
@@ -154,7 +154,7 @@ std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRe
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     if (!_valid) {
         return seastar::make_exception_future<EndResult>(std::runtime_error("Tried to end() an invalid TxnHandle"));
-    }    
+    }
     // User is not allowed to call anything else on this TxnHandle after end()
     _valid = false;
 
@@ -435,10 +435,10 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
 
     query.request.key = query.startScanRecord.getKey();
     query.request.endKey = query.endScanRecord.getKey();
-    if (query.request.key > query.request.endKey && !query.request.reverseDirection && 
+    if (query.request.key > query.request.endKey && !query.request.reverseDirection &&
                 query.request.endKey.partitionKey != "") {
         throw new std::runtime_error("Start key is greater than end key for forward direction query");
-    } else if (query.request.key < query.request.endKey && query.request.reverseDirection && 
+    } else if (query.request.key < query.request.endKey && query.request.reverseDirection &&
                 query.request.key.partitionKey != "") {
         throw new std::runtime_error("End key is greater than start key for reverse direction query");
     }
