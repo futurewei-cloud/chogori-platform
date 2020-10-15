@@ -131,20 +131,20 @@ compareOptionals(std::optional<std::tuple<bool, T1>>& a, std::optional<std::tupl
     } while (0);
 
 template <typename B_TYPE, typename A>
-void _innerCompareHelper(SchematizedValue& b, A& a_opt, bool& result) {
+void _innerCompareHelper(SchematizedValue& b, A& a_opt, int& result) {
     auto b_opt = b.get<B_TYPE>();
     result = compareOptionals(a_opt, b_opt);
 }
 
 template <typename A_TYPE>
-void _outerCompareHelper(SchematizedValue& a, SchematizedValue& b, bool& result) {
+void _outerCompareHelper(SchematizedValue& a, SchematizedValue& b, int& result) {
     auto a_opt = a.get<A_TYPE>();
     // This relies on partial template deduction of the last template argument of innerHelper
     CAST_APPLY_VALUE(_innerCompareHelper, b, a_opt, result);
 }
 
-bool _compareSValues(SchematizedValue& a, SchematizedValue& b) {
-    bool result = false;
+int _compareSValues(SchematizedValue& a, SchematizedValue& b) {
+    int result = 0;
     CAST_APPLY_VALUE(_outerCompareHelper, a, b, result);
     return result;
 }
@@ -209,23 +209,43 @@ bool Expression::EQ_handler(SKVRecord& rec) {
 }
 
 bool Expression::GT_handler(SKVRecord& rec) {
-    (void)rec;
-    return false;
+    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
+        throw InvalidExpressionException();
+    }
+    SchematizedValue aVal(valueChildren[0], rec);
+    SchematizedValue bVal(valueChildren[1], rec);
+    return _compareSValues(aVal, bVal) > 0;
 }
 
 bool Expression::GTE_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
+        throw InvalidExpressionException();
+    }
+    SchematizedValue aVal(valueChildren[0], rec);
+    SchematizedValue bVal(valueChildren[1], rec);
+    return _compareSValues(aVal, bVal) >= 0;
 }
 
 bool Expression::LT_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
+        throw InvalidExpressionException();
+    }
+    SchematizedValue aVal(valueChildren[0], rec);
+    SchematizedValue bVal(valueChildren[1], rec);
+    return _compareSValues(aVal, bVal) < 0;
 }
 
 bool Expression::LTE_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
+        throw InvalidExpressionException();
+    }
+    SchematizedValue aVal(valueChildren[0], rec);
+    SchematizedValue bVal(valueChildren[1], rec);
+    return _compareSValues(aVal, bVal) <= 0;
 }
 
 bool Expression::IS_NULL_handler(SKVRecord& rec) {
