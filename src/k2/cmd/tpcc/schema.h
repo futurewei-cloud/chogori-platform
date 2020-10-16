@@ -56,6 +56,20 @@ seastar::future<k2::WriteResult> writeRow(ValueType& row, k2::K2TxnHandle& txn)
     });
 }
 
+template<typename ValueType>
+seastar::future<k2::PartialUpdateResult> 
+partialUpdateRow(ValueType& row, std::vector<uint32_t> fieldsToUpdate, k2::K2TxnHandle& txn) {
+    return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (k2::PartialUpdateResult&& result) {
+        std::cout << "{partialUpdateRow} partialUpdateRow failed: " << result.status;
+        if (!result.status.is2xxOK()) {
+            K2DEBUG("partialUpdateRow failed: " << result.status);
+            return seastar::make_exception_future<k2::PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
+        }
+
+        return seastar::make_ready_future<k2::PartialUpdateResult>(std::move(result));
+    });
+}
+
 struct Address {
     Address () = default;
     Address (RandomContext& random) {

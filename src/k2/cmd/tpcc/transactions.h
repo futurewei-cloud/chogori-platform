@@ -126,9 +126,10 @@ private:
         return _txn.read<Warehouse>(Warehouse(_w_id))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            *(result.value.YTD) += _amount;
             _w_name = *(result.value.Name);
-            return writeRow<Warehouse>(result.value, _txn).discard_result();
+            Warehouse warehouse(_w_id);
+            *warehouse.YTD = *(result.value.YTD) + _amount;
+            return partialUpdateRow<Warehouse>(warehouse, {2}, _txn).discard_result();
         });
     }
 
