@@ -60,7 +60,21 @@ template<typename ValueType>
 seastar::future<k2::PartialUpdateResult> 
 partialUpdateRow(ValueType& row, std::vector<uint32_t> fieldsToUpdate, k2::K2TxnHandle& txn) {
     return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (k2::PartialUpdateResult&& result) {
-        std::cout << "{partialUpdateRow} partialUpdateRow failed: " << result.status;
+        std::cout << "{partialUpdateRow} partialUpdateRow failed: " << result.status << std::endl;;
+        if (!result.status.is2xxOK()) {
+            K2DEBUG("partialUpdateRow failed: " << result.status);
+            return seastar::make_exception_future<k2::PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
+        }
+
+        return seastar::make_ready_future<k2::PartialUpdateResult>(std::move(result));
+    });
+}
+
+template<typename ValueType>
+seastar::future<k2::PartialUpdateResult> 
+partialUpdateRow(ValueType& row, std::vector<k2::String> fieldsToUpdate, k2::K2TxnHandle& txn) {
+    return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (k2::PartialUpdateResult&& result) {
+        std::cout << "{partialUpdateRow} partialUpdateRow failed: " << result.status << std::endl;;
         if (!result.status.is2xxOK()) {
             K2DEBUG("partialUpdateRow failed: " << result.status);
             return seastar::make_exception_future<k2::PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
@@ -203,7 +217,7 @@ public:
                 {k2::dto::FieldType::UINT64T, "SinceDate", false, false},
                 {k2::dto::FieldType::FLOAT, "CreditLimit", false, false},
                 {k2::dto::FieldType::FLOAT, "Discount", false, false},
-                {k2::dto::FieldType::INT32T, "Balance", false, false},
+                {k2::dto::FieldType::UINT32T, "Balance", false, false},
                 {k2::dto::FieldType::UINT32T, "YTDPayment", false, false},
                 {k2::dto::FieldType::UINT32T, "PaymentCount", false, false},
                 {k2::dto::FieldType::UINT32T, "DeliveryCount", false, false},
@@ -258,7 +272,7 @@ public:
     std::optional<uint64_t> SinceDate;
     std::optional<float> CreditLimit; // TODO Needs to be fixed point to be in spec
     std::optional<float> Discount;
-    std::optional<int32_t> Balance;
+    std::optional<uint32_t> Balance;
     std::optional<uint32_t> YTDPayment;
     std::optional<uint32_t> PaymentCount;
     std::optional<uint32_t> DeliveryCount;

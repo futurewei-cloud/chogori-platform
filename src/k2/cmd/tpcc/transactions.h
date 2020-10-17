@@ -128,8 +128,8 @@ private:
             CHECK_READ_STATUS(result);
             _w_name = *(result.value.Name);
             Warehouse warehouse(_w_id);
-            *warehouse.YTD = *(result.value.YTD) + _amount;
-            return partialUpdateRow<Warehouse>(warehouse, {2}, _txn).discard_result();
+            warehouse.YTD = *(result.value.YTD) + _amount;
+            return partialUpdateRow<Warehouse>(warehouse, (std::vector<uint32_t>){2}, _txn).discard_result();
         });
     }
 
@@ -137,9 +137,10 @@ private:
         return _txn.read<District>(District(_w_id, _d_id))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            *(result.value.YTD) += _amount;
             _d_name = *(result.value.Name);
-            return writeRow<District>(result.value, _txn).discard_result();
+            District district(_w_id, _d_id);
+            district.YTD = *(result.value.YTD) + _amount;
+            return partialUpdateRow<District>(district, (std::vector<uint32_t>){3}, _txn).discard_result();
         });
     }
 
@@ -148,27 +149,32 @@ private:
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
 
-            *(result.value.Balance) -= _amount;
-            *(result.value.YTDPayment) += _amount;
-            (*(result.value.PaymentCount))++;
+            Customer customer(_c_w_id, _c_d_id, _c_id);
+            customer.Balance = *(result.value.Balance) - _amount;
+            customer.YTDPayment = *(result.value.YTDPayment) + _amount;
+            customer.PaymentCount = *(result.value.PaymentCount) + 1;
+            k2::String str500(k2::String::initialized_later{}, 500);
+            customer.Info = str500;
 
             if (*(result.value.Credit) == "BC") {
                 size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
-                memmove((char*)result.value.Info->c_str() + shift_size, 
-                    (char*)result.value.Info->c_str(), 500-shift_size);
+                memcpy((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
                 uint32_t offset = 0;
-                memcpy((char*)result.value.Info->c_str() + offset, &_c_id, sizeof(_c_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_c_id, sizeof(_c_id));
                 offset += sizeof(_c_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
                 offset += sizeof(_c_d_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_d_id, sizeof(_d_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_d_id, sizeof(_d_id));
                 offset += sizeof(_d_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_w_id, sizeof(_w_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_w_id, sizeof(_w_id));
                 offset += sizeof(_w_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_amount, sizeof(_amount));
+                memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
             }
 
-            return writeRow<Customer>(result.value, _txn).discard_result();
+            //debug
+            std::cout << *customer.Info << std::endl;
+
+            return partialUpdateRow<Customer>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
         });
     }
 
