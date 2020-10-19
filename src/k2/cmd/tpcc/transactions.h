@@ -247,8 +247,9 @@ private:
             // Get and write NextOrderID in district row
             _order.OrderID = *(result.value.NextOrderID);
             _d_tax = *(result.value.Tax);
-            (*(result.value.NextOrderID))++;
-            future<WriteResult> district_update = writeRow<District>(result.value, _txn);
+            District district(*result.value.WarehouseID, *result.value.DistrictID);
+            district.NextOrderID = (*result.value.NextOrderID)++;
+            future<PartialUpdateResult> district_update = partialUpdateRow<District>(district, {"NextOID"}, _txn);
 
             // Write NewOrder row
             NewOrder new_order(_order);
@@ -286,10 +287,11 @@ private:
                     *(line.Amount) = *(item.Price) * *(line.Quantity);
                     _total_amount += *(line.Amount);
                     line.DistInfo = stock.getDistInfo(*(line.DistrictID));
-                    updateStockRow(stock, line);
+                    std::vector<k2::String> stockUpdateFields;
+                    Stock updateStock = updateStockRow(stock, line, stockUpdateFields);
 
                     auto line_update = writeRow<OrderLine>(line, _txn);
-                    auto stock_update = writeRow<Stock>(stock, _txn);
+                    auto stock_update = partialUpdateRow<Stock>(updateStock, stockUpdateFields, _txn);
 
                     return when_all_succeed(std::move(line_update), std::move(stock_update)).discard_result();
                 });
@@ -328,7 +330,7 @@ private:
             return make_ready_future<bool>(false);
         });
     }
-
+    
     static void updateStockRow(Stock& stock, const OrderLine& line) {
         if (*(stock.Quantity) - *(line.Quantity) >= 10) {
             *(stock.Quantity) -= *(line.Quantity);
@@ -340,6 +342,27 @@ private:
         if (*(line.WarehouseID) != *(line.SupplyWarehouseID)) {
             (*(stock.RemoteCount))++;
         }
+    }
+
+    Stock updateStockRow(Stock& stock, const OrderLine& line, std::vector<k2::String>& updateFields) {
+        Stock updateStock(stock.WarehouseID, stock.ItemID);
+    
+        if (*(stock.Quantity) - *(line.Quantity) >= 10) {
+            *updateStock.Quantity = *(stock.Quantity) - *(line.Quantity);
+        } else {
+            *updateStock.Quantity = *(stock.Quantity) + 91 - *(line.Quantity);
+        }
+        updateFields.push_back("Quantity");
+        *updateStock.YTD = *(stock.YTD) + *(line.Quantity);
+        updateFields.push_back("YTD");
+        *updateStock.OrderCount = (*stock.OrderCount) + 1;
+        updateFields.push_back("OrderCount");
+        if (*(line.WarehouseID) != *(line.SupplyWarehouseID)) {
+            *updateStock.RemoteCount = (*stock.RemoteCount) + 1;
+            updateFields.push_back("RemoteCount");
+        }
+
+        return updateStock;
     }
 
     void makeOrderLines() {
