@@ -171,9 +171,6 @@ private:
                 memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
             }
 
-            //debug
-            std::cout << *customer.Info << std::endl;
-
             return partialUpdateRow<Customer>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
         });
     }
@@ -345,20 +342,20 @@ private:
     }
 
     Stock updateStockRow(Stock& stock, const OrderLine& line, std::vector<k2::String>& updateFields) {
-        Stock updateStock(stock.WarehouseID, stock.ItemID);
+        Stock updateStock(*stock.WarehouseID, *stock.ItemID);
     
         if (*(stock.Quantity) - *(line.Quantity) >= 10) {
-            *updateStock.Quantity = *(stock.Quantity) - *(line.Quantity);
+            updateStock.Quantity = *(stock.Quantity) - *(line.Quantity);
         } else {
-            *updateStock.Quantity = *(stock.Quantity) + 91 - *(line.Quantity);
+            updateStock.Quantity = *(stock.Quantity) + 91 - *(line.Quantity);
         }
         updateFields.push_back("Quantity");
-        *updateStock.YTD = *(stock.YTD) + *(line.Quantity);
+        updateStock.YTD = *(stock.YTD) + *(line.Quantity);
         updateFields.push_back("YTD");
-        *updateStock.OrderCount = (*stock.OrderCount) + 1;
+        updateStock.OrderCount = (*stock.OrderCount) + 1;
         updateFields.push_back("OrderCount");
         if (*(line.WarehouseID) != *(line.SupplyWarehouseID)) {
-            *updateStock.RemoteCount = (*stock.RemoteCount) + 1;
+            updateStock.RemoteCount = (*stock.RemoteCount) + 1;
             updateFields.push_back("RemoteCount");
         }
 

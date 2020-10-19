@@ -314,21 +314,7 @@ public:
             request = makePartialUpdateRequest(record, fieldsToUpdate);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
-            record.__writeFields(skv_record);
-
-            // debug
-            std::cout << "{partialUpdate} schema name: " << skv_record.schema->name << ". Fields{" ;
-            for (auto e : skv_record.storage.excludedFields) std::cout << e << ",";
-            std::cout << "}. fieldsToUpdate{";
-            for (auto e : fieldsToUpdate) std::cout << e << ",";
-            std::cout << "}. ";
-            uint32_t id;
-            skv_record.seekField(0);
-            skv_record.storage.fieldData.read<uint32_t>(id);
-            uint32_t ytd;
-            skv_record.storage.fieldData.read<uint32_t>(ytd);
-            std::cout << "{after __writeFields} read ID:" << id << ", YTD:" << ytd << std::endl;
-            
+            record.__writeFields(skv_record);            
             request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
         }
         if (request == nullptr) {

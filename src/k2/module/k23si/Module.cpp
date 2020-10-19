@@ -740,13 +740,7 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIPartialUpdateRequest& r
         request.value.excludedFields = std::vector<bool>(schema.fields.size(), false);
     }
     
-    // based on the latest version to construct the new SKVRecord
-    std::cout << "{_parsePartialRecord} 1. fieldsToUpdate:"; 
-    for (auto e : request.fieldsToUpdate) std::cout << e << ",";
-    std::cout << ". exFields{";
-    for (auto e : request.value.excludedFields) std::cout << e << ",";
-    std::cout << ".}" << std::endl;
-    
+    // based on the latest version to construct the new SKVRecord    
     if (request.value.schemaVersion == versions[0].value.schemaVersion) { 
         // quick path --same schema version.
         // make every fields in schema for new SKVRecord 
