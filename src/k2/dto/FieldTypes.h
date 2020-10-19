@@ -40,6 +40,8 @@ enum class FieldType : uint8_t {
     INT64T,
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
+    BOOL,
+    FIELD_TYPE,
     NOT_KNOWN = 254,
     NULL_LAST = 255
 };
@@ -74,6 +76,10 @@ namespace std {
             return os << "FLOAT";
         case k2::dto::FieldType::DOUBLE:
             return os << "DOUBLE";
+        case k2::dto::FieldType::BOOL:
+            return os << "BOOL";
+        case k2::dto::FieldType::FIELD_TYPE:
+            return os << "FIELD_TYPE";
         case k2::dto::FieldType::NOT_KNOWN:
             return os << "NOT_KNOWN";
         case k2::dto::FieldType::NULL_LAST:

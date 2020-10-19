@@ -3,6 +3,8 @@ namespace k2 {
 namespace dto {
 namespace expression {
 
+// This class wraps a given Value together with particular SKVRecord (and its schema). It is used to perform expression
+// operations according to schema, provided literals, and found reference values.
 struct SchematizedValue {
     SchematizedValue(Value& v, SKVRecord& rec) : val(v), rec(rec), type(v.type) {
         if (!val.fieldName.empty()) {
@@ -14,6 +16,9 @@ struct SchematizedValue {
                     break;
                 }
             }
+            // If a fieldName has been provided(meaning this is a reference value), and we can't find it in the incoming
+            // schema, then we can't
+            throw NoFieldFoundException();
         }
     }
     Value& val;
@@ -22,8 +27,9 @@ struct SchematizedValue {
     bool nullLast = false;
     int sfieldIndex = -1;
 
+    // Extracts the nullLast flag and an optional of a given type for this SchematizedValue.
     template <typename T>
-    std::optional<std::tuple<bool, T>> get() {
+    std::tuple<bool, std::optional<T>> get() {
         if (TToFieldType<T>() != type) {
             throw TypeMismatchException();
         }
@@ -32,70 +38,60 @@ struct SchematizedValue {
             if (val.literal.read(val)) {
                 return std::make_tuple(nullLast, std::move(result));
             }
-            return std::nullopt;
+            throw DeserializationError();
         }
-        auto&& opt = rec.deserializeField<T>(sfieldIndex);
-        if (!opt) {
-            return std::nullopt;
-        }
-        return std::make_tuple(nullLast, std::move(opt).value());
+        return std::make_tuple(nullLast, rec.deserializeField<T>(sfieldIndex));
     }
 };
 
+// Template specialization for types which are not comparable
 template <typename T1, typename T2, typename = void>
 struct is_comparable : std::false_type {};
 
+// Template specialization for types which are comparable (that is there is a defined operators <, ==, and >)
 template <typename T1, typename T2>
 struct is_comparable<T1, T2,
                      decltype(
                          (std::declval<T1>() == std::declval<T2>()) &&
-                             (std::declval<T1>() < std::declval<T2>()) &&
-                             (std::declval<T1>() > std::declval<T2>()),
+                         (std::declval<T1>() < std::declval<T2>()) &&
+                         (std::declval<T1>() <= std::declval<T2>()) &&
+                         (std::declval<T1>() >= std::declval<T2>()) &&
+                         (std::declval<T1>() > std::declval<T2>()),
                          void())>
     : std::true_type {};
 
-template <typename T1, typename T2>
-std::enable_if_t<is_comparable<T1, T2>::value, int>
-compare(T1& a, T2& b) {
-    if (std::forward<T1>(a) == std::forward<T2>(b)) return 0;
-    if (std::forward<T1>(a) > std::forward<T2>(b)) return 1;
-    return -1;
-}
-
+// template specialization comparing two optionals of non-comparable types
 template <typename T1, typename T2>
 std::enable_if_t<!is_comparable<T1, T2>::value, int>
-compare(T1&, T2&) {
+compareOptionals(std::tuple<bool, std::optional<T1>>&, std::tuple<bool, std::optional<T2>>&) {
     throw TypeMismatchException();
 }
 
-
-template <typename T1, typename T2>
-std::enable_if_t<!is_comparable<T1, T2>::value, int>
-compareOptionals(std::optional<std::tuple<bool, T1>>&, std::optional<std::tuple<bool,T2>>&) {
-    throw TypeMismatchException();
-}
-
+// template specialization comparing two optionals of comparable types
 template <typename T1, typename T2>
 std::enable_if_t<is_comparable<T1, T2>::value, int>
-compareOptionals(std::optional<std::tuple<bool, T1>>& a, std::optional<std::tuple<bool,T2>>& b) {
-    if (!a && !b) {
+compareOptionals(std::tuple<bool, std::optional<T1>>& a, std::tuple<bool, std::optional<T2>>& b) {
+    auto& [a_nullLast, a_opt] = a;
+    auto& [b_nullLast, b_opt] = b;
+
+    if (!a_opt && !b_opt) {
         // NULLs of compatible types compare as equal
         return 0;
     }
 
     // one of the operands may be null. Compare based on nullLast flag, regardless of type
-    if (!a) {
-        return std::get<0>(*b) ? 1 : -1;
+    if (!a_opt) {
+        return b_nullLast ? 1 : -1;
     }
-    else if (!b) {
-        return std::get<0>(*a) ? -1 : 1;
+    else if (!b_opt) {
+        return a_nullLast ? -1 : 1;
     }
 
     // operands are non-null and of same type. Compare their values
-    if (std::get<1>(*a) == std::get<1>(*b)) {
+    if (*a_opt == *b_opt) {
         return -1;
     }
-    if (std::get<1>(*a) > std::get<1>(*b)) {
+    if (*a_opt > *b_opt) {
         return 1;
     }
     return -1;
@@ -124,6 +120,12 @@ compareOptionals(std::optional<std::tuple<bool, T1>>& a, std::optional<std::tupl
             } break;                                \
             case FieldType::DOUBLE: {               \
                 func<double>(a, __VA_ARGS__);       \
+            } break;                                \
+            case FieldType::BOOL: {                 \
+                func<bool>(a, __VA_ARGS__);         \
+            } break;                                \
+            case FieldType::FIELD_TYPE: {           \
+                func<FieldType>(a, __VA_ARGS__);    \
             } break;                                \
             default:                                \
                 throw InvalidExpressionException(); \
@@ -169,8 +171,8 @@ bool Expression::evaluate(SKVRecord& rec) {
         case Operation::IS_NULL: {
             return IS_NULL_handler(rec);
         }
-        case Operation::IS_TYPE: {
-            return IS_TYPE_handler(rec);
+        case Operation::IS_EXACT_TYPE: {
+            return IS_EXACT_TYPE_handler(rec);
         }
         case Operation::STARTS_WITH: {
             return STARTS_WITH_handler(rec);
@@ -199,7 +201,7 @@ bool Expression::evaluate(SKVRecord& rec) {
 }
 
 bool Expression::EQ_handler(SKVRecord& rec) {
-    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
         throw InvalidExpressionException();
     }
@@ -209,7 +211,7 @@ bool Expression::EQ_handler(SKVRecord& rec) {
 }
 
 bool Expression::GT_handler(SKVRecord& rec) {
-    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
         throw InvalidExpressionException();
     }
@@ -219,7 +221,7 @@ bool Expression::GT_handler(SKVRecord& rec) {
 }
 
 bool Expression::GTE_handler(SKVRecord& rec) {
-    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
         throw InvalidExpressionException();
     }
@@ -229,7 +231,7 @@ bool Expression::GTE_handler(SKVRecord& rec) {
 }
 
 bool Expression::LT_handler(SKVRecord& rec) {
-    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
         throw InvalidExpressionException();
     }
@@ -239,7 +241,7 @@ bool Expression::LT_handler(SKVRecord& rec) {
 }
 
 bool Expression::LTE_handler(SKVRecord& rec) {
-    // this op evaluates exactly two leafs only. It cannot be composed with other children
+    // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
         throw InvalidExpressionException();
     }
@@ -248,49 +250,198 @@ bool Expression::LTE_handler(SKVRecord& rec) {
     return _compareSValues(aVal, bVal) <= 0;
 }
 
-bool Expression::IS_NULL_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+template<typename T>
+void _isNullTypedHelper(SchematizedValue& sv, bool& result) {
+    auto [nullLast, optVal] = sv.get<T>();
+    result = !optVal.has_value();
 }
 
-bool Expression::IS_TYPE_handler(SKVRecord& rec) {
-    (void)rec;
-    return false;
+bool Expression::IS_NULL_handler(SKVRecord& rec) {
+    // this op evaluates exactly one reference leaf only. It cannot be composed with other children
+    if (valueChildren.size() != 1 || expressionChildren.size() > 0 || !valueChildren[0].isReference()) {
+        throw InvalidExpressionException();
+    }
+
+    // There is just one value child and it is a reference.
+    SchematizedValue ref(valueChildren[0], rec);
+
+    bool result = false;
+    CAST_APPLY_VALUE(_isNullTypedHelper, ref, result);
+    return result;
+}
+
+bool Expression::IS_EXACT_TYPE_handler(SKVRecord& rec) {
+    // this op evaluates a field reference againts a string literal(the type in question)
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0 ||
+       !valueChildren[0].isReference() || valueChildren[1].isReference()) {
+        throw InvalidExpressionException();
+    }
+
+    // There is just one value child and it is a reference.
+    SchematizedValue ref(valueChildren[0], rec);
+    SchematizedValue expTypeVal(valueChildren[1], rec);
+
+    FieldType expected = std::get<1>(expTypeVal.get<FieldType>()).value();
+
+    return expected == ref.type;
 }
 
 bool Expression::STARTS_WITH_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two values only. It cannot be composed with other children
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
+        throw InvalidExpressionException();
+    }
+    SchematizedValue aVal(valueChildren[0], rec);
+    SchematizedValue bVal(valueChildren[1], rec);
+    if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
+        throw TypeMismatchException();
+    }
+    auto aOpt = std::get<1>(aVal.get<String>());
+    auto bOpt = std::get<1>(bVal.get<String>());
+    if (!bOpt) return true; // all strings start with nothing
+    if (!aOpt) return false; // empty strings do not start with anything
+
+    if (aOpt->size() < bOpt->size()) return false; // B is bigger so A cannot start with B
+
+    return ::memcmp(aOpt->c_str(), bOpt->c_str(), bOpt->size()) == 0;
 }
 
 bool Expression::CONTAINS_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two values only. It cannot be composed with other children
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
+        throw InvalidExpressionException();
+    }
+    SchematizedValue aVal(valueChildren[0], rec);
+    SchematizedValue bVal(valueChildren[1], rec);
+    if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
+        throw TypeMismatchException();
+    }
+    auto aOpt = std::get<1>(aVal.get<String>());
+    auto bOpt = std::get<1>(bVal.get<String>());
+    if (!bOpt) return true;   // all strings start with nothing
+    if (!aOpt) return false;  // empty strings do not start with anything
+
+    return aOpt->find(*bOpt) != String::npos;
 }
 
 bool Expression::ENDS_WITH_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two values only. It cannot be composed with other children
+    if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
+        throw InvalidExpressionException();
+    }
+    SchematizedValue aVal(valueChildren[0], rec);
+    SchematizedValue bVal(valueChildren[1], rec);
+    if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
+        throw TypeMismatchException();
+    }
+    auto aOpt = std::get<1>(aVal.get<String>());
+    auto bOpt = std::get<1>(bVal.get<String>());
+    if (!bOpt) return true;   // all strings start with nothing
+    if (!aOpt) return false;  // empty strings do not start with anything
+
+    if (aOpt->size() < bOpt->size()) return false;  // B is bigger so A cannot start with B
+
+    return ::memcmp(aOpt->c_str() + (aOpt->size() - bOpt->size()), bOpt->c_str(), bOpt->size()) == 0;
 }
 
 bool Expression::AND_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two children only
+    if (valueChildren.size() + expressionChildren.size() != 2) {
+        throw InvalidExpressionException();
+    }
+    // case 1: 2 values
+    if (valueChildren.size() == 2) {
+        SchematizedValue aVal(valueChildren[0], rec);
+        SchematizedValue bVal(valueChildren[1], rec);
+        if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
+            throw TypeMismatchException();
+        }
+        auto [nullA, aOpt] = aVal.get<bool>();
+        auto [nullB, bOpt] = bVal.get<bool>();
+        return aOpt.has_value() && bOpt.has_value() && (*aOpt) && (*bOpt);
+    }
+    else if (valueChildren.size() == 1) {
+        SchematizedValue aVal(valueChildren[0], rec);
+        if (aVal.type != FieldType::BOOL) {
+            throw TypeMismatchException();
+        }
+        auto [nullLast, aOpt] = aVal.get<bool>();
+        return aOpt.has_value() && (*aOpt) && expressionChildren[0].evaluate(rec);
+    }
+
+    return expressionChildren[0].evaluate(rec) && expressionChildren[1].evaluate(rec);
 }
 
 bool Expression::OR_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two children only
+    if (valueChildren.size() + expressionChildren.size() != 2) {
+        throw InvalidExpressionException();
+    }
+    // case 1: 2 values
+    if (valueChildren.size() == 2) {
+        SchematizedValue aVal(valueChildren[0], rec);
+        SchematizedValue bVal(valueChildren[1], rec);
+        if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
+            throw TypeMismatchException();
+        }
+        auto [nullA, aOpt] = aVal.get<bool>();
+        auto [nullB, bOpt] = bVal.get<bool>();
+        return aOpt.has_value() && bOpt.has_value() && (*aOpt || *bOpt);
+    } else if (valueChildren.size() == 1) {
+        SchematizedValue aVal(valueChildren[0], rec);
+        if (aVal.type != FieldType::BOOL) {
+            throw TypeMismatchException();
+        }
+        auto [nullLast, aOpt] = aVal.get<bool>();
+        return aOpt.has_value() && (*aOpt || expressionChildren[0].evaluate(rec));
+    }
+
+    return expressionChildren[0].evaluate(rec) || expressionChildren[1].evaluate(rec);
 }
 
 bool Expression::XOR_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly two children only
+    if (valueChildren.size() + expressionChildren.size() != 2) {
+        throw InvalidExpressionException();
+    }
+    // case 1: 2 values
+    if (valueChildren.size() == 2) {
+        SchematizedValue aVal(valueChildren[0], rec);
+        SchematizedValue bVal(valueChildren[1], rec);
+        if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
+            throw TypeMismatchException();
+        }
+        auto [nullA, aOpt] = aVal.get<bool>();
+        auto [nullB, bOpt] = bVal.get<bool>();
+        return aOpt.has_value() && bOpt.has_value() && (*aOpt != *bOpt);
+    } else if (valueChildren.size() == 1) {
+        SchematizedValue aVal(valueChildren[0], rec);
+        if (aVal.type != FieldType::BOOL) {
+            throw TypeMismatchException();
+        }
+        auto [nullLast, aOpt] = aVal.get<bool>();
+        return aOpt.has_value() && (*aOpt != expressionChildren[0].evaluate(rec));
+    }
+
+    return expressionChildren[0].evaluate(rec) != expressionChildren[1].evaluate(rec);
 }
 
 bool Expression::NOT_handler(SKVRecord& rec) {
-    (void) rec;
-    return false;
+    // this op evaluates exactly 1 child only
+    if (valueChildren.size() + expressionChildren.size() != 1) {
+        throw InvalidExpressionException();
+    }
+    // case 1: 2 values
+    if (valueChildren.size() == 1) {
+        SchematizedValue aVal(valueChildren[0], rec);
+        if (aVal.type != FieldType::BOOL) {
+            throw TypeMismatchException();
+        }
+        auto [nullA, aOpt] = aVal.get<bool>();
+        return aOpt.has_value() && !(*aOpt);
+    }
+
+    return !expressionChildren[0].evaluate(rec);
 }
 
 } // ns expression

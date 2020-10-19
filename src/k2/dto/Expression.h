@@ -10,29 +10,27 @@ namespace k2 {
 namespace dto {
 namespace expression {
 
+// Thrown if the expression is found to be semantically invalid
 struct InvalidExpressionException : public std::exception {
     virtual const char* what() const noexcept override{ return "InvalidExpression";}
 };
 
-struct TypeMismatchException : public std::exception {
-    virtual const char* what() const noexcept override { return "TypeMismatch"; }
-};
-
+// The supported operations
 enum class Operation : uint8_t {
-    EQ,           // value operands only
-    GT,           // value operands only
-    GTE,          // value operands only
-    LT,           // value operands only
-    LTE,          // value operands only
-    IS_NULL,      // value operands only
-    IS_TYPE,      // value operands only
-    STARTS_WITH,  // value operands only
-    CONTAINS,     // value operands only
-    ENDS_WITH,    // value operands only
-    AND,          // mixed value and/or nested expression operands
-    OR,           // mixed value and/or nested expression operands
-    XOR,          // mixed value and/or nested expression operands
-    NOT,           // mixed value and/or nested expression operands
+    EQ,             // A == B. Both A and B must be values
+    GT,             // A > B. Both A and B must be values
+    GTE,            // A >= B. Both A and B must be values
+    LT,             // A < B. Both A and B must be values
+    LTE,            // A <= B. Both A and B must be values
+    IS_NULL,        // IS_NULL A. A must be a reference value
+    IS_EXACT_TYPE,  // A IS_EXACT_TYPE B. A must be a reference, B must be a FieldType literal
+    STARTS_WITH,    // A STARTS_WITH B. A must be a string type value, B must be a string literal
+    CONTAINS,       // A CONTAINS B. A must be a string type value, B must be a string literal
+    ENDS_WITH,      // A ENDS_WITH B. A must be a string type value, B must be a string literal
+    AND,            // A AND B. Each of A and B must be a boolean value, or an expression
+    OR,             // A OR B. Each of A and B must be a boolean value, or an expression
+    XOR,            // A XOR B. Each of A and B must be a boolean value, or an expression
+    NOT,            // NOT A. A must be a boolean value, or an expression
     UNKNOWN
 };
 
@@ -45,27 +43,36 @@ struct Value {
     FieldType type = FieldType::NOT_KNOWN;
     Payload literal;
     K2_PAYLOAD_FIELDS(fieldName, type, literal);
+    bool isReference() const { return !fieldName.empty();}
 };
 
 // An Expression in the expression model.
-// The operation is applied in the order that the children are in the vector. So a binary
+// The operation is applied in the order that the children are in the vector. E.g. a binary
 // operator like LT would be applied as valueChildren[0] < valueChildren[1]
 struct Expression {
     Operation op = Operation::UNKNOWN;
     std::vector<Expression> expressionChildren;
     std::vector<Value> valueChildren;
 
+    // This method is used to evaluate a given record against this filter. Returns true if the record passes
+    // evaluation, and false if it does not.
+    // The method throws exceptions in cases when we cannot evaluate the record, most notably:
+    // TypeMismatchException if there is an expression over incompatible data types
+    // InvalidExpressionException if semantically the expression cannot be evaluated (e.g. OR with 1 argument)
+    // DeserializationError if we are not able to deserialize a value correctly
+    // NoFieldFoundException if we cannot find a field of a given name in the schema
     bool evaluate(SKVRecord& rec);
 
     K2_PAYLOAD_FIELDS(op, expressionChildren, valueChildren);
 
+    // helper methods used to evaluate particular operation
     bool EQ_handler(SKVRecord& rec);
     bool GT_handler(SKVRecord& rec);
     bool GTE_handler(SKVRecord& rec);
     bool LT_handler(SKVRecord& rec);
     bool LTE_handler(SKVRecord& rec);
     bool IS_NULL_handler(SKVRecord& rec);
-    bool IS_TYPE_handler(SKVRecord& rec);
+    bool IS_EXACT_TYPE_handler(SKVRecord& rec);
     bool STARTS_WITH_handler(SKVRecord& rec);
     bool CONTAINS_handler(SKVRecord& rec);
     bool ENDS_WITH_handler(SKVRecord& rec);
@@ -75,9 +82,9 @@ struct Expression {
     bool NOT_handler(SKVRecord& rec);
 };
 
-// helper builders which create filter expression trees
+// helper builder: creates a value literal
 template <typename T>
-inline Value makeFilterLiteralValue(dto::FieldType fieldType, T&& literal) {
+inline Value makeValueLiteral(dto::FieldType fieldType, T&& literal) {
     if (TToFieldType<T>() != fieldType) {
         throw TypeMismatchException();
     }
@@ -87,13 +94,15 @@ inline Value makeFilterLiteralValue(dto::FieldType fieldType, T&& literal) {
     return result;
 }
 
-inline Value makeFilterFieldReferenceValue(const String& fieldName) {
+// helper builder: creates a value reference
+inline Value makeValueReference(const String& fieldName) {
     Value result;
     result.fieldName = fieldName;
     return result;
 }
 
-inline Expression makeFilterExpression(Operation op, std::vector<Value>&& valueChildren, std::vector<Expression>&& expressionChildren) {
+// helper builder: creates an expression
+inline Expression makeExpression(Operation op, std::vector<Value>&& valueChildren, std::vector<Expression>&& expressionChildren) {
     return Expression{
         .op = op,
         .expressionChildren = std::move(expressionChildren),

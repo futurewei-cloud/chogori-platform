@@ -32,6 +32,21 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
+// Thrown when a field is not found in the schema
+struct NoFieldFoundException : public std::exception {
+    virtual const char* what() const noexcept override { return "NoFieldFound"; }
+};
+
+// Thrown when a field type doesn't match during lookup
+struct TypeMismatchException : public std::exception {
+    virtual const char* what() const noexcept override { return "TypeMismatch"; }
+};
+
+// Thrown when we were not able to deserialize a value correctly
+struct DeserializationError : public std::exception {
+    virtual const char* what() const noexcept override { return "DeserializationError"; }
+};
+
 class SKVRecord {
 public:
     // The record must be serialized in order. Schema will be enforced
@@ -39,7 +54,7 @@ public:
     void serializeNext(T field) {
         FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema->fields.size() || ft != schema->fields[fieldCursor].type) {
-            throw new std::runtime_error("Schema not followed in record serialization");
+            throw TypeMismatchException();
         }
 
         for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
@@ -90,7 +105,7 @@ public:
             }
         }
 
-        return std::nullopt;
+        throw NoFieldFoundException();
     }
 
     void seekField(uint32_t fieldIndex);
@@ -101,7 +116,7 @@ public:
         std::optional<T> null_val = std::nullopt;
 
         if (fieldIndex >= schema->fields.size() || ft != schema->fields[fieldIndex].type) {
-            throw new std::runtime_error("Schema not followed in record deserialization");
+            throw TypeMismatchException();
         }
 
         if (fieldIndex != fieldCursor) {
@@ -117,7 +132,7 @@ public:
         T value;
         bool success = storage.fieldData.read(value);
         if (!success) {
-            throw new std::runtime_error("Deserialization of payload in SKVRecord failed");
+            throw DeserializationError();
         }
 
         return value;
@@ -216,7 +231,7 @@ public:
            } \
                break; \
            default: \
-               throw new std::runtime_error("Unknown type"); \
+               throw k2::dto::TypeMismatchException(); \
         } \
     } while (0) \
 

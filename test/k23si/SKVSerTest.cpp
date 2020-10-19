@@ -371,10 +371,9 @@ TEST_CASE("Test8: deserializeField(string name) on a name that is not in schema"
 
     try { // using "deserializeFiled(String&)" function with a wrong name
         std::optional<k2::String> lastName = doc.deserializeField<k2::String>("Job");
-        REQUIRE(!lastName);
-        std::cout << "Test8: Deserialize name string is not in schema." << std::endl;
-    } catch (...) {
         REQUIRE(false);
+    } catch (...) {
+        std::cout << "Test8: Deserialize name string is not in schema." << std::endl;
     }
 }
 

@@ -46,8 +46,13 @@ template <> FieldType TToFieldType<int32_t>() { return FieldType::INT32T; }
 template <> FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
 template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
 template <> FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
+template <> FieldType TToFieldType<bool>() { return FieldType::BOOL; }
+template <> FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }
 
 // All conversion assume ascending ordering
+template <> String FieldToKeyString<bool>(const bool& field) {
+    return field? "1": "0";
+}
 
 template <> String FieldToKeyString<String>(const String& field) {
     size_t pos = 0;
