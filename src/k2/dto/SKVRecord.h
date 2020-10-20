@@ -39,7 +39,7 @@ public:
     void serializeNext(T field) {
         FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema->fields.size() || ft != schema->fields[fieldCursor].type) {
-            throw new std::runtime_error("Schema not followed in record serialization");
+            throw std::runtime_error("Schema not followed in record serialization");
         }
 
         for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
@@ -90,7 +90,7 @@ public:
             }
         }
 
-        throw new std::runtime_error("Schema not followed in record deserialization");
+        throw std::runtime_error("Schema not followed in record deserialization");
     }
 
     void seekField(uint32_t fieldIndex);
@@ -101,7 +101,7 @@ public:
         std::optional<T> null_val = std::nullopt;
 
         if (fieldIndex >= schema->fields.size() || ft != schema->fields[fieldIndex].type) {
-            throw new std::runtime_error("Schema not followed in record deserialization");
+            throw std::runtime_error("Schema not followed in record deserialization");
         }
 
         if (fieldIndex != fieldCursor) {
@@ -117,7 +117,7 @@ public:
         T value;
         bool success = storage.fieldData.read(value);
         if (!success) {
-            throw new std::runtime_error("Deserialization of payload in SKVRecord failed");
+            throw std::runtime_error("Deserialization of payload in SKVRecord failed");
         }
 
         return value;
@@ -216,7 +216,7 @@ public:
            } \
                break; \
            default: \
-               throw new std::runtime_error("Unknown type"); \
+               throw std::runtime_error("Unknown type"); \
         } \
     } while (0) \
    

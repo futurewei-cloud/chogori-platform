@@ -172,7 +172,7 @@ private:
         return makeReadRequest(record);
     }
        
-    std::unique_ptr<dto::K23SIPartialUpdateRequest> makePartialUpdateRequest(dto::SKVRecord& record, 
+    std::unique_ptr<dto::K23SIWriteRequest> makePartialUpdateRequest(dto::SKVRecord& record, 
             std::vector<uint32_t> fieldsToUpdate);
 
     void prepareQueryRequest(Query& query);
@@ -309,7 +309,7 @@ public:
         _client->write_ops++;
         _ongoing_ops++;
 
-        std::unique_ptr<dto::K23SIPartialUpdateRequest> request = nullptr;
+        std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T1, dto::SKVRecord>()) {
             request = makePartialUpdateRequest(record, fieldsToUpdate);
         } else {
@@ -323,7 +323,7 @@ public:
         }
         
         return _cpo_client->PartitionRequest
-            <dto::K23SIPartialUpdateRequest, dto::K23SIPartialUpdateResponse, dto::Verbs::K23SI_PARTIAL_UPDATE>
+            <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
             then([this] (auto&& response) {
                 auto& [status, k2response] = response;

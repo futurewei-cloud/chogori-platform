@@ -32,7 +32,7 @@ namespace dto {
 
 void SKVRecord::skipNext() {
     if (fieldCursor >= schema->fields.size()) {
-        throw new std::runtime_error("Schema not followed in record serialization");
+        throw std::runtime_error("Schema not followed in record serialization");
     }
 
     for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
@@ -65,7 +65,7 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
 
 void SKVRecord::seekField(uint32_t fieldIndex) {
     if (fieldIndex >= schema->fields.size()) {
-        throw new std::runtime_error("Tried to seek outside bounds");
+        throw std::runtime_error("Tried to seek outside bounds");
     }
 
     if (fieldIndex == fieldCursor) {

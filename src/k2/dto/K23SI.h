@@ -207,41 +207,17 @@ struct K23SIWriteRequest {
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value);
+    std::vector<uint32_t> fieldsToUpdate; // if size() > 0 then this is a partial update
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value, fieldsToUpdate);
     friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
-                  << r.isDelete << ", designate=" << r.designateTRH << "}";
+                  << r.isDelete << ", designate=" << r.designateTRH << ", fieldsToUpdate.size()=" 
+                  << r.fieldsToUpdate.size() << "}";
     }
 };
 
 struct K23SIWriteResponse {
-    K2_PAYLOAD_EMPTY;
-};
-
-struct K23SIPartialUpdateRequest{
-    Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName; // the name of the collection
-    K23SI_MTR mtr; // the MTR for the issuing transaction
-    // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
-    // the first write (the write for which designateTRH was set to true)
-    // Note that this is not an unique identifier for a transaction record - transaction records are
-    // uniquely identified by the tuple (mtr, trh)
-    Key trh;
-    bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
-    // use the name "key" so that we can use common routing from CPO client
-    Key key; // the key for the write
-    SKVRecord::Storage value; // the value of the write
-    std::vector<uint32_t> fieldsToUpdate; // the updated fields of the write
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, designateTRH, key, value, fieldsToUpdate);
-    friend std::ostream& operator<<(std::ostream& os, const K23SIPartialUpdateRequest& r) {
-        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key
-                  << ", designate=" << r.designateTRH << "}";
-    }
-};
-
-struct K23SIPartialUpdateResponse {
     K2_PAYLOAD_EMPTY;
 };
 

@@ -68,10 +68,6 @@ seastar::future<> K23SIPartitionModule::start() {
         return handleWrite(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
     });
 
-    RPC().registerRPCObserver<dto::K23SIPartialUpdateRequest, dto::K23SIPartialUpdateResponse>(dto::Verbs::K23SI_PARTIAL_UPDATE, [this](dto::K23SIPartialUpdateRequest&& request) {
-        return handlePartialUpdate(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
-    });
-
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
         return handleTxnPush(std::move(request));
@@ -417,8 +413,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     K2ASSERT(sitMTR == viter->txnId.mtr, "bug in code: found WI after push");
     K2ASSERT(viter == versions.begin(), "must be at newest version if we found a write intent")
 
-    // remove the WI from cache and queue it up for cleanup
-    _queueWICleanup(std::move(*viter));
+    // remove the WI from cache
     versions.pop_front();
     return _makeReadOK(versions.begin() == versions.end() ? nullptr : &(versions[0]));
 }
@@ -435,6 +430,12 @@ bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, std::deq
         // this key range was read more recently than this write
         K2DEBUG("Partition: " << _partition << ", read cache validation failed for key: " << request.key);
         return false;
+    }
+
+    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent &&
+            request.mtr == versions[0].txnId.mtr && false) {
+        // Trying to write over a txn's own WI, which we allow and can skip the remaining validations
+        return true;
     }
 
     // check if we have a committed value newer than the request. The latest committed
@@ -582,7 +583,7 @@ bool K23SIPartitionModule::_isUpdatedField(uint32_t fieldIdx, std::vector<uint32
     return false;
 }
 
-bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version) {
+bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version) {
     Payload basePayload = version.value.fieldData.shareAll();   // base payload
     Payload payload(Payload::DefaultAllocator);                     // payload for new record
     
@@ -650,7 +651,7 @@ bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K
     return true;
 }
 
-bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version) {
+bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIWriteRequest& request, dto::DataRecord& version) {
     std::size_t findField; // find field index of base SKVRecord
     std::vector<uint32_t> fieldsOffset(1); // every fields offset of base SKVRecord
     std::size_t baseCursor = 0; // indicate fieldsOffset cursor
@@ -756,7 +757,7 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
     return true;
 }
 
-bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions) {
+bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions) {
     auto schemaIt = _schemas.find(request.key.schemaName);
     if (schemaIt == _schemas.end()) return false;
     auto schemaVer = schemaIt->second.find(request.value.schemaVersion);
@@ -828,7 +829,6 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
     }
 
     auto& versions = _indexer[request.key];
-    // TODO causes the bug here. Because versions[1] is not committed if a TXN write same key for more than 3 times,
     // in this situation, return AbortRequestTooOld error.
     if (!_validateStaleWrite(request, versions)) {
         K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
@@ -840,16 +840,9 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         auto& rec = versions[0];
         auto& rqmtr = request.mtr;
     
-        // Clean up if req and WI are in the same transaction
-        if (rec.txnId.mtr == rqmtr) {
-            _queueWICleanup(std::move(versions[0]));
-            versions.pop_front();
-        }
-
         if (sitMTR == rec.txnId.mtr) {
             K2DEBUG("Partition: " << _partition << ", post-push winner for key " << request.key);
             // this is a post-PUSH request which won over the siting WI and we still have the WI in cache
-            _queueWICleanup(std::move(rec));
             versions.pop_front();
         }
         else if (rec.txnId.mtr != rqmtr) {
@@ -870,116 +863,31 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
                 });
         }
     }
-   
+
+    if (request.fieldsToUpdate.size() > 0) {
+        // parse the partial record to full record
+        if ( !versions.size() || versions[0].isTombstone) {
+            // cannot parse partial record without a version
+            return RPCResponse(dto::K23SIStatus::KeyNotFound("can not partial update with no/deleted version"), dto::K23SIWriteResponse{});
+        }
+        if (!_parsePartialRecord(request, versions)) {
+            K2DEBUG("Partition: " << _partition << ", can not parse partial record for key " << request.key);
+            versions[0].value.fieldData.seek(0);
+            return RPCResponse(dto::K23SIStatus::BadParameter("missing fields or can not interpret partialUpdate"), dto::K23SIWriteResponse{});
+        }
+    }
+
+    // Clean up if req and WI are in the same transaction
+    if (versions.size() > 0 && versions[0].txnId.mtr == request.mtr) {
+        versions.pop_front();
+    }
+
     // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
     return _createWI(std::move(request), versions, deadline).then([this]() mutable {
         K2DEBUG("Partition: " << _partition << ", WI created");
         return RPCResponse(dto::K23SIStatus::Created("wi created"), dto::K23SIWriteResponse{});
     });
 }
-
-seastar::future<std::tuple<Status, dto::K23SIPartialUpdateResponse>>
-K23SIPartitionModule:: handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
-    K2DEBUG("Partition: " << _partition << ", handle partial update: " << request);
-    if (!_validateRequestPartition(request)) {
-        // tell client their collection partition is gone
-        K2DEBUG("Partition: " << _partition << ", failed validation for " << request.key);
-        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in partial update"), dto::K23SIPartialUpdateResponse{});
-    }
-
-    if (!_validateRequestPartitionKey(request)){
-        // do not allow empty partition key
-        return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in partial update"), dto::K23SIPartialUpdateResponse{});
-    }
-
-    auto schemaIt = _schemas.find(request.key.schemaName);
-    if (schemaIt == _schemas.end()) {
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIPartialUpdateResponse{});
-    }
-    if (schemaIt->second.find(request.value.schemaVersion) == schemaIt->second.end()) {
-        // server does not have schema
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIPartialUpdateResponse{});
-    }
-
-    // at this point the request is valid. Check to see if we should be creating a TR
-    // we want to create the TR now even if the write may fail due to some other constraints. In case
-    // of such failure, the client is expected to come in and end the transaction with Abort
-    if (request.designateTRH) {
-        K2DEBUG("Partition: " << _partition << ", designating trh for key " << request.key);
-        return _txnMgr.onAction(TxnRecord::Action::onCreate, {.trh=request.trh, .mtr=request.mtr})
-        .then([this, request=std::move(request), sitMTR=std::move(sitMTR), deadline]() mutable {
-            K2DEBUG("Partition: " << _partition << ", tr created and re-driving request for key " << request.key);
-            request.designateTRH = false; // unset the flag and re-run
-            return handlePartialUpdate(std::move(request), std::move(sitMTR), deadline);
-        })
-        .handle_exception_type([this](TxnManager::ClientError&) {
-            // Failed to create
-            K2DEBUG("Partition: " << _partition << ", failed creating TR");
-            return RPCResponse(dto::K23SIStatus::AbortConflict("txn too old in write"), dto::K23SIPartialUpdateResponse{});
-        });
-    }
-
-    auto& versions = _indexer[request.key];
-    
-    if (!_validateStaleWrite(request, versions)) {
-        K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIPartialUpdateResponse{});
-    }
-
-    // check to see if we should push or if we're coming after a push and the WI is still here
-    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent) {
-        auto& rec = versions[0];
-        auto& rqmtr = request.mtr;
-    
-        if (sitMTR == rec.txnId.mtr) {
-            K2DEBUG("Partition: " << _partition << ", post-push winner for key " << request.key);
-            // this is a post-PUSH request which won over the siting WI and we still have the WI in cache
-            _queueWICleanup(std::move(rec));
-            versions.pop_front();
-        }
-        else if (rec.txnId.mtr != rqmtr) {
-            // this is a update request finding a WI from a different transaction. Do another push with the remaining
-            // deadline time.
-            K2DEBUG("Partition: " << _partition << ", different WI found for key " << request.key);
-            sitMTR = rec.txnId.mtr;
-            return _doPush(request.collectionName, rec.txnId, request.mtr, deadline)
-                .then([this, sitMTR, request = std::move(request), deadline](auto&& winnerMTR) mutable {
-                    if (winnerMTR == sitMTR) {
-                        // sitting transaction won. Abort the incoming request
-                        K2DEBUG("Partition: " << _partition << ", push lost for key " << request.key);
-                        return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in update push"), dto::K23SIPartialUpdateResponse{});
-                    }
-                    // incoming request won. re-run write logic
-                    K2DEBUG("Partition: " << _partition << ", push won for key " << request.key);
-                    return handlePartialUpdate(std::move(request), sitMTR, deadline);
-                });
-        }
-    }
-
-    // parse the partial record to full record
-    if ( !versions.size() || versions[0].isTombstone) {
-        // cannot parse partial record without a version
-        return RPCResponse(dto::K23SIStatus::KeyNotFound("can not partial update with no/deleted version"), dto::K23SIPartialUpdateResponse{});
-    }
-    if (!_parsePartialRecord(request, versions)) {
-        K2DEBUG("Partition: " << _partition << ", can not parse partial record for key " << request.key);
-        versions[0].value.fieldData.seek(0);
-        return RPCResponse(dto::K23SIStatus::BadParameter("missing fields or can not interpret partialUpdate"), dto::K23SIPartialUpdateResponse{});
-    }
-
-    // Clean up if req and WI are in the same transaction
-    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent && request.mtr == versions[0].txnId.mtr) {
-        _queueWICleanup(std::move(versions[0]));
-        versions.pop_front();
-    }
-    
-    // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
-    return _createWI(std::move(request), versions, deadline).then([this]() mutable {
-        K2DEBUG("Partition: " << _partition << ", WI created");
-        return RPCResponse(dto::K23SIStatus::Created("wi created"), dto::K23SIPartialUpdateResponse{});
-    });
-}
-
 
 seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
 K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
@@ -1129,10 +1037,6 @@ K23SIPartitionModule::_doPush(String collectionName, dto::TxnId sitTxnId, dto::K
     });
 }
 
-void K23SIPartitionModule::_queueWICleanup(dto::DataRecord&& rec) {
-    dto::DataRecord(std::move(rec)); // move the record here so that we can drop it
-}
-
 seastar::future<>
 K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", Write Request creating WI: " << request);
@@ -1148,23 +1052,6 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto
     // TODO write to WAL
     return _persistence.makeCall(versions.front(), deadline);
 }
-
-seastar::future<>
-K23SIPartitionModule::_createWI(dto::K23SIPartialUpdateRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
-    K2DEBUG("Partition: " << _partition << ", PartialUpdate Request creating WI: " << request);
-    dto::DataRecord rec;
-    rec.key = std::move(request.key);
-    // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
-    rec.value = request.value.copy();
-    rec.isTombstone = false;
-    rec.txnId = dto::TxnId{.trh = std::move(request.trh), .mtr = std::move(request.mtr)};
-    rec.status = dto::DataRecord::WriteIntent;
-
-    versions.push_front(std::move(rec));
-    // TODO write to WAL
-    return _persistence.makeCall(versions.front(), deadline);
-}
-
 
 seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
 K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) {

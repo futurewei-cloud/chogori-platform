@@ -175,7 +175,8 @@ private:
             .isDelete = isDelete,
             .designateTRH = isTRH,
             .key = key,
-            .value = std::move(record.storage)
+            .value = std::move(record.storage),
+            .fieldsToUpdate = std::vector<uint32_t>()
         };
 
         switch (errOpt) {

@@ -180,7 +180,7 @@ template <> String FieldToKeyString<int32_t>(const int32_t& field) {
 
 template <> String FieldToKeyString<float>(const float& field) {
     (void) field;
-    throw new std::runtime_error("Key encoding for float is not implemented yet");
+    throw std::runtime_error("Key encoding for float is not implemented yet");
 }
 
 String NullFirstToKeyString() {

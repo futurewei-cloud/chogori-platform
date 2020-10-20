@@ -80,12 +80,12 @@ void K2TxnHandle::makeHeartbeatTimer() {
 std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(const dto::SKVRecord& record) const {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
-            throw new std::runtime_error("Partition key field not set for read request");
+            throw std::runtime_error("Partition key field not set for read request");
         }
     }
     for (const String& key : record.rangeKeys) {
         if (key == "") {
-            throw new std::runtime_error("Range key field not set for read request");
+            throw std::runtime_error("Range key field not set for read request");
         }
     }
 
@@ -100,12 +100,12 @@ std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(const dto::S
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
-            throw new std::runtime_error("Partition key field not set for write request");
+            throw std::runtime_error("Partition key field not set for write request");
         }
     }
     for (const String& key : record.rangeKeys) {
         if (key == "") {
-            throw new std::runtime_error("Range key field not set for read request");
+            throw std::runtime_error("Range key field not set for read request");
         }
     }
 
@@ -125,11 +125,12 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
         erase,
         _write_set.size() == 1,
         key,
-        record.storage.share()
+        record.storage.share(),
+        std::vector<uint32_t>()
     });
 }
 
-std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record, 
+std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record, 
                     std::vector<uint32_t> fieldsToUpdate) {
         dto::Key key = record.getKey();
         
@@ -139,11 +140,12 @@ std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRe
         }
         _write_set.push_back(key);
             
-        return std::make_unique<dto::K23SIPartialUpdateRequest>(dto::K23SIPartialUpdateRequest{
+        return std::make_unique<dto::K23SIWriteRequest>(dto::K23SIWriteRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
             record.collectionName,
             _mtr,
             _trh_key,
+            false, // Partial update cannot be a delete
             _write_set.size() == 1,
             key,
             record.storage.share(),
@@ -406,14 +408,14 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
+            throw std::runtime_error("Key fields of startScanRecord are not a prefix");
         }
     }
     for (const String& key : query.startScanRecord.rangeKeys) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
+            throw std::runtime_error("Key fields of startScanRecord are not a prefix");
         }
     }
 
@@ -422,14 +424,14 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
+            throw std::runtime_error("Key fields of endScanRecord are not a prefix");
         }
     }
     for (const String& key : query.endScanRecord.rangeKeys) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
+            throw std::runtime_error("Key fields of endScanRecord are not a prefix");
         }
     }
 
@@ -437,10 +439,10 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
     query.request.endKey = query.endScanRecord.getKey();
     if (query.request.key > query.request.endKey && !query.request.reverseDirection && 
                 query.request.endKey.partitionKey != "") {
-        throw new std::runtime_error("Start key is greater than end key for forward direction query");
+        throw std::runtime_error("Start key is greater than end key for forward direction query");
     } else if (query.request.key < query.request.endKey && query.request.reverseDirection && 
                 query.request.key.partitionKey != "") {
-        throw new std::runtime_error("End key is greater than start key for reverse direction query");
+        throw std::runtime_error("End key is greater than start key for reverse direction query");
     }
 
     query.request.mtr = _mtr;
