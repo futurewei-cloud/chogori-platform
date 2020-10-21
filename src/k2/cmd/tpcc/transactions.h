@@ -284,8 +284,10 @@ private:
                     *(line.Amount) = *(item.Price) * *(line.Quantity);
                     _total_amount += *(line.Amount);
                     line.DistInfo = stock.getDistInfo(*(line.DistrictID));
+                    
                     std::vector<k2::String> stockUpdateFields;
-                    Stock updateStock = updateStockRow(stock, line, stockUpdateFields);
+                    Stock updateStock(*stock.WarehouseID, *stock.ItemID);
+                    updateStockRow(stock, line, updateStock, stockUpdateFields);
 
                     auto line_update = writeRow<OrderLine>(line, _txn);
                     auto stock_update = partialUpdateRow<Stock>(updateStock, stockUpdateFields, _txn);
@@ -341,9 +343,7 @@ private:
         }
     }
 
-    Stock updateStockRow(Stock& stock, const OrderLine& line, std::vector<k2::String>& updateFields) {
-        Stock updateStock(*stock.WarehouseID, *stock.ItemID);
-    
+    static void updateStockRow(Stock& stock, const OrderLine& line, Stock& updateStock, std::vector<k2::String>& updateFields) {
         if (*(stock.Quantity) - *(line.Quantity) >= 10) {
             updateStock.Quantity = *(stock.Quantity) - *(line.Quantity);
         } else {
@@ -358,8 +358,6 @@ private:
             updateStock.RemoteCount = (*stock.RemoteCount) + 1;
             updateFields.push_back("RemoteCount");
         }
-
-        return std::move(updateStock);
     }
 
     void makeOrderLines() {
