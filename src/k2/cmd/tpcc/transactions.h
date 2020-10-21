@@ -245,7 +245,7 @@ private:
             _order.OrderID = *(result.value.NextOrderID);
             _d_tax = *(result.value.Tax);
             District district(*result.value.WarehouseID, *result.value.DistrictID);
-            district.NextOrderID = (*result.value.NextOrderID)++;
+            district.NextOrderID = (*result.value.NextOrderID) + 1;
             future<PartialUpdateResult> district_update = partialUpdateRow<District>(district, {"NextOID"}, _txn);
 
             // Write NewOrder row
@@ -359,7 +359,7 @@ private:
             updateFields.push_back("RemoteCount");
         }
 
-        return updateStock;
+        return std::move(updateStock);
     }
 
     void makeOrderLines() {
