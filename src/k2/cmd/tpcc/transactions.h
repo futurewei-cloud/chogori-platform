@@ -47,7 +47,7 @@ public:
 class PaymentT : public TPCCTxn
 {
 public:
-    PaymentT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) :
+    PaymentT(RandomContext& random, K23SIClient& client, int16_t w_id, int16_t max_w_id) :
                         _client(client), _w_id(w_id) {
 
         _d_id = random.UniformRandom(1, _districts_per_warehouse());
@@ -128,8 +128,8 @@ private:
             CHECK_READ_STATUS(result);
             _w_name = *(result.value.Name);
             Warehouse warehouse(_w_id);
-            *warehouse.YTD = *(result.value.YTD) + _amount;
-            return partialUpdateRow<Warehouse>(warehouse, {2}, _txn).discard_result();
+            warehouse.YTD = *(result.value.YTD) + _amount;
+            return partialUpdateRow<Warehouse>(warehouse, (std::vector<uint32_t>){2}, _txn).discard_result();
         });
     }
 
@@ -137,9 +137,10 @@ private:
         return _txn.read<District>(District(_w_id, _d_id))
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
-            *(result.value.YTD) += _amount;
             _d_name = *(result.value.Name);
-            return writeRow<District>(result.value, _txn).discard_result();
+            District district(_w_id, _d_id);
+            district.YTD = *(result.value.YTD) + _amount;
+            return partialUpdateRow<District>(district, (std::vector<uint32_t>){3}, _txn).discard_result();
         });
     }
 
@@ -148,27 +149,29 @@ private:
         .then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
 
-            *(result.value.Balance) -= _amount;
-            *(result.value.YTDPayment) += _amount;
-            (*(result.value.PaymentCount))++;
+            Customer customer(_c_w_id, _c_d_id, _c_id);
+            customer.Balance = *(result.value.Balance) - _amount;
+            customer.YTDPayment = *(result.value.YTDPayment) + _amount;
+            customer.PaymentCount = *(result.value.PaymentCount) + 1;
+            k2::String str500(k2::String::initialized_later{}, 500);
+            customer.Info = str500;
 
             if (*(result.value.Credit) == "BC") {
                 size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
-                memmove((char*)result.value.Info->c_str() + shift_size, 
-                    (char*)result.value.Info->c_str(), 500-shift_size);
+                memcpy((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
                 uint32_t offset = 0;
-                memcpy((char*)result.value.Info->c_str() + offset, &_c_id, sizeof(_c_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_c_id, sizeof(_c_id));
                 offset += sizeof(_c_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
                 offset += sizeof(_c_d_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_d_id, sizeof(_d_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_d_id, sizeof(_d_id));
                 offset += sizeof(_d_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_w_id, sizeof(_w_id));
+                memcpy((char*)customer.Info->c_str() + offset, &_w_id, sizeof(_w_id));
                 offset += sizeof(_w_id);
-                memcpy((char*)result.value.Info->c_str() + offset, &_amount, sizeof(_amount));
+                memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
             }
 
-            return writeRow<Customer>(result.value, _txn).discard_result();
+            return partialUpdateRow<Customer>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
         });
     }
 
@@ -179,12 +182,12 @@ private:
 
     K23SIClient& _client;
     K2TxnHandle _txn;
-    uint32_t _w_id;
-    uint32_t _c_w_id;
-    uint32_t _c_id;
-    uint32_t _amount;
-    uint16_t _d_id;
-    uint16_t _c_d_id;
+    int16_t _w_id;
+    int16_t _c_w_id;
+    int32_t _c_id;
+    int64_t _amount;
+    int16_t _d_id;
+    int16_t _c_d_id;
     k2::String _w_name;
     k2::String _d_name;
     bool _failed;
@@ -200,7 +203,7 @@ friend class AtomicVerify;
 class NewOrderT : public TPCCTxn
 {
 public:
-    NewOrderT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) :
+    NewOrderT(RandomContext& random, K23SIClient& client, int16_t w_id, int16_t max_w_id) :
                         _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), _failed(false), _order(random, w_id) {}
 
     future<bool> run() override {
@@ -241,8 +244,9 @@ private:
             // Get and write NextOrderID in district row
             _order.OrderID = *(result.value.NextOrderID);
             _d_tax = *(result.value.Tax);
-            (*(result.value.NextOrderID))++;
-            future<WriteResult> district_update = writeRow<District>(result.value, _txn);
+            District district(*result.value.WarehouseID, *result.value.DistrictID);
+            district.NextOrderID = (*result.value.NextOrderID) + 1;
+            future<PartialUpdateResult> district_update = partialUpdateRow<District>(district, {"NextOID"}, _txn);
 
             // Write NewOrder row
             NewOrder new_order(_order);
@@ -280,10 +284,13 @@ private:
                     *(line.Amount) = *(item.Price) * *(line.Quantity);
                     _total_amount += *(line.Amount);
                     line.DistInfo = stock.getDistInfo(*(line.DistrictID));
-                    updateStockRow(stock, line);
+                    
+                    std::vector<k2::String> stockUpdateFields;
+                    Stock updateStock(*stock.WarehouseID, *stock.ItemID);
+                    updateStockRow(stock, line, updateStock, stockUpdateFields);
 
                     auto line_update = writeRow<OrderLine>(line, _txn);
-                    auto stock_update = writeRow<Stock>(stock, _txn);
+                    auto stock_update = partialUpdateRow<Stock>(updateStock, stockUpdateFields, _txn);
 
                     return when_all_succeed(std::move(line_update), std::move(stock_update)).discard_result();
                 });
@@ -333,6 +340,23 @@ private:
         (*(stock.OrderCount))++;
         if (*(line.WarehouseID) != *(line.SupplyWarehouseID)) {
             (*(stock.RemoteCount))++;
+        }
+    }
+
+    static void updateStockRow(Stock& stock, const OrderLine& line, Stock& updateStock, std::vector<k2::String>& updateFields) {
+        if (*(stock.Quantity) - *(line.Quantity) >= 10) {
+            updateStock.Quantity = *(stock.Quantity) - *(line.Quantity);
+        } else {
+            updateStock.Quantity = *(stock.Quantity) + 91 - *(line.Quantity);
+        }
+        updateFields.push_back("Quantity");
+        updateStock.YTD = *(stock.YTD) + *(line.Quantity);
+        updateFields.push_back("YTD");
+        updateStock.OrderCount = (*stock.OrderCount) + 1;
+        updateFields.push_back("OrderCount");
+        if (*(line.WarehouseID) != *(line.SupplyWarehouseID)) {
+            updateStock.RemoteCount = (*stock.RemoteCount) + 1;
+            updateFields.push_back("RemoteCount");
         }
     }
 
