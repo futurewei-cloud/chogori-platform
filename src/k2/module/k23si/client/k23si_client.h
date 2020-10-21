@@ -315,15 +315,6 @@ public:
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-
-            // for debug
-            std::cout << "{partialUpdate} record schema:" << skv_record.schema->name << ". exFields:" ;
-            for(auto e : skv_record.storage.excludedFields) std::cout << e << ",";
-            std::cout << ". " << std::endl;
-            std::cout << "{partialUpdate} fieldsToUpdate:";
-            for (auto e : fieldsToUpdate) std::cout << e << ",";
-            std::cout << ". " << std::endl;
-            
             request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
         }
         if (request == nullptr) {
