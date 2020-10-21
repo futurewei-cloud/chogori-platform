@@ -47,7 +47,7 @@ public:
 class PaymentT : public TPCCTxn
 {
 public:
-    PaymentT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) :
+    PaymentT(RandomContext& random, K23SIClient& client, int16_t w_id, int16_t max_w_id) :
                         _client(client), _w_id(w_id) {
 
         _d_id = random.UniformRandom(1, _districts_per_warehouse());
@@ -182,12 +182,12 @@ private:
 
     K23SIClient& _client;
     K2TxnHandle _txn;
-    uint32_t _w_id;
-    uint32_t _c_w_id;
-    uint32_t _c_id;
-    uint32_t _amount;
-    uint16_t _d_id;
-    uint16_t _c_d_id;
+    int16_t _w_id;
+    int16_t _c_w_id;
+    int32_t _c_id;
+    int64_t _amount;
+    int16_t _d_id;
+    int16_t _c_d_id;
     k2::String _w_name;
     k2::String _d_name;
     bool _failed;
@@ -203,7 +203,7 @@ friend class AtomicVerify;
 class NewOrderT : public TPCCTxn
 {
 public:
-    NewOrderT(RandomContext& random, K23SIClient& client, uint32_t w_id, uint32_t max_w_id) :
+    NewOrderT(RandomContext& random, K23SIClient& client, int16_t w_id, int16_t max_w_id) :
                         _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), _failed(false), _order(random, w_id) {}
 
     future<bool> run() override {
@@ -365,7 +365,7 @@ private:
     void makeOrderLines() {
         _lines.reserve(*(_order.OrderLineCount));
         _order.AllLocal = 1;
-        for (uint32_t i = 0; i < *(_order.OrderLineCount); ++i) {
+        for (int32_t i = 0; i < *(_order.OrderLineCount); ++i) {
             _lines.emplace_back(_random, _order, i, _max_w_id);
             if (*(_lines.back().SupplyWarehouseID) != _w_id) {
                 _order.AllLocal = 0;
@@ -380,8 +380,8 @@ private:
     RandomContext& _random;
     K23SIClient& _client;
     K2TxnHandle _txn;
-    uint32_t _w_id;
-    uint32_t _max_w_id;
+    int16_t _w_id;
+    int16_t _max_w_id;
     bool _failed;
     Order _order;
     std::vector<OrderLine> _lines;

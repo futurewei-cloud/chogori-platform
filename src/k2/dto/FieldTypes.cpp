@@ -36,11 +36,14 @@ namespace dto {
 static constexpr char ESCAPE = '\0';
 static constexpr char TERM = 0x01;
 static constexpr char ESCAPED_NULL = 0xFF;
+// + > -, and not using the above constants just for potentially easier decoding
+static constexpr char SIGN_POS = 0x03;
+static constexpr char SIGN_NEG = 0x02;
 
 template <> FieldType TToFieldType<String>() { return FieldType::STRING; }
-template <> FieldType TToFieldType<uint32_t>() { return FieldType::UINT32T; }
-template <> FieldType TToFieldType<uint64_t>() { return FieldType::UINT64T; }
+template <> FieldType TToFieldType<int16_t>() { return FieldType::INT16T; }
 template <> FieldType TToFieldType<int32_t>() { return FieldType::INT32T; }
+template <> FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
 template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
 
 // All conversion assume ascending ordering
@@ -84,45 +87,95 @@ template <> String FieldToKeyString<String>(const String& field) {
     return escapedString;
 }
 
-// Simple conversion to big-endian
-template <> String FieldToKeyString<uint32_t>(const uint32_t& field)
+// Strategy for intxx_t conversions:
+// Add a sign byte
+// If -, convert to +
+// Convert to big endian
+// If originally -, subtract each byte from 255
+// 0 is encoded as +0
+
+template <> String FieldToKeyString<int16_t>(const int16_t& field)
 {
-    // type byte + 4 bytes + ESCAPE + TERM
-    String s(String::initialized_later(), 7);
-    s[0] = (char) FieldType::UINT32T;
-    s[1] = (char)(field >> 24);
-    s[2] = (char)(field >> 16);
-    s[3] = (char)(field >> 8);
-    s[4] = (char)(field);
-    s[5] = ESCAPE;
-    s[6] = TERM;
+    // type byte + sign byte + 2 bytes + ESCAPE + TERM
+    String s(String::initialized_later(), 6);
+    s[0] = (char) FieldType::INT16T;
+
+    if (field >= 0) {
+        s[1] = SIGN_POS;
+        s[2] = (char)(field >> 8);
+        s[3] = (char)(field);
+    } else {
+        s[1] = SIGN_NEG;
+        int pos_field = -field;
+        s[2] = 255-((char)(pos_field >> 8));
+        s[3] = 255-((char)(pos_field));
+    }
+
+    s[4] = ESCAPE;
+    s[5] = TERM;
 
     return s;
 }
 
-// Simple conversion to big-endian
-template <> String FieldToKeyString<uint64_t>(const uint64_t& field)
+template <> String FieldToKeyString<int64_t>(const int64_t& field)
 {
-    // type byte + 8 bytes + ESCAPE + TERM
-    String s(String::initialized_later(), 11);
-    s[0] = (char) FieldType::UINT32T;
-    s[1] = (char)(field >> 56);
-    s[2] = (char)(field >> 48);
-    s[3] = (char)(field >> 40);
-    s[4] = (char)(field >> 32);
-    s[5] = (char)(field >> 24);
-    s[6] = (char)(field >> 16);
-    s[7] = (char)(field >> 8);
-    s[8] = (char)(field);
-    s[9] = ESCAPE;
-    s[10] = TERM;
+    // type byte + sign byte + 8 bytes + ESCAPE + TERM
+    String s(String::initialized_later(), 12);
+    s[0] = (char) FieldType::INT64T;
+
+    if (field >= 0) {
+        s[1] = SIGN_POS;
+        s[2] = (char)(field >> 56);
+        s[3] = (char)(field >> 48);
+        s[4] = (char)(field >> 40);
+        s[5] = (char)(field >> 32);
+        s[6] = (char)(field >> 24);
+        s[7] = (char)(field >> 16);
+        s[8] = (char)(field >> 8);
+        s[9] = (char)(field);
+    } else {
+        s[1] = SIGN_NEG;
+        int64_t pos_field = -field;
+        s[2] = 255-((char)(pos_field >> 56));
+        s[3] = 255-((char)(pos_field >> 48));
+        s[4] = 255-((char)(pos_field >> 40));
+        s[5] = 255-((char)(pos_field >> 32));
+        s[6] = 255-((char)(pos_field >> 24));
+        s[7] = 255-((char)(pos_field >> 16));
+        s[8] = 255-((char)(pos_field >> 8));
+        s[9] = 255-((char)(pos_field));
+    }
+
+    s[10] = ESCAPE;
+    s[11] = TERM;
 
     return s;
 }
 
 template <> String FieldToKeyString<int32_t>(const int32_t& field) {
-    (void) field;
-    throw new std::runtime_error("Key encoding for int32_t is not implemented yet");
+    // type byte + sign byte + 4 bytes + ESCAPE + TERM
+    String s(String::initialized_later(), 8);
+    s[0] = (char) FieldType::INT32T;
+
+    if (field >= 0) {
+        s[1] = SIGN_POS;
+        s[2] = (char)(field >> 24);
+        s[3] = (char)(field >> 16);
+        s[4] = (char)(field >> 8);
+        s[5] = (char)(field);
+    } else {
+        s[1] = SIGN_NEG;
+        int64_t pos_field = -field;
+        s[2] = 255-((char)(pos_field >> 24));
+        s[3] = 255-((char)(pos_field >> 16));
+        s[4] = 255-((char)(pos_field >> 8));
+        s[5] = 255-((char)(pos_field));
+    }
+
+    s[6] = ESCAPE;
+    s[7] = TERM;
+
+    return s;
 }
 
 template <> String FieldToKeyString<float>(const float& field) {

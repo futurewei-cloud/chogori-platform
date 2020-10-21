@@ -112,9 +112,9 @@ public:
         .name = "warehouse",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
                 {k2::dto::FieldType::FLOAT, "Tax", false, false},
-                {k2::dto::FieldType::UINT32T, "YTD", false, false},
+                {k2::dto::FieldType::INT64T, "YTD", false, false},
                 {k2::dto::FieldType::STRING, "Name", false, false},
                 {k2::dto::FieldType::STRING, "Street1", false, false},
                 {k2::dto::FieldType::STRING, "Street2", false, false},
@@ -126,20 +126,20 @@ public:
     };
 
 
-    Warehouse(RandomContext& random, uint32_t id) : WarehouseID(id) {
+    Warehouse(RandomContext& random, int16_t id) : WarehouseID(id) {
         Name = random.RandomString(6, 10);
         address = Address(random);
         Tax = random.UniformRandom(0, 2000) / 10000.0f;
         YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
     }
 
-    Warehouse(uint32_t id) : WarehouseID(id) {}
+    Warehouse(int16_t id) : WarehouseID(id) {}
 
     Warehouse() = default;
 
-    std::optional<uint32_t> WarehouseID;
+    std::optional<int16_t> WarehouseID;
     std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
-    std::optional<uint32_t> YTD; // "Fixed point", first two digits are cents
+    std::optional<int64_t> YTD; // "Fixed point", first two digits are cents
     std::optional<k2::String> Name;
     Address address;
 
@@ -159,11 +159,11 @@ public:
         .name = "district",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT32T, "DID", false, false},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
+                {k2::dto::FieldType::INT16T, "DID", false, false},
                 {k2::dto::FieldType::FLOAT, "Tax", false, false},
-                {k2::dto::FieldType::UINT32T, "YTD", false, false},
-                {k2::dto::FieldType::UINT32T, "NextOID", false, false},
+                {k2::dto::FieldType::INT64T, "YTD", false, false},
+                {k2::dto::FieldType::INT64T, "NextOID", false, false},
                 {k2::dto::FieldType::STRING, "Name", false, false},
                 {k2::dto::FieldType::STRING, "Street1", false, false},
                 {k2::dto::FieldType::STRING, "Street2", false, false},
@@ -174,7 +174,7 @@ public:
         .rangeKeyFields = std::vector<uint32_t> { 1 }
     };
 
-    District(RandomContext& random, uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {
+    District(RandomContext& random, int16_t w_id, int16_t id) : WarehouseID(w_id), DistrictID(id) {
         Name = random.RandomString(6, 10);
         address = Address(random);
         Tax = random.UniformRandom(0, 2000) / 10000.0f;
@@ -182,15 +182,15 @@ public:
         NextOrderID = _customers_per_district()+1;
     }
 
-    District(uint32_t w_id, uint32_t id) : WarehouseID(w_id), DistrictID(id) {}
+    District(int16_t w_id, int16_t id) : WarehouseID(w_id), DistrictID(id) {}
 
     District() = default;
 
-    std::optional<uint32_t> WarehouseID;
-    std::optional<uint32_t> DistrictID;
+    std::optional<int16_t> WarehouseID;
+    std::optional<int16_t> DistrictID;
     std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
-    std::optional<uint32_t> YTD; // "Fixed point", first two digits are cents
-    std::optional<uint32_t> NextOrderID;
+    std::optional<int64_t> YTD; // "Fixed point", first two digits are cents
+    std::optional<int64_t> NextOrderID;
     std::optional<k2::String> Name;
     Address address;
 
@@ -209,16 +209,16 @@ public:
         .name = "customer",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT32T, "DID", false, false},
-                {k2::dto::FieldType::UINT32T, "CID", false, false},
-                {k2::dto::FieldType::UINT64T, "SinceDate", false, false},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
+                {k2::dto::FieldType::INT16T, "DID", false, false},
+                {k2::dto::FieldType::INT32T, "CID", false, false},
+                {k2::dto::FieldType::INT64T, "SinceDate", false, false},
                 {k2::dto::FieldType::FLOAT, "CreditLimit", false, false},
                 {k2::dto::FieldType::FLOAT, "Discount", false, false},
-                {k2::dto::FieldType::UINT32T, "Balance", false, false},
-                {k2::dto::FieldType::UINT32T, "YTDPayment", false, false},
-                {k2::dto::FieldType::UINT32T, "PaymentCount", false, false},
-                {k2::dto::FieldType::UINT32T, "DeliveryCount", false, false},
+                {k2::dto::FieldType::INT64T, "Balance", false, false},
+                {k2::dto::FieldType::INT64T, "YTDPayment", false, false},
+                {k2::dto::FieldType::INT64T, "PaymentCount", false, false},
+                {k2::dto::FieldType::INT64T, "DeliveryCount", false, false},
                 {k2::dto::FieldType::STRING, "FirstName", false, false},
                 {k2::dto::FieldType::STRING, "MiddleName", false, false},
                 {k2::dto::FieldType::STRING, "LastName", false, false},
@@ -234,7 +234,7 @@ public:
         .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
     };
 
-    Customer(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) :
+    Customer(RandomContext& random, int16_t w_id, int16_t d_id, int32_t c_id) :
             WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
         LastName = random.RandomString(5, 5); // TODO needs to use special non-uniform function
         MiddleName = "OE";
@@ -259,21 +259,21 @@ public:
         Info = random.RandomString(500, 500);
     }
 
-    Customer(uint32_t w_id, uint16_t d_id, uint32_t c_id) :
+    Customer(int16_t w_id, int16_t d_id, int32_t c_id) :
             WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {}
 
     Customer() = default;
 
-    std::optional<uint32_t> WarehouseID;
-    std::optional<uint32_t> DistrictID;
-    std::optional<uint32_t> CustomerID;
-    std::optional<uint64_t> SinceDate;
+    std::optional<int16_t> WarehouseID;
+    std::optional<int16_t> DistrictID;
+    std::optional<int32_t> CustomerID;
+    std::optional<int64_t> SinceDate;
     std::optional<float> CreditLimit; // TODO Needs to be fixed point to be in spec
     std::optional<float> Discount;
-    std::optional<uint32_t> Balance;
-    std::optional<uint32_t> YTDPayment;
-    std::optional<uint32_t> PaymentCount;
-    std::optional<uint32_t> DeliveryCount;
+    std::optional<int64_t> Balance;
+    std::optional<int64_t> YTDPayment;
+    std::optional<int64_t> PaymentCount;
+    std::optional<int64_t> DeliveryCount;
     std::optional<k2::String> FirstName;
     std::optional<k2::String> MiddleName;
     std::optional<k2::String> LastName;
@@ -295,20 +295,20 @@ public:
         .name = "history",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT64T, "Date", false, false},
-                {k2::dto::FieldType::UINT32T, "CID", false, false},
-                {k2::dto::FieldType::UINT32T, "CWID", false, false},
-                {k2::dto::FieldType::UINT32T, "Amount", false, false},
-                {k2::dto::FieldType::UINT32T, "CDID", false, false},
-                {k2::dto::FieldType::UINT32T, "DID", false, false},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
+                {k2::dto::FieldType::INT64T, "Date", false, false},
+                {k2::dto::FieldType::INT32T, "CID", false, false},
+                {k2::dto::FieldType::INT16T, "CWID", false, false},
+                {k2::dto::FieldType::INT64T, "Amount", false, false},
+                {k2::dto::FieldType::INT16T, "CDID", false, false},
+                {k2::dto::FieldType::INT16T, "DID", false, false},
                 {k2::dto::FieldType::STRING, "Info", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1 }
     };
 
     // For initial population
-    History(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id) : WarehouseID(w_id) {
+    History(RandomContext& random, int16_t w_id, int16_t d_id, int32_t c_id) : WarehouseID(w_id) {
         CustomerID = c_id;
         CustomerWarehouseID = w_id;
         CustomerDistrictID = d_id;
@@ -318,7 +318,7 @@ public:
     }
 
     // For payment transaction
-    History(uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t c_w_id, uint16_t c_d_id, float amount,
+    History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id, float amount,
                 const char w_name[], const char d_name[]) : WarehouseID(w_id) {
         Date = getDate();
         CustomerID = c_id;
@@ -337,13 +337,13 @@ public:
 
     History() = default;
 
-    std::optional<uint32_t> WarehouseID;
-    std::optional<uint64_t> Date;
-    std::optional<uint32_t> CustomerID;
-    std::optional<uint32_t> CustomerWarehouseID;
-    std::optional<uint32_t> Amount;
-    std::optional<uint32_t> CustomerDistrictID;
-    std::optional<uint32_t> DistrictID;
+    std::optional<int16_t> WarehouseID;
+    std::optional<int64_t> Date;
+    std::optional<int32_t> CustomerID;
+    std::optional<int16_t> CustomerWarehouseID;
+    std::optional<int64_t> Amount;
+    std::optional<int16_t> CustomerDistrictID;
+    std::optional<int16_t> DistrictID;
     std::optional<k2::String> Info;
 
     static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
@@ -358,20 +358,20 @@ public:
         .name = "order",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT32T, "DID", false, false},
-                {k2::dto::FieldType::UINT32T, "OID", false, false},
-                {k2::dto::FieldType::UINT32T, "LineCount", false, false},
-                {k2::dto::FieldType::UINT64T, "EntryDate", false, false},
-                {k2::dto::FieldType::UINT32T, "CID", false, false},
-                {k2::dto::FieldType::UINT32T, "CarrierID", false, false},
-                {k2::dto::FieldType::UINT32T, "AllLocal", false, false}},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
+                {k2::dto::FieldType::INT16T, "DID", false, false},
+                {k2::dto::FieldType::INT64T, "OID", false, false},
+                {k2::dto::FieldType::INT32T, "LineCount", false, false},
+                {k2::dto::FieldType::INT64T, "EntryDate", false, false},
+                {k2::dto::FieldType::INT32T, "CID", false, false},
+                {k2::dto::FieldType::INT32T, "CarrierID", false, false},
+                {k2::dto::FieldType::INT16T, "AllLocal", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
     };
 
     // For initial population
-    Order(RandomContext& random, uint32_t w_id, uint16_t d_id, uint32_t c_id, uint32_t id) :
+    Order(RandomContext& random, int16_t w_id, int16_t d_id, int32_t c_id, int64_t id) :
             WarehouseID(w_id), DistrictID(d_id), OrderID(id) {
         CustomerID = c_id;
         EntryDate = 0; // TODO
@@ -385,7 +385,7 @@ public:
     }
 
     // For NewOrder transaction
-    Order(RandomContext& random, uint32_t w_id) : WarehouseID(w_id) {
+    Order(RandomContext& random, int16_t w_id) : WarehouseID(w_id) {
         DistrictID = random.UniformRandom(1, _districts_per_warehouse());
         CustomerID = random.NonUniformRandom(1023, 1, _customers_per_district());
         OrderLineCount = random.UniformRandom(5, 15);
@@ -394,18 +394,18 @@ public:
         // OrderID and AllLocal to be filled in by the transaction
     }
 
-    Order(uint32_t w_id, uint16_t d_id, uint32_t o_id) : WarehouseID(w_id), DistrictID(d_id), OrderID(o_id) {}
+    Order(int16_t w_id, int16_t d_id, int64_t o_id) : WarehouseID(w_id), DistrictID(d_id), OrderID(o_id) {}
 
     Order() = default;
 
-    std::optional<uint32_t> WarehouseID;
-    std::optional<uint32_t> DistrictID;
-    std::optional<uint32_t> OrderID;
-    std::optional<uint32_t> OrderLineCount;
-    std::optional<uint64_t> EntryDate;
-    std::optional<uint32_t> CustomerID;
-    std::optional<uint32_t> CarrierID;
-    std::optional<uint32_t> AllLocal; // boolean, 0 or 1
+    std::optional<int16_t> WarehouseID;
+    std::optional<int16_t> DistrictID;
+    std::optional<int64_t> OrderID;
+    std::optional<int32_t> OrderLineCount;
+    std::optional<int64_t> EntryDate;
+    std::optional<int32_t> CustomerID;
+    std::optional<int32_t> CarrierID;
+    std::optional<int16_t> AllLocal; // boolean, 0 or 1
 
     static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
@@ -423,9 +423,9 @@ public:
         .name = "neworder",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT32T, "DID", false, false},
-                {k2::dto::FieldType::UINT32T, "OID", false, false}},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
+                {k2::dto::FieldType::INT16T, "DID", false, false},
+                {k2::dto::FieldType::INT64T, "OID", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
     };
@@ -435,9 +435,9 @@ public:
 
     NewOrder() = default;
 
-    std::optional<uint32_t> WarehouseID;
-    std::optional<uint32_t> DistrictID;
-    std::optional<uint32_t> OrderID;
+    std::optional<int16_t> WarehouseID;
+    std::optional<int16_t> DistrictID;
+    std::optional<int64_t> OrderID;
 
     static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
     static inline k2::String collectionName = tpccCollectionName;
@@ -450,22 +450,22 @@ public:
         .name = "orderline",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT32T, "DID", false, false},
-                {k2::dto::FieldType::UINT32T, "OID", false, false},
-                {k2::dto::FieldType::UINT32T, "LineNumber", false, false},
-                {k2::dto::FieldType::UINT64T, "DeliveryDate", false, false},
-                {k2::dto::FieldType::UINT32T, "ItemID", false, false},
-                {k2::dto::FieldType::UINT32T, "SupplyWID", false, false},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
+                {k2::dto::FieldType::INT16T, "DID", false, false},
+                {k2::dto::FieldType::INT64T, "OID", false, false},
+                {k2::dto::FieldType::INT32T, "LineNumber", false, false},
+                {k2::dto::FieldType::INT64T, "DeliveryDate", false, false},
+                {k2::dto::FieldType::INT32T, "ItemID", false, false},
+                {k2::dto::FieldType::INT16T, "SupplyWID", false, false},
                 {k2::dto::FieldType::FLOAT, "Amount", false, false},
-                {k2::dto::FieldType::UINT32T, "Quantity", false, false},
+                {k2::dto::FieldType::INT32T, "Quantity", false, false},
                 {k2::dto::FieldType::STRING, "DistInfo", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3 }
     };
 
     // For initial population
-    OrderLine(RandomContext& random, const Order& order, uint16_t line_num) :
+    OrderLine(RandomContext& random, const Order& order, int16_t line_num) :
             WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID), OrderLineNumber(line_num) {
         ItemID = random.UniformRandom(1, 100000);
         SupplyWarehouseID = WarehouseID;
@@ -485,7 +485,7 @@ public:
     // For New-Order transaction
     // Amount and DistInfo must be filled in during transaction
     // ItemID must be changed if it needs to be a rollback transactiom
-    OrderLine(RandomContext& random, const Order& order, uint16_t line_num, uint32_t max_warehouse_id) :
+    OrderLine(RandomContext& random, const Order& order, int16_t line_num, int16_t max_warehouse_id) :
             WarehouseID(order.WarehouseID), DistrictID(order.DistrictID), OrderID(order.OrderID), OrderLineNumber(line_num) {
         ItemID = random.NonUniformRandom(8191, 1, 100000);
 
@@ -504,15 +504,15 @@ public:
 
     OrderLine() = default;
 
-    std::optional<uint32_t> WarehouseID;
-    std::optional<uint32_t> DistrictID;
-    std::optional<uint32_t> OrderID;
-    std::optional<uint32_t> OrderLineNumber;
-    std::optional<uint64_t> DeliveryDate;
-    std::optional<uint32_t> ItemID;
-    std::optional<uint32_t> SupplyWarehouseID;
+    std::optional<int16_t> WarehouseID;
+    std::optional<int16_t> DistrictID;
+    std::optional<int64_t> OrderID;
+    std::optional<int32_t> OrderLineNumber;
+    std::optional<int64_t> DeliveryDate;
+    std::optional<int32_t> ItemID;
+    std::optional<int16_t> SupplyWarehouseID;
     std::optional<float> Amount; // TODO
-    std::optional<uint32_t> Quantity;
+    std::optional<int32_t> Quantity;
     std::optional<k2::String> DistInfo;
 
     static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
@@ -523,13 +523,13 @@ public:
 
 class Item {
 public:
-    static const uint32_t InvalidID = 999999;
+    static const int32_t InvalidID = 999999;
     static inline k2::dto::Schema item_schema {
         .name = "item",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT32T, "ImageID", false, false},
+                {k2::dto::FieldType::INT32T, "ID", false, false},
+                {k2::dto::FieldType::INT32T, "ImageID", false, false},
                 {k2::dto::FieldType::FLOAT, "Price", false, false},
                 {k2::dto::FieldType::STRING, "Name", false, false},
                 {k2::dto::FieldType::STRING, "Info", false, false}},
@@ -537,7 +537,7 @@ public:
         .rangeKeyFields = std::vector<uint32_t> {}
     };
 
-    Item(RandomContext& random, uint32_t id) : ItemID(id) {
+    Item(RandomContext& random, int32_t id) : ItemID(id) {
         ImageID = random.UniformRandom(1, 10000);
         Name = random.RandomString(14, 24);
         Price = random.UniformRandom(100, 10000) / 100.0f;
@@ -551,12 +551,12 @@ public:
         }
     }
 
-    Item(uint32_t id) : ItemID(id) {}
+    Item(int32_t id) : ItemID(id) {}
 
     Item() = default;
 
-    std::optional<uint32_t> ItemID;
-    std::optional<uint32_t> ImageID;
+    std::optional<int32_t> ItemID;
+    std::optional<int32_t> ImageID;
     std::optional<float> Price; // TODO
     std::optional<k2::String> Name;
     std::optional<k2::String> Info;
@@ -572,12 +572,12 @@ public:
         .name = "stock",
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::UINT32T, "ID", false, false},
-                {k2::dto::FieldType::UINT32T, "ItemID", false, false},
+                {k2::dto::FieldType::INT16T, "ID", false, false},
+                {k2::dto::FieldType::INT32T, "ItemID", false, false},
                 {k2::dto::FieldType::FLOAT, "YTD", false, false},
-                {k2::dto::FieldType::UINT32T, "OrderCount", false, false},
-                {k2::dto::FieldType::UINT32T, "RemoteCount", false, false},
-                {k2::dto::FieldType::UINT32T, "Quantity", false, false},
+                {k2::dto::FieldType::INT32T, "OrderCount", false, false},
+                {k2::dto::FieldType::INT32T, "RemoteCount", false, false},
+                {k2::dto::FieldType::INT32T, "Quantity", false, false},
                 {k2::dto::FieldType::STRING, "Dist_01", false, false},
                 {k2::dto::FieldType::STRING, "Dist_02", false, false},
                 {k2::dto::FieldType::STRING, "Dist_03", false, false},
@@ -593,7 +593,7 @@ public:
         .rangeKeyFields = std::vector<uint32_t> { 1 }
     };
 
-    Stock(RandomContext& random, uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
+    Stock(RandomContext& random, int16_t w_id, int32_t i_id) : WarehouseID(w_id), ItemID(i_id) {
         Quantity = random.UniformRandom(10, 100);
         Dist_01 = random.RandomString(24, 24);
         Dist_02 = random.RandomString(24, 24);
@@ -618,11 +618,11 @@ public:
         }
     }
 
-    Stock(uint32_t w_id, uint32_t i_id) : WarehouseID(w_id), ItemID(i_id) {}
+    Stock(int16_t w_id, int32_t i_id) : WarehouseID(w_id), ItemID(i_id) {}
 
     Stock() = default;
 
-    const char* getDistInfo(uint32_t d_id) {
+    const char* getDistInfo(int16_t d_id) {
         switch(d_id) {
             case 1:
                 return Dist_01->c_str();
@@ -649,12 +649,12 @@ public:
         }
     }
 
-    std::optional<uint32_t> WarehouseID;
-    std::optional<uint32_t> ItemID;
+    std::optional<int16_t> WarehouseID;
+    std::optional<int32_t> ItemID;
     std::optional<float> YTD; // TODO
-    std::optional<uint32_t> OrderCount;
-    std::optional<uint32_t> RemoteCount;
-    std::optional<uint32_t> Quantity;
+    std::optional<int32_t> OrderCount;
+    std::optional<int32_t> RemoteCount;
+    std::optional<int32_t> Quantity;
     std::optional<k2::String> Dist_01;
     std::optional<k2::String> Dist_02;
     std::optional<k2::String> Dist_03;

@@ -484,16 +484,32 @@ bool K23SIPartitionModule::_advancePayloadPosition(Payload& payload, dto::FieldT
         }
         break;
     }
-    case k2::dto::FieldType::UINT32T : {
-        uint32_t value;
+    case k2::dto::FieldType::INT16T : {
+        int16_t value;
         bool success = payload.read(value);
         if (!success) {
             return false;
         }
         break;
     }
-    case k2::dto::FieldType::UINT64T : {
-        uint64_t value;
+    case k2::dto::FieldType::INT32T : {
+        int32_t value;
+        bool success = payload.read(value);
+        if (!success) {
+            return false;
+        }
+        break;
+    }
+    case k2::dto::FieldType::INT64T : {
+        int64_t value;
+        bool success = payload.read(value);
+        if (!success) {
+            return false;
+        }
+        break;
+    }
+    case k2::dto::FieldType::FLOAT : {
+        float value;
         bool success = payload.read(value);
         if (!success) {
             return false;
@@ -525,8 +541,8 @@ bool K23SIPartitionModule::_copyPayloadBaseToUpdate(Payload& base, Payload& upda
         update.write(value);
         break;
     }
-    case k2::dto::FieldType::UINT32T : {
-        uint32_t value;
+    case k2::dto::FieldType::INT16T : {
+        int16_t value;
         bool success = base.read(value);
         if (!success) {
             return false;
@@ -534,8 +550,26 @@ bool K23SIPartitionModule::_copyPayloadBaseToUpdate(Payload& base, Payload& upda
         update.write(value);
         break;
     }
-    case k2::dto::FieldType::UINT64T : {
-        uint64_t value;
+    case k2::dto::FieldType::INT32T : {
+        int32_t value;
+        bool success = base.read(value);
+        if (!success) {
+            return false;
+        }
+        update.write(value);
+        break;
+    }
+    case k2::dto::FieldType::INT64T : {
+        int64_t value;
+        bool success = base.read(value);
+        if (!success) {
+            return false;
+        }
+        update.write(value);
+        break;
+    }
+    case k2::dto::FieldType::FLOAT : {
+        float value;
         bool success = base.read(value);
         if (!success) {
             return false;
@@ -679,13 +713,23 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
                             fieldsOffset.push_back(tmpOffset);
                             break;
                         }
-                        case dto::FieldType::UINT32T: {
-                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint32_t);
+                        case dto::FieldType::INT16T: {
+                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(int16_t);
                             fieldsOffset.push_back(tmpOffset);
                             break;
                         }
-                        case dto::FieldType::UINT64T: {
-                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint64_t);
+                        case dto::FieldType::INT32T: {
+                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(int32_t);
+                            fieldsOffset.push_back(tmpOffset);
+                            break;
+                        }
+                        case dto::FieldType::INT64T: {
+                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(int64_t);
+                            fieldsOffset.push_back(tmpOffset);
+                            break;
+                        }
+                        case dto::FieldType::FLOAT: {
+                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(float);
                             fieldsOffset.push_back(tmpOffset);
                             break;
                         }

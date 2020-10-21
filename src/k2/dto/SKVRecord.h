@@ -98,6 +98,8 @@ public:
     template <typename T>
     std::optional<T> deserializeField(uint32_t fieldIndex) {
         FieldType ft = TToFieldType<T>();
+        std::optional<T> null_val = std::nullopt;
+
         if (fieldIndex >= schema->fields.size() || ft != schema->fields[fieldIndex].type) {
             throw new std::runtime_error("Schema not followed in record deserialization");
         }
@@ -109,7 +111,7 @@ public:
         ++fieldCursor;
 
         if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldIndex]) {
-            return std::optional<T>();
+            return null_val;
         }
 
         T value;
@@ -189,10 +191,28 @@ public:
                func<k2::String>(std::move(value), (record).schema->fields[(record).fieldCursor-1].name, __VA_ARGS__); \
            } \
                break; \
-           case k2::dto::FieldType::UINT32T: \
+           case k2::dto::FieldType::INT16T: \
            { \
-               std::optional<uint32_t> value = (record).deserializeNext<uint32_t>(); \
-               func<uint32_t>(std::move(value), (record).schema->fields[(record).fieldCursor-1].name, __VA_ARGS__); \
+               std::optional<int16_t> value = (record).deserializeNext<int16_t>(); \
+               func<int16_t>(std::move(value), (record).schema->fields[(record).fieldCursor-1].name, __VA_ARGS__); \
+           } \
+               break; \
+           case k2::dto::FieldType::INT32T: \
+           { \
+               std::optional<int32_t> value = (record).deserializeNext<int32_t>(); \
+               func<int32_t>(std::move(value), (record).schema->fields[(record).fieldCursor-1].name, __VA_ARGS__); \
+           } \
+               break; \
+           case k2::dto::FieldType::INT64T: \
+           { \
+               std::optional<int64_t> value = (record).deserializeNext<int64_t>(); \
+               func<int64_t>(std::move(value), (record).schema->fields[(record).fieldCursor-1].name, __VA_ARGS__); \
+           } \
+               break; \
+           case k2::dto::FieldType::FLOAT: \
+           { \
+               std::optional<float> value = (record).deserializeNext<float>(); \
+               func<float>(std::move(value), (record).schema->fields[(record).fieldCursor-1].name, __VA_ARGS__); \
            } \
                break; \
            default: \

@@ -95,12 +95,12 @@ TEST_CASE("Test2: Strings with NULL bytes") {
     }
 }
 
-TEST_CASE("Test3: uint32 and NULL key ordering") {
+TEST_CASE("Test3: int32 and NULL key ordering") {
     k2::dto::Schema schema;
     schema.name = "test_schema";
     schema.version = 1;
     schema.fields = std::vector<k2::dto::SchemaField> {
-            {k2::dto::FieldType::UINT32T, "ID", false, false},
+            {k2::dto::FieldType::INT32T, "ID", false, false},
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
@@ -112,10 +112,10 @@ TEST_CASE("Test3: uint32 and NULL key ordering") {
     k2::dto::SKVRecord big("collection", schema_ptr);
     k2::dto::SKVRecord null("collection", schema_ptr);
 
-    zero.serializeNext<uint32_t>(0);
-    one.serializeNext<uint32_t>(1);
-    small.serializeNext<uint32_t>(777);
-    big.serializeNext<uint32_t>(3000000);
+    zero.serializeNext<int32_t>(0);
+    one.serializeNext<int32_t>(1);
+    small.serializeNext<int32_t>(777);
+    big.serializeNext<int32_t>(3000000);
     null.skipNext();
 
     k2::String zeroKey = zero.getPartitionKey();
@@ -130,3 +130,75 @@ TEST_CASE("Test3: uint32 and NULL key ordering") {
     REQUIRE(smallKey < bigKey);
 }
 
+TEST_CASE("Test4: signed int key ordering") {
+    k2::dto::Schema schema;
+    schema.name = "int16";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::INT16T, "ID", false, false},
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
+    std::shared_ptr<k2::dto::Schema> schema16 = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    schema.name = "int32";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::INT32T, "ID", false, false},
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
+    std::shared_ptr<k2::dto::Schema> schema32 = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    schema.name = "int64";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::INT64T, "ID", false, false},
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
+    std::shared_ptr<k2::dto::Schema> schema64 = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    std::vector<std::shared_ptr<k2::dto::Schema>> schemas;
+    schemas.push_back(schema16);
+    schemas.push_back(schema32);
+    schemas.push_back(schema64);
+
+    for (std::shared_ptr<k2::dto::Schema>& s : schemas) {
+        k2::dto::SKVRecord smallneg("collection", s);
+        k2::dto::SKVRecord largeneg("collection", s);
+        k2::dto::SKVRecord zero("collection", s);
+        k2::dto::SKVRecord small("collection", s);
+        k2::dto::SKVRecord large("collection", s);
+
+        if (s->name == "int16") {
+            smallneg.serializeNext<int16_t>(-20);
+            largeneg.serializeNext<int16_t>(-1000);
+            zero.serializeNext<int16_t>(0);
+            large.serializeNext<int16_t>(1001);
+            small.serializeNext<int16_t>(21);
+        }
+        else if (s->name == "int32") {
+            smallneg.serializeNext<int32_t>(-20);
+            largeneg.serializeNext<int32_t>(-10000);
+            zero.serializeNext<int32_t>(0);
+            large.serializeNext<int32_t>(10010);
+            small.serializeNext<int32_t>(21);
+        }
+        else if (s->name == "int64") {
+            smallneg.serializeNext<int64_t>(-20);
+            largeneg.serializeNext<int64_t>(-100000);
+            zero.serializeNext<int64_t>(0);
+            large.serializeNext<int64_t>(100100);
+            small.serializeNext<int64_t>(21);
+        }
+
+        k2::String smallneg_s = smallneg.getPartitionKey();
+        k2::String largeneg_s = largeneg.getPartitionKey();
+        k2::String zero_s = zero.getPartitionKey();
+        k2::String large_s = large.getPartitionKey();
+        k2::String small_s = small.getPartitionKey();
+
+        REQUIRE(largeneg_s < smallneg_s);
+        REQUIRE(smallneg_s < zero_s);
+        REQUIRE(zero_s < small_s);
+        REQUIRE(small_s < large_s);
+    }
+}
