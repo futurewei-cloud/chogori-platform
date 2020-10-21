@@ -432,12 +432,6 @@ bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, std::deq
         return false;
     }
 
-    if (versions.size() > 0 && versions[0].status == dto::DataRecord::WriteIntent &&
-            request.mtr == versions[0].txnId.mtr && false) {
-        // Trying to write over a txn's own WI, which we allow and can skip the remaining validations
-        return true;
-    }
-
     // check if we have a committed value newer than the request. The latest committed
     // is either the first or second in deque as we may have at most one outstanding WI
     // NB(1) if we try to place a WI over a committed value from different transaction with same ts.end
