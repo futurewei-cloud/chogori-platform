@@ -327,7 +327,7 @@ private:
             return make_ready_future<bool>(false);
         });
     }
-    
+
     static void updateStockRow(Stock& stock, const OrderLine& line) {
         if (*(stock.Quantity) - *(line.Quantity) >= 10) {
             *(stock.Quantity) -= *(line.Quantity);

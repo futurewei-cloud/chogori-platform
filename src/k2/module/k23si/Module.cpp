@@ -516,14 +516,6 @@ bool K23SIPartitionModule::_advancePayloadPosition(Payload& payload, dto::FieldT
         }
         break;
     }
-    case k2::dto::FieldType::FLOAT : {
-        float value;
-        bool success = payload.read(value);
-        if (!success) {
-            return false;
-        }
-        break;
-    }
     default :
         return false;
     }// end switch
@@ -561,15 +553,6 @@ bool K23SIPartitionModule::_copyPayloadBaseToUpdate(Payload& base, Payload& upda
     }
     case k2::dto::FieldType::INT64T : {
         int64_t value;
-        bool success = base.read(value);
-        if (!success) {
-            return false;
-        }
-        update.write(value);
-        break;
-    }
-    case k2::dto::FieldType::FLOAT : {
-        float value;
         bool success = base.read(value);
         if (!success) {
             return false;
@@ -784,7 +767,7 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIPartialUpdateRequest& r
         request.value.excludedFields = std::vector<bool>(schema.fields.size(), false);
     }
     
-    // based on the latest version to construct the new SKVRecord    
+    // based on the latest version to construct the new SKVRecord
     if (request.value.schemaVersion == versions[0].value.schemaVersion) { 
         // quick path --same schema version.
         // make every fields in schema for new SKVRecord 
