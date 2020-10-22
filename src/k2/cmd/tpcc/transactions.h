@@ -129,7 +129,7 @@ private:
             _w_name = *(result.value.Name);
             Warehouse warehouse(_w_id);
             warehouse.YTD = *(result.value.YTD) + _amount;
-            return partialUpdateRow<Warehouse>(warehouse, (std::vector<uint32_t>){2}, _txn).discard_result();
+            return partialUpdateRow<Warehouse, std::vector<uint32_t>>(warehouse, {2}, _txn).discard_result();
         });
     }
 
@@ -140,7 +140,7 @@ private:
             _d_name = *(result.value.Name);
             District district(_w_id, _d_id);
             district.YTD = *(result.value.YTD) + _amount;
-            return partialUpdateRow<District>(district, (std::vector<uint32_t>){3}, _txn).discard_result();
+            return partialUpdateRow<District, std::vector<uint32_t>>(district, {3}, _txn).discard_result();
         });
     }
 
@@ -171,7 +171,7 @@ private:
                 memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
             }
 
-            return partialUpdateRow<Customer>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
+            return partialUpdateRow<Customer, std::vector<k2::String>>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
         });
     }
 
@@ -246,7 +246,7 @@ private:
             _d_tax = *(result.value.Tax);
             District district(*result.value.WarehouseID, *result.value.DistrictID);
             district.NextOrderID = (*result.value.NextOrderID) + 1;
-            future<PartialUpdateResult> district_update = partialUpdateRow<District>(district, {"NextOID"}, _txn);
+            future<PartialUpdateResult> district_update = partialUpdateRow<District, std::vector<k2::String>>(district, {"NextOID"}, _txn);
 
             // Write NewOrder row
             NewOrder new_order(_order);
@@ -290,7 +290,7 @@ private:
                     updateStockRow(stock, line, updateStock, stockUpdateFields);
 
                     auto line_update = writeRow<OrderLine>(line, _txn);
-                    auto stock_update = partialUpdateRow<Stock>(updateStock, stockUpdateFields, _txn);
+                    auto stock_update = partialUpdateRow<Stock, std::vector<k2::String>>(updateStock, stockUpdateFields, _txn);
 
                     return when_all_succeed(std::move(line_update), std::move(stock_update)).discard_result();
                 });
@@ -328,19 +328,6 @@ private:
 
             return make_ready_future<bool>(false);
         });
-    }
-
-    static void updateStockRow(Stock& stock, const OrderLine& line) {
-        if (*(stock.Quantity) - *(line.Quantity) >= 10) {
-            *(stock.Quantity) -= *(line.Quantity);
-        } else {
-            *(stock.Quantity) = *(stock.Quantity) + 91 - *(line.Quantity);
-        }
-        *(stock.YTD) += *(line.Quantity);
-        (*(stock.OrderCount))++;
-        if (*(line.WarehouseID) != *(line.SupplyWarehouseID)) {
-            (*(stock.RemoteCount))++;
-        }
     }
 
     static void updateStockRow(Stock& stock, const OrderLine& line, Stock& updateStock, std::vector<k2::String>& updateFields) {
