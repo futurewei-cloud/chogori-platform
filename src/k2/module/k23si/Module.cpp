@@ -751,29 +751,34 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
     return true;
 }
 
-bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions) {
+bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous) {
+    // We already know the schema version exists because it is validated at the begin of handleWrite
     auto schemaIt = _schemas.find(request.key.schemaName);
-    if (schemaIt == _schemas.end()) return false;
     auto schemaVer = schemaIt->second.find(request.value.schemaVersion);
-    if (schemaVer == schemaIt->second.end()) return false;
     dto::Schema& schema = schemaVer->second;
-    
+
     if (!request.value.excludedFields.size()) {
         request.value.excludedFields = std::vector<bool>(schema.fields.size(), false);
-    }
-    
+    } 
+ 
     // based on the latest version to construct the new SKVRecord
-    if (request.value.schemaVersion == versions[0].value.schemaVersion) { 
+    if (request.value.schemaVersion == previous.value.schemaVersion) { 
         // quick path --same schema version.
         // make every fields in schema for new SKVRecord 
-        if(!_makeFieldsForSameVersion(schema, request, versions[0])) return false;
+        if(!_makeFieldsForSameVersion(schema, request, previous)) {
+            return false;
+        }
     } else { 
         // slow path --different schema version. 
-        auto latestSchemaVer = schemaIt->second.find(versions[0].value.schemaVersion);
-        if (latestSchemaVer == schemaIt->second.end()) return false;
+        auto latestSchemaVer = schemaIt->second.find(previous.value.schemaVersion);
+        if (latestSchemaVer == schemaIt->second.end()) {
+            return false;
+        }
         dto::Schema& baseSchema = latestSchemaVer->second;
 
-        if (!_makeFieldsForDiffVersion(schema, baseSchema, request, versions[0])) return false;
+        if (!_makeFieldsForDiffVersion(schema, baseSchema, request, previous)) {
+            return false;
+        }
     }
 
     return true;
@@ -864,7 +869,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
             // cannot parse partial record without a version
             return RPCResponse(dto::K23SIStatus::KeyNotFound("can not partial update with no/deleted version"), dto::K23SIWriteResponse{});
         }
-        if (!_parsePartialRecord(request, versions)) {
+        if (!_parsePartialRecord(request, versions[0])) {
             K2DEBUG("Partition: " << _partition << ", can not parse partial record for key " << request.key);
             versions[0].value.fieldData.seek(0);
             return RPCResponse(dto::K23SIStatus::BadParameter("missing fields or can not interpret partialUpdate"), dto::K23SIWriteResponse{});

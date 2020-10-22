@@ -175,7 +175,7 @@ private: // methods
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
     
     // method to parse the partial record to full record, return turn if parse successful
-    bool _parsePartialRecord(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
+    bool _parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous);
 
     // make every fields for a partial update request in the condition of same schema and same version
     bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version);

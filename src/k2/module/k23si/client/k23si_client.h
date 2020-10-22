@@ -46,6 +46,12 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
+struct K23SIClientException : public std::exception {
+    String what_str;
+    K23SIClientException(String s) : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override{ return what_str.c_str();}
+};
+
 class K2TxnOptions{
 public:
     K2TxnOptions() noexcept :
@@ -186,7 +192,7 @@ public:
     template <class T>
     seastar::future<ReadResult<T>> read(T record) {
         if (!_valid) {
-            return seastar::make_exception_future<ReadResult<T>>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<ReadResult<T>>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
@@ -240,7 +246,7 @@ public:
     template <class T>
     seastar::future<WriteResult> write(T& record, bool erase=false) {
         if (!_valid) {
-            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<WriteResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
@@ -301,7 +307,7 @@ public:
     template <typename T1>
     seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<uint32_t> fieldsToUpdate) {
         if (!_valid) {
-            return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status));

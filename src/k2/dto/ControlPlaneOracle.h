@@ -33,6 +33,13 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
+struct CPOClientException : public std::exception {
+    String what_str;
+    CPOClientException(String s) : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override{ return what_str.c_str();}
+};
+
+
 // Request to create a collection
 struct CollectionCreateRequest {
     // The metadata which describes the collection K2 should create

@@ -38,7 +38,7 @@ void Schema::setKeyFieldsByName(const std::vector<String>& keys, std::vector<uin
         }
 
         if (!found) {
-            throw std::runtime_error("Failed to find field by name");
+            throw CPOClientException("Failed to find field by name");
         }
     }
 }

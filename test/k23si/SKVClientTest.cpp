@@ -338,7 +338,9 @@ seastar::future<> runScenario03() {
 // scenario 04 partial update tests for the same schema version
 seastar::future<> runScenario04() {
     K2INFO("Scenario 04");
-    return _client.beginTxn(k2::K2TxnOptions())
+    k2::K2TxnOptions options;
+    options.syncFinalize = true;
+    return _client.beginTxn(options)
     .then([this] (k2::K2TxnHandle&& txn) {
         return seastar::do_with(
             std::move(txn),
@@ -586,13 +588,55 @@ seastar::future<> runScenario04() {
                                 
                                 return seastar::make_ready_future<>();
                             });
+                        })
+                        .then([&txnHandle] () {
+                            return txnHandle.end(true);
+                        })
+                        .then([] (auto&& response) {
+                            K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
                         });
                     }); // end do-with
                 });
-        }) // end do-with
-        .then([] {
-            K2INFO("scenario 04 partial update tests passed for the same schema version");
+        }); // end do-with
+    })
+    // Previous test were all within same txn, so partial update was on top of a WI,
+    // Now test partial update on top of a committed version
+    .then([this, options] () {
+        return _client.beginTxn(options);
+    })
+    .then([this] (k2::K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn),
+            [this] (k2::K2TxnHandle& txnHandle) {
+                return _client.getSchema(collname, "schema", 1)
+                .then([&txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+
+                    k2::dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<k2::String>("partkey_s04");
+                    record.serializeNext<k2::String>("rangekey_s04");
+                    record.skipNext();
+                    record.serializeNext<k2::String>("data2_over_commit");
+
+                    return txnHandle.partialUpdate<k2::dto::SKVRecord>(record, std::vector<uint32_t>{3});
+                })
+                .then([] (auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([&txnHandle] () {
+                    return txnHandle.end(true);
+                })
+                .then([] (auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<>();
+                });
         });
+    })
+    .then([] {
+        K2INFO("scenario 04 partial update tests passed for the same schema version");
+        return seastar::make_ready_future<>();
     });
 }
 
