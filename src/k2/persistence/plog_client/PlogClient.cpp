@@ -122,7 +122,6 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
 }
 
 seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, uint32_t offset, Payload payload){
-    K2INFO("Append with plogId: " << plogId << " and offset " << offset << " and size " << payload.getSize());
     uint32_t expected_offset = offset + payload.getSize();
     uint32_t appended_offset = payload.getSize();
     dto::PlogAppendRequest request{.plogId = std::move(plogId), .offset=offset, .payload=std::move(payload)};
@@ -132,10 +131,8 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
         appendFutures.push_back(RPC().callRPC<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::PERSISTENT_APPEND, request, *ep, _plog_timeout()));
     }
 
-    K2INFO("Start to Append");
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
         .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) { 
-            K2INFO("Received Append Response");
             Status return_status;
             for (auto& result: results){
                 auto& [status, response] = result;
@@ -147,7 +144,6 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
                     break;
                 }
             }
-            K2INFO("Append Done");
             return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(expected_offset)));
         });
 }

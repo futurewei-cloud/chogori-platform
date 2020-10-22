@@ -116,10 +116,6 @@ String SKVRecord::getPartitionKey() const {
     String partitionKey(String::initialized_later(), keySize);
     size_t position = 0;
     for (const String& key : partitionKeys) {
-        if (key == "") {
-            throw new std::runtime_error("partition key field not set");
-        }
-
         std::copy(key.begin(), key.end(), partitionKey.begin() + position);
         position += key.size();
     }
@@ -140,10 +136,6 @@ String SKVRecord::getRangeKey() const {
     String rangeKey(String::initialized_later(), keySize);
     size_t position = 0;
     for (const String& key : rangeKeys) {
-        if (key == "") {
-            throw new std::runtime_error("range key field not set");
-        }
-
         std::copy(key.begin(), key.end(), rangeKey.begin() + position);
         position += key.size();
     }

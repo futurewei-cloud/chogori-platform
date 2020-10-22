@@ -219,6 +219,32 @@ struct K23SIWriteResponse {
     K2_PAYLOAD_EMPTY;
 };
 
+struct K23SIPartialUpdateRequest{
+    Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    String collectionName; // the name of the collection
+    K23SI_MTR mtr; // the MTR for the issuing transaction
+    // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
+    // the first write (the write for which designateTRH was set to true)
+    // Note that this is not an unique identifier for a transaction record - transaction records are
+    // uniquely identified by the tuple (mtr, trh)
+    Key trh;
+    bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
+    // use the name "key" so that we can use common routing from CPO client
+    Key key; // the key for the write
+    SKVRecord::Storage value; // the value of the write
+    std::vector<uint32_t> fieldsToUpdate; // the updated fields of the write
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, designateTRH, key, value, fieldsToUpdate);
+    friend std::ostream& operator<<(std::ostream& os, const K23SIPartialUpdateRequest& r) {
+        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key
+                  << ", designate=" << r.designateTRH << "}";
+    }
+};
+
+struct K23SIPartialUpdateResponse {
+    K2_PAYLOAD_EMPTY;
+};
+
 enum class K23SIFilterOp : uint8_t {
     EQ,
     GT,
@@ -231,7 +257,8 @@ enum class K23SIFilterOp : uint8_t {
     AND,
     OR,
     XOR,
-    NOT
+    NOT,
+    OP_MAX = 255
 };
 
 struct K23SIFilterLeafNode {
@@ -246,7 +273,7 @@ struct K23SIFilterLeafNode {
 };
 
 struct K23SIFilterOpNode {
-    K23SIFilterOp op;
+    K23SIFilterOp op = K23SIFilterOp::OP_MAX;
     // The op is applied in the order that the children are in the vector. So a binary operator like LT 
     //would be applied as leafChildren[0] < leafChildren[1]
     std::vector<K23SIFilterOpNode> opChildren;
@@ -263,9 +290,9 @@ struct K23SIQueryRequest {
     Key key; // key for routing and will be interpreted as inclusive start key by the server
     Key endKey; // exclusive scan end key
 
-    int32_t recordLimit; // Max number of records server should return, negative is no limit
-    bool includeVersionMismatch; // Whether mismatched schema versions should be included in results
-    bool reverseDirection; // If true, key should be high and endKey low
+    int32_t recordLimit = -1; // Max number of records server should return, negative is no limit
+    bool includeVersionMismatch = false; // Whether mismatched schema versions should be included in results
+    bool reverseDirection = false; // If true, key should be high and endKey low
 
     K23SIFilterOpNode filterTree;
     std::vector<String> projection; // Fields by name to include in projection

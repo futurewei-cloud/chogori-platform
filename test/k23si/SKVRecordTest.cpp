@@ -28,7 +28,12 @@ Copyright(c) 2020 Futurewei Cloud
 #include "catch2/catch.hpp"
 
 template <typename T>
-void Test1Visitor(std::optional<T> value, const k2::String& fieldName, int tmp);
+void Test1Visitor(std::optional<T> value, const k2::String& fieldName, int tmp) {
+    (void) value;
+    (void) fieldName;
+    (void) tmp;
+    throw new std::runtime_error("Encountered unexpcted type in test visitor");
+}
 
 template <>
 void Test1Visitor<k2::String>(std::optional<k2::String> value, const k2::String& fieldName, int tmp) {
@@ -42,7 +47,7 @@ void Test1Visitor<k2::String>(std::optional<k2::String> value, const k2::String&
 }
 
 template <>
-void Test1Visitor<uint32_t>(std::optional<uint32_t> value, const k2::String& fieldName, int tmp) {
+void Test1Visitor<int32_t>(std::optional<int32_t> value, const k2::String& fieldName, int tmp) {
     (void) tmp;
     REQUIRE(value);
     REQUIRE(fieldName == "Balance");
@@ -57,7 +62,7 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
     schema.fields = std::vector<k2::dto::SchemaField> {
             {k2::dto::FieldType::STRING, "LastName", false, false},
             {k2::dto::FieldType::STRING, "FirstName", false, false},
-            {k2::dto::FieldType::UINT32T, "Balance", false, false}
+            {k2::dto::FieldType::INT32T, "Balance", false, false}
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
@@ -67,7 +72,7 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<k2::String>("Bilbo");
-    doc.serializeNext<uint32_t>(777);
+    doc.serializeNext<int32_t>(777);
 
     std::vector<uint8_t> expectedKey{
         1, // Type byte
@@ -118,7 +123,7 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
     std::optional<k2::String> firstName = doc.deserializeNext<k2::String>();
     REQUIRE(firstName);
     REQUIRE(*firstName == "Bilbo");
-    std::optional<uint32_t> balance = doc.deserializeNext<uint32_t>();
+    std::optional<int32_t> balance = doc.deserializeNext<int32_t>();
     REQUIRE(balance);
     REQUIRE(*balance == 777);
     REQUIRE(true);
@@ -134,7 +139,7 @@ TEST_CASE("Test2: invalid serialization tests") {
     schema.fields = std::vector<k2::dto::SchemaField> {
             {k2::dto::FieldType::STRING, "LastName", false, false},
             {k2::dto::FieldType::STRING, "FirstName", false, false},
-            {k2::dto::FieldType::UINT32T, "Balance", false, false}
+            {k2::dto::FieldType::INT32T, "Balance", false, false}
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
@@ -144,17 +149,17 @@ TEST_CASE("Test2: invalid serialization tests") {
 
     try {
         // Invalid serialization order, should throw exception
-        doc.serializeNext<uint32_t>(777);
+        doc.serializeNext<int32_t>(777);
         REQUIRE(false);
     } catch (...) {}
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<k2::String>("Bilbo");
-    doc.serializeNext<uint32_t>(777);
+    doc.serializeNext<int32_t>(777);
 
     try {
         // Out-of-bounds serialzation
-        doc.serializeNext<uint32_t>(111);
+        doc.serializeNext<int32_t>(111);
         REQUIRE(false);
     } catch (...) {}
 }

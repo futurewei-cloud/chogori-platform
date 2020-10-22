@@ -9,6 +9,9 @@ This folder contains various design documents and papers related to the K2 Platf
 ## Transport
 - [Design](./TRANSPORT.md)
 
+## Persistence
+- [Design](./PERSISTENCE.md)
+
 ## Client
 - [Client](./TXN_CLIENT.md)
 
@@ -17,3 +20,4 @@ This folder contains various design documents and papers related to the K2 Platf
 
 ## General notes
 - [Notes](./NOTES.md)
+

@@ -73,6 +73,7 @@ LogStream::create(){
         if (!status.is2xxOK()) {
             throw std::runtime_error("unable to create plog for MSL");
         }
+        K2INFO("Metadata Plog: " << resp);
         _plogInfo.push_back(std::make_pair(std::move(resp), 0));
         return _cpo.RegisterMetadataStreamLog(Deadline<>(_cpo_timeout()), _logStreamName, _plogInfo[0].first);
     })
@@ -88,6 +89,7 @@ LogStream::create(){
         if (!status.is2xxOK()) {
             throw std::runtime_error("unable to create plog for WAL");
         }
+        K2INFO("WAL Plog: " << resp);
         _plogInfo.push_back(std::make_pair(std::move(resp), 0));
         return seastar::make_ready_future<>();
     });
@@ -179,68 +181,74 @@ LogStream::_readContent(std::vector<Payload> payloads){
 seastar::future<> 
 LogStream::write(Payload payload){
     K2INFO("Received Write Operation");
-    return _write(std::move(payload), true);
+    return _write(std::move(payload), 1);
 }
 
 seastar::future<> 
-LogStream::_write(Payload payload, bool writeToWAL){
+LogStream::_write(Payload payload, uint32_t writeToWAL){
     if (!_logStreamCreate){
         K2INFO("Log stream does not  create");
         throw std::runtime_error("Log stream does not create");
     }
     K2INFO("Write to WAL");
     Payload backup_payload = payload.shareAll();
-    K2INFO("Start to Write");
+    K2INFO("Start to Write: " << writeToWAL << " " << _plogInfo[writeToWAL].second<<" " <<_plogInfo[0].second<<" " <<_plogInfo[1].second);
     return _client.append(_plogInfo[writeToWAL].first, _plogInfo[writeToWAL].second, std::move(payload))
-    .then([&] (auto&& response){
+    .then([&, writeToWAL] (auto&& response){
         auto& [status, resp] = response;
         K2INFO("Status " << status);
         if (status.is2xxOK()) {
             _plogInfo[writeToWAL].second = resp;
-            K2INFO("Write Done");
+            K2INFO("Write Done " << writeToWAL <<" " << _plogInfo[writeToWAL].second <<" " <<_plogInfo[0].second<<" " <<_plogInfo[1].second);
             return seastar::make_ready_future<>();
         }
         else{
-            K2INFO("Status " << status);
-            return _client.seal(_plogInfo[writeToWAL].first, _plogInfo[writeToWAL].second)
-            .then([&] (auto&& response){
-                auto& [status, resp] = response;
-                if (!status.is2xxOK()) {
-                    throw std::runtime_error("unable to seal");
-                }
-                _plogInfo[writeToWAL].second = resp;
-                return _client.create();
-            })
-            .then([&] (auto&& response){
-                auto& [status, resp] = response;
-                if (!status.is2xxOK()) {
-                    throw std::runtime_error("unable to create plog");
-                }
-                
-                auto plogId = resp;
-                if (writeToWAL){
-                    Payload temp_payload([] { return Binary(4096); });
-                    temp_payload.write(_plogInfo[writeToWAL].second);
-                    temp_payload.write(resp);
+            if (status == Statuses::S413_Payload_Too_Large){
+                K2INFO("Write to the Metadata Log and retry");
+                return _client.seal(_plogInfo[writeToWAL].first, _plogInfo[writeToWAL].second)
+                .then([&, writeToWAL] (auto&& response){
+                    auto& [status, resp] = response;
+                    if (!status.is2xxOK()) {
+                        throw std::runtime_error("unable to seal");
+                    }
+                    _plogInfo[writeToWAL].second = resp;
+                    return _client.create();
+                })
+                .then([&, writeToWAL] (auto&& response){
+                    auto& [status, resp] = response;
+                    if (!status.is2xxOK()) {
+                        throw std::runtime_error("unable to create plog");
+                    }
                     
-                    return _write(std::move(temp_payload), false)
-                    .then([&] (){
-                        _plogInfo[writeToWAL].first = plogId;
-                        _plogInfo[writeToWAL].second = 0;
-                        return _write(std::move(backup_payload), writeToWAL);
-                    });
-                }
-                else{
-                    return _cpo.UpdateMetadataStreamLog(Deadline<>(_cpo_timeout()), _logStreamName, _plogInfo[0].second, resp)
-                    .then([&] (auto&& response){
-                        auto& [status, resp] = response;
-                        if (!status.is2xxOK()) {
-                            throw std::runtime_error("unable to update MSL to CPO");
-                        }
-                        return _write(std::move(backup_payload), writeToWAL);
-                    });
-                }
-            });
+                    auto plogId = resp;
+                    if (writeToWAL){
+                        Payload temp_payload([] { return Binary(4096); });
+                        temp_payload.write(_plogInfo[writeToWAL].second);
+                        temp_payload.write(resp);
+                        
+                        return _write(std::move(temp_payload), 0)
+                        .then([&, writeToWAL] (){
+                            _plogInfo[writeToWAL].first = plogId;
+                            _plogInfo[writeToWAL].second = 0;
+                            return _write(std::move(backup_payload), writeToWAL);
+                        });
+                    }
+                    else{
+                        return _cpo.UpdateMetadataStreamLog(Deadline<>(_cpo_timeout()), _logStreamName, _plogInfo[0].second, resp)
+                        .then([&, writeToWAL] (auto&& response){
+                            auto& [status, resp] = response;
+                            if (!status.is2xxOK()) {
+                                throw std::runtime_error("unable to update MSL to CPO");
+                            }
+                            return _write(std::move(backup_payload), writeToWAL);
+                        });
+                    }
+                });
+            }
+            else{
+                K2INFO(status);
+                throw std::runtime_error("unable to append the plog");
+            }
         }
     });
 }

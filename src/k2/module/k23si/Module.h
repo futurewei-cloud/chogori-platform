@@ -48,6 +48,7 @@ enum class WALRecordType : uint8_t {
     Aborted,
     Committed
 };
+typedef std::map<dto::Key, std::deque<dto::DataRecord>>::iterator IndexerIterator;
 
 
 class K23SIPartitionModule {
@@ -69,6 +70,12 @@ public: // lifecycle
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+
+    seastar::future<std::tuple<Status, dto::K23SIPartialUpdateResponse>>
+    handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+
+    seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
+    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
@@ -146,19 +153,79 @@ private: // methods
 
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
-    bool _validateRequestParameter(const RequestT& req) const {
+    bool _validateRequestPartitionKey(const RequestT& req) const {
         return !req.key.partitionKey.empty();
     }
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
-    bool _validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
+    template <typename RequestT>
+    bool _validateStaleWrite(const RequestT& req, std::deque<dto::DataRecord>& versions);
+
+    template <class RequestT>
+    Status _validateReadRequest(const RequestT& request) const {
+        if (!_validateRequestPartition(request)) {
+            // tell client their collection partition is gone
+            return dto::K23SIStatus::RefreshCollection("collection refresh needed in read-type request");
+        }
+        if (!_validateRequestPartitionKey(request)){
+            // do not allow empty partition key
+            return dto::K23SIStatus::BadParameter("missing partition key in read-type request");
+        }
+        if (!_validateRetentionWindow(request)) {
+            // the request is outside the retention window
+            return dto::K23SIStatus::AbortRequestTooOld("request too old in read-type request");
+        }
+        if (_schemas.find(request.key.schemaName) == _schemas.end()) {
+            // server does not have schema
+            return dto::K23SIStatus::OperationNotAllowed("schema does not exist in read-type request");
+        }
+
+        return dto::K23SIStatus::OK("");
+    }
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions);
+    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIPartialUpdateRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    
+    // method to parse the partial record to full record, return turn if parse successful
+    bool _parsePartialRecord(dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions);
+
+    // make every fields for a partial update request in the condition of same schema and same version
+    bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
+    // make every fields for a partial update request in the condition of same schema and different versions
+    bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
+    
+    // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
+    std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
+
+    // judge whether fieldIdx is in fieldsToUpdate. return true if yes(is in fieldsToUpdate). 
+    bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsToUpdate);
+
+    // advance payload position to the next field
+    bool _advancePayloadPosition(Payload& payload, dto::FieldType type);
+
+    // Read() the next field from the base payload and write() in the next field of new payload, 
+    bool _copyPayloadBaseToUpdate(Payload& base, Payload& update, dto::FieldType type);   
 
     // recover data upon startup
     seastar::future<> _recovery();
+
+    // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
+    // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must 
+    // point to a record with the target schema
+    void _scanAdvance(IndexerIterator& it, bool reverseDirection);
+
+    // Helper for handleQuery. Returns an iterator to start the scan at, accounting for 
+    // desired schema and (eventually) reverse direction scan
+    IndexerIterator _initializeScan(const dto::Key& start, bool reverse);
+
+    // Helper for handleQuery. Checks to see if the indexer scan should stop.
+    bool _isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request, size_t response_size);
+
+    // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
+    dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request, 
+                                   size_t response_size);
 
 private: // members
     // the metadata of our collection

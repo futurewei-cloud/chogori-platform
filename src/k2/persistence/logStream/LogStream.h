@@ -63,9 +63,14 @@ private:
     bool _logStreamCreate = false;
     
 
-    seastar::future<> _write(Payload payload, bool writeToWAL);
+    seastar::future<> _write(Payload payload, uint32_t writeToWAL);
 
     seastar::future<std::vector<Payload> > _readContent(std::vector<Payload> payloads);
+
+    // used to properly chain sends
+    seastar::compat::optional<seastar::future<>> _writeFuture;
+
+
     // generate the log stream name
     // TODO: change the method to generate the random plog id later
     String _generateStreamName();

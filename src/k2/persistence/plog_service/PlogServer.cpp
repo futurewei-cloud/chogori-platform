@@ -100,6 +100,7 @@ PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
          return RPCResponse(Statuses::S409_Conflict("plog is sealed"), dto::PlogAppendResponse());
     }
     if (iter->second.offset != request.offset){
+        K2INFO("Offset Inconsistent " <<request.plogId<<" "<< iter->second.offset << " " <<request.offset);
         return RPCResponse(Statuses::S403_Forbidden("offset inconsistent"), dto::PlogAppendResponse());
     }
     if (iter->second.offset + request.payload.getSize() > PLOG_MAX_SIZE){
