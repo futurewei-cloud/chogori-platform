@@ -207,13 +207,14 @@ struct K23SIWriteRequest {
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
-    std::vector<uint32_t> fieldsToUpdate; // if size() > 0 then this is a partial update
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value, fieldsToUpdate);
+    std::vector<uint32_t> fieldsForPartialUpdate; // if size() > 0 then this is a partial update
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value, fieldsForPartialUpdate);
     friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
-                  << r.isDelete << ", designate=" << r.designateTRH << ", fieldsToUpdate.size()=" 
-                  << r.fieldsToUpdate.size() << "}";
+                  << r.isDelete << ", designate=" << r.designateTRH << ", isPartialUpdate="
+                  << (r.fieldsForPartialUpdate.size()!=0) << ", fieldsForPartialUpdate.size()="
+                  << r.fieldsForPartialUpdate.size() << "}";
     }
 };
 

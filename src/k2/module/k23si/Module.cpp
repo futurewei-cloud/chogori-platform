@@ -570,9 +570,9 @@ bool K23SIPartitionModule::_copyPayloadBaseToUpdate(Payload& base, Payload& upda
     return true;
 }
 
-bool K23SIPartitionModule::_isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsToUpdate) {
-    for(std::size_t i = 0; i < fieldsToUpdate.size(); ++i) {
-        if (fieldIdx == fieldsToUpdate[i]) return true;
+bool K23SIPartitionModule::_isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate) {
+    for(std::size_t i = 0; i < fieldsForPartialUpdate.size(); ++i) {
+        if (fieldIdx == fieldsForPartialUpdate[i]) return true;
     }
     return false;
 }
@@ -582,7 +582,7 @@ bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K
     Payload payload(Payload::DefaultAllocator);                     // payload for new record
     
     for (std::size_t i = 0; i < schema.fields.size(); ++i) {
-        if (_isUpdatedField(i, request.fieldsToUpdate)) {
+        if (_isUpdatedField(i, request.fieldsForPartialUpdate)) {
             // this field is updated
             if (request.value.excludedFields[i] == 0 && 
                     (version.value.excludedFields.empty() || version.value.excludedFields[i] == 0)) {
@@ -656,7 +656,7 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
     // make every fields in schema for new full-record-WI
     for (std::size_t i = 0; i < schema.fields.size(); ++i) {
         findField = -1;
-        if (!_isUpdatedField(i, request.fieldsToUpdate)) {
+        if (!_isUpdatedField(i, request.fieldsForPartialUpdate)) {
             // if this field is NOT updated, payload value comes from base SKVRecord.
             findField = _findField(baseSchema, schema.fields[i].name, schema.fields[i].type);
             if (findField == (std::size_t)-1) {
@@ -863,7 +863,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         }
     }
 
-    if (request.fieldsToUpdate.size() > 0) {
+    if (request.fieldsForPartialUpdate.size() > 0) {
         // parse the partial record to full record
         if ( !versions.size() || versions[0].isTombstone) {
             // cannot parse partial record without a version

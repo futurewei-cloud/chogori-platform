@@ -203,7 +203,7 @@ private:
             .designateTRH = isTRH,
             .key = key,
             .value = std::move(record.storage),
-            .fieldsToUpdate = std::vector<uint32_t>()
+            .fieldsForPartialUpdate = std::vector<uint32_t>()
         };
         return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *part.preferredEndpoint, 100ms);
     }

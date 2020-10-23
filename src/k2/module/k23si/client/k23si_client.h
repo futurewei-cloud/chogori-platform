@@ -179,7 +179,7 @@ private:
     }
        
     std::unique_ptr<dto::K23SIWriteRequest> makePartialUpdateRequest(dto::SKVRecord& record, 
-            std::vector<uint32_t> fieldsToUpdate);
+            std::vector<uint32_t> fieldsForPartialUpdate);
 
     void prepareQueryRequest(Query& query);
 
@@ -286,26 +286,26 @@ public:
 
     template <typename T1>
     seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName) {
-        std::vector<uint32_t> fieldsToUpdate;
+        std::vector<uint32_t> fieldsForPartialUpdate;
         bool find = false;
         for (std::size_t i = 0; i < fieldsName.size(); ++i) {
             find = false;
             for (std::size_t j = 0; j < record.schema->fields.size(); ++j) {
                 if (fieldsName[i] == record.schema->fields[j].name) {
-                    fieldsToUpdate.push_back(j);
+                    fieldsForPartialUpdate.push_back(j);
                     find = true;
                     break;
                 }
             }
             if (find == false) return seastar::make_ready_future<PartialUpdateResult>(
-                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsToUpdate")) );
+                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsForPartialUpdate")) );
         }
 
-        return partialUpdate(record, fieldsToUpdate);
+        return partialUpdate(record, fieldsForPartialUpdate);
     }
 
     template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<uint32_t> fieldsToUpdate) {
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<uint32_t> fieldsForPartialUpdate) {
         if (!_valid) {
             return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
@@ -317,11 +317,11 @@ public:
 
         std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T1, dto::SKVRecord>()) {
-            request = makePartialUpdateRequest(record, fieldsToUpdate);
+            request = makePartialUpdateRequest(record, fieldsForPartialUpdate);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
+            request = makePartialUpdateRequest(skv_record, fieldsForPartialUpdate);
         }
         if (request == nullptr) {
             return seastar::make_ready_future<PartialUpdateResult> (

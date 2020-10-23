@@ -405,20 +405,20 @@ seastar::future<> runScenario04() {
                     record3.serializeNext<k2::String>("data1_v2");
                     record3.serializeNext<k2::String>("data2_v2");
 
-                    // case4: Partial update some value fields(data2) using field name("f2") to indicate the fieldsToUpdate
+                    // case4: Partial update some value fields(data2) using field name("f2") to indicate the fieldsForPartialUpdate
                     record4.serializeNext<k2::String>("partkey_s04");
                     record4.serializeNext<k2::String>("rangekey_s04");
                     record4.skipNext();
                     record4.serializeNext<k2::String>("data2_v3");
 
-                    // case5: fieldsToUpdate indicate some fields(data1&2) shall be updated, and it(data2) is skipped in the record
+                    // case5: fieldsForPartialUpdate indicate some fields(data1&2) shall be updated, and it(data2) is skipped in the record
                     record5.serializeNext<k2::String>("partkey_s04");
                     record5.serializeNext<k2::String>("rangekey_s04");
                     record5.serializeNext<k2::String>("data1_v3");
                     record5.skipNext();
 
-                    // case6: fieldsToUpdate indicate some fields(data2) shall not be updated, but record has a value of this field
-                    // fieldsToUpdate shall prevail
+                    // case6: fieldsForPartialUpdate indicate some fields(data2) shall not be updated, but record has a value of this field
+                    // fieldsForPartialUpdate shall prevail
                     record6.serializeNext<k2::String>("partkey_s04");
                     record6.serializeNext<k2::String>("rangekey_s04");
                     record6.skipNext();

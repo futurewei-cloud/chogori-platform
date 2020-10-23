@@ -131,7 +131,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
 }
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record, 
-                    std::vector<uint32_t> fieldsToUpdate) {
+                    std::vector<uint32_t> fieldsForPartialUpdate) {
         dto::Key key = record.getKey();
         
         if (!_write_set.size()) {
@@ -149,7 +149,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dt
             _write_set.size() == 1,
             key,
             record.storage.share(),
-            fieldsToUpdate
+            fieldsForPartialUpdate
         });
     }
 

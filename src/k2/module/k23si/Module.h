@@ -185,8 +185,8 @@ private: // methods
     // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
     std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
 
-    // judge whether fieldIdx is in fieldsToUpdate. return true if yes(is in fieldsToUpdate). 
-    bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsToUpdate);
+    // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate). 
+    bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
 
     // advance payload position to the next field
     bool _advancePayloadPosition(Payload& payload, dto::FieldType type);

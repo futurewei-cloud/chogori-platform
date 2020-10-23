@@ -176,7 +176,7 @@ private:
             .designateTRH = isTRH,
             .key = key,
             .value = std::move(record.storage),
-            .fieldsToUpdate = std::vector<uint32_t>()
+            .fieldsForPartialUpdate = std::vector<uint32_t>()
         };
 
         switch (errOpt) {
