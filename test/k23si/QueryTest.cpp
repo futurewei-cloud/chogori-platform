@@ -222,7 +222,6 @@ seastar::future<> runSetup() {
             k2::dto::SKVRecord record(collname, schemaPtr);
             record.serializeNext<k2::String>(key);
             record.serializeNext<k2::String>("");
-            std::cout << key << std::endl;
             write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
                 .then([] (auto&& response) {
                     K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
@@ -278,7 +277,7 @@ seastar::future<> runScenario01() {
 seastar::future<> runScenario02() {
     K2INFO("runScenario02");
 
-    K2INFO("Projection reads for 'range' field");
+    K2INFO("Projection reads for giving fields");
     return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, {"partition"});
 }
 
