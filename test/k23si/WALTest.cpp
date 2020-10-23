@@ -30,9 +30,9 @@ Copyright(c) 2020 Futurewei Cloud
 seastar::future<> f() {
     std::cout << "Sleeping... " << std::flush;
     using namespace std::chrono_literals;
-    return seastar::sleep(1s).then([] {
-        std::cout << "Done.\n";
-    });
+    seastar::sleep(200ms).then([] { std::cout << "200ms " << std::flush; });
+    seastar::sleep(100ms).then([] { std::cout << "100ms " << std::flush; });
+    return seastar::sleep(1s).then([] { std::cout << "Done.\n"; });
 }
 
 int main(int argc, char** argv) {
