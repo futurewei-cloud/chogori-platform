@@ -7,6 +7,7 @@ namespace expression {
 // operations according to schema, provided literals, and found reference values.
 struct SchematizedValue {
     SchematizedValue(Value& v, SKVRecord& rec) : val(v), rec(rec), type(v.type) {
+        K2ASSERT(rec.schema, "Record must have a schema");
         if (!val.fieldName.empty()) {
             for (size_t i = 0; i < rec.schema->fields.size(); ++i) {
                 if (rec.schema->fields[i].name == val.fieldName) {
@@ -18,7 +19,9 @@ struct SchematizedValue {
             }
             // If a fieldName has been provided(meaning this is a reference value), and we can't find it in the incoming
             // schema, then we can't
-            throw NoFieldFoundException();
+            if (type == FieldType::NOT_KNOWN) {
+                throw NoFieldFoundException();
+            }
         }
     }
     Value& val;
@@ -34,8 +37,9 @@ struct SchematizedValue {
             throw TypeMismatchException();
         }
         if (val.fieldName.empty()) {
+            val.literal.seek(0);
             T result{};
-            if (val.literal.read(val)) {
+            if (val.literal.read(result)) {
                 return std::make_tuple(nullLast, std::move(result));
             }
             throw DeserializationError();
@@ -89,7 +93,7 @@ compareOptionals(std::tuple<bool, std::optional<T1>>& a, std::tuple<bool, std::o
 
     // operands are non-null and of same type. Compare their values
     if (*a_opt == *b_opt) {
-        return -1;
+        return 0;
     }
     if (*a_opt > *b_opt) {
         return 1;
@@ -194,6 +198,13 @@ bool Expression::evaluate(SKVRecord& rec) {
         }
         case Operation::NOT: {
             return NOT_handler(rec);
+        }
+        case Operation::UNKNOWN: {
+            if (valueChildren.size() + expressionChildren.size() == 0) {
+                // empty expression - allow it
+                return true;
+            }
+            throw InvalidExpressionException();
         }
         default:
             throw InvalidExpressionException();
@@ -366,10 +377,14 @@ bool Expression::AND_handler(SKVRecord& rec) {
             throw TypeMismatchException();
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
-        return aOpt.has_value() && (*aOpt) && expressionChildren[0].evaluate(rec);
+        // make sure to always evaluate in order to trigger type exceptions if any
+        auto expEval = expressionChildren[0].evaluate(rec);
+        return aOpt.has_value() && (*aOpt) && expEval;
     }
-
-    return expressionChildren[0].evaluate(rec) && expressionChildren[1].evaluate(rec);
+    // always evaluate fully both children to trigger type exceptions if any
+    auto expAeval = expressionChildren[0].evaluate(rec);
+    auto expBeval = expressionChildren[1].evaluate(rec);
+    return expAeval && expBeval;
 }
 
 bool Expression::OR_handler(SKVRecord& rec) {
@@ -393,10 +408,15 @@ bool Expression::OR_handler(SKVRecord& rec) {
             throw TypeMismatchException();
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
-        return aOpt.has_value() && (*aOpt || expressionChildren[0].evaluate(rec));
+        // make sure to always evaluate in order to trigger type exceptions if any
+        auto eval = expressionChildren[0].evaluate(rec);
+        return aOpt.has_value() && (*aOpt || eval);
     }
 
-    return expressionChildren[0].evaluate(rec) || expressionChildren[1].evaluate(rec);
+    // always evaluate fully both children to trigger type exceptions if any
+    auto expAeval = expressionChildren[0].evaluate(rec);
+    auto expBeval = expressionChildren[1].evaluate(rec);
+    return expAeval || expBeval;
 }
 
 bool Expression::XOR_handler(SKVRecord& rec) {
@@ -420,10 +440,15 @@ bool Expression::XOR_handler(SKVRecord& rec) {
             throw TypeMismatchException();
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
-        return aOpt.has_value() && (*aOpt != expressionChildren[0].evaluate(rec));
+        // make sure to always evaluate in order to trigger type exceptions if any
+        auto eval = expressionChildren[0].evaluate(rec);
+        return aOpt.has_value() && (*aOpt != eval);
     }
 
-    return expressionChildren[0].evaluate(rec) != expressionChildren[1].evaluate(rec);
+    // always evaluate fully both children to trigger type exceptions if any
+    auto expAeval = expressionChildren[0].evaluate(rec);
+    auto expBeval = expressionChildren[1].evaluate(rec);
+    return expAeval != expBeval;
 }
 
 bool Expression::NOT_handler(SKVRecord& rec) {
@@ -431,14 +456,15 @@ bool Expression::NOT_handler(SKVRecord& rec) {
     if (valueChildren.size() + expressionChildren.size() != 1) {
         throw InvalidExpressionException();
     }
-    // case 1: 2 values
     if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
             throw TypeMismatchException();
         }
         auto [nullA, aOpt] = aVal.get<bool>();
-        return aOpt.has_value() && !(*aOpt);
+
+        // no value means "false". That means we need to return not(false), i.e. "true" if not set
+        return !aOpt.has_value() || !(*aOpt);
     }
 
     return !expressionChildren[0].evaluate(rec);

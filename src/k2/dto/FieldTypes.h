@@ -50,8 +50,22 @@ template <typename T>
 FieldType TToFieldType();
 
 // Converts a field type to a string suitable for being part of a key
+template<typename T>
+String FieldToKeyString(const T&);
+
+// these types are supported as key fields
+template<> String FieldToKeyString<int16_t>(const int16_t&);
+template<> String FieldToKeyString<int32_t>(const int32_t&);
+template<> String FieldToKeyString<int64_t>(const int64_t&);
+template<> String FieldToKeyString<String>(const String&);
+
+// all other types are not supported as key fields
 template <typename T>
-String FieldToKeyString(const T& field);
+String FieldToKeyString(const T&) {
+    std::ostringstream msg;
+    msg << "Key encoding for " << TToFieldType<T>() << " not implemented yet";
+    throw std::runtime_error(msg.str());
+}
 
 String NullFirstToKeyString();
 String NullLastToKeyString();

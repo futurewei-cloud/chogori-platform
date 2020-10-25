@@ -5,15 +5,18 @@
 #include <functional>
 #include "FieldTypes.h"
 #include "SKVRecord.h"
+#include <k2/common/VecUtil.h>
 
 namespace k2 {
 namespace dto {
-namespace expression {
 
 // Thrown if the expression is found to be semantically invalid
 struct InvalidExpressionException : public std::exception {
     virtual const char* what() const noexcept override{ return "InvalidExpression";}
 };
+
+namespace expression {
+
 
 // The supported operations
 enum class Operation : uint8_t {
@@ -41,7 +44,7 @@ enum class Operation : uint8_t {
 struct Value {
     String fieldName;
     FieldType type = FieldType::NOT_KNOWN;
-    Payload literal;
+    Payload literal{Payload::DefaultAllocator};
     K2_PAYLOAD_FIELDS(fieldName, type, literal);
     bool isReference() const { return !fieldName.empty();}
 };
@@ -51,8 +54,8 @@ struct Value {
 // operator like LT would be applied as valueChildren[0] < valueChildren[1]
 struct Expression {
     Operation op = Operation::UNKNOWN;
-    std::vector<Expression> expressionChildren;
     std::vector<Value> valueChildren;
+    std::vector<Expression> expressionChildren;
 
     // This method is used to evaluate a given record against this filter. Returns true if the record passes
     // evaluation, and false if it does not.
@@ -63,7 +66,7 @@ struct Expression {
     // NoFieldFoundException if we cannot find a field of a given name in the schema
     bool evaluate(SKVRecord& rec);
 
-    K2_PAYLOAD_FIELDS(op, expressionChildren, valueChildren);
+    K2_PAYLOAD_FIELDS(op, valueChildren, expressionChildren);
 
     // helper methods used to evaluate particular operation
     bool EQ_handler(SKVRecord& rec);
@@ -84,12 +87,9 @@ struct Expression {
 
 // helper builder: creates a value literal
 template <typename T>
-inline Value makeValueLiteral(dto::FieldType fieldType, T&& literal) {
-    if (TToFieldType<T>() != fieldType) {
-        throw TypeMismatchException();
-    }
+inline Value makeValueLiteral(T&& literal) {
     Value result;
-    result.type = fieldType;
+    result.type = TToFieldType<T>();
     result.literal.write(literal);
     return result;
 }
@@ -105,8 +105,8 @@ inline Value makeValueReference(const String& fieldName) {
 inline Expression makeExpression(Operation op, std::vector<Value>&& valueChildren, std::vector<Expression>&& expressionChildren) {
     return Expression{
         .op = op,
-        .expressionChildren = std::move(expressionChildren),
         .valueChildren = std::move(valueChildren),
+        .expressionChildren = std::move(expressionChildren)
     };
 }
 

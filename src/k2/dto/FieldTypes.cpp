@@ -50,9 +50,6 @@ template <> FieldType TToFieldType<bool>() { return FieldType::BOOL; }
 template <> FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }
 
 // All conversion assume ascending ordering
-template <> String FieldToKeyString<bool>(const bool& field) {
-    return field? "1": "0";
-}
 
 template <> String FieldToKeyString<String>(const String& field) {
     size_t pos = 0;
@@ -182,11 +179,6 @@ template <> String FieldToKeyString<int32_t>(const int32_t& field) {
     s[7] = TERM;
 
     return s;
-}
-
-template <> String FieldToKeyString<float>(const float& field) {
-    (void) field;
-    throw new std::runtime_error("Key encoding for float is not implemented yet");
 }
 
 String NullFirstToKeyString() {
