@@ -32,6 +32,13 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
+struct SKVKeyEncodingException : public std::exception {
+    String what_str;
+    SKVKeyEncodingException(String s) : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override{ return what_str.c_str();}
+};
+
+
 enum class FieldType : uint8_t {
     NULL_T = 0,
     STRING, // NULL characters in string is OK

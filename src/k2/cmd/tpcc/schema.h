@@ -56,6 +56,19 @@ seastar::future<k2::WriteResult> writeRow(ValueType& row, k2::K2TxnHandle& txn)
     });
 }
 
+template<typename ValueType, typename FieldType>
+seastar::future<k2::PartialUpdateResult>
+partialUpdateRow(ValueType& row, FieldType fieldsToUpdate, k2::K2TxnHandle& txn) {
+    return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (k2::PartialUpdateResult&& result) {
+        if (!result.status.is2xxOK()) {
+            K2DEBUG("partialUpdateRow failed: " << result.status);
+            return seastar::make_exception_future<k2::PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
+        }
+
+        return seastar::make_ready_future<k2::PartialUpdateResult>(std::move(result));
+    });
+}
+
 struct Address {
     Address () = default;
     Address (RandomContext& random) {
@@ -273,7 +286,7 @@ public:
                 {k2::dto::FieldType::INT64T, "Date", false, false},
                 {k2::dto::FieldType::INT32T, "CID", false, false},
                 {k2::dto::FieldType::INT16T, "CWID", false, false},
-                {k2::dto::FieldType::INT32T, "Amount", false, false},
+                {k2::dto::FieldType::INT64T, "Amount", false, false},
                 {k2::dto::FieldType::INT16T, "CDID", false, false},
                 {k2::dto::FieldType::INT16T, "DID", false, false},
                 {k2::dto::FieldType::STRING, "Info", false, false}},
@@ -497,7 +510,7 @@ public:
 
 class Item {
 public:
-    static const uint32_t InvalidID = 999999;
+    static const int32_t InvalidID = 999999;
     static inline k2::dto::Schema item_schema {
         .name = "item",
         .version = 1,

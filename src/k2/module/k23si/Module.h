@@ -64,9 +64,6 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
-    seastar::future<std::tuple<Status, dto::K23SIPartialUpdateResponse>>
-    handlePartialUpdate(dto::K23SIPartialUpdateRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
-
     seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
     handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline);
 
@@ -116,9 +113,6 @@ private: // methods
     // the client that they must issue an onEnd(Abort).
     seastar::future<dto::K23SI_MTR>
     _doPush(String collectionName, dto::TxnId sitTxnId, dto::K23SI_MTR pushMTR, FastDeadline deadline);
-
-    // helper method used to clean up WI which have been removed
-    void _queueWICleanup(dto::DataRecord&& rec);
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
@@ -179,21 +173,20 @@ private: // methods
 
     // helper method used to create and persist a WriteIntent
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
-    seastar::future<> _createWI(dto::K23SIPartialUpdateRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
     
     // method to parse the partial record to full record, return turn if parse successful
-    bool _parsePartialRecord(dto::K23SIPartialUpdateRequest& request, std::deque<dto::DataRecord>& versions);
+    bool _parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous);
 
     // make every fields for a partial update request in the condition of same schema and same version
-    bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
+    bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
     // make every fields for a partial update request in the condition of same schema and different versions
-    bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIPartialUpdateRequest& request, dto::DataRecord& version);
+    bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
     
     // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
     std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
 
-    // judge whether fieldIdx is in fieldsToUpdate. return true if yes(is in fieldsToUpdate). 
-    bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsToUpdate);
+    // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate). 
+    bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
 
     // advance payload position to the next field
     bool _advancePayloadPosition(Payload& payload, dto::FieldType type);

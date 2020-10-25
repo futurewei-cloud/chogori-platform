@@ -80,12 +80,12 @@ void K2TxnHandle::makeHeartbeatTimer() {
 std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(const dto::SKVRecord& record) const {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
-            throw new std::runtime_error("Partition key field not set for read request");
+            throw K23SIClientException("Partition key field not set for read request");
         }
     }
     for (const String& key : record.rangeKeys) {
         if (key == "") {
-            throw new std::runtime_error("Range key field not set for read request");
+            throw K23SIClientException("Range key field not set for read request");
         }
     }
 
@@ -100,12 +100,12 @@ std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(const dto::S
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
-            throw new std::runtime_error("Partition key field not set for write request");
+            throw K23SIClientException("Partition key field not set for write request");
         }
     }
     for (const String& key : record.rangeKeys) {
         if (key == "") {
-            throw new std::runtime_error("Range key field not set for read request");
+            throw K23SIClientException("Range key field not set for read request");
         }
     }
 
@@ -125,12 +125,13 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
         erase,
         _write_set.size() == 1,
         key,
-        record.storage.share()
+        record.storage.share(),
+        std::vector<uint32_t>()
     });
 }
 
-std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record,
-                    std::vector<uint32_t> fieldsToUpdate) {
+std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record,
+                    std::vector<uint32_t> fieldsForPartialUpdate) {
         dto::Key key = record.getKey();
 
         if (!_write_set.size()) {
@@ -139,27 +140,28 @@ std::unique_ptr<dto::K23SIPartialUpdateRequest> K2TxnHandle::makePartialUpdateRe
         }
         _write_set.push_back(key);
 
-        return std::make_unique<dto::K23SIPartialUpdateRequest>(dto::K23SIPartialUpdateRequest{
+        return std::make_unique<dto::K23SIWriteRequest>(dto::K23SIWriteRequest{
             dto::Partition::PVID(), // Will be filled in by PartitionRequest
             record.collectionName,
             _mtr,
             _trh_key,
+            false, // Partial update cannot be a delete
             _write_set.size() == 1,
             key,
             record.storage.share(),
-            fieldsToUpdate
+            fieldsForPartialUpdate
         });
     }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     if (!_valid) {
-        return seastar::make_exception_future<EndResult>(std::runtime_error("Tried to end() an invalid TxnHandle"));
+        return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() an invalid TxnHandle"));
     }
     // User is not allowed to call anything else on this TxnHandle after end()
     _valid = false;
 
     if (_ongoing_ops != 0) {
-        return seastar::make_exception_future<EndResult>(std::runtime_error("Tried to end() with ongoing ops"));
+        return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() with ongoing ops"));
     }
 
     if (!_write_set.size()) {
@@ -406,14 +408,14 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
+            throw K23SIClientException("Key fields of startScanRecord are not a prefix");
         }
     }
     for (const String& key : query.startScanRecord.rangeKeys) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of startScanRecord are not a prefix");
+            throw K23SIClientException("Key fields of startScanRecord are not a prefix");
         }
     }
 
@@ -422,14 +424,14 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
+            throw K23SIClientException("Key fields of endScanRecord are not a prefix");
         }
     }
     for (const String& key : query.endScanRecord.rangeKeys) {
         if (key == "") {
             emptyField = true;
         } else if (emptyField) {
-            throw new std::runtime_error("Key fields of endScanRecord are not a prefix");
+            throw K23SIClientException("Key fields of endScanRecord are not a prefix");
         }
     }
 
@@ -437,10 +439,10 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
     query.request.endKey = query.endScanRecord.getKey();
     if (query.request.key > query.request.endKey && !query.request.reverseDirection &&
                 query.request.endKey.partitionKey != "") {
-        throw new std::runtime_error("Start key is greater than end key for forward direction query");
+        throw K23SIClientException("Start key is greater than end key for forward direction query");
     } else if (query.request.key < query.request.endKey && query.request.reverseDirection &&
                 query.request.key.partitionKey != "") {
-        throw new std::runtime_error("End key is greater than start key for reverse direction query");
+        throw K23SIClientException("End key is greater than start key for reverse direction query");
     }
 
     query.request.mtr = _mtr;
@@ -451,14 +453,14 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
 // object to get more results
 seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
     if (!_valid) {
-        return seastar::make_exception_future<QueryResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+        return seastar::make_exception_future<QueryResult>(K23SIClientException("Invalid use of K2TxnHandle"));
     }
     if (_failed) {
         return seastar::make_ready_future<QueryResult>(QueryResult(_failed_status));
     }
 
     if (query.done) {
-        return seastar::make_exception_future<QueryResult>(std::runtime_error("Tried to use Query that is done"));
+        return seastar::make_exception_future<QueryResult>(K23SIClientException("Tried to use Query that is done"));
     }
     if (!query.inprogress) {
         prepareQueryRequest(query);

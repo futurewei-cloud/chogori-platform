@@ -62,7 +62,7 @@ struct Key {
     K2_PAYLOAD_FIELDS(schemaName, partitionKey, rangeKey);
 
     friend std::ostream& operator<<(std::ostream& os, const Key& key) {
-        return os << "{schema= " << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
+        return os << "{schema=" << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
     }
 };
 
