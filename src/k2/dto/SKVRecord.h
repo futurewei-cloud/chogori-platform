@@ -45,6 +45,7 @@ struct TypeMismatchException : public std::exception {
 // Thrown when we were not able to deserialize a value correctly
 struct DeserializationError : public std::exception {
     virtual const char* what() const noexcept override { return "DeserializationError"; }
+};
 
 struct SKVRecordException : public std::exception {
     String what_str;
