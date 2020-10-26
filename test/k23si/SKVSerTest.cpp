@@ -33,7 +33,7 @@ void Compare(std::optional<T> value, const k2::String& fieldName, k2::dto::SKVRe
     (void) value;
     (void) fieldName;
     (void) record;
-    throw new std::runtime_error("Encountered unexpcted type in test visitor");
+    throw std::runtime_error("Encountered unexpcted type in test visitor");
 }
 
 template <>
