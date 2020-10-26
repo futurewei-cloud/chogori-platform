@@ -38,14 +38,23 @@ struct SKVKeyEncodingException : public std::exception {
     virtual const char* what() const noexcept override{ return what_str.c_str();}
 };
 
+struct FieldNotSupportedAsKeyException: public std::exception {
+    String what_str;
+    FieldNotSupportedAsKeyException(String s) : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
 
 enum class FieldType : uint8_t {
     NULL_T = 0,
-    STRING = 1, // NULL characters in string is OK
-    INT16T = 2, 
-    INT32T = 3, 
-    INT64T = 4,
-    FLOAT = 5, // Not supported as key field for now
+    STRING, // NULL characters in string is OK
+    INT16T,
+    INT32T,
+    INT64T,
+    FLOAT, // Not supported as key field for now
+    DOUBLE,  // Not supported as key field for now
+    BOOL,
+    FIELD_TYPE,
+    NOT_KNOWN = 254,
     NULL_LAST = 255
 };
 
@@ -53,8 +62,22 @@ template <typename T>
 FieldType TToFieldType();
 
 // Converts a field type to a string suitable for being part of a key
+template<typename T>
+String FieldToKeyString(const T&);
+
+// these types are supported as key fields
+template<> String FieldToKeyString<int16_t>(const int16_t&);
+template<> String FieldToKeyString<int32_t>(const int32_t&);
+template<> String FieldToKeyString<int64_t>(const int64_t&);
+template<> String FieldToKeyString<String>(const String&);
+
+// all other types are not supported as key fields
 template <typename T>
-String FieldToKeyString(const T& field);
+String FieldToKeyString(const T&) {
+    std::ostringstream msg;
+    msg << "Key encoding for " << TToFieldType<T>() << " not implemented yet";
+    throw FieldNotSupportedAsKeyException(msg.str().c_str());
+}
 
 String NullFirstToKeyString();
 String NullLastToKeyString();
@@ -77,6 +100,14 @@ namespace std {
             return os << "INT64T";
         case k2::dto::FieldType::FLOAT:
             return os << "FLOAT";
+        case k2::dto::FieldType::DOUBLE:
+            return os << "DOUBLE";
+        case k2::dto::FieldType::BOOL:
+            return os << "BOOL";
+        case k2::dto::FieldType::FIELD_TYPE:
+            return os << "FIELD_TYPE";
+        case k2::dto::FieldType::NOT_KNOWN:
+            return os << "NOT_KNOWN";
         case k2::dto::FieldType::NULL_LAST:
             return os << "NULL_LAST";
         default:

@@ -185,7 +185,7 @@ public:  // Read API
     template<typename T>
     bool read(SerializeAsPayload<T>& value) {
         // if the embedded type is a Payload, then just use the payload write to write it directly
-        if (std::is_same<T, Payload>::value) {
+        if constexpr(std::is_same<T, Payload>::value) {
             return read(value.val);
         }
         uint64_t size = 0;
@@ -404,7 +404,7 @@ public: // Write API
     template<typename T>
     void write(const SerializeAsPayload<T>& value) {
         // if the embedded type is a Payload, then just use the payload write to write it directly
-        if (std::is_same<T, Payload>::value || std::is_same<T, const Payload>::value) {
+        if constexpr(std::is_same<T, Payload>::value || std::is_same<T, const Payload>::value) {
             write(value.val);
             return;
         }

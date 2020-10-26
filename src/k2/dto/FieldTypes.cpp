@@ -45,6 +45,9 @@ template <> FieldType TToFieldType<int16_t>() { return FieldType::INT16T; }
 template <> FieldType TToFieldType<int32_t>() { return FieldType::INT32T; }
 template <> FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
 template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
+template <> FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
+template <> FieldType TToFieldType<bool>() { return FieldType::BOOL; }
+template <> FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }
 
 // All conversion assume ascending ordering
 
@@ -65,7 +68,7 @@ template <> String FieldToKeyString<String>(const String& field) {
     size_t originalCursor = 0;
     size_t escapedCursor = 1;
     for (size_t nullPos : foundNulls) {
-        std::copy(field.begin() + originalCursor, field.begin() + nullPos + 1, 
+        std::copy(field.begin() + originalCursor, field.begin() + nullPos + 1,
                   escapedString.begin() + escapedCursor);
 
         size_t count = nullPos - originalCursor + 1;
@@ -76,7 +79,7 @@ template <> String FieldToKeyString<String>(const String& field) {
     }
 
     if (originalCursor < field.size()) {
-        std::copy(field.begin() + originalCursor, field.end(), 
+        std::copy(field.begin() + originalCursor, field.end(),
                   escapedString.begin() + escapedCursor);
     }
 
@@ -176,11 +179,6 @@ template <> String FieldToKeyString<int32_t>(const int32_t& field) {
     s[7] = TERM;
 
     return s;
-}
-
-template <> String FieldToKeyString<float>(const float& field) {
-    (void) field;
-    throw SKVKeyEncodingException("Key encoding for float is not implemented yet");
 }
 
 String NullFirstToKeyString() {

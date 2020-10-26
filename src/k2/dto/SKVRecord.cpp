@@ -32,7 +32,7 @@ namespace dto {
 
 void SKVRecord::skipNext() {
     if (fieldCursor >= schema->fields.size()) {
-        throw SKVRecordException("Schema not followed in record serialization");
+        throw NoFieldFoundException();
     }
 
     for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
@@ -65,7 +65,7 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
 
 void SKVRecord::seekField(uint32_t fieldIndex) {
     if (fieldIndex >= schema->fields.size()) {
-        throw SKVRecordException("Tried to seek outside bounds");
+        throw NoFieldFoundException();
     }
 
     if (fieldIndex == fieldCursor) {
@@ -87,15 +87,15 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
     }
 }
 
-// We expose a shared payload in case the user wants to write it to file or otherwise 
+// We expose a shared payload in case the user wants to write it to file or otherwise
 // store it on their own. For normal K23SI operations the user does not need to touch this
 Payload SKVRecord::getSharedPayload() {
     return storage.fieldData.shareAll();
 }
 
-SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) : 
+SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
             schema(s), collectionName(collection) {
-    storage.schemaVersion = schema->version; 
+    storage.schemaVersion = schema->version;
     storage.fieldData = Payload(Payload::DefaultAllocator);
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
