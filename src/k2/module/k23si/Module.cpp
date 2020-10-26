@@ -301,8 +301,17 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         // happy case: either committed, or txn is reading its own write
         if (viter->status == dto::DataRecord::Committed || viter->txnId.mtr == request.mtr) {
             if (!viter->isTombstone) {
-                // TODO apply filter and projection
-                response.results.push_back(viter->value.share());
+                // TODO apply filter 
+                // apply projection if the user call addProjection
+                if (request.projection.size() == 0) {
+                    // want all fields 
+                    response.results.push_back(viter->value.share());
+                } else {
+                    // serialize partial SKVRecord according to projection
+                    dto::SKVRecord::Storage storage;
+                    _makeProjection(viter->value, request, storage);
+                    response.results.push_back(std::move(storage));
+                }
             }
 
             continue;
@@ -786,6 +795,38 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, 
 
     return true;
 }
+
+void K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, 
+        dto::SKVRecord::Storage& projectionRec) {
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
+    dto::Schema& schema = schemaVer->second;
+    std::vector<bool> excludedFields(schema.fields.size(), true);   // excludedFields for projection
+    Payload payload(Payload::DefaultAllocator);                     // payload for projection
+
+    for (uint32_t i = 0; i < schema.fields.size(); ++i) {
+        std::vector<k2::String>::iterator fieldIt;
+        fieldIt = std::find(request.projection.begin(), request.projection.end(), schema.fields[i].name);
+        if (fieldIt == request.projection.end()) {
+            // advance base payload
+            _advancePayloadPosition(fullRec.fieldData, schema.fields[i].type);
+            excludedFields[i] = true;
+        } else {
+            // write field value into payload
+            _copyPayloadBaseToUpdate(fullRec.fieldData, payload, schema.fields[i].type);
+            excludedFields[i] = false;
+        }
+    }
+    
+    // set cursor(0) of base payload
+    fullRec.fieldData.seek(0);
+
+    projectionRec.excludedFields = std::move(excludedFields);
+    projectionRec.fieldData = std::move(payload);
+    projectionRec.fieldData.truncateToCurrent();
+    projectionRec.schemaVersion = fullRec.schemaVersion;
+}
+
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
 K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
