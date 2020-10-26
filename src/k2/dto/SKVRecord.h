@@ -117,7 +117,7 @@ public:
             }
         }
 
-        throw NoFieldFoundException("Schema not followed in record serialization");
+        throw NoFieldFoundException("Schema not followed in record deserialization");
     }
 
     void seekField(uint32_t fieldIndex);
@@ -128,7 +128,7 @@ public:
         std::optional<T> null_val = std::nullopt;
 
         if (fieldIndex >= schema->fields.size() || ft != schema->fields[fieldIndex].type) {
-            throw TypeMismatchException("Schema not followed in record serialization");
+            throw TypeMismatchException("Schema not followed in record deserialization");
         }
 
         if (fieldIndex != fieldCursor) {
