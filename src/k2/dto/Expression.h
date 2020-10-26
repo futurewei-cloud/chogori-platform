@@ -88,7 +88,7 @@ struct Expression {
 // helper builder: creates a value literal
 template <typename T>
 inline Value makeValueLiteral(T&& literal) {
-    Value result;
+    Value result{};
     result.type = TToFieldType<T>();
     result.literal.write(literal);
     return result;
@@ -96,7 +96,7 @@ inline Value makeValueLiteral(T&& literal) {
 
 // helper builder: creates a value reference
 inline Value makeValueReference(const String& fieldName) {
-    Value result;
+    Value result{};
     result.fieldName = fieldName;
     return result;
 }

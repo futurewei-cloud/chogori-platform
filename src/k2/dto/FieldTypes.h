@@ -38,6 +38,11 @@ struct SKVKeyEncodingException : public std::exception {
     virtual const char* what() const noexcept override{ return what_str.c_str();}
 };
 
+struct FieldNotSupportedAsKeyException: public std::exception {
+    String what_str;
+    FieldNotSupportedAsKeyException(String s) : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
 
 enum class FieldType : uint8_t {
     NULL_T = 0,
@@ -71,7 +76,7 @@ template <typename T>
 String FieldToKeyString(const T&) {
     std::ostringstream msg;
     msg << "Key encoding for " << TToFieldType<T>() << " not implemented yet";
-    throw std::runtime_error(msg.str());
+    throw FieldNotSupportedAsKeyException(msg.str().c_str());
 }
 
 String NullFirstToKeyString();

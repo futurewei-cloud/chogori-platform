@@ -329,8 +329,8 @@ bool Expression::CONTAINS_handler(SKVRecord& rec) {
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
-    if (!bOpt) return true;   // all strings start with nothing
-    if (!aOpt) return false;  // empty strings do not start with anything
+    if (!bOpt) return true;   // all strings contain a null
+    if (!aOpt) return false;  // a null string doesn't contain other strings
 
     return aOpt->find(*bOpt) != String::npos;
 }
@@ -347,8 +347,8 @@ bool Expression::ENDS_WITH_handler(SKVRecord& rec) {
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
-    if (!bOpt) return true;   // all strings start with nothing
-    if (!aOpt) return false;  // empty strings do not start with anything
+    if (!bOpt) return true;   // all strings end with nothing
+    if (!aOpt) return false;  // null strings do not end with anything
 
     if (aOpt->size() < bOpt->size()) return false;  // B is bigger so A cannot start with B
 

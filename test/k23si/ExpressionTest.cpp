@@ -359,72 +359,8 @@ TEST_CASE("Invalid expressions") {
 
     runner(cases);
 }
-namespace k2 {
-    namespace dto {
-    namespace expression {
-
-struct SVV {
-    SVV(Value& v, SKVRecord& rec) : val(v), rec(rec), type(v.type) {
-        K2ASSERT(rec.schema, "Record must have a schema");
-        if (!val.fieldName.empty()) {
-            for (size_t i = 0; i < rec.schema->fields.size(); ++i) {
-                if (rec.schema->fields[i].name == val.fieldName) {
-                    sfieldIndex = i;
-                    nullLast = rec.schema->fields[i].nullLast;
-                    type = rec.schema->fields[i].type;
-                    K2ERROR("found at index: " << sfieldIndex);
-                    K2ERROR("found type: " << type);
-                    K2ERROR("schema size=" << rec.schema->fields.size());
-                    break;
-                }
-            }
-            // If a fieldName has been provided(meaning this is a reference value), and we can't find it in the incoming
-            // schema, then we can't
-            if (type == FieldType::NOT_KNOWN) {
-                throw NoFieldFoundException();
-            }
-        }
-    }
-    Value& val;
-    SKVRecord& rec;
-    FieldType type = FieldType::NOT_KNOWN;
-    bool nullLast = false;
-    int sfieldIndex = -1;
-
-    // Extracts the nullLast flag and an optional of a given type for this SVV.
-    template <typename T>
-    std::tuple<bool, std::optional<T>> get() {
-        if (TToFieldType<T>() != type) {
-            K2ERROR("wrong type in get: " << TToFieldType<T>() << ", vs: " << type);
-            throw TypeMismatchException();
-        }
-        if (val.fieldName.empty()) {
-            T result{};
-            val.literal.seek(0);
-            K2ERROR("available: " << val.literal.getDataRemaining() << ", type=" << TToFieldType<T>());
-            if (val.literal.read(result)) {
-                K2ERROR("did read fine");
-                return std::make_tuple(nullLast, std::move(result));
-            }
-            K2ERROR("but here");
-
-            throw DeserializationError();
-        }
-        K2ERROR("not here");
-        return std::make_tuple(nullLast, rec.deserializeField<T>(sfieldIndex));
-    }
-};
-
-}  // namespace expression
-}  // namespace dto
-}  // namespace k2
 
 TEST_CASE("Test CONTAINS") {
-    auto v = k2e::makeValueReference("boolT");
-    auto r = makeRec();
-    auto s = k2e::SVV(v, r);
-    REQUIRE(s.type == k2d::FieldType::BOOL);
-    REQUIRE(std::get<1>(s.get<bool>()).value() == true);
     std::vector<TestCase> cases;
     // invalid cases
     cases.push_back(TestCase{
