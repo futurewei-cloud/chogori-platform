@@ -311,7 +311,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                     // serialize partial SKVRecord according to projection
                     dto::SKVRecord::Storage storage;
                     _makeProjection(viter->value, request, storage);
-                    response.results.push_back(storage.share());
+                    response.results.push_back(std::move(storage));
                 }
             }
 
@@ -818,7 +818,7 @@ void K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
     // set cursor(0) of base payload
     fullRec.fieldData.seek(0);
 
-    projectionRec.excludedFields = excludedFields;
+    projectionRec.excludedFields = std::move(excludedFields);
     projectionRec.fieldData = std::move(payload);
     projectionRec.fieldData.truncateToCurrent();
     projectionRec.schemaVersion = fullRec.schemaVersion;
