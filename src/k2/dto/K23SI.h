@@ -193,6 +193,7 @@ struct K23SIStatus {
     static const inline Status OperationNotAllowed=k2::Statuses::S405_Method_Not_Allowed;
     static const inline Status BadParameter=k2::Statuses::S422_Unprocessable_Entity;
     static const inline Status BadFilterExpression=k2::Statuses::S406_Not_Acceptable;
+    static const inline Status InternalError=k2::Statuses::S500_Internal_Server_Error;
 };
 
 struct K23SIWriteRequest {

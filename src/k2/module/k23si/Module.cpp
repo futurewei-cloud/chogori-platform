@@ -309,7 +309,12 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                 } else {
                     // serialize partial SKVRecord according to projection
                     dto::SKVRecord::Storage storage;
-                    _makeProjection(viter->value, request, storage);
+                    bool success = _makeProjection(viter->value, request, storage);
+                    if (!success) {
+                        K2WARN("Error making projection!");
+                        return RPCResponse(dto::K23SIStatus::InternalError("Error making projection"), 
+                                                dto::K23SIQueryResponse{});
+                    }
                     response.results.push_back(std::move(storage));
                 }
             }
@@ -736,24 +741,36 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, 
     return true;
 }
 
-void K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, 
+bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, 
         dto::SKVRecord::Storage& projectionRec) {
     auto schemaIt = _schemas.find(request.key.schemaName);
     auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
     dto::Schema& schema = schemaVer->second;
     std::vector<bool> excludedFields(schema.fields.size(), true);   // excludedFields for projection
-    Payload payload(Payload::DefaultAllocator);                     // payload for projection
+    Payload projectedPayload(Payload::DefaultAllocator);                     // payload for projection
 
     for (uint32_t i = 0; i < schema.fields.size(); ++i) {
         std::vector<k2::String>::iterator fieldIt;
         fieldIt = std::find(request.projection.begin(), request.projection.end(), schema.fields[i].name);
         if (fieldIt == request.projection.end()) {
             // advance base payload
-            _advancePayloadPosition(fullRec.fieldData, schema.fields[i].type);
+            bool success = false;
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], fullRec.fieldData, 
+                                          success);
+            if (!success) {
+                fullRec.fieldData.seek(0);
+                return false;
+            }
             excludedFields[i] = true;
         } else {
             // write field value into payload
-            _copyPayloadBaseToUpdate(fullRec.fieldData, payload, schema.fields[i].type);
+            bool success = false;
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], fullRec.fieldData, 
+                                          projectedPayload, success);
+            if (!success) {
+                fullRec.fieldData.seek(0);
+                return false;
+            }
             excludedFields[i] = false;
         }
     }
@@ -762,9 +779,10 @@ void K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
     fullRec.fieldData.seek(0);
 
     projectionRec.excludedFields = std::move(excludedFields);
-    projectionRec.fieldData = std::move(payload);
+    projectionRec.fieldData = std::move(projectedPayload);
     projectionRec.fieldData.truncateToCurrent();
     projectionRec.schemaVersion = fullRec.schemaVersion;
+    return true;
 }
 
 

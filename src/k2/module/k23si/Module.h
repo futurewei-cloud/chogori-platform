@@ -175,7 +175,7 @@ private: // methods
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
     
     // helper method used to make a projection SKVRecord payload
-    void _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
+    bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
     
     // method to parse the partial record to full record, return turn if parse successful
     bool _parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous);
