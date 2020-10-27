@@ -64,6 +64,7 @@ public:
         }
 
         _amount = random.UniformRandom(100, 500000);
+        _amount /= 100;
 
         _failed = false;
         _abort = false;
@@ -185,7 +186,7 @@ private:
     int16_t _w_id;
     int16_t _c_w_id;
     int32_t _c_id;
-    int64_t _amount;
+    std::decimal::decimal64 _amount;
     int16_t _d_id;
     int16_t _c_d_id;
     k2::String _w_name;
@@ -204,7 +205,8 @@ class NewOrderT : public TPCCTxn
 {
 public:
     NewOrderT(RandomContext& random, K23SIClient& client, int16_t w_id, int16_t max_w_id) :
-                        _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), _failed(false), _order(random, w_id) {}
+                        _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id), 
+                        _failed(false), _order(random, w_id) {}
 
     future<bool> run() override {
         K2TxnOptions options{};
@@ -372,8 +374,8 @@ private:
     std::vector<OrderLine> _lines;
     // The below variables are needed to "display" the order total amount,
     // but are not needed for any DB operations
-    float _w_tax;
-    float _d_tax;
-    float _c_discount;
-    float _total_amount = 0.0f;
+    std::decimal::decimal64 _w_tax;
+    std::decimal::decimal64 _d_tax;
+    std::decimal::decimal64 _c_discount;
+    std::decimal::decimal64 _total_amount = 0;
 };
