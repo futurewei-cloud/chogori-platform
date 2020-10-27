@@ -188,12 +188,6 @@ private: // methods
     // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate). 
     bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
 
-    // advance payload position to the next field
-    bool _advancePayloadPosition(Payload& payload, dto::FieldType type);
-
-    // Read() the next field from the base payload and write() in the next field of new payload, 
-    bool _copyPayloadBaseToUpdate(Payload& base, Payload& update, dto::FieldType type);   
-    
     // recover data upon startup
     seastar::future<> _recovery();
 
