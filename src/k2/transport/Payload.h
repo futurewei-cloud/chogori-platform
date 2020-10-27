@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
+#include <decimal/decimal>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -175,6 +176,10 @@ public:  // Read API
 
     // read a string
     bool read(String& value);
+
+    // read primitive decimal types
+    bool read(std::decimal::decimal64& value);
+    bool read(std::decimal::decimal128& value);
 
     // read into a payload
     bool read(Payload& other);
@@ -337,6 +342,10 @@ public: // Write API
 
     // write a string
     void write(const String& value);
+
+    // write primitive decimal types
+    void write(const std::decimal::decimal64& value);
+    void write(const std::decimal::decimal128& value);
 
     // write another Payload
     void write(const Payload& other);
