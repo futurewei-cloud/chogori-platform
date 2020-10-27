@@ -1,3 +1,26 @@
+/*
+MIT License
+
+Copyright(c) 2020 Futurewei Cloud
+
+    Permission is hereby granted,
+    free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
+
+    The above copyright notice and this permission notice shall be included in all copies
+    or
+    substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS",
+    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER
+    LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
+
 #include "Expression.h"
 namespace k2 {
 namespace dto {
@@ -101,40 +124,7 @@ compareOptionals(std::tuple<bool, std::optional<T1>>& a, std::tuple<bool, std::o
     return -1;
 }
 
-#define CAST_APPLY_VALUE(func, a, ...)              \
-    do {                                            \
-        switch (a.type) {                           \
-            case FieldType::NOT_KNOWN: {            \
-                throw TypeMismatchException();      \
-            } break;                                \
-            case FieldType::STRING: {               \
-                func<k2::String>(a, __VA_ARGS__);   \
-            } break;                                \
-            case FieldType::INT16T: {               \
-                func<int16_t>(a, __VA_ARGS__);      \
-            } break;                                \
-            case FieldType::INT32T: {               \
-                func<int32_t>(a, __VA_ARGS__);      \
-            } break;                                \
-            case FieldType::INT64T: {               \
-                func<int64_t>(a, __VA_ARGS__);      \
-            } break;                                \
-            case FieldType::FLOAT: {                \
-                func<float>(a, __VA_ARGS__);        \
-            } break;                                \
-            case FieldType::DOUBLE: {               \
-                func<double>(a, __VA_ARGS__);       \
-            } break;                                \
-            case FieldType::BOOL: {                 \
-                func<bool>(a, __VA_ARGS__);         \
-            } break;                                \
-            case FieldType::FIELD_TYPE: {           \
-                func<FieldType>(a, __VA_ARGS__);    \
-            } break;                                \
-            default:                                \
-                throw InvalidExpressionException(); \
-        }                                           \
-    } while (0);
+
 
 template <typename B_TYPE, typename A>
 void _innerCompareHelper(SchematizedValue& b, A& a_opt, int& result) {
@@ -146,12 +136,12 @@ template <typename A_TYPE>
 void _outerCompareHelper(SchematizedValue& a, SchematizedValue& b, int& result) {
     auto a_opt = a.get<A_TYPE>();
     // This relies on partial template deduction of the last template argument of innerHelper
-    CAST_APPLY_VALUE(_innerCompareHelper, b, a_opt, result);
+    K2_DTO_CAST_APPLY_FIELD_VALUE(_innerCompareHelper, b, a_opt, result);
 }
 
 int _compareSValues(SchematizedValue& a, SchematizedValue& b) {
     int result = 0;
-    CAST_APPLY_VALUE(_outerCompareHelper, a, b, result);
+    K2_DTO_CAST_APPLY_FIELD_VALUE(_outerCompareHelper, a, b, result);
     return result;
 }
 
@@ -277,7 +267,7 @@ bool Expression::IS_NULL_handler(SKVRecord& rec) {
     SchematizedValue ref(valueChildren[0], rec);
 
     bool result = false;
-    CAST_APPLY_VALUE(_isNullTypedHelper, ref, result);
+    K2_DTO_CAST_APPLY_FIELD_VALUE(_isNullTypedHelper, ref, result);
     return result;
 }
 

@@ -481,105 +481,45 @@ std::size_t K23SIPartitionModule::_findField(const dto::Schema schema, k2::Strin
     return fieldNumber;
 }
 
-bool K23SIPartitionModule::_advancePayloadPosition(Payload& payload, dto::FieldType type) {
-    switch (type) {
-    case k2::dto::FieldType::STRING : {
-        k2::String value;
-        bool success = payload.read(value);
-        if (!success) {
-            return false;
-        }
-        break;
-    }
-    case k2::dto::FieldType::INT16T : {
-        int16_t value;
-        bool success = payload.read(value);
-        if (!success) {
-            return false;
-        }
-        break;
-    }
-    case k2::dto::FieldType::INT32T : {
-        int32_t value;
-        bool success = payload.read(value);
-        if (!success) {
-            return false;
-        }
-        break;
-    }
-    case k2::dto::FieldType::INT64T : {
-        int64_t value;
-        bool success = payload.read(value);
-        if (!success) {
-            return false;
-        }
-        break;
-    }
-    case k2::dto::FieldType::FLOAT : {
-        float value;
-        bool success = payload.read(value);
-        if (!success) {
-            return false;
-        }
-        break;
-    }
-    default :
-        return false;
-    }// end switch
-    return true;
+template <typename T>
+void _advancePayloadPosition(const dto::SchemaField& field, Payload& payload, bool& success) {
+    (void) field;
+    T value{};
+    success = payload.read(value);
 }
 
-bool K23SIPartitionModule::_copyPayloadBaseToUpdate(Payload& base, Payload& update, dto::FieldType type) {
-    switch (type) {
-    case k2::dto::FieldType::STRING : {
-        k2::String value;
-        bool success = base.read(value);
-        if (!success) {
-            return false;
-        }
-        update.write(value);
-        break;
+template <typename T>
+void _copyPayloadBaseToUpdate(const dto::SchemaField& field, Payload& base, Payload& update, bool& success) {
+    (void) field;
+    T value{};
+    success = base.read(value);
+    if (!success) {
+        return;
     }
-    case k2::dto::FieldType::INT16T : {
-        int16_t value;
-        bool success = base.read(value);
-        if (!success) {
-            return false;
-        }
-        update.write(value);
-        break;
-    }
-    case k2::dto::FieldType::INT32T : {
-        int32_t value;
-        bool success = base.read(value);
-        if (!success) {
-            return false;
-        }
-        update.write(value);
-        break;
-    }
-    case k2::dto::FieldType::INT64T : {
-        int64_t value;
-        bool success = base.read(value);
-        if (!success) {
-            return false;
-        }
-        update.write(value);
-        break;
-    }
-    case k2::dto::FieldType::FLOAT : {
-        float value;
-        bool success = base.read(value);
-        if (!success) {
-            return false;
-        }
-        update.write(value);
-        break;
-    }
-    default :
-        return false;
-    }// end switch
-    return true;
+
+    update.write(value);
+}
+
+template <typename T>
+void _getNextPayloadOffset(const dto::SchemaField& field, Payload& base, uint32_t baseCursor, 
+                           std::vector<uint32_t>& fieldsOffset, bool& success) {
+    (void) field;
+    (void) base;
+    uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(T);
+    fieldsOffset.push_back(tmpOffset);
+    success = true;
+}
+
+template <>
+void _getNextPayloadOffset<String>(const dto::SchemaField& field, Payload& base, uint32_t baseCursor, 
+                           std::vector<uint32_t>& fieldsOffset, bool& success) {
+    (void) field;
+    uint32_t strLen;
+    base.seek(fieldsOffset[baseCursor]);
+    success = base.read(strLen); 
+    if (!success) return;
+    uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint32_t) + strLen; // uint32_t for length; '\0' doesn't count
+    fieldsOffset.push_back(tmpOffset);
 }
 
 bool K23SIPartitionModule::_isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate) {
@@ -601,21 +541,28 @@ bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K
                 // Request's payload has new value, AND
                 // base payload also has this field (empty()==true indicate that base payload contains every fields).
                 // Then use 'req' payload, at the mean time _advancePosition of base payload.
-                if (!_copyPayloadBaseToUpdate(request.value.fieldData, payload, schema.fields[i].type)) return false;
-                if (!_advancePayloadPosition(basePayload, schema.fields[i].type)) return false;
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], request.value.fieldData, payload, success);
+                if (!success) return false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], basePayload, success);
+                if (!success) return false;
             } else if (request.value.excludedFields[i] == 0 &&
                     (!version.value.excludedFields.empty() && version.value.excludedFields[i] == 1)) {
                 // Request's payload has new value, AND
                 // base payload skipped this field.
                 // Then use 'req' value, do not _advancePosition of base payload.
-                if (!_copyPayloadBaseToUpdate(request.value.fieldData, payload, schema.fields[i].type)) return false;
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], request.value.fieldData, payload, success);
+                if (!success) return false;
             } else if (request.value.excludedFields[i] == 1 &&
                     (version.value.excludedFields.empty() || version.value.excludedFields[i] == 0)) {
                 // Request's payload skipped this value(means the field is updated to NULL), AND
                 // base payload has this field.
                 // Then exclude this field, at the mean time _advancePosition of base payload.
                 request.value.excludedFields[i] = true;
-                if (!_advancePayloadPosition(basePayload, schema.fields[i].type)) return false;
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], basePayload, success);
+                if (!success) return false;
             } else {
                 // Request's payload skipped this value, AND base payload also skipped this field.
                 // set excludedFields[i]
@@ -628,21 +575,28 @@ bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K
                 // Request's payload contains this field, AND
                 // base SKVRecord also has value of this field.
                 // copy 'base skvRecord' value, at the mean time _advancePosition of 'req' payload.
-                if (!_copyPayloadBaseToUpdate(basePayload, payload, schema.fields[i].type)) return false;
-                if (!_advancePayloadPosition(request.value.fieldData, schema.fields[i].type)) return false;
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                if (!success) return false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                if (!success) return false;
             } else if (request.value.excludedFields[i] == 0 &&
                     (!version.value.excludedFields.empty() && version.value.excludedFields[i] == 1)) {
                 // Request's payload contains this field, AND
                 // base SKVRecord do NOT has this field.
                 // skip this field, at the mean time _advancePosition of 'req' payload.
                 request.value.excludedFields[i] = true;
-                if (!_advancePayloadPosition(request.value.fieldData, schema.fields[i].type)) return false;
+                bool success;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                if (!success) return false;
             } else if (request.value.excludedFields[i] == 1 &&
                     (version.value.excludedFields.empty() || version.value.excludedFields[i] == 0)) {
                 // Request's payload do NOT contain this field, AND
                 // base SKVRecord has value of this field.
                 // copy 'base skvRecord' value.
-                if (!_copyPayloadBaseToUpdate(basePayload, payload, schema.fields[i].type)) return false;
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                if (!success) return false;
                 request.value.excludedFields[i] = false;
             } else {
                 // else, request payload skipped this field, AND base SKVRecord also skipped this field,
@@ -677,11 +631,17 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
 
             // Each field's offset whose index is lower than baseCursor is save in the fieldsOffset
             if (findField < baseCursor) {
-                if (request.value.excludedFields[i] == false) _advancePayloadPosition(request.value.fieldData, schema.fields[i].type); // have to do first
+                if (request.value.excludedFields[i] == false) {
+                    bool success;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                    if (!success) return false;
+                }
                 if (version.value.excludedFields.empty() || version.value.excludedFields[findField] == false) {
                     // copy value from base
                     basePayload.seek(fieldsOffset[findField]);
-                    if (!_copyPayloadBaseToUpdate(basePayload, payload, baseSchema.fields[findField].type)) return false;
+                    bool success = false;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                    if (!success) return false;
                     request.value.excludedFields[i] = false;
                 } else {
                     // set excludedFields==true
@@ -694,48 +654,26 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
                 // 3. baseCursor = findField + 1;
                 for (; baseCursor <= findField; ++baseCursor) {
                     if (version.value.excludedFields.empty() || version.value.excludedFields[baseCursor] == false) {
-                        switch (baseSchema.fields[baseCursor].type) {
-                        case dto::FieldType::STRING: {
-                            uint32_t strLen;
-                            basePayload.seek(fieldsOffset[baseCursor]);
-                            if (!basePayload.read(strLen)) return false;
-                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint32_t) + strLen; // uint32_t for length; '\0' doesn't count
-                            fieldsOffset.push_back(tmpOffset);
-                            break;
-                        }
-                        case dto::FieldType::INT16T: {
-                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(int16_t);
-                            fieldsOffset.push_back(tmpOffset);
-                            break;
-                        }
-                        case dto::FieldType::INT32T: {
-                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(int32_t);
-                            fieldsOffset.push_back(tmpOffset);
-                            break;
-                        }
-                        case dto::FieldType::INT64T: {
-                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(int64_t);
-                            fieldsOffset.push_back(tmpOffset);
-                            break;
-                        }
-                        case dto::FieldType::FLOAT: {
-                            uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(float);
-                            fieldsOffset.push_back(tmpOffset);
-                            break;
-                        }
-                        default :
-                            return false;
-                        } // end switch
-                    }else {
+                        bool success = false;
+                        K2_DTO_CAST_APPLY_FIELD_VALUE(_getNextPayloadOffset, baseSchema.fields[baseCursor], 
+                                                      basePayload, baseCursor, fieldsOffset, success);
+                        if (!success) return false;
+                    } else {
                         fieldsOffset.push_back(fieldsOffset[baseCursor]);
                     }
                 }
 
-                if (request.value.excludedFields[i] == false) _advancePayloadPosition(request.value.fieldData, schema.fields[i].type); // have to do first
+                if (request.value.excludedFields[i] == false) {
+                    bool success;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                    if (!success) return false;
+                }
                 if (version.value.excludedFields.empty() || version.value.excludedFields[findField] == false) {
                     // copy value from base
                     basePayload.seek(fieldsOffset[findField]);
-                    if (!_copyPayloadBaseToUpdate(basePayload, payload, baseSchema.fields[findField].type)) return false;
+                    bool success = false;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                    if (!success) return false;
                     request.value.excludedFields[i] = false;
                 } else {
                     // set excludedFields[i]=true
@@ -749,7 +687,9 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
             if (request.value.excludedFields[i] == false) {
                 // request's payload has a value.
                 // 1. write() value from req's SKVRecord to payload
-                if (!_copyPayloadBaseToUpdate(request.value.fieldData, payload, schema.fields[i].type)) return false;
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], request.value.fieldData, payload, success);
+                if (!success) return false;
             } else {
                 // request's payload skips this field
                 // 1. set excludedField

@@ -39,24 +39,11 @@ struct NoFieldFoundException : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
-// Thrown when a field type doesn't match during lookup
-struct TypeMismatchException : public std::exception {
-    String what_str;
-    TypeMismatchException(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
 // Thrown when we were not able to deserialize a value correctly
 struct DeserializationError : public std::exception {
     String what_str;
     DeserializationError(String s="") : what_str(std::move(s)) {}
     virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct SKVRecordException : public std::exception {
-    String what_str;
-    SKVRecordException(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override{ return what_str.c_str();}
 };
 
 class SKVRecord {
