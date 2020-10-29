@@ -166,7 +166,7 @@ public:
     // duration of the future.
     // RequestT must have a pvid field and a collectionName field
     template<class RequestT, typename ResponseT, Verb verb, typename ClockT=Clock>
-    seastar::future<std::tuple<Status, ResponseT>> PartitionRequest(Deadline<ClockT> deadline, RequestT& request, uint8_t retries=1) {
+    seastar::future<std::tuple<Status, ResponseT>> PartitionRequest(Deadline<ClockT> deadline, RequestT& request, bool exclusiveKey=false, uint8_t retries=1) {
         K2DEBUG("making partition request with deadline=" << deadline.getRemaining());
         // If collection is not in cache or partition is not assigned, get collection first
         seastar::future<Status> f = seastar::make_ready_future<Status>(Statuses::S200_OK("default cached response"));
@@ -176,7 +176,7 @@ public:
             f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key);
         } else {
             K2DEBUG("Collection found");
-            dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key).partition;
+            dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key, exclusiveKey).partition;
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                 K2DEBUG("Collection found but is in bad state");
                 f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key);
@@ -194,7 +194,7 @@ public:
             }
 
             // Try to get partition info
-            auto& partition = collections[request.collectionName].getPartitionForKey(request.key);
+            auto& partition = collections[request.collectionName].getPartitionForKey(request.key, exclusiveKey);
             if (!partition.partition || partition.partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
                 K2DEBUG("Failed to get assigned partition");

@@ -242,7 +242,7 @@ public:
 
     // Returns the partition and preferred endpointfor the given key.
     // Hashes key if hashScheme is not range
-    PartitionWithEndpoint& getPartitionForKey(const Key& key);
+    PartitionWithEndpoint& getPartitionForKey(const Key& key, bool exclusiveKey=false);
 
     Collection collection;
 

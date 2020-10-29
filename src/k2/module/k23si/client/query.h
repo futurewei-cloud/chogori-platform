@@ -55,6 +55,7 @@ public:
     // {ID = 1, NAME = J} is valid.
     dto::SKVRecord startScanRecord;
     dto::SKVRecord endScanRecord;
+    bool exclusiveStart = false;
 
 private:
     std::shared_ptr<dto::Schema> schema = nullptr;

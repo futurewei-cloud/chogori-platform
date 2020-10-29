@@ -232,6 +232,7 @@ struct K23SIQueryRequest {
     // use the name "key" so that we can use common routing from CPO client
     Key key; // key for routing and will be interpreted as inclusive start key by the server
     Key endKey; // exclusive scan end key
+    bool exclusiveKey = false; // Used to indicate key(aka startKey) is excluded in results
 
     int32_t recordLimit = -1; // Max number of records server should return, negative is no limit
     bool includeVersionMismatch = false; // Whether mismatched schema versions should be included in results
@@ -240,14 +241,15 @@ struct K23SIQueryRequest {
     expression::Expression filterExpression; // the filter expression for this query
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, recordLimit, includeVersionMismatch,
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
                       reverseDirection, filterExpression, projection);
 };
 
 struct K23SIQueryResponse {
     Key nextToScan; // For continuation token
+    bool exclusiveToken = false; // whether nextToScan should be excluded or included
     std::vector<SKVRecord::Storage> results;
-    K2_PAYLOAD_FIELDS(nextToScan, results);
+    K2_PAYLOAD_FIELDS(nextToScan, exclusiveToken, results);
 };
 
 struct K23SITxnHeartbeatRequest {

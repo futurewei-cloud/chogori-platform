@@ -175,6 +175,7 @@ void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirecti
     if (!reverseDirection) {
         ++it;
         if (it != _indexer.end() && it->first.schemaName != schema) {
+            std::cout << "{_scanAdvance} 1" << std::endl;
             it = _indexer.end();
         }
 
@@ -194,14 +195,23 @@ void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirecti
 
 // Helper for handleQuery. Returns an iterator to start the scan at, accounting for
 // desired schema and (eventually) reverse direction scan
-IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, bool reverse) {
+IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey) {
     auto key_it = _indexer.lower_bound(start);
 
-    // For reverse direction scan, key_it may not be in range because of how lower_bound works,
-    // so fix that here. TODO reverse scan with start key as "" ?
-    if (reverse && key_it != _indexer.end() && key_it->first > start) {
-        while (key_it != _indexer.end() && key_it->first > start) {
+    // For reverse direction scan, key_it may not be in range because of how lower_bound works, so fix that here.
+    // IF start key is empty, it means this reverse scan start from end of table OR 
+    //      if lower_bound returns a _indexer.end(), it also means reverse scan should start from end of table;
+    // ELSE IF lower_bound returns a key equal to start AND exclusiveKey is true, reverse advance key_it once;
+    // ELSE IF lower_bound returns a key bigger than start, find the first key not bigger than start;
+    if (reverse) {
+        if (start == "" || key_it == _indexer.end()) {
+            key_it = _indexer.rbegin();
+        } else if (key_it->first == start && exclusiveKey) {
             _scanAdvance(key_it, reverse);
+        } else if (key_it->first > start) {
+            while (key_it->first > start) {
+                _scanAdvance(key_it, reverse);
+            }
         }
     }
 
@@ -216,15 +226,20 @@ IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, boo
 bool K23SIPartitionModule::_isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request,
                                        size_t response_size) {
     if (it == _indexer.end()) {
+        std::cout << "{_isScanDone} 1" << std::endl;
         return true;
     } else if (!request.reverseDirection && it->first >= request.endKey &&
                request.endKey.partitionKey != "") {
+        std::cout << "{_isScanDone} 2" << std::endl;
         return true;
     } else if (request.reverseDirection && it->first <= request.endKey) {
+        std::cout << "{_isScanDone} 3" << std::endl;
         return true;
     } else if (request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) {
+        std::cout << "{_isScanDone} 4" << std::endl;
         return true;
     } else if (response_size == _config.paginationLimit()) {
+        std::cout << "{_isScanDone} 5" << std::endl;
         return true;
     }
 
@@ -256,21 +271,33 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
     }
     else if (it != _indexer.end()) {
         // This is the paginated case
+        request.exclusiveKey = false;
         return it->first;
     }
 
     // This is the multi-partition case
-    // TODO support this for reverseDirection scan
-    return dto::Key {
-        request.key.schemaName,
-        _partition().endKey,
-        ""
-    };
+    if (request.reverseDirection) {
+        request.exclusiveKey = true;
+        return dto::Key {
+            request.key.schemaName,
+            _partition().startKey,
+            ""
+        };
+    } else {
+        request.exclusiveKey = false;
+        return dto::Key {
+            request.key.schemaName,
+            _partition().endKey,
+            ""
+        };
+    }
 }
 
 seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
 K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received query " << request);
+    std::cout << "{request} key:" << request.key << ", endKey:" << request.endKey << std::endl;
+    std::cout << "{response size} " << response.results.size() << ", nextToScan:" << response.nextToScan << std::endl;
 
     Status validateStatus = _validateReadRequest(request);
     if (!validateStatus.is2xxOK()) {
@@ -279,11 +306,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     if (_partition.getHashScheme() != dto::HashScheme::Range) {
             return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Query not implemented for hash partitioned collection"), dto::K23SIQueryResponse{});
     }
-    if (request.reverseDirection) {
-            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Reverse scan query not fully implemented"), dto::K23SIQueryResponse{});
-    }
 
-    IndexerIterator key_it = _initializeScan(request.key, request.reverseDirection);
+    IndexerIterator key_it = _initializeScan(request.key, request.reverseDirection, request.exclusiveKey);
 
     for (; !_isScanDone(key_it, request, response.results.size());
                         _scanAdvance(key_it, request.reverseDirection)) {
@@ -370,7 +394,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
 
     response.nextToScan = _getContinuationToken(key_it, request, response.results.size());
-    K2DEBUG("nextToScan: " << response.nextToScan);
+    response.exclusiveToken = request.exclusiveKey;
+    K2DEBUG("nextToScan: " << response.nextToScan << ", exclusiveToken: " << response.exclusiveToken);
     return RPCResponse(dto::K23SIStatus::OK("Query success"), std::move(response));
 }
 
