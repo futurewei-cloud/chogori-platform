@@ -80,10 +80,10 @@ public:  // application lifespan
             K2EXPECT(result.status.is2xxOK(), true);
         })
         .then([this] { return runSetup(); })
-        //.then([this] { return runScenario01(); })
+        .then([this] { return runScenario01(); })
         .then([this] { return runScenario02(); })
-        //.then([this] { return runScenario03(); })
-        //.then([this] { return runScenario04(); })
+        .then([this] { return runScenario03(); })
+        .then([this] { return runScenario04(); })
         .then([this] {
             K2INFO("======= All tests passed ========");
             exitcode = 0;
@@ -164,6 +164,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                         for(k2::dto::SKVRecord& e : response.records) {
                             std::optional<k2::String> part = e.deserializeNext<k2::String>();
                             std::optional<k2::String> range = e.deserializeNext<k2::String>();
+                            e.seekField(0);
                             std::cout << *part << ",";
                         }
                         std::cout << "." << std::endl;

@@ -183,6 +183,7 @@ bool OwnerPartition::owns(const Key& key, const bool reverse) const {
             } else {
                 if (key.partitionKey == "" && _partition.endKey == "") return true;
                 else if (key.partitionKey == "" && _partition.endKey != "") return false;
+                else if (_partition.endKey == "") return _partition.startKey.compare(key.partitionKey) <= 0;
                 
                 return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <= 0;
             }

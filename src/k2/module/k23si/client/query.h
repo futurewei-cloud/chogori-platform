@@ -39,7 +39,6 @@ public:
     void setReverseDirection(bool reverseDirection);
     void setIncludeVersionMismatch(bool includeVersionMismatch);
     void setLimit(int32_t limit);
-    void setExclusiveKey(bool exclusive);
 
     void addProjection(const String& fieldName);
     void addProjection(const std::vector<String>& fieldNames);
