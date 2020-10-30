@@ -85,7 +85,7 @@ public:
         if (it != requestWaiters.end()) {
             K2DEBUG("found existing waiter");
             it->second.emplace_back(seastar::promise<Status>());
-            return it->second.back().get_future().then([this, deadline, name, key, retries](Status&& status) {
+            return it->second.back().get_future().then([this, deadline, name, key, reverse, excludedKey, retries](Status&& status) {
                 K2DEBUG("waiter finished with status: " << status);
                 if (status.is2xxOK()) {
                     dto::Partition* partition = collections[name].getPartitionForKey(key, reverse, excludedKey).partition;
@@ -114,7 +114,7 @@ public:
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
         dto::CollectionGetRequest request{.name = name};
 
-        return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *cpo, timeout).then([this, name = request.name, key, deadline, retries](auto&& response) {
+        return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *cpo, timeout).then([this, name = request.name, key, deadline, reverse, excludedKey, retries](auto&& response) {
             auto& [status, coll_response] = response;
             bool retry = false;
             K2DEBUG("collection get response received with status: " << status << ", for name=["<< name << "]");
@@ -156,7 +156,7 @@ public:
             }
 
             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
-            return seastar::sleep(s).then([this, name, key, deadline, retries]() -> seastar::future<Status> {
+            return seastar::sleep(s).then([this, name, key, deadline, reverse, excludedKey, retries]() -> seastar::future<Status> {
                 return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), std::move(reverse), std::move(excludedKey), retries - 1);
             });
         });
@@ -185,7 +185,7 @@ public:
             }
         }
 
-        return f.then([this, deadline, &request, exclusiveKey, retries](Status&& status) {
+        return f.then([this, deadline, &request, reverse, exclusiveKey, retries](Status&& status) {
             K2DEBUG("Collection get completed with status: " << status << ", request="<< request);
             auto it = collections.find(request.collectionName);
 
@@ -210,7 +210,7 @@ public:
 
             // Attempt the request RPC
             return RPC().callRPC<RequestT, ResponseT>(verb, request, *partition.preferredEndpoint, timeout).
-            then([this, &request, deadline, retries] (auto&& result) {
+            then([this, &request, deadline, reverse, exclusiveKey, retries] (auto&& result) {
                 auto& [status, k2response] = result;
                 K2DEBUG("partition call completed with status " << status);
 
@@ -232,10 +232,10 @@ public:
 
                 // S410_Gone (refresh partition map) or retryable error
                 return GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey, 1)
-                .then([this, &request, deadline, retries] (Status&& status) {
+                .then([this, &request, deadline, reverse, exclusiveKey, retries] (Status&& status) {
                     K2DEBUG("retrying partition call after status " << status);
                     (void) status;
-                    return PartitionRequest<RequestT, ResponseT, verb>(deadline, request, retries-1);
+                    return PartitionRequest<RequestT, ResponseT, verb>(deadline, request, reverse, exclusiveKey, retries-1);
                 });
             });
         });

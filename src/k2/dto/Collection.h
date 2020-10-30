@@ -277,7 +277,7 @@ private:
 class OwnerPartition {
 public:
     OwnerPartition(Partition&& part, HashScheme scheme);
-    bool owns(const Key& key) const;
+    bool owns(const Key& key, const bool reverse = false) const;
     Partition& operator()() { return _partition; }
     const Partition& operator()() const { return _partition; }
     HashScheme getHashScheme() { return _scheme; }

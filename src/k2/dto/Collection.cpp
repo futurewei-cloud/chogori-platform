@@ -171,14 +171,21 @@ OwnerPartition::OwnerPartition(Partition&& part, HashScheme scheme) :
     }
 }
 
-bool OwnerPartition::owns(const Key& key) const {
+bool OwnerPartition::owns(const Key& key, const bool reverse) const {
     switch (_scheme) {
         case HashScheme::Range:
-            if (_partition.endKey == "") {
-                return _partition.startKey.compare(key.partitionKey) <= 0;
+            if (!reverse) {
+                if (_partition.endKey == "") {
+                    return _partition.startKey.compare(key.partitionKey) <= 0;
+                }
+                
+                return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) < 0;
+            } else {
+                if (key.partitionKey == "" && _partition.endKey == "") return true;
+                else if (key.partitionKey == "" && _partition.endKey != "") return false;
+                
+                return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <= 0;
             }
-
-            return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) < 0;
         case HashScheme::HashCRC32C: {
             auto phash = key.partitionHash();
             return _hstart <= phash && phash < _hend;

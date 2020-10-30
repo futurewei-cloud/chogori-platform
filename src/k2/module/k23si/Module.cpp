@@ -307,7 +307,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
     Status validateStatus = _validateQueryRequest(request);
     if (!validateStatus.is2xxOK()) {
-        std::cout << "-1.3- {request}" << std::endl;
+        std::cout << "-1.3- {request} status:" << validateStatus.code << std::endl;
         return RPCResponse(std::move(validateStatus), dto::K23SIQueryResponse{});
     }
     std::cout << "-1.1- {request}" << std::endl;

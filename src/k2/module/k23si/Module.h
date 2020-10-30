@@ -184,10 +184,6 @@ private: // methods
             // tell client their collection partition is gone
             return dto::K23SIStatus::RefreshCollection("collection refresh needed in query-type request");
         }
-        if (!_validateRequestPartitionKey(request)){
-            // do not allow empty partition key
-            return dto::K23SIStatus::BadParameter("missing partition key in query-type request");
-        }
         if (!_validateRetentionWindow(request)) {
             // the request is outside the retention window
             return dto::K23SIStatus::AbortRequestTooOld("request too old in query-type request");
@@ -196,7 +192,12 @@ private: // methods
             // server does not have schema
             return dto::K23SIStatus::OperationNotAllowed("schema does not exist in query-type request");
         }
-        if (!request.exclusiveKey && !_partition.owns(request.key)) {
+        if ((!request.reverseDirection && request.key.partitionKey.empty()) ||
+                (request.reverseDirection && request.endKey.partitionKey.empty())) {
+            // do not allow empty partition key
+            return dto::K23SIStatus::BadParameter("missing partition key in query-type request");
+        }
+        if (!_partition.owns(request.key, request.reverseDirection)) {
             // request key is not in this partition
             return dto::K23SIStatus::RefreshCollection("request key not included in query-type request");
         }
