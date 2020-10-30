@@ -268,8 +268,9 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
     };
 }
 
-// Makes the SKVRecord and applies the request's filter to it. If Status is not OK,
-// it should be returned in the response. Otherwise bool in tuple is whether the filter passed
+// Makes the SKVRecord and applies the request's filter to it. If the returned Status is not OK,
+// the caller should return the status in the query response. Otherwise bool in tuple is whether 
+// the filter passed
 std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryRequest& request, 
                                                               dto::SKVRecord::Storage& storage) {
     // We know the schema name exists because it is validated at the beginning of handleQuery
