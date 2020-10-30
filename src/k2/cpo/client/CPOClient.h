@@ -183,7 +183,7 @@ public:
             }
         }
 
-        return f.then([this, deadline, &request, retries](Status&& status) {
+        return f.then([this, deadline, &request, exclusiveKey, retries](Status&& status) {
             K2DEBUG("Collection get completed with status: " << status << ", request="<< request);
             auto it = collections.find(request.collectionName);
 
@@ -203,6 +203,7 @@ public:
 
             Duration timeout = std::min(deadline.getRemaining(), partition_request_timeout());
             request.pvid = partition.partition->pvid;
+            std::cout << "{PartitionRequest line 206} startkey:" << partition.partition->startKey << std::endl;
             K2DEBUG("making partition call to " << partition.preferredEndpoint->getURL() << ", with timeout=" << timeout);
 
             // Attempt the request RPC

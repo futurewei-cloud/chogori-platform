@@ -126,19 +126,19 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
             RangeMapElement to_find(key.partitionKey, PartitionGetter::PartitionWithEndpoint());
 
             std::vector<RangeMapElement>::iterator it;
-            if (exclusiveKey == false) {
-                // We are comparing against the start keys and upper_bound gives the first start key
-                // greater than the key (start keys are inclusive), so we return the partition before 
-                // the one obtained by upper_bound
-                it = std::upper_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
-                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
-            } else {
+            if (exclusiveKey) {
                 // if the 'exclusiveKey' is true (start keys are exclusive), lower_bound gives the start key,
                 // so we return the partition before the one obtained by lower_bound.
                 // another case is: if key.partitionKey is an empty string, it means end of partition map.
                 if (key.partitionKey == "") it = _rangePartitionMap.end();
                 else it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
                 K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not contain any partitions!");
+            } else {
+                // We are comparing against the start keys and upper_bound gives the first start key
+                // greater than the key (start keys are inclusive), so we return the partition before 
+                // the one obtained by upper_bound
+                it = std::upper_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
+                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
             }
 
             return (--it)->partition;

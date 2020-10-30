@@ -80,9 +80,10 @@ public:  // application lifespan
             K2EXPECT(result.status.is2xxOK(), true);
         })
         .then([this] { return runSetup(); })
-        .then([this] { return runScenario01(); })
+        //.then([this] { return runScenario01(); })
         .then([this] { return runScenario02(); })
         .then([this] { return runScenario03(); })
+        .then([this] { return runScenario04(); })
         .then([this] {
             K2INFO("======= All tests passed ========");
             exitcode = 0;
@@ -158,10 +159,12 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                         ++count;
 
                         //debug
+                        if (count > 5) done = true;
+                        std::cout << "batch(" << count << ") ";
                         for(k2::dto::SKVRecord& e : response.records) {
                             std::optional<k2::String> part = e.deserializeNext<k2::String>();
                             std::optional<k2::String> range = e.deserializeNext<k2::String>();
-                            std::cout << "batch(" << count << ") " << *part << ",";
+                            std::cout << *part << ",";
                         }
                         std::cout << "." << std::endl;
                         
@@ -234,7 +237,7 @@ seastar::future<> runScenario01() {
     K2INFO("runScenario01");
 
     K2INFO("Single partition single page result");
-    return doQuery("c", "a", -1, true, 2, 1).discard_result()
+    return doQuery("a", "c", -1, false, 2, 1).discard_result()
     .then([this] () {
         K2INFO("Single partition with limit");
         return doQuery("a", "d", 1, false, 1, 1).discard_result();
@@ -261,9 +264,33 @@ seastar::future<> runScenario01() {
     });
 }
 
-// Query projection cases
+// Simple reverse scan queries with no filter or projection
 seastar::future<> runScenario02() {
     K2INFO("runScenario02");
+
+    K2INFO("Single partition single page result");
+    return doQuery("c", "a", -1, true, 2, 1).discard_result()
+    .then([this] {
+        K2INFO("Single partition with limit");
+        return doQuery("d", "a", 1, true, 1, 1).discard_result();
+    })
+    .then([this] {
+        K2INFO("Single partition no results");
+        return doQuery("abz", "ab", -1, true, 0, 1).discard_result();
+    })
+    .then([this] {
+        K2INFO("Single partition with end key == partition start");
+        return doQuery("f", "d", -1, true, 2, 1).discard_result();
+    })
+    .then([this] {
+        K2INFO("Single partition with end key right smaller than partition start");
+        return doQuery("f", "c", -1, true, 3, 2).discard_result();
+    });
+}
+
+// Query projection cases
+seastar::future<> runScenario03() {
+    K2INFO("runScenario03");
 
     K2INFO("Projection reads for the giving field");
     return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, {"partition"})
@@ -316,8 +343,8 @@ seastar::future<> runScenario02() {
 }
 
 // Query conflict cases
-seastar::future<> runScenario03() {
-    K2INFO("runScenario03");
+seastar::future<> runScenario04() {
+    K2INFO("runScenario04");
 
     K2INFO("Starting write in range is blocked by readCache test");
     k2::K2TxnOptions options{};

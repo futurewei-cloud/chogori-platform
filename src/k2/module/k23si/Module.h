@@ -119,7 +119,15 @@ private: // methods
     bool _validateRequestPartition(const RequestT& req) const {
         auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid && _partition.owns(req.key);
         K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
-                << ", for request=" << req);
+                << ", for request=" << req << ", excludedKey=" << excludedKey);
+        return result;
+    }
+
+    // validate query requests are coming to the correct partition. A key is possibly not included in this partition
+    bool _validateQueryPartition(const dto::K23SIQueryRequest& req) const {
+        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid;
+        K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
+                << ", for request=" << req << ", excludedKey=" << excludedKey);
         return result;
     }
 
@@ -171,6 +179,31 @@ private: // methods
         return dto::K23SIStatus::OK("");
     }
 
+    Status _validateQueryRequest(const dto::K23SIQueryRequest& request) const {
+        if (!_validateQueryPartition(request)) {
+            // tell client their collection partition is gone
+            return dto::K23SIStatus::RefreshCollection("collection refresh needed in query-type request");
+        }
+        if (!_validateRequestPartitionKey(request)){
+            // do not allow empty partition key
+            return dto::K23SIStatus::BadParameter("missing partition key in query-type request");
+        }
+        if (!_validateRetentionWindow(request)) {
+            // the request is outside the retention window
+            return dto::K23SIStatus::AbortRequestTooOld("request too old in query-type request");
+        }
+        if (_schemas.find(request.key.schemaName) == _schemas.end()) {
+            // server does not have schema
+            return dto::K23SIStatus::OperationNotAllowed("schema does not exist in query-type request");
+        }
+        if (!request.exclusiveKey && !_partition.owns(request.key)) {
+            // request key is not in this partition
+            return dto::K23SIStatus::RefreshCollection("request key not included in query-type request");
+        }
+        
+        return dto::K23SIStatus::OK("");
+    }
+
     // helper method used to create and persist a WriteIntent
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
     
@@ -201,14 +234,13 @@ private: // methods
 
     // Helper for handleQuery. Returns an iterator to start the scan at, accounting for 
     // desired schema and (eventually) reverse direction scan
-    IndexerIterator _initializeScan(const dto::Key& start, bool reverse);
+    IndexerIterator _initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey);
 
     // Helper for handleQuery. Checks to see if the indexer scan should stop.
     bool _isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request, size_t response_size);
 
     // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
-    dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request, 
-                                   size_t response_size);
+    dto::Key _getContinuationToken(const IndexerIterator& it, dto::K23SIQueryRequest& request, size_t response_size);
 
 private: // members
     // the metadata of our collection

@@ -43,6 +43,10 @@ void Query::setLimit(int32_t limit) {
     request.recordLimit = limit;
 }
 
+void Query::setExclusiveKey(bool exclusive) {
+    request.exclusiveKey = exclusive;
+}
+
 void Query::addProjection(const String& fieldName) {
     request.projection.push_back(fieldName);
 }
