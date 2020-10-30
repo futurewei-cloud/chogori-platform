@@ -27,6 +27,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/module/k23si/client/k23si_client.h>
 #include <seastar/core/sleep.hh>
 
+namespace k2e = k2::dto::expression;
+
 const char* collname = "k23si_test_collection";
 
 // Integration tests for SKV Query operations
@@ -69,6 +71,8 @@ public:  // application lifespan
             schema.fields = std::vector<k2::dto::SchemaField> {
                     {k2::dto::FieldType::STRING, "partition", false, false},
                     {k2::dto::FieldType::STRING, "range", false, false},
+                    {k2::dto::FieldType::INT32T, "data1", false, false},
+                    {k2::dto::FieldType::INT32T, "data2", false, false}
             };
 
             schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition"});
@@ -83,6 +87,7 @@ public:  // application lifespan
         .then([this] { return runScenario01(); })
         .then([this] { return runScenario02(); })
         .then([this] { return runScenario03(); })
+        .then([this] { return runScenario04(); })
         .then([this] {
             K2INFO("======= All tests passed ========");
             exitcode = 0;
@@ -123,6 +128,7 @@ seastar::future<std::vector<std::vector<k2::dto::SKVRecord>>>
 doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reverse, 
                           uint32_t expectedRecords, uint32_t expectedPaginations, 
                           k2::Status expectedStatus=k2::dto::K23SIStatus::OK,
+                          k2e::Expression filterExpression=k2e::Expression{},
                           std::vector<k2::String> projection=std::vector<k2::String>()) {
     K2DEBUG("doQuery from " << start " to: " << end);
     return _client.beginTxn(k2::K2TxnOptions{})
@@ -130,7 +136,9 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
         txn = std::move(t);
         return _client.createQuery(collname, "schema");
     })
-    .then([this, start, end, limit, reverse, expectedRecords, expectedPaginations, expectedStatus, projection] (auto&& response) {
+    .then([this, start, end, limit, reverse, expectedRecords, expectedPaginations, expectedStatus, 
+                filterExpression=std::move(filterExpression), 
+                projection=std::move(projection)] (auto&& response) mutable {
         K2EXPECT(response.status.is2xxOK(), true);
         query = std::move(response.query);
         if (start != "" || !reverse) {
@@ -144,6 +152,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
         query.setLimit(limit);
         query.setReverseDirection(reverse);
         query.addProjection(projection);
+        query.setFilterExpression(std::move(filterExpression));
 
         return seastar::do_with(std::vector<std::vector<k2::dto::SKVRecord>>(), (uint32_t)0, false, 
         [this, expectedRecords, expectedPaginations, expectedStatus, projection] (
@@ -159,7 +168,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                         result_set.push_back(std::move(response.records));
                     });
             })
-            .then([&result_set, &count, expectedPaginations, expectedRecords, expectedStatus, projection] () {
+            .then([&result_set, &count, expectedPaginations, expectedRecords, expectedStatus] () {
                 if (!expectedStatus.is2xxOK()) {
                     return seastar::make_ready_future<std::vector<std::vector<k2::dto::SKVRecord>>>(std::move(result_set));
                 }
@@ -195,17 +204,21 @@ seastar::future<> runSetup() {
 
         std::vector<seastar::future<>> write_futs;
         std::vector<k2::String> partKeys = {"a", "b", "c", "d", "e", "f"};
+        int32_t data = 0;
 
         for (const k2::String& key : partKeys) {
             k2::dto::SKVRecord record(collname, schemaPtr);
             record.serializeNext<k2::String>(key);
             record.serializeNext<k2::String>("");
+            record.serializeNext<int32_t>(data);
+            record.serializeNext<int32_t>(data);
             write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
                 .then([] (auto&& response) {
                     K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
                     return seastar::make_ready_future<>();
                 })
             );
+            data++;
         }
 
         return seastar::when_all_succeed(write_futs.begin(), write_futs.end());
@@ -256,7 +269,7 @@ seastar::future<> runScenario02() {
     K2INFO("runScenario02");
 
     K2INFO("Projection reads for the giving field");
-    return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, {"partition"})
+    return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{}, {"partition"})
     .then([](auto&& response) {
         std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
         uint32_t record_count = 0;
@@ -280,7 +293,8 @@ seastar::future<> runScenario02() {
     })
     .then([this] {
         K2INFO("Project a field that is not part of the schema");
-        return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, {"partition", "balance", "age"})
+        return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{}, 
+                       {"partition", "balance", "age"})
         .then([](auto&& response) {
             std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
             uint32_t record_count = 0;
@@ -305,9 +319,73 @@ seastar::future<> runScenario02() {
     });
 }
 
-// Query conflict cases
+// Query filter tests. Filter expressions have extensive unit tests, so
+// only testing end-to-end functionality here
 seastar::future<> runScenario03() {
     K2INFO("runScenario03");
+    return seastar::make_ready_future()
+    .then([this] () {
+        // Simple Equals filter, all records should be returned
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueReference("data2"));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        return doQuery("", "", -1, false, 6, 4, k2::dto::K23SIStatus::OK, std::move(filter)).discard_result();
+    })
+    .then([this] () {
+        // Simple Equals filter, only one record returned but all partitions accessed
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueLiteral<int32_t>(1));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        return doQuery("", "", -1, false, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter))
+        .then([this] (auto&& result_set) {
+            k2::dto::SKVRecord& rec = result_set[0][0];
+            std::optional<k2::String> key = rec.deserializeNext<k2::String>();
+            K2EXPECT(*key, "b");
+        });
+    })
+    .then([this] () {
+        // Equals filter with type promotion, only one record returned but all partitions accessed
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueLiteral<int64_t>(1));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        return doQuery("", "", -1, false, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter))
+        .then([this] (auto&& result_set) {
+            k2::dto::SKVRecord& rec = result_set[0][0];
+            std::optional<k2::String> key = rec.deserializeNext<k2::String>();
+            K2EXPECT(*key, "b");
+        });
+    })
+    .then([this] () {
+        // Mismatched types, no records returned
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueLiteral<k2::String>("1"));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        return doQuery("", "", -1, false, 0, 2, k2::dto::K23SIStatus::OK, std::move(filter))
+        .discard_result();
+    })
+    .then([this] () {
+        // Failure case of malformed filter
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        return doQuery("", "", -1, false, 0, 1, k2::dto::K23SIStatus::OperationNotAllowed, std::move(filter))
+        .discard_result();
+    });
+}
+
+
+// Query conflict cases
+seastar::future<> runScenario04() {
+    K2INFO("runScenario04");
 
     K2INFO("Starting write in range is blocked by readCache test");
     k2::K2TxnOptions options{};
