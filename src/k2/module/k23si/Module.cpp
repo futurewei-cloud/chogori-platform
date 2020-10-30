@@ -288,12 +288,8 @@ std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryReq
     try {
         keep = request.filterExpression.evaluate(record);
     }
-    catch(dto::NoFieldFoundException&) {
-        keep = false;
-    }
-    catch(dto::TypeMismatchException&) {
-        keep = false;
-    }
+    catch(dto::NoFieldFoundException&) {}
+    catch(dto::TypeMismatchException&) {}
     catch (dto::DeserializationError&) {
         status = dto::K23SIStatus::OperationNotAllowed("DeserializationError in query filter");
     }
