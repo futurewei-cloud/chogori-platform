@@ -82,8 +82,8 @@ public:  // application lifespan
         .then([this] { return runSetup(); })
         //.then([this] { return runScenario01(); })
         .then([this] { return runScenario02(); })
-        .then([this] { return runScenario03(); })
-        .then([this] { return runScenario04(); })
+        //.then([this] { return runScenario03(); })
+        //.then([this] { return runScenario04(); })
         .then([this] {
             K2INFO("======= All tests passed ========");
             exitcode = 0;
@@ -284,7 +284,19 @@ seastar::future<> runScenario02() {
     })
     .then([this] {
         K2INFO("Single partition with end key right smaller than partition start");
-        return doQuery("f", "c", -1, true, 3, 2).discard_result();
+        return doQuery("f", "c", -1, true, 3, 3).discard_result();
+    })
+    .then([this] () {
+        K2INFO("Multi partition with limit");
+        return doQuery("f", "", 5, true, 5, 3).discard_result();
+    })
+    .then([this] () {
+        K2INFO("Multi partition terminated by end key");
+        return doQuery("f", "baby", -1, true, 4, 3).discard_result();
+    })
+    .then([this] () {
+        K2INFO("Multi partition full scan");
+        return doQuery("", "", -1, true, 6, 4).discard_result();
     });
 }
 

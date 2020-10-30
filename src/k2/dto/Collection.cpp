@@ -119,11 +119,14 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
     }
 }
 
-PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(const Key& key, bool exclusiveKey) {
+PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(const Key& key, bool reverse, bool exclusiveKey) {
     switch (collection.metadata.hashScheme) {
         case HashScheme::Range:
         {
             RangeMapElement to_find(key.partitionKey, PartitionGetter::PartitionWithEndpoint());
+
+            // reverse get partition for an empty key: return the last partition
+            if (reverse && key.partitionKey == "") return (--_rangePartitionMap.end())->partition;
 
             std::vector<RangeMapElement>::iterator it;
             if (exclusiveKey) {

@@ -473,7 +473,7 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
             ", endkey:" << query.request.endKey << std::endl;
     return _cpo_client->PartitionRequest
         <dto::K23SIQueryRequest, dto::K23SIQueryResponse, dto::Verbs::K23SI_QUERY>
-        (_options.deadline, query.request, query.request.exclusiveKey)
+        (_options.deadline, query.request, query.request.reverseDirection, query.request.exclusiveKey)
     .then([this, &query] (auto&& response) {
         auto& [status, k2response] = response;
         checkResponseStatus(status);
