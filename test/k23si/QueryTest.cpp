@@ -157,19 +157,6 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                         K2EXPECT(response.status, expectedStatus);
                         done = response.status.is2xxOK() ? query.isDone() : true;
                         ++count;
-
-                        //debug
-                        if (count > 5) done = true;
-                        std::cout << "batch(" << count << ") ";
-                        for(k2::dto::SKVRecord& e : response.records) {
-                            std::optional<k2::String> part = e.deserializeNext<k2::String>();
-                            std::optional<k2::String> range = e.deserializeNext<k2::String>();
-                            e.seekField(0);
-                            std::cout << *part << ",";
-                        }
-                        std::cout << "." << std::endl;
-                        
-                        
                         result_set.push_back(std::move(response.records));
                     });
             })

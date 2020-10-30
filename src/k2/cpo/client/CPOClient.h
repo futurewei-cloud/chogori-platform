@@ -205,7 +205,6 @@ public:
 
             Duration timeout = std::min(deadline.getRemaining(), partition_request_timeout());
             request.pvid = partition.partition->pvid;
-            std::cout << "{PartitionRequest line 206} startkey:" << partition.partition->startKey << std::endl;
             K2DEBUG("making partition call to " << partition.preferredEndpoint->getURL() << ", with timeout=" << timeout);
 
             // Attempt the request RPC

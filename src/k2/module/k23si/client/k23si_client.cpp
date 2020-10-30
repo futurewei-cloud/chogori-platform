@@ -469,8 +469,6 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
     _client->query_ops++;
     _ongoing_ops++;
 
-    std::cout << "{before PartitionRequest} exclusiveKey:" << query.request.exclusiveKey << ", key:" << query.request.key << 
-            ", endkey:" << query.request.endKey << std::endl;
     return _cpo_client->PartitionRequest
         <dto::K23SIQueryRequest, dto::K23SIQueryResponse, dto::Verbs::K23SI_QUERY>
         (_options.deadline, query.request, query.request.reverseDirection, query.request.exclusiveKey)
