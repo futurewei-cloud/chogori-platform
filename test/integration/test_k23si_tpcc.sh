@@ -53,7 +53,7 @@ sleep 2
 NUMWH=1
 NUMDIST=1
 echo ">>> Starting load ..."
-./build/src/k2/cmd/tpcc/tpcc_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63100 --enable_tx_checksum true --reactor-backend epoll --memory=512M --partition_request_timeout=30s --dataload_txn_timeout=6000s --do_verification false --num_concurrent_txns=10
+./build/src/k2/cmd/tpcc/tpcc_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63100 --enable_tx_checksum true --reactor-backend epoll --memory=512M --partition_request_timeout=30s --dataload_txn_timeout=6000s --do_verification false --num_concurrent_txns=4
 
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
