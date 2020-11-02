@@ -50,4 +50,4 @@ trap finish EXIT
 
 sleep 2
 
-./build/test/dto/partition_test --cpo_endpoint ${CPO} --k2_endpoints ${EPS} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63100
+./build/test/dto/partition_test --cpo ${CPO} --tcp_remotes ${EPS} --tso_endpoint ${TSO} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63100
