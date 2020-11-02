@@ -122,7 +122,7 @@ private: // methods
         // 1. common case assumes RequestT a Read request;
         // 2. now for the other cases, only Query request is implemented.
         if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            result =  result && _partition.owns(request.key, request.reverseDirection);
+            result =  result && _partition.owns(req.key, req.reverseDirection);
         } else {
             result = result && _partition.owns(req.key);
         }
@@ -150,10 +150,14 @@ private: // methods
     template <typename RequestT>
     bool _validateRequestPartitionKey(const RequestT& req) const {
         // if operation of the requests is in reverse direction, validate endKey partition not empty
-        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value && RequestT.reverseDirection) {
+        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
             K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " 
                     << req.endKey << ", reverse direction: " << req.reverseDirection);
-            return !req.endKey.partitionKey.empty();
+            if (req.reverseDirection) {
+                return !req.endKey.partitionKey.empty();
+            } else {
+                return !req.key.partitionKey.empty();
+            }
         } else {
             K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " << req.endKey);
             return !req.key.partitionKey.empty();

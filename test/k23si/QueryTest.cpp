@@ -284,7 +284,23 @@ seastar::future<> runScenario02() {
     })
     .then([this] () {
         K2INFO("Multi partition full scan");
-        return doQuery("", "", -1, true, 6, 4).discard_result();
+        return doQuery("", "", -1, true, 6, 4)
+        .then([](auto&& response) {
+            std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
+            std::vector<k2::String> partKeys = {"f", "e", "d", "c", "b", "a"};
+
+            for (std::vector<k2::dto::SKVRecord>& set : result_set) {
+                for (k2::dto::SKVRecord& rec : set) {
+                    std::optional<k2::String> partition = rec.deserializeNext<k2::String>();
+                    std::optional<k2::String> range = rec.deserializeNext<k2::String>();
+                    K2INFO("partitonKey:" << *partition << ", rangeKey:" << *range);
+                    K2ASSERT(partition, "");
+                    K2ASSERT(range, "");
+                    K2EXPECT(*partition, partKeys[0]);
+                    partKeys.erase(partKeys.begin(), partKeys.begin() + 1);
+                }
+            }
+        });
     });
 }
 
@@ -448,6 +464,8 @@ seastar::future<> runScenario04() {
         return seastar::make_ready_future<>();
     });
 }
+
+// TODO: add test Scenario to deal with query request while change the partition map
 
 };  // class QueryTest
 
