@@ -31,11 +31,11 @@ const char* collname = "k23si_test_collection";
 
 // Integration tests for partition operations
 // These assume three partitions with range partition schema: ["", c), [c, e), [e, "") 
-class PartitonTest {
+class PartitionTest {
 
 public:  // application lifespan
-    PartitonTest() : _client(k2::K23SIClientConfig()) { K2INFO("ctor");}
-    ~PartitonTest(){ K2INFO("dtor");}
+    PartitionTest() : _client(k2::K23SIClientConfig()) { K2INFO("ctor");}
+    ~PartitionTest(){ K2INFO("dtor");}
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
@@ -92,7 +92,9 @@ private:
 
     k2::K23SIClient _client;
     k2::dto::PartitionGetter _pgetter;
-};
+
+    
+public: // tests
 
 // get partition for key through range scheme
 seastar::future<> runScenario01() {
@@ -105,17 +107,18 @@ seastar::future<> runScenario01() {
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "a", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
         K2INFO("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
-               << part.partition->endpoints[0] << ", TXEndpoint:" << (*part.preferredEndpoint).getURL);
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
         //K2EXPECT(part.partition->startKey, "");
     });
 }
 
+};
+
 int main(int argc, char** argv) {
-    k2::App app("SKVClientTest");
+    k2::App app("PartitionTest");
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")
-        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
+        ("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")
+        ("cpo_endpoint", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
     app.addApplet<k2::TSO_ClientLib>(0s);
     app.addApplet<PartitionTest>();
     return app.start(argc, argv);
