@@ -125,17 +125,21 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
         {
             RangeMapElement to_find(key.partitionKey, PartitionGetter::PartitionWithEndpoint());
 
-            // reverse get partition for an empty key: return the last partition
-            if (reverse && key.partitionKey == "") return (--_rangePartitionMap.end())->partition;
-
+            // case 1: if get partiton in the reverse direction, and the key is empty: return the last partition;
+            //         empty key in the forward direction can be well treated by upper_bound (case 3).
+            // case 2: if exclusiveKey is true, use lower_bound to get partition; 
+            //         forward direction with true_exclusiveKey and empry_key is not allow, throw exception.
+            // case 3: if exclusiveKey is false, use upper_bound to get partition.
             std::vector<RangeMapElement>::iterator it;
-            if (exclusiveKey) {
+            if (reverse && key.partitionKey == "") {
+                return _rangePartitionMap.rbegin()->partition;
+            } else if (exclusiveKey) {
                 // if the 'exclusiveKey' is true (start keys are exclusive), lower_bound gives the start key,
-                // so we return the partition before the one obtained by lower_bound.
-                // another case is: if key.partitionKey is an empty string, it means end of partition map.
-                if (key.partitionKey == "") it = _rangePartitionMap.end();
-                else it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
-                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not contain any partitions!");
+                // so we return the partition before the one that obtained by lower_bound.
+                it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
+                if (it == _rangePartitionMap.begin()) {
+                    throw std::runtime_error("forward direction with empry_key and true_exclusiveKey is not allowed!");
+                }
             } else {
                 // We are comparing against the start keys and upper_bound gives the first start key
                 // greater than the key (start keys are inclusive), so we return the partition before 
@@ -144,7 +148,11 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
                 K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
             }
 
-            return (--it)->partition;
+            if (it != _rangePartitionMap.end()) {
+                return (--it)->partition;
+            }
+
+            return _rangePartitionMap.rbegin()->partition;
         }
         case HashScheme::HashCRC32C:
         {

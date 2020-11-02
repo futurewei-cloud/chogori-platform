@@ -103,7 +103,7 @@ public:
                     return seastar::make_ready_future<Status>(std::move(status));
                 }
 
-                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), std::move(reverse), std::move(excludedKey), retries - 1);
+                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), reverse, excludedKey, retries - 1);
             });
         }
         K2DEBUG("no existing waiter for name=" << name << ". Creating new one");
@@ -157,7 +157,7 @@ public:
 
             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
             return seastar::sleep(s).then([this, name, key, deadline, reverse, excludedKey, retries]() -> seastar::future<Status> {
-                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), std::move(reverse), std::move(excludedKey), retries - 1);
+                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), reverse, excludedKey, retries - 1);
             });
         });
     }

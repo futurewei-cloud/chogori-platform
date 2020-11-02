@@ -204,7 +204,7 @@ IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, boo
     // ELSE IF lower_bound returns a key bigger than start, find the first key not bigger than start;
     if (reverse) {
         if (start.partitionKey == "" || key_it == _indexer.end()) {
-            key_it = --_indexer.end();
+            key_it = (++_indexer.rbegin()).base();
         } else if (key_it->first == start && exclusiveKey) {
             _scanAdvance(key_it, reverse);
         } else if (key_it->first > start) {
@@ -242,7 +242,7 @@ bool K23SIPartitionModule::_isScanDone(const IndexerIterator& it, const dto::K23
 
 // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
 dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
-                    dto::K23SIQueryRequest& request, size_t response_size) {
+                    const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response, size_t response_size) {
     // Three cases where scan is for sure done:
     // 1. Record limit is reached
     // 2. Iterator is not end() but is >= user endKey
@@ -265,20 +265,20 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
     }
     else if (it != _indexer.end()) {
         // This is the paginated case
-        request.exclusiveKey = false;
+        response.exclusiveToken = false;
         return it->first;
     }
 
     // This is the multi-partition case
     if (request.reverseDirection) {
-        request.exclusiveKey = true;
+        response.exclusiveToken = true;
         return dto::Key {
             request.key.schemaName,
             _partition().startKey,
             ""
         };
     } else {
-        request.exclusiveKey = false;
+        response.exclusiveToken = false;
         return dto::Key {
             request.key.schemaName,
             _partition().endKey,
@@ -291,7 +291,7 @@ seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
 K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received query " << request);
 
-    Status validateStatus = _validateQueryRequest(request);
+    Status validateStatus = _validateReadRequest(request);
     if (!validateStatus.is2xxOK()) {
         return RPCResponse(std::move(validateStatus), dto::K23SIQueryResponse{});
     }
@@ -385,8 +385,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         _readCache->insertInterval(request.key, endInterval, request.mtr.timestamp);
 
 
-    response.nextToScan = _getContinuationToken(key_it, request, response.results.size());
-    response.exclusiveToken = request.exclusiveKey;
+    response.nextToScan = _getContinuationToken(key_it, request, response, response.results.size());
     K2DEBUG("nextToScan: " << response.nextToScan << ", exclusiveToken: " << response.exclusiveToken);
     return RPCResponse(dto::K23SIStatus::OK("Query success"), std::move(response));
 }

@@ -117,17 +117,17 @@ private: // methods
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
     bool _validateRequestPartition(const RequestT& req) const {
-        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid && _partition.owns(req.key);
-        K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
-                << ", for request=" << req << ", excludedKey=" << excludedKey);
-        return result;
-    }
-
-    // validate query requests are coming to the correct partition. A key is possibly not included in this partition
-    bool _validateQueryPartition(const dto::K23SIQueryRequest& req) const {
         auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid;
+        // validate partition owns the requests' key.
+        // 1. common case assumes RequestT a Read request;
+        // 2. now for the other cases, only Query request is implemented.
+        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
+            result =  result && _partition.owns(request.key, request.reverseDirection);
+        } else {
+            result = result && _partition.owns(req.key);
+        }
         K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
-                << ", for request=" << req << ", excludedKey=" << excludedKey);
+                << ", for request=" << req);
         return result;
     }
 
@@ -149,7 +149,15 @@ private: // methods
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
     bool _validateRequestPartitionKey(const RequestT& req) const {
-        return !req.key.partitionKey.empty();
+        // if operation of the requests is in reverse direction, validate endKey partition not empty
+        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value && RequestT.reverseDirection) {
+            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " 
+                    << req.endKey << ", reverse direction: " << req.reverseDirection);
+            return !req.endKey.partitionKey.empty();
+        } else {
+            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " << req.endKey);
+            return !req.key.partitionKey.empty();
+        }
     }
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
@@ -176,32 +184,6 @@ private: // methods
             return dto::K23SIStatus::OperationNotAllowed("schema does not exist in read-type request");
         }
 
-        return dto::K23SIStatus::OK("");
-    }
-
-    Status _validateQueryRequest(const dto::K23SIQueryRequest& request) const {
-        if (!_validateQueryPartition(request)) {
-            // tell client their collection partition is gone
-            return dto::K23SIStatus::RefreshCollection("collection refresh needed in query-type request");
-        }
-        if (!_validateRetentionWindow(request)) {
-            // the request is outside the retention window
-            return dto::K23SIStatus::AbortRequestTooOld("request too old in query-type request");
-        }
-        if (_schemas.find(request.key.schemaName) == _schemas.end()) {
-            // server does not have schema
-            return dto::K23SIStatus::OperationNotAllowed("schema does not exist in query-type request");
-        }
-        if ((!request.reverseDirection && request.key.partitionKey.empty()) ||
-                (request.reverseDirection && request.endKey.partitionKey.empty())) {
-            // do not allow empty partition key
-            return dto::K23SIStatus::BadParameter("missing partition key in query-type request");
-        }
-        if (!_partition.owns(request.key, request.reverseDirection)) {
-            // request key is not in this partition
-            return dto::K23SIStatus::RefreshCollection("request key not included in query-type request");
-        }
-        
         return dto::K23SIStatus::OK("");
     }
 
@@ -241,7 +223,8 @@ private: // methods
     bool _isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request, size_t response_size);
 
     // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
-    dto::Key _getContinuationToken(const IndexerIterator& it, dto::K23SIQueryRequest& request, size_t response_size);
+    dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request, 
+                                            dto::K23SIQueryResponse& response, size_t response_size);
 
 private: // members
     // the metadata of our collection
