@@ -117,7 +117,15 @@ private: // methods
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
     bool _validateRequestPartition(const RequestT& req) const {
-        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid && _partition.owns(req.key);
+        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid;
+        // validate partition owns the requests' key.
+        // 1. common case assumes RequestT a Read request;
+        // 2. now for the other cases, only Query request is implemented.
+        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
+            result =  result && _partition.owns(req.key, req.reverseDirection);
+        } else {
+            result = result && _partition.owns(req.key);
+        }
         K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
                 << ", for request=" << req);
         return result;
@@ -141,7 +149,19 @@ private: // methods
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
     bool _validateRequestPartitionKey(const RequestT& req) const {
-        return !req.key.partitionKey.empty();
+        // if operation of the requests is in reverse direction, validate endKey partition not empty
+        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
+            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " 
+                    << req.endKey << ", reverse direction: " << req.reverseDirection);
+            if (req.reverseDirection) {
+                return !req.endKey.partitionKey.empty();
+            } else {
+                return !req.key.partitionKey.empty();
+            }
+        } else {
+            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " << req.endKey);
+            return !req.key.partitionKey.empty();
+        }
     }
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
@@ -201,14 +221,14 @@ private: // methods
 
     // Helper for handleQuery. Returns an iterator to start the scan at, accounting for 
     // desired schema and (eventually) reverse direction scan
-    IndexerIterator _initializeScan(const dto::Key& start, bool reverse);
+    IndexerIterator _initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey);
 
     // Helper for handleQuery. Checks to see if the indexer scan should stop.
     bool _isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request, size_t response_size);
 
     // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
     dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request, 
-                                   size_t response_size);
+                                            dto::K23SIQueryResponse& response, size_t response_size);
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
 

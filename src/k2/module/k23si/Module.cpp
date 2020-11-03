@@ -194,14 +194,23 @@ void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirecti
 
 // Helper for handleQuery. Returns an iterator to start the scan at, accounting for
 // desired schema and (eventually) reverse direction scan
-IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, bool reverse) {
+IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey) {
     auto key_it = _indexer.lower_bound(start);
 
-    // For reverse direction scan, key_it may not be in range because of how lower_bound works,
-    // so fix that here. TODO reverse scan with start key as "" ?
-    if (reverse && key_it != _indexer.end() && key_it->first > start) {
-        while (key_it != _indexer.end() && key_it->first > start) {
+    // For reverse direction scan, key_it may not be in range because of how lower_bound works, so fix that here.
+    // IF start key is empty, it means this reverse scan start from end of table OR 
+    //      if lower_bound returns a _indexer.end(), it also means reverse scan should start from end of table;
+    // ELSE IF lower_bound returns a key equal to start AND exclusiveKey is true, reverse advance key_it once;
+    // ELSE IF lower_bound returns a key bigger than start, find the first key not bigger than start;
+    if (reverse) {
+        if (start.partitionKey == "" || key_it == _indexer.end()) {
+            key_it = (++_indexer.rbegin()).base();
+        } else if (key_it->first == start && exclusiveKey) {
             _scanAdvance(key_it, reverse);
+        } else if (key_it->first > start) {
+            while (key_it->first > start) {
+                _scanAdvance(key_it, reverse);
+            }
         }
     }
 
@@ -233,12 +242,12 @@ bool K23SIPartitionModule::_isScanDone(const IndexerIterator& it, const dto::K23
 
 // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
 dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
-                    const dto::K23SIQueryRequest& request, size_t response_size) {
+                    const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response, size_t response_size) {
     // Three cases where scan is for sure done:
     // 1. Record limit is reached
     // 2. Iterator is not end() but is >= user endKey
     // 3. Iterator is at end() and partition bounds contains endKey
-    // This also works around seastars lack of operators on the string type
+    // This also works around seastars lack of operators on the string type    
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
         // Test for past user endKey:
         (it != _indexer.end() &&
@@ -256,16 +265,26 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
     }
     else if (it != _indexer.end()) {
         // This is the paginated case
+        response.exclusiveToken = false;
         return it->first;
     }
 
     // This is the multi-partition case
-    // TODO support this for reverseDirection scan
-    return dto::Key {
-        request.key.schemaName,
-        _partition().endKey,
-        ""
-    };
+    if (request.reverseDirection) {
+        response.exclusiveToken = true;
+        return dto::Key {
+            request.key.schemaName,
+            _partition().startKey,
+            ""
+        };
+    } else {
+        response.exclusiveToken = false;
+        return dto::Key {
+            request.key.schemaName,
+            _partition().endKey,
+            ""
+        };
+    }
 }
 
 // Makes the SKVRecord and applies the request's filter to it. If the returned Status is not OK,
@@ -312,11 +331,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     if (_partition.getHashScheme() != dto::HashScheme::Range) {
             return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Query not implemented for hash partitioned collection"), dto::K23SIQueryResponse{});
     }
-    if (request.reverseDirection) {
-            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Reverse scan query not fully implemented"), dto::K23SIQueryResponse{});
-    }
 
-    IndexerIterator key_it = _initializeScan(request.key, request.reverseDirection);
+    IndexerIterator key_it = _initializeScan(request.key, request.reverseDirection, request.exclusiveKey);
 
     for (; !_isScanDone(key_it, request, response.results.size());
                         _scanAdvance(key_it, request.reverseDirection)) {
@@ -409,8 +425,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         _readCache->insertInterval(request.key, endInterval, request.mtr.timestamp);
 
 
-    response.nextToScan = _getContinuationToken(key_it, request, response.results.size());
-    K2DEBUG("nextToScan: " << response.nextToScan);
+    response.nextToScan = _getContinuationToken(key_it, request, response, response.results.size());
+    K2DEBUG("nextToScan: " << response.nextToScan << ", exclusiveToken: " << response.exclusiveToken);
     return RPCResponse(dto::K23SIStatus::OK("Query success"), std::move(response));
 }
 

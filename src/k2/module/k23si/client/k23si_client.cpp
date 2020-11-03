@@ -471,7 +471,7 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
 
     return _cpo_client->PartitionRequest
         <dto::K23SIQueryRequest, dto::K23SIQueryResponse, dto::Verbs::K23SI_QUERY>
-        (_options.deadline, query.request)
+        (_options.deadline, query.request, query.request.reverseDirection, query.request.exclusiveKey)
     .then([this, &query] (auto&& response) {
         auto& [status, k2response] = response;
         checkResponseStatus(status);
@@ -486,6 +486,7 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
             query.done = true;
         } else {
             query.request.key = std::move(k2response.nextToScan);
+            query.request.exclusiveKey = std::move(k2response.exclusiveToken);
         }
 
         if (query.request.recordLimit >= 0) {

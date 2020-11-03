@@ -77,17 +77,18 @@ public:
     // is not assigned or if there was a retryable error. It allows only one outstanding
     // request for a given collection.
     template <typename ClockT=Clock>
-    seastar::future<Status> GetAssignedPartitionWithRetry(Deadline<ClockT> deadline, const String& name, const dto::Key& key, uint8_t retries = 1) {
+    seastar::future<Status> GetAssignedPartitionWithRetry(Deadline<ClockT> deadline, const String& name, const dto::Key& key, 
+                                    bool reverse = false, bool excludedKey = false, uint8_t retries = 1) {
         // Check if request is already issued, if so add to waiters and return
         K2DEBUG("time remaining=" << deadline.getRemaining() << ", for coll=" << name);
         auto it = requestWaiters.find(name);
         if (it != requestWaiters.end()) {
             K2DEBUG("found existing waiter");
             it->second.emplace_back(seastar::promise<Status>());
-            return it->second.back().get_future().then([this, deadline, name, key, retries](Status&& status) {
+            return it->second.back().get_future().then([this, deadline, name, key, reverse, excludedKey, retries](Status&& status) {
                 K2DEBUG("waiter finished with status: " << status);
                 if (status.is2xxOK()) {
-                    dto::Partition* partition = collections[name].getPartitionForKey(key).partition;
+                    dto::Partition* partition = collections[name].getPartitionForKey(key, reverse, excludedKey).partition;
                     if (partition && partition->astate == dto::AssignmentState::Assigned) {
                         return seastar::make_ready_future<Status>(std::move(status));
                     }
@@ -102,7 +103,7 @@ public:
                     return seastar::make_ready_future<Status>(std::move(status));
                 }
 
-                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), retries - 1);
+                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), reverse, excludedKey, retries - 1);
             });
         }
         K2DEBUG("no existing waiter for name=" << name << ". Creating new one");
@@ -113,13 +114,13 @@ public:
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
         dto::CollectionGetRequest request{.name = name};
 
-        return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *cpo, timeout).then([this, name = request.name, key, deadline, retries](auto&& response) {
+        return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *cpo, timeout).then([this, name = request.name, key, deadline, reverse, excludedKey, retries](auto&& response) {
             auto& [status, coll_response] = response;
             bool retry = false;
             K2DEBUG("collection get response received with status: " << status << ", for name=["<< name << "]");
             if (status.is2xxOK()) {
                 collections[name] = dto::PartitionGetter(std::move(coll_response.collection));
-                dto::Partition* partition = collections[name].getPartitionForKey(key).partition;
+                dto::Partition* partition = collections[name].getPartitionForKey(key, reverse, excludedKey).partition;
                 FulfillWaiters(name, status);
                 if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                     K2DEBUG("No partition or not assigned: " << partition);
@@ -155,8 +156,8 @@ public:
             }
 
             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
-            return seastar::sleep(s).then([this, name, key, deadline, retries]() -> seastar::future<Status> {
-                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), retries - 1);
+            return seastar::sleep(s).then([this, name, key, deadline, reverse, excludedKey, retries]() -> seastar::future<Status> {
+                return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), reverse, excludedKey, retries - 1);
             });
         });
     }
@@ -166,24 +167,25 @@ public:
     // duration of the future.
     // RequestT must have a pvid field and a collectionName field
     template<class RequestT, typename ResponseT, Verb verb, typename ClockT=Clock>
-    seastar::future<std::tuple<Status, ResponseT>> PartitionRequest(Deadline<ClockT> deadline, RequestT& request, uint8_t retries=1) {
+    seastar::future<std::tuple<Status, ResponseT>> PartitionRequest(Deadline<ClockT> deadline, RequestT& request, 
+                                    bool reverse=false, bool exclusiveKey=false, uint8_t retries=1) {
         K2DEBUG("making partition request with deadline=" << deadline.getRemaining());
         // If collection is not in cache or partition is not assigned, get collection first
         seastar::future<Status> f = seastar::make_ready_future<Status>(Statuses::S200_OK("default cached response"));
         auto it = collections.find(request.collectionName);
         if (it == collections.end()) {
             K2DEBUG("Collection not found");
-            f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key);
+            f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey);
         } else {
             K2DEBUG("Collection found");
-            dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key).partition;
+            dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key, reverse, exclusiveKey).partition;
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                 K2DEBUG("Collection found but is in bad state");
-                f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key);
+                f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey);
             }
         }
 
-        return f.then([this, deadline, &request, retries](Status&& status) {
+        return f.then([this, deadline, &request, reverse, exclusiveKey, retries](Status&& status) {
             K2DEBUG("Collection get completed with status: " << status << ", request="<< request);
             auto it = collections.find(request.collectionName);
 
@@ -194,7 +196,7 @@ public:
             }
 
             // Try to get partition info
-            auto& partition = collections[request.collectionName].getPartitionForKey(request.key);
+            auto& partition = collections[request.collectionName].getPartitionForKey(request.key, reverse, exclusiveKey);
             if (!partition.partition || partition.partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
                 K2DEBUG("Failed to get assigned partition");
@@ -207,7 +209,7 @@ public:
 
             // Attempt the request RPC
             return RPC().callRPC<RequestT, ResponseT>(verb, request, *partition.preferredEndpoint, timeout).
-            then([this, &request, deadline, retries] (auto&& result) {
+            then([this, &request, deadline, reverse, exclusiveKey, retries] (auto&& result) {
                 auto& [status, k2response] = result;
                 K2DEBUG("partition call completed with status " << status);
 
@@ -228,11 +230,11 @@ public:
                 }
 
                 // S410_Gone (refresh partition map) or retryable error
-                return GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, 1)
-                .then([this, &request, deadline, retries] (Status&& status) {
+                return GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey, 1)
+                .then([this, &request, deadline, reverse, exclusiveKey, retries] (Status&& status) {
                     K2DEBUG("retrying partition call after status " << status);
                     (void) status;
-                    return PartitionRequest<RequestT, ResponseT, verb>(deadline, request, retries-1);
+                    return PartitionRequest<RequestT, ResponseT, verb>(deadline, request, reverse, exclusiveKey, retries-1);
                 });
             });
         });
