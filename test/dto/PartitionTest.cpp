@@ -51,8 +51,8 @@ public:  // application lifespan
         .then([this] {
             K2INFO("Creating test collection...");
             std::vector<k2::String> rangeEnds;
-            rangeEnds.push_back(k2::dto::FieldToKeyString<k2::String>("c"));
-            rangeEnds.push_back(k2::dto::FieldToKeyString<k2::String>("e"));
+            rangeEnds.push_back("c");
+            rangeEnds.push_back("e");
             rangeEnds.push_back("");
 
             return _client.makeCollection(collname, std::move(rangeEnds));
@@ -110,36 +110,72 @@ seastar::future<> runScenario01() {
     .then([this](auto&& response) {
         // check and assign it to _pgetter
         auto&[status, resp] = response;
-        K2INFO("get collection status:" << status.code);
+        K2DEBUG("get collection status:" << status.code);
+        K2EXPECT(status, k2::dto::K23SIStatus::OK);
         _pgetter = k2::dto::PartitionGetter(std::move(resp.collection));
     })
     .then([this] {
-        K2INFO("get Partition for key with default reverse and exclusiveKey flag");
-        std::cout << "{_pgetter::collection} name:" << _pgetter.collection.metadata.name << ", hashScheme:" 
-                << _pgetter.collection.metadata.hashScheme << std::endl;
-        for (auto e : _pgetter.collection.partitionMap.partitions) 
-            std::cout << "start:" << e.startKey << ", end:" << e.endKey << ", EP:" << *(e.endpoints.begin()) << ", pvid:" << e.pvid << std::endl;
+        K2INFO("case1: get Partition for key with default reverse and exclusiveKey flag");
         
-        k2::dto::Key key{.schemaName = "schema", .partitionKey = "a", .rangeKey = ""};
+        k2::dto::Key key{.schemaName = "schema", .partitionKey = "d", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
-        std::cout << "key info:" << key << std::endl;
-        std::cout << "{part} startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
-               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL() << std::endl;
-        for (auto e : _pgetter.collection.partitionMap.partitions) 
-            std::cout << "start:" << e.startKey << ", end:" << e.endKey << ", EP:" << *(e.endpoints.begin()) << std::endl;
-        //K2EXPECT(part.partition->startKey, "");
+        K2DEBUG("{part} startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        K2EXPECT(part.partition->startKey, "c");
     })
     .then([this] {
-        K2INFO("case2");
+        K2INFO("case2: using an empty key to get Partition with default reverse and exclusiveKey flag");
+        
+        k2::dto::Key key{.schemaName = "schema", .partitionKey = "", .rangeKey = ""};
+        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
+        K2DEBUG("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        K2EXPECT(part.partition->startKey, "");
+    })
+    .then([this] {
+        K2INFO("case3: get Partition for key with reverse flag set to be TRUE and default exclusiveKey flag");
         
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "c", .rangeKey = ""};
-        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
-        std::cout << "key info:" << key << std::endl;
-        std::cout << "startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
-               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL() << std::endl;
-        for (auto e : _pgetter.collection.partitionMap.partitions) 
-            std::cout << "start:" << e.startKey << ", end:" << e.endKey << ", EP:" << *(e.endpoints.begin()) << std::endl;
-        //K2EXPECT(part.partition->startKey, "");
+        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true);
+        K2DEBUG("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        K2EXPECT(part.partition->startKey, "c");
+    })
+    .then([this] {
+        K2INFO("case4: get Partition for EMPTY key with reverse flag set to be TRUE and default exclusiveKey flag");
+        
+        k2::dto::Key key{.schemaName = "schema", .partitionKey = "", .rangeKey = ""};
+        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true);
+        K2DEBUG("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        K2EXPECT(part.partition->startKey, "e");
+    })
+    .then([this] {
+        K2INFO("case5: get Partition for key with reverse and exclusiveKey flag set to be TRUE. the key is NOT the Start key of any partitions.");
+        
+        k2::dto::Key key{.schemaName = "schema", .partitionKey = "a", .rangeKey = ""};
+        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true, true);
+        K2DEBUG("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        K2EXPECT(part.partition->startKey, "");
+    })
+    .then([this] {
+        K2INFO("case6: get Partition for key with reverse and exclusiveKey flag set to be TRUE. the key is the Start key of a partition.");
+        
+        k2::dto::Key key{.schemaName = "schema", .partitionKey = "e", .rangeKey = ""};
+        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true, true);
+        K2DEBUG("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        K2EXPECT(part.partition->startKey, "c");
+    })
+    .then([this] {
+        K2INFO("case7: using an empty key to get Partition with reverse and exclusiveKey flag set to be TRUE.");
+        
+        k2::dto::Key key{.schemaName = "schema", .partitionKey = "", .rangeKey = ""};
+        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true, true);
+        K2DEBUG("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        K2EXPECT(part.partition->startKey, "e");
     });
 }
 
