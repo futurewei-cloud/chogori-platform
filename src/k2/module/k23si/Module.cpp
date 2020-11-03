@@ -287,6 +287,39 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
     }
 }
 
+// Makes the SKVRecord and applies the request's filter to it. If the returned Status is not OK,
+// the caller should return the status in the query response. Otherwise bool in tuple is whether 
+// the filter passed
+std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryRequest& request, 
+                                                              dto::SKVRecord::Storage& storage) {
+    // We know the schema name exists because it is validated at the beginning of handleQuery
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    auto versionIt = schemaIt->second.find(storage.schemaVersion);
+    if (versionIt == schemaIt->second.end()) {
+        return std::make_tuple(dto::K23SIStatus::OperationNotAllowed(
+            "Schema version of found record does not exist"), false);
+    }
+
+    dto::SKVRecord record(request.collectionName, versionIt->second);
+    record.storage = storage.share();
+    bool keep = false;
+    Status status = dto::K23SIStatus::OK("");
+
+    try {
+        keep = request.filterExpression.evaluate(record);
+    }
+    catch(dto::NoFieldFoundException&) {}
+    catch(dto::TypeMismatchException&) {}
+    catch (dto::DeserializationError&) {
+        status = dto::K23SIStatus::OperationNotAllowed("DeserializationError in query filter");
+    }
+    catch (dto::InvalidExpressionException&) {
+        status = dto::K23SIStatus::OperationNotAllowed("InvalidExpression in query filter");
+    }
+
+    return std::make_tuple(std::move(status), keep);
+}
+
 seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
 K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received query " << request);
@@ -317,7 +350,14 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         // happy case: either committed, or txn is reading its own write
         if (viter->status == dto::DataRecord::Committed || viter->txnId.mtr == request.mtr) {
             if (!viter->isTombstone) {
-                // TODO apply filter 
+                auto [status, keep] = _doQueryFilter(request, viter->value);
+                if (!status.is2xxOK()) {
+                    return RPCResponse(std::move(status), dto::K23SIQueryResponse{});
+                }
+                if (!keep) {
+                    continue;
+                }
+
                 // apply projection if the user call addProjection
                 if (request.projection.size() == 0) {
                     // want all fields 
@@ -728,7 +768,7 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, 
     // We already know the schema version exists because it is validated at the begin of handleWrite
     auto schemaIt = _schemas.find(request.key.schemaName);
     auto schemaVer = schemaIt->second.find(request.value.schemaVersion);
-    dto::Schema& schema = schemaVer->second;
+    dto::Schema& schema = *(schemaVer->second);
 
     if (!request.value.excludedFields.size()) {
         request.value.excludedFields = std::vector<bool>(schema.fields.size(), false);
@@ -747,7 +787,7 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, 
         if (latestSchemaVer == schemaIt->second.end()) {
             return false;
         }
-        dto::Schema& baseSchema = latestSchemaVer->second;
+        dto::Schema& baseSchema = *(latestSchemaVer->second);
 
         if (!_makeFieldsForDiffVersion(schema, baseSchema, request, previous)) {
             return false;
@@ -761,7 +801,7 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
         dto::SKVRecord::Storage& projectionRec) {
     auto schemaIt = _schemas.find(request.key.schemaName);
     auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
-    dto::Schema& schema = schemaVer->second;
+    dto::Schema& schema = *(schemaVer->second);
     std::vector<bool> excludedFields(schema.fields.size(), true);   // excludedFields for projection
     Payload projectedPayload(Payload::DefaultAllocator);                     // payload for projection
 
@@ -1153,7 +1193,7 @@ K23SIPartitionModule::handlePushSchema(dto::K23SIPushSchemaRequest&& request) {
         return RPCResponse(Statuses::S403_Forbidden("Collection names in partition and request do not match"), dto::K23SIPushSchemaResponse{});
     }
 
-    _schemas[request.schema.name][request.schema.version] = std::move(request.schema);
+    _schemas[request.schema.name][request.schema.version] = std::make_shared<dto::Schema>(request.schema);
 
     return RPCResponse(Statuses::S200_OK("push schema success"), dto::K23SIPushSchemaResponse{});
 }

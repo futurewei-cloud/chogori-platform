@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
+#include <decimal/decimal>
 #include <string>
 
 #include <k2/common/Common.h>
@@ -100,8 +101,8 @@ public:
         .version = 1,
         .fields = std::vector<k2::dto::SchemaField> {
                 {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::FLOAT, "Tax", false, false},
-                {k2::dto::FieldType::INT64T, "YTD", false, false},
+                {k2::dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
+                {k2::dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
                 {k2::dto::FieldType::STRING, "Name", false, false},
                 {k2::dto::FieldType::STRING, "Street1", false, false},
                 {k2::dto::FieldType::STRING, "Street2", false, false},
@@ -116,8 +117,9 @@ public:
     Warehouse(RandomContext& random, int16_t id) : WarehouseID(id) {
         Name = random.RandomString(6, 10);
         address = Address(random);
-        Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        YTD = _districts_per_warehouse() * _customers_per_district() * 1000;
+        Tax = random.UniformRandom(0, 2000);
+        *Tax /= 10000;
+        YTD = _districts_per_warehouse() * _customers_per_district() * 10;
     }
 
     Warehouse(int16_t id) : WarehouseID(id) {}
@@ -125,8 +127,8 @@ public:
     Warehouse() = default;
 
     std::optional<int16_t> WarehouseID;
-    std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
-    std::optional<int64_t> YTD; // "Fixed point", first two digits are cents
+    std::optional<std::decimal::decimal64> Tax;
+    std::optional<std::decimal::decimal64> YTD;
     std::optional<k2::String> Name;
     Address address;
 
@@ -148,8 +150,8 @@ public:
         .fields = std::vector<k2::dto::SchemaField> {
                 {k2::dto::FieldType::INT16T, "ID", false, false},
                 {k2::dto::FieldType::INT16T, "DID", false, false},
-                {k2::dto::FieldType::FLOAT, "Tax", false, false},
-                {k2::dto::FieldType::INT64T, "YTD", false, false},
+                {k2::dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
+                {k2::dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
                 {k2::dto::FieldType::INT64T, "NextOID", false, false},
                 {k2::dto::FieldType::STRING, "Name", false, false},
                 {k2::dto::FieldType::STRING, "Street1", false, false},
@@ -164,8 +166,9 @@ public:
     District(RandomContext& random, int16_t w_id, int16_t id) : WarehouseID(w_id), DistrictID(id) {
         Name = random.RandomString(6, 10);
         address = Address(random);
-        Tax = random.UniformRandom(0, 2000) / 10000.0f;
-        YTD = _customers_per_district() * 1000;
+        Tax = random.UniformRandom(0, 2000);
+        *Tax /= 10000;
+        YTD = _customers_per_district() * 10;
         NextOrderID = _customers_per_district()+1;
     }
 
@@ -175,8 +178,8 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int16_t> DistrictID;
-    std::optional<float> Tax; // TODO Needs to be fixed point to be in spec
-    std::optional<int64_t> YTD; // "Fixed point", first two digits are cents
+    std::optional<std::decimal::decimal64> Tax;
+    std::optional<std::decimal::decimal64> YTD;
     std::optional<int64_t> NextOrderID;
     std::optional<k2::String> Name;
     Address address;
@@ -200,12 +203,12 @@ public:
                 {k2::dto::FieldType::INT16T, "DID", false, false},
                 {k2::dto::FieldType::INT32T, "CID", false, false},
                 {k2::dto::FieldType::INT64T, "SinceDate", false, false},
-                {k2::dto::FieldType::FLOAT, "CreditLimit", false, false},
-                {k2::dto::FieldType::FLOAT, "Discount", false, false},
-                {k2::dto::FieldType::INT64T, "Balance", false, false},
-                {k2::dto::FieldType::INT64T, "YTDPayment", false, false},
-                {k2::dto::FieldType::INT64T, "PaymentCount", false, false},
-                {k2::dto::FieldType::INT64T, "DeliveryCount", false, false},
+                {k2::dto::FieldType::DECIMAL64, "CreditLimit", false, false}, //Requires 12 digits of precision
+                {k2::dto::FieldType::DECIMAL64, "Discount", false, false}, //Requires 4 digits of precision
+                {k2::dto::FieldType::DECIMAL64, "Balance", false, false}, //Requires 12 digits of precision
+                {k2::dto::FieldType::DECIMAL64, "YTDPayment", false, false}, //Requires 12 digits of precision
+                {k2::dto::FieldType::INT32T, "PaymentCount", false, false}, // Requires max >= 9999
+                {k2::dto::FieldType::INT32T, "DeliveryCount", false, false}, // Requires max >= 9999
                 {k2::dto::FieldType::STRING, "FirstName", false, false},
                 {k2::dto::FieldType::STRING, "MiddleName", false, false},
                 {k2::dto::FieldType::STRING, "LastName", false, false},
@@ -237,10 +240,11 @@ public:
             Credit = "GC";
         }
 
-        CreditLimit = 50000.0f;
-        Discount = random.UniformRandom(0, 5000) / 10000.0f;
-        Balance = -1000;
-        YTDPayment = 1000;
+        CreditLimit = 50000;
+        Discount = random.UniformRandom(0, 5000);
+        *Discount /= 10000;
+        Balance = -10;
+        YTDPayment = 10;
         PaymentCount = 1;
         DeliveryCount = 0;
         Info = random.RandomString(500, 500);
@@ -255,12 +259,12 @@ public:
     std::optional<int16_t> DistrictID;
     std::optional<int32_t> CustomerID;
     std::optional<int64_t> SinceDate;
-    std::optional<float> CreditLimit; // TODO Needs to be fixed point to be in spec
-    std::optional<float> Discount;
-    std::optional<int64_t> Balance;
-    std::optional<int64_t> YTDPayment;
-    std::optional<int64_t> PaymentCount;
-    std::optional<int64_t> DeliveryCount;
+    std::optional<std::decimal::decimal64> CreditLimit;
+    std::optional<std::decimal::decimal64> Discount;
+    std::optional<std::decimal::decimal64> Balance;
+    std::optional<std::decimal::decimal64> YTDPayment;
+    std::optional<int32_t> PaymentCount;
+    std::optional<int32_t> DeliveryCount;
     std::optional<k2::String> FirstName;
     std::optional<k2::String> MiddleName;
     std::optional<k2::String> LastName;
@@ -286,7 +290,7 @@ public:
                 {k2::dto::FieldType::INT64T, "Date", false, false},
                 {k2::dto::FieldType::INT32T, "CID", false, false},
                 {k2::dto::FieldType::INT16T, "CWID", false, false},
-                {k2::dto::FieldType::INT64T, "Amount", false, false},
+                {k2::dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
                 {k2::dto::FieldType::INT16T, "CDID", false, false},
                 {k2::dto::FieldType::INT16T, "DID", false, false},
                 {k2::dto::FieldType::STRING, "Info", false, false}},
@@ -300,13 +304,13 @@ public:
         CustomerWarehouseID = w_id;
         CustomerDistrictID = d_id;
         Date = getDate();
-        Amount = 1000;
+        Amount = 10;
         Info = random.RandomString(12, 24);
     }
 
     // For payment transaction
-    History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id, float amount,
-                const char w_name[], const char d_name[]) : WarehouseID(w_id) {
+    History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id, 
+                std::decimal::decimal64 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
         Date = getDate();
         CustomerID = c_id;
         CustomerWarehouseID = c_w_id;
@@ -328,7 +332,7 @@ public:
     std::optional<int64_t> Date;
     std::optional<int32_t> CustomerID;
     std::optional<int16_t> CustomerWarehouseID;
-    std::optional<int64_t> Amount;
+    std::optional<std::decimal::decimal64> Amount;
     std::optional<int16_t> CustomerDistrictID;
     std::optional<int16_t> DistrictID;
     std::optional<k2::String> Info;
@@ -348,7 +352,7 @@ public:
                 {k2::dto::FieldType::INT16T, "ID", false, false},
                 {k2::dto::FieldType::INT16T, "DID", false, false},
                 {k2::dto::FieldType::INT64T, "OID", false, false},
-                {k2::dto::FieldType::INT32T, "LineCount", false, false},
+                {k2::dto::FieldType::INT16T, "LineCount", false, false},
                 {k2::dto::FieldType::INT64T, "EntryDate", false, false},
                 {k2::dto::FieldType::INT32T, "CID", false, false},
                 {k2::dto::FieldType::INT32T, "CarrierID", false, false},
@@ -388,7 +392,7 @@ public:
     std::optional<int16_t> WarehouseID;
     std::optional<int16_t> DistrictID;
     std::optional<int64_t> OrderID;
-    std::optional<int32_t> OrderLineCount;
+    std::optional<int16_t> OrderLineCount;
     std::optional<int64_t> EntryDate;
     std::optional<int32_t> CustomerID;
     std::optional<int32_t> CarrierID;
@@ -444,8 +448,8 @@ public:
                 {k2::dto::FieldType::INT64T, "DeliveryDate", false, false},
                 {k2::dto::FieldType::INT32T, "ItemID", false, false},
                 {k2::dto::FieldType::INT16T, "SupplyWID", false, false},
-                {k2::dto::FieldType::FLOAT, "Amount", false, false},
-                {k2::dto::FieldType::INT32T, "Quantity", false, false},
+                {k2::dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
+                {k2::dto::FieldType::INT16T, "Quantity", false, false},
                 {k2::dto::FieldType::STRING, "DistInfo", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3 }
@@ -459,10 +463,11 @@ public:
 
         if (order.OrderID < 2101) {
             DeliveryDate = order.EntryDate;
-            Amount = 0.0f;
+            Amount = 0;
         } else {
             DeliveryDate = 0;
-            Amount = random.UniformRandom(1, 999999) / 100.0f;
+            Amount = random.UniformRandom(1, 999999);
+            *Amount /= 100;
         }
 
         Quantity = 5;
@@ -486,7 +491,7 @@ public:
         }
 
         Quantity = random.UniformRandom(1, 10);
-        Amount = 0.0f;
+        Amount = 0;
     }
 
     OrderLine() = default;
@@ -498,8 +503,8 @@ public:
     std::optional<int64_t> DeliveryDate;
     std::optional<int32_t> ItemID;
     std::optional<int16_t> SupplyWarehouseID;
-    std::optional<float> Amount; // TODO
-    std::optional<int32_t> Quantity;
+    std::optional<std::decimal::decimal64> Amount;
+    std::optional<int16_t> Quantity;
     std::optional<k2::String> DistInfo;
 
     static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
@@ -517,7 +522,7 @@ public:
         .fields = std::vector<k2::dto::SchemaField> {
                 {k2::dto::FieldType::INT32T, "ID", false, false},
                 {k2::dto::FieldType::INT32T, "ImageID", false, false},
-                {k2::dto::FieldType::FLOAT, "Price", false, false},
+                {k2::dto::FieldType::DECIMAL64, "Price", false, false}, // Requires 5 digits of precision
                 {k2::dto::FieldType::STRING, "Name", false, false},
                 {k2::dto::FieldType::STRING, "Info", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
@@ -527,7 +532,8 @@ public:
     Item(RandomContext& random, int32_t id) : ItemID(id) {
         ImageID = random.UniformRandom(1, 10000);
         Name = random.RandomString(14, 24);
-        Price = random.UniformRandom(100, 10000) / 100.0f;
+        Price = random.UniformRandom(100, 10000);
+        *Price /= 100;
         Info = random.RandomString(26, 50);
         uint32_t originalRoll = random.UniformRandom(1, 10);
         if (originalRoll == 1) {
@@ -544,7 +550,7 @@ public:
 
     std::optional<int32_t> ItemID;
     std::optional<int32_t> ImageID;
-    std::optional<float> Price; // TODO
+    std::optional<std::decimal::decimal64> Price;
     std::optional<k2::String> Name;
     std::optional<k2::String> Info;
 
@@ -561,10 +567,10 @@ public:
         .fields = std::vector<k2::dto::SchemaField> {
                 {k2::dto::FieldType::INT16T, "ID", false, false},
                 {k2::dto::FieldType::INT32T, "ItemID", false, false},
-                {k2::dto::FieldType::FLOAT, "YTD", false, false},
-                {k2::dto::FieldType::INT32T, "OrderCount", false, false},
-                {k2::dto::FieldType::INT32T, "RemoteCount", false, false},
-                {k2::dto::FieldType::INT32T, "Quantity", false, false},
+                {k2::dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 8 digits of precision
+                {k2::dto::FieldType::INT16T, "OrderCount", false, false},
+                {k2::dto::FieldType::INT16T, "RemoteCount", false, false},
+                {k2::dto::FieldType::INT16T, "Quantity", false, false},
                 {k2::dto::FieldType::STRING, "Dist_01", false, false},
                 {k2::dto::FieldType::STRING, "Dist_02", false, false},
                 {k2::dto::FieldType::STRING, "Dist_03", false, false},
@@ -592,7 +598,7 @@ public:
         Dist_08 = random.RandomString(24, 24);
         Dist_09 = random.RandomString(24, 24);
         Dist_10 = random.RandomString(24, 24);
-        YTD = 0.0f;
+        YTD = 0;
         OrderCount = 0;
         RemoteCount = 0;
         Info = random.RandomString(26, 50);
@@ -638,10 +644,10 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int32_t> ItemID;
-    std::optional<float> YTD; // TODO
-    std::optional<int32_t> OrderCount;
-    std::optional<int32_t> RemoteCount;
-    std::optional<int32_t> Quantity;
+    std::optional<std::decimal::decimal64> YTD;
+    std::optional<int16_t> OrderCount;
+    std::optional<int16_t> RemoteCount;
+    std::optional<int16_t> Quantity;
     std::optional<k2::String> Dist_01;
     std::optional<k2::String> Dist_02;
     std::optional<k2::String> Dist_03;

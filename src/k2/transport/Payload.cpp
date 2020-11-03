@@ -179,6 +179,22 @@ bool Payload::read(String& value) {
     return read((void*)value.data(), size);
 }
 
+bool Payload::read(std::decimal::decimal64& value) {
+    std::decimal::decimal64::__decfloat64 data;
+    bool success = read((void*)&data, sizeof(data));
+    if (!success) return false;
+    value.__setval(data);
+    return true;
+}
+
+bool Payload::read(std::decimal::decimal128& value) {
+    std::decimal::decimal128::__decfloat128 data;
+    bool success = read((void*)&data, sizeof(data));
+    if (!success) return false;
+    value.__setval(data);
+    return true;
+}
+
 bool Payload::read(Payload& other) {
     size_t size;
     if (!read(size) || getDataRemaining() < size) return false;
@@ -273,6 +289,16 @@ void Payload::write(const String& value) {
     _Size size = value.size() + 1; // count the null character too
     write(size);
     write(value.data(), size);
+}
+
+void Payload::write(const std::decimal::decimal64& value) {
+    std::decimal::decimal64::__decfloat64 data = const_cast<std::decimal::decimal64&>(value).__getval();
+    write((const void*)&data, sizeof(data));
+}
+
+void Payload::write(const std::decimal::decimal128& value) {
+    std::decimal::decimal128::__decfloat128 data = const_cast<std::decimal::decimal128&>(value).__getval();
+    write((const void*)&data, sizeof(data));
 }
 
 void Payload::write(const Payload& other) {

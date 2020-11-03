@@ -230,6 +230,8 @@ private: // methods
     dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request, 
                                             dto::K23SIQueryResponse& response, size_t response_size);
 
+    std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
+
 private: // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
@@ -249,7 +251,7 @@ private: // members
     std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;
 
     // schema name -> (schema version -> schema)
-    std::unordered_map<String, std::unordered_map<uint32_t, dto::Schema>> _schemas;
+    std::unordered_map<String, std::unordered_map<uint32_t, std::shared_ptr<dto::Schema>>> _schemas;
 
     // config
     K23SIConfig _config;

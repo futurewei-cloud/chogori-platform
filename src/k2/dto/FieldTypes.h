@@ -25,6 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <cstdint>
 #include <cstring>
+#include <decimal/decimal>
 
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
@@ -51,6 +52,12 @@ struct TypeMismatchException : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
+// This enum is used for:
+// 1. User-specified field types in SKV schemas
+// 2. Encoding of key fields
+// 3. User-specified query expressions
+// Not all enum values are used for all of the above uses. For example, NULL_T is used for
+// key encoding but not as a schema field type.
 enum class FieldType : uint8_t {
     NULL_T = 0,
     STRING, // NULL characters in string is OK
@@ -60,7 +67,9 @@ enum class FieldType : uint8_t {
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
-    FIELD_TYPE,
+    DECIMAL64, // Provides 16 decimal digits of precision
+    DECIMAL128, // Provides 34 decimal digits of precision
+    FIELD_TYPE, // The value refers to one of these types. Used in query filters.
     NOT_KNOWN = 254,
     NULL_LAST = 255
 };
@@ -92,36 +101,42 @@ String NullLastToKeyString();
 } // ns dto
 } // ns k2
 
-#define K2_DTO_CAST_APPLY_FIELD_VALUE(func, a, ...) \
-    do {                                            \
-        switch ((a).type) {                         \
-            case k2::dto::FieldType::STRING: {      \
-                func<k2::String>((a), __VA_ARGS__); \
-            } break;                                \
-            case FieldType::INT16T: {               \
-                func<int16_t>((a), __VA_ARGS__);    \
-            } break;                                \
-            case FieldType::INT32T: {               \
-                func<int32_t>((a), __VA_ARGS__);    \
-            } break;                                \
-            case FieldType::INT64T: {               \
-                func<int64_t>((a), __VA_ARGS__);    \
-            } break;                                \
-            case FieldType::FLOAT: {                \
-                func<float>((a), __VA_ARGS__);      \
-            } break;                                \
-            case FieldType::DOUBLE: {               \
-                func<double>((a), __VA_ARGS__);     \
-            } break;                                \
-            case FieldType::BOOL: {                 \
-                func<bool>((a), __VA_ARGS__);       \
-            } break;                                \
-            case FieldType::FIELD_TYPE: {           \
-                func<FieldType>((a), __VA_ARGS__);  \
-            } break;                                \
-            default:                                \
-                throw TypeMismatchException();      \
-        }                                           \
+#define K2_DTO_CAST_APPLY_FIELD_VALUE(func, a, ...)                 \
+    do {                                                            \
+        switch ((a).type) {                                         \
+            case k2::dto::FieldType::STRING: {                      \
+                func<k2::String>((a), __VA_ARGS__);                 \
+            } break;                                                \
+            case FieldType::INT16T: {                               \
+                func<int16_t>((a), __VA_ARGS__);                    \
+            } break;                                                \
+            case FieldType::INT32T: {                               \
+                func<int32_t>((a), __VA_ARGS__);                    \
+            } break;                                                \
+            case FieldType::INT64T: {                               \
+                func<int64_t>((a), __VA_ARGS__);                    \
+            } break;                                                \
+            case FieldType::FLOAT: {                                \
+                func<float>((a), __VA_ARGS__);                      \
+            } break;                                                \
+            case FieldType::DOUBLE: {                               \
+                func<double>((a), __VA_ARGS__);                     \
+            } break;                                                \
+            case FieldType::BOOL: {                                 \
+                func<bool>((a), __VA_ARGS__);                       \
+            } break;                                                \
+            case FieldType::DECIMAL64: {                            \
+                func<std::decimal::decimal64>((a), __VA_ARGS__);    \
+            } break;                                                \
+            case FieldType::DECIMAL128: {                           \
+                func<std::decimal::decimal128>((a), __VA_ARGS__);   \
+            } break;                                                \
+            case FieldType::FIELD_TYPE: {                           \
+                func<FieldType>((a), __VA_ARGS__);                  \
+            } break;                                                \
+            default:                                                \
+                throw TypeMismatchException();                      \
+        }                                                           \
     } while (0)
 
 namespace std {
@@ -143,6 +158,10 @@ namespace std {
             return os << "DOUBLE";
         case k2::dto::FieldType::BOOL:
             return os << "BOOL";
+        case k2::dto::FieldType::DECIMAL64:
+            return os << "DECIMAL64";
+        case k2::dto::FieldType::DECIMAL128:
+            return os << "DECIMAL128";
         case k2::dto::FieldType::FIELD_TYPE:
             return os << "FIELD_TYPE";
         case k2::dto::FieldType::NOT_KNOWN:
