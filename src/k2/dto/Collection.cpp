@@ -89,7 +89,7 @@ PartitionGetter::PartitionWithEndpoint PartitionGetter::GetPartitionWithEndpoint
     return partition;
 }
 
-PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) {
+PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) { 
     if (collection.metadata.hashScheme == HashScheme::Range) {
         _rangePartitionMap.reserve(collection.partitionMap.partitions.size());
 
@@ -120,10 +120,16 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
 }
 
 PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(const Key& key, bool reverse, bool exclusiveKey) {
+    // debug
+    K2INFO("hashScheme: " << collection.metadata.hashScheme << ", key: " << key << ", reverse: " << reverse << ", exclusiveKey: " << exclusiveKey);
+
     switch (collection.metadata.hashScheme) {
         case HashScheme::Range:
         {
             RangeMapElement to_find(key.partitionKey, PartitionGetter::PartitionWithEndpoint());
+            std::cout << "to_find partitionKey:" << key.partitionKey << ". _rangePartitionMap size:" << _rangePartitionMap.size() << std::endl;
+            for (auto& e : _rangePartitionMap) 
+                std::cout << "\"" << e.key.get() << "\"" << std::endl;
 
             // case 1: if get partiton in the reverse direction, and the key is empty: return the last partition;
             //         empty key in the forward direction can be well treated by upper_bound (case 3).
@@ -132,10 +138,12 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
             // case 3: if exclusiveKey is false, use upper_bound to get partition.
             std::vector<RangeMapElement>::iterator it;
             if (reverse && key.partitionKey == "") {
+                std::cout << "{getPartitionForKey 1}" << std::endl;
                 return _rangePartitionMap.rbegin()->partition;
             } else if (exclusiveKey) {
                 // if the 'exclusiveKey' is true (start keys are exclusive), lower_bound gives the start key,
                 // so we return the partition before the one that obtained by lower_bound.
+                std::cout << "{getPartitionForKey 2}" << std::endl;
                 it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
                 if (it == _rangePartitionMap.begin()) {
                     throw std::runtime_error("forward direction with empry_key and true_exclusiveKey is not allowed!");
@@ -144,9 +152,13 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
                 // We are comparing against the start keys and upper_bound gives the first start key
                 // greater than the key (start keys are inclusive), so we return the partition before 
                 // the one obtained by upper_bound
+                std::cout << "{getPartitionForKey 3}" << std::endl;
                 it = std::upper_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
-                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
+                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");                
             }
+
+            if(it != _rangePartitionMap.end()) std::cout << "find it. :" << it->key.get() << std::endl;
+            else std::cout << "it == end()" << std::endl;
 
             if (it != _rangePartitionMap.end()) {
                 return (--it)->partition;

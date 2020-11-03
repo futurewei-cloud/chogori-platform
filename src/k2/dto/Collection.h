@@ -256,6 +256,8 @@ private:
         PartitionWithEndpoint partition;
 
         bool operator<(const RangeMapElement& other) const noexcept {
+            std::cout << "{RangeMapElement} this:[" << typeid(key.get()).name() << "]" << key.get() << std::endl
+                      << "{RangeMapElement}other:[" << typeid(other.key.get()).name() << "]" << other.key.get() << std::endl;
             return key.get() < other.key.get();
         }
     };

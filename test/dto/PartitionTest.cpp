@@ -21,11 +21,8 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <k2/appbase/AppEssentials.h>
-#include <k2/appbase/Appbase.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/module/k23si/client/k23si_client.h>
-#include <seastar/core/sleep.hh>
 
 const char* collname = "k23si_test_collection";
 
@@ -46,6 +43,7 @@ public:  // application lifespan
     seastar::future<> start(){
         K2INFO("start");
 
+        _cpoEndpoint = k2::RPC().getTXEndpoint(_cpoConfigEp());
         _testFuture = seastar::make_ready_future()
         .then([this] () {
             return _client.start();
@@ -88,10 +86,12 @@ public:  // application lifespan
 
 private:
     int exitcode = -1;
+    k2::ConfigVar<k2::String> _cpoConfigEp{"cpo"};
     seastar::future<> _testFuture = seastar::make_ready_future();
 
     k2::K23SIClient _client;
     k2::dto::PartitionGetter _pgetter;
+    std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
     
 public: // tests
@@ -102,12 +102,43 @@ seastar::future<> runScenario01() {
 
     return seastar::make_ready_future()
     .then([this] {
+        // get partitions
+        auto request = k2::dto::CollectionGetRequest{.name = collname};
+        return k2::RPC().callRPC<k2::dto::CollectionGetRequest, k2::dto::CollectionGetResponse>
+                (k2::dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
+    })
+    .then([this](auto&& response) {
+        // check and assign it to _pgetter
+        auto&[status, resp] = response;
+        K2INFO("get collection status:" << status.code);
+        _pgetter = k2::dto::PartitionGetter(std::move(resp.collection));
+    })
+    .then([this] {
         K2INFO("get Partition for key with default reverse and exclusiveKey flag");
+        std::cout << "{_pgetter::collection} name:" << _pgetter.collection.metadata.name << ", hashScheme:" 
+                << _pgetter.collection.metadata.hashScheme << std::endl;
+        for (auto e : _pgetter.collection.partitionMap.partitions) 
+            std::cout << "start:" << e.startKey << ", end:" << e.endKey << ", EP:" << *(e.endpoints.begin()) << ", pvid:" << e.pvid << std::endl;
         
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "a", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
-        K2INFO("startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
-               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL());
+        std::cout << "key info:" << key << std::endl;
+        std::cout << "{part} startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL() << std::endl;
+        for (auto e : _pgetter.collection.partitionMap.partitions) 
+            std::cout << "start:" << e.startKey << ", end:" << e.endKey << ", EP:" << *(e.endpoints.begin()) << std::endl;
+        //K2EXPECT(part.partition->startKey, "");
+    })
+    .then([this] {
+        K2INFO("case2");
+        
+        k2::dto::Key key{.schemaName = "schema", .partitionKey = "c", .rangeKey = ""};
+        k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
+        std::cout << "key info:" << key << std::endl;
+        std::cout << "startkey:" << part.partition->startKey << ", endkey:" << part.partition->endKey << ", endpoint:" 
+               << *(part.partition->endpoints.begin()) << ", TXEndpoint:" << (*part.preferredEndpoint).getURL() << std::endl;
+        for (auto e : _pgetter.collection.partitionMap.partitions) 
+            std::cout << "start:" << e.startKey << ", end:" << e.endKey << ", EP:" << *(e.endpoints.begin()) << std::endl;
         //K2EXPECT(part.partition->startKey, "");
     });
 }
