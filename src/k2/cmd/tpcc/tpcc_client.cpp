@@ -243,8 +243,15 @@ private:
             [this] {
                 uint32_t txn_type = _random.UniformRandom(1, 100);
                 uint32_t w_id = (seastar::engine().cpu_id() % _max_warehouses()) + 1;
-                TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses())
-                                                 : (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
+                TPCCTxn* curTxn;
+                if (txn_type <= 43) {
+                    curTxn = (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses());
+                } else if (txn_type <= 47) {
+                    curTxn = (TPCCTxn*) new OrderStatusT(_random, _client, w_id);
+                } else {
+                    curTxn = (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
+                }
+                
                 auto txn_start = k2::Clock::now();
                 return curTxn->run()
                 .then([this, txn_type, txn_start] (bool success) {
@@ -297,9 +304,11 @@ private:
             auto cntpsec = (double)_completedTxns/totalsecs;
             auto readpsec = (double)_client.read_ops/totalsecs;
             auto writepsec = (double)_client.write_ops/totalsecs;
+            auto querypsec = (double)_client.query_ops/totalsecs;
             K2INFO("completedTxns=" << _completedTxns << "(" << cntpsec << " per sec)" );
             K2INFO("read ops " << readpsec << " per sec)" );
             K2INFO("write ops " << writepsec << " per sec)" );
+            K2INFO("query ops " << querypsec << " per sec)" );
             return make_ready_future();
         });
     }

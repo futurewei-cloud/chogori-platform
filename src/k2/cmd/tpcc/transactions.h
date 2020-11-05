@@ -36,6 +36,15 @@ Copyright(c) 2020 Futurewei Cloud
 using namespace seastar;
 using namespace k2;
 
+
+struct CIdSortElement {
+    String firstName;
+    int32_t c_id; 
+    bool operator<(const CIdSortElement& other) const noexcept {
+        return firstName < other.firstName;
+    }
+};
+
 class AtomicVerify;
 
 class TPCCTxn {
@@ -48,10 +57,11 @@ class PaymentT : public TPCCTxn
 {
 public:
     PaymentT(RandomContext& random, K23SIClient& client, int16_t w_id, int16_t max_w_id) :
-                        _client(client), _w_id(w_id) {
+                        _random(random), _client(client), _w_id(w_id) {
 
         _d_id = random.UniformRandom(1, _districts_per_warehouse());
-        _c_id = random.NonUniformRandom(1023, 1, _customers_per_district()); // TODO, by last name
+        // customer id will be re-assign based on probability later during customerUpdate()
+        _c_id = random.NonUniformRandom(1023, 1, _customers_per_district()); 
         uint32_t local = random.UniformRandom(1, 100);
         if (local <= 85 || max_w_id == 1) {
             _c_w_id = _w_id;
@@ -146,33 +156,44 @@ private:
     }
 
     future<> customerUpdate() {
-        return _txn.read<Customer>(Customer(_c_w_id, _c_d_id, _c_id))
-        .then([this] (auto&& result) {
-            CHECK_READ_STATUS(result);
+        uint32_t cid_type = _random.UniformRandom(1, 100);
+        future<int32_t> cidFuture = make_ready_future<int>();
+        if (cid_type <= 60) {
+            // 60% randomly select customer by last name
+            cidFuture = make_ready_future().then([this] { return getCIdByLastName(); });
+        } // else{}, the _c_id has already been set randomly at the consturctor
+        
+        return when_all_succeed(std::move(cidFuture))
+        .then([this] (int32_t&& resp) {
+            _c_id = resp;
+            return _txn.read<Customer>(Customer(_c_w_id, _c_d_id, _c_id))
+            .then([this] (auto&& result) {
+                CHECK_READ_STATUS(result);
 
-            Customer customer(_c_w_id, _c_d_id, _c_id);
-            customer.Balance = *(result.value.Balance) - _amount;
-            customer.YTDPayment = *(result.value.YTDPayment) + _amount;
-            customer.PaymentCount = *(result.value.PaymentCount) + 1;
-            k2::String str500(k2::String::initialized_later{}, 500);
-            customer.Info = str500;
+                Customer customer(_c_w_id, _c_d_id, _c_id);
+                customer.Balance = *(result.value.Balance) - _amount;
+                customer.YTDPayment = *(result.value.YTDPayment) + _amount;
+                customer.PaymentCount = *(result.value.PaymentCount) + 1;
+                k2::String str500(k2::String::initialized_later{}, 500);
+                customer.Info = str500;
 
-            if (*(result.value.Credit) == "BC") {
-                size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
-                memcpy((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
-                uint32_t offset = 0;
-                memcpy((char*)customer.Info->c_str() + offset, &_c_id, sizeof(_c_id));
-                offset += sizeof(_c_id);
-                memcpy((char*)customer.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
-                offset += sizeof(_c_d_id);
-                memcpy((char*)customer.Info->c_str() + offset, &_d_id, sizeof(_d_id));
-                offset += sizeof(_d_id);
-                memcpy((char*)customer.Info->c_str() + offset, &_w_id, sizeof(_w_id));
-                offset += sizeof(_w_id);
-                memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
-            }
+                if (*(result.value.Credit) == "BC") {
+                    size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
+                    memcpy((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
+                    uint32_t offset = 0;
+                    memcpy((char*)customer.Info->c_str() + offset, &_c_id, sizeof(_c_id));
+                    offset += sizeof(_c_id);
+                    memcpy((char*)customer.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
+                    offset += sizeof(_c_d_id);
+                    memcpy((char*)customer.Info->c_str() + offset, &_d_id, sizeof(_d_id));
+                    offset += sizeof(_d_id);
+                    memcpy((char*)customer.Info->c_str() + offset, &_w_id, sizeof(_w_id));
+                    offset += sizeof(_w_id);
+                    memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
+                }
 
-            return partialUpdateRow<Customer, std::vector<k2::String>>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
+                return partialUpdateRow<Customer, std::vector<k2::String>>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
+            });
         });
     }
 
@@ -181,8 +202,80 @@ private:
         return writeRow<History>(history, _txn).discard_result();
     }
 
+    // get customer ID by last name
+    future<int32_t> getCIdByLastName() {
+        k2::String lastName = _random.RandowLastNameString();
+        
+        return _client.createQuery(tpccCollectionName, "customer")
+        .then([this, &lastName](auto&& response) mutable {
+            K2EXPECT(response.status, dto::K23SIStatus::OK);
+
+            // make Query request and set query rules. 
+            // 1. range:[ (_w_id, _d_id, 0), (_w_id, _d_id + 1, 0) ); 2. no record number limits; 3. forward direction scan;
+            // 4. projection "FirstName" field for ascending sorting; 5. filter out the record rows of lastName
+            _query = std::move(response.query);
+            _query.startScanRecord.serializeNext<int16_t>(_c_w_id); 
+            _query.startScanRecord.serializeNext<int16_t>(_c_d_id);
+            _query.endScanRecord.serializeNext<int16_t>(_c_w_id);
+            _query.endScanRecord.serializeNext<int16_t>(_c_d_id + 1);
+            
+            _query.setLimit(-1);
+            _query.setReverseDirection(false);
+            std::vector<String> projection{"CID", "FirstName"}; // make projection
+            _query.addProjection(projection);
+            
+            std::vector<dto::expression::Value> values; // make filter Expression
+            std::vector<dto::expression::Expression> exps;
+            values.emplace_back(dto::expression::makeValueReference("LastName"));
+            values.emplace_back(dto::expression::makeValueLiteral<k2::String>(std::move(lastName)));
+            dto::expression::Expression filter = dto::expression::makeExpression(dto::expression::Operation::EQ, 
+                                                    std::move(values), std::move(exps));
+            _query.setFilterExpression(std::move(filter));
+
+            return do_with(std::vector<std::vector<dto::SKVRecord>>(), false, (uint32_t)0,
+            [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done, uint32_t& count) {
+                return do_until(
+                [this, &done] () { return done; },
+                [this, &result_set, &done, &count] () {
+                    return _txn.query(_query)
+                    .then([this, &result_set, &done, &count] (auto&& response) {
+                        K2EXPECT(response.status.is2xxOK(), true);
+                        done = response.status.is2xxOK() ? _query.isDone() : true;
+                        count += response.records.size();
+                        result_set.push_back(std::move(response.records));
+                    });
+                })
+                .then([this, &result_set, &count] () {                    
+                    std::vector<CIdSortElement> cIdSort;
+                    for (std::vector<dto::SKVRecord>& set : result_set) {
+                        for (dto::SKVRecord& rec : set) {
+                            std::optional<int32_t> cIdOpt = rec.deserializeField<int32_t>("CID");
+                            std::optional<String> firstNameOpt = rec.deserializeField<String>("FirstName");
+
+                            cIdSort.push_back(CIdSortElement{*firstNameOpt, *cIdOpt});
+                        }
+                    }
+
+                    // sorted by C_FIRST_NAME in ascending order, and retrieve at the
+                    // position n/2 rounded up in the sorted set from CUSTORMER table.
+                    if (cIdSort.size()) {
+                        std::sort(cIdSort.begin(), cIdSort.end());
+                        std::cout << "{getCIdByLastName} lastname matches! id:" << cIdSort[cIdSort.size() / 2].c_id << std::endl;
+                        return make_ready_future<int32_t>(cIdSort[cIdSort.size() / 2].c_id);
+                    } else {
+                        std::cout << "{getCIdByLastName} noooooooooooooo lastname! id:" << _c_id << std::endl;
+                        return make_ready_future<int32_t>(_c_id); // return _c_id if no lastName matches
+                    }
+                });
+            });
+        });
+    }
+
+
+    RandomContext& _random;
     K23SIClient& _client;
     K2TxnHandle _txn;
+    Query _query;
     int16_t _w_id;
     int16_t _c_w_id;
     int32_t _c_id;
@@ -378,4 +471,333 @@ private:
     std::decimal::decimal64 _d_tax;
     std::decimal::decimal64 _c_discount;
     std::decimal::decimal64 _total_amount = 0;
+};
+
+class OrderStatusT : public TPCCTxn
+{
+public:
+    OrderStatusT(RandomContext& random, K23SIClient& client, int16_t w_id) :
+                        _random(random), _client(client), _w_id(w_id) {
+        _d_id = _random.UniformRandom(1, _districts_per_warehouse());
+        _c_id = _random.NonUniformRandom(1023, 1, _customers_per_district()); // by last name later at 
+
+        _failed = false;
+    }
+
+    future<bool> run() override {
+        K2TxnOptions options{};
+        options.deadline = Deadline(5s);
+        return _client.beginTxn(options)
+        .then([this] (K2TxnHandle&& txn) {
+            _txn = std::move(txn);
+            return runWithTxn();
+        }).handle_exception([] (auto exc) {
+            K2WARN_EXC("Failed to start txn: ", exc);
+            return make_ready_future<bool>(false);
+        });
+    }
+
+private:
+    future<bool> runWithTxn() {
+        // Get customer_id
+        future<> getCId_f = getCustomerId();
+
+        return when_all_succeed(std::move(getCId_f))
+        .then([this] () {
+            // Get Customer row when get_customer_id is done
+            future<> customer_f = getCustomer();
+
+            // Get most recent order_ID when get_customer_id is done
+            future<> order_f = getOrderdByCId();
+
+            future<> order_line_f = when_all_succeed(std::move(order_f))
+            .then([this] () {
+                // Get all Order-Line rows when get_o_id is done
+                 return getOrderLine();
+            });
+            
+            return when_all_succeed(std::move(customer_f), std::move(order_line_f));
+        })
+        // commit txn
+        .then_wrapped([this] (auto&& fut) {
+            if (fut.failed()) {
+                _failed = true;
+                fut.ignore_ready_future();
+                return _txn.end(false);
+            }
+
+            fut.ignore_ready_future();
+            K2DEBUG("OrderStatus txn finished");
+
+            return _txn.end(true);
+        }).then_wrapped([this] (auto&& fut) {
+            if (fut.failed()) {
+                _failed = true;
+                fut.ignore_ready_future();
+                return make_ready_future<bool>(false);
+            }
+
+            EndResult result = fut.get0();
+            if (result.status.is2xxOK() && !_failed) {
+                return make_ready_future<bool>(true);
+            }
+
+            return make_ready_future<bool>(false);
+        });
+    }
+
+    // Get customer_id, 60% by last name, 40% by random customer id
+    future<> getCustomerId() {
+        uint32_t cid_type = _random.UniformRandom(1, 100);
+        // 40%, the _c_id has already been set randomly at the constructor
+        if (cid_type > 60) {
+            return make_ready_future();
+        } //else{}, 60% select customer by last name
+    
+        k2::String lastName = _random.RandowLastNameString();
+        
+        return _client.createQuery(tpccCollectionName, "customer")
+        .then([this, &lastName](auto&& response) mutable {
+            K2EXPECT(response.status, dto::K23SIStatus::OK);
+
+            // make Query request and set query rules. 
+            // 1. range:[ (_w_id, _d_id, 0), (_w_id, _d_id + 1, 0) ); 2. no record number limits; 3. forward direction scan;
+            // 4. projection "FirstName" field for ascending sorting; 5. filter out the record rows of lastName
+            _query_cid = std::move(response.query);
+            _query_cid.startScanRecord.serializeNext<int16_t>(_w_id); 
+            _query_cid.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_cid.endScanRecord.serializeNext<int16_t>(_w_id);
+            _query_cid.endScanRecord.serializeNext<int16_t>(_d_id + 1);
+            _query_cid.setLimit(-1);
+            _query_cid.setReverseDirection(false);
+
+            std::vector<String> projection{"CID", "FirstName"}; // make projection
+            _query_cid.addProjection(projection);
+            std::vector<dto::expression::Value> values; // make filter Expression
+            std::vector<dto::expression::Expression> exps;
+            values.emplace_back(dto::expression::makeValueReference("LastName"));
+            values.emplace_back(dto::expression::makeValueLiteral<String>(std::move(lastName)));
+            dto::expression::Expression filter = dto::expression::makeExpression(dto::expression::Operation::EQ, 
+                                                    std::move(values), std::move(exps));
+            _query_cid.setFilterExpression(std::move(filter));
+
+            return do_with(std::vector<std::vector<dto::SKVRecord>>(), false, (uint32_t)0,
+            [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done, uint32_t& count) {
+                return do_until(
+                [this, &done] () { return done; },
+                [this, &result_set, &done, &count] () {
+                    return _txn.query(_query_cid)
+                    .then([this, &result_set, &done, &count] (auto&& response) {
+                        K2EXPECT(response.status.is2xxOK(), true);
+                        done = response.status.is2xxOK() ? _query_cid.isDone() : true;
+                        count += response.records.size();
+                        result_set.push_back(std::move(response.records));
+                    });
+                })
+                .then([this, &result_set, &count] () {
+                    std::vector<CIdSortElement> cIdSort;
+                    for (std::vector<dto::SKVRecord>& set : result_set) {
+                        for (dto::SKVRecord& rec : set) {
+                            std::optional<int32_t> cIdOpt = rec.deserializeField<int32_t>("CID");
+                            std::optional<String> firstNameOpt = rec.deserializeField<String>("FirstName");
+
+                            cIdSort.push_back(CIdSortElement{*firstNameOpt, *cIdOpt});
+                        }
+                    }
+
+                    // sorted by C_FIRST_NAME in ascending order, and retrieve at the
+                    // position n/2 rounded up in the sorted set from CUSTORMER table.
+                    if (cIdSort.size()) {
+                        std::sort(cIdSort.begin(), cIdSort.end());
+                        _c_id = cIdSort[cIdSort.size() / 2].c_id;
+                    } 
+                    
+                    return make_ready_future();
+                });
+            });
+        });
+    }
+    
+    // Get Customer row based on _w_id, _d_id, _c_id
+    future<> getCustomer() {
+        return _client.createQuery(tpccCollectionName, "customer")
+        .then([this](auto&& response) mutable {
+            K2EXPECT(response.status, dto::K23SIStatus::OK);
+
+            // make Query request and set query rules. 
+            // 1) just one skvrecord returns; 2) add Projection fields as needed;
+            _query_customer = std::move(response.query);
+            _query_customer.startScanRecord.serializeNext<int16_t>(_w_id); 
+            _query_customer.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_customer.startScanRecord.serializeNext<int32_t>(_c_id);
+            _query_customer.endScanRecord.serializeNext<int16_t>(_w_id);
+            _query_customer.endScanRecord.serializeNext<int16_t>(_d_id);
+            _query_customer.endScanRecord.serializeNext<int32_t>(_c_id + 1);
+            
+            _query_customer.setLimit(-1);
+            _query_customer.setReverseDirection(false);
+            std::vector<String> projection{"Balance", "FirstName", "MiddleName", "LastName"}; // make projection
+            _query_customer.addProjection(projection);
+            dto::expression::Expression filter{};   // make filter Expression
+            _query_customer.setFilterExpression(std::move(filter));
+
+            return _txn.query(_query_customer)
+            .then([this] (auto&& response) {
+                K2EXPECT(response.status.is2xxOK(), true);
+                K2EXPECT(response.records.size(), 1);
+
+                dto::SKVRecord& rec = response.records[0];
+                std::optional<std::decimal::decimal64> balanceOpt = rec.deserializeField<std::decimal::decimal64>("Balance");
+                std::optional<String> firstNameOpt = rec.deserializeField<String>("FirstName");
+                std::optional<String> middleNameOpt = rec.deserializeField<String>("MiddleName");
+                std::optional<String> lastNameOpt = rec.deserializeField<String>("LastName");
+                
+                _out_c_balance = *balanceOpt;
+                _out_c_first_name = *firstNameOpt;
+                _out_c_middle_name = *middleNameOpt;
+                _out_c_last_name = *lastNameOpt;
+                return make_ready_future();
+            });
+        });
+    }
+    
+    // Get order row based on _w_id, _d_id, _c_id with the largest _o_id (most recent order)
+    future<> getOrderdByCId() {
+        return _client.createQuery(tpccCollectionName, "order")
+        .then([this](auto&& response) mutable {
+            K2EXPECT(response.status, dto::K23SIStatus::OK);
+        
+            // make Query request and set query rules. 
+            // 1) just one skvrecord returns; 2) add Projection fields as needed; 3) filter out according to _c_id
+            _query_order = std::move(response.query);
+            _query_order.startScanRecord.serializeNext<int16_t>(_w_id); 
+            _query_order.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_order.endScanRecord.serializeNext<int16_t>(_w_id);
+            _query_order.endScanRecord.serializeNext<int16_t>(_d_id);
+            
+            _query_order.setLimit(5);
+            _query_order.setReverseDirection(true);
+            std::vector<String> projection{"OID", "EntryDate", "CarrierID"}; // make projection
+            _query_order.addProjection(projection);
+            std::vector<dto::expression::Value> values; // make filter Expression
+            std::vector<dto::expression::Expression> exps;
+            values.emplace_back(dto::expression::makeValueReference("CID"));
+            values.emplace_back(dto::expression::makeValueLiteral<int32_t>(std::move(_c_id)));
+            dto::expression::Expression filter = dto::expression::makeExpression(dto::expression::Operation::EQ, 
+                                                    std::move(values), std::move(exps));
+            _query_order.setFilterExpression(std::move(filter));
+            
+            return _txn.query(_query_order)
+            .then([this] (auto&& response) {
+                K2EXPECT(response.status.is2xxOK(), true);
+
+                for (dto::SKVRecord& rec : response.records) {
+                    std::optional<int64_t> oidOpt = rec.deserializeField<int64_t>("OID");
+                    std::optional<int64_t> entryDateOpt = rec.deserializeField<int64_t>("EntryDate");
+                    std::optional<int32_t> carrierOpt = rec.deserializeField<int32_t>("CarrierID");
+
+                    _o_id = *oidOpt;
+                    _out_o_id = *oidOpt;
+                    _out_o_entry_date = *entryDateOpt;
+                    _out_o_carrier_id = *carrierOpt;
+                }
+                
+                return make_ready_future();
+            });
+        });
+    }
+
+    // Get all Order-Line rows with _w_id, _d_id, _o_id
+    future<> getOrderLine() {
+        return _client.createQuery(tpccCollectionName, "orderline")
+        .then([this](auto&& response) mutable {
+            K2EXPECT(response.status, dto::K23SIStatus::OK);
+        
+            // make Query request and set query rules. 
+            // 1) all lines in certain order are returned; 2) add Projection fields as needed;
+            _query_order_line = std::move(response.query);
+            _query_order_line.startScanRecord.serializeNext<int16_t>(_w_id); 
+            _query_order_line.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_order_line.startScanRecord.serializeNext<int64_t>(_o_id);
+            _query_order_line.endScanRecord.serializeNext<int16_t>(_w_id);
+            _query_order_line.endScanRecord.serializeNext<int16_t>(_d_id);
+            _query_order_line.endScanRecord.serializeNext<int64_t>(_o_id + 1);
+            
+            _query_order_line.setLimit(-1);
+            _query_order_line.setReverseDirection(false);
+            std::vector<String> projection{"ItemID", "SupplyWID", "Quantity", "Amount", "DeliveryDate"}; // make projection
+            _query_order_line.addProjection(projection);
+            dto::expression::Expression filter{};   // make filter Expression
+            _query_order_line.setFilterExpression(std::move(filter));
+
+            return do_with(std::vector<std::vector<dto::SKVRecord>>(), false, (uint32_t)0,
+            [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done, uint32_t& count) {
+                return do_until(
+                [this, &done] () { return done; },
+                [this, &result_set, &done, &count] () {
+                    return _txn.query(_query_order_line)
+                    .then([this, &result_set, &count, &done] (auto&& response) {
+                        K2EXPECT(response.status.is2xxOK(), true);
+                        done = response.status.is2xxOK() ? _query_order_line.isDone() : true;
+                        count += response.records.size();
+                        result_set.push_back(std::move(response.records));
+                    });
+                })
+                .then([this, &result_set, &count] {
+                    for (auto& results : result_set) {
+                        for (auto& rec : results) {
+                            std::optional<int64_t> delDateOpt = rec.deserializeField<int64_t>("DeliveryDate");
+                            std::optional<int32_t> itemIDOpt = rec.deserializeField<int32_t>("ItemID");
+                            std::optional<int16_t> supplyWIDOpt = rec.deserializeField<int16_t>("SupplyWID");
+                            std::optional<std::decimal::decimal64> amountOpt = rec.deserializeField<std::decimal::decimal64>("Amount");
+                            std::optional<int16_t> quantityOpt = rec.deserializeField<int16_t>("Quantity");
+
+                            _out_ol_delivery_date.push_back(*delDateOpt);
+                            _out_ol_item_id.push_back(*itemIDOpt);
+                            _out_ol_supply_wid.push_back(*supplyWIDOpt);
+                            _out_ol_amount.push_back(*amountOpt);
+                            _out_ol_quantity.push_back(*quantityOpt);
+                        }
+                    }
+                    return make_ready_future();
+                });
+            });
+        });
+    }
+
+    RandomContext& _random;
+    K23SIClient& _client;
+    K2TxnHandle _txn;
+    bool _failed;
+    int16_t _w_id;
+    int16_t _d_id;
+    int32_t _c_id;
+    int64_t _o_id;
+    Query _query_cid;
+    Query _query_customer;
+    Query _query_order;
+    Query _query_order_line;
+    
+private:
+    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
+
+
+private:
+    // output data that Order-Status-Transaction wanna get
+    // customer info
+    std::decimal::decimal64 _out_c_balance;
+    k2::String _out_c_first_name;
+    k2::String _out_c_middle_name;
+    k2::String _out_c_last_name;
+    // order info
+    int64_t _out_o_id;
+    int64_t _out_o_entry_date;
+    int32_t _out_o_carrier_id;
+    // order lines info
+    std::vector<int64_t> _out_ol_delivery_date;
+    std::vector<int32_t> _out_ol_item_id;
+    std::vector<int16_t> _out_ol_supply_wid;
+    std::vector<std::decimal::decimal64> _out_ol_amount;
+    std::vector<int16_t> _out_ol_quantity;
 };

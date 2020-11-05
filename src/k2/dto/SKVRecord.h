@@ -227,6 +227,14 @@ public:
                 std::optional<bool> value = (record).deserializeNext<bool>();                                                    \
                 func<bool>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);               \
             } break;                                                                                                             \
+            case k2::dto::FieldType::DECIMAL64: {                                                                                       \
+                std::optional<std::decimal::decimal64> value = (record).deserializeNext<std::decimal::decimal64>();                     \
+                func<std::decimal::decimal64>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);   \
+            } break;                                                                                                                    \
+            case k2::dto::FieldType::DECIMAL128: {                                                                                      \
+                std::optional<std::decimal::decimal128> value = (record).deserializeNext<std::decimal::decimal128>();                   \
+                func<std::decimal::decimal128>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);  \
+            } break;                                                                                                                    \
             case k2::dto::FieldType::FIELD_TYPE: {                                                                               \
                 std::optional<k2::dto::FieldType> value = (record).deserializeNext<k2::dto::FieldType>();                        \
                 func<k2::dto::FieldType>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__); \
