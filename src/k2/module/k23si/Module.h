@@ -70,6 +70,9 @@ public: // lifecycle
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
 
+    seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
+    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline);
+
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
 
@@ -117,13 +120,18 @@ private: // methods
     seastar::future<dto::K23SI_MTR>
     _doPush(String collectionName, dto::TxnId sitTxnId, dto::K23SI_MTR pushMTR, FastDeadline deadline);
 
-    // helper method used to clean up WI which have been removed
-    void _queueWICleanup(dto::DataRecord&& rec);
-
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
     bool _validateRequestPartition(const RequestT& req) const {
-        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid && _partition.owns(req.key);
+        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid;
+        // validate partition owns the requests' key.
+        // 1. common case assumes RequestT a Read request;
+        // 2. now for the other cases, only Query request is implemented.
+        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
+            result =  result && _partition.owns(req.key, req.reverseDirection);
+        } else {
+            result = result && _partition.owns(req.key);
+        }
         K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
                 << ", for request=" << req);
         return result;
@@ -146,8 +154,20 @@ private: // methods
 
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
-    bool _validateRequestParameter(const RequestT& req) const {
-        return !req.key.partitionKey.empty();
+    bool _validateRequestPartitionKey(const RequestT& req) const {
+        // if operation of the requests is in reverse direction, validate endKey partition not empty
+        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
+            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " 
+                    << req.endKey << ", reverse direction: " << req.reverseDirection);
+            if (req.reverseDirection) {
+                return !req.endKey.partitionKey.empty();
+            } else {
+                return !req.key.partitionKey.empty();
+            }
+        } else {
+            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " << req.endKey);
+            return !req.key.partitionKey.empty();
+        }
     }
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
@@ -155,10 +175,45 @@ private: // methods
     bool _validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions);
+    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    
+    // helper method used to make a projection SKVRecord payload
+    bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
+    
+    // method to parse the partial record to full record, return turn if parse successful
+    bool _parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous);
+
+    // make every fields for a partial update request in the condition of same schema and same version
+    bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
+    // make every fields for a partial update request in the condition of same schema and different versions
+    bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
+    
+    // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
+    std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
+
+    // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate). 
+    bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
 
     // recover data upon startup
     seastar::future<> _recovery();
+
+    // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
+    // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must 
+    // point to a record with the target schema
+    void _scanAdvance(IndexerIterator& it, bool reverseDirection);
+
+    // Helper for handleQuery. Returns an iterator to start the scan at, accounting for 
+    // desired schema and (eventually) reverse direction scan
+    IndexerIterator _initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey);
+
+    // Helper for handleQuery. Checks to see if the indexer scan should stop.
+    bool _isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request, size_t response_size);
+
+    // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
+    dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request, 
+                                            dto::K23SIQueryResponse& response, size_t response_size);
+
+    std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
 
 private: // members
     // the metadata of our collection
@@ -179,7 +234,7 @@ private: // members
     std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;
 
     // schema name -> (schema version -> schema)
-    std::unordered_map<String, std::unordered_map<uint32_t, dto::Schema>> _schemas;
+    std::unordered_map<String, std::unordered_map<uint32_t, std::shared_ptr<dto::Schema>>> _schemas;
 
     // config
     K23SIConfig _config;

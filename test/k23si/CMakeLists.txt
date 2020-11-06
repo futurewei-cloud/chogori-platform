@@ -11,6 +11,7 @@ add_executable (3si_txn_test ${HEADERS} 3SITxnTest.cpp)
 add_executable (wal_test ${HEADERS} WALTest.cpp)
 add_executable (skv_client_test ${HEADERS} SKVClientTest.cpp)
 add_executable (query_test ${HEADERS} QueryTest.cpp)
+add_executable (expression_test ${HEADERS} ExpressionTest.cpp)
 
 target_link_libraries (k23si_test PRIVATE appbase Seastar::seastar k23si)
 target_link_libraries (read_cache_test PRIVATE k23si)
@@ -22,8 +23,10 @@ target_link_libraries (3si_txn_test PRIVATE appbase dto transport Seastar::seast
 target_link_libraries (wal_test PRIVATE appbase dto transport log_stream plog_client k23si Seastar::seastar)
 target_link_libraries (skv_client_test PRIVATE tso_client k23si_client cpo_client appbase dto transport Seastar::seastar)
 target_link_libraries (query_test PRIVATE tso_client k23si_client cpo_client appbase dto transport Seastar::seastar)
+target_link_libraries (expression_test PRIVATE dto transport Seastar::seastar)
 
 add_test(NAME readcache COMMAND read_cache_test)
 add_test(NAME skv_record COMMAND skv_record_test)
 add_test(NAME key_encoding COMMAND key_encoding_test)
 add_test(NAME skv_ser COMMAND skv_ser_test)
+add_test(NAME expression COMMAND expression_test)

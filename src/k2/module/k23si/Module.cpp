@@ -56,11 +56,18 @@ K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::P
 
 seastar::future<> K23SIPartitionModule::start() {
     K2DEBUG("Starting for partition: " << _partition);
-    RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>(dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
+    RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
+    (dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
         return handleRead(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.readTimeout()));
     });
 
-    RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
+    RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
+    (dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
+        return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()));
+    });
+
+    RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
+    (dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
         return handleWrite(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.writeTimeout()));
     });
 
@@ -167,6 +174,270 @@ _makeReadOK(dto::DataRecord* rec) {
     return RPCResponse(dto::K23SIStatus::OK("read succeeded"), std::move(response));
 }
 
+// Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
+// or if it would go past begin() for reverse scan. Starting iterator must not be end() and must
+// point to a record with the target schema
+void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirection) {
+    const String& schema = it->first.schemaName;
+
+    if (!reverseDirection) {
+        ++it;
+        if (it != _indexer.end() && it->first.schemaName != schema) {
+            it = _indexer.end();
+        }
+
+        return;
+    }
+
+    if (it == _indexer.begin()) {
+        it = _indexer.end();
+    } else {
+        --it;
+
+        if (it->first.schemaName != schema) {
+            it = _indexer.end();
+        }
+    }
+}
+
+// Helper for handleQuery. Returns an iterator to start the scan at, accounting for
+// desired schema and (eventually) reverse direction scan
+IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey) {
+    auto key_it = _indexer.lower_bound(start);
+
+    // For reverse direction scan, key_it may not be in range because of how lower_bound works, so fix that here.
+    // IF start key is empty, it means this reverse scan start from end of table OR 
+    //      if lower_bound returns a _indexer.end(), it also means reverse scan should start from end of table;
+    // ELSE IF lower_bound returns a key equal to start AND exclusiveKey is true, reverse advance key_it once;
+    // ELSE IF lower_bound returns a key bigger than start, find the first key not bigger than start;
+    if (reverse) {
+        if (start.partitionKey == "" || key_it == _indexer.end()) {
+            key_it = (++_indexer.rbegin()).base();
+        } else if (key_it->first == start && exclusiveKey) {
+            _scanAdvance(key_it, reverse);
+        } else if (key_it->first > start) {
+            while (key_it->first > start) {
+                _scanAdvance(key_it, reverse);
+            }
+        }
+    }
+
+    if (key_it != _indexer.end() && key_it->first.schemaName != start.schemaName) {
+        key_it = _indexer.end();
+    }
+
+    return key_it;
+}
+
+// Helper for handleQuery. Checks to see if the indexer scan should stop.
+bool K23SIPartitionModule::_isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request,
+                                       size_t response_size) {
+    if (it == _indexer.end()) {
+        return true;
+    } else if (!request.reverseDirection && it->first >= request.endKey &&
+               request.endKey.partitionKey != "") {
+        return true;
+    } else if (request.reverseDirection && it->first <= request.endKey) {
+        return true;
+    } else if (request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) {
+        return true;
+    } else if (response_size == _config.paginationLimit()) {
+        return true;
+    }
+
+    return false;
+}
+
+// Helper for handleQuery. Returns continuation token (aka response.nextToScan)
+dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
+                    const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response, size_t response_size) {
+    // Three cases where scan is for sure done:
+    // 1. Record limit is reached
+    // 2. Iterator is not end() but is >= user endKey
+    // 3. Iterator is at end() and partition bounds contains endKey
+    // This also works around seastars lack of operators on the string type    
+    if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
+        // Test for past user endKey:
+        (it != _indexer.end() &&
+            (request.reverseDirection ? it->first <= request.endKey : it->first >= request.endKey && request.endKey.partitionKey != "")) ||
+        // Test for partition bounds contains endKey and we are at end()
+        (it == _indexer.end() &&
+            (request.reverseDirection ?
+            _partition().startKey < request.endKey.partitionKey :
+            request.endKey.partitionKey < _partition().endKey && request.endKey.partitionKey != "")) ||
+        (it == _indexer.end() &&
+            (request.reverseDirection ?
+            request.endKey.partitionKey == _partition().startKey :
+            request.endKey.partitionKey == _partition().endKey))) {
+        return dto::Key();
+    }
+    else if (it != _indexer.end()) {
+        // This is the paginated case
+        response.exclusiveToken = false;
+        return it->first;
+    }
+
+    // This is the multi-partition case
+    if (request.reverseDirection) {
+        response.exclusiveToken = true;
+        return dto::Key {
+            request.key.schemaName,
+            _partition().startKey,
+            ""
+        };
+    } else {
+        response.exclusiveToken = false;
+        return dto::Key {
+            request.key.schemaName,
+            _partition().endKey,
+            ""
+        };
+    }
+}
+
+// Makes the SKVRecord and applies the request's filter to it. If the returned Status is not OK,
+// the caller should return the status in the query response. Otherwise bool in tuple is whether 
+// the filter passed
+std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryRequest& request, 
+                                                              dto::SKVRecord::Storage& storage) {
+    // We know the schema name exists because it is validated at the beginning of handleQuery
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    auto versionIt = schemaIt->second.find(storage.schemaVersion);
+    if (versionIt == schemaIt->second.end()) {
+        return std::make_tuple(dto::K23SIStatus::OperationNotAllowed(
+            "Schema version of found record does not exist"), false);
+    }
+
+    dto::SKVRecord record(request.collectionName, versionIt->second);
+    record.storage = storage.share();
+    bool keep = false;
+    Status status = dto::K23SIStatus::OK("");
+
+    try {
+        keep = request.filterExpression.evaluate(record);
+    }
+    catch(dto::NoFieldFoundException&) {}
+    catch(dto::TypeMismatchException&) {}
+    catch (dto::DeserializationError&) {
+        status = dto::K23SIStatus::OperationNotAllowed("DeserializationError in query filter");
+    }
+    catch (dto::InvalidExpressionException&) {
+        status = dto::K23SIStatus::OperationNotAllowed("InvalidExpression in query filter");
+    }
+
+    return std::make_tuple(std::move(status), keep);
+}
+
+seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
+K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline) {
+    K2DEBUG("Partition: " << _partition << ", received query " << request);
+
+    Status validateStatus = _validateReadRequest(request);
+    if (!validateStatus.is2xxOK()) {
+        return RPCResponse(std::move(validateStatus), dto::K23SIQueryResponse{});
+    }
+    if (_partition.getHashScheme() != dto::HashScheme::Range) {
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("Query not implemented for hash partitioned collection"), dto::K23SIQueryResponse{});
+    }
+
+    IndexerIterator key_it = _initializeScan(request.key, request.reverseDirection, request.exclusiveKey);
+
+    for (; !_isScanDone(key_it, request, response.results.size());
+                        _scanAdvance(key_it, request.reverseDirection)) {
+        auto& versions = key_it->second;
+        auto viter = versions.begin();
+        // position the version iterator at the version we should be returning
+        while(viter != versions.end() && request.mtr.timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
+            ++viter;
+        }
+        if (viter == versions.end()) {
+            // happy case: we either had no versions, or all versions were newer than the requested timestamp
+            continue;
+        }
+
+        // happy case: either committed, or txn is reading its own write
+        if (viter->status == dto::DataRecord::Committed || viter->txnId.mtr == request.mtr) {
+            if (!viter->isTombstone) {
+                auto [status, keep] = _doQueryFilter(request, viter->value);
+                if (!status.is2xxOK()) {
+                    return RPCResponse(std::move(status), dto::K23SIQueryResponse{});
+                }
+                if (!keep) {
+                    continue;
+                }
+
+                // apply projection if the user call addProjection
+                if (request.projection.size() == 0) {
+                    // want all fields 
+                    response.results.push_back(viter->value.share());
+                } else {
+                    // serialize partial SKVRecord according to projection
+                    dto::SKVRecord::Storage storage;
+                    bool success = _makeProjection(viter->value, request, storage);
+                    if (!success) {
+                        K2WARN("Error making projection!");
+                        return RPCResponse(dto::K23SIStatus::InternalError("Error making projection"), 
+                                                dto::K23SIQueryResponse{});
+                    }
+                    response.results.push_back(std::move(storage));
+                }
+            }
+
+            continue;
+        }
+
+        // If we get here it is a conflict, first decide to push or return early
+        if (response.results.size() >= _config.queryPushLimit()) {
+            break;
+        }
+
+        // Do a push but we need to save our place in the query
+        // TODO we can test the filter condition against the WI and last committed version and possibly
+        // avoid a push
+        // Must update read cache before doing an async operation
+        request.reverseDirection ?
+            _readCache->insertInterval(key_it->first, request.key, request.mtr.timestamp) :
+            _readCache->insertInterval(request.key, key_it->first, request.mtr.timestamp);
+
+        K2DEBUG("About to PUSH in query request");
+        return _doPush(request.collectionName, viter->txnId, request.mtr, deadline)
+        .then([this, curKey=key_it->first, sitMTR=viter->txnId.mtr, request=std::move(request),
+                        resp=std::move(response), deadline](auto&& winnerMTR) mutable {
+            if (winnerMTR == sitMTR) {
+                // sitting transaction won. Abort the incoming request
+                return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in query push"), dto::K23SIQueryResponse{});
+            }
+            // incoming request won. re-run query logic after removing WI if necessary
+            auto& wi_versions = _indexer.find(curKey)->second;
+            if (wi_versions.size() > 0 && wi_versions.front().status == dto::DataRecord::WriteIntent) {
+                wi_versions.pop_front();
+            }
+            request.key = curKey;
+            return handleQuery(std::move(request), std::move(resp), deadline);
+        });
+    }
+
+    // Read cache update block
+    dto::Key endInterval;
+    if (key_it == _indexer.end()) {
+        // For forward direction we need to lock the whole range of the schema, which we do
+        // by appending a character, which may overshoot the range but is correct
+        endInterval.schemaName = request.reverseDirection ? request.key.schemaName : request.key.schemaName + "a";
+        endInterval.partitionKey = "";
+        endInterval.rangeKey = "";
+    } else {
+        endInterval = key_it->first;
+    }
+    request.reverseDirection ?
+        _readCache->insertInterval(endInterval, request.key, request.mtr.timestamp) :
+        _readCache->insertInterval(request.key, endInterval, request.mtr.timestamp);
+
+
+    response.nextToScan = _getContinuationToken(key_it, request, response, response.results.size());
+    K2DEBUG("nextToScan: " << response.nextToScan << ", exclusiveToken: " << response.exclusiveToken);
+    return RPCResponse(dto::K23SIStatus::OK("Query success"), std::move(response));
+}
+
 seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
 K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received read " << request);
@@ -234,8 +505,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     K2ASSERT(sitMTR == viter->txnId.mtr, "bug in code: found WI after push");
     K2ASSERT(viter == versions.begin(), "must be at newest version if we found a write intent")
 
-    // remove the WI from cache and queue it up for cleanup
-    _queueWICleanup(std::move(*viter));
+    // remove the WI from cache
     versions.pop_front();
     return _makeReadOK(versions.begin() == versions.end() ? nullptr : &(versions[0]));
 }
@@ -279,6 +549,316 @@ bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest& request, 
     K2DEBUG("Partition: " << _partition << ", stale write check passed for key " << request.key);
     return true;
 }
+
+std::size_t K23SIPartitionModule::_findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype) {
+    std::size_t fieldNumber = -1;
+    for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+        if (schema.fields[i].name == fieldName && schema.fields[i].type == fieldtype) {
+            return i;
+        }
+    }
+    return fieldNumber;
+}
+
+template <typename T>
+void _advancePayloadPosition(const dto::SchemaField& field, Payload& payload, bool& success) {
+    (void) field;
+    T value{};
+    success = payload.read(value);
+}
+
+template <typename T>
+void _copyPayloadBaseToUpdate(const dto::SchemaField& field, Payload& base, Payload& update, bool& success) {
+    (void) field;
+    T value{};
+    success = base.read(value);
+    if (!success) {
+        return;
+    }
+
+    update.write(value);
+}
+
+template <typename T>
+void _getNextPayloadOffset(const dto::SchemaField& field, Payload& base, uint32_t baseCursor, 
+                           std::vector<uint32_t>& fieldsOffset, bool& success) {
+    (void) field;
+    (void) base;
+    uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(T);
+    fieldsOffset.push_back(tmpOffset);
+    success = true;
+}
+
+template <>
+void _getNextPayloadOffset<String>(const dto::SchemaField& field, Payload& base, uint32_t baseCursor, 
+                           std::vector<uint32_t>& fieldsOffset, bool& success) {
+    (void) field;
+    uint32_t strLen;
+    base.seek(fieldsOffset[baseCursor]);
+    success = base.read(strLen); 
+    if (!success) return;
+    uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint32_t) + strLen; // uint32_t for length; '\0' doesn't count
+    fieldsOffset.push_back(tmpOffset);
+}
+
+bool K23SIPartitionModule::_isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate) {
+    for(std::size_t i = 0; i < fieldsForPartialUpdate.size(); ++i) {
+        if (fieldIdx == fieldsForPartialUpdate[i]) return true;
+    }
+    return false;
+}
+
+bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version) {
+    Payload basePayload = version.value.fieldData.shareAll();   // base payload
+    Payload payload(Payload::DefaultAllocator);                     // payload for new record
+
+    for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+        if (_isUpdatedField(i, request.fieldsForPartialUpdate)) {
+            // this field is updated
+            if (request.value.excludedFields[i] == 0 &&
+                    (version.value.excludedFields.empty() || version.value.excludedFields[i] == 0)) {
+                // Request's payload has new value, AND
+                // base payload also has this field (empty()==true indicate that base payload contains every fields).
+                // Then use 'req' payload, at the mean time _advancePosition of base payload.
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], request.value.fieldData, payload, success);
+                if (!success) return false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], basePayload, success);
+                if (!success) return false;
+            } else if (request.value.excludedFields[i] == 0 &&
+                    (!version.value.excludedFields.empty() && version.value.excludedFields[i] == 1)) {
+                // Request's payload has new value, AND
+                // base payload skipped this field.
+                // Then use 'req' value, do not _advancePosition of base payload.
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], request.value.fieldData, payload, success);
+                if (!success) return false;
+            } else if (request.value.excludedFields[i] == 1 &&
+                    (version.value.excludedFields.empty() || version.value.excludedFields[i] == 0)) {
+                // Request's payload skipped this value(means the field is updated to NULL), AND
+                // base payload has this field.
+                // Then exclude this field, at the mean time _advancePosition of base payload.
+                request.value.excludedFields[i] = true;
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], basePayload, success);
+                if (!success) return false;
+            } else {
+                // Request's payload skipped this value, AND base payload also skipped this field.
+                // set excludedFields[i]
+                request.value.excludedFields[i] = true;
+            }
+        } else {
+            // this field is NOT updated
+            if (request.value.excludedFields[i] == 0 &&
+                    (version.value.excludedFields.empty() || version.value.excludedFields[i] == 0)) {
+                // Request's payload contains this field, AND
+                // base SKVRecord also has value of this field.
+                // copy 'base skvRecord' value, at the mean time _advancePosition of 'req' payload.
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                if (!success) return false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                if (!success) return false;
+            } else if (request.value.excludedFields[i] == 0 &&
+                    (!version.value.excludedFields.empty() && version.value.excludedFields[i] == 1)) {
+                // Request's payload contains this field, AND
+                // base SKVRecord do NOT has this field.
+                // skip this field, at the mean time _advancePosition of 'req' payload.
+                request.value.excludedFields[i] = true;
+                bool success;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                if (!success) return false;
+            } else if (request.value.excludedFields[i] == 1 &&
+                    (version.value.excludedFields.empty() || version.value.excludedFields[i] == 0)) {
+                // Request's payload do NOT contain this field, AND
+                // base SKVRecord has value of this field.
+                // copy 'base skvRecord' value.
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                if (!success) return false;
+                request.value.excludedFields[i] = false;
+            } else {
+                // else, request payload skipped this field, AND base SKVRecord also skipped this field,
+                // set excludedFields[i]
+                request.value.excludedFields[i] = true;
+            }
+        }
+    }
+
+    request.value.fieldData = std::move(payload);
+    request.value.fieldData.truncateToCurrent();
+    return true;
+}
+
+bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIWriteRequest& request, dto::DataRecord& version) {
+    std::size_t findField; // find field index of base SKVRecord
+    std::vector<uint32_t> fieldsOffset(1); // every fields offset of base SKVRecord
+    std::size_t baseCursor = 0; // indicate fieldsOffset cursor
+
+    Payload basePayload = version.value.fieldData.shareAll();   // base payload
+    Payload payload(Payload::DefaultAllocator);                     // payload for new record
+
+    // make every fields in schema for new full-record-WI
+    for (std::size_t i = 0; i < schema.fields.size(); ++i) {
+        findField = -1;
+        if (!_isUpdatedField(i, request.fieldsForPartialUpdate)) {
+            // if this field is NOT updated, payload value comes from base SKVRecord.
+            findField = _findField(baseSchema, schema.fields[i].name, schema.fields[i].type);
+            if (findField == (std::size_t)-1) {
+                return false; // if do not find any field, Error return
+            }
+
+            // Each field's offset whose index is lower than baseCursor is save in the fieldsOffset
+            if (findField < baseCursor) {
+                if (request.value.excludedFields[i] == false) {
+                    bool success;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                    if (!success) return false;
+                }
+                if (version.value.excludedFields.empty() || version.value.excludedFields[findField] == false) {
+                    // copy value from base
+                    basePayload.seek(fieldsOffset[findField]);
+                    bool success = false;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                    if (!success) return false;
+                    request.value.excludedFields[i] = false;
+                } else {
+                    // set excludedFields==true
+                    request.value.excludedFields[i] = true;
+                }
+            } else {
+                // 1. save offsets in 'fieldsOffset' from baseCursor to findField according to base SKVRecord;
+                // note: add offset only if excludedField[i]==false.
+                // 2. write 'findField' value from base SKVRecord to payload to make full-record-WI;
+                // 3. baseCursor = findField + 1;
+                for (; baseCursor <= findField; ++baseCursor) {
+                    if (version.value.excludedFields.empty() || version.value.excludedFields[baseCursor] == false) {
+                        bool success = false;
+                        K2_DTO_CAST_APPLY_FIELD_VALUE(_getNextPayloadOffset, baseSchema.fields[baseCursor], 
+                                                      basePayload, baseCursor, fieldsOffset, success);
+                        if (!success) return false;
+                    } else {
+                        fieldsOffset.push_back(fieldsOffset[baseCursor]);
+                    }
+                }
+
+                if (request.value.excludedFields[i] == false) {
+                    bool success;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], request.value.fieldData, success);
+                    if (!success) return false;
+                }
+                if (version.value.excludedFields.empty() || version.value.excludedFields[findField] == false) {
+                    // copy value from base
+                    basePayload.seek(fieldsOffset[findField]);
+                    bool success = false;
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], basePayload, payload, success);
+                    if (!success) return false;
+                    request.value.excludedFields[i] = false;
+                } else {
+                    // set excludedFields[i]=true
+                    request.value.excludedFields[i] = true;
+                }
+
+                baseCursor = findField + 1;
+            }
+        } else {
+            // this field is to be updated.
+            if (request.value.excludedFields[i] == false) {
+                // request's payload has a value.
+                // 1. write() value from req's SKVRecord to payload
+                bool success = false;
+                K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], request.value.fieldData, payload, success);
+                if (!success) return false;
+            } else {
+                // request's payload skips this field
+                // 1. set excludedField
+                request.value.excludedFields[i] = true;
+            }
+        }
+    }
+
+    request.value.fieldData = std::move(payload);
+    request.value.fieldData.truncateToCurrent();
+    return true;
+}
+
+bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous) {
+    // We already know the schema version exists because it is validated at the begin of handleWrite
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    auto schemaVer = schemaIt->second.find(request.value.schemaVersion);
+    dto::Schema& schema = *(schemaVer->second);
+
+    if (!request.value.excludedFields.size()) {
+        request.value.excludedFields = std::vector<bool>(schema.fields.size(), false);
+    }
+
+    // based on the latest version to construct the new SKVRecord
+    if (request.value.schemaVersion == previous.value.schemaVersion) {
+        // quick path --same schema version.
+        // make every fields in schema for new SKVRecord
+        if(!_makeFieldsForSameVersion(schema, request, previous)) {
+            return false;
+        }
+    } else {
+        // slow path --different schema version.
+        auto latestSchemaVer = schemaIt->second.find(previous.value.schemaVersion);
+        if (latestSchemaVer == schemaIt->second.end()) {
+            return false;
+        }
+        dto::Schema& baseSchema = *(latestSchemaVer->second);
+
+        if (!_makeFieldsForDiffVersion(schema, baseSchema, request, previous)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, 
+        dto::SKVRecord::Storage& projectionRec) {
+    auto schemaIt = _schemas.find(request.key.schemaName);
+    auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
+    dto::Schema& schema = *(schemaVer->second);
+    std::vector<bool> excludedFields(schema.fields.size(), true);   // excludedFields for projection
+    Payload projectedPayload(Payload::DefaultAllocator);                     // payload for projection
+
+    for (uint32_t i = 0; i < schema.fields.size(); ++i) {
+        std::vector<k2::String>::iterator fieldIt;
+        fieldIt = std::find(request.projection.begin(), request.projection.end(), schema.fields[i].name);
+        if (fieldIt == request.projection.end()) {
+            // advance base payload
+            bool success = false;
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], fullRec.fieldData, 
+                                          success);
+            if (!success) {
+                fullRec.fieldData.seek(0);
+                return false;
+            }
+            excludedFields[i] = true;
+        } else {
+            // write field value into payload
+            bool success = false;
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], fullRec.fieldData, 
+                                          projectedPayload, success);
+            if (!success) {
+                fullRec.fieldData.seek(0);
+                return false;
+            }
+            excludedFields[i] = false;
+        }
+    }
+    
+    // set cursor(0) of base payload
+    fullRec.fieldData.seek(0);
+
+    projectionRec.excludedFields = std::move(excludedFields);
+    projectionRec.fieldData = std::move(projectedPayload);
+    projectionRec.fieldData.truncateToCurrent();
+    projectionRec.schemaVersion = fullRec.schemaVersion;
+    return true;
+}
+
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
 K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
@@ -324,6 +904,10 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
     }
 
     auto& versions = _indexer[request.key];
+<<<<<<< HEAD
+=======
+    // in this situation, return AbortRequestTooOld error.
+>>>>>>> origin/master
     if (!_validateStaleWrite(request, versions)) {
         K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIWriteResponse{});
@@ -337,7 +921,6 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         if (sitMTR == rec.txnId.mtr) {
             K2DEBUG("Partition: " << _partition << ", post-push winner for key " << request.key);
             // this is a post-PUSH request which won over the siting WI and we still have the WI in cache
-            _queueWICleanup(std::move(rec));
             versions.pop_front();
         }
         else if (rec.txnId.mtr != rqmtr) {
@@ -357,6 +940,24 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
                     return handleWrite(std::move(request), sitMTR, deadline);
                 });
         }
+    }
+
+    if (request.fieldsForPartialUpdate.size() > 0) {
+        // parse the partial record to full record
+        if ( !versions.size() || versions[0].isTombstone) {
+            // cannot parse partial record without a version
+            return RPCResponse(dto::K23SIStatus::KeyNotFound("can not partial update with no/deleted version"), dto::K23SIWriteResponse{});
+        }
+        if (!_parsePartialRecord(request, versions[0])) {
+            K2DEBUG("Partition: " << _partition << ", can not parse partial record for key " << request.key);
+            versions[0].value.fieldData.seek(0);
+            return RPCResponse(dto::K23SIStatus::BadParameter("missing fields or can not interpret partialUpdate"), dto::K23SIWriteResponse{});
+        }
+    }
+
+    // Clean up if req and WI are in the same transaction
+    if (versions.size() > 0 && versions[0].txnId.mtr == request.mtr) {
+        versions.pop_front();
     }
 
     // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
@@ -514,10 +1115,6 @@ K23SIPartitionModule::_doPush(String collectionName, dto::TxnId sitTxnId, dto::K
     });
 }
 
-void K23SIPartitionModule::_queueWICleanup(dto::DataRecord&& rec) {
-    dto::DataRecord(std::move(rec)); // move the record here so that we can drop it
-}
-
 seastar::future<>
 K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions) {
     K2DEBUG("Partition: " << _partition << ", creating WI: " << request);
@@ -620,7 +1217,7 @@ K23SIPartitionModule::handlePushSchema(dto::K23SIPushSchemaRequest&& request) {
         return RPCResponse(Statuses::S403_Forbidden("Collection names in partition and request do not match"), dto::K23SIPushSchemaResponse{});
     }
 
-    _schemas[request.schema.name][request.schema.version] = std::move(request.schema);
+    _schemas[request.schema.name][request.schema.version] = std::make_shared<dto::Schema>(request.schema);
 
     return RPCResponse(Statuses::S200_OK("push schema success"), dto::K23SIPushSchemaResponse{});
 }

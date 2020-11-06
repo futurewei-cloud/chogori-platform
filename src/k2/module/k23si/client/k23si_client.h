@@ -46,6 +46,12 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
+struct K23SIClientException : public std::exception {
+    String what_str;
+    K23SIClientException(String s) : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override{ return what_str.c_str();}
+};
+
 class K2TxnOptions{
 public:
     K2TxnOptions() noexcept :
@@ -171,9 +177,9 @@ private:
 
         return makeReadRequest(record);
     }
-       
-    std::unique_ptr<dto::K23SIPartialUpdateRequest> makePartialUpdateRequest(dto::SKVRecord& record, 
-            std::vector<uint32_t> fieldsToUpdate);
+
+    std::unique_ptr<dto::K23SIWriteRequest> makePartialUpdateRequest(dto::SKVRecord& record,
+            std::vector<uint32_t> fieldsForPartialUpdate);
 
     void prepareQueryRequest(Query& query);
 
@@ -186,7 +192,7 @@ public:
     template <class T>
     seastar::future<ReadResult<T>> read(T record) {
         if (!_valid) {
-            return seastar::make_exception_future<ReadResult<T>>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<ReadResult<T>>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
@@ -240,7 +246,7 @@ public:
     template <class T>
     seastar::future<WriteResult> write(T& record, bool erase=false) {
         if (!_valid) {
-            return seastar::make_exception_future<WriteResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<WriteResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
@@ -280,28 +286,28 @@ public:
 
     template <typename T1>
     seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName) {
-        std::vector<uint32_t> fieldsToUpdate;
+        std::vector<uint32_t> fieldsForPartialUpdate;
         bool find = false;
         for (std::size_t i = 0; i < fieldsName.size(); ++i) {
             find = false;
             for (std::size_t j = 0; j < record.schema->fields.size(); ++j) {
                 if (fieldsName[i] == record.schema->fields[j].name) {
-                    fieldsToUpdate.push_back(j);
+                    fieldsForPartialUpdate.push_back(j);
                     find = true;
                     break;
                 }
             }
             if (find == false) return seastar::make_ready_future<PartialUpdateResult>(
-                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsToUpdate")) );
+                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsForPartialUpdate")) );
         }
 
-        return partialUpdate(record, fieldsToUpdate);
+        return partialUpdate(record, fieldsForPartialUpdate);
     }
 
     template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<uint32_t> fieldsToUpdate) {
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<uint32_t> fieldsForPartialUpdate) {
         if (!_valid) {
-            return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("Invalid use of K2TxnHandle"));
+            return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status));
@@ -309,27 +315,27 @@ public:
         _client->write_ops++;
         _ongoing_ops++;
 
-        std::unique_ptr<dto::K23SIPartialUpdateRequest> request = nullptr;
+        std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T1, dto::SKVRecord>()) {
-            request = makePartialUpdateRequest(record, fieldsToUpdate);
+            request = makePartialUpdateRequest(record, fieldsForPartialUpdate);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = makePartialUpdateRequest(skv_record, fieldsToUpdate);
+            request = makePartialUpdateRequest(skv_record, fieldsForPartialUpdate);
         }
         if (request == nullptr) {
             return seastar::make_ready_future<PartialUpdateResult> (
                     PartialUpdateResult(dto::K23SIStatus::BadParameter("error makePartialUpdateRequest()")) );
         }
-        
+
         return _cpo_client->PartitionRequest
-            <dto::K23SIPartialUpdateRequest, dto::K23SIPartialUpdateResponse, dto::Verbs::K23SI_PARTIAL_UPDATE>
+            <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
             then([this] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
-        
+
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
@@ -337,11 +343,11 @@ public:
                     makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
-        
+
                 return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
             }).finally([r = std::move(request)] () { (void) r; });
     }
-    
+
     seastar::future<WriteResult> erase(SKVRecord& record);
 
     // Get one set of paginated results for a query. User may need to call again with same query

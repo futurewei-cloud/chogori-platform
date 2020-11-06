@@ -62,7 +62,7 @@ struct Key {
     K2_PAYLOAD_FIELDS(schemaName, partitionKey, rangeKey);
 
     friend std::ostream& operator<<(std::ostream& os, const Key& key) {
-        return os << "{schema= " << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
+        return os << "{schema=" << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
     }
 };
 
@@ -242,7 +242,7 @@ public:
 
     // Returns the partition and preferred endpointfor the given key.
     // Hashes key if hashScheme is not range
-    PartitionWithEndpoint& getPartitionForKey(const Key& key);
+    PartitionWithEndpoint& getPartitionForKey(const Key& key, bool reverse=false, bool exclusiveKey=false);
 
     Collection collection;
 
@@ -277,7 +277,7 @@ private:
 class OwnerPartition {
 public:
     OwnerPartition(Partition&& part, HashScheme scheme);
-    bool owns(const Key& key) const;
+    bool owns(const Key& key, const bool reverse = false) const;
     Partition& operator()() { return _partition; }
     const Partition& operator()() const { return _partition; }
     HashScheme getHashScheme() { return _scheme; }

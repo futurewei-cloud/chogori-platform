@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
+#include <decimal/decimal>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -176,6 +177,10 @@ public:  // Read API
     // read a string
     bool read(String& value);
 
+    // read primitive decimal types
+    bool read(std::decimal::decimal64& value);
+    bool read(std::decimal::decimal128& value);
+
     // read into a payload
     bool read(Payload& other);
 
@@ -185,7 +190,7 @@ public:  // Read API
     template<typename T>
     bool read(SerializeAsPayload<T>& value) {
         // if the embedded type is a Payload, then just use the payload write to write it directly
-        if (std::is_same<T, Payload>::value) {
+        if constexpr(std::is_same<T, Payload>::value) {
             return read(value.val);
         }
         uint64_t size = 0;
@@ -338,6 +343,10 @@ public: // Write API
     // write a string
     void write(const String& value);
 
+    // write primitive decimal types
+    void write(const std::decimal::decimal64& value);
+    void write(const std::decimal::decimal128& value);
+
     // write another Payload
     void write(const Payload& other);
 
@@ -404,7 +413,7 @@ public: // Write API
     template<typename T>
     void write(const SerializeAsPayload<T>& value) {
         // if the embedded type is a Payload, then just use the payload write to write it directly
-        if (std::is_same<T, Payload>::value || std::is_same<T, const Payload>::value) {
+        if constexpr(std::is_same<T, Payload>::value || std::is_same<T, const Payload>::value) {
             write(value.val);
             return;
         }

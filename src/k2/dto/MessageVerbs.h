@@ -64,7 +64,6 @@ enum Verbs : k2::Verb {
     // sent to finalize a K23SI write
     K23SI_TXN_FINALIZE,
     K23SI_PUSH_SCHEMA,
-    K23SI_PARTIAL_UPDATE,
     K23SI_QUERY,
 
     /************ K23SI Persistence *****************/

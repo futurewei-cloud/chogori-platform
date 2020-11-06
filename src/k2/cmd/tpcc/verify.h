@@ -45,10 +45,10 @@ public:
 
 private:
     struct ToCompare {
-        float w_ytd;
-        float d_ytd;
-        float c_ytd;
-        float c_balance;
+        std::decimal::decimal64 w_ytd;
+        std::decimal::decimal64 d_ytd;
+        std::decimal::decimal64 c_ytd;
+        std::decimal::decimal64 c_balance;
         uint16_t c_payments;
     };
 
@@ -156,7 +156,8 @@ private:
 
     // Consistency condition 1 of spec
     future<> verifyWarehouseYTD() {
-        return do_with((uint32_t)0, (uint16_t)1, [this] (uint32_t& total, uint16_t& cur_d_id) {
+        return do_with((std::decimal::decimal64)0, (int16_t)1, 
+            [this] (std::decimal::decimal64& total, int16_t& cur_d_id) {
             return do_until(
                     [this, &cur_d_id] () { return cur_d_id > _districts_per_warehouse(); },
                     [this, &cur_d_id, &total] () {
@@ -173,8 +174,11 @@ private:
                 return _txn.read<Warehouse>(Warehouse(_cur_w_id))
                 .then([this, &total] (auto&& result) {
                     CHECK_READ_STATUS(result);
-                    uint32_t w_total = *(result.value.YTD);
-                    K2INFO("YTD consistency, w_total: " << w_total << " total: " << total);
+                    std::decimal::decimal64 w_total = *(result.value.YTD);
+                    double w_display = std::decimal::decimal64_to_double(w_total);
+                    double total_display = std::decimal::decimal64_to_double(total);
+                    K2INFO("YTD consistency (WARNING: displayed values may not match due to conversion \
+                            of decimal type, w_total: " << w_display << " total: " << total_display);
                     K2ASSERT(w_total == total, "Warehouse and district YTD totals did not match!");
                     return make_ready_future<>();
                 });
