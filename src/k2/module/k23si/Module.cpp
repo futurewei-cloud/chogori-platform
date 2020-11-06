@@ -1,15 +1,11 @@
 /*
 MIT License
-
 Copyright(c) 2020 Futurewei Cloud
-
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
-
     The above copyright notice and this permission notice shall be included in all copies
     or
     substantial portions of the Software.
-
     THE SOFTWARE IS PROVIDED "AS IS",
     WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
@@ -128,23 +124,15 @@ seastar::future<> K23SIPartitionModule::start() {
         _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
     }
 
-    K2INFO("CPO URL " << _config.cpoEndpoint() <<" ClusterName " << _config.persistenceClusrerName());
-    return _logstream.init(_config.cpoEndpoint(), _config.persistenceClusrerName())
-    .then([this] (){
-        String logstreamName = "Hello";
-        return _logstream.create(logstreamName);
-    })
-    .then([this] (){
-        // todo call TSO to get a timestamp
-        return getTimeNow();
-    })
-    .then([this](dto::Timestamp&& watermark) {
-        K2DEBUG("Cache watermark: " << watermark << ", period=" << _cmeta.retentionPeriod);
-        _retentionTimestamp = watermark - _cmeta.retentionPeriod;
-        _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
-        _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
-        return seastar::when_all_succeed(_recovery(), _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline)).discard_result();
-    });
+    // todo call TSO to get a timestamp
+    return getTimeNow()
+        .then([this](dto::Timestamp&& watermark) {
+            K2DEBUG("Cache watermark: " << watermark << ", period=" << _cmeta.retentionPeriod);
+            _retentionTimestamp = watermark - _cmeta.retentionPeriod;
+            _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
+            _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
+            return seastar::when_all_succeed(_recovery(), _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline)).discard_result();
+        });
 }
 
 K23SIPartitionModule::~K23SIPartitionModule() {
@@ -441,21 +429,10 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
 K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline) {
     K2DEBUG("Partition: " << _partition << ", received read " << request);
-    if (!_validateRequestPartition(request)) {
-        // tell client their collection partition is gone
-        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in read"), dto::K23SIReadResponse{});
-    }
-    if (!_validateRequestParameter(request)){
-        // do not allow empty partition key
-        return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in read"), dto::K23SIReadResponse{});
-    }
-    if (!_validateRetentionWindow(request)) {
-        // the request is outside the retention window
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in read"), dto::K23SIReadResponse{});
-    }
-    if (_schemas.find(request.key.schemaName) == _schemas.end()) {
-        // server does not have schema
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("schema does not exist"), dto::K23SIReadResponse{});
+
+    Status validateStatus = _validateReadRequest(request);
+    if (!validateStatus.is2xxOK()) {
+        return RPCResponse(std::move(validateStatus), dto::K23SIReadResponse{});
     }
 
     // sitMTR will be ZERO for original requests or non-zero for post-PUSH reads
@@ -510,7 +487,8 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR
     return _makeReadOK(versions.begin() == versions.end() ? nullptr : &(versions[0]));
 }
 
-bool K23SIPartitionModule::_validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions) {
+template <typename RequestT>
+bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, std::deque<dto::DataRecord>& versions) {
     if (!_validateRetentionWindow(request)) {
         // the request is outside the retention window
         return false;
@@ -871,7 +849,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         K2DEBUG("Partition: " << _partition << ", failed validation for " << request.key);
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in write"), dto::K23SIWriteResponse{});
     }
-    if (!_validateRequestParameter(request)){
+    if (!_validateRequestPartitionKey(request)){
         // do not allow empty partition key
         return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in write"), dto::K23SIWriteResponse{});
     }
@@ -904,10 +882,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
     }
 
     auto& versions = _indexer[request.key];
-<<<<<<< HEAD
-=======
     // in this situation, return AbortRequestTooOld error.
->>>>>>> origin/master
     if (!_validateStaleWrite(request, versions)) {
         K2DEBUG("Partition: " << _partition << ", request too old for key " << request.key);
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIWriteResponse{});
@@ -961,7 +936,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
     }
 
     // all checks passed - we're ready to place this WI as the latest version(at head of versions deque)
-    return _createWI(std::move(request), versions).then([this]() mutable {
+    return _createWI(std::move(request), versions, deadline).then([this]() mutable {
         K2DEBUG("Partition: " << _partition << ", WI created");
         return RPCResponse(dto::K23SIStatus::Created("wi created"), dto::K23SIWriteResponse{});
     });
@@ -1116,8 +1091,8 @@ K23SIPartitionModule::_doPush(String collectionName, dto::TxnId sitTxnId, dto::K
 }
 
 seastar::future<>
-K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions) {
-    K2DEBUG("Partition: " << _partition << ", creating WI: " << request);
+K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline) {
+    K2DEBUG("Partition: " << _partition << ", Write Request creating WI: " << request);
     dto::DataRecord rec;
     rec.key = std::move(request.key);
     // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
@@ -1128,10 +1103,7 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, std::deque<dto
 
     versions.push_front(std::move(rec));
     // TODO write to WAL
-    Payload payload([] { return Binary(4096); });
-    payload.write(WALRecordType::Create);
-    payload.write(versions.front());
-    return _logstream.write(std::move(payload));
+    return _persistence.makeCall(versions.front(), deadline);
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
@@ -1142,7 +1114,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         // tell client their collection partition is gone
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in finalize"), dto::K23SITxnFinalizeResponse());
     }
-    if (!_validateRequestParameter(request)){
+    if (!_validateRequestPartitionKey(request)){
         // do not allow empty partition key
         return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in finalize"), dto::K23SITxnFinalizeResponse());
     }

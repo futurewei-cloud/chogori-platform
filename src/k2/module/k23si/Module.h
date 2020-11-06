@@ -1,15 +1,11 @@
 /*
 MIT License
-
 Copyright(c) 2020 Futurewei Cloud
-
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
-
     The above copyright notice and this permission notice shall be included in all copies
     or
     substantial portions of the Software.
-
     THE SOFTWARE IS PROVIDED "AS IS",
     WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
@@ -34,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/tso/client/tso_clientlib.h>
-#include <k2/persistence/logStream/LogStream.h>
+
 #include "ReadCache.h"
 #include "TxnManager.h"
 #include "Config.h"
@@ -42,13 +38,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-enum class WALRecordType : uint8_t {
-    OnAction = 0,
-    Create,
-    Aborted,
-    Committed
-};
-
+typedef std::map<dto::Key, std::deque<dto::DataRecord>>::iterator IndexerIterator;
 
 class K23SIPartitionModule {
 public: // lifecycle
@@ -172,7 +162,30 @@ private: // methods
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
-    bool _validateStaleWrite(dto::K23SIWriteRequest& request, std::deque<dto::DataRecord>& versions);
+    template <typename RequestT>
+    bool _validateStaleWrite(const RequestT& req, std::deque<dto::DataRecord>& versions);
+
+    template <class RequestT>
+    Status _validateReadRequest(const RequestT& request) const {
+        if (!_validateRequestPartition(request)) {
+            // tell client their collection partition is gone
+            return dto::K23SIStatus::RefreshCollection("collection refresh needed in read-type request");
+        }
+        if (!_validateRequestPartitionKey(request)){
+            // do not allow empty partition key
+            return dto::K23SIStatus::BadParameter("missing partition key in read-type request");
+        }
+        if (!_validateRetentionWindow(request)) {
+            // the request is outside the retention window
+            return dto::K23SIStatus::AbortRequestTooOld("request too old in read-type request");
+        }
+        if (_schemas.find(request.key.schemaName) == _schemas.end()) {
+            // server does not have schema
+            return dto::K23SIStatus::OperationNotAllowed("schema does not exist in read-type request");
+        }
+
+        return dto::K23SIStatus::OK("");
+    }
 
     // helper method used to create and persist a WriteIntent
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
@@ -252,8 +265,6 @@ private: // members
     Persistence _persistence;
 
     CPOClient _cpo;
-
-    LogStream _logstream;
 
     // get timeNow Timestamp from TSO
     seastar::future<dto::Timestamp> getTimeNow() {
