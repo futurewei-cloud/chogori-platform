@@ -515,6 +515,7 @@ CPOService::handleMetadataLogStreamRegister(dto::MetadataLogStreamRegisterReques
     dto::MetadataElement element{.name=std::move(request.plogId), .offset=0};
     log.push_back(std::move(element));
     _metadataStreamLog[std::move(request.name)] = std::move(log);
+    K2INFO("Register Success!");
     return RPCResponse(Statuses::S201_Created("metadata log creates successfully"), dto::MetadataLogStreamRegisterResponse());
 }
 
@@ -534,8 +535,8 @@ CPOService::handleMetadataLogStreamUpdate(dto::MetadataLogStreamUpdateRequest&& 
 }
 
 seastar::future<std::tuple<Status, dto::MetadataLogStreamGetResponse>>
-CPOService::handleMetadataLogStreamGet(dto::MetadataLogStreamGetRequest&& request){
-    K2INFO("Received metadata log stream get request for " << request.name);
+CPOService::handleMetadataLogStreamGet(dto::MetadataLogStreamGetRequest&& request){  
+    K2INFO("Received metadata log stream get request for " << request.name << " " << _metadataStreamLog.size());
     auto logstream = _metadataStreamLog.find(request.name);
     if (logstream == _metadataStreamLog.end()) {
         return RPCResponse(Statuses::S409_Conflict("metadata log does not exist"), dto::MetadataLogStreamGetResponse());

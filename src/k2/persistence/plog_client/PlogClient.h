@@ -58,8 +58,6 @@ public:
     // allow users to select a specific persistence group by its name
     bool selectPersistenceGroup(String name);
 
-    // return the metadata of a plogId
-    PlogInfo obtainPlogInfo(String plogId);
     // create a plog with retry times
     // TODO: revise this method, making this retry as an internal config variable instead of parameter. 
     seastar::future<std::tuple<Status, String>> create(uint8_t retries = 1);
@@ -96,7 +94,7 @@ private:
     seastar::future<> _getPersistenceCluster(String clusterName, String cpo_url); 
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
-    ConfigDuration _plog_timeout{"plog_timeout", 100ms};
+    ConfigDuration _plog_timeout{"plog_timeout", 1s};
 };
 
 } // k2

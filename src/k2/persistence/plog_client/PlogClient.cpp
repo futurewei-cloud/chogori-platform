@@ -100,7 +100,6 @@ PlogClient::_getPersistenceCluster(String clusterName, String cpo_url){
 seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
     String plogId = _generatePlogId();
     dto::PlogCreateRequest request{.plogId = plogId};
-    
     std::vector<seastar::future<std::tuple<Status, dto::PlogCreateResponse> > > createFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
         createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, _plog_timeout()));
@@ -206,7 +205,7 @@ seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::info
                 if (sealed < response.sealed){
                     sealed = response.sealed;
                 }
-                if (!return_status.is2xxOK()) 
+                if (!return_status.is2xxOK())
                     break;
             }
             return seastar::make_ready_future<std::tuple<Status, std::tuple<uint32_t, bool>> >(std::tuple<Status, std::tuple<uint32_t, bool>>(std::move(return_status), std::make_tuple(std::move(current_offset), std::move(sealed))));
@@ -231,14 +230,5 @@ bool PlogClient::selectPersistenceGroup(String name){
     return true;
 }
 
-PlogInfo PlogClient::obtainPlogInfo(String plogId){
-    std::vector<int> split;
-    for (uint8_t i=0;i<plogId.size();++i)
-        if (plogId[i] == '_'){
-            split.push_back(i);
-        }
-    PlogInfo plog_info{.persistenceClusterName=plogId.substr(split[0]+1, split[1]-split[0]-1),.persistenceGroupName=plogId.substr(split[1]+1, split[2]-split[1]-1),.plogId=std::move(plogId)};
-    return plog_info;
-}
 
 } // k2

@@ -310,7 +310,6 @@ public:
                 status = Statuses::S408_Request_Timeout("Metadata log stream deadline exceeded");
                 return RPCResponse(std::move(status), dto::MetadataLogStreamGetResponse());
             }
-
             return RPCResponse(std::move(status), std::move(k2response));
         });
     }

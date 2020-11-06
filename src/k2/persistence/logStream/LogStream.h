@@ -42,38 +42,42 @@ public:
     LogStream();
     ~LogStream();
 
-    
+    // initializate the plog client it holds
     seastar::future<> init(String cpo_url, String persistenceClusrerName);
 
-    // create a log stream
-    seastar::future<> create();
+    // create a log stream with a given name
+    seastar::future<> create(String logStreamName);
 
     // write data to the log stream
     seastar::future<> write(Payload payload);
 
-    // read data from the log stream
+    // read all the data from this log stream
     seastar::future<std::vector<Payload> > read(String logStreamName);
 
 private:
+    // the maximum size of each plog
+    const static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
+    // How many WAL plogs it will create in advance 
+    const static uint32_t WAL_PLOG_POOL_SIZE = 16;
+    // How many metadata plogs it will create in advance
+    const static uint32_t METADATA_PLOG_POOL_SIZE = 4;
+
     CPOClient _cpo;
     PlogClient _client;
     String _logStreamName;
 
-    std::vector<std::pair<String, uint32_t>> _plogInfo;
-    bool _logStreamCreate = false;
-    
+    std::vector<String> _walPlogPool; // The vector to store the created WAL plog Id
+    std::vector<String> _metadataPlogPool; // the vector to store the created Metadata plog Id
+    std::vector<std::pair<String, uint32_t>> _plogInfo; // _plogInfo[0] means the current metadata Plog Id and offset it holds, while _plogInfo[1] means the current WAL Plog Id and offset it holds,
+    bool _logStreamCreate = false; // Whether this logstream has been created 
 
+    // temporary data structure created for read operation
+    std::vector<dto::MetadataElement> _streamLog; 
+    // write data to the log stream. writeToWAL == 0 means write to the metadata log stream, while writeToWAL == 1 means write to the WAL
     seastar::future<> _write(Payload payload, uint32_t writeToWAL);
-
+    // read the contents from WAL plogs
     seastar::future<std::vector<Payload> > _readContent(std::vector<Payload> payloads);
 
-    // used to properly chain sends
-    seastar::compat::optional<seastar::future<>> _writeFuture;
-
-
-    // generate the log stream name
-    // TODO: change the method to generate the random plog id later
-    String _generateStreamName();
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
 };

@@ -1,5 +1,5 @@
 file(GLOB HEADERS "*.h")
-file(GLOB SOURCES "*.cpp")
+file(GLOB SOURCES "LogStream.cpp")
 
 add_library(log_stream STATIC ${HEADERS} ${SOURCES})
 target_link_libraries (log_stream PRIVATE transport common cpo_client plog_client)

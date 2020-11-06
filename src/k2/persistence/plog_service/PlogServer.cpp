@@ -91,7 +91,6 @@ PlogServer::_handleCreate(dto::PlogCreateRequest&& request){
 
 seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
 PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
-    K2INFO("Received append request for " << request.plogId << " with size" << request.payload.getSize() << " and offset " << request.offset);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogAppendResponse());
@@ -100,7 +99,6 @@ PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
          return RPCResponse(Statuses::S409_Conflict("plog is sealed"), dto::PlogAppendResponse());
     }
     if (iter->second.offset != request.offset){
-        K2INFO("Offset Inconsistent " <<request.plogId<<" "<< iter->second.offset << " " <<request.offset);
         return RPCResponse(Statuses::S403_Forbidden("offset inconsistent"), dto::PlogAppendResponse());
     }
     if (iter->second.offset + request.payload.getSize() > PLOG_MAX_SIZE){
@@ -168,7 +166,6 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
 
 seastar::future<std::tuple<Status, dto::PlogInfoResponse>>
 PlogServer::_handleInfo(dto::PlogInfoRequest&& request){
-    K2DEBUG("Received info request for " << request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogInfoResponse());
