@@ -260,10 +260,8 @@ private:
                     // position n/2 rounded up in the sorted set from CUSTORMER table.
                     if (cIdSort.size()) {
                         std::sort(cIdSort.begin(), cIdSort.end());
-                        std::cout << "{getCIdByLastName} lastname matches! id:" << cIdSort[cIdSort.size() / 2].c_id << std::endl;
                         return make_ready_future<int32_t>(cIdSort[cIdSort.size() / 2].c_id);
                     } else {
-                        std::cout << "{getCIdByLastName} noooooooooooooo lastname! id:" << _c_id << std::endl;
                         return make_ready_future<int32_t>(_c_id); // return _c_id if no lastName matches
                     }
                 });
@@ -610,7 +608,7 @@ private:
                     if (cIdSort.size()) {
                         std::sort(cIdSort.begin(), cIdSort.end());
                         _c_id = cIdSort[cIdSort.size() / 2].c_id;
-                    } 
+                    }
                     
                     return make_ready_future();
                 });
