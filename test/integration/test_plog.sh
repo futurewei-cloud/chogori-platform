@@ -8,7 +8,7 @@ rm -rf ${CPODIR}
 CPO=tcp+k2rpc://0.0.0.0:9000
 
 # start CPO
-./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} 9001 --data_dir ${CPODIR} --prometheus_port 63000 &
+./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} 9001 --data_dir ${CPODIR} --prometheus_port 63000 --assignment_timeout=1s &
 cpo_child_pid=$!
 
 # start plog
