@@ -94,10 +94,13 @@ public:  // application lifespan
             sm::make_counter("completed_txns", _completedTxns, sm::description("Number of completed TPC-C transactions"), labels),
             sm::make_counter("new_order_txns", _newOrderTxns, sm::description("Number of completed New Order transactions"), labels),
             sm::make_counter("payment_txns", _paymentTxns, sm::description("Number of completed Payment transactions"), labels),
+            sm::make_counter("order_status_txns", _orderStatusTxns, sm::description("Number of completed Order Status transactions"), labels),
             sm::make_histogram("new_order_latency", [this]{ return _newOrderLatency.getHistogram();},
                     sm::description("Latency of New Order transactions"), labels),
             sm::make_histogram("payment_latency", [this]{ return _paymentLatency.getHistogram();},
-                    sm::description("Latency of Payment transactions"), labels)
+                    sm::description("Latency of Payment transactions"), labels),
+            sm::make_histogram("order_status_latency", [this]{ return _orderStatusLatency.getHistogram();},
+                    sm::description("Latency of Order Status transactions"), labels)
 
         });
     }
@@ -266,6 +269,9 @@ private:
                     if (txn_type <= 43) {
                         _paymentTxns++;
                         _paymentLatency.add(dur);
+                    } else if (txn_type <= 47) {
+                        _orderStatusTxns++;
+                        _orderStatusLatency.add(dur);
                     } else {
                         _newOrderTxns++;
                         _newOrderLatency.add(dur);
@@ -334,9 +340,11 @@ private:
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _newOrderLatency;
     k2::ExponentialHistogram _paymentLatency;
+    k2::ExponentialHistogram _orderStatusLatency;
     uint64_t _completedTxns{0};
     uint64_t _newOrderTxns{0};
     uint64_t _paymentTxns{0};
+    uint64_t _orderStatusTxns{0};
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
 }; // class Client

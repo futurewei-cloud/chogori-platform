@@ -97,39 +97,40 @@ private:
     future<bool> runWithTxn() {
         future<> warehouse_update = warehouseUpdate();
         future<> district_update = districtUpdate();
-        future<> customer_update = customerUpdate();
+        future<> CId_get = getCIdByLastName();
 
-        future<> history_update = when_all_succeed(std::move(warehouse_update), std::move(district_update))
+        return when_all_succeed(std::move(warehouse_update), std::move(district_update), std::move(CId_get))
         .then([this] () {
-            return historyUpdate();
-        });
+            future<> history_update = historyUpdate();
+            future<> customer_update = customerUpdate();
 
-        return when_all_succeed(std::move(customer_update), std::move(history_update))
-        .then_wrapped([this] (auto&& fut) {
-            if (fut.failed()) {
-                _failed = true;
+            return when_all_succeed(std::move(customer_update), std::move(history_update))
+            .then_wrapped([this] (auto&& fut) {
+                if (fut.failed()) {
+                    _failed = true;
+                    fut.ignore_ready_future();
+                    return _txn.end(false);
+                }
+
                 fut.ignore_ready_future();
-                return _txn.end(false);
-            }
+                K2DEBUG("Payment txn finished");
 
-            fut.ignore_ready_future();
-            K2DEBUG("Payment txn finished");
+                return _txn.end(!_abort);
+            }).then_wrapped([this] (auto&& fut) {
+                if (fut.failed()) {
+                    _failed = true;
+                    fut.ignore_ready_future();
+                    return make_ready_future<bool>(false);
+                }
 
-            return _txn.end(!_abort);
-        }).then_wrapped([this] (auto&& fut) {
-            if (fut.failed()) {
-                _failed = true;
-                fut.ignore_ready_future();
+                EndResult result = fut.get0();
+
+                if (result.status.is2xxOK() && ! _failed) {
+                    return make_ready_future<bool>(true);
+                }
+
                 return make_ready_future<bool>(false);
-            }
-
-            EndResult result = fut.get0();
-
-            if (result.status.is2xxOK() && ! _failed) {
-                return make_ready_future<bool>(true);
-            }
-
-            return make_ready_future<bool>(false);
+            });
         });
     }
 
@@ -156,44 +157,33 @@ private:
     }
 
     future<> customerUpdate() {
-        uint32_t cid_type = _random.UniformRandom(1, 100);
-        future<int32_t> cidFuture = make_ready_future<int>();
-        if (cid_type <= 60) {
-            // 60% randomly select customer by last name
-            cidFuture = make_ready_future().then([this] { return getCIdByLastName(); });
-        } // else{}, the _c_id has already been set randomly at the consturctor
-        
-        return when_all_succeed(std::move(cidFuture))
-        .then([this] (int32_t&& resp) {
-            _c_id = resp;
-            return _txn.read<Customer>(Customer(_c_w_id, _c_d_id, _c_id))
-            .then([this] (auto&& result) {
-                CHECK_READ_STATUS(result);
+        return _txn.read<Customer>(Customer(_c_w_id, _c_d_id, _c_id))
+        .then([this] (auto&& result) {
+            CHECK_READ_STATUS(result);
 
-                Customer customer(_c_w_id, _c_d_id, _c_id);
-                customer.Balance = *(result.value.Balance) - _amount;
-                customer.YTDPayment = *(result.value.YTDPayment) + _amount;
-                customer.PaymentCount = *(result.value.PaymentCount) + 1;
-                k2::String str500(k2::String::initialized_later{}, 500);
-                customer.Info = str500;
+            Customer customer(_c_w_id, _c_d_id, _c_id);
+            customer.Balance = *(result.value.Balance) - _amount;
+            customer.YTDPayment = *(result.value.YTDPayment) + _amount;
+            customer.PaymentCount = *(result.value.PaymentCount) + 1;
+            k2::String str500(k2::String::initialized_later{}, 500);
+            customer.Info = str500;
 
-                if (*(result.value.Credit) == "BC") {
-                    size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
-                    memcpy((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
-                    uint32_t offset = 0;
-                    memcpy((char*)customer.Info->c_str() + offset, &_c_id, sizeof(_c_id));
-                    offset += sizeof(_c_id);
-                    memcpy((char*)customer.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
-                    offset += sizeof(_c_d_id);
-                    memcpy((char*)customer.Info->c_str() + offset, &_d_id, sizeof(_d_id));
-                    offset += sizeof(_d_id);
-                    memcpy((char*)customer.Info->c_str() + offset, &_w_id, sizeof(_w_id));
-                    offset += sizeof(_w_id);
-                    memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
-                }
+            if (*(result.value.Credit) == "BC") {
+                size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
+                memcpy((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
+                uint32_t offset = 0;
+                memcpy((char*)customer.Info->c_str() + offset, &_c_id, sizeof(_c_id));
+                offset += sizeof(_c_id);
+                memcpy((char*)customer.Info->c_str() + offset, &_c_d_id, sizeof(_c_d_id));
+                offset += sizeof(_c_d_id);
+                memcpy((char*)customer.Info->c_str() + offset, &_d_id, sizeof(_d_id));
+                offset += sizeof(_d_id);
+                memcpy((char*)customer.Info->c_str() + offset, &_w_id, sizeof(_w_id));
+                offset += sizeof(_w_id);
+                memcpy((char*)customer.Info->c_str() + offset, &_amount, sizeof(_amount));
+            }
 
-                return partialUpdateRow<Customer, std::vector<k2::String>>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
-            });
+            return partialUpdateRow<Customer, std::vector<k2::String>>(customer, {"Balance", "YTDPayment", "PaymentCount", "Info"}, _txn).discard_result();
         });
     }
 
@@ -203,12 +193,18 @@ private:
     }
 
     // get customer ID by last name
-    future<int32_t> getCIdByLastName() {
+    // 60% select customer by last name; 40%, the _c_id has already been set randomly at the consturctor
+    future<> getCIdByLastName() {
+        uint32_t cid_type = _random.UniformRandom(1, 100);
+        if (cid_type > 60) {
+            return make_ready_future();
+        }
+        
         k2::String lastName = _random.RandowLastNameString();
         
         return _client.createQuery(tpccCollectionName, "customer")
         .then([this, &lastName](auto&& response) mutable {
-            K2EXPECT(response.status, dto::K23SIStatus::OK);
+            CHECK_READ_STATUS(response);
 
             // make Query request and set query rules. 
             // 1. range:[ (_w_id, _d_id, 0), (_w_id, _d_id + 1, 0) ); 2. no record number limits; 3. forward direction scan;
@@ -223,7 +219,6 @@ private:
             _query.setReverseDirection(false);
             std::vector<String> projection{"CID", "FirstName"}; // make projection
             _query.addProjection(projection);
-            
             std::vector<dto::expression::Value> values; // make filter Expression
             std::vector<dto::expression::Expression> exps;
             values.emplace_back(dto::expression::makeValueReference("LastName"));
@@ -239,10 +234,12 @@ private:
                 [this, &result_set, &done, &count] () {
                     return _txn.query(_query)
                     .then([this, &result_set, &done, &count] (auto&& response) {
-                        K2EXPECT(response.status.is2xxOK(), true);
+                        CHECK_READ_STATUS(response);
                         done = response.status.is2xxOK() ? _query.isDone() : true;
                         count += response.records.size();
                         result_set.push_back(std::move(response.records));
+                        
+                        return make_ready_future();
                     });
                 })
                 .then([this, &result_set, &count] () {                    
@@ -260,10 +257,10 @@ private:
                     // position n/2 rounded up in the sorted set from CUSTORMER table.
                     if (cIdSort.size()) {
                         std::sort(cIdSort.begin(), cIdSort.end());
-                        return make_ready_future<int32_t>(cIdSort[cIdSort.size() / 2].c_id);
-                    } else {
-                        return make_ready_future<int32_t>(_c_id); // return _c_id if no lastName matches
+                        _c_id = cIdSort[cIdSort.size() / 2].c_id;
                     }
+
+                    return make_ready_future();
                 });
             });
         });
@@ -498,9 +495,7 @@ public:
 private:
     future<bool> runWithTxn() {
         // Get customer_id
-        future<> getCId_f = getCustomerId();
-
-        return when_all_succeed(std::move(getCId_f))
+        return getCustomerId()
         .then([this] () {
             // Get Customer row when get_customer_id is done
             future<> customer_f = getCustomer();
@@ -510,10 +505,10 @@ private:
 
             future<> order_line_f = when_all_succeed(std::move(order_f))
             .then([this] () {
-                // Get all Order-Line rows when get_o_id is done
-                 return getOrderLine();
+                // Get all order-line rows when get_order is done
+                return getOrderLine();
             });
-            
+
             return when_all_succeed(std::move(customer_f), std::move(order_line_f));
         })
         // commit txn
@@ -526,7 +521,7 @@ private:
 
             fut.ignore_ready_future();
             K2DEBUG("OrderStatus txn finished");
-
+            
             return _txn.end(true);
         }).then_wrapped([this] (auto&& fut) {
             if (fut.failed()) {
@@ -556,7 +551,7 @@ private:
         
         return _client.createQuery(tpccCollectionName, "customer")
         .then([this, &lastName](auto&& response) mutable {
-            K2EXPECT(response.status, dto::K23SIStatus::OK);
+            CHECK_READ_STATUS(response);
 
             // make Query request and set query rules. 
             // 1. range:[ (_w_id, _d_id, 0), (_w_id, _d_id + 1, 0) ); 2. no record number limits; 3. forward direction scan;
@@ -586,10 +581,12 @@ private:
                 [this, &result_set, &done, &count] () {
                     return _txn.query(_query_cid)
                     .then([this, &result_set, &done, &count] (auto&& response) {
-                        K2EXPECT(response.status.is2xxOK(), true);
+                        CHECK_READ_STATUS(response);
                         done = response.status.is2xxOK() ? _query_cid.isDone() : true;
                         count += response.records.size();
                         result_set.push_back(std::move(response.records));
+
+                        return make_ready_future();
                     });
                 })
                 .then([this, &result_set, &count] () {
@@ -620,7 +617,7 @@ private:
     future<> getCustomer() {
         return _client.createQuery(tpccCollectionName, "customer")
         .then([this](auto&& response) mutable {
-            K2EXPECT(response.status, dto::K23SIStatus::OK);
+            CHECK_READ_STATUS(response);
 
             // make Query request and set query rules. 
             // 1) just one skvrecord returns; 2) add Projection fields as needed;
@@ -631,9 +628,9 @@ private:
             _query_customer.endScanRecord.serializeNext<int16_t>(_w_id);
             _query_customer.endScanRecord.serializeNext<int16_t>(_d_id);
             _query_customer.endScanRecord.serializeNext<int32_t>(_c_id + 1);
-            
             _query_customer.setLimit(-1);
             _query_customer.setReverseDirection(false);
+            
             std::vector<String> projection{"Balance", "FirstName", "MiddleName", "LastName"}; // make projection
             _query_customer.addProjection(projection);
             dto::expression::Expression filter{};   // make filter Expression
@@ -641,8 +638,7 @@ private:
 
             return _txn.query(_query_customer)
             .then([this] (auto&& response) {
-                K2EXPECT(response.status.is2xxOK(), true);
-                K2EXPECT(response.records.size(), 1);
+                CHECK_READ_STATUS(response);
 
                 dto::SKVRecord& rec = response.records[0];
                 std::optional<std::decimal::decimal64> balanceOpt = rec.deserializeField<std::decimal::decimal64>("Balance");
@@ -663,31 +659,35 @@ private:
     future<> getOrderdByCId() {
         return _client.createQuery(tpccCollectionName, "order")
         .then([this](auto&& response) mutable {
-            K2EXPECT(response.status, dto::K23SIStatus::OK);
+            CHECK_READ_STATUS(response);
         
             // make Query request and set query rules. 
-            // 1) just one skvrecord returns; 2) add Projection fields as needed; 3) filter out according to _c_id
+            // 1. range:[ (_w_id, _d_id, INT64_MAX), (_w_id, _d_id-1, INT64_MAX) ); 2. return the newest Order record; 
+            // 3. reverse direction scan (newest one); 4. projection "OID", "EntryDate", "CarrierID" fields;
+            // 5. filter out the record rows of customer id
             _query_order = std::move(response.query);
             _query_order.startScanRecord.serializeNext<int16_t>(_w_id); 
             _query_order.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_order.startScanRecord.serializeNext<int64_t>(INT64_MAX);
             _query_order.endScanRecord.serializeNext<int16_t>(_w_id);
-            _query_order.endScanRecord.serializeNext<int16_t>(_d_id);
-            
-            _query_order.setLimit(5);
+            _query_order.endScanRecord.serializeNext<int16_t>(_d_id - 1);
+            _query_order.endScanRecord.serializeNext<int64_t>(INT64_MAX);
+            _query_order.setLimit(1);
             _query_order.setReverseDirection(true);
+            
             std::vector<String> projection{"OID", "EntryDate", "CarrierID"}; // make projection
             _query_order.addProjection(projection);
             std::vector<dto::expression::Value> values; // make filter Expression
             std::vector<dto::expression::Expression> exps;
             values.emplace_back(dto::expression::makeValueReference("CID"));
-            values.emplace_back(dto::expression::makeValueLiteral<int32_t>(std::move(_c_id)));
+            values.emplace_back(dto::expression::makeValueLiteral<int16_t>(std::move(_c_id)));
             dto::expression::Expression filter = dto::expression::makeExpression(dto::expression::Operation::EQ, 
                                                     std::move(values), std::move(exps));
             _query_order.setFilterExpression(std::move(filter));
             
             return _txn.query(_query_order)
             .then([this] (auto&& response) {
-                K2EXPECT(response.status.is2xxOK(), true);
+                CHECK_READ_STATUS(response);
 
                 for (dto::SKVRecord& rec : response.records) {
                     std::optional<int64_t> oidOpt = rec.deserializeField<int64_t>("OID");
@@ -699,7 +699,6 @@ private:
                     _out_o_entry_date = *entryDateOpt;
                     _out_o_carrier_id = *carrierOpt;
                 }
-                
                 return make_ready_future();
             });
         });
@@ -709,7 +708,7 @@ private:
     future<> getOrderLine() {
         return _client.createQuery(tpccCollectionName, "orderline")
         .then([this](auto&& response) mutable {
-            K2EXPECT(response.status, dto::K23SIStatus::OK);
+            CHECK_READ_STATUS(response);
         
             // make Query request and set query rules. 
             // 1) all lines in certain order are returned; 2) add Projection fields as needed;
@@ -720,9 +719,9 @@ private:
             _query_order_line.endScanRecord.serializeNext<int16_t>(_w_id);
             _query_order_line.endScanRecord.serializeNext<int16_t>(_d_id);
             _query_order_line.endScanRecord.serializeNext<int64_t>(_o_id + 1);
-            
             _query_order_line.setLimit(-1);
             _query_order_line.setReverseDirection(false);
+            
             std::vector<String> projection{"ItemID", "SupplyWID", "Quantity", "Amount", "DeliveryDate"}; // make projection
             _query_order_line.addProjection(projection);
             dto::expression::Expression filter{};   // make filter Expression
@@ -735,10 +734,12 @@ private:
                 [this, &result_set, &done, &count] () {
                     return _txn.query(_query_order_line)
                     .then([this, &result_set, &count, &done] (auto&& response) {
-                        K2EXPECT(response.status.is2xxOK(), true);
+                        CHECK_READ_STATUS(response);
                         done = response.status.is2xxOK() ? _query_order_line.isDone() : true;
                         count += response.records.size();
                         result_set.push_back(std::move(response.records));
+                        
+                        return make_ready_future();
                     });
                 })
                 .then([this, &result_set, &count] {
