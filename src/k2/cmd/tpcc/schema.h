@@ -226,7 +226,7 @@ public:
 
     Customer(RandomContext& random, int16_t w_id, int16_t d_id, int32_t c_id) :
             WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        LastName = random.RandomString(5, 5); // TODO needs to use special non-uniform function
+        LastName = random.RandowLastNameString();
         MiddleName = "OE";
         FirstName = random.RandomString(8, 16);
         address = Address(random);

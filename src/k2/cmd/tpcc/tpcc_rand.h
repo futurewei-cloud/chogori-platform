@@ -28,6 +28,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cmath>
 #include <cstring>
 
+// definition from TPCC clause 4.3.2.3
+static const std::vector<k2::String> LastNameChart {"BAR", "OUGHT", "ABLE", "PRI", "PRES", "ESE", "ANTI", "CALLY", "ATION", "EING"};
+
 class RandomContext {
 public:
     RandomContext(int seed=0) : _generator(seed) {
@@ -107,6 +110,19 @@ public:
         zip[9] = 0;
 
         return zip;
+    }
+
+    k2::String RandowLastNameString()
+    {
+        uint32_t nuRand = NonUniformRandom(255, 0, 999);
+        k2::String lastNameString;
+
+        for (uint32_t i = 0; i < 3; ++i) {
+            lastNameString = LastNameChart[nuRand % 10] + lastNameString;
+            nuRand /= 10;
+        }
+
+        return lastNameString;
     }
 
 private:

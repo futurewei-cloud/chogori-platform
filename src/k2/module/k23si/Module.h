@@ -217,7 +217,7 @@ private: // methods
     // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
     // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must 
     // point to a record with the target schema
-    void _scanAdvance(IndexerIterator& it, bool reverseDirection);
+    void _scanAdvance(IndexerIterator& it, bool reverseDirection, const String& schema);
 
     // Helper for handleQuery. Returns an iterator to start the scan at, accounting for 
     // desired schema and (eventually) reverse direction scan

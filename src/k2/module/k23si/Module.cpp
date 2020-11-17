@@ -169,9 +169,7 @@ _makeReadOK(dto::DataRecord* rec) {
 // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
 // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must
 // point to a record with the target schema
-void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirection) {
-    const String& schema = it->first.schemaName;
-
+void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirection, const String& schema) {
     if (!reverseDirection) {
         ++it;
         if (it != _indexer.end() && it->first.schemaName != schema) {
@@ -185,7 +183,7 @@ void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirecti
         it = _indexer.end();
     } else {
         --it;
-
+        
         if (it->first.schemaName != schema) {
             it = _indexer.end();
         }
@@ -206,10 +204,10 @@ IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, boo
         if (start.partitionKey == "" || key_it == _indexer.end()) {
             key_it = (++_indexer.rbegin()).base();
         } else if (key_it->first == start && exclusiveKey) {
-            _scanAdvance(key_it, reverse);
+            _scanAdvance(key_it, reverse, start.schemaName);
         } else if (key_it->first > start) {
             while (key_it->first > start) {
-                _scanAdvance(key_it, reverse);
+                _scanAdvance(key_it, reverse, start.schemaName);
             }
         }
     }
@@ -333,9 +331,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     }
 
     IndexerIterator key_it = _initializeScan(request.key, request.reverseDirection, request.exclusiveKey);
-
     for (; !_isScanDone(key_it, request, response.results.size());
-                        _scanAdvance(key_it, request.reverseDirection)) {
+                        _scanAdvance(key_it, request.reverseDirection, request.key.schemaName)) {
         auto& versions = key_it->second;
         auto viter = versions.begin();
         // position the version iterator at the version we should be returning
@@ -371,6 +368,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                         return RPCResponse(dto::K23SIStatus::InternalError("Error making projection"), 
                                                 dto::K23SIQueryResponse{});
                     }
+                    
                     response.results.push_back(std::move(storage));
                 }
             }
