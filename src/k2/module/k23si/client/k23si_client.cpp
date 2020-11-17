@@ -79,12 +79,12 @@ void K2TxnHandle::makeHeartbeatTimer() {
 
 std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(
                         const dto::Key& key, const String& collection) const {
-    return std::make_unique<dto::K23SIReadRequest>(dto::K23SIReadRequest{
+    return std::make_unique<dto::K23SIReadRequest>(
         dto::Partition::PVID(), // Will be filled in by PartitionRequest
         collection,
         _mtr,
         key
-    });
+    );
 }
 
 template <>
@@ -174,7 +174,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
     }
     _write_set.push_back(key);
 
-    return std::make_unique<dto::K23SIWriteRequest>(dto::K23SIWriteRequest{
+    return std::make_unique<dto::K23SIWriteRequest>(
         dto::Partition::PVID(), // Will be filled in by PartitionRequest
         record.collectionName,
         _mtr,
@@ -184,7 +184,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
         key,
         record.storage.share(),
         std::vector<uint32_t>()
-    });
+    );
 }
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record,

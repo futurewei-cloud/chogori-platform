@@ -291,7 +291,7 @@ public:
                     PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsForPartialUpdate")) );
         }
 
-        return partialUpdate(record, fieldsForPartialUpdate, std::move(key));
+        return partialUpdate(record, std::move(fieldsForPartialUpdate), std::move(key));
     }
 
     template <typename T1>
