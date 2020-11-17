@@ -167,7 +167,8 @@ private:
     void makeHeartbeatTimer();
     void checkResponseStatus(Status& status);
 
-    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::SKVRecord& record) const;
+    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::Key& key, 
+                                                           const String& collectionName) const;
     std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase);
 
     template <class T>
@@ -175,11 +176,11 @@ private:
         dto::SKVRecord record(user_record.collectionName, user_record.schema);
         user_record.__writeFields(record);
 
-        return makeReadRequest(record);
+        return makeReadRequest(record.getKey(), record.collectionName);
     }
 
     std::unique_ptr<dto::K23SIWriteRequest> makePartialUpdateRequest(dto::SKVRecord& record,
-            std::vector<uint32_t> fieldsForPartialUpdate);
+            std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key);
 
     void prepareQueryRequest(Query& query);
 
@@ -189,6 +190,14 @@ public:
     K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
 
+    // The dto::Key oriented interface for read. The key should be one obtained from SKVRecord::getKey()
+    // and not directly created by the user
+    seastar::future<ReadResult<dto::SKVRecord>> read(dto::Key key, String collection);
+
+    // The read interface for user-defined classes with the SKV_RECORD_FIELDS macro defined
+    // The class instance is automatically serialized and deserialized from an SKVRecord
+    // Note that there is an explicit template instantiation of this function for the normal SKVRecord
+    // read interface
     template <class T>
     seastar::future<ReadResult<T>> read(T record) {
         if (!_valid) {
@@ -211,35 +220,15 @@ public:
                 checkResponseStatus(status);
                 _ongoing_ops--;
 
-                if constexpr (std::is_same<T, dto::SKVRecord>()) {
-                    if (!status.is2xxOK()) {
-                        return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(status), SKVRecord()));
-                    }
+                T userResponseRecord{};
 
-                    return _client->getSchema(collName, request_schema->name, k2response.value.schemaVersion)
-                    .then([s=std::move(status), storage=std::move(k2response.value), &collName] (auto&& response) mutable {
-                        auto& [status, schema_ptr] = response;
-                        K2EXPECT(status.is2xxOK(), true);
-
-                        if (!status.is2xxOK()) {
-                            return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), SKVRecord()));
-                        }
-
-                        SKVRecord skv_record(collName, schema_ptr);
-                        skv_record.storage = std::move(storage);
-                        return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(std::move(s), std::move(skv_record)));
-                    });
-                } else {
-                    T userResponseRecord{};
-
-                    if (status.is2xxOK()) {
-                        SKVRecord skv_record(collName, request_schema);
-                        skv_record.storage = std::move(k2response.value);
-                        userResponseRecord.__readFields(skv_record);
-                    }
-
-                    return ReadResult<T>(std::move(status), std::move(userResponseRecord));
+                if (status.is2xxOK()) {
+                    SKVRecord skv_record(collName, request_schema);
+                    skv_record.storage = std::move(k2response.value);
+                    userResponseRecord.__readFields(skv_record);
                 }
+
+                return ReadResult<T>(std::move(status), std::move(userResponseRecord));
             }).finally([r = std::move(request)] () { (void)r; });
     }
 
@@ -285,7 +274,8 @@ public:
     }
 
     template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName) {
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName, 
+                                                       dto::Key key=dto::Key()) {
         std::vector<uint32_t> fieldsForPartialUpdate;
         bool find = false;
         for (std::size_t i = 0; i < fieldsName.size(); ++i) {
@@ -301,11 +291,13 @@ public:
                     PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsForPartialUpdate")) );
         }
 
-        return partialUpdate(record, fieldsForPartialUpdate);
+        return partialUpdate(record, fieldsForPartialUpdate, std::move(key));
     }
 
     template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<uint32_t> fieldsForPartialUpdate) {
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, 
+                                                       std::vector<uint32_t> fieldsForPartialUpdate, 
+                                                       dto::Key key=dto::Key()) {
         if (!_valid) {
             return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
@@ -317,11 +309,19 @@ public:
 
         std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T1, dto::SKVRecord>()) {
-            request = makePartialUpdateRequest(record, fieldsForPartialUpdate);
+            if (key.partitionKey == "") {
+                key = record.getKey();
+            }
+
+            request = makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key));
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = makePartialUpdateRequest(skv_record, fieldsForPartialUpdate);
+            if (key.partitionKey == "") {
+                key = skv_record.getKey();
+            }
+
+            request = makePartialUpdateRequest(skv_record, fieldsForPartialUpdate, std::move(key));
         }
         if (request == nullptr) {
             return seastar::make_ready_future<PartialUpdateResult> (
@@ -384,5 +384,10 @@ private:
     dto::Key _trh_key;
     String _trh_collection;
 };
+
+// Normal use-case read interface, where the key fields of the user's SKVRecord are 
+// serialized and converted into a dto::Key
+template <>
+seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::SKVRecord record);
 
 } // namespace k2
