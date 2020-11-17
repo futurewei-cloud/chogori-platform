@@ -77,7 +77,18 @@ void K2TxnHandle::makeHeartbeatTimer() {
     });
 }
 
-std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(const dto::SKVRecord& record) const {
+std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(
+                        const dto::Key& key, const String& collection) const {
+    return std::make_unique<dto::K23SIReadRequest>(
+        dto::Partition::PVID(), // Will be filled in by PartitionRequest
+        collection,
+        _mtr,
+        key
+    );
+}
+
+template <>
+seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::SKVRecord record) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
             throw K23SIClientException("Partition key field not set for read request");
@@ -89,13 +100,59 @@ std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(const dto::S
         }
     }
 
-    return std::make_unique<dto::K23SIReadRequest>(dto::K23SIReadRequest{
-        dto::Partition::PVID(), // Will be filled in by PartitionRequest
-        record.collectionName,
-        _mtr,
-        record.getKey()
-    });
+    return read(record.getKey(), record.collectionName);
 }
+
+seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, String collection) {
+    if (!_valid) {
+        return seastar::make_exception_future<ReadResult<dto::SKVRecord>>(
+                K23SIClientException("Invalid use of K2TxnHandle"));
+    }
+    if (_failed) {
+        return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
+                ReadResult<dto::SKVRecord>(_failed_status, dto::SKVRecord()));
+    }
+
+    K2INFO("making request for: " << key.schemaName << " " << collection);
+    std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(key, collection);
+
+    _client->read_ops++;
+    _ongoing_ops++;
+
+    return _cpo_client->PartitionRequest
+        <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
+        (_options.deadline, *request).
+        then([this, schemaName=std::move(key.schemaName), &collName=request->collectionName] (auto&& response) {
+            auto& [status, k2response] = response;
+            checkResponseStatus(status);
+            _ongoing_ops--;
+
+            K2INFO("got status: " << status);
+            if (!status.is2xxOK()) {
+                return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
+                            ReadResult<dto::SKVRecord>(std::move(status), SKVRecord()));
+            }
+
+            return _client->getSchema(collName, schemaName, k2response.value.schemaVersion)
+            .then([s=std::move(status), storage=std::move(k2response.value), &collName] (auto&& response) mutable {
+                auto& [status, schema_ptr] = response;
+                K2INFO("got status for getSchema: " << status);
+
+                if (!status.is2xxOK()) {
+                    return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
+                        ReadResult<dto::SKVRecord>(
+                        dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), 
+                        SKVRecord()));
+                }
+
+                SKVRecord skv_record(collName, schema_ptr);
+                skv_record.storage = std::move(storage);
+                return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
+                        ReadResult<dto::SKVRecord>(std::move(s), std::move(skv_record)));
+            });
+        }).finally([r = std::move(request)] () { (void)r; });
+}
+
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase) {
     for (const String& key : record.partitionKeys) {
@@ -117,7 +174,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
     }
     _write_set.push_back(key);
 
-    return std::make_unique<dto::K23SIWriteRequest>(dto::K23SIWriteRequest{
+    return std::make_unique<dto::K23SIWriteRequest>(
         dto::Partition::PVID(), // Will be filled in by PartitionRequest
         record.collectionName,
         _mtr,
@@ -127,13 +184,11 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
         key,
         record.storage.share(),
         std::vector<uint32_t>()
-    });
+    );
 }
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record,
-                    std::vector<uint32_t> fieldsForPartialUpdate) {
-        dto::Key key = record.getKey();
-
+                    std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key) {
         if (!_write_set.size()) {
             _trh_key = key;
             _trh_collection = record.collectionName;
@@ -147,7 +202,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dt
             _trh_key,
             false, // Partial update cannot be a delete
             _write_set.size() == 1,
-            key,
+            std::move(key),
             record.storage.share(),
             fieldsForPartialUpdate
         });

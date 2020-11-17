@@ -169,6 +169,11 @@ struct K23SIReadRequest {
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key to read
+
+    K23SIReadRequest() = default;
+    K23SIReadRequest(Partition::PVID p, String cname, K23SI_MTR _mtr, Key _key) : 
+        pvid(std::move(p)), collectionName(std::move(cname)), mtr(std::move(_mtr)), key(std::move(_key)) {}
+
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
     friend std::ostream& operator<<(std::ostream& os, const K23SIReadRequest& r) {
         return os << "{" << "pvid=" << r.pvid << ", colName=" << r.collectionName
@@ -211,6 +216,14 @@ struct K23SIWriteRequest {
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
     std::vector<uint32_t> fieldsForPartialUpdate; // if size() > 0 then this is a partial update
+
+    K23SIWriteRequest() = default;
+    K23SIWriteRequest(Partition::PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, bool _isDelete, 
+                      bool _designateTRH, Key _key, SKVRecord::Storage _value, std::vector<uint32_t> _fields) :
+        pvid(std::move(_pvid)), collectionName(std::move(cname)), mtr(std::move(_mtr)), trh(std::move(_trh)),
+        isDelete(_isDelete), designateTRH(_designateTRH), key(std::move(_key)), value(std::move(_value)),
+        fieldsForPartialUpdate(std::move(_fields)) {}
+
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value, fieldsForPartialUpdate);
     friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
