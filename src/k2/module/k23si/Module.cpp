@@ -919,6 +919,12 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
         }
     }
 
+    if (request.rejectIfExists && versions.size() > 0 && !versions[0].isTombstone) {
+        // Need to add to read cache to prevent an erase coming in before this requests timestamp
+        _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
+        return RPCResponse(dto::K23SIStatus::ConditionFailed("Previous record exists"), dto::K23SIWriteResponse{});
+    }
+
     if (request.fieldsForPartialUpdate.size() > 0) {
         // parse the partial record to full record
         if ( !versions.size() || versions[0].isTombstone) {

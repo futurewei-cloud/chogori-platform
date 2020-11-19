@@ -169,7 +169,8 @@ private:
 
     std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::Key& key, 
                                                            const String& collectionName) const;
-    std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase);
+    std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase, 
+                                                             bool rejectIfExists);
 
     template <class T>
     std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const T& user_record) const {
@@ -233,7 +234,7 @@ public:
     }
 
     template <class T>
-    seastar::future<WriteResult> write(T& record, bool erase=false) {
+    seastar::future<WriteResult> write(T& record, bool erase=false, bool rejectIfExists=false) {
         if (!_valid) {
             return seastar::make_exception_future<WriteResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
@@ -243,11 +244,11 @@ public:
 
         std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
-            request = makeWriteRequest(record, erase);
+            request = makeWriteRequest(record, erase, rejectIfExists);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = makeWriteRequest(skv_record, erase);
+            request = makeWriteRequest(skv_record, erase, rejectIfExists);
         }
 
         _client->write_ops++;
