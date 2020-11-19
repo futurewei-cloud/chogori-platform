@@ -45,7 +45,7 @@ class PlogServer
 {
 private:
     // the maximum size of each plog
-    const static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
+    constexpr static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
 
     // each PlogPage is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
     struct PlogPage {

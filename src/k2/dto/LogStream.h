@@ -63,6 +63,36 @@ struct MetadataLogStreamGetResponse {
     K2_PAYLOAD_FIELDS(streamLog);
 };
 
+struct LogStreamExistError : public std::exception {
+    String what_str;
+    LogStreamExistError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct LogStreamMetadataRegisterError : public std::exception {
+    String what_str;
+    LogStreamMetadataRegisterError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct LogStreamMetadataObtainError : public std::exception {
+    String what_str;
+    LogStreamMetadataObtainError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct LogStreamMetadataUpdateError : public std::exception {
+    String what_str;
+    LogStreamMetadataUpdateError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct LogStreamBackupPlogError : public std::exception {
+    String what_str;
+    LogStreamBackupPlogError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
 
 }  // namespace dto
 }  // namespace k2

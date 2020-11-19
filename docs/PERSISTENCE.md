@@ -24,7 +24,10 @@ It is possible that the arriving append request will arrive at the Plog Server o
 
 
 # Log Stream
-TODO
-
+## Operations
+The log stream service provides 3 operations: create, write and read_all.
+- Create: 
+- Write: 
+- Read_ALL: 
 # Persist Transaction Records
 TODO

@@ -81,6 +81,35 @@ struct PlogInfoResponse {
     K2_PAYLOAD_FIELDS(currentOffset, sealed);
 };
 
+struct PlogCreateError : public std::exception {
+    String what_str;
+    PlogCreateError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct PlogInfoError : public std::exception {
+    String what_str;
+    PlogInfoError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct PlogReadError : public std::exception {
+    String what_str;
+    PlogReadError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct PlogAppendError : public std::exception {
+    String what_str;
+    PlogAppendError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+struct PlogSealError : public std::exception {
+    String what_str;
+    PlogSealError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
 
 
 }  // namespace dto

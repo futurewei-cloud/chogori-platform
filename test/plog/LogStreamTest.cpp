@@ -122,7 +122,7 @@ public:  // application lifespan
         for (uint32_t i = 0; i < 10000; ++i){
             header = header + "0";
         }
-        Payload payload([] { return Binary(4096); });
+        Payload payload([] { return Binary(20000); });
         payload.write(header);
         return _client.write(std::move(payload))
         .then([this, header] (){
@@ -147,8 +147,8 @@ public:  // application lifespan
         }
 
         std::vector<seastar::future<> > writeFutures;
-        for (uint32_t i = 0; i < 10000; ++i){
-            Payload payload([] { return Binary(4096); });
+        for (uint32_t i = 0; i < 2000; ++i){
+            Payload payload([] { return Binary(20000); });
             payload.write(header);
             writeFutures.push_back(_client.write(std::move(payload)));
         }
@@ -167,7 +167,31 @@ public:  // application lifespan
                     ++count;
                 }
             }
-            K2EXPECT(count, 10001);
+            K2EXPECT(count, 2001);
+
+            std::vector<seastar::future<> > writeFutures;
+            for (uint32_t i = 0; i < 2000; ++i){
+                Payload payload([] { return Binary(20000); });
+                payload.write(header);
+                writeFutures.push_back(_client.write(std::move(payload)));
+            }
+            return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
+        })
+        .then([this, header] (){
+            return _client.read("LogStream1");
+        })
+        .then([this, header] (auto&& payloads){
+            String str;
+            uint32_t count = 0;
+            for (auto& payload:payloads){
+                payload.seek(0);
+                while (payload.getDataRemaining() > 0){
+                    payload.read(str);
+                    K2EXPECT(str, header);
+                    ++count;
+                }
+            }
+            K2EXPECT(count, 4001);
             return seastar::make_ready_future<>();
         });
     }

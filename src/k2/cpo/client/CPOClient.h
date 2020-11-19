@@ -246,18 +246,7 @@ public:
         dto::PersistenceClusterGetRequest request{.name = std::move(name)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        return RPC().callRPC<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, request, *cpo, timeout)
-        .then([this, &request, deadline] (auto&& result) {
-            auto& [status, k2response] = result;
-
-            if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
-                status = Statuses::S408_Request_Timeout("persistence deadline exceeded");
-                return RPCResponse(std::move(status), dto::PersistenceClusterGetResponse());
-            }
-
-            return RPCResponse(std::move(status), std::move(k2response));
-        });
+        return RPC().callRPC<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, request, *cpo, timeout);
     }
 
     template<typename ClockT=Clock>
@@ -265,18 +254,7 @@ public:
         dto::MetadataLogStreamRegisterRequest request{.name = std::move(name), .plogId=std::move(plogId)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        return RPC().callRPC<dto::MetadataLogStreamRegisterRequest, dto::MetadataLogStreamRegisterResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_REGISTER, request, *cpo, timeout)
-        .then([this, &request, deadline] (auto&& result) {
-            auto& [status, k2response] = result;
-
-            if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
-                status = Statuses::S408_Request_Timeout("Metadata log stream deadline exceeded");
-                return RPCResponse(std::move(status), dto::MetadataLogStreamRegisterResponse());
-            }
-
-            return RPCResponse(std::move(status), std::move(k2response));
-        });
+        return RPC().callRPC<dto::MetadataLogStreamRegisterRequest, dto::MetadataLogStreamRegisterResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_REGISTER, request, *cpo, timeout);
     }
 
     template<typename ClockT=Clock>
@@ -284,18 +262,7 @@ public:
         dto::MetadataLogStreamUpdateRequest request{.name = std::move(name), .sealedOffset=std::move(sealedOffset), .newPlogId=std::move(newPlogId)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        return RPC().callRPC<dto::MetadataLogStreamUpdateRequest, dto::MetadataLogStreamUpdateResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_UPDATE, request, *cpo, timeout)
-        .then([this, &request, deadline] (auto&& result) {
-            auto& [status, k2response] = result;
-
-            if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
-                status = Statuses::S408_Request_Timeout("Metadata log stream deadline exceeded");
-                return RPCResponse(std::move(status), dto::MetadataLogStreamUpdateResponse());
-            }
-
-            return RPCResponse(std::move(status), std::move(k2response));
-        });
+        return RPC().callRPC<dto::MetadataLogStreamUpdateRequest, dto::MetadataLogStreamUpdateResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_UPDATE, request, *cpo, timeout);
     }
 
     template<typename ClockT=Clock>
@@ -303,17 +270,7 @@ public:
         dto::MetadataLogStreamGetRequest request{.name = std::move(name)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        return RPC().callRPC<dto::MetadataLogStreamGetRequest, dto::MetadataLogStreamGetResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_GET, request, *cpo, timeout)
-        .then([this, &request, deadline] (auto&& result) {
-            auto& [status, k2response] = result;
-
-            if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
-                status = Statuses::S408_Request_Timeout("Metadata log stream deadline exceeded");
-                return RPCResponse(std::move(status), dto::MetadataLogStreamGetResponse());
-            }
-            return RPCResponse(std::move(status), std::move(k2response));
-        });
+        return RPC().callRPC<dto::MetadataLogStreamGetRequest, dto::MetadataLogStreamGetResponse>(dto::Verbs::CPO_METADATA_LOG_STREAM_GET, request, *cpo, timeout);
     }
     seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);
     seastar::future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>> getSchemas(const String& collectionName);

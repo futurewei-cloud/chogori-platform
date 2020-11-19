@@ -56,11 +56,11 @@ public:
 
 private:
     // the maximum size of each plog
-    const static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
+    constexpr static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
     // How many WAL plogs it will create in advance 
-    const static uint32_t WAL_PLOG_POOL_SIZE = 16;
+    constexpr static uint32_t WAL_PLOG_POOL_SIZE = 1;
     // How many metadata plogs it will create in advance
-    const static uint32_t METADATA_PLOG_POOL_SIZE = 4;
+    constexpr static uint32_t METADATA_PLOG_POOL_SIZE = 1;
 
     CPOClient _cpo;
     PlogClient _client;
@@ -68,17 +68,18 @@ private:
 
     std::vector<String> _walPlogPool; // The vector to store the created WAL plog Id
     std::vector<String> _metadataPlogPool; // the vector to store the created Metadata plog Id
-    std::vector<std::pair<String, uint32_t>> _plogInfo; // _plogInfo[0] means the current metadata Plog Id and offset it holds, while _plogInfo[1] means the current WAL Plog Id and offset it holds,
+    std::pair<String, uint32_t> _walInfo;
+    std::pair<String, uint32_t> _metaInfo;
+    
+    std::vector<seastar::promise<>> _requestWaiters;
+    String _ongoindWALSealedPlog;
+    String _ongoindMetadataSealedPlog;
     bool _logStreamCreate = false; // Whether this logstream has been created 
 
-    // temporary data structure created for read operation
-    std::vector<dto::MetadataElement> _streamLog; 
-    // write data to the log stream. writeToWAL == 0 means write to the metadata log stream, while writeToWAL == 1 means write to the WAL
-    seastar::future<> _write(Payload payload, uint32_t writeToWAL);
+    // write data to the log stream. writeToWAL == false means write to the metadata log stream, while writeToWAL == true means write to the WAL
+    seastar::future<> _write(Payload payload, bool writeToWAL);
     // read the contents from WAL plogs
     seastar::future<std::vector<Payload> > _readContent(std::vector<Payload> payloads);
-
-
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
 };
 

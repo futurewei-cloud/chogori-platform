@@ -527,7 +527,7 @@ CPOService::handleMetadataLogStreamUpdate(dto::MetadataLogStreamUpdateRequest&& 
         return RPCResponse(Statuses::S409_Conflict("metadata log does not exist"), dto::MetadataLogStreamUpdateResponse());
     }
 
-    logstream->second[-1].offset = request.sealedOffset;
+    logstream->second[logstream->second.size()-1].offset = request.sealedOffset;
     dto::MetadataElement element{.name=std::move(request.newPlogId), .offset=0};
     logstream->second.push_back(std::move(element));
 
