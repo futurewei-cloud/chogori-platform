@@ -33,6 +33,7 @@ K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* 
 void K2TxnHandle::checkResponseStatus(Status& status) {
     if (status == dto::K23SIStatus::AbortConflict ||
         status == dto::K23SIStatus::AbortRequestTooOld ||
+        status == dto::K23SIStatus::InternalError ||
         status == dto::K23SIStatus::OperationNotAllowed) {
         _failed = true;
         _failed_status = status;
@@ -154,7 +155,8 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
 }
 
 
-std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase) {
+std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase, 
+                                                                      bool rejectIfExists) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
             throw K23SIClientException("Partition key field not set for write request");
@@ -181,6 +183,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
         _trh_key,
         erase,
         _write_set.size() == 1,
+        rejectIfExists,
         key,
         record.storage.share(),
         std::vector<uint32_t>()
@@ -202,6 +205,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dt
             _trh_key,
             false, // Partial update cannot be a delete
             _write_set.size() == 1,
+            false, // Partial update must be applied on existing record
             std::move(key),
             record.storage.share(),
             fieldsForPartialUpdate

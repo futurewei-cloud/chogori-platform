@@ -195,6 +195,7 @@ struct K23SIStatus {
     static const inline Status AbortRequestTooOld=k2::Statuses::S403_Forbidden;
     static const inline Status OK=k2::Statuses::S200_OK;
     static const inline Status Created=k2::Statuses::S201_Created;
+    static const inline Status ConditionFailed=k2::Statuses::S412_Precondition_Failed;
     static const inline Status OperationNotAllowed=k2::Statuses::S405_Method_Not_Allowed;
     static const inline Status BadParameter=k2::Statuses::S422_Unprocessable_Entity;
     static const inline Status BadFilterExpression=k2::Statuses::S406_Not_Acceptable;
@@ -212,6 +213,10 @@ struct K23SIWriteRequest {
     Key trh;
     bool isDelete = false; // is this a delete write?
     bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
+    // Whether the server should reject the write if a previous version exists, like a SQL insert.
+    // In the future we want more expressive preconditions, but those will be on the fields of a record
+    // whereas this is the only record-level precondition that makes sense so it is its own flag
+    bool rejectIfExists = false;    
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
@@ -219,16 +224,18 @@ struct K23SIWriteRequest {
 
     K23SIWriteRequest() = default;
     K23SIWriteRequest(Partition::PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, bool _isDelete, 
-                      bool _designateTRH, Key _key, SKVRecord::Storage _value, std::vector<uint32_t> _fields) :
+                      bool _designateTRH, bool _rejectIfExists, Key _key, SKVRecord::Storage _value, 
+                      std::vector<uint32_t> _fields) :
         pvid(std::move(_pvid)), collectionName(std::move(cname)), mtr(std::move(_mtr)), trh(std::move(_trh)),
-        isDelete(_isDelete), designateTRH(_designateTRH), key(std::move(_key)), value(std::move(_value)),
-        fieldsForPartialUpdate(std::move(_fields)) {}
+        isDelete(_isDelete), designateTRH(_designateTRH), rejectIfExists(_rejectIfExists), 
+        key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, key, value, fieldsForPartialUpdate);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
     friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
         return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
                   << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
-                  << r.isDelete << ", designate=" << r.designateTRH << ", isPartialUpdate="
+                  << r.isDelete << ", designate=" << r.designateTRH << ", rejectIfExits= "
+                  << r.rejectIfExists << ", isPartialUpdate="
                   << (r.fieldsForPartialUpdate.size()!=0) << ", fieldsForPartialUpdate.size()="
                   << r.fieldsForPartialUpdate.size() << "}";
     }
