@@ -921,7 +921,13 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_M
 
     if (request.rejectIfExists && versions.size() > 0 && !versions[0].isTombstone) {
         // Need to add to read cache to prevent an erase coming in before this requests timestamp
+        // If the condition passes (ie, there was no previous version and the insert succeeds) then
+        // we do not need to insert into the read cache because the write intent will handle conflicts
+        // and if the transaction aborts then any state it implicitly observes does not matter
         _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
+
+        // The ConditionFailed status does not mean that the transaction must abort. It is up to the user
+        // to decide to abort or not, similar to a KeyNotFound status on read.
         return RPCResponse(dto::K23SIStatus::ConditionFailed("Previous record exists"), dto::K23SIWriteResponse{});
     }
 
