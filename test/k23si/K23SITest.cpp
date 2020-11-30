@@ -201,6 +201,7 @@ private:
             .trh = trh,
             .isDelete = isDelete,
             .designateTRH = isTRH,
+            .rejectIfExists = false,
             .key = key,
             .value = std::move(record.storage),
             .fieldsForPartialUpdate = std::vector<uint32_t>()

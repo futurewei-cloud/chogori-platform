@@ -81,6 +81,8 @@ public:  // application lifespan
             .then([this] { return runScenario04(); })
             .then([this] { return runScenario05(); })
             .then([this] { return runScenario06(); })
+            .then([this] { return runScenario07(); })
+            .then([this] { return runScenario08(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -872,8 +874,8 @@ seastar::future<> runScenario05() {
                                         
                     K2EXPECT(*partkey, "partkey_s05");
                     K2EXPECT(*rangekey, "rangekey_s05");
-                    K2EXPECT(*data2, ""); // parital update value-field to null
-                    K2EXPECT(*data1, ""); // parital update value-field to null
+                    K2EXPECT(data2.has_value(), false); // parital update value-field to null
+                    K2EXPECT(data1.has_value(), false); // parital update value-field to null
                 })
                 // case 6: update fields from null to null
                 .then([&] {
@@ -916,8 +918,8 @@ seastar::future<> runScenario05() {
                                         
                     K2EXPECT(*partkey, "partkey_s05");
                     K2EXPECT(*rangekey, "rangekey_s05");
-                    K2EXPECT(*data1, ""); // parital update null-field to null
-                    K2EXPECT(*data2, ""); // parital update null-field to null
+                    K2EXPECT(data1.has_value(), false); // parital update null-field to null
+                    K2EXPECT(data2.has_value(), false); // parital update null-field to null
                 });
             }) // end do-with txnHandle
             .then([] {
@@ -957,6 +959,161 @@ seastar::future<> runScenario06() {
                 });
         });
     });
+}
+
+// Read and partial update using key-oriented interface
+seastar::future<> runScenario07() {
+    K2INFO("Scenario 07");
+    k2::K2TxnOptions options{};
+    options.syncFinalize = true;
+    return _client.beginTxn(options)
+    .then([this] (k2::K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn), k2::dto::Key(), std::shared_ptr<k2::dto::Schema>(),
+            [this] (k2::K2TxnHandle& txnHandle, k2::dto::Key& key, std::shared_ptr<k2::dto::Schema>& my_schema) {
+                return _client.getSchema(collname, "schema", 1)
+                .then([this, &txnHandle, &key, &my_schema] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+
+                    k2::dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<k2::String>("partkey07");
+                    record.serializeNext<k2::String>("rangekey07");
+                    record.serializeNext<k2::String>("data1");
+                    record.serializeNext<k2::String>("data2");
+                    key = record.getKey();
+                    my_schema = schemaPtr;
+
+                    return txnHandle.write<k2::dto::SKVRecord>(record);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txnHandle, &key, &my_schema] () {
+                    // Partial update without needing to serialize key
+                    k2::dto::SKVRecord record(collname, my_schema);
+                    record.skipNext();
+                    record.skipNext();
+                    record.serializeNext<k2::String>("partialupdate");
+                    record.skipNext();
+                    std::vector<uint32_t> fields = {2};
+
+                    return txnHandle.partialUpdate(record, fields, key);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([&txnHandle, &key, &my_schema] () {
+                    // Read without needing to serialize key again
+                    return txnHandle.read(key, collname);
+                })
+                .then([](k2::ReadResult<k2::dto::SKVRecord>&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                                
+                    std::optional<k2::String> partkey = response.value.deserializeNext<k2::String>();
+                    std::optional<k2::String> rangekey = response.value.deserializeNext<k2::String>();
+                    std::optional<k2::String> data1 = response.value.deserializeNext<k2::String>();
+                    std::optional<k2::String> data2 = response.value.deserializeNext<k2::String>();
+                                        
+                    K2EXPECT(*partkey, "partkey07");
+                    K2EXPECT(*rangekey, "rangekey07");
+                    K2EXPECT(*data1, "partialupdate");
+                    K2EXPECT(*data2, "data2");
+
+                    return seastar::make_ready_future<>();
+                })
+                .then([&txnHandle] () {
+                    return txnHandle.end(false);
+                })
+                .then([] (auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<>();
+                });
+            }); // end do_with
+        });
+}
+
+// Tests for rejectIfExists flag
+seastar::future<> runScenario08() {
+    K2INFO("Scenario 08");
+    k2::K2TxnOptions options{};
+    options.syncFinalize = true;
+    return _client.beginTxn(options)
+    .then([this] (k2::K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn), std::shared_ptr<k2::dto::Schema>(),
+            [this] (k2::K2TxnHandle& txnHandle, std::shared_ptr<k2::dto::Schema>& my_schema) {
+                return _client.getSchema(collname, "schema", 1)
+                .then([this, &txnHandle, &my_schema] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(status.is2xxOK(), true);
+
+                    k2::dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<k2::String>("partkey08");
+                    record.serializeNext<k2::String>("rangekey08");
+                    record.serializeNext<k2::String>("data1");
+                    record.serializeNext<k2::String>("data2");
+                    my_schema = schemaPtr;
+
+                    return txnHandle.write<k2::dto::SKVRecord>(record);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txnHandle, &my_schema] () {
+                    k2::dto::SKVRecord record(collname, my_schema);
+                    record.serializeNext<k2::String>("partkey08");
+                    record.serializeNext<k2::String>("rangekey08");
+                    record.serializeNext<k2::String>("data1*");
+                    record.serializeNext<k2::String>("data2*");
+
+                    // rejectIfExists = true, we expect write to fail
+                    return txnHandle.write(record, false, true);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::ConditionFailed);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txnHandle, &my_schema] () {
+                    k2::dto::SKVRecord record(collname, my_schema);
+                    record.serializeNext<k2::String>("partkey08");
+                    record.serializeNext<k2::String>("rangekey08");
+                    record.skipNext();
+                    record.skipNext();
+
+                    // erase record
+                    return txnHandle.write(record, true);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txnHandle, &my_schema] () {
+                    k2::dto::SKVRecord record(collname, my_schema);
+                    record.serializeNext<k2::String>("partkey08");
+                    record.serializeNext<k2::String>("rangekey08");
+                    record.serializeNext<k2::String>("data1*");
+                    record.serializeNext<k2::String>("data2*");
+
+                    // rejectIfExists = true, we expect it to succeed after the erase
+                    return txnHandle.write(record, false, true);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([&txnHandle] () {
+                    return txnHandle.end(true);
+                })
+                .then([] (auto&& response) {
+                    K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<>();
+                });
+            }); // end do_with
+        });
 }
 
 };  // class SKVClientTest

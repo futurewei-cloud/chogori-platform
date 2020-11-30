@@ -427,12 +427,7 @@ void RPCParser::_stWAIT_FOR_PAYLOAD() {
 
 void RPCParser::_stREADY_TO_DISPATCH() {
     K2DEBUG("ready_to_dispatch: cursize=" << _currentBinary.size());
-    if (_useChecksum && _payload) {
-        if (!_metadata.isChecksumSet()) {
-            K2DEBUG("metadata doesn't have crc checksum");
-            _setParserFailure(ChecksumValidationException());
-            return;
-        }
+    if (_useChecksum && _payload && _metadata.isChecksumSet()) {
         auto checksum = _payload->computeCrc32c();
         if (checksum != _metadata.checksum) {
             K2DEBUG("checksum doesn't match: have=" << _metadata.checksum << ", received=" << checksum);
