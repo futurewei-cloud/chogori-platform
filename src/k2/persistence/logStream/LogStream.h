@@ -71,7 +71,9 @@ private:
     std::pair<String, uint32_t> _walInfo;
     std::pair<String, uint32_t> _metaInfo;
     
+    bool _switched;
     std::vector<seastar::promise<>> _requestWaiters;
+
     String _ongoindWALSealedPlog;
     String _ongoindMetadataSealedPlog;
     bool _logStreamCreate = false; // Whether this logstream has been created 

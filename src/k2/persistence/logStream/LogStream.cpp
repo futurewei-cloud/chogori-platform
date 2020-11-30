@@ -41,7 +41,8 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 LogStream::LogStream() {
-    K2INFO("dtor");    
+    K2INFO("dtor");
+    _switched = false;    
 }
 
 LogStream::~LogStream() {
@@ -51,6 +52,7 @@ LogStream::~LogStream() {
 seastar::future<> 
 LogStream::init(String cpo_url, String persistenceClusrerName){
     K2INFO("LogStream Init");
+    
     _cpo = CPOClient(cpo_url);
     return _client.init(persistenceClusrerName, cpo_url);
 }
@@ -110,7 +112,7 @@ LogStream::create(String logStreamName){
         _walInfo = std::move(std::make_pair(plogId, 0));
 
         // write the metadata of the first WAL plog to metadata log streams
-        Payload temp_payload([] { return Binary(4096); });
+        Payload temp_payload(Payload::DefaultAllocator);
         temp_payload.write(std::move(plogId));
         return _write(std::move(temp_payload), 0);
     });
@@ -253,6 +255,9 @@ LogStream::_write(Payload payload, bool writeToWAL){
         }
         targetPlogInfo.first = new_plogId;
         targetPlogInfo.second = 0;
+        
+        _switched = true;
+        _requestWaiters.emplace_back(seastar::promise<>());
     }
 
     uint32_t current_offset = targetPlogInfo.second;
@@ -266,7 +271,21 @@ LogStream::_write(Payload payload, bool writeToWAL){
         }
         // If sealed_offest == 0, then it means after the incoming writing operation, the current plog is not excceed the size limit
         if (sealed_offest == 0){
-            return seastar::make_ready_future<>();
+            if (_switched && writeToWAL){
+                auto waiter_size = _requestWaiters.size();
+                _requestWaiters.emplace_back(seastar::promise<>());
+                return _requestWaiters[waiter_size-1].get_future().
+                then([this, waiter_size] (){
+                    _requestWaiters[waiter_size].set_value();
+                    if (_requestWaiters.size() == waiter_size+1){
+                        _requestWaiters.clear();
+                    }
+                    return seastar::make_ready_future<>();
+                });
+            }
+            else{
+                return seastar::make_ready_future<>();
+            }
         }
         
         return _client.seal(sealed_plogId, sealed_offest)
@@ -282,14 +301,18 @@ LogStream::_write(Payload payload, bool writeToWAL){
             if (!status.is2xxOK()){
                 throw k2::dto::PlogCreateError("unable to create a plog");
             }
-                
             // Write the metadata to metadata log stream
             if (writeToWAL){
                 _walPlogPool.push_back(std::move(plogId));
-                Payload temp_payload([] { return Binary(4096); });
+                Payload temp_payload(Payload::DefaultAllocator);
                 temp_payload.write(sealed_offest);
                 temp_payload.write(std::move(new_plogId));
-                return _write(std::move(temp_payload), false);
+                return _write(std::move(temp_payload), false)
+                .then([this] (){
+                    _requestWaiters[0].set_value();
+                    _switched = false;
+                    return seastar::make_ready_future<>();
+                });
             }
             // Write the metadata to CPO
             else{

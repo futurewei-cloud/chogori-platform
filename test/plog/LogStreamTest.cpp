@@ -66,6 +66,7 @@ public:  // application lifespan
             .then([this] { return runTest2(); })
             .then([this] { return runTest3(); })
             .then([this] { return runTest4(); })
+            .then([this] { return runTest5(); })
             .then([this] {
                 K2INFO("======= All tests passed ========");
                 exitcode = 0;
@@ -141,6 +142,7 @@ public:  // application lifespan
 
     seastar::future<> runTest4() {
         K2INFO(">>> Test4: Write and read huge data");
+        
         String header;
         for (uint32_t i = 0; i < 10000; ++i){
             header = header + "0";
@@ -154,9 +156,11 @@ public:  // application lifespan
         }
         return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end())
         .then([this, header] (){
+            K2INFO(">>> Test4.1: Write Done");
             return _client.read("LogStream1");
         })
         .then([this, header] (auto&& payloads){
+            K2INFO(">>> Test4.2: Read Done");
             String str;
             uint32_t count = 0;
             for (auto& payload:payloads){
@@ -178,9 +182,11 @@ public:  // application lifespan
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
         .then([this, header] (){
+            K2INFO(">>> Test4.3: Write Done");
             return _client.read("LogStream1");
         })
         .then([this, header] (auto&& payloads){
+            K2INFO(">>> Test4.4: Read Done");
             String str;
             uint32_t count = 0;
             for (auto& payload:payloads){
@@ -194,6 +200,12 @@ public:  // application lifespan
             K2EXPECT(count, 4001);
             return seastar::make_ready_future<>();
         });
+    }
+
+    // TODO: added a test case to test the scenario that using more than 1 metadata plogs
+    seastar::future<> runTest5() {
+        K2INFO(">>> Test2: use multiple metadata plogs");
+        return seastar::make_ready_future<>();
     }
 
 };
