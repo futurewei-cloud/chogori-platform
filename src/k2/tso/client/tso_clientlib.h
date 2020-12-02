@@ -45,9 +45,7 @@ class TSO_ClientLib
 {
 public:
     // constructor
-    // startDelay - a delay/sleep duration in start(). This is for testing purpose where the client lib start need to delay waiting for server starts
-    // TODO: instead of pass in TSOServerURL, we need to change later to CPO URL and get URLs of TSO servers from there instead.
-    TSO_ClientLib(Duration startDelay) : _startDelay(startDelay) { K2INFO("ctor");}
+    TSO_ClientLib() { K2INFO("ctor");}
 
     ~TSO_ClientLib() { K2INFO("dtor");}
 
@@ -73,6 +71,10 @@ private:
 
     bool _stopped{false};
 
+    // a promise/signal for ready to serve request when they come earlier than TSO server end point set up
+    volatile bool _readyToServe {false};
+    std::vector<seastar::promise<>> _promiseReadyToServe;  // have to use a seperate promise/future for each early request to hold on
+
     // a vector of TSO servers
     // TODO: currently just use one, we will use multiple later, with more info like location(local or remote), availability status etc. Also get them from CPO instead.
     //       the CPO should give the list of TSO servers in preference order in the vector.
@@ -89,9 +91,6 @@ private:
     // For correctness verification purpose, we keep track of the latest _triggeredTime of the batches whenever we issued timestamp from a (new) batch
     // So that if an out-of-order old batch comes in, we will discard it.
     TimePoint _lastIssuedBatchTriggeredTime;
-
-    // startDelay - a delay/sleep duration in start(). This is for testing purpose where the client lib start need to delay waiting for server starts
-    Duration _startDelay;
 
     // info about queued request that is promised but not yet fulfilled
     struct ClientRequest

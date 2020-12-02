@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
         ("k23si_query_push_limit", bpo::value<uint32_t>(), "Min records in response needed to avoid a push during query processing")
         ("k23si_persistence_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A space-delimited list of k2 persistence endpoints, each core will pick one endpoint");
 
-    app.addApplet<k2::TSO_ClientLib>(10ms);
+    app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<k2::CollectionMetadataCache>();
     app.addApplet<k2::NodePoolMonitor>();
     app.addApplet<k2::AssignmentManager>();

@@ -141,7 +141,7 @@ int main(int argc, char **argv)
     app.addOptions()
     ("tso_endpoint", bpo::value<k2::String>()->default_value("tcp+k2rpc://127.0.0.1:9000"), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
 
-    app.addApplet<k2::TSO_ClientLib>(1s);
+    app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<k2::TSOService>();
     app.addApplet<k2::sampleTSOApp>();
 
