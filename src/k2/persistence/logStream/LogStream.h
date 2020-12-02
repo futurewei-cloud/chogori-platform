@@ -80,6 +80,8 @@ private:
 
     // write data to the log stream. writeToWAL == false means write to the metadata log stream, while writeToWAL == true means write to the WAL
     seastar::future<> _write(Payload payload, bool writeToWAL);
+    // when exceed the size limit of current plog, we need to seal the current plog, write the sealed offset to metadata, and write the contents to the new plog
+    seastar::future<> _switchPlog(Payload payload, bool writeToWAL);
     // read the contents from WAL plogs
     seastar::future<std::vector<Payload> > _readContent(std::vector<Payload> payloads);
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};

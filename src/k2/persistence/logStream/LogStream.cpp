@@ -228,38 +228,63 @@ LogStream::_write(Payload payload, bool writeToWAL){
         K2INFO("Log stream does not create");
         throw k2::dto::LogStreamExistError("Log stream does not create");
     }
-
-    String sealed_plogId;
-    String new_plogId;
-    uint32_t sealed_offest = 0;
-    
     std::pair<String, uint32_t>& targetPlogInfo = writeToWAL ? _walInfo : _metaInfo;
-    // determine whether the current plog will excceed the size limit after the incoming writing operation
-    if (targetPlogInfo.second + payload.getSize() >= PLOG_MAX_SIZE){
-        sealed_plogId = targetPlogInfo.first;
-        sealed_offest = targetPlogInfo.second;
-        // change to the next available plog id
-        if (!writeToWAL){
-            if (_metadataPlogPool.size() == 0){
-                throw k2::dto::LogStreamBackupPlogError("no available backup metadata plog");
-            }
-            new_plogId = _metadataPlogPool[_metadataPlogPool.size()-1];
-            _metadataPlogPool.pop_back();
-        }
-        else{
-            if (_walPlogPool.size() == 0){
-                throw k2::dto::LogStreamBackupPlogError("no available backup wal plog");
-            }
-            new_plogId = _walPlogPool[_walPlogPool.size()-1];
-            _walPlogPool.pop_back();
-        }
-        targetPlogInfo.first = new_plogId;
-        targetPlogInfo.second = 0;
-        
-        _switched = true;
-        _requestWaiters.emplace_back(seastar::promise<>());
-    }
 
+    if (targetPlogInfo.second + payload.getSize() < PLOG_MAX_SIZE){
+        return _client.append(targetPlogInfo.first, targetPlogInfo.second, std::move(payload)).
+        then([this, writeToWAL] (auto&& response){
+            auto& [status, resp] = response;
+            if (!status.is2xxOK()) {
+                throw k2::dto::PlogAppendError("unable to append the plog");
+            }
+            // Check weather there is a sealed request that did not receive the response
+            if (_switched && writeToWAL){
+                _requestWaiters.emplace_back(seastar::promise<>());
+                // if there is a flying sealed request, we should not notify the client until we receive the response of that sealed request
+                return _requestWaiters.back().get_future().
+                then([] (){
+                    return seastar::make_ready_future<>();
+                });
+            }
+            else{
+                return seastar::make_ready_future<>();
+            }
+        });
+    }
+    else{
+        // switch to a new plog
+        return _switchPlog(std::move(payload), writeToWAL);
+    }
+}
+
+
+seastar::future<> 
+LogStream::_switchPlog(Payload payload, bool writeToWAL){
+    std::pair<String, uint32_t>& targetPlogInfo = writeToWAL ? _walInfo : _metaInfo;
+
+    String new_plogId;
+    String sealed_plogId = targetPlogInfo.first;
+    uint32_t sealed_offest = targetPlogInfo.second;
+    
+    // change to the next available plog id
+    if (!writeToWAL){
+        if (_metadataPlogPool.size() == 0){
+            throw k2::dto::LogStreamBackupPlogError("no available backup metadata plog");
+        }
+        new_plogId = _metadataPlogPool[_metadataPlogPool.size()-1];
+        _metadataPlogPool.pop_back();
+    }
+    else{
+        if (_walPlogPool.size() == 0){
+            throw k2::dto::LogStreamBackupPlogError("no available backup wal plog");
+        }
+        new_plogId = _walPlogPool[_walPlogPool.size()-1];
+        _walPlogPool.pop_back();
+    }
+    targetPlogInfo.first = new_plogId;
+    targetPlogInfo.second = 0;
+    
+    _switched = true;
     uint32_t current_offset = targetPlogInfo.second;
     targetPlogInfo.second += payload.getSize();
 
@@ -270,24 +295,6 @@ LogStream::_write(Payload payload, bool writeToWAL){
             throw k2::dto::PlogAppendError("unable to append the plog");
         }
         // If sealed_offest == 0, then it means after the incoming writing operation, the current plog is not excceed the size limit
-        if (sealed_offest == 0){
-            if (_switched && writeToWAL){
-                auto waiter_size = _requestWaiters.size();
-                _requestWaiters.emplace_back(seastar::promise<>());
-                return _requestWaiters[waiter_size-1].get_future().
-                then([this, waiter_size] (){
-                    _requestWaiters[waiter_size].set_value();
-                    if (_requestWaiters.size() == waiter_size+1){
-                        _requestWaiters.clear();
-                    }
-                    return seastar::make_ready_future<>();
-                });
-            }
-            else{
-                return seastar::make_ready_future<>();
-            }
-        }
-        
         return _client.seal(sealed_plogId, sealed_offest)
         .then([&, writeToWAL, new_plogId, sealed_offest] (auto&& response){
             auto& [status, resp] = response;
@@ -309,8 +316,11 @@ LogStream::_write(Payload payload, bool writeToWAL){
                 temp_payload.write(std::move(new_plogId));
                 return _write(std::move(temp_payload), false)
                 .then([this] (){
-                    _requestWaiters[0].set_value();
                     _switched = false;
+                    for (auto& request: _requestWaiters){
+                        request.set_value();
+                    }
+                    _requestWaiters.clear();
                     return seastar::make_ready_future<>();
                 });
             }
@@ -326,7 +336,6 @@ LogStream::_write(Payload payload, bool writeToWAL){
                     return seastar::make_ready_future<>();
                 });
             }
-            
         });
     });
 }
