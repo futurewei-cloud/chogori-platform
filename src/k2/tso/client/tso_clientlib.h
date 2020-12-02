@@ -72,7 +72,7 @@ private:
     bool _stopped{false};
 
     // a promise/signal for ready to serve request when they come earlier than TSO server end point set up
-    volatile bool _readyToServe {false};
+    bool _readyToServe {false};
     std::vector<seastar::promise<>> _promiseReadyToServe;  // have to use a seperate promise/future for each early request to hold on
 
     // a vector of TSO servers

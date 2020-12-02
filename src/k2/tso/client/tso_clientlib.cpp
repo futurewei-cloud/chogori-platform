@@ -174,7 +174,7 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
     {
         // if not ready to serve yet, wait on a new ready promise then call get this function self, as each promise can only chain one then lamda
         K2INFO("TSO Timestamp requested when not ready to serve, request pending...");
-        _promiseReadyToServe.emplace_back(seastar::promise<>());
+        _promiseReadyToServe.emplace_back();
         return _promiseReadyToServe.back().get_future()
             .then([this, triggeredTime = requestLocalTime] { return GetTimestampFromTSO(triggeredTime); });
     }
