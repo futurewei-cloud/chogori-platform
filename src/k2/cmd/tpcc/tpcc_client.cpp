@@ -94,10 +94,13 @@ public:  // application lifespan
             sm::make_counter("completed_txns", _completedTxns, sm::description("Number of completed TPC-C transactions"), labels),
             sm::make_counter("new_order_txns", _newOrderTxns, sm::description("Number of completed New Order transactions"), labels),
             sm::make_counter("payment_txns", _paymentTxns, sm::description("Number of completed Payment transactions"), labels),
+            sm::make_counter("order_status_txns", _orderStatusTxns, sm::description("Number of completed Order Status transactions"), labels),
             sm::make_histogram("new_order_latency", [this]{ return _newOrderLatency.getHistogram();},
                     sm::description("Latency of New Order transactions"), labels),
             sm::make_histogram("payment_latency", [this]{ return _paymentLatency.getHistogram();},
-                    sm::description("Latency of Payment transactions"), labels)
+                    sm::description("Latency of Payment transactions"), labels),
+            sm::make_histogram("order_status_latency", [this]{ return _orderStatusLatency.getHistogram();},
+                    sm::description("Latency of Order Status transactions"), labels)
 
         });
     }
@@ -243,8 +246,15 @@ private:
             [this] {
                 uint32_t txn_type = _random.UniformRandom(1, 100);
                 uint32_t w_id = (seastar::engine().cpu_id() % _max_warehouses()) + 1;
-                TPCCTxn* curTxn = txn_type <= 43 ? (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses())
-                                                 : (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
+                TPCCTxn* curTxn;
+                if (txn_type <= 43) {
+                    curTxn = (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses());
+                } else if (txn_type <= 47) {
+                    curTxn = (TPCCTxn*) new OrderStatusT(_random, _client, w_id);
+                } else {
+                    curTxn = (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
+                }
+                
                 auto txn_start = k2::Clock::now();
                 return curTxn->run()
                 .then([this, txn_type, txn_start] (bool success) {
@@ -259,6 +269,9 @@ private:
                     if (txn_type <= 43) {
                         _paymentTxns++;
                         _paymentLatency.add(dur);
+                    } else if (txn_type <= 47) {
+                        _orderStatusTxns++;
+                        _orderStatusLatency.add(dur);
                     } else {
                         _newOrderTxns++;
                         _newOrderLatency.add(dur);
@@ -297,9 +310,11 @@ private:
             auto cntpsec = (double)_completedTxns/totalsecs;
             auto readpsec = (double)_client.read_ops/totalsecs;
             auto writepsec = (double)_client.write_ops/totalsecs;
+            auto querypsec = (double)_client.query_ops/totalsecs;
             K2INFO("completedTxns=" << _completedTxns << "(" << cntpsec << " per sec)" );
             K2INFO("read ops " << readpsec << " per sec)" );
             K2INFO("write ops " << writepsec << " per sec)" );
+            K2INFO("query ops " << querypsec << " per sec)" );
             return make_ready_future();
         });
     }
@@ -325,9 +340,11 @@ private:
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _newOrderLatency;
     k2::ExponentialHistogram _paymentLatency;
+    k2::ExponentialHistogram _orderStatusLatency;
     uint64_t _completedTxns{0};
     uint64_t _newOrderTxns{0};
     uint64_t _paymentTxns{0};
+    uint64_t _orderStatusTxns{0};
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
 }; // class Client
