@@ -70,8 +70,8 @@ seastar::future<> PlogServer::start() {
         return _handleSeal(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogInfoRequest, dto::PlogInfoResponse>(dto::Verbs::PERSISTENT_INFO, [this](dto::PlogInfoRequest&& request) {
-        return _handleInfo(std::move(request));
+    RPC().registerRPCObserver<dto::PlogStatusRequest, dto::PlogStatusResponse>(dto::Verbs::PERSISTENT_STATUS, [this](dto::PlogStatusRequest&& request) {
+        return _handleGetStatus(std::move(request));
     });
     _plogMap.clear();
 
@@ -85,7 +85,7 @@ PlogServer::_handleCreate(dto::PlogCreateRequest&& request){
     if (iter != _plogMap.end()) {
         return RPCResponse(Statuses::S409_Conflict("plog id already exists"), dto::PlogCreateResponse());
     }
-    _plogMap.insert(std::pair<String,PlogPage >(std::move(request.plogId), PlogPage()));
+    _plogMap.insert(std::pair<String,InternalPlog >(std::move(request.plogId), InternalPlog()));
     return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse());
 };
 
@@ -164,14 +164,14 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
     return RPCResponse(Statuses::S200_OK("sealed success"), std::move(response));
 };
 
-seastar::future<std::tuple<Status, dto::PlogInfoResponse>>
-PlogServer::_handleInfo(dto::PlogInfoRequest&& request){
+seastar::future<std::tuple<Status, dto::PlogStatusResponse>>
+PlogServer::_handleGetStatus(dto::PlogStatusRequest&& request){
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogInfoResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogStatusResponse());
     }
     
-    dto::PlogInfoResponse response{.currentOffset=iter->second.offset, .sealed=iter->second.sealed};
+    dto::PlogStatusResponse response{.currentOffset=iter->second.offset, .sealed=iter->second.sealed};
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
 

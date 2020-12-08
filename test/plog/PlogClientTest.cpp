@@ -246,13 +246,13 @@ public:  // application lifespan
             K2EXPECT(status, Statuses::S409_Conflict);
             K2EXPECT(status.message, "plog is sealed");
 
-            return _client.info(_plogId);
+            return _client.getPlogStatus(_plogId);
         })
         .then([this] (auto&& response){
-            auto& [status, plogInfo] = response;
+            auto& [status, plogStatus] = response;
             K2EXPECT(status, Statuses::S200_OK);
-            K2EXPECT(std::get<0>(plogInfo), 45);
-            K2EXPECT(std::get<1>(plogInfo), true);
+            K2EXPECT(std::get<0>(plogStatus), 45);
+            K2EXPECT(std::get<1>(plogStatus), true);
 
             return seastar::make_ready_future<>();
         });

@@ -23,7 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
-#include <k2/persistence/logStream/LogStream.h>
+#include <k2/persistence/logStreamMgr/LogStreamMgr.h>
 #include <seastar/core/reactor.hh>
 #include <seastar/core/sleep.hh>
 #include <k2/dto/PersistenceCluster.h>
@@ -36,7 +36,7 @@ class PlogTest {
 private:
     int exitcode = -1;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
-    k2::LogStream _client;
+    k2::LogStreamMgr _client;
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
@@ -127,7 +127,7 @@ public:  // application lifespan
         payload.write(header);
         return _client.write(std::move(payload))
         .then([this, header] (){
-            return _client.read("LogStream1");
+            return _client.read_all_WAL("LogStream1");
         })
         .then([this, header] (auto&& payloads){
             String str;
@@ -157,7 +157,7 @@ public:  // application lifespan
         return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end())
         .then([this, header] (){
             K2INFO(">>> Test4.1: Write Done");
-            return _client.read("LogStream1");
+            return _client.read_all_WAL("LogStream1");
         })
         .then([this, header] (auto&& payloads){
             K2INFO(">>> Test4.2: Read Done");
@@ -183,7 +183,7 @@ public:  // application lifespan
         })
         .then([this, header] (){
             K2INFO(">>> Test4.3: Write Done");
-            return _client.read("LogStream1");
+            return _client.read_all_WAL("LogStream1");
         })
         .then([this, header] (auto&& payloads){
             K2INFO(">>> Test4.4: Read Done");

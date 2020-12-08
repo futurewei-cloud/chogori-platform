@@ -37,10 +37,10 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-class LogStream{
+class LogStreamMgr{
 public:
-    LogStream();
-    ~LogStream();
+    LogStreamMgr();
+    ~LogStreamMgr();
 
     // initializate the plog client it holds
     seastar::future<> init(String cpo_url, String persistenceClusrerName);
@@ -51,8 +51,11 @@ public:
     // write data to the log stream
     seastar::future<> write(Payload payload);
 
-    // read all the data from this log stream
-    seastar::future<std::vector<Payload> > read(String logStreamName);
+    // TODO: read the data from the log stream with given offset and size
+    seastar::future<std::vector<Payload> > read_WAL(String logStreamName, uint32_t offset, uint32_t size);
+
+    // read all the data from the log stream, this is only for test propose
+    seastar::future<std::vector<Payload> > read_all_WAL(String logStreamName);
 
 private:
     // the maximum size of each plog
@@ -66,6 +69,7 @@ private:
     PlogClient _client;
     String _logStreamName;
 
+    // TODO: decouple the WALLogstreamMgr and the MetadataLogStreamMgr
     std::vector<String> _walPlogPool; // The vector to store the created WAL plog Id
     std::vector<String> _metadataPlogPool; // the vector to store the created Metadata plog Id
     std::pair<String, uint32_t> _walInfo;
@@ -81,7 +85,7 @@ private:
     // write data to the log stream. writeToWAL == false means write to the metadata log stream, while writeToWAL == true means write to the WAL
     seastar::future<> _write(Payload payload, bool writeToWAL);
     // when exceed the size limit of current plog, we need to seal the current plog, write the sealed offset to metadata, and write the contents to the new plog
-    seastar::future<> _switchPlog(Payload payload, bool writeToWAL);
+    seastar::future<> _switchPlogAndWrite(Payload payload, bool writeToWAL);
     // read the contents from WAL plogs
     seastar::future<std::vector<Payload> > _readContent(std::vector<Payload> payloads);
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};

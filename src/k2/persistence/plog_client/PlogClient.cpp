@@ -183,16 +183,16 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
 }
 
 
-seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::info(String plogId){
-    dto::PlogInfoRequest request{.plogId = std::move(plogId)};
+seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getPlogStatus(String plogId){
+    dto::PlogStatusRequest request{.plogId = std::move(plogId)};
 
-    std::vector<seastar::future<std::tuple<Status, dto::PlogInfoResponse> > > infoFutures;
+    std::vector<seastar::future<std::tuple<Status, dto::PlogStatusResponse> > > statusFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
-        infoFutures.push_back(RPC().callRPC<dto::PlogInfoRequest, dto::PlogInfoResponse>(dto::Verbs::PERSISTENT_INFO, request, *ep, _plog_timeout()));
+        statusFutures.push_back(RPC().callRPC<dto::PlogStatusRequest, dto::PlogStatusResponse>(dto::Verbs::PERSISTENT_STATUS, request, *ep, _plog_timeout()));
     }
 
-    return seastar::when_all_succeed(infoFutures.begin(), infoFutures.end())
-        .then([this](std::vector<std::tuple<Status, dto::PlogInfoResponse> >&& results) { 
+    return seastar::when_all_succeed(statusFutures.begin(), statusFutures.end())
+        .then([this](std::vector<std::tuple<Status, dto::PlogStatusResponse> >&& results) { 
             Status return_status;
             uint32_t current_offset=UINT_MAX;
             bool sealed=false;

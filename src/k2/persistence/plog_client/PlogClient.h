@@ -40,13 +40,6 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 
-struct PlogInfo {
-    String persistenceClusterName;
-    String persistenceGroupName;
-    String plogId;
-};
-
-
 class PlogClient {
 public:
     PlogClient();
@@ -72,7 +65,7 @@ public:
     seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
 
     // obtain the current offset and status of a plog
-    seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> info(String plogId);
+    seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> getPlogStatus(String plogId);
 
 private:
     dto::PersistenceCluster _persistenceCluster; // the current persistence cluster the client holds

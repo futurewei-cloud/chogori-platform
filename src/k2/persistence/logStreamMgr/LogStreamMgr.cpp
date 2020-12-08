@@ -21,7 +21,7 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include "LogStream.h"
+#include "LogStreamMgr.h"
 #include <k2/common/Chrono.h>
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
@@ -40,17 +40,17 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-LogStream::LogStream() {
+LogStreamMgr::LogStreamMgr() {
     K2INFO("dtor");
     _switched = false;    
 }
 
-LogStream::~LogStream() {
+LogStreamMgr::~LogStreamMgr() {
     K2INFO("~dtor");
 }
 
 seastar::future<> 
-LogStream::init(String cpo_url, String persistenceClusrerName){
+LogStreamMgr::init(String cpo_url, String persistenceClusrerName){
     K2INFO("LogStream Init");
     
     _cpo = CPOClient(cpo_url);
@@ -58,14 +58,13 @@ LogStream::init(String cpo_url, String persistenceClusrerName){
 }
 
 seastar::future<>
-LogStream::create(String logStreamName){
+LogStreamMgr::create(String logStreamName){
     if (_logStreamCreate){
         K2INFO("Log streaam already created");
         throw k2::dto::LogStreamExistError("Log stream already created");
     }
 
     _logStreamName = std::move(logStreamName);
-    _logStreamCreate = true;
 
     // create metadata plogs in advance
     std::vector<seastar::future<std::tuple<Status, String> > > createFutures;
@@ -100,6 +99,7 @@ LogStream::create(String logStreamName){
         return seastar::when_all_succeed(createFutures.begin(), createFutures.end());
     })
     .then([this] (auto&& responses){
+        _logStreamCreate = true;
         for (auto& response: responses){
             auto& [status, plogId] = response;
             if (!status.is2xxOK()){
@@ -114,12 +114,15 @@ LogStream::create(String logStreamName){
         // write the metadata of the first WAL plog to metadata log streams
         Payload temp_payload(Payload::DefaultAllocator);
         temp_payload.write(std::move(plogId));
-        return _write(std::move(temp_payload), 0);
+        return _write(std::move(temp_payload), false);
+    })
+    .then([this] (){
+        return seastar::make_ready_future<>();
     });
 }
 
 seastar::future<std::vector<Payload> >
-LogStream::read(String logStreamName){
+LogStreamMgr::read_all_WAL(String logStreamName){
     // read the metadata of metadata log stream from CPO
     return _cpo.GetMetadataStreamLog(Deadline<>(_cpo_timeout()), logStreamName)
     .then([&] (auto&& response){
@@ -129,11 +132,11 @@ LogStream::read(String logStreamName){
         }
         std::vector<dto::MetadataElement> streamLog = std::move(resp.streamLog);
         return seastar::do_with(std::move(streamLog), [this] (auto& streamLog){
-            return _client.info(streamLog[streamLog.size()-1].name)
+            return _client.getPlogStatus(streamLog[streamLog.size()-1].name)
             .then([&] (auto&& response){
                 auto& [status, resp] = response;
                 if (!status.is2xxOK()) {
-                    throw k2::dto::PlogInfoError("unable to obtain the information of a plog");
+                    throw k2::dto::PlogStatusError("unable to obtain the information of a plog");
                 }
 
                 // read the metadata information of WAL plogs from metadata log stream
@@ -162,7 +165,7 @@ LogStream::read(String logStreamName){
 }
 
 seastar::future<std::vector<Payload> >
-LogStream::_readContent(std::vector<Payload> payloads){
+LogStreamMgr::_readContent(std::vector<Payload> payloads){
     std::vector<dto::MetadataElement> streamLog;
 
     //Format: plogId1, offset1, plogId2, offset2... 
@@ -189,11 +192,11 @@ LogStream::_readContent(std::vector<Payload> payloads){
     streamLog.push_back(std::move(log_entry));
 
     return seastar::do_with(std::move(streamLog), [this] (auto& streamLog){
-        return _client.info(streamLog[streamLog.size()-1].name)
+        return _client.getPlogStatus(streamLog[streamLog.size()-1].name)
         .then([&] (auto&& response){
             auto& [status, resp] = response;
             if (!status.is2xxOK()) {
-                throw k2::dto::PlogInfoError("unable to obtain the information of a plog");
+                throw k2::dto::PlogStatusError("unable to obtain the information of a plog");
             }
             streamLog[streamLog.size()-1].offset = std::get<0>(resp);
             std::vector<seastar::future<std::tuple<Status, Payload> > > readFutures;
@@ -218,12 +221,12 @@ LogStream::_readContent(std::vector<Payload> payloads){
 
 
 seastar::future<> 
-LogStream::write(Payload payload){
+LogStreamMgr::write(Payload payload){
     return _write(std::move(payload), true);
 }
 
 seastar::future<> 
-LogStream::_write(Payload payload, bool writeToWAL){
+LogStreamMgr::_write(Payload payload, bool writeToWAL){
     if (!_logStreamCreate){
         K2INFO("Log stream does not create");
         throw k2::dto::LogStreamExistError("Log stream does not create");
@@ -253,13 +256,13 @@ LogStream::_write(Payload payload, bool writeToWAL){
     }
     else{
         // switch to a new plog
-        return _switchPlog(std::move(payload), writeToWAL);
+        return _switchPlogAndWrite(std::move(payload), writeToWAL);
     }
 }
 
 
 seastar::future<> 
-LogStream::_switchPlog(Payload payload, bool writeToWAL){
+LogStreamMgr::_switchPlogAndWrite(Payload payload, bool writeToWAL){
     std::pair<String, uint32_t>& targetPlogInfo = writeToWAL ? _walInfo : _metaInfo;
 
     String new_plogId;
@@ -275,6 +278,7 @@ LogStream::_switchPlog(Payload payload, bool writeToWAL){
         _metadataPlogPool.pop_back();
     }
     else{
+        // TODO: we should handle this error instead of throwing the exception
         if (_walPlogPool.size() == 0){
             throw k2::dto::LogStreamBackupPlogError("no available backup wal plog");
         }

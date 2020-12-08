@@ -47,9 +47,9 @@ private:
     // the maximum size of each plog
     constexpr static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
 
-    // each PlogPage is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
-    struct PlogPage {
-        PlogPage(){
+    // each InternalPlog is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
+    struct InternalPlog {
+        InternalPlog(){
             sealed=false;
             offset=0;
             payload = Payload(([] { return Binary(PLOG_MAX_SIZE); }));
@@ -61,7 +61,7 @@ private:
     };
 
     // a map to store all the plogs based on plog id
-    std::unordered_map<String, PlogPage> _plogMap;
+    std::unordered_map<String, InternalPlog> _plogMap;
 
     //handle the create request
     seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
@@ -80,8 +80,8 @@ private:
     _handleSeal(dto::PlogSealRequest&& request);
 
     //handle the seal request
-    seastar::future<std::tuple<Status, dto::PlogInfoResponse>>
-    _handleInfo(dto::PlogInfoRequest&& request);
+    seastar::future<std::tuple<Status, dto::PlogStatusResponse>>
+    _handleGetStatus(dto::PlogStatusRequest&& request);
     
 public:
      PlogServer();

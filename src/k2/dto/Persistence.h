@@ -70,12 +70,12 @@ struct PlogSealResponse {
     K2_PAYLOAD_FIELDS(sealedOffset);
 };
 
-struct PlogInfoRequest {
+struct PlogStatusRequest {
     String plogId;
     K2_PAYLOAD_FIELDS(plogId);
 };
 
-struct PlogInfoResponse {
+struct PlogStatusResponse {
     uint32_t currentOffset;
     bool sealed;
     K2_PAYLOAD_FIELDS(currentOffset, sealed);
@@ -87,9 +87,9 @@ struct PlogCreateError : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
-struct PlogInfoError : public std::exception {
+struct PlogStatusError : public std::exception {
     String what_str;
-    PlogInfoError(String s="") : what_str(std::move(s)) {}
+    PlogStatusError(String s="") : what_str(std::move(s)) {}
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 

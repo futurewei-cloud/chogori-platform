@@ -2,7 +2,7 @@
 
 
 # Plog
-The data model provided by Chogori Project is called Plog. In our current design, this Plog is an append-only struct. The only operation that allowed to change the Plog is to append new data after current blocks. 
+The persistence data model provided/used by Chogori Project is called Plog. In our current design, this Plog is an append-only struct. The only operation that allowed to change the Plog is to append new data after current blocks. 
 
 ## Term
 - Plog Client: Process all the operation requests regarding the Plog. It communicates with Plog Servers. It supports 4 operations: create, append, read, and seal.

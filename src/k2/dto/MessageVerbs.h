@@ -72,7 +72,7 @@ enum Verbs : k2::Verb {
     PERSISTENT_APPEND,
     PERSISTENT_READ,
     PERSISTENT_SEAL,
-    PERSISTENT_INFO,
+    PERSISTENT_STATUS,
     /************ K23SI Inspection ******************/
     K23SI_INSPECT_RECORDS = 45,
     K23SI_INSPECT_TXN,
