@@ -368,7 +368,7 @@ int main(int argc, char** argv) {;
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
 
-    app.addApplet<k2::TSO_ClientLib>(0s);
+    app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<Client>();
     return app.start(argc, argv);
 }

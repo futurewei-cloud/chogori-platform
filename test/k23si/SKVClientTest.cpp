@@ -1124,7 +1124,7 @@ int main(int argc, char** argv) {
         ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")
         ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
-    app.addApplet<k2::TSO_ClientLib>(0s);
+    app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<SKVClientTest>();
     return app.start(argc, argv);
 }

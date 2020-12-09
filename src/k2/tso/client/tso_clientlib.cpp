@@ -37,13 +37,13 @@ namespace k2
 
 seastar::future<> TSO_ClientLib::start()
 {
+    // TODO: instead of using config value TSOServerURL, we need to change later to CPO URL and get URLs of TSO servers from there instead.
     K2INFO("start with server url: " << TSOServerURL());
     _stopped = false;
 
     _tSOServerURLs.emplace_back(TSOServerURL());
     // for now we use the first server URL only, in the future, allow to check other server in case first one is not available
-    return seastar::sleep(_startDelay)
-        .then([this] () mutable { return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]); });
+    return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]);
 }
 
 seastar::future<> TSO_ClientLib::gracefulStop() {
@@ -134,6 +134,16 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String&
 
             std::shuffle(_curTSOServerWorkerEndPoints.begin(), _curTSOServerWorkerEndPoints.end(), ranAlg);
 
+            // set ready to serve requests
+            _readyToServe = true;
+            for (auto&& readyPromise : _promiseReadyToServe)
+            {
+                readyPromise.set_value();
+            }
+            // we have signaled any waiting request so we should free the memory now. 
+            _promiseReadyToServe.clear();
+            K2INFO("Successfully getting remote data endpoint, ready to serve.");
+
             return seastar::make_ready_future<>();
         })
         .then_wrapped([this](auto&& fut) {
@@ -158,6 +168,17 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
         K2INFO("Stopping issuing timestamp since we were stopped");
         return seastar::make_exception_future<Timestamp>(TSOClientLibShutdownException());
     }
+
+    // TSO client may not yet ready (discover the tso server endpoint), let the request wait in this case.
+    if (!_readyToServe)
+    {
+        // if not ready to serve yet, wait on a new ready promise then call get this function self, as each promise can only chain one then lamda
+        K2INFO("TSO Timestamp requested when not ready to serve, request pending...");
+        _promiseReadyToServe.emplace_back();
+        return _promiseReadyToServe.back().get_future()
+            .then([this, triggeredTime = requestLocalTime] { return GetTimestampFromTSO(triggeredTime); });
+    }
+    
 
     // step 1/4 - sanity check if we got out of order client timestamp request
     if (requestLocalTime < _lastSeenRequestTime)

@@ -321,7 +321,7 @@ private://metrics
 
 int main(int argc, char** argv) {
     k2::App app("K23SIBenchClient");
-    app.addApplet<k2::TSO_ClientLib>(0s);
+    app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<Client>();
     app.addOptions()
         ("data_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to write in records")
