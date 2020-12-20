@@ -22,13 +22,18 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
+
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/TXEndpoint.h>
+
 #include <set>
 #include <iostream>
 #include <unordered_map>
 #include <functional>
+
+#include <nlohmann/json.hpp>
+
 // Collection-related DTOs
 
 namespace k2 {
@@ -65,6 +70,18 @@ struct Key {
         return os << "{schema=" << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
     }
 };
+
+void inline to_json(nlohmann::json& j, const Key& key) {
+    j = nlohmann::json{{"schemaName", key.schemaName}, {"partitionKey", key.partitionKey}, 
+                       {"rangeKey", key.rangeKey}};
+}
+
+void inline from_json(const nlohmann::json& j, Key& key) {
+    j.at("schemaName").get_to(key.schemaName);
+    j.at("partitionKey").get_to(key.partitionKey);
+    j.at("rangeKey").get_to(key.rangeKey);
+}
+
 
 // the assignment state of a partition
 enum class AssignmentState: uint8_t {
@@ -140,6 +157,8 @@ struct Partition {
     }
 };
 
+//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Partition, startKey, endKey, endpoints, astate);
+
 struct PartitionMap {
     uint64_t version =0;
     std::vector<Partition> partitions;
@@ -157,6 +176,8 @@ struct PartitionMap {
         return os;
     }
 };
+
+//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PartitionMap, version, partitions);
 
 struct CollectionCapacity {
     uint64_t dataCapacityMegaBytes = 0;
@@ -204,6 +225,8 @@ struct CollectionMetadata {
     K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
 };
 
+//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(CollectionMetadata, name, hashScheme, storageDriver);
+
 struct Collection {
     PartitionMap partitionMap;
     std::unordered_map<String, String> userMetadata;
@@ -211,6 +234,8 @@ struct Collection {
 
     K2_PAYLOAD_FIELDS(partitionMap, userMetadata, metadata);
 };
+
+//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Collection, partitionMap, userMetadata, metadata);
 
 class PartitionGetter {
 public:

@@ -26,13 +26,13 @@ Copyright(c) 2020 Futurewei Cloud
 #include <functional>
 #include <memory>
 #include <iomanip>
+#include <iostream>
 
 #include <seastar/core/temporary_buffer.hh>
 #include <seastar/core/shared_ptr.hh>
-
-#include <iostream>
-
 #include <seastar/core/sstring.hh>
+
+#include <nlohmann/json.hpp>
 
 #include "Chrono.h"
 
@@ -89,3 +89,19 @@ typedef std::function<Binary()> BinaryAllocatorFunctor;
 template <typename T>
 auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e); }
 }   //  namespace k2
+
+namespace nlohmann {
+
+template <>
+struct adl_serializer<k2::String> {
+    static void to_json(json& j, const k2::String& str) {
+        j = std::string(str);
+    }
+
+    static void from_json(const json& j, k2::String& str) {
+        std::string s = j.get<std::string>();
+        str = s;
+    }
+};
+
+} // namespace nlohmann
