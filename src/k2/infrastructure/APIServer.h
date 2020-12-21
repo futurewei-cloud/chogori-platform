@@ -91,7 +91,7 @@ public:
 
 private:
     // API server will listen on the IP in _tcp_endpoints (by core ID) on the same port + the offset
-    static constexpr uint16_t API_PORT_OFFSET = 2000;
+    static constexpr uint16_t API_PORT_OFFSET = 10000;
     ConfigVar<std::vector<String>> _tcp_endpoints{"tcp_endpoints"};
 
     seastar::httpd::http_server _server;
