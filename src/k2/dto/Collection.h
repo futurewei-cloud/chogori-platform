@@ -22,13 +22,18 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
+
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/TXEndpoint.h>
+
 #include <set>
 #include <iostream>
 #include <unordered_map>
 #include <functional>
+
+#include <nlohmann/json.hpp>
+
 // Collection-related DTOs
 
 namespace k2 {
@@ -65,6 +70,17 @@ struct Key {
         return os << "{schema=" << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
     }
 };
+
+void inline to_json(nlohmann::json& j, const Key& key) {
+    j = nlohmann::json{{"schemaName", key.schemaName}, {"partitionKey", key.partitionKey}, 
+                       {"rangeKey", key.rangeKey}};
+}
+
+void inline from_json(const nlohmann::json& j, Key& key) {
+    j.at("schemaName").get_to(key.schemaName);
+    j.at("partitionKey").get_to(key.partitionKey);
+    j.at("rangeKey").get_to(key.rangeKey);
+}
 
 // the assignment state of a partition
 enum class AssignmentState: uint8_t {
@@ -107,6 +123,7 @@ struct Partition {
         }
 
     } pvid;
+
     // the starting key for the partition
     String startKey;
     // the ending key for the partition
@@ -140,6 +157,35 @@ struct Partition {
     }
 };
 
+void inline to_json(nlohmann::json& j, const Partition::PVID& pvid) {
+    j = nlohmann::json{{"id", pvid.id}, 
+                       {"rangeVersion", pvid.rangeVersion}, 
+                       {"assignmentVersion", pvid.assignmentVersion}};
+}
+
+void inline from_json(const nlohmann::json& j, Partition::PVID& pvid) {
+    j.at("id").get_to(pvid.id);
+    j.at("rangeVersion").get_to(pvid.rangeVersion);
+    j.at("assignmentVersion").get_to(pvid.assignmentVersion);
+}
+
+
+void inline to_json(nlohmann::json& j, const Partition& partition) {
+    j = nlohmann::json{{"pvid", partition.pvid},
+                       {"startKey", partition.startKey}, 
+                       {"endKey", partition.endKey}, 
+                       {"endpoints", partition.endpoints}, 
+                       {"astate", partition.astate}};
+}
+
+void inline from_json(const nlohmann::json& j, Partition& partition) {
+    j.at("pvid").get_to(partition.pvid);
+    j.at("startKey").get_to(partition.startKey);
+    j.at("endKey").get_to(partition.endKey);
+    j.at("endpoints").get_to(partition.endpoints);
+    j.at("astate").get_to(partition.astate);
+}
+
 struct PartitionMap {
     uint64_t version =0;
     std::vector<Partition> partitions;
@@ -157,6 +203,16 @@ struct PartitionMap {
         return os;
     }
 };
+
+void inline to_json(nlohmann::json& j, const PartitionMap& map) {
+    j = nlohmann::json{{"version", map.version}, 
+                       {"partitions", map.partitions}};
+}
+
+void inline from_json(const nlohmann::json& j, PartitionMap& map) {
+    j.at("version").get_to(map.version);
+    j.at("partitions").get_to(map.partitions);
+}
 
 struct CollectionCapacity {
     uint64_t dataCapacityMegaBytes = 0;
@@ -204,6 +260,17 @@ struct CollectionMetadata {
     K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
 };
 
+// TODO additional fields
+void inline to_json(nlohmann::json& j, const CollectionMetadata& meta) {
+    j = nlohmann::json{{"name", meta.name}, 
+                       {"hashScheme", meta.hashScheme}};
+}
+
+void inline from_json(const nlohmann::json& j, CollectionMetadata& meta) {
+    j.at("name").get_to(meta.name);
+    j.at("hashScheme").get_to(meta.hashScheme);
+}
+
 struct Collection {
     PartitionMap partitionMap;
     std::unordered_map<String, String> userMetadata;
@@ -211,6 +278,16 @@ struct Collection {
 
     K2_PAYLOAD_FIELDS(partitionMap, userMetadata, metadata);
 };
+
+void inline to_json(nlohmann::json& j, const Collection& collection) {
+    j = nlohmann::json{{"partitionMap", collection.partitionMap}, 
+                       {"metadata", collection.metadata}};
+}
+
+void inline from_json(const nlohmann::json& j, Collection& collection) {
+    j.at("partitionMap").get_to(collection.partitionMap);
+    j.at("metadata").get_to(collection.metadata);
+}
 
 class PartitionGetter {
 public:

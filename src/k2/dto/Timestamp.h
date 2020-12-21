@@ -26,6 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/common/Chrono.h>
 
+#include <nlohmann/json.hpp>
+
 namespace k2 {
 namespace dto {
 // K2Timestamp - a TrueTime uncertainty window and TSOId
@@ -87,7 +89,21 @@ public:
 
 public:
     K2_PAYLOAD_FIELDS(_tEndTSECount, _tsoId, _tStartDelta);
+    friend void to_json(nlohmann::json& j, const Timestamp& ts);
+    friend void from_json(const nlohmann::json& j, Timestamp& ts);
 };
+
+void inline to_json(nlohmann::json& j, const Timestamp& ts) {
+    j = nlohmann::json{{"_tEndTSECount", ts._tEndTSECount}, 
+                       {"_tsoId", ts._tsoId}, 
+                       {"_tStartDelta", ts._tStartDelta}};
+}
+
+void inline from_json(const nlohmann::json& j, Timestamp& ts) {
+    j.at("_tEndTSECount").get_to(ts._tEndTSECount);
+    j.at("_tsoId").get_to(ts._tsoId);
+    j.at("_tStartDelta").get_to(ts._tStartDelta);
+}
 
 } // ns dto
 } // ns k2

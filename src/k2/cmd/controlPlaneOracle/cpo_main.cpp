@@ -22,6 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include <k2/appbase/Appbase.h>
+#include <k2/infrastructure/APIServer.h>
 #include <k2/cpo/service/CPOService.h>
 
 int main(int argc, char** argv) {
@@ -33,5 +34,6 @@ int main(int argc, char** argv) {
     app.addApplet<k2::CPOService>([]() mutable -> seastar::distributed<k2::CPOService>& {
         return k2::AppBase().getDist<k2::CPOService>();
     });
+    app.addApplet<k2::APIServer>();
     return app.start(argc, argv);
 }

@@ -5,5 +5,6 @@ The reason why we have all of these interfaces in one place is to facilitate mut
 
 - Each component which wants to expose a DTO interface, should create a separate file here with its DTOs
 - The verbs used to access the interface should be added to the common verbs in MessageVerbs.h
+- For objects used in the JSON API HTTP server (see infrastructure/APIServer.h), to and from json methods need to be added. They are not needed for K2 RPCs so can otherwise be omitted.
 
 TODO: For now we keep all interfaces here. We should consider refactoring into internal/external

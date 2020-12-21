@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/Appbase.h>
 #include <k2/assignmentManager/AssignmentManager.h>
 #include <k2/collectionMetadataCache/CollectionMetadataCache.h>
+#include <k2/infrastructure/APIServer.h>
 #include <k2/nodePoolMonitor/NodePoolMonitor.h>
 #include <k2/partitionManager/PartitionManager.h>
 #include <k2/tso/client/tso_clientlib.h>
@@ -41,6 +42,7 @@ int main(int argc, char** argv) {
         ("k23si_query_push_limit", bpo::value<uint32_t>(), "Min records in response needed to avoid a push during query processing")
         ("k23si_persistence_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A space-delimited list of k2 persistence endpoints, each core will pick one endpoint");
 
+    app.addApplet<k2::APIServer>();
     app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<k2::CollectionMetadataCache>();
     app.addApplet<k2::NodePoolMonitor>();
