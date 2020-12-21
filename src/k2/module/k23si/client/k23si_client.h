@@ -125,7 +125,10 @@ public:
 
     seastar::future<> start();
     seastar::future<> gracefulStop();
+    // First version of makeCollection is deprecated, do not use.
+    // TODO: remove first version of makeCollection and update the test code.
     seastar::future<Status> makeCollection(const String& collection, std::vector<String>&& rangeEnds=std::vector<String>());
+    seastar::future<Status> makeCollection(dto::CollectionMetadata&& metadata, std::vector<String>&& endpoints, std::vector<String>&& rangeEnds=std::vector<String>());
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
     static constexpr int64_t ANY_VERSION = -1;
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);

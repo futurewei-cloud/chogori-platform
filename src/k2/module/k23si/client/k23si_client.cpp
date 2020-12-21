@@ -331,6 +331,10 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection, st
         .retentionPeriod = Duration(retention_window())
     };
 
+    return makeCollection(std::move(metadata), std::move(endpoints), std::move(rangeEnds));
+}
+
+seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& metadata, std::vector<String>&& endpoints, std::vector<String>&& rangeEnds) {
     return cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
 }
 
