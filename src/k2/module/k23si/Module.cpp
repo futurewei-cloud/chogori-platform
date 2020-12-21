@@ -111,6 +111,11 @@ seastar::future<> K23SIPartitionModule::start() {
     (dto::Verbs::K23SI_INSPECT_TXN, [this](dto::K23SIInspectTxnRequest&& request) {
         return handleInspectTxn(std::move(request));
     });
+    api_server.registerAPIObserver<dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse>
+    ("InspectTxn", "Get MTR and state for a single transaction",
+    [this](dto::K23SIInspectTxnRequest&& request) {
+        return handleInspectTxn(std::move(request));
+    });
 
     RPC().registerRPCObserver<dto::K23SIInspectWIsRequest, dto::K23SIInspectWIsResponse>
     (dto::Verbs::K23SI_INSPECT_WIS, [this](dto::K23SIInspectWIsRequest&& request) {
@@ -119,6 +124,11 @@ seastar::future<> K23SIPartitionModule::start() {
 
     RPC().registerRPCObserver<dto::K23SIInspectAllTxnsRequest, dto::K23SIInspectAllTxnsResponse>
     (dto::Verbs::K23SI_INSPECT_ALL_TXNS, [this](dto::K23SIInspectAllTxnsRequest&& request) {
+        return handleInspectAllTxns(std::move(request));
+    });
+    api_server.registerAPIObserver<dto::K23SIInspectAllTxnsRequest, dto::K23SIInspectAllTxnsResponse>
+    ("InspectAllTxns", "Get ALL transactions currently on this partition",
+    [this](dto::K23SIInspectAllTxnsRequest&& request) {
         return handleInspectAllTxns(std::move(request));
     });
 
@@ -193,7 +203,7 @@ void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirecti
         it = _indexer.end();
     } else {
         --it;
-        
+
         if (it->first.schemaName != schema) {
             it = _indexer.end();
         }
@@ -206,7 +216,7 @@ IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, boo
     auto key_it = _indexer.lower_bound(start);
 
     // For reverse direction scan, key_it may not be in range because of how lower_bound works, so fix that here.
-    // IF start key is empty, it means this reverse scan start from end of table OR 
+    // IF start key is empty, it means this reverse scan start from end of table OR
     //      if lower_bound returns a _indexer.end(), it also means reverse scan should start from end of table;
     // ELSE IF lower_bound returns a key equal to start AND exclusiveKey is true, reverse advance key_it once;
     // ELSE IF lower_bound returns a key bigger than start, find the first key not bigger than start;
@@ -255,7 +265,7 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
     // 1. Record limit is reached
     // 2. Iterator is not end() but is >= user endKey
     // 3. Iterator is at end() and partition bounds contains endKey
-    // This also works around seastars lack of operators on the string type    
+    // This also works around seastars lack of operators on the string type
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
         // Test for past user endKey:
         (it != _indexer.end() &&
@@ -296,9 +306,9 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
 }
 
 // Makes the SKVRecord and applies the request's filter to it. If the returned Status is not OK,
-// the caller should return the status in the query response. Otherwise bool in tuple is whether 
+// the caller should return the status in the query response. Otherwise bool in tuple is whether
 // the filter passed
-std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryRequest& request, 
+std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryRequest& request,
                                                               dto::SKVRecord::Storage& storage) {
     // We know the schema name exists because it is validated at the beginning of handleQuery
     auto schemaIt = _schemas.find(request.key.schemaName);
@@ -367,7 +377,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
                 // apply projection if the user call addProjection
                 if (request.projection.size() == 0) {
-                    // want all fields 
+                    // want all fields
                     response.results.push_back(viter->value.share());
                 } else {
                     // serialize partial SKVRecord according to projection
@@ -375,10 +385,10 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                     bool success = _makeProjection(viter->value, request, storage);
                     if (!success) {
                         K2WARN("Error making projection!");
-                        return RPCResponse(dto::K23SIStatus::InternalError("Error making projection"), 
+                        return RPCResponse(dto::K23SIStatus::InternalError("Error making projection"),
                                                 dto::K23SIQueryResponse{});
                     }
-                    
+
                     response.results.push_back(std::move(storage));
                 }
             }
@@ -570,7 +580,7 @@ void _copyPayloadBaseToUpdate(const dto::SchemaField& field, Payload& base, Payl
 }
 
 template <typename T>
-void _getNextPayloadOffset(const dto::SchemaField& field, Payload& base, uint32_t baseCursor, 
+void _getNextPayloadOffset(const dto::SchemaField& field, Payload& base, uint32_t baseCursor,
                            std::vector<uint32_t>& fieldsOffset, bool& success) {
     (void) field;
     (void) base;
@@ -580,12 +590,12 @@ void _getNextPayloadOffset(const dto::SchemaField& field, Payload& base, uint32_
 }
 
 template <>
-void _getNextPayloadOffset<String>(const dto::SchemaField& field, Payload& base, uint32_t baseCursor, 
+void _getNextPayloadOffset<String>(const dto::SchemaField& field, Payload& base, uint32_t baseCursor,
                            std::vector<uint32_t>& fieldsOffset, bool& success) {
     (void) field;
     uint32_t strLen;
     base.seek(fieldsOffset[baseCursor]);
-    success = base.read(strLen); 
+    success = base.read(strLen);
     if (!success) return;
     uint32_t tmpOffset = fieldsOffset[baseCursor] + sizeof(uint32_t) + strLen; // uint32_t for length; '\0' doesn't count
     fieldsOffset.push_back(tmpOffset);
@@ -724,7 +734,7 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
                 for (; baseCursor <= findField; ++baseCursor) {
                     if (version.value.excludedFields.empty() || version.value.excludedFields[baseCursor] == false) {
                         bool success = false;
-                        K2_DTO_CAST_APPLY_FIELD_VALUE(_getNextPayloadOffset, baseSchema.fields[baseCursor], 
+                        K2_DTO_CAST_APPLY_FIELD_VALUE(_getNextPayloadOffset, baseSchema.fields[baseCursor],
                                                       basePayload, baseCursor, fieldsOffset, success);
                         if (!success) return false;
                     } else {
@@ -805,7 +815,7 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, 
     return true;
 }
 
-bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, 
+bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request,
         dto::SKVRecord::Storage& projectionRec) {
     auto schemaIt = _schemas.find(request.key.schemaName);
     auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
@@ -819,7 +829,7 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
         if (fieldIt == request.projection.end()) {
             // advance base payload
             bool success = false;
-            K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], fullRec.fieldData, 
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_advancePayloadPosition, schema.fields[i], fullRec.fieldData,
                                           success);
             if (!success) {
                 fullRec.fieldData.seek(0);
@@ -829,7 +839,7 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
         } else {
             // write field value into payload
             bool success = false;
-            K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], fullRec.fieldData, 
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_copyPayloadBaseToUpdate, schema.fields[i], fullRec.fieldData,
                                           projectedPayload, success);
             if (!success) {
                 fullRec.fieldData.seek(0);
@@ -838,7 +848,7 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
             excludedFields[i] = false;
         }
     }
-    
+
     // set cursor(0) of base payload
     fullRec.fieldData.seek(0);
 

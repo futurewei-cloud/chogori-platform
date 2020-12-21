@@ -70,6 +70,20 @@ struct K23SIInspectTxnRequest {
     }
 };
 
+void inline to_json(nlohmann::json& j, const K23SIInspectTxnRequest& req) {
+    j = nlohmann::json{{"pvid", req.pvid},
+                       {"collectionName", req.collectionName},
+                       {"key", req.key},
+                       {"mtr", req.mtr}};
+}
+
+void inline from_json(const nlohmann::json& j, K23SIInspectTxnRequest& req) {
+    j.at("pvid").get_to(req.pvid);
+    j.at("collectionName").get_to(req.collectionName);
+    j.at("key").get_to(req.key);
+    j.at("mtr").get_to(req.mtr);
+}
+
 // Contains the TRH data (struct TxnRecord) without the internal
 // management members such as intrusive list hooks
 struct K23SIInspectTxnResponse {
@@ -96,6 +110,22 @@ struct K23SIInspectTxnResponse {
     }
 };
 
+void inline to_json(nlohmann::json& j, const K23SIInspectTxnResponse& resp) {
+    j = nlohmann::json{{"txnId", resp.txnId},
+                       {"writeKeys", resp.writeKeys},
+                       {"rwExpiry", resp.rwExpiry},
+                       {"syncFinalize", resp.syncFinalize},
+                       {"state", resp.state}};
+}
+
+void inline from_json(const nlohmann::json& j, K23SIInspectTxnResponse& resp) {
+    j.at("txnId").get_to(resp.txnId);
+    j.at("writeKeys").get_to(resp.writeKeys);
+    j.at("rwExpiry").get_to(resp.rwExpiry);
+    j.at("syncFinalize").get_to(resp.syncFinalize);
+    j.at("state").get_to(resp.state);
+}
+
 // Requests all WIs on a node for all keys
 struct K23SIInspectWIsRequest {
     K2_PAYLOAD_EMPTY;
@@ -115,6 +145,20 @@ struct K23SIInspectAllTxnsResponse {
     std::vector<K23SIInspectTxnResponse> txns;
     K2_PAYLOAD_FIELDS(txns);
 };
+
+// This request object is empty, just need the no-op function overload for compilation
+void inline to_json(nlohmann::json&, const K23SIInspectAllTxnsRequest&) {}
+
+// This request object is empty, just need the no-op function overload for compilation
+void inline from_json(const nlohmann::json&, K23SIInspectAllTxnsRequest&) {}
+
+void inline to_json(nlohmann::json& j, const K23SIInspectAllTxnsResponse& resp) {
+    j = nlohmann::json{{"txns", resp.txns}};
+}
+
+void inline from_json(const nlohmann::json& j, K23SIInspectAllTxnsResponse& resp) {
+    j.at("txns").get_to(resp.txns);
+}
 
 // Request all keys stored on a node
 struct K23SIInspectAllKeysRequest {

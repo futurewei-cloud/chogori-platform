@@ -32,6 +32,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Timestamp.h"
 #include "Expression.h"
 
+#include <nlohmann/json.hpp>
+
 namespace k2 {
 namespace dto {
 
@@ -71,6 +73,19 @@ struct K23SI_MTR {
         return os << "{txnid=" << mtr.txnid << ", timestamp=" << mtr.timestamp << ", priority=" << mtr.priority << "}";
     }
 };
+
+void inline to_json(nlohmann::json& j, const K23SI_MTR& mtr) {
+    j = nlohmann::json{{"txnid", mtr.txnid},
+                       {"timetamp", mtr.timestamp},
+                       {"priority", mtr.priority}};
+}
+
+void inline from_json(const nlohmann::json& j, K23SI_MTR& mtr) {
+    j.at("txnid").get_to(mtr.txnid);
+    j.at("timestamp").get_to(mtr.timestamp);
+    j.at("keys").get_to(mtr.timestamp);
+}
+
 // zero-value for MTRs
 extern const K23SI_MTR K23SI_MTR_ZERO;
 
@@ -100,6 +115,16 @@ struct TxnId {
 
     K2_PAYLOAD_FIELDS(trh, mtr);
 };
+
+void inline to_json(nlohmann::json& j, const TxnId& tid) {
+    j = nlohmann::json{{"trh", tid.trh},
+                       {"mtr", tid.mtr}};
+}
+
+void inline from_json(const nlohmann::json& j, TxnId& tid) {
+    j.at("trh").get_to(tid.trh);
+    j.at("mtr").get_to(tid.mtr);
+}
 
 } // ns dto
 } // ns d2
