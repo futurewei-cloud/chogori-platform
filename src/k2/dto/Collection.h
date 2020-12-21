@@ -123,6 +123,7 @@ struct Partition {
         }
 
     } pvid;
+
     // the starting key for the partition
     String startKey;
     // the ending key for the partition
@@ -156,19 +157,33 @@ struct Partition {
     }
 };
 
-// TODO additional fields
-void inline to_json(nlohmann::json& j, const Partition& Partition) {
-    j = nlohmann::json{{"startKey", Partition.startKey}, 
-                       {"endKey", Partition.endKey}, 
-                       {"endpoints", Partition.endpoints}, 
-                       {"astate", Partition.astate}};
+void inline to_json(nlohmann::json& j, const Partition::PVID& pvid) {
+    j = nlohmann::json{{"id", pvid.id}, 
+                       {"rangeVersion", pvid.rangeVersion}, 
+                       {"assignmentVersion", pvid.assignmentVersion}};
 }
 
-void inline from_json(const nlohmann::json& j, Partition& Partition) {
-    j.at("startKey").get_to(Partition.startKey);
-    j.at("endKey").get_to(Partition.endKey);
-    j.at("endpoints").get_to(Partition.endpoints);
-    j.at("astate").get_to(Partition.astate);
+void inline from_json(const nlohmann::json& j, Partition::PVID& pvid) {
+    j.at("id").get_to(pvid.id);
+    j.at("rangeVersion").get_to(pvid.rangeVersion);
+    j.at("assignmentVersion").get_to(pvid.assignmentVersion);
+}
+
+
+void inline to_json(nlohmann::json& j, const Partition& partition) {
+    j = nlohmann::json{{"pvid", partition.pvid},
+                       {"startKey", partition.startKey}, 
+                       {"endKey", partition.endKey}, 
+                       {"endpoints", partition.endpoints}, 
+                       {"astate", partition.astate}};
+}
+
+void inline from_json(const nlohmann::json& j, Partition& partition) {
+    j.at("pvid").get_to(partition.pvid);
+    j.at("startKey").get_to(partition.startKey);
+    j.at("endKey").get_to(partition.endKey);
+    j.at("endpoints").get_to(partition.endpoints);
+    j.at("astate").get_to(partition.astate);
 }
 
 struct PartitionMap {

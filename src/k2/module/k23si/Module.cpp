@@ -22,8 +22,11 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "Module.h"
-#include <k2/dto/MessageVerbs.h>
+
 #include <k2/appbase/AppEssentials.h>
+#include <k2/dto/MessageVerbs.h>
+#include <k2/infrastructure/APIServer.h>
+
 namespace k2 {
 namespace dto {
     // we want the read cache to determine ordering based on certain comparison so that we have some stable
@@ -56,6 +59,9 @@ K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::P
 
 seastar::future<> K23SIPartitionModule::start() {
     K2DEBUG("Starting for partition: " << _partition);
+
+    APIServer& api_server = AppBase().getDist<APIServer>().local();
+
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
     (dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
         return handleRead(std::move(request), dto::K23SI_MTR_ZERO, FastDeadline(_config.readTimeout()));
@@ -118,6 +124,10 @@ seastar::future<> K23SIPartitionModule::start() {
 
     RPC().registerRPCObserver<dto::K23SIInspectAllKeysRequest, dto::K23SIInspectAllKeysResponse>
     (dto::Verbs::K23SI_INSPECT_ALL_KEYS, [this](dto::K23SIInspectAllKeysRequest&& request) {
+        return handleInspectAllKeys(std::move(request));
+    });
+    api_server.registerAPIObserver<dto::K23SIInspectAllKeysRequest, dto::K23SIInspectAllKeysResponse>
+    ("InspectAllKeys", "Returns ALL keys on the partition", [this](dto::K23SIInspectAllKeysRequest&& request) {
         return handleInspectAllKeys(std::move(request));
     });
 

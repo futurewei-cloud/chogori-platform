@@ -122,6 +122,20 @@ struct SchemaField {
     K2_PAYLOAD_FIELDS(type, name, descending, nullLast);
 };
 
+void inline to_json(nlohmann::json& j, const SchemaField& field) {
+    j = nlohmann::json{{"type", field.type}, 
+                       {"name", field.name}, 
+                       {"descending", field.descending}, 
+                       {"nullLast", field.nullLast}};
+}
+
+void inline from_json(const nlohmann::json& j, SchemaField& field) {
+    j.at("type").get_to(field.type);
+    j.at("name").get_to(field.name);
+    j.at("descending").get_to(field.descending);
+    j.at("nullLast").get_to(field.nullLast);
+}
+
 struct Schema {
     String name;
     uint32_t version = 0;
@@ -159,6 +173,22 @@ struct Schema {
     K2_PAYLOAD_FIELDS(name, version, fields, partitionKeyFields, rangeKeyFields);
 };
 
+void inline to_json(nlohmann::json& j, const Schema& schema) {
+    j = nlohmann::json{{"name", schema.name}, 
+                       {"version", schema.version}, 
+                       {"fields", schema.fields}, 
+                       {"partitionKeyFields", schema.partitionKeyFields}, 
+                       {"rangeKeyFields", schema.rangeKeyFields}};
+}
+
+void inline from_json(const nlohmann::json& j, Schema& schema) {
+    j.at("name").get_to(schema.name);
+    j.at("version").get_to(schema.version);
+    j.at("fields").get_to(schema.fields);
+    j.at("partitionKeyFields").get_to(schema.partitionKeyFields);
+    j.at("rangeKeyFields").get_to(schema.rangeKeyFields);
+}
+
 // Request to create a schema and attach it to a collection
 // If schemaName already exists, it creates a new version
 struct CreateSchemaRequest {
@@ -167,10 +197,25 @@ struct CreateSchemaRequest {
     K2_PAYLOAD_FIELDS(collectionName, schema);
 };
 
+void inline to_json(nlohmann::json& j, const CreateSchemaRequest& req) {
+    j = nlohmann::json{{"collectionName", req.collectionName}, 
+                       {"schema", req.schema}};
+}
+
+void inline from_json(const nlohmann::json& j, CreateSchemaRequest& req) {
+    j.at("collectionName").get_to(req.collectionName);
+    j.at("schema").get_to(req.schema);
+}
+
 // Response to CreateSchemaRequest
 struct CreateSchemaResponse {
     K2_PAYLOAD_EMPTY;
 };
+
+void inline to_json(nlohmann::json& j, const CreateSchemaResponse& resp) {
+    (void) resp;
+    j = nlohmann::json{{"empty", ""}};
+}
 
 // Get all versions of all schemas associated with a collection
 struct GetSchemasRequest {
@@ -178,10 +223,26 @@ struct GetSchemasRequest {
     K2_PAYLOAD_FIELDS(collectionName);
 };
 
+void inline to_json(nlohmann::json& j, const GetSchemasRequest& req) {
+    j = nlohmann::json{{"collectionName", req.collectionName}};
+}
+
+void inline from_json(const nlohmann::json& j, GetSchemasRequest& req) {
+    j.at("collectionName").get_to(req.collectionName);
+}
+
 struct GetSchemasResponse {
     std::vector<Schema> schemas;
     K2_PAYLOAD_FIELDS(schemas);
 };
+
+void inline to_json(nlohmann::json& j, const GetSchemasResponse& resp) {
+    j = nlohmann::json{{"schemas", resp.schemas}};
+}
+
+void inline from_json(const nlohmann::json& j, GetSchemasResponse& resp) {
+    j.at("schemas").get_to(resp.schemas);
+}
 
 }  // namespace dto
 }  // namespace k2

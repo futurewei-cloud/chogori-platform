@@ -27,6 +27,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 
+#include <nlohmann/json.hpp>
+
 namespace k2 {
 namespace dto {
 
@@ -123,6 +125,24 @@ struct K23SIInspectAllKeysResponse {
     std::vector<Key> keys;
     K2_PAYLOAD_FIELDS(keys);
 };
+
+void inline to_json(nlohmann::json& j, const K23SIInspectAllKeysRequest& req) {
+    (void) j;
+    (void) req;
+}
+
+void inline from_json(const nlohmann::json& j, K23SIInspectAllKeysRequest& req) {
+    (void) j;
+    (void) req;
+}
+
+void inline to_json(nlohmann::json& j, const K23SIInspectAllKeysResponse& resp) {
+    j = nlohmann::json{{"keys", resp.keys}};
+}
+
+void inline from_json(const nlohmann::json& j, K23SIInspectAllKeysResponse& resp) {
+    j.at("keys").get_to(resp.keys);
+}
 
 } // ns dto
 } // ns k2

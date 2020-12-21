@@ -88,8 +88,15 @@ seastar::future<> CPOService::start() {
     RPC().registerRPCObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, [this] (dto::CreateSchemaRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
     });
+    api_server.registerAPIObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>("SchemaCreate", "CPO SchemaCreate", [this] (dto::CreateSchemaRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
+    });
 
     RPC().registerRPCObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET,
+    [this] (dto::GetSchemasRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
+    });
+    api_server.registerAPIObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>("GetSchemas", "CPO get all schemas for a collection",
     [this] (dto::GetSchemasRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
     });
