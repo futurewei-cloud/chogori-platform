@@ -126,15 +126,11 @@ struct K23SIInspectAllKeysResponse {
     K2_PAYLOAD_FIELDS(keys);
 };
 
-void inline to_json(nlohmann::json& j, const K23SIInspectAllKeysRequest& req) {
-    (void) j;
-    (void) req;
-}
+// This request object is empty, just need the no-op function overload for compilation
+void inline to_json(nlohmann::json&, const K23SIInspectAllKeysRequest&) {}
 
-void inline from_json(const nlohmann::json& j, K23SIInspectAllKeysRequest& req) {
-    (void) j;
-    (void) req;
-}
+// This request object is empty, just need the no-op function overload for compilation
+void inline from_json(const nlohmann::json&, K23SIInspectAllKeysRequest&) {}
 
 void inline to_json(nlohmann::json& j, const K23SIInspectAllKeysResponse& resp) {
     j = nlohmann::json{{"keys", resp.keys}};

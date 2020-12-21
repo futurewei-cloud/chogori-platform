@@ -41,6 +41,8 @@ public:
         std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override {
         (void) path;
 
+        // seastar returns a 200 status code by default, which is what we want. The k2 status code will 
+        // be embedded in the returned json object
         return _handler(req->content)
         .then([rep=std::move(rep)] (String&& json) mutable {
             rep->write_body("json", json);

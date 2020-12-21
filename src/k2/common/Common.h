@@ -99,8 +99,7 @@ struct adl_serializer<k2::String> {
     }
 
     static void from_json(const json& j, k2::String& str) {
-        std::string s = j.get<std::string>();
-        str = s;
+        str = j.get<std::string>();
     }
 };
 
