@@ -28,6 +28,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Collection.h"
 #include "FieldTypes.h"
 
+#include <nlohmann/json.hpp>
+
 // This file contains DTOs for K2 ControlPlaneOracle
 
 namespace k2 {
@@ -53,10 +55,27 @@ struct CollectionCreateRequest {
     K2_PAYLOAD_FIELDS(metadata, clusterEndpoints, rangeEnds);
 };
 
+void inline to_json(nlohmann::json& j, const CollectionCreateRequest& req) {
+    j = nlohmann::json{{"metadata", req.metadata}, 
+                       {"clusterEndpoints", req.clusterEndpoints}, 
+                       {"rangeEnds", req.rangeEnds}};
+}
+
+void inline from_json(const nlohmann::json& j, CollectionCreateRequest& req) {
+    j.at("metadata").get_to(req.metadata);
+    j.at("clusterEndpoints").get_to(req.clusterEndpoints);
+    j.at("rangeEnds").get_to(req.rangeEnds);
+}
+
 // Response to CollectionCreateRequest
 struct CollectionCreateResponse {
     K2_PAYLOAD_EMPTY;
 };
+
+void inline to_json(nlohmann::json& j, const CollectionCreateResponse& resp) {
+    (void) resp;
+    j = nlohmann::json{{"empty", ""}};
+}
 
 // Request to get a collection
 struct CollectionGetRequest {
@@ -65,12 +84,28 @@ struct CollectionGetRequest {
     K2_PAYLOAD_FIELDS(name);
 };
 
+void inline to_json(nlohmann::json& j, const CollectionGetRequest& req) {
+    j = nlohmann::json{{"name", req.name}};
+}
+
+void inline from_json(const nlohmann::json& j, CollectionGetRequest& req) {
+    j.at("name").get_to(req.name);
+}
+
 // Response to CollectionGetRequest
 struct CollectionGetResponse {
     // The collection we found
     Collection collection;
     K2_PAYLOAD_FIELDS(collection);
 };
+
+void inline to_json(nlohmann::json& j, const CollectionGetResponse& resp) {
+    j = nlohmann::json{{"collection", resp.collection}};
+}
+
+void inline from_json(const nlohmann::json& j, CollectionGetResponse& resp) {
+    j.at("collection").get_to(resp.collection);
+}
 
 struct SchemaField {
     FieldType type;

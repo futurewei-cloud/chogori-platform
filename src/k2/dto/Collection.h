@@ -82,7 +82,6 @@ void inline from_json(const nlohmann::json& j, Key& key) {
     j.at("rangeKey").get_to(key.rangeKey);
 }
 
-
 // the assignment state of a partition
 enum class AssignmentState: uint8_t {
     NotAssigned,
@@ -157,7 +156,20 @@ struct Partition {
     }
 };
 
-//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Partition, startKey, endKey, endpoints, astate);
+// TODO additional fields
+void inline to_json(nlohmann::json& j, const Partition& Partition) {
+    j = nlohmann::json{{"startKey", Partition.startKey}, 
+                       {"endKey", Partition.endKey}, 
+                       {"endpoints", Partition.endpoints}, 
+                       {"astate", Partition.astate}};
+}
+
+void inline from_json(const nlohmann::json& j, Partition& Partition) {
+    j.at("startKey").get_to(Partition.startKey);
+    j.at("endKey").get_to(Partition.endKey);
+    j.at("endpoints").get_to(Partition.endpoints);
+    j.at("astate").get_to(Partition.astate);
+}
 
 struct PartitionMap {
     uint64_t version =0;
@@ -177,7 +189,15 @@ struct PartitionMap {
     }
 };
 
-//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PartitionMap, version, partitions);
+void inline to_json(nlohmann::json& j, const PartitionMap& map) {
+    j = nlohmann::json{{"version", map.version}, 
+                       {"partitions", map.partitions}};
+}
+
+void inline from_json(const nlohmann::json& j, PartitionMap& map) {
+    j.at("version").get_to(map.version);
+    j.at("partitions").get_to(map.partitions);
+}
 
 struct CollectionCapacity {
     uint64_t dataCapacityMegaBytes = 0;
@@ -225,7 +245,16 @@ struct CollectionMetadata {
     K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
 };
 
-//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(CollectionMetadata, name, hashScheme, storageDriver);
+// TODO additional fields
+void inline to_json(nlohmann::json& j, const CollectionMetadata& meta) {
+    j = nlohmann::json{{"name", meta.name}, 
+                       {"hashScheme", meta.hashScheme}};
+}
+
+void inline from_json(const nlohmann::json& j, CollectionMetadata& meta) {
+    j.at("name").get_to(meta.name);
+    j.at("hashScheme").get_to(meta.hashScheme);
+}
 
 struct Collection {
     PartitionMap partitionMap;
@@ -235,7 +264,15 @@ struct Collection {
     K2_PAYLOAD_FIELDS(partitionMap, userMetadata, metadata);
 };
 
-//NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Collection, partitionMap, userMetadata, metadata);
+void inline to_json(nlohmann::json& j, const Collection& collection) {
+    j = nlohmann::json{{"partitionMap", collection.partitionMap}, 
+                       {"metadata", collection.metadata}};
+}
+
+void inline from_json(const nlohmann::json& j, Collection& collection) {
+    j.at("partitionMap").get_to(collection.partitionMap);
+    j.at("metadata").get_to(collection.metadata);
+}
 
 class PartitionGetter {
 public:

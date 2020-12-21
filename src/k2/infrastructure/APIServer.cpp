@@ -47,21 +47,6 @@ private:
     std::function<String()> _handler;
 };
 
-class api_route_handler : public seastar::httpd::handler_base  {
-public:
-    api_route_handler(std::function<String(const String&)> h) : _handler(std::move(h)) {}
-
-    seastar::future<std::unique_ptr<seastar::httpd::reply>> handle(const String& path,
-        std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override {
-        (void) path;
-        rep->write_body("json", _handler(req->content));
-        return seastar::make_ready_future<std::unique_ptr<seastar::httpd::reply>>(std::move(rep));
-    }
-
-private:
-    std::function<String(const String&)> _handler;
-};
-
 seastar::future<>
 APIServer::start() {
     K2INFO("starting JSON API server on port");
@@ -81,7 +66,7 @@ APIServer::start() {
             try {
                 parsed = true;
                 auto port = std::stoi(_tcp_endpoints()[coreID]);
-                listenAddr = seastar::socket_address((uint16_t)port + API_PORT_OFFSET);
+                listenAddr = seastar::socket_address((uint16_t)(port + API_PORT_OFFSET));
             } catch (...) {
             }
         }
@@ -89,16 +74,16 @@ APIServer::start() {
 
     if (!parsed) {
         K2INFO("No IP/Port provided for API server, aborting server start()");
-        return;
+        return seastar::make_ready_future<>();
     }
 
     return add_routes()
-    .then([this, std::move(listenAddr)]() {
+    .then([this, listenAddr=std::move(listenAddr)]() {
         return _server.listen(listenAddr);
     });
 }
 
-seastar::future<> APIServer::stop() {
+seastar::future<> APIServer::gracefulStop() {
     K2INFO("Stopping APIServer");
     return  _server.stop();
 }
@@ -112,7 +97,7 @@ seastar::future<> APIServer::add_routes() {
 String APIServer::get_current_routes() {
     String routes;
     for (const std::pair<String, String>& route : _registered_routes) {
-        routes += route.get<0>() + ": " + route.get<1>() + "\n";
+        routes += route.first + ": " + route.second + "\n";
     }
 
     return routes;

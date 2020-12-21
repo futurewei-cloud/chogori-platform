@@ -22,6 +22,9 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "CPOService.h"
+
+#include <k2/appbase/Appbase.h>
+#include <k2/infrastructure/APIServer.h>
 #include <k2/transport/Payload.h>  // for payload construction
 #include <k2/transport/Status.h>  // for RPC
 #include <k2/transport/RPCDispatcher.h>  // for RPC
@@ -57,12 +60,20 @@ seastar::future<> CPOService::gracefulStop() {
 }
 
 seastar::future<> CPOService::start() {
+    APIServer& api_server = AppBase().getDist<APIServer>().local();
+
     K2INFO("Registering message handlers");
     RPC().registerRPCObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, [this](dto::CollectionCreateRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));
     });
+    api_server.registerAPIObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>("CollectionCreate", "CPO CollectionCreate", [this] (dto::CollectionCreateRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));
+    });
 
     RPC().registerRPCObserver<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, [this](dto::CollectionGetRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
+    });
+    api_server.registerAPIObserver<dto::CollectionGetRequest, dto::CollectionGetResponse>("CollectionGet", "CPO CollectionGet", [this](dto::CollectionGetRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 

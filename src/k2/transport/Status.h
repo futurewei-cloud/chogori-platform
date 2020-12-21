@@ -26,6 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <signal.h>
 #include <iostream>
 
+#include <nlohmann/json.hpp>
+
 #include <k2/common/Log.h>
 #include <k2/transport/PayloadSerialization.h>
 namespace k2 {
@@ -58,6 +60,15 @@ struct Status {
 
     String getDescription() const;
 };
+
+void inline to_json(nlohmann::json& j, const Status& status) {
+    j = nlohmann::json{{"code", status.code}, {"message", status.message}};
+}
+
+void inline from_json(const nlohmann::json& j, Status& status) {
+    j.at("code").get_to(status.code);
+    j.at("message").get_to(status.message);
+}
 
 struct Statuses {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
