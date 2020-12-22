@@ -126,19 +126,19 @@ private:
 public: // tests
 
 seastar::future<std::vector<std::vector<k2::dto::SKVRecord>>>
-doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reverse, 
-                          uint32_t expectedRecords, uint32_t expectedPaginations, 
+doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reverse,
+                          uint32_t expectedRecords, uint32_t expectedPaginations,
                           k2::Status expectedStatus=k2::dto::K23SIStatus::OK,
                           k2e::Expression filterExpression=k2e::Expression{},
                           std::vector<k2::String> projection=std::vector<k2::String>()) {
-    K2DEBUG("doQuery from " << start " to: " << end);
+    K2DEBUG("doQuery from " << start << " to: " << end);
     return _client.beginTxn(k2::K2TxnOptions{})
     .then([this] (k2::K2TxnHandle&& t) {
         txn = std::move(t);
         return _client.createQuery(collname, "schema");
     })
-    .then([this, start, end, limit, reverse, expectedRecords, expectedPaginations, expectedStatus, 
-                filterExpression=std::move(filterExpression), 
+    .then([this, start, end, limit, reverse, expectedRecords, expectedPaginations, expectedStatus,
+                filterExpression=std::move(filterExpression),
                 projection=std::move(projection)] (auto&& response) mutable {
         K2EXPECT(response.status.is2xxOK(), true);
         query = std::move(response.query);
@@ -155,7 +155,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
         query.addProjection(projection);
         query.setFilterExpression(std::move(filterExpression));
 
-        return seastar::do_with(std::vector<std::vector<k2::dto::SKVRecord>>(), (uint32_t)0, false, 
+        return seastar::do_with(std::vector<std::vector<k2::dto::SKVRecord>>(), (uint32_t)0, false,
         [this, expectedRecords, expectedPaginations, expectedStatus, projection] (
                 std::vector<std::vector<k2::dto::SKVRecord>>& result_set, uint32_t& count, bool& done) {
             return seastar::do_until(
@@ -339,20 +339,20 @@ seastar::future<> runScenario03() {
                 K2ASSERT(partition, "SKVRecord should have got this field");
                 K2EXPECT(*partition, partKeys[0]);
                 partKeys.erase(partKeys.begin(), partKeys.begin() + 1);
-                K2ASSERT(!range, "Exclude this field"); 
+                K2ASSERT(!range, "Exclude this field");
             }
         }
         K2EXPECT(record_count, 2);
     })
     .then([this] {
         K2INFO("Project a field that is not part of the schema");
-        return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{}, 
+        return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{},
                        {"partition", "balance", "age"})
         .then([](auto&& response) {
             std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
             uint32_t record_count = 0;
             std::vector<k2::String> partKeys = {"a", "b"};
-            
+
             K2EXPECT(result_set.size(), 1);
             for (std::vector<k2::dto::SKVRecord>& set : result_set) {
                 record_count += set.size();
@@ -364,7 +364,7 @@ seastar::future<> runScenario03() {
                     K2ASSERT(partition, "SKVRecord should have got this field");
                     K2EXPECT(*partition, partKeys[0]);
                     partKeys.erase(partKeys.begin(), partKeys.begin() + 1);
-                    K2ASSERT(!range, "Exclude this field"); 
+                    K2ASSERT(!range, "Exclude this field");
                 }
             }
             K2EXPECT(record_count, 2);

@@ -150,16 +150,16 @@ private: // methods
     template <typename RequestT>
     bool _validateRequestPartitionKey(const RequestT& req) const {
         // if operation of the requests is in reverse direction, validate endKey partition not empty
+        K2DEBUG("Request:" << req);
+
         if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " 
-                    << req.endKey << ", reverse direction: " << req.reverseDirection);
+            K2DEBUG("Request:" << req);
             if (req.reverseDirection) {
                 return !req.endKey.partitionKey.empty();
             } else {
                 return !req.key.partitionKey.empty();
             }
         } else {
-            K2DEBUG("Partition: " << _partition << ", partition key: " << req.key << ", partition endKey: " << req.endKey);
             return !req.key.partitionKey.empty();
         }
     }
@@ -193,10 +193,10 @@ private: // methods
 
     // helper method used to create and persist a WriteIntent
     seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
-    
+
     // helper method used to make a projection SKVRecord payload
     bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
-    
+
     // method to parse the partial record to full record, return turn if parse successful
     bool _parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous);
 
@@ -204,22 +204,22 @@ private: // methods
     bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
     // make every fields for a partial update request in the condition of same schema and different versions
     bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
-    
+
     // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
     std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
 
-    // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate). 
+    // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate).
     bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
 
     // recover data upon startup
     seastar::future<> _recovery();
 
     // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
-    // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must 
+    // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must
     // point to a record with the target schema
     void _scanAdvance(IndexerIterator& it, bool reverseDirection, const String& schema);
 
-    // Helper for handleQuery. Returns an iterator to start the scan at, accounting for 
+    // Helper for handleQuery. Returns an iterator to start the scan at, accounting for
     // desired schema and (eventually) reverse direction scan
     IndexerIterator _initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey);
 
@@ -227,7 +227,7 @@ private: // methods
     bool _isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request, size_t response_size);
 
     // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
-    dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request, 
+    dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request,
                                             dto::K23SIQueryResponse& response, size_t response_size);
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);

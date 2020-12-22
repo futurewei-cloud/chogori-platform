@@ -62,7 +62,25 @@ enum class Operation : uint8_t {
     NOT,            // NOT A. A must be a boolean value, or an expression
     UNKNOWN
 };
-
+inline std::ostream& operator<<(std::ostream& os, const Operation& op) {
+    switch(op) {
+        case Operation::EQ: return os << "EQ";
+        case Operation::GT: return os << "GT";
+        case Operation::GTE: return os << "GTE";
+        case Operation::LT: return os << "LT";
+        case Operation::LTE: return os << "LTE";
+        case Operation::IS_NULL: return os << "IS_NULL";
+        case Operation::IS_EXACT_TYPE: return os << "IS_EXACT_TYPE";
+        case Operation::STARTS_WITH: return os << "STARTS_WITH";
+        case Operation::CONTAINS: return os << "CONTAINS";
+        case Operation::ENDS_WITH: return os << "ENDS_WITH";
+        case Operation::AND: return os << "AND";
+        case Operation::OR: return os << "OR";
+        case Operation::XOR: return os << "XOR";
+        case Operation::NOT: return os << "NOT";
+        default: return os << "UNKNOWN";
+    }
+}
 // A Value in the expression model. It can be either
 // - a field reference which sets the fieldName, or
 // - a literal which is a user-supplied value (in the Payload literal) and type (in type).
@@ -73,6 +91,25 @@ struct Value {
     Payload literal{Payload::DefaultAllocator};
     K2_PAYLOAD_FIELDS(fieldName, type, literal);
     bool isReference() const { return !fieldName.empty();}
+    template<typename T>
+    static void _valueStrHelper(const Value& r, std::ostream& os) {
+        T obj;
+        if (!const_cast<Payload*>(&(r.literal))->shareAll().read(obj)) {
+            os << TToFieldType<T>() << "_ERROR_READING";
+        }
+        else {
+            os << obj;
+        }
+    }
+    friend std::ostream& operator<<(std::ostream& os, const Value& r) {
+        os << "{fieldName=" << r.fieldName << ", type=" << r.type << ", literal=";
+        if (r.fieldName.empty()) {
+            return os << "REFERENCE";
+        }
+        K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, r, os);
+        return os;
+    }
+
 };
 
 // An Expression in the expression model.
@@ -109,6 +146,17 @@ struct Expression {
     bool OR_handler(SKVRecord& rec);
     bool XOR_handler(SKVRecord& rec);
     bool NOT_handler(SKVRecord& rec);
+    friend std::ostream& operator<<(std::ostream& os, const Expression& r) {
+        os << "{op=" << r.op << ", valueChildren=[";
+        for (auto& vc: r.valueChildren) {
+            os << vc << ",";
+        }
+        os << "], expressionChildren=[";
+        for (auto& ec: r.expressionChildren) {
+            os << ec << ", ";
+        }
+        return os << "]}";
+    }
 };
 
 // helper builder: creates a value literal

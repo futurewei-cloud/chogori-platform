@@ -171,7 +171,7 @@ struct K23SIReadRequest {
     Key key; // the key to read
 
     K23SIReadRequest() = default;
-    K23SIReadRequest(Partition::PVID p, String cname, K23SI_MTR _mtr, Key _key) : 
+    K23SIReadRequest(Partition::PVID p, String cname, K23SI_MTR _mtr, Key _key) :
         pvid(std::move(p)), collectionName(std::move(cname)), mtr(std::move(_mtr)), key(std::move(_key)) {}
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
@@ -216,18 +216,18 @@ struct K23SIWriteRequest {
     // Whether the server should reject the write if a previous version exists, like a SQL insert.
     // In the future we want more expressive preconditions, but those will be on the fields of a record
     // whereas this is the only record-level precondition that makes sense so it is its own flag
-    bool rejectIfExists = false;    
+    bool rejectIfExists = false;
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
     std::vector<uint32_t> fieldsForPartialUpdate; // if size() > 0 then this is a partial update
 
     K23SIWriteRequest() = default;
-    K23SIWriteRequest(Partition::PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, bool _isDelete, 
-                      bool _designateTRH, bool _rejectIfExists, Key _key, SKVRecord::Storage _value, 
+    K23SIWriteRequest(Partition::PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, bool _isDelete,
+                      bool _designateTRH, bool _rejectIfExists, Key _key, SKVRecord::Storage _value,
                       std::vector<uint32_t> _fields) :
         pvid(std::move(_pvid)), collectionName(std::move(cname)), mtr(std::move(_mtr)), trh(std::move(_trh)),
-        isDelete(_isDelete), designateTRH(_designateTRH), rejectIfExists(_rejectIfExists), 
+        isDelete(_isDelete), designateTRH(_designateTRH), rejectIfExists(_rejectIfExists),
         key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
@@ -263,6 +263,18 @@ struct K23SIQueryRequest {
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
                       reverseDirection, filterExpression, projection);
+    friend std::ostream& operator<<(std::ostream& os, const K23SIQueryRequest& r) {
+        os << "{"
+                  << "pvid=" << r.pvid << ", colName=" << r.collectionName
+                  << ", mtr=" << r.mtr << ", key=" << r.key << ", endKey=" << r.endKey
+                  << ", exclusiveKey=" << r.exclusiveKey << ", recordLimit=" << r.recordLimit
+                  << ", includeVersionMismatch=" << r.includeVersionMismatch << ", reverseDirection=" << r.reverseDirection
+                  << ", filterExpression=" << r.filterExpression << ", projection=[";
+        for (auto& proj: r.projection) {
+            os << proj << ", ";
+        }
+        return os << "]}";
+    }
 };
 
 struct K23SIQueryResponse {
