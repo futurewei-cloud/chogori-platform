@@ -75,7 +75,7 @@ inline LogEntry StartLogStream() {
 #if K2_DEBUG_LOGGING == 1
 #define K2DEBUG(msg) K2LOG("DEBUG", msg)
 #else
-#define K2DEBUG(msg)
+#define K2DEBUG(msg) if(0) {K2LOG("DEBUG", msg);}
 #endif
 
 // TODO warnings and errors must also emit metrics
