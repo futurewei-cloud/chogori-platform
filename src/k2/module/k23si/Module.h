@@ -153,7 +153,6 @@ private: // methods
         K2DEBUG("Request:" << req);
 
         if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            K2DEBUG("Request:" << req);
             if (req.reverseDirection) {
                 return !req.endKey.partitionKey.empty();
             } else {
