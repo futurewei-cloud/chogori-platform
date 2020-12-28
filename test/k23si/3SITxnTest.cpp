@@ -1388,49 +1388,72 @@ seastar::future<> testScenario02() {
     })
     .then([this](dto::Timestamp&& ts) {
         return seastar::do_with(
-            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
             dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey1", .rangeKey = ""},
             dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey2", .rangeKey = "range1"},
             dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey3", .rangeKey = ""},
             dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey4", .rangeKey = ""},
             DataRec {.f1="SC02_f1", .f2="SC02_f2"},
-            [this](auto& mtr, auto& k1, auto& k2, auto& k3, auto& k4, auto& v1) {
-                return seastar::when_all(doWrite(k1, v1, mtr, k1, collname, false, true, ErrorCaseOpt::NoInjection), doWrite(k2, v1, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection))
-                .then([&](auto&& response) mutable {
+            [this, ts=std::move(ts)](auto& k1, auto& k2, auto& k3, auto& k4, auto& v1) mutable {
+                auto mtr = dto::K23SI_MTR{.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium};
+
+                return seastar::when_all(
+                    doWrite(k1, v1, mtr, k1, collname, false, true, ErrorCaseOpt::NoInjection),
+                    doWrite(k2, v1, mtr, k1, collname, false, false, ErrorCaseOpt::NoInjection)
+                )
+                .then([&, mtr] (auto&& response) mutable {
                     auto& [resp1, resp2] = response;
                     // move resp out of the incoming futures sice get0() returns an rvalue
                     auto [status1, val1] = resp1.get0();
                     auto [status2, val2] = resp2.get0();
                     K2EXPECT(status1, dto::K23SIStatus::Created);
                     K2EXPECT(status2, dto::K23SIStatus::Created);
+
+                    // commit k1 and k2
+                    return doEnd(k1, mtr, collname, true, {k1,k2}, Duration(0s), ErrorCaseOpt::NoInjection);
                 })
-                .then([this, &mtr, &k1, &k2, &k3, &v1] {
-                    return seastar::when_all(doEnd(k1, mtr, collname, true, {k1,k2}, Duration(0s),ErrorCaseOpt::NoInjection), doWrite(k3, v1, mtr, k3, collname, false, true, ErrorCaseOpt::NoInjection));
+                .then([&] (auto&& response) mutable {
+                    auto& [status, val] = response;
+                    K2EXPECT(status, dto::K23SIStatus::OK);
+
+                    // start a new txn for creating a WI for k3
+                    return getTimeNow();
                 })
-                .then([&](auto&& response) mutable {
-                    auto& [resp1, resp2] = response;
-                    // move resp out of the incoming futures sice get0() returns an rvalue
-                    auto [status1, val1] = resp1.get0();
-                    auto [status2, val2] = resp2.get0();
-                    K2EXPECT(status1, dto::K23SIStatus::OK);
-                    K2EXPECT(status2, dto::K23SIStatus::Created);
+                .then([&] (auto&& ts) mutable {
+                    // create WI for k3
+                    auto mtr = dto::K23SI_MTR {
+                            .txnid = txnids++,
+                            .timestamp = std::move(ts),
+                            .priority = dto::TxnPriority::Medium
+                        };
+                    return doWrite(k3, v1, mtr, k3, collname, false, true, ErrorCaseOpt::NoInjection);
                 })
-                .then([this, &mtr, &k4, &v1] {
-                    return doWrite(k4, v1, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection)
-                    .then([](auto&& response) {
-                        auto& [status, resp] = response;
-                        K2EXPECT(status, dto::K23SIStatus::Created);
-                    })
-                    .then([this, &mtr, &k4, &v1] {
-                        return doEnd(k4, mtr, collname, false, {k4}, Duration(500ms), ErrorCaseOpt::NoInjection)
-                        .then([](auto&& response) {
-                            auto& [status, resp] = response;
-                            K2EXPECT(status, dto::K23SIStatus::OK);
-                        });
-                    });
+                .then([&] (auto&& response) {
+                    auto& [status, val] = response;
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+
+                    return getTimeNow(); // start a new txn for k4
+                })
+                .then([&] (auto&& ts) {
+                    // write k4 in a new txn
+                    auto mtr = dto::K23SI_MTR {
+                            .txnid = txnids++,
+                            .timestamp = std::move(ts),
+                            .priority = dto::TxnPriority::Medium};
+
+                    return doWrite(k4, v1, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection);
+                })
+                .then([&, mtr] (auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::Created);
+
+                    // abort the k4 write
+                    return doEnd(k4, mtr, collname, false, {k4}, Duration(500ms), ErrorCaseOpt::NoInjection);
+                })
+                .then([](auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(status, dto::K23SIStatus::OK);
                 });
-            }
-        );
+            });
     }) // end test setup
     .then([] {
         K2INFO("Scenario-02 test setup done.");
@@ -1564,7 +1587,7 @@ seastar::future<> testScenario02() {
                     K2EXPECT(status1, dto::K23SIStatus::OK);
                     K2EXPECT(status2, dto::K23SIStatus::OK);
                     K2EXPECT(status3, dto::K23SIStatus::KeyNotFound);
-                    K2EXPECT(status4, dto::K23SIStatus::AbortConflict);
+                    K2EXPECT(status4, dto::K23SIStatus::KeyNotFound);
                     K2EXPECT(val1, v1);
                     K2EXPECT(val2, v1);
                     K2EXPECT(val3.f1, "");
@@ -1908,11 +1931,12 @@ seastar::future<> testScenario04() {
                     K2INFO("------- SC04.case 04 ( Pending writes are not shown to other transactions whose ts is newer ) -------");
                     return doWrite(k2, v1, mtrB, k2, collname, false, true, ErrorCaseOpt::NoInjection)
                     .then([&](auto&& response) {
-                        auto [status, val] = response;
+                        auto& [status, val] = response;
                         K2INFO("SC04.prepare.Txn(B)::OP_write_WI_k2_v1. " << "status: " << status.code << " with MESG: " << status.message);
                         K2EXPECT(status, dto::K23SIStatus::Created);
                     })
                     .then([&] {
+                        // this aborts the incumbent (mtrB) and so we should just see a KeyNotFound after the abort is cleaned
                         return doRead(k2, mtrC, collname, ErrorCaseOpt::NoInjection)
                         .then([&](auto&& response)  {
                             auto& [status, val] = response;
@@ -1932,7 +1956,7 @@ seastar::future<> testScenario04() {
                             for(auto& e : val.records) {
                                 K2INFO("Versions of k2: { txnid(" << e.txnId.mtr.txnid << "), status(" << e.status << ") }");
                             }
-                            K2EXPECT(status, dto::K23SIStatus::OK);
+                            K2EXPECT(status, dto::K23SIStatus::KeyNotFound);
                             K2EXPECT(val.records.empty(), true);
                         });
                     })

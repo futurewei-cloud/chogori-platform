@@ -16,4 +16,4 @@ target_link_libraries (rpcbench_server PRIVATE appbase transport common Seastar:
 
 target_link_libraries (k23sibench_client PRIVATE appbase tso_client cpo_client k23si_client dto)
 
-install (TARGETS txbench_client txbench_server txbench_combine rpcbench_client rpcbench_server k23sibench_client DESTINATION bin)
+#install (TARGETS txbench_client txbench_server txbench_combine rpcbench_client rpcbench_server k23sibench_client DESTINATION bin)

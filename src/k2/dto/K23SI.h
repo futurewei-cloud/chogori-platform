@@ -75,6 +75,8 @@ struct K23SI_MTR {
 extern const K23SI_MTR K23SI_MTR_ZERO;
 
 // Complete unique identifier of a transaction in the system
+// Note that trh is used only for routing and debug purposes - the transaction is still
+// identified completely by its MTR and so we consider two TxnIds to be equal if their MTRs are equal.
 struct TxnId {
     // this is the routable key for the TR - we can route requests for the TR (i.e. PUSH)
     // based on the partition map of the collection.
@@ -83,11 +85,13 @@ struct TxnId {
     dto::K23SI_MTR mtr;
 
     size_t hash() const {
-        return trh.hash() + mtr.hash();
+        // do not us trh in the hash as we want collision on two TxnIds with same MTR.
+        return mtr.hash();
     }
 
     bool operator==(const TxnId& o) const{
-        return trh == o.trh && mtr == o.mtr;
+        // two TxnIds are equal iff their MTRs are the same
+        return mtr == o.mtr;
     }
 
     bool operator!=(const TxnId& o) const{
@@ -133,10 +137,13 @@ struct DataRecord {
     dto::TxnId txnId;
     enum Status: uint8_t {
         WriteIntent,  // the record hasn't been committed/aborted yet
-        Committed     // the record has been committed and we should use the key/value
-        // aborted WIs don't need state - as soon as we learn that a WI has been aborted, we remove it
+        Committed,    // the record has been committed and we should use the key/value
+        Aborted       // the record has been aborted and should be removed
     } status;
     K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
+    friend std::ostream& operator<<(std::ostream& os, const DataRecord& rec) {
+        return os << "{key=" << rec.key << ", isTombstone=" << rec.isTombstone << ", txnId=" << rec.txnId << ", status=" << rec.status << "}";
+    }
 };
 
 enum class TxnRecordState : uint8_t {
@@ -145,7 +152,8 @@ enum class TxnRecordState : uint8_t {
         ForceAborted,
         Aborted,
         Committed,
-        Deleted
+        Deleted,
+        Unknown
 };
 
 inline std::ostream& operator<<(std::ostream& os, const TxnRecordState& st) {
@@ -157,6 +165,7 @@ inline std::ostream& operator<<(std::ostream& os, const TxnRecordState& st) {
         case TxnRecordState::Aborted: strstate= "aborted"; break;
         case TxnRecordState::Committed: strstate= "committed"; break;
         case TxnRecordState::Deleted: strstate= "deleted"; break;
+        case TxnRecordState::Unknown: strstate= "unknown"; break;
         default: break;
     }
     return os << strstate;
@@ -349,9 +358,13 @@ struct K23SITxnPushRequest {
 struct K23SITxnPushResponse {
     // the mtr of the winning transaction
     K23SI_MTR winnerMTR;
-    K2_PAYLOAD_FIELDS(winnerMTR);
+    TxnRecordState incumbentState = TxnRecordState::Unknown;
+    bool allowChallengerRetry = false;
+
+    K2_PAYLOAD_FIELDS(winnerMTR, incumbentState, allowChallengerRetry);
     friend std::ostream& operator<<(std::ostream& os, const K23SITxnPushResponse& r) {
-        return os << "{winnerMTR=" << r.winnerMTR;
+        return os << "{winnerMTR=" << r.winnerMTR << ", incumbentState="
+                  << r.incumbentState << ", allowChallengerRetry=" << r.allowChallengerRetry << "}";
     }
 };
 

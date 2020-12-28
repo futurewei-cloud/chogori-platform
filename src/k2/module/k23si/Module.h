@@ -42,7 +42,12 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-typedef std::map<dto::Key, std::deque<dto::DataRecord>>::iterator IndexerIterator;
+
+// the type holding multiple versions of a key
+typedef std::deque<dto::DataRecord> VersionsT;
+// the type holding versions for all keys, i.e. the indexer
+typedef std::map<dto::Key, VersionsT> IndexerT;
+typedef IndexerT::iterator IndexerIterator;
 
 class K23SIPartitionModule {
 public: // lifecycle
@@ -54,15 +59,14 @@ public: // lifecycle
 
    public:
     // verb handlers
-    // Read is called when we either get a new read, or after we perform a push operation on behalf of an incoming
-    // read (recursively). We only perform the recursive attempt to read if we won this PUSH operation.
-    // If this is called after a push, sitMTR will be the mtr of the sitting(and now aborted) WI
-    // compKey is the composite key we get from the dto Key
+    // Read is called when we either get a new read, or after we perform a push operation
+    // on behalf of an incoming read (recursively). We only perform the recursive attempt
+    // to read if we were allowed to retry by the PUSH operation
     seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
-    handleRead(dto::K23SIReadRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+    handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-    handleWrite(dto::K23SIWriteRequest&& request, dto::K23SI_MTR sitMTR, FastDeadline deadline);
+    handleWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
     handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline);
@@ -103,16 +107,17 @@ public: // lifecycle
     handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& request);
 
 private: // methods
-    // this method executes a push operation at the given TRH in order to
-    // select a winner between the sitting transaction's mtr (sitMTR)
-    // and the incoming transaction which want's to push (pushMTR)
-    // It returns the winner MTR.
-    // The losing transaction must always abort. In cases where the losing txn is the sitting one,
-    // we will abort its state at the TRH.
-    // In cases where the pusing txn is to be aborted, whoever calls _doPush() has to signal
-    // the client that they must issue an onEnd(Abort).
-    seastar::future<dto::K23SI_MTR>
-    _doPush(String collectionName, dto::TxnId sitTxnId, dto::K23SI_MTR pushMTR, FastDeadline deadline);
+    // this method executes a push operation at the TRH for the given incumbentTxnID in order to
+    // determine if the challengerMTR should be allowed to proceed.
+    // It returns true iff the challenger should be allowed to proceed. If not allowed, the client
+    // who issued the request must be notified to abort their transaction.
+    // This method also has the side-effect of handling the cleanup of the WI which triggered
+    // the push operation.
+    // In cases where this push operation caused the incumbent transaction to be aborted, the
+    // incumbent transaction state at the TRH will be updated to reflect the abort decision.
+    // The incumbent transaction will discover upon commit that the txn has been aborted.
+    seastar::future<bool>
+    _doPush(String collectionName, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
@@ -166,7 +171,7 @@ private: // methods
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     template <typename RequestT>
-    bool _validateStaleWrite(const RequestT& req, std::deque<dto::DataRecord>& versions);
+    bool _validateStaleWrite(const RequestT& req, VersionsT& versions);
 
     template <class RequestT>
     Status _validateReadRequest(const RequestT& request) const {
@@ -191,7 +196,7 @@ private: // methods
     }
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, std::deque<dto::DataRecord>& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, VersionsT& versions, FastDeadline deadline);
 
     // helper method used to make a projection SKVRecord payload
     bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
@@ -238,10 +243,21 @@ private: // members
     // the partition we're assigned
     dto::OwnerPartition _partition;
 
+    // get the data record iterator from the given versions which is not newer than the given timestamp
+    // The returned iterator is invalid if any modifications are made to the indexer;
+    VersionsT::iterator _getVersion(VersionsT& versions, const dto::Timestamp& timestamp);
+
+    // the the data record with the given key which is not newer than the given timestsamp
+    // The returned pointer is invalid if any modifications are made to the indexer;
+    dto::DataRecord* _getDataRecord(const dto::Key& key, const dto::Timestamp& timestamp);
+
+    // utility method used to update the indexer when removing a record
+    void _removeRecord(dto::DataRecord& rec);
+
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
     // (newest item is at front of the deque)
     // Duplicates are not allowed
-    std::map<dto::Key, std::deque<dto::DataRecord>> _indexer;
+    IndexerT _indexer;
 
     // to store transactions
     TxnManager _txnMgr;
