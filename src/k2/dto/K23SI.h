@@ -85,7 +85,7 @@ struct TxnId {
     dto::K23SI_MTR mtr;
 
     size_t hash() const {
-        // do not us trh in the hash as we want collision on two TxnIds with same MTR.
+        // do not use trh in the hash as we want collision on two TxnIds with same MTR.
         return mtr.hash();
     }
 
