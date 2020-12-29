@@ -62,6 +62,9 @@ bool Key::operator>=(const Key& o) const noexcept {
 bool Key::operator==(const Key& o) const noexcept {
     return compare(o) == 0;
 }
+bool Key::operator!=(const Key& o) const noexcept {
+    return compare(o) != 0;
+}
 size_t Key::hash() const noexcept {
     return std::hash<k2::String>()(schemaName) + std::hash<k2::String>()(partitionKey) + std::hash<k2::String>()(rangeKey);
 }
@@ -89,7 +92,7 @@ PartitionGetter::PartitionWithEndpoint PartitionGetter::GetPartitionWithEndpoint
     return partition;
 }
 
-PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) { 
+PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) {
     if (collection.metadata.hashScheme == HashScheme::Range) {
         _rangePartitionMap.reserve(collection.partitionMap.partitions.size());
 
@@ -129,7 +132,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
 
             // case 1: if get partiton in the reverse direction, and the key is empty: return the last partition;
             //         empty key in the forward direction can be well treated by upper_bound (case 3).
-            // case 2: if exclusiveKey is true, use lower_bound to get partition; 
+            // case 2: if exclusiveKey is true, use lower_bound to get partition;
             //         forward direction with true_exclusiveKey and empry_key is not allow, throw exception.
             // case 3: if exclusiveKey is false, use upper_bound to get partition.
             std::vector<RangeMapElement>::iterator it;
@@ -144,10 +147,10 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
                 }
             } else {
                 // We are comparing against the start keys and upper_bound gives the first start key
-                // greater than the key (start keys are inclusive), so we return the partition before 
+                // greater than the key (start keys are inclusive), so we return the partition before
                 // the one obtained by upper_bound
                 it = std::upper_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
-                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");                
+                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
             }
 
             if (it != _rangePartitionMap.end()) {
@@ -188,13 +191,13 @@ bool OwnerPartition::owns(const Key& key, const bool reverse) const {
                 if (_partition.endKey == "") {
                     return _partition.startKey.compare(key.partitionKey) <= 0;
                 }
-                
+
                 return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) < 0;
             } else {
                 if (key.partitionKey == "" && _partition.endKey == "") return true;
                 else if (key.partitionKey == "" && _partition.endKey != "") return false;
                 else if (_partition.endKey == "") return _partition.startKey.compare(key.partitionKey) <= 0;
-                
+
                 return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <= 0;
             }
         case HashScheme::HashCRC32C: {

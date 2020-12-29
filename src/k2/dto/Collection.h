@@ -58,6 +58,7 @@ struct Key {
     bool operator>(const Key& o) const noexcept;
     bool operator>=(const Key& o) const noexcept;
     bool operator==(const Key& o) const noexcept;
+    bool operator!=(const Key& o) const noexcept;
 
     // hash useful for hash-containers
     size_t hash() const noexcept;
@@ -72,7 +73,7 @@ struct Key {
 };
 
 void inline to_json(nlohmann::json& j, const Key& key) {
-    j = nlohmann::json{{"schemaName", key.schemaName}, {"partitionKey", key.partitionKey}, 
+    j = nlohmann::json{{"schemaName", key.schemaName}, {"partitionKey", key.partitionKey},
                        {"rangeKey", key.rangeKey}};
 }
 
@@ -158,8 +159,8 @@ struct Partition {
 };
 
 void inline to_json(nlohmann::json& j, const Partition::PVID& pvid) {
-    j = nlohmann::json{{"id", pvid.id}, 
-                       {"rangeVersion", pvid.rangeVersion}, 
+    j = nlohmann::json{{"id", pvid.id},
+                       {"rangeVersion", pvid.rangeVersion},
                        {"assignmentVersion", pvid.assignmentVersion}};
 }
 
@@ -172,9 +173,9 @@ void inline from_json(const nlohmann::json& j, Partition::PVID& pvid) {
 
 void inline to_json(nlohmann::json& j, const Partition& partition) {
     j = nlohmann::json{{"pvid", partition.pvid},
-                       {"startKey", partition.startKey}, 
-                       {"endKey", partition.endKey}, 
-                       {"endpoints", partition.endpoints}, 
+                       {"startKey", partition.startKey},
+                       {"endKey", partition.endKey},
+                       {"endpoints", partition.endpoints},
                        {"astate", partition.astate}};
 }
 
@@ -205,7 +206,7 @@ struct PartitionMap {
 };
 
 void inline to_json(nlohmann::json& j, const PartitionMap& map) {
-    j = nlohmann::json{{"version", map.version}, 
+    j = nlohmann::json{{"version", map.version},
                        {"partitions", map.partitions}};
 }
 
@@ -262,7 +263,7 @@ struct CollectionMetadata {
 
 // TODO additional fields
 void inline to_json(nlohmann::json& j, const CollectionMetadata& meta) {
-    j = nlohmann::json{{"name", meta.name}, 
+    j = nlohmann::json{{"name", meta.name},
                        {"hashScheme", meta.hashScheme}};
 }
 
@@ -280,7 +281,7 @@ struct Collection {
 };
 
 void inline to_json(nlohmann::json& j, const Collection& collection) {
-    j = nlohmann::json{{"partitionMap", collection.partitionMap}, 
+    j = nlohmann::json{{"partitionMap", collection.partitionMap},
                        {"metadata", collection.metadata}};
 }
 
