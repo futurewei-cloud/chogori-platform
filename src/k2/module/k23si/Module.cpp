@@ -1398,6 +1398,7 @@ void K23SIPartitionModule::_removeRecord(dto::DataRecord& rec) {
         auto viter = _getVersion(kiter->second, rec.txnId.mtr.timestamp);
         if (viter != kiter->second.end()) {
             K2DEBUG("Partition: " << _partition << " removing aborted version for key " << rec.key << ", from txn=" << rec.txnId);
+            K2ASSERT(viter->status == dto::DataRecord::Aborted, "Record not in Aborted state: " << (*viter));
             kiter->second.erase(viter);
             if (kiter->second.empty()) {
                 _indexer.erase(kiter);
