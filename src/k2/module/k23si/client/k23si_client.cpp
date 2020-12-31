@@ -142,7 +142,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
                 if (!status.is2xxOK()) {
                     return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
                         ReadResult<dto::SKVRecord>(
-                        dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"), 
+                        dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"),
                         SKVRecord()));
                 }
 
@@ -155,7 +155,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
 }
 
 
-std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase, 
+std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase,
                                                                       bool rejectIfExists) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
@@ -466,33 +466,51 @@ seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collec
 
 // Called the first time a Query object is used to validate and setup the request object
 void K2TxnHandle::prepareQueryRequest(Query& query) {
+    // Start and end records need to be at least a prefix of key fields. If they are a proper prefix,
+    // then we need to pad either the start or end (depending on if it is a forward or reverse scan)
+    // with null last in the unspecified fields so that the full prefix gets scanned by the query.
+    // (Otherwise start and end may be equal for example which will scan no records)
+    // We need to do it here in the client because we have semantic information on what fields are set
+    // and because it can affect routing of the request.
     bool emptyField = false;
-    for (const String& key : query.startScanRecord.partitionKeys) {
+    for (String& key : query.startScanRecord.partitionKeys) {
         if (key == "") {
             emptyField = true;
+            if (query.request.reverseDirection) {
+                key = NullLastToKeyString();
+            }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of startScanRecord are not a prefix");
         }
     }
-    for (const String& key : query.startScanRecord.rangeKeys) {
+    for (String& key : query.startScanRecord.rangeKeys) {
         if (key == "") {
             emptyField = true;
+            if (query.request.reverseDirection) {
+                key = NullLastToKeyString();
+            }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of startScanRecord are not a prefix");
         }
     }
 
     emptyField = false;
-    for (const String& key : query.endScanRecord.partitionKeys) {
+    for (String& key : query.endScanRecord.partitionKeys) {
         if (key == "") {
             emptyField = true;
+            if (!query.request.reverseDirection) {
+                key = NullLastToKeyString();
+            }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of endScanRecord are not a prefix");
         }
     }
-    for (const String& key : query.endScanRecord.rangeKeys) {
+    for (String& key : query.endScanRecord.rangeKeys) {
         if (key == "") {
             emptyField = true;
+            if (!query.request.reverseDirection) {
+                key = NullLastToKeyString();
+            }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of endScanRecord are not a prefix");
         }
@@ -500,6 +518,15 @@ void K2TxnHandle::prepareQueryRequest(Query& query) {
 
     query.request.key = query.startScanRecord.getKey();
     query.request.endKey = query.endScanRecord.getKey();
+    if (emptyField && !query.request.reverseDirection) {
+        // If we've padded the end key for a forward prefix scan, we need to add one more byte
+        // because the end key is exclusive but we want to include any record that may actually
+        // have null last key fields set
+        query.request.endKey.partitionKey.append(" ", 1);
+        query.request.endKey.rangeKey.append(" ", 1);
+    }
+
+
     if (query.request.key > query.request.endKey && !query.request.reverseDirection &&
                 query.request.endKey.partitionKey != "") {
         throw K23SIClientException("Start key is greater than end key for forward direction query");
