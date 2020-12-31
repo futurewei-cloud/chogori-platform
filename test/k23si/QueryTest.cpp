@@ -56,7 +56,8 @@ public:  // application lifespan
         .then([this] {
             K2INFO("Creating test collection...");
             std::vector<k2::String> rangeEnds;
-            rangeEnds.push_back(k2::dto::FieldToKeyString<k2::String>("d"));
+            rangeEnds.push_back(k2::dto::FieldToKeyString<k2::String>("default") +
+                                k2::dto::FieldToKeyString<k2::String>("d"));
             rangeEnds.push_back("");
 
             return _client.makeCollection(collname, std::move(rangeEnds));
@@ -70,12 +71,13 @@ public:  // application lifespan
             schema.version = 1;
             schema.fields = std::vector<k2::dto::SchemaField> {
                     {k2::dto::FieldType::STRING, "partition", false, false},
+                    {k2::dto::FieldType::STRING, "partition2", false, false},
                     {k2::dto::FieldType::STRING, "range", false, false},
                     {k2::dto::FieldType::INT32T, "data1", false, false},
                     {k2::dto::FieldType::INT32T, "data2", false, false}
             };
 
-            schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition"});
+            schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition", "partition2"});
             schema.setRangeKeyFieldsByName(std::vector<k2::String> {"range"});
 
             return _client.createSchema(collname, std::move(schema));
@@ -89,6 +91,7 @@ public:  // application lifespan
         .then([this] { return runScenario03(); })
         .then([this] { return runScenario04(); })
         .then([this] { return runScenario05(); })
+        .then([this] { return runScenario06(); })
         .then([this] {
             K2INFO("======= All tests passed ========");
             exitcode = 0;
@@ -130,7 +133,8 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                           uint32_t expectedRecords, uint32_t expectedPaginations,
                           k2::Status expectedStatus=k2::dto::K23SIStatus::OK,
                           k2e::Expression filterExpression=k2e::Expression{},
-                          std::vector<k2::String> projection=std::vector<k2::String>()) {
+                          std::vector<k2::String> projection=std::vector<k2::String>(),
+                          bool doPrefixScan = false) {
     K2DEBUG("doQuery from " << start << " to: " << end);
     return _client.beginTxn(k2::K2TxnOptions{})
     .then([this] (k2::K2TxnHandle&& t) {
@@ -139,17 +143,28 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
     })
     .then([this, start, end, limit, reverse, expectedRecords, expectedPaginations, expectedStatus,
                 filterExpression=std::move(filterExpression),
-                projection=std::move(projection)] (auto&& response) mutable {
+                projection=std::move(projection),
+                doPrefixScan] (auto&& response) mutable {
         K2EXPECT(response.status.is2xxOK(), true);
         query = std::move(response.query);
-        if (start != "" || !reverse) {
-            query.startScanRecord.serializeNext<k2::String>(start);
-            query.startScanRecord.serializeNext<k2::String>("");
+
+        // Fully specified scan or full schema scan
+        if (!doPrefixScan) {
+            if (start != "" || !reverse) {
+                query.startScanRecord.serializeNext<k2::String>("default");
+                query.startScanRecord.serializeNext<k2::String>(start);
+                query.startScanRecord.serializeNext<k2::String>("");
+            }
+            if (end != "" || reverse) {
+                query.endScanRecord.serializeNext<k2::String>("default");
+                query.endScanRecord.serializeNext<k2::String>(end);
+                query.endScanRecord.serializeNext<k2::String>("");
+            }
+        } else { // Prefix scan where only first key fields is set
+            query.startScanRecord.serializeNext<k2::String>("default");
+            query.endScanRecord.serializeNext<k2::String>("default");
         }
-        if (end != "" || reverse) {
-            query.endScanRecord.serializeNext<k2::String>(end);
-            query.endScanRecord.serializeNext<k2::String>("");
-        }
+
         query.setLimit(limit);
         query.setReverseDirection(reverse);
         query.addProjection(projection);
@@ -186,7 +201,8 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
     });
 }
 
-// Write six records ("a"-"f"), three to each partition
+// Write six records with partition2 keys ("a"-"f"), three to each partition
+// Write additional two records with non-default partition1 key
 seastar::future<> runSetup() {
     K2INFO("QueryTest setup");
     k2::K2TxnOptions options{};
@@ -209,6 +225,7 @@ seastar::future<> runSetup() {
 
         for (const k2::String& key : partKeys) {
             k2::dto::SKVRecord record(collname, schemaPtr);
+            record.serializeNext<k2::String>("default");
             record.serializeNext<k2::String>(key);
             record.serializeNext<k2::String>("");
             record.serializeNext<int32_t>(data);
@@ -221,6 +238,32 @@ seastar::future<> runSetup() {
             );
             data++;
         }
+
+        k2::dto::SKVRecord record(collname, schemaPtr);
+        record.serializeNext<k2::String>("nondefault");
+        record.serializeNext<k2::String>("a");
+        record.serializeNext<k2::String>("");
+        record.serializeNext<int32_t>(0);
+        record.serializeNext<int32_t>(777);
+        write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
+            .then([] (auto&& response) {
+                K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                return seastar::make_ready_future<>();
+            })
+        );
+
+        k2::dto::SKVRecord record2(collname, schemaPtr);
+        record2.serializeNext<k2::String>("nondefault");
+        record2.serializeNext<k2::String>("z");
+        record2.serializeNext<k2::String>("");
+        record2.serializeNext<int32_t>(0);
+        record2.serializeNext<int32_t>(777);
+        write_futs.push_back(txn.write<k2::dto::SKVRecord>(record2)
+            .then([] (auto&& response) {
+                K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                return seastar::make_ready_future<>();
+            })
+        );
 
         return seastar::when_all_succeed(write_futs.begin(), write_futs.end());
     })
@@ -261,7 +304,7 @@ seastar::future<> runScenario01() {
     })
     .then([this] () {
         K2INFO("Multi partition full scan");
-        return doQuery("", "", -1, false, 6, 4).discard_result();
+        return doQuery("", "", -1, false, 8, 5).discard_result();
     });
 }
 
@@ -297,20 +340,20 @@ seastar::future<> runScenario02() {
     })
     .then([this] () {
         K2INFO("Multi partition full scan");
-        return doQuery("", "", -1, true, 6, 4)
+        return doQuery("", "", -1, true, 8, 5)
         .then([](auto&& response) {
             std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
-            std::vector<k2::String> partKeys = {"f", "e", "d", "c", "b", "a"};
+            // First two returned records have partition1="nondefault"
+            std::deque<k2::String> partKeys = {"z", "a", "f", "e", "d", "c", "b", "a"};
 
             for (std::vector<k2::dto::SKVRecord>& set : result_set) {
                 for (k2::dto::SKVRecord& rec : set) {
-                    std::optional<k2::String> partition = rec.deserializeNext<k2::String>();
+                    std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
+                    std::optional<k2::String> part2 = rec.deserializeNext<k2::String>();
                     std::optional<k2::String> range = rec.deserializeNext<k2::String>();
-                    K2INFO("partitonKey:" << *partition << ", rangeKey:" << *range);
-                    K2ASSERT(partition, "");
-                    K2ASSERT(range, "");
-                    K2EXPECT(*partition, partKeys[0]);
-                    partKeys.erase(partKeys.begin(), partKeys.begin() + 1);
+                    K2INFO("partitonKey:" << *part2 << ", rangeKey:" << *range);
+                    K2EXPECT(*part2, partKeys.front());
+                    partKeys.pop_front();
                 }
             }
         });
@@ -322,11 +365,11 @@ seastar::future<> runScenario03() {
     K2INFO("runScenario03");
 
     K2INFO("Projection reads for the giving field");
-    return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{}, {"partition"})
+    return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{}, {"partition2"})
     .then([](auto&& response) {
         std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
         uint32_t record_count = 0;
-        std::vector<k2::String> partKeys = {"a", "b"};
+        std::deque<k2::String> partKeys = {"a", "b"};
 
         K2EXPECT(result_set.size(), 1);
         for (std::vector<k2::dto::SKVRecord>& set : result_set) {
@@ -334,11 +377,12 @@ seastar::future<> runScenario03() {
 
             // verify projection skvrecord
             for (k2::dto::SKVRecord& rec : set) {
-                std::optional<k2::String> partition = rec.deserializeNext<k2::String>();
+                std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
+                std::optional<k2::String> part2 = rec.deserializeNext<k2::String>();
                 std::optional<k2::String> range = rec.deserializeNext<k2::String>();
-                K2ASSERT(partition, "SKVRecord should have got this field");
-                K2EXPECT(*partition, partKeys[0]);
-                partKeys.erase(partKeys.begin(), partKeys.begin() + 1);
+                K2ASSERT(part2, "SKVRecord should have got this field");
+                K2EXPECT(*part2, partKeys.front());
+                partKeys.pop_front();
                 K2ASSERT(!range, "Exclude this field");
             }
         }
@@ -347,11 +391,11 @@ seastar::future<> runScenario03() {
     .then([this] {
         K2INFO("Project a field that is not part of the schema");
         return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{},
-                       {"partition", "balance", "age"})
+                       {"partition2", "balance", "age"})
         .then([](auto&& response) {
             std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
             uint32_t record_count = 0;
-            std::vector<k2::String> partKeys = {"a", "b"};
+            std::deque<k2::String> partKeys = {"a", "b"};
 
             K2EXPECT(result_set.size(), 1);
             for (std::vector<k2::dto::SKVRecord>& set : result_set) {
@@ -359,11 +403,12 @@ seastar::future<> runScenario03() {
 
                 // verify projection skvrecord
                 for (k2::dto::SKVRecord& rec : set) {
-                    std::optional<k2::String> partition = rec.deserializeNext<k2::String>();
+                    std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
+                    std::optional<k2::String> part2 = rec.deserializeNext<k2::String>();
                     std::optional<k2::String> range = rec.deserializeNext<k2::String>();
-                    K2ASSERT(partition, "SKVRecord should have got this field");
-                    K2EXPECT(*partition, partKeys[0]);
-                    partKeys.erase(partKeys.begin(), partKeys.begin() + 1);
+                    K2ASSERT(part2, "SKVRecord should have got this field");
+                    K2EXPECT(*part2, partKeys.front());
+                    partKeys.pop_front();
                     K2ASSERT(!range, "Exclude this field");
                 }
             }
@@ -396,6 +441,7 @@ seastar::future<> runScenario04() {
         return doQuery("", "", -1, false, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter))
         .then([this] (auto&& result_set) {
             k2::dto::SKVRecord& rec = result_set[0][0];
+            std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
             std::optional<k2::String> key = rec.deserializeNext<k2::String>();
             K2EXPECT(*key, "b");
         });
@@ -410,6 +456,7 @@ seastar::future<> runScenario04() {
         return doQuery("", "", -1, false, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter))
         .then([this] (auto&& result_set) {
             k2::dto::SKVRecord& rec = result_set[0][0];
+            std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
             std::optional<k2::String> key = rec.deserializeNext<k2::String>();
             K2EXPECT(*key, "b");
         });
@@ -435,9 +482,27 @@ seastar::future<> runScenario04() {
     });
 }
 
-// Query conflict cases
+// Forward and reverse prefix scan. For example, a schema with two
+// partition keys. Start and end keys specify the first key but not the
+// second, with the intent that all records with the first key equals are returned,
+// and the second key can be any value. This requires special handling on the server
+// because the start and end records have the same key string.
 seastar::future<> runScenario05() {
     K2INFO("runScenario05");
+
+    K2INFO("Forward prefix scan test");
+    return doQuery("", "", -1, false, 6, 4, k2::dto::K23SIStatus::OK,
+                   k2e::Expression{}, std::vector<k2::String>(), true /* prefix only */).discard_result()
+    .then([this] () {
+        K2INFO("Reverse prefix scan");
+        return doQuery("", "", -1, true, 6, 4, k2::dto::K23SIStatus::OK,
+                       k2e::Expression{}, std::vector<k2::String>(), true /* prefix only */).discard_result();
+    });
+}
+
+// Query conflict cases
+seastar::future<> runScenario06() {
+    K2INFO("runScenario06");
 
     K2INFO("Starting write in range is blocked by readCache test");
     k2::K2TxnOptions options{};
@@ -458,6 +523,7 @@ seastar::future<> runScenario05() {
         K2EXPECT(status.is2xxOK(), true);
 
         k2::dto::SKVRecord record(collname, schemaPtr);
+        record.serializeNext<k2::String>("default");
         record.serializeNext<k2::String>("bb");
         record.serializeNext<k2::String>("");
         return writeTxn.write<k2::dto::SKVRecord>(record);
@@ -487,6 +553,7 @@ seastar::future<> runScenario05() {
         K2EXPECT(status.is2xxOK(), true);
 
         k2::dto::SKVRecord record(collname, schemaPtr);
+        record.serializeNext<k2::String>("default");
         record.serializeNext<k2::String>("az");
         record.serializeNext<k2::String>("");
         return writeTxn.write<k2::dto::SKVRecord>(record);
@@ -521,6 +588,7 @@ seastar::future<> runScenario05() {
         K2EXPECT(status.is2xxOK(), true);
 
         k2::dto::SKVRecord record(collname, schemaPtr);
+        record.serializeNext<k2::String>("default");
         record.serializeNext<k2::String>("bz");
         record.serializeNext<k2::String>("");
         return writeTxn.write<k2::dto::SKVRecord>(record);

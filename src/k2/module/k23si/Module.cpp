@@ -255,7 +255,6 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
     // 1. Record limit is reached
     // 2. Iterator is not end() but is >= user endKey
     // 3. Iterator is at end() and partition bounds contains endKey
-    // This also works around seastars lack of operators on the string type
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
         // Test for past user endKey:
         (it != _indexer.end() &&
@@ -263,12 +262,8 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const IndexerIterator& it,
         // Test for partition bounds contains endKey and we are at end()
         (it == _indexer.end() &&
             (request.reverseDirection ?
-            _partition().startKey < request.endKey.partitionKey :
-            request.endKey.partitionKey < _partition().endKey && request.endKey.partitionKey != "")) ||
-        (it == _indexer.end() &&
-            (request.reverseDirection ?
-            request.endKey.partitionKey == _partition().startKey :
-            request.endKey.partitionKey == _partition().endKey))) {
+            _partition().startKey <= request.endKey.partitionKey :
+            request.endKey.partitionKey <= _partition().endKey && request.endKey.partitionKey != ""))) {
         return dto::Key();
     }
     else if (it != _indexer.end()) {
