@@ -243,7 +243,7 @@ seastar::future<> runSetup() {
         record.serializeNext<k2::String>("nondefault");
         record.serializeNext<k2::String>("a");
         record.serializeNext<k2::String>("");
-        record.serializeNext<int32_t>(0);
+        record.skipNext();
         record.serializeNext<int32_t>(777);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
             .then([] (auto&& response) {
@@ -256,7 +256,7 @@ seastar::future<> runSetup() {
         record2.serializeNext<k2::String>("nondefault");
         record2.serializeNext<k2::String>("z");
         record2.serializeNext<k2::String>("");
-        record2.serializeNext<int32_t>(0);
+        record2.skipNext();
         record2.serializeNext<int32_t>(777);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record2)
             .then([] (auto&& response) {
@@ -395,6 +395,11 @@ seastar::future<> runScenario03() {
             }
         }
         K2EXPECT(record_count, 2);
+    })
+    .then([this] {
+        K2INFO("Full scan with projection over records with null field");
+        return doQuery("", "", -1, false, 8, 5, k2::dto::K23SIStatus::OK, k2e::Expression{},
+                       {"data2"}).discard_result();
     })
     .then([this] {
         K2INFO("Project a field that is not part of the schema");

@@ -777,6 +777,11 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
     Payload projectedPayload(Payload::DefaultAllocator);                     // payload for projection
 
     for (uint32_t i = 0; i < schema.fields.size(); ++i) {
+        if (fullRec.excludedFields.size() && fullRec.excludedFields[i]) {
+            // A value of NULL in the record is treated the same as if the field doesn't exist in the record
+            continue;
+        }
+
         std::vector<k2::String>::iterator fieldIt;
         fieldIt = std::find(request.projection.begin(), request.projection.end(), schema.fields[i].name);
         if (fieldIt == request.projection.end()) {
