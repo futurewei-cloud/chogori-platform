@@ -303,6 +303,10 @@ seastar::future<> runScenario01() {
         return doQuery("a", "dz", -1, false, 4, 3).discard_result();
     })
     .then([this] () {
+        K2INFO("Start and end keys the same");
+        return doQuery("b", "b", -1, false, 1, 1).discard_result();
+    })
+    .then([this] () {
         K2INFO("Multi partition full scan");
         return doQuery("", "", -1, false, 8, 5).discard_result();
     });
@@ -333,6 +337,10 @@ seastar::future<> runScenario02() {
     .then([this] () {
         K2INFO("Multi partition with limit");
         return doQuery("f", "", 5, true, 5, 3).discard_result();
+    })
+    .then([this] () {
+        K2INFO("Start and end keys the same");
+        return doQuery("b", "b", -1, false, 1, 1).discard_result();
     })
     .then([this] () {
         K2INFO("Multi partition terminated by end key");

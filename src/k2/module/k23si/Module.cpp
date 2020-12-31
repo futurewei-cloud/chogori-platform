@@ -234,6 +234,9 @@ bool K23SIPartitionModule::_isScanDone(const IndexerIterator& it, const dto::K23
                                        size_t response_size) {
     if (it == _indexer.end()) {
         return true;
+    } else if (it->first == request.key) {
+        // Start key as inclusive overrides end key as exclusive
+        return false;
     } else if (!request.reverseDirection && it->first >= request.endKey &&
                request.endKey.partitionKey != "") {
         return true;
