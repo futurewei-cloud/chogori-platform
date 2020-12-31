@@ -124,25 +124,48 @@ inline const std::string b64encode(const void* data, const size_t len) {
     return result;
 }
 
+inline std::string b64decode(const void* data, const size_t len) {
+    if (len == 0) return "";
+
+    unsigned char* p = (unsigned char*)data;
+    size_t j = 0,
+           pad1 = len % 4 || p[len - 1] == '=',
+           pad2 = pad1 && (len % 4 > 2 || p[len - 2] != '=');
+    const size_t last = (len - pad1) / 4 << 2;
+    std::string result(last / 4 * 3 + pad1 + pad2, '\0');
+    unsigned char* str = (unsigned char*)&result[0];
+
+    for (size_t i = 0; i < last; i += 4) {
+        int n = B64index[p[i]] << 18 | B64index[p[i + 1]] << 12 | B64index[p[i + 2]] << 6 | B64index[p[i + 3]];
+        str[j++] = n >> 16;
+        str[j++] = n >> 8 & 0xFF;
+        str[j++] = n & 0xFF;
+    }
+    if (pad1) {
+        int n = B64index[p[last]] << 18 | B64index[p[last + 1]] << 12;
+        str[j++] = n >> 16;
+        if (pad2) {
+            n |= B64index[p[last + 2]] << 6;
+            str[j++] = n >> 8 & 0xFF;
+        }
+    }
+    return result;
+}
+
 }  //  namespace k2
 
 namespace nlohmann {
 
 template <>
 struct adl_serializer<k2::String> {
+    // since we transport raw/binary with strings, we just b64 encode all strings in json
     static void to_json(json& j, const k2::String& str) {
-        if (std::count_if(str.begin(), str.end(), [](auto c) {
-                return !std::isprint(c);
-            }) == 0) {
-            // all are printable
-            j = std::string(str);
-        } else {
-            j = k2::b64encode(str.data(), str.size());
-        }
+        j = k2::b64encode(str.data(), str.size());
     }
 
     static void from_json(const json& j, k2::String& str) {
-        str = j.get<std::string>();
+        auto result = j.get<std::string>();
+        str = k2::b64decode(result.data(), result.size());
     }
 };
 
