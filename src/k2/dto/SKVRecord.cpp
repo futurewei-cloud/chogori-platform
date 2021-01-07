@@ -101,6 +101,9 @@ SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
     rangeKeys.resize(schema->rangeKeyFields.size());
 }
 
+SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage) :
+        schema(s), collectionName(collection), storage(std::move(storage)) {}
+
 String SKVRecord::getPartitionKey() const {
     size_t keySize = 0;
     for (const String& key : partitionKeys) {

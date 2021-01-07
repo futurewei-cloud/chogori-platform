@@ -70,8 +70,7 @@ seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, c
                 return seastar::make_ready_future<>();
             }
 
-            SKVRecord record(query.request.collectionName, get_response.schema);
-            record.storage = std::move(s);
+            SKVRecord record(query.request.collectionName, get_response.schema, std::move(s));
             result->records.emplace_back(std::move(record));
             return seastar::make_ready_future<>();
         }));

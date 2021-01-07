@@ -30,6 +30,11 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/ControlPlaneOracle.h>
 
 namespace k2 {
+
+class K2TxnHandle;
+class txn_testing;
+class K23SITest;
+
 namespace dto {
 
 // Thrown when a field is not found in the schema
@@ -162,8 +167,15 @@ public:
     // store it on their own. For normal K23SI operations the user does not need to touch this
     Payload getSharedPayload();
 
-    SKVRecord() = default;
-    SKVRecord(const String& collection, std::shared_ptr<Schema> s);
+    // These fields are used by the client to build a request but are not serialized on the wire
+    std::shared_ptr<Schema> schema;
+    String collectionName;
+    uint32_t fieldCursor = 0;
+
+    // These functions construct the keys on-the-fly based on the stringified individual fields
+    String getPartitionKey() const;
+    String getRangeKey() const;
+    dto::Key getKey() const;
 
     // These are fields actually stored by the Chogori storage node, and returned
     // by a read request
@@ -176,19 +188,20 @@ public:
         Storage share();
         Storage copy();
         K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaVersion);
-    } storage;
+    };
 
-    // These fields are used by the client to build a request but are not serialized on the wire
-    std::shared_ptr<Schema> schema;
-    String collectionName;
+    SKVRecord() = default;
+    SKVRecord(const String& collection, std::shared_ptr<Schema> s);
+    SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage);
+private:
+    Storage storage;
+
     std::vector<String> partitionKeys;
     std::vector<String> rangeKeys;
-    uint32_t fieldCursor = 0;
 
-    // These functions construct the keys on-the-fly based on the stringified individual fields
-    String getPartitionKey() const;
-    String getRangeKey() const;
-    dto::Key getKey() const;
+    friend class k2::K2TxnHandle;
+    friend class k2::txn_testing;
+    friend class k2::K23SITest;
 };
 
 // Convience macro that does the switch statement on the record field type for the user
