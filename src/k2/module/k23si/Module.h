@@ -154,15 +154,11 @@ private: // methods
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
     bool _validateRequestPartitionKey(const RequestT& req) const {
-        // if operation of the requests is in reverse direction, validate endKey partition not empty
         K2DEBUG("Request:" << req);
 
         if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            if (req.reverseDirection) {
-                return !req.endKey.partitionKey.empty();
-            } else {
-                return !req.key.partitionKey.empty();
-            }
+            // Query is allowed to have empty partition key which means start or end of schema set
+            return true;
         } else {
             return !req.key.partitionKey.empty();
         }
