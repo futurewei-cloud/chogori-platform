@@ -77,8 +77,8 @@ public:
         ++fieldCursor;
     }
 
-    // Skip serializing the next field, for optional fields or partial updates
-    void skipNext();
+    // Serializing a Null value on the next field, for optional fields or partial updates
+    void serializeNull();
 
     // Used as part of the SKV_RECORD_FIELDS macro for converting to user-defined types
     // All primitive fields must be wrapped in std::optional
@@ -90,7 +90,7 @@ public:
             writeMany(args...);
         } else {
             if (!value) {
-                skipNext();
+                serializeNull();
             } else {
                 serializeNext<typename std::decay_t<decltype(value)>::value_type>(*value);
             }

@@ -243,7 +243,7 @@ seastar::future<> runSetup() {
         record.serializeNext<k2::String>("nondefault");
         record.serializeNext<k2::String>("a");
         record.serializeNext<k2::String>("");
-        record.skipNext();
+        record.serializeNull();
         record.serializeNext<int32_t>(777);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
             .then([] (auto&& response) {
@@ -256,7 +256,7 @@ seastar::future<> runSetup() {
         record2.serializeNext<k2::String>("nondefault");
         record2.serializeNext<k2::String>("z");
         record2.serializeNext<k2::String>("");
-        record2.skipNext();
+        record2.serializeNull();
         record2.serializeNext<int32_t>(777);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record2)
             .then([] (auto&& response) {

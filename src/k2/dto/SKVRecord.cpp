@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-void SKVRecord::skipNext() {
+void SKVRecord::serializeNull() {
     if (fieldCursor >= schema->fields.size()) {
         throw NoFieldFoundException();
     }

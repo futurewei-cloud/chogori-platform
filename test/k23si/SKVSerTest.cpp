@@ -177,8 +177,8 @@ TEST_CASE("Test2: Serialize a record with a composite partition key and one key 
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<int32_t>(20201234);
-    doc.skipNext();
-    doc.skipNext();
+    doc.serializeNull();
+    doc.serializeNull();
 
     std::vector<uint8_t> expectedPKey {
         (uint8_t)k2::dto::FieldType::STRING, // Type string
@@ -231,8 +231,8 @@ TEST_CASE("Test3: Serialize a record with a composite partition key and one key 
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<int32_t>(20201234);
-    doc.skipNext();
-    doc.skipNext();
+    doc.serializeNull();
+    doc.serializeNull();
 
     std::vector<uint8_t> expectedPKey {
         (uint8_t)k2::dto::FieldType::STRING, // Type string
@@ -283,9 +283,9 @@ TEST_CASE("Test4: Serialize a record with one value field skipped") {
     k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
 
     doc.serializeNext<k2::String>("Baggins");
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(100);
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(36);
 
     // deserialize using "deserializeNext" function
@@ -327,9 +327,9 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
     k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
 
     doc.serializeNext<k2::String>("Baggins");
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(100);
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(36);
 
     // out of order Deserialize, using "deserializeFiled(String&)" function

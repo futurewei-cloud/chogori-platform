@@ -92,36 +92,36 @@ k2d::SKVRecord makeRec() {
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<k2::String>("Bilbo");
     doc.serializeNext<k2::String>("");
-    doc.skipNext();
+    doc.serializeNull();
 
     doc.serializeNext<int16_t>(std::numeric_limits<int16_t>::min());
     doc.serializeNext<int16_t>(-5);
     doc.serializeNext<int16_t>(std::numeric_limits<int16_t>::max());
-    doc.skipNext();
+    doc.serializeNull();
 
     doc.serializeNext<int32_t>(std::numeric_limits<int32_t>::min());
     doc.serializeNext<int32_t>(0);
     doc.serializeNext<int32_t>(std::numeric_limits<int32_t>::max());
-    doc.skipNext();
+    doc.serializeNull();
 
     doc.serializeNext<int64_t>(std::numeric_limits<int64_t>::min());
     doc.serializeNext<int64_t>(5);
     doc.serializeNext<int64_t>(std::numeric_limits<int64_t>::max());
-    doc.skipNext();
+    doc.serializeNull();
 
     doc.serializeNext<float>(std::numeric_limits<float>::min());
     doc.serializeNext<float>(10.123);
     doc.serializeNext<float>(std::numeric_limits<float>::max());
-    doc.skipNext();
+    doc.serializeNull();
 
     doc.serializeNext<double>(std::numeric_limits<double>::min());
     doc.serializeNext<double>(20.312);
     doc.serializeNext<double>(std::numeric_limits<double>::max());
-    doc.skipNext();
+    doc.serializeNull();
 
     doc.serializeNext<bool>(false);
     doc.serializeNext<bool>(true);
-    doc.skipNext();
+    doc.serializeNull();
     return doc;
 }
 
