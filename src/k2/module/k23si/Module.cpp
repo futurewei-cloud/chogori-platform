@@ -789,7 +789,7 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
     auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
     dto::Schema& schema = *(schemaVer->second);
     std::vector<bool> excludedFields(schema.fields.size(), true);   // excludedFields for projection
-    Payload projectedPayload(Payload::DefaultAllocator);                     // payload for projection
+    Payload projectedPayload(Payload::DefaultAllocator);            // payload for projection
 
     for (uint32_t i = 0; i < schema.fields.size(); ++i) {
         if (fullRec.excludedFields.size() && fullRec.excludedFields[i]) {

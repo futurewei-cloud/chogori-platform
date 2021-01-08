@@ -46,9 +46,9 @@ static const String tpccCollectionName = "TPCC";
     while (0) \
 
 template<typename ValueType>
-seastar::future<WriteResult> writeRow(ValueType& row, K2TxnHandle& txn)
+seastar::future<WriteResult> writeRow(ValueType& row, K2TxnHandle& txn, bool erase = false)
 {
-    return txn.write<ValueType>(row).then([] (WriteResult&& result) {
+    return txn.write<ValueType>(row, erase).then([] (WriteResult&& result) {
         if (!result.status.is2xxOK()) {
             K2LOG_D(log::tpcc, "writeRow failed: {}", result.status);
             return seastar::make_exception_future<WriteResult>(std::runtime_error("writeRow failed!"));
@@ -425,6 +425,9 @@ public:
     NewOrder(const Order& order) : WarehouseID(order.WarehouseID),
             DistrictID(order.DistrictID), OrderID(order.OrderID) {}
 
+    // For Delivery Transaction
+    NewOrder(int16_t w_id, int16_t d_id, int64_t o_id) : WarehouseID(w_id), DistrictID(d_id), OrderID(o_id) {}
+
     NewOrder() = default;
 
     std::optional<int16_t> WarehouseID;
@@ -494,6 +497,9 @@ public:
         Quantity = random.UniformRandom(1, 10);
         Amount = 0;
     }
+
+    OrderLine(int16_t w_id, int16_t d_id, int64_t o_id, int32_t line_number) : 
+        WarehouseID(w_id), DistrictID(d_id), OrderID(o_id), OrderLineNumber(line_number) {}
 
     OrderLine() = default;
 
