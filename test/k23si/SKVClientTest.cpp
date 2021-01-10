@@ -1021,6 +1021,7 @@ seastar::future<> runScenario07() {
                     K2EXPECT(*rangekey, "rangekey07");
                     K2EXPECT(*data1, "partialupdate");
                     K2EXPECT(*data2, "data2");
+                    K2WARN("Getting the key");
                     K2EXPECT(response.value.getKey(), key);
 
                     return seastar::make_ready_future<>();

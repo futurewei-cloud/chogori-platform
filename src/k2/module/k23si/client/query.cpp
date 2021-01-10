@@ -45,12 +45,46 @@ void Query::setLimit(int32_t limit) {
 
 void Query::addProjection(const String& fieldName) {
     request.projection.push_back(fieldName);
+    checkKeysProjected();
 }
 
 void Query::addProjection(const std::vector<String>& fieldNames) {
     for (const String& name : fieldNames) {
         request.projection.push_back(name);
     }
+    checkKeysProjected();
+}
+
+void Query::checkKeysProjected() {
+    keysProjected = false;
+    for (uint32_t idx : schema->partitionKeyFields) {
+        String& name = schema->fields[idx].name;
+        bool found = false;
+        for (const String& projected : request.projection) {
+            if (projected == name) {
+                found = true;
+            }
+        }
+
+        if (!found) {
+            return;
+        }
+    }
+    for (uint32_t idx : schema->rangeKeyFields) {
+        String& name = schema->fields[idx].name;
+        bool found = false;
+        for (const String& projected : request.projection) {
+            if (projected == name) {
+                found = true;
+            }
+        }
+
+        if (!found) {
+            return;
+        }
+    }
+
+    keysProjected = true;
 }
 
 bool Query::isDone() {
@@ -70,7 +104,7 @@ seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, c
                 return seastar::make_ready_future<>();
             }
 
-            SKVRecord record(query.request.collectionName, get_response.schema, std::move(s));
+            SKVRecord record(query.request.collectionName, get_response.schema, std::move(s), query.keysProjected);
             result->records.emplace_back(std::move(record));
             return seastar::make_ready_future<>();
         }));

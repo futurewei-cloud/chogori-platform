@@ -227,7 +227,7 @@ public:
                 T userResponseRecord{};
 
                 if (status.is2xxOK()) {
-                    SKVRecord skv_record(collName, request_schema, std::move(k2response.value));
+                    SKVRecord skv_record(collName, request_schema, std::move(k2response.value), true);
                     userResponseRecord.__readFields(skv_record);
                 }
 

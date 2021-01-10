@@ -146,7 +146,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
                         SKVRecord()));
                 }
 
-                SKVRecord skv_record(collName, schema_ptr, std::move(storage));
+                SKVRecord skv_record(collName, schema_ptr, std::move(storage), true);
                 return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
                         ReadResult<dto::SKVRecord>(std::move(s), std::move(skv_record)));
             });

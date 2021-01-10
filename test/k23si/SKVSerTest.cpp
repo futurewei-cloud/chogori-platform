@@ -39,7 +39,7 @@ void Compare(std::optional<T> value, const k2::String& fieldName, k2::dto::SKVRe
 template <>
 void Compare<k2::String>(std::optional<k2::String> value, const k2::String& fieldName, k2::dto::SKVRecord* record) {
     if (value == std::nullopt) {
-        k2::String cursorfield = record->schema->fields[record->fieldCursor - 1].name;
+        k2::String cursorfield = record->schema->fields[record->getFieldCursor() - 1].name;
         if (cursorfield != "FirstName" && cursorfield != "Job") {
             REQUIRE(false);
         }
