@@ -24,6 +24,9 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <chrono>
 #include <iostream>
+#define FMT_UNICODE 0
+
+#include <fmt/core.h>
 //
 // duration used in a few places to specify timeouts and such
 //
@@ -106,11 +109,11 @@ private:
 
 inline const char* printTime(TimePoint tp) {
     // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
-    static thread_local char buffer[100];
+    static thread_local char buffer[24];
     auto now = k2::usec(tp.time_since_epoch());
-    auto microsec = now.count();
-    auto millis = microsec/1000;
-    microsec -= millis*1000;
+    auto micros = now.count();
+    auto millis = micros/1000;
+    micros -= millis*1000;
     auto secs = millis/1000;
     millis -= secs*1000;
     auto mins = (secs/60);
@@ -119,7 +122,7 @@ inline const char* printTime(TimePoint tp) {
     mins -= (hours*60);
     auto days = (hours/24);
     hours -= (days*24);
-    std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
+    fmt::format_to_n(buffer, sizeof(buffer), "{:04}:{:02}:{:02}:{:02}.{:03}.{:03}", days, hours, mins, secs, millis, micros);
     return buffer;
 }
 } // ns k2
