@@ -398,7 +398,7 @@ TEST_CASE("Test9: seekField() with a field index out-of-bounds for the schema") 
     doc.seekField(0);
 
     try {
-        doc.seekField(3);
+        doc.seekField(5);
         REQUIRE(false);
     } catch (...) {
         std::cout << "Test9: Tried to seek outside bounds." << std::endl;
