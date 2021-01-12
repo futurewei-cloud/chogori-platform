@@ -116,7 +116,7 @@ TEST_CASE("Test3: int32 and NULL key ordering") {
     one.serializeNext<int32_t>(1);
     small.serializeNext<int32_t>(777);
     big.serializeNext<int32_t>(3000000);
-    null.skipNext();
+    null.serializeNull();
 
     k2::String zeroKey = zero.getPartitionKey();
     k2::String oneKey = one.getPartitionKey();

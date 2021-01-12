@@ -170,9 +170,9 @@ private:
     void makeHeartbeatTimer();
     void checkResponseStatus(Status& status);
 
-    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::Key& key, 
+    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::Key& key,
                                                            const String& collectionName) const;
-    std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase, 
+    std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase,
                                                              bool rejectIfExists);
 
     template <class T>
@@ -227,8 +227,7 @@ public:
                 T userResponseRecord{};
 
                 if (status.is2xxOK()) {
-                    SKVRecord skv_record(collName, request_schema);
-                    skv_record.storage = std::move(k2response.value);
+                    SKVRecord skv_record(collName, request_schema, std::move(k2response.value), true);
                     userResponseRecord.__readFields(skv_record);
                 }
 
@@ -278,7 +277,7 @@ public:
     }
 
     template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName, 
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName,
                                                        dto::Key key=dto::Key()) {
         std::vector<uint32_t> fieldsForPartialUpdate;
         bool find = false;
@@ -299,8 +298,8 @@ public:
     }
 
     template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, 
-                                                       std::vector<uint32_t> fieldsForPartialUpdate, 
+    seastar::future<PartialUpdateResult> partialUpdate(T1& record,
+                                                       std::vector<uint32_t> fieldsForPartialUpdate,
                                                        dto::Key key=dto::Key()) {
         if (!_valid) {
             return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of K2TxnHandle"));
@@ -389,7 +388,7 @@ private:
     String _trh_collection;
 };
 
-// Normal use-case read interface, where the key fields of the user's SKVRecord are 
+// Normal use-case read interface, where the key fields of the user's SKVRecord are
 // serialized and converted into a dto::Key
 template <>
 seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::SKVRecord record);

@@ -30,6 +30,11 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/ControlPlaneOracle.h>
 
 namespace k2 {
+
+class K2TxnHandle;
+class txn_testing;
+class K23SITest;
+
 namespace dto {
 
 // Thrown when a field is not found in the schema
@@ -43,6 +48,14 @@ struct NoFieldFoundException : public std::exception {
 struct DeserializationError : public std::exception {
     String what_str;
     DeserializationError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
+// Thrown when getKey is called but the record does not have the values to construct it
+// e.g. a returned record without the key fields projected
+struct KeyNotAvailableError : public std::exception {
+    String what_str;
+    KeyNotAvailableError(String s="") : what_str(std::move(s)) {}
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
@@ -72,8 +85,8 @@ public:
         ++fieldCursor;
     }
 
-    // Skip serializing the next field, for optional fields or partial updates
-    void skipNext();
+    // Serializing a Null value on the next field, for optional fields or partial updates
+    void serializeNull();
 
     // Used as part of the SKV_RECORD_FIELDS macro for converting to user-defined types
     // All primitive fields must be wrapped in std::optional
@@ -85,7 +98,7 @@ public:
             writeMany(args...);
         } else {
             if (!value) {
-                skipNext();
+                serializeNull();
             } else {
                 serializeNext<typename std::decay_t<decltype(value)>::value_type>(*value);
             }
@@ -162,8 +175,16 @@ public:
     // store it on their own. For normal K23SI operations the user does not need to touch this
     Payload getSharedPayload();
 
-    SKVRecord() = default;
-    SKVRecord(const String& collection, std::shared_ptr<Schema> s);
+    uint32_t getFieldCursor() const;
+
+    // These fields are used by the client to build a request but are not serialized on the wire
+    std::shared_ptr<Schema> schema;
+    String collectionName;
+
+    // These functions construct the keys on-the-fly based on the stringified individual fields
+    String getPartitionKey();
+    String getRangeKey();
+    dto::Key getKey();
 
     // These are fields actually stored by the Chogori storage node, and returned
     // by a read request
@@ -176,19 +197,29 @@ public:
         Storage share();
         Storage copy();
         K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaVersion);
-    } storage;
+    };
 
-    // These fields are used by the client to build a request but are not serialized on the wire
-    std::shared_ptr<Schema> schema;
-    String collectionName;
+    SKVRecord() = default;
+    // The constructor for an SKVRecord that a user of the SKV client would use to create a request
+    SKVRecord(const String& collection, std::shared_ptr<Schema> s);
+    // The constructor for an SKVRecord that is created by the SKV client to be returned to the
+    // user in a response
+    SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
+private:
+    void constructKeyStrings();
+    template <typename T>
+    void makeKeyString(std::optional<T> value, const String& fieldName, int tmp);
+    Storage storage;
+
     std::vector<String> partitionKeys;
     std::vector<String> rangeKeys;
     uint32_t fieldCursor = 0;
+    bool keyValuesAvailable = false; // Whether the values for key fields are in the storage payload
+    bool keyStringsConstructed = false; // Whether the encoded keys are already in the vectors above
 
-    // These functions construct the keys on-the-fly based on the stringified individual fields
-    String getPartitionKey() const;
-    String getRangeKey() const;
-    dto::Key getKey() const;
+    friend class k2::K2TxnHandle;
+    friend class k2::txn_testing;
+    friend class k2::K23SITest;
 };
 
 // Convience macro that does the switch statement on the record field type for the user
@@ -198,46 +229,46 @@ public:
 // and a variable number (at least 1) of arguments passed from the user
 #define DO_ON_NEXT_RECORD_FIELD(record, func, ...)                                                                               \
     do {                                                                                                                         \
-        switch ((record).schema->fields[(record).fieldCursor].type) {                                                            \
+        switch ((record).schema->fields[(record).getFieldCursor()].type) {                                                            \
             case k2::dto::FieldType::STRING: {                                                                                   \
                 std::optional<k2::String> value = (record).deserializeNext<k2::String>();                                        \
-                func<k2::String>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);         \
+                func<k2::String>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);         \
             } break;                                                                                                             \
             case k2::dto::FieldType::INT16T: {                                                                                   \
                 std::optional<int16_t> value = (record).deserializeNext<int16_t>();                                              \
-                func<int16_t>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);            \
+                func<int16_t>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);            \
             } break;                                                                                                             \
             case k2::dto::FieldType::INT32T: {                                                                                   \
                 std::optional<int32_t> value = (record).deserializeNext<int32_t>();                                              \
-                func<int32_t>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);            \
+                func<int32_t>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);            \
             } break;                                                                                                             \
             case k2::dto::FieldType::INT64T: {                                                                                   \
                 std::optional<int64_t> value = (record).deserializeNext<int64_t>();                                              \
-                func<int64_t>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);            \
+                func<int64_t>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);            \
             } break;                                                                                                             \
             case k2::dto::FieldType::FLOAT: {                                                                                    \
                 std::optional<float> value = (record).deserializeNext<float>();                                                  \
-                func<float>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);              \
+                func<float>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);              \
             } break;                                                                                                             \
             case k2::dto::FieldType::DOUBLE: {                                                                                   \
                 std::optional<double> value = (record).deserializeNext<double>();                                                \
-                func<double>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);             \
+                func<double>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);             \
             } break;                                                                                                             \
             case k2::dto::FieldType::BOOL: {                                                                                     \
                 std::optional<bool> value = (record).deserializeNext<bool>();                                                    \
-                func<bool>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);               \
+                func<bool>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);               \
             } break;                                                                                                             \
             case k2::dto::FieldType::DECIMAL64: {                                                                                       \
                 std::optional<std::decimal::decimal64> value = (record).deserializeNext<std::decimal::decimal64>();                     \
-                func<std::decimal::decimal64>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);   \
+                func<std::decimal::decimal64>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);   \
             } break;                                                                                                                    \
             case k2::dto::FieldType::DECIMAL128: {                                                                                      \
                 std::optional<std::decimal::decimal128> value = (record).deserializeNext<std::decimal::decimal128>();                   \
-                func<std::decimal::decimal128>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__);  \
+                func<std::decimal::decimal128>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__);  \
             } break;                                                                                                                    \
             case k2::dto::FieldType::FIELD_TYPE: {                                                                               \
                 std::optional<k2::dto::FieldType> value = (record).deserializeNext<k2::dto::FieldType>();                        \
-                func<k2::dto::FieldType>(std::move(value), (record).schema->fields[(record).fieldCursor - 1].name, __VA_ARGS__); \
+                func<k2::dto::FieldType>(std::move(value), (record).schema->fields[(record).getFieldCursor() - 1].name, __VA_ARGS__); \
             } break;                                                                                                             \
             default:                                                                                                             \
                 throw k2::dto::TypeMismatchException("Unknown Type");                                                            \
@@ -247,7 +278,7 @@ public:
 #define FOR_EACH_RECORD_FIELD(record, func, ...) \
     do { \
         (record).seekField(0); \
-        while ((record).fieldCursor < (record).schema->fields.size()) { \
+        while ((record).getFieldCursor() < (record).schema->fields.size()) { \
             DO_ON_NEXT_RECORD_FIELD((record), func, __VA_ARGS__); \
         } \
     } while (0) \

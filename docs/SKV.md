@@ -75,7 +75,7 @@ not self-describing. This requires some restrictions on the SKVRecord interface.
 
 
 To create a SKVRecord for an SKV read or write request, the user must serialize the 
-fields of the schema by calling serializeNext<> or skipNext (if the field data should be NULL). This 
+fields of the schema by calling serializeNext<> or serializeNull (if the field data should be NULL). This 
 must be done in order of the schema. For a read request, the user can stop after serializing the 
 fields that are key fields (which must come first in the schema as described above). For a write 
 request all fields must be serialized or explicitly skipped.

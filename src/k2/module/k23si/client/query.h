@@ -57,9 +57,12 @@ public:
     dto::SKVRecord endScanRecord;
 
 private:
+    void checkKeysProjected();
+
     std::shared_ptr<dto::Schema> schema = nullptr;
     bool done = false;
     bool inprogress = false; // Used to prevent user from changing predicates after query has started
+    bool keysProjected = true;
     dto::Key continuationToken;
     dto::K23SIQueryRequest request;
 

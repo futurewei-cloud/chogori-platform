@@ -39,7 +39,7 @@ void Compare(std::optional<T> value, const k2::String& fieldName, k2::dto::SKVRe
 template <>
 void Compare<k2::String>(std::optional<k2::String> value, const k2::String& fieldName, k2::dto::SKVRecord* record) {
     if (value == std::nullopt) {
-        k2::String cursorfield = record->schema->fields[record->fieldCursor - 1].name;
+        k2::String cursorfield = record->schema->fields[record->getFieldCursor() - 1].name;
         if (cursorfield != "FirstName" && cursorfield != "Job") {
             REQUIRE(false);
         }
@@ -177,8 +177,8 @@ TEST_CASE("Test2: Serialize a record with a composite partition key and one key 
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<int32_t>(20201234);
-    doc.skipNext();
-    doc.skipNext();
+    doc.serializeNull();
+    doc.serializeNull();
 
     std::vector<uint8_t> expectedPKey {
         (uint8_t)k2::dto::FieldType::STRING, // Type string
@@ -231,8 +231,8 @@ TEST_CASE("Test3: Serialize a record with a composite partition key and one key 
 
     doc.serializeNext<k2::String>("Baggins");
     doc.serializeNext<int32_t>(20201234);
-    doc.skipNext();
-    doc.skipNext();
+    doc.serializeNull();
+    doc.serializeNull();
 
     std::vector<uint8_t> expectedPKey {
         (uint8_t)k2::dto::FieldType::STRING, // Type string
@@ -283,9 +283,9 @@ TEST_CASE("Test4: Serialize a record with one value field skipped") {
     k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
 
     doc.serializeNext<k2::String>("Baggins");
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(100);
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(36);
 
     // deserialize using "deserializeNext" function
@@ -327,9 +327,9 @@ TEST_CASE("Test5: Deserialize fields out of order by name") {
     k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
 
     doc.serializeNext<k2::String>("Baggins");
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(100);
-    doc.skipNext();
+    doc.serializeNull();
     doc.serializeNext<int32_t>(36);
 
     // out of order Deserialize, using "deserializeFiled(String&)" function
@@ -398,7 +398,7 @@ TEST_CASE("Test9: seekField() with a field index out-of-bounds for the schema") 
     doc.seekField(0);
 
     try {
-        doc.seekField(3);
+        doc.seekField(5);
         REQUIRE(false);
     } catch (...) {
         std::cout << "Test9: Tried to seek outside bounds." << std::endl;

@@ -228,8 +228,7 @@ private:
                 return std::make_tuple(std::move(status), DataRec{});
             }
 
-            SKVRecord record(collname, std::make_shared<k2::dto::Schema>(_schema));
-            record.storage = std::move(resp.value);
+            SKVRecord record(collname, std::make_shared<k2::dto::Schema>(_schema), std::move(resp.value), true);
             record.seekField(2);
             DataRec rec = { *(record.deserializeNext<String>()), *(record.deserializeNext<String>()) };
             return std::make_tuple(std::move(status), std::move(rec));

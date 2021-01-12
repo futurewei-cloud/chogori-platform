@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-void SKVRecord::skipNext() {
+void SKVRecord::serializeNull() {
     if (fieldCursor >= schema->fields.size()) {
         throw NoFieldFoundException();
     }
@@ -63,8 +63,12 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
     (void) n;
 };
 
+uint32_t SKVRecord::getFieldCursor() const {
+    return fieldCursor;
+}
+
 void SKVRecord::seekField(uint32_t fieldIndex) {
-    if (fieldIndex >= schema->fields.size()) {
+    if (fieldIndex > schema->fields.size()) {
         throw NoFieldFoundException();
     }
 
@@ -93,15 +97,71 @@ Payload SKVRecord::getSharedPayload() {
     return storage.fieldData.shareAll();
 }
 
+// The constructor for an SKVRecord that a user of the SKV client would use to create a request
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
-            schema(s), collectionName(collection) {
+            schema(s), collectionName(collection), keyValuesAvailable(true), keyStringsConstructed(true) {
     storage.schemaVersion = schema->version;
     storage.fieldData = Payload(Payload::DefaultAllocator);
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
 }
 
-String SKVRecord::getPartitionKey() const {
+// The constructor for an SKVRecord that is created by the SKV client to be returned to the user in a response
+SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyAvail) :
+        schema(s), collectionName(collection), storage(std::move(storage)), keyValuesAvailable(keyAvail),
+        keyStringsConstructed(false) {}
+
+template <typename T>
+void SKVRecord::makeKeyString(std::optional<T> value, const String& fieldName, int tmp) {
+    // tmp variable is need for vararg macro expansion
+    (void) tmp;
+    (void) fieldName;
+    for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
+        // Subtracting 1 from fieldCursor here and below because this function gets called
+        // after the deserialize function moves the fieldCursor
+        if (schema->partitionKeyFields[i] == fieldCursor-1) {
+            if (value.has_value()) {
+                partitionKeys[i] = FieldToKeyString<T>(*value);
+            } else {
+                partitionKeys[i] = schema->fields[fieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+            }
+        }
+    }
+
+    for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
+         if (schema->rangeKeyFields[i] == fieldCursor-1) {
+            if (value.has_value()) {
+                rangeKeys[i] = FieldToKeyString<T>(*value);
+            } else {
+                rangeKeys[i] = schema->fields[fieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+            }
+        }
+    }
+}
+
+void SKVRecord::constructKeyStrings() {
+    partitionKeys.resize(schema->partitionKeyFields.size());
+    rangeKeys.resize(schema->rangeKeyFields.size());
+
+    uint32_t beginCursor = getFieldCursor();
+    seekField(0);
+    for (size_t i = 0; i < partitionKeys.size() + rangeKeys.size() && i < schema->fields.size(); ++i) {
+        // Need the extra 0 argument for vararg macro expansion
+        DO_ON_NEXT_RECORD_FIELD(*this, makeKeyString, 0);
+    }
+
+    seekField(beginCursor);
+    keyStringsConstructed = true;
+}
+
+String SKVRecord::getPartitionKey() {
+    if (!keyValuesAvailable) {
+        throw KeyNotAvailableError("Cannot get a key from this SKVRecord");
+    }
+    if (!keyStringsConstructed) {
+        constructKeyStrings();
+    }
+
     size_t keySize = 0;
     for (const String& key : partitionKeys) {
         keySize += key.size();
@@ -123,7 +183,14 @@ String SKVRecord::getPartitionKey() const {
     return partitionKey;
 }
 
-String SKVRecord::getRangeKey() const {
+String SKVRecord::getRangeKey() {
+    if (!keyValuesAvailable) {
+        throw KeyNotAvailableError("Cannot get a key from this SKVRecord");
+    }
+    if (!keyStringsConstructed) {
+        constructKeyStrings();
+    }
+
     size_t keySize = 0;
     for (const String& key : rangeKeys) {
         keySize += key.size();
@@ -143,7 +210,7 @@ String SKVRecord::getRangeKey() const {
     return rangeKey;
 }
 
-dto::Key SKVRecord::getKey() const {
+dto::Key SKVRecord::getKey() {
     return dto::Key {
         .schemaName = schema->name,
         .partitionKey = getPartitionKey(),
