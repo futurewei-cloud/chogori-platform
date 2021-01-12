@@ -113,6 +113,7 @@ SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storag
 
 template <typename T>
 void SKVRecord::makeKeyString(std::optional<T> value, const String& fieldName, int tmp) {
+    // tmp variable is need for vararg macro expansion
     (void) tmp;
     (void) fieldName;
     for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
@@ -144,8 +145,9 @@ void SKVRecord::constructKeyStrings() {
 
     uint32_t beginCursor = getFieldCursor();
     seekField(0);
-    for (size_t i = 0; i < partitionKeys.size() + rangeKeys.size(); ++i) {
-        DO_ON_NEXT_RECORD_FIELD(*this, makeKeyString, i);
+    for (size_t i = 0; i < partitionKeys.size() + rangeKeys.size() && i < schema->fields.size(); ++i) {
+        // Need the extra 0 argument for vararg macro expansion
+        DO_ON_NEXT_RECORD_FIELD(*this, makeKeyString, 0);
     }
 
     seekField(beginCursor);
