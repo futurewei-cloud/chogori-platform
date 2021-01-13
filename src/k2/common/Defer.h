@@ -37,9 +37,9 @@ public:
         try {
             (void)_func();
         } catch (std::exception& exc) {
-            K2ERROR("deferred func threw exception: " << exc.what());
+            K2LOG_E_RAW("deferred func threw exception: {}", exc.what());
         } catch (...) {
-            K2ERROR("deferred func threw unknown exception");
+            K2LOG_E_RAW("deferred func threw unknown exception");
         }
     }
 

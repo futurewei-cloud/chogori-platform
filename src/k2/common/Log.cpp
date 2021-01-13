@@ -25,7 +25,8 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace logging {
 
-seastar::sstring LogEntry::procName="";
+String Logger::procName;
+thread_local LogLevel Logger::threadLocalLogLevel = LogLevel::INFO;
 
 }
 }// ns k2
