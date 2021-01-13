@@ -31,6 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "RPCProtocolFactory.h"
 #include "RRDMARPCProtocol.h"
 #include "RPCHeader.h"
+#include "Log.h"
 
 namespace k2 {
 
