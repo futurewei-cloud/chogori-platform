@@ -32,12 +32,13 @@ Copyright(c) 2020 Futurewei Cloud
 #include <unordered_map>
 #include <functional>
 
-#include <nlohmann/json.hpp>
+#include <k2/json/json.hpp>
+
+#include "Log.h"
 
 // Collection-related DTOs
 
-namespace k2 {
-namespace dto {
+namespace k2::dto {
 
 // A key for data in K2. We use the partitionKey when determining which partition will own the data, but
 // we store the data against a compound key of ${partitionKey}:${rangeKey} to allow user ability to group records
@@ -372,8 +373,7 @@ private:
 
 };
 
-} // namespace dto
-} // namespace k2
+} // namespace k2::dto
 
 // Define std::hash for Keys so that we can use them in hash maps/sets
 namespace std {

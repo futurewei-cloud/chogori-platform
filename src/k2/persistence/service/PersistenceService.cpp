@@ -31,20 +31,20 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 PersistenceService::PersistenceService() {
-    K2INFO("ctor");
+    K2LOG_I(log::psvc, "ctor");
 }
 
 PersistenceService::~PersistenceService() {
-    K2INFO("dtor");
+    K2LOG_I(log::psvc, "dtor");
 }
 
 seastar::future<> PersistenceService::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::psvc, "stop");
     return seastar::make_ready_future();
 }
 
 seastar::future<> PersistenceService::start() {
-    K2INFO("Registering message handlers");
+    K2LOG_I(log::psvc, "Registering message handlers");
     RPC().registerRPCObserver<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
     (dto::Verbs::K23SI_Persist, [this](dto::K23SI_PersistenceRequest<Payload>&& request) {
         (void) request;

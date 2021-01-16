@@ -32,20 +32,20 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 Discovery::Discovery() {
-    K2INFO("ctor");
+    K2LOG_I(log::tx, "ctor");
 }
 
 Discovery::~Discovery() {
-    K2INFO("dtor");
+    K2LOG_I(log::tx, "dtor");
 }
 
 seastar::future<> Discovery::gracefulStop() {
-    K2INFO("graceful stop");
+    K2LOG_I(log::tx, "graceful stop");
     return seastar::make_ready_future();
 }
 
 seastar::future<> Discovery::start() {
-    K2INFO("Registering message handlers");
+    K2LOG_I(log::tx, "Registering message handlers");
     RPC().registerRPCObserver<ListEndpointsRequest, ListEndpointsResponse>(InternalVerbs::LIST_ENDPOINTS,
     [this](ListEndpointsRequest&&) {
         ListEndpointsResponse response{};

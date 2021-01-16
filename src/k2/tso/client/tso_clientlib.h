@@ -37,7 +37,9 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2
 {
-
+namespace log {
+inline thread_local k2::logging::Logger tsoclient("k2::tsoclient");
+}
 using namespace dto;
 
 // TSO client lib - providing K2 Timestamp to app
@@ -45,9 +47,9 @@ class TSO_ClientLib
 {
 public:
     // constructor
-    TSO_ClientLib() { K2INFO("ctor");}
+    TSO_ClientLib() { K2LOG_I(log::tsoclient, "ctor");}
 
-    ~TSO_ClientLib() { K2INFO("dtor");}
+    ~TSO_ClientLib() { K2LOG_I(log::tsoclient, "dtor");}
 
     seastar::future<> start();
     seastar::future<> gracefulStop();
@@ -115,7 +117,7 @@ private:
 
         const TimePoint ExpirationTime()
         {
-            K2ASSERT(_isAvailable, "Doesn't support ExpirationTime on unavailable TimestampBatch as true TTL from server is not available.");
+            K2ASSERT(log::tsoclient, _isAvailable, "Doesn't support ExpirationTime on unavailable TimestampBatch as true TTL from server is not available.");
 
             std::chrono::nanoseconds TTL(_batch.TTLNanoSec);
 

@@ -31,20 +31,20 @@ Copyright(c) 2020 Futurewei Cloud
 using namespace k2;
 
 CPOTest::CPOTest() {
-    K2INFO("ctor");
+    K2LOG_I(log::cpotest, "ctor");
 }
 
 CPOTest::~CPOTest() {
-    K2INFO("dtor");
+    K2LOG_I(log::cpotest, "dtor");
 }
 
 seastar::future<> CPOTest::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::cpotest, "stop");
     return std::move(_testFuture);
 }
 
 seastar::future<> CPOTest::start() {
-    K2INFO("start");
+    K2LOG_I(log::cpotest, "start");
     ConfigVar<String> configEp("cpo_endpoint");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
@@ -58,22 +58,22 @@ seastar::future<> CPOTest::start() {
         .then([this] { return runTest6(); })
         .then([this] { return runTest7(); })
         .then([this] {
-            K2INFO("======= All tests passed ========");
+            K2LOG_I(log::cpotest, "======= All tests passed ========");
             exitcode = 0;
         })
         .handle_exception([this](auto exc) {
             try {
                 std::rethrow_exception(exc);
             } catch (RPCDispatcher::RequestTimeoutException& exc) {
-                K2ERROR("======= Test failed due to timeout ========");
+                K2LOG_E(log::cpotest, "======= Test failed due to timeout ========");
                 exitcode = -1;
             } catch (std::exception& e) {
-                K2ERROR("======= Test failed with exception [" << e.what() << "] ========");
+                K2LOG_E(log::cpotest, "======= Test failed with exception [{}] ========", e.what());
                 exitcode = -1;
             }
         })
         .finally([this] {
-            K2INFO("======= Test ended ========");
+            K2LOG_I(log::cpotest, "======= Test ended ========");
             seastar::engine().exit(exitcode);
         });
     });
@@ -82,18 +82,18 @@ seastar::future<> CPOTest::start() {
 }
 
 seastar::future<> CPOTest::runTest1() {
-    K2INFO(">>> Test1: get non-existent collection");
+    K2LOG_I(log::cpotest, ">>> Test1: get non-existent collection");
     auto request = dto::CollectionGetRequest{.name="collection1"};
     return RPC()
     .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms)
     .then([](auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S404_Not_Found);
+        K2EXPECT(log::cpotest, status, Statuses::S404_Not_Found);
     });
 }
 
 seastar::future<> CPOTest::runTest2() {
-    K2INFO(">>> Test2: create a collection");
+    K2LOG_I(log::cpotest, ">>> Test2: create a collection");
     auto request = dto::CollectionCreateRequest{
         .metadata{
             .name="collection2",
@@ -113,12 +113,12 @@ seastar::future<> CPOTest::runTest2() {
     .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
     .then([](auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S201_Created);
+        K2EXPECT(log::cpotest, status, Statuses::S201_Created);
     });
 }
 
 seastar::future<> CPOTest::runTest3() {
-    K2INFO(">>> Test3: create a collection over existing one");
+    K2LOG_I(log::cpotest, ">>> Test3: create a collection over existing one");
     auto request = dto::CollectionCreateRequest{
         .metadata{
             .name = "collection2",
@@ -139,31 +139,31 @@ seastar::future<> CPOTest::runTest3() {
         .callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
         .then([](auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S403_Forbidden);
+            K2EXPECT(log::cpotest, status, Statuses::S403_Forbidden);
         });
 }
 
 seastar::future<> CPOTest::runTest4() {
-    K2INFO(">>> Test4: read the collection we created in test2");
+    K2LOG_I(log::cpotest, ">>> Test4: read the collection we created in test2");
     auto request = dto::CollectionGetRequest{.name = "collection2"};
     return RPC()
         .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::cpotest, status, Statuses::S200_OK);
             auto& md = resp.collection.metadata;
-            K2EXPECT(md.name, "collection2");
-            K2EXPECT(md.hashScheme, dto::HashScheme::HashCRC32C);
-            K2EXPECT(md.storageDriver, dto::StorageDriver::K23SI);
-            K2EXPECT(md.retentionPeriod, 1h*90*24);
-            K2EXPECT(md.capacity.dataCapacityMegaBytes, 1);
-            K2EXPECT(md.capacity.readIOPs, 100);
-            K2EXPECT(md.capacity.writeIOPs, 200);
+            K2EXPECT(log::cpotest, md.name, "collection2");
+            K2EXPECT(log::cpotest, md.hashScheme, dto::HashScheme::HashCRC32C);
+            K2EXPECT(log::cpotest, md.storageDriver, dto::StorageDriver::K23SI);
+            K2EXPECT(log::cpotest, md.retentionPeriod, 1h*90*24);
+            K2EXPECT(log::cpotest, md.capacity.dataCapacityMegaBytes, 1);
+            K2EXPECT(log::cpotest, md.capacity.readIOPs, 100);
+            K2EXPECT(log::cpotest, md.capacity.writeIOPs, 200);
         });
 }
 
 seastar::future<> CPOTest::runTest5() {
-    K2INFO(">>> Test5: create a collection with assignments");
+    K2LOG_I(log::cpotest, ">>> Test5: create a collection with assignments");
 
     auto request = dto::CollectionCreateRequest{
         .metadata{
@@ -185,7 +185,7 @@ seastar::future<> CPOTest::runTest5() {
         .then([](auto&& response) {
             // create the collection
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S201_Created);
+            K2EXPECT(log::cpotest, status, Statuses::S201_Created);
         })
         .then([] {
             // wait for collection to get assigned
@@ -199,16 +199,16 @@ seastar::future<> CPOTest::runTest5() {
         })
         .then([this](auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
-            K2EXPECT(resp.collection.metadata.name, "collectionAssign");
-            K2EXPECT(resp.collection.metadata.hashScheme, dto::HashScheme::HashCRC32C);
-            K2EXPECT(resp.collection.metadata.storageDriver, dto::StorageDriver::K23SI);
-            K2EXPECT(resp.collection.metadata.retentionPeriod, 5h);
-            K2EXPECT(resp.collection.metadata.capacity.dataCapacityMegaBytes, 1000);
-            K2EXPECT(resp.collection.metadata.capacity.readIOPs, 100000);
-            K2EXPECT(resp.collection.metadata.capacity.writeIOPs, 100000);
-            K2EXPECT(resp.collection.partitionMap.version, 1);
-            K2EXPECT(resp.collection.partitionMap.partitions.size(), 3);
+            K2EXPECT(log::cpotest, status, Statuses::S200_OK);
+            K2EXPECT(log::cpotest, resp.collection.metadata.name, "collectionAssign");
+            K2EXPECT(log::cpotest, resp.collection.metadata.hashScheme, dto::HashScheme::HashCRC32C);
+            K2EXPECT(log::cpotest, resp.collection.metadata.storageDriver, dto::StorageDriver::K23SI);
+            K2EXPECT(log::cpotest, resp.collection.metadata.retentionPeriod, 5h);
+            K2EXPECT(log::cpotest, resp.collection.metadata.capacity.dataCapacityMegaBytes, 1000);
+            K2EXPECT(log::cpotest, resp.collection.metadata.capacity.readIOPs, 100000);
+            K2EXPECT(log::cpotest, resp.collection.metadata.capacity.writeIOPs, 100000);
+            K2EXPECT(log::cpotest, resp.collection.partitionMap.version, 1);
+            K2EXPECT(log::cpotest, resp.collection.partitionMap.partitions.size(), 3);
 
             // how many partitions we have
             uint64_t numparts = _k2ConfigEps().size();
@@ -218,19 +218,19 @@ seastar::future<> CPOTest::runTest5() {
 
             for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
                 auto& p = resp.collection.partitionMap.partitions[i];
-                K2EXPECT(p.pvid.rangeVersion, 1);
-                K2EXPECT(p.astate, dto::AssignmentState::Assigned);
-                K2EXPECT(p.pvid.assignmentVersion, 1);
-                K2EXPECT(p.pvid.id, i);
-                K2EXPECT(p.startKey, std::to_string(i * partSize));
-                K2EXPECT(p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
-                K2EXPECT(*p.endpoints.begin(), _k2ConfigEps()[i]);
+                K2EXPECT(log::cpotest, p.pvid.rangeVersion, 1);
+                K2EXPECT(log::cpotest, p.astate, dto::AssignmentState::Assigned);
+                K2EXPECT(log::cpotest, p.pvid.assignmentVersion, 1);
+                K2EXPECT(log::cpotest, p.pvid.id, i);
+                K2EXPECT(log::cpotest, p.startKey, std::to_string(i * partSize));
+                K2EXPECT(log::cpotest, p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
+                K2EXPECT(log::cpotest, *p.endpoints.begin(), _k2ConfigEps()[i]);
             }
         });
 }
 
 seastar::future<> CPOTest::runTest6() {
-    K2INFO(">>> Test6: Add a schema and get it back");
+    K2LOG_I(log::cpotest, ">>> Test6: Add a schema and get it back");
 
     dto::Schema schema;
     schema.name = "test_schema";
@@ -248,23 +248,23 @@ seastar::future<> CPOTest::runTest6() {
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::cpotest, status, Statuses::S200_OK);
 
         dto::GetSchemasRequest request { "collectionAssign" };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
-        K2EXPECT(resp.schemas.size(), 1);
-        K2EXPECT(resp.schemas[0].name, "test_schema");
-        
+        K2EXPECT(log::cpotest, status, Statuses::S200_OK);
+        K2EXPECT(log::cpotest, resp.schemas.size(), 1);
+        K2EXPECT(log::cpotest, resp.schemas[0].name, "test_schema");
+
         return seastar::make_ready_future<>();
     });
 }
 
 seastar::future<> CPOTest::runTest7() {
-    K2INFO(">>> Test7: Try to add an invalid schema");
+    K2LOG_I(log::cpotest, ">>> Test7: Try to add an invalid schema");
 
     dto::Schema schema;
     schema.name = "invalid_schema";
@@ -282,6 +282,6 @@ seastar::future<> CPOTest::runTest7() {
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status.is2xxOK(), false);
+        K2EXPECT(log::cpotest, status.is2xxOK(), false);
     });
 }

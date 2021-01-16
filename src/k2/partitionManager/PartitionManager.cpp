@@ -28,21 +28,20 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/TCPRPCProtocol.h>
 
 namespace k2 {
-thread_local PartitionManager* __local_pmanager;
 
 PartitionManager::PartitionManager() {
-    K2INFO("ctor");
+    K2LOG_I(log::partmgr, "ctor");
 }
 
 PartitionManager::~PartitionManager() {
-    K2INFO("dtor");
+    K2LOG_I(log::partmgr, "dtor");
 }
 
 seastar::future<> PartitionManager::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::partmgr, "stop");
     // signal the partition module that we're stopping
     if (_pmodule) {
-        K2INFO("stopping module");
+        K2LOG_I(log::partmgr, "stopping module");
         return _pmodule->gracefulStop();
     }
     return seastar::make_ready_future<>();
@@ -56,7 +55,7 @@ seastar::future<> PartitionManager::start() {
 seastar::future<dto::Partition>
 PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition partition) {
     if (_pmodule) {
-        K2WARN("Partition already assigned");
+        K2LOG_W(log::partmgr, "Partition already assigned");
         partition.astate = dto::AssignmentState::FailedAssignment;
         return seastar::make_ready_future<dto::Partition>(std::move(partition));
     }
@@ -78,17 +77,17 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
         return _pmodule->start().then([partition = std::move(partition)] () mutable {
             if (partition.endpoints.size() > 0) {
                 partition.astate = dto::AssignmentState::Assigned;
-                K2INFO("Assigned partition for driver k23si");
+                K2LOG_I(log::partmgr, "Assigned partition for driver k23si");
             }
             else {
-                K2ERROR("Server not configured correctly. there were no listening protocols configured");
+                K2LOG_E(log::partmgr, "Server not configured correctly. there were no listening protocols configured");
                 partition.astate = dto::AssignmentState::FailedAssignment;
             }
             return seastar::make_ready_future<dto::Partition>(std::move(partition));
         });
     }
 
-    K2WARN("Storage driver not supported: " << meta.storageDriver);
+    K2LOG_W(log::partmgr, "Storage driver not supported: {}", meta.storageDriver);
     partition.astate = dto::AssignmentState::FailedAssignment;
     return seastar::make_ready_future<dto::Partition>(std::move(partition));
 }

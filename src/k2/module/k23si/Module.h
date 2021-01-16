@@ -39,6 +39,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "TxnManager.h"
 #include "Config.h"
 #include "Persistence.h"
+#include "Log.h"
 
 namespace k2 {
 
@@ -131,8 +132,7 @@ private: // methods
         } else {
             result = result && _partition.owns(req.key);
         }
-        K2DEBUG("Partition: " << _partition << ", partition validation " << (result? "passed": "failed")
-                << ", for request=" << req);
+        K2LOG_D(log::skvsvr, "Partition: {}, partition validation {}, for request={}", _partition, (result ? "passed" : "failed"), req);
         return result;
     }
 
@@ -140,21 +140,21 @@ private: // methods
     template <typename RequestT>
     bool _validateRetentionWindow(const RequestT& req) const {
         auto result = req.mtr.timestamp.compareCertain(_retentionTimestamp) >= 0;
-        K2DEBUG("Partition: " << _partition << ", retention validation " << (result ? "passed" : "failed") << ", have=" << _retentionTimestamp << ", for request=" << req);
+        K2LOG_D(log::skvsvr, "Partition: {}, retention validation {}, have={}, for request={}", _partition, (result ? "passed" : "failed"), _retentionTimestamp, req);
         return result;
     }
 
     // validate challengerMTR in PUSH requests is within the retention window for the collection. return true if request is valid
     bool _validatePushRetention(const dto::K23SITxnPushRequest& req) const {
         bool result = req.challengerMTR.timestamp.compareCertain(_retentionTimestamp) >= 0;
-        K2DEBUG("Partition: " << _partition << ", retention validation " << (result ? "passed" : "failed") << ", have=" << _retentionTimestamp << ", for request=" << req);
+        K2LOG_D(log::skvsvr, "Partition: {}, retention validation {}, have={}, for request={}", _partition, (result ? "passed" : "failed"), _retentionTimestamp, req);
         return result;
     }
 
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
     bool _validateRequestPartitionKey(const RequestT& req) const {
-        K2DEBUG("Request:" << req);
+        K2LOG_D(log::skvsvr, "Request: {}", req);
 
         if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
             // Query is allowed to have empty partition key which means start or end of schema set

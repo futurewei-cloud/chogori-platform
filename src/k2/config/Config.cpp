@@ -22,7 +22,3 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "Config.h"
-
-namespace k2 {
-config::BPOConfigMapDist_t ___config___;
-}

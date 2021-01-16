@@ -33,6 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "schema.h"
 #include "datagen.h"
+#include "Log.h"
 
 using namespace seastar;
 using namespace k2;
@@ -56,7 +57,7 @@ public:
 
                 for (int i=0; i < pipeline_depth; ++i) {
                     futures.push_back(client.beginTxn(options).then([this] (K2TxnHandle&& t) {
-                            K2DEBUG("txn begin in load data");
+                            K2LOG_D(log::tpcc, "txn begin in load data");
                             return do_with(std::move(t), [this] (K2TxnHandle& txn) {
                                 return insertDataLoop(txn);
                         });
@@ -74,7 +75,7 @@ private:
             return do_until(
                 [this, &current_size] { return _data.size() == 0 || current_size >= _writes_per_load_txn(); },
                 [this, &current_size, &txn] () {
-                K2DEBUG("remaining data size=" << _data.size());
+                K2LOG_D(log::tpcc, "remaining data size={}", _data.size());
                 auto write_func = std::move(_data.back());
                 _data.pop_back();
                 ++current_size;
@@ -84,7 +85,7 @@ private:
                 return txn.end(true);
             }).then([] (EndResult&& result) {
                 if (!result.status.is2xxOK()) {
-                    K2INFO("Failed to commit: " << result.status);
+                    K2LOG_E(log::tpcc, "Failed to commit: {}", result.status);
                     return make_exception_future<>(std::runtime_error("Commit failed during bulk data load"));
                 }
 

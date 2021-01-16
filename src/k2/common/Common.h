@@ -28,7 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <nlohmann/json.hpp>
+#include <k2/json/json.hpp>
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
@@ -88,9 +88,9 @@ template <typename T>
 auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e); }
 
 // from https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c/34571089#34571089
-static const char* B64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+inline const char* B64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static const int B64index[256] =
+inline const int B64index[256] =
     {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -154,19 +154,28 @@ inline std::string b64decode(const void* data, const size_t len) {
 
 }  //  namespace k2
 
-namespace nlohmann {
-
-template <>
-struct adl_serializer<k2::String> {
+template <> // json (de)serialization support
+struct nlohmann::adl_serializer<k2::String> {
     // since we transport raw/binary with strings, we just b64 encode all strings in json
-    static void to_json(json& j, const k2::String& str) {
+    static void to_json(nlohmann::json& j, const k2::String& str) {
         j = k2::b64encode(str.data(), str.size());
     }
 
-    static void from_json(const json& j, k2::String& str) {
+    static void from_json(const nlohmann::json& j, k2::String& str) {
         auto result = j.get<std::string>();
         str = k2::b64decode(result.data(), result.size());
     }
 };
 
-}  // namespace nlohmann
+template <> // fmt support
+struct fmt::formatter<k2::String> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::String const& str, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", str.data());
+    }
+};

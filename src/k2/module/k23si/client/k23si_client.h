@@ -43,6 +43,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Timer.h>
 
 #include "query.h"
+#include "Log.h"
 
 namespace k2 {
 
@@ -265,8 +266,8 @@ public:
                 _ongoing_ops--;
 
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
-                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
-                    K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
+                    K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
+                    K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr);
                     _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
@@ -340,8 +341,8 @@ public:
                 _ongoing_ops--;
 
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
-                    K2ASSERT(_cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
-                    K2DEBUG("Starting hb, mtr=" << _mtr << ", this=" << ((void*)this))
+                    K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
+                    K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr)
                     _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
@@ -361,13 +362,10 @@ public:
     // operations are completed
     seastar::future<EndResult> end(bool shouldCommit);
 
-    // pretty print of the transaction handle
-    friend std::ostream& operator<<(std::ostream& os, const K2TxnHandle& h){
-        return os << h._mtr;
-    }
-
     // use to obtain the MTR(which acts as a unique transaction identifier) for this transaction
     const dto::K23SI_MTR& mtr() const;
+
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K2TxnHandle, _mtr);
 
 private:
     dto::K23SI_MTR _mtr;

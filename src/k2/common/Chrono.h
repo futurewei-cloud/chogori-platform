@@ -27,7 +27,10 @@ Copyright(c) 2020 Futurewei Cloud
 #define FMT_UNICODE 0
 
 #include <fmt/format.h>
+#include <fmt/printf.h>
 #include <fmt/compile.h>
+#include <k2/json/json.hpp>
+
 //
 // duration used in a few places to specify timeouts and such
 //
@@ -78,7 +81,7 @@ struct CachedSteadyClock {
 
     static time_point now(bool refresh=false) noexcept;
 private:
-    static thread_local TimePoint _now;
+    static inline thread_local TimePoint _now = Clock::now();
 };
 
 // Utility class to keep track of a deadline. Useful for nested requests
@@ -157,6 +160,12 @@ struct fmt::formatter<k2::Duration> {
     }
 };
 
+namespace std {
+void inline to_json(nlohmann::json& j, const k2::Duration& obj) {
+    j = nlohmann::json{{"duration", fmt::format("{}", obj)}};
+}
+}
+
 template <>
 struct fmt::formatter<k2::TimePoint> {
     template <typename ParseContext>
@@ -169,3 +178,15 @@ struct fmt::formatter<k2::TimePoint> {
         return fmt::format_to(ctx.out(), "{}", k2::toTimestamp_ts(tp));
     }
 };
+
+namespace std {
+inline std::ostream& operator<<(std::ostream& os, const k2::TimePoint& o) {
+    fmt::print(os, "{}", o);
+    return os;
+}
+
+inline std::ostream& operator<<(std::ostream& os, const k2::Duration& o) {
+    fmt::print(os, "{}", o);
+    return os;
+}
+}

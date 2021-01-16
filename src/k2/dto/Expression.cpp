@@ -30,7 +30,7 @@ namespace expression {
 // operations according to schema, provided literals, and found reference values.
 struct SchematizedValue {
     SchematizedValue(Value& v, SKVRecord& rec) : val(v), rec(rec), type(v.type) {
-        K2ASSERT(rec.schema, "Record must have a schema");
+        K2ASSERT(log::dto, rec.schema, "Record must have a schema");
         if (!val.fieldName.empty()) {
             for (size_t i = 0; i < rec.schema->fields.size(); ++i) {
                 if (rec.schema->fields[i].name == val.fieldName) {

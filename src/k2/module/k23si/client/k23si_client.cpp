@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _valid(true), _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time) {
-    K2DEBUG("ctor, mtr=" << _mtr);
+    K2LOG_D(log::skvclient, "ctor, mtr={}", _mtr);
 }
 
 void K2TxnHandle::checkResponseStatus(Status& status) {
@@ -45,12 +45,12 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
 
     if (status == dto::K23SIStatus::AbortRequestTooOld) {
         _client->abort_too_old++;
-        K2DEBUG("Abort: txn too old: " << _mtr);
+        K2LOG_D(log::skvclient, "Abort: txn too old: mtr={}", _mtr);
     }
 }
 
 void K2TxnHandle::makeHeartbeatTimer() {
-    K2DEBUG("makehb, mtr=" << _mtr);
+    K2LOG_D(log::skvclient, "makehb, mtr={}", _mtr);
     _heartbeat_timer.setCallback([this] {
         _client->heartbeats++;
 
@@ -61,14 +61,14 @@ void K2TxnHandle::makeHeartbeatTimer() {
             _mtr
         });
 
-        K2DEBUG("send hb for " << _mtr);
+        K2LOG_D(log::skvclient, "send hb for mtr={}", _mtr);
 
         return _cpo_client->PartitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request)
         .then([this] (auto&& response) {
             auto& [status, k2response] = response;
             checkResponseStatus(status);
             if (_failed) {
-                K2DEBUG("txn failed: cancelling hb in " << _mtr);
+                K2LOG_D(log::skvclient, "txn failed: cancelling hb in mtr={}", _mtr);
                 _heartbeat_timer.cancel();
             }
         }).finally([request=std::move(request)] {
@@ -114,7 +114,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
                 ReadResult<dto::SKVRecord>(_failed_status, dto::SKVRecord()));
     }
 
-    K2INFO("making request for: " << key.schemaName << " " << collection);
+    K2LOG_D(log::skvclient, "making request for: schema={}, collection={}", key.schemaName, collection);
     std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(key, collection);
 
     _client->read_ops++;
@@ -128,7 +128,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
             checkResponseStatus(status);
             _ongoing_ops--;
 
-            K2INFO("got status: " << status);
+            K2LOG_D(log::skvclient, "got status={}", status);
             if (!status.is2xxOK()) {
                 return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
                             ReadResult<dto::SKVRecord>(std::move(status), SKVRecord()));
@@ -137,7 +137,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
             return _client->getSchema(collName, schemaName, k2response.value.schemaVersion)
             .then([s=std::move(status), storage=std::move(k2response.value), &collName] (auto&& response) mutable {
                 auto& [status, schema_ptr] = response;
-                K2INFO("got status for getSchema: " << status);
+                K2LOG_D(log::skvclient, "got status for getSchema: {}", status);
 
                 if (!status.is2xxOK()) {
                     return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
@@ -228,7 +228,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         if (_failed && shouldCommit) {
             // This means a bug in the application because there is no heartbeat for a RO txn,
             // so the app should have seen the failure on a read and aborted
-            K2WARN("Tried to commit a failed RO transaction, mtr: " << _mtr);
+            K2LOG_W(log::skvclient, "Tried to commit a failed RO transaction, mtr={}", _mtr);
             return seastar::make_ready_future<EndResult>(EndResult(_failed_status));
         }
 
@@ -245,7 +245,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         _options.syncFinalize
     };
 
-    K2DEBUG("Cancel hb for " << _mtr);
+    K2LOG_D(log::skvclient, "Cancel hb for {}", _mtr);
     _heartbeat_timer.cancel();
 
     return _cpo_client->PartitionRequest
@@ -256,7 +256,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             if (status.is2xxOK() && !_failed) {
                 _client->successful_txns++;
             } else if (!status.is2xxOK()){
-                K2WARN("TxnEndRequest failed: " << status << " mtr: " << _mtr);
+                K2LOG_W(log::skvclient, "TxnEndRequest failed: status={}, mtr={}", status, _mtr);
             }
 
             if (_failed && shouldCommit && status.is2xxOK()) {
@@ -266,7 +266,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
                 //
                 // Either way, we aborted the transaction but we need to indicate to the app that
                 // it was not commited
-                K2DEBUG("Tried to commit a failed transaction, _mtr: " << _mtr);
+                K2LOG_D(log::skvclient, "Tried to commit a failed transaction, mtr={}", _mtr);
                 status = _failed_status;
             }
 
@@ -308,7 +308,7 @@ seastar::future<> K23SIClient::start() {
     for (auto it = _tcpRemotes().begin(); it != _tcpRemotes().end(); ++it) {
         _k2endpoints.push_back(String(*it));
     }
-    K2INFO("_cpo: " << _cpo());
+    K2LOG_I(log::skvclient, "_cpo={}", _cpo());
     cpo_client = CPOClient(String(_cpo()));
 
     return seastar::make_ready_future<>();
@@ -364,7 +364,7 @@ seastar::future<Status> K23SIClient::refreshSchemaCache(const String& collection
         auto& [status, collSchemas] = response;
 
         if (!status.is2xxOK()) {
-            K2INFO("Failed to refresh schemas from CPO: " << status);
+            K2LOG_W(log::cpoclient, "Failed to refresh schemas from CPO: status={}", status);
             return status;
         }
 

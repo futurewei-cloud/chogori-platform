@@ -7,7 +7,7 @@ set_target_properties(common PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
 )
-target_link_libraries (common PRIVATE Seastar::seastar fmt::fmt)
+target_link_libraries (common PRIVATE Seastar::seastar fmt::fmt json)
 
 # export the library in the common k2Targets
 install(TARGETS common EXPORT k2Targets DESTINATION lib/k2)

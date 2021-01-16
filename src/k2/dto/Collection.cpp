@@ -30,8 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Collection.h"
 
-namespace k2 {
-namespace dto {
+namespace k2::dto {
 
 int Key::compare(const Key& o) const noexcept {
     auto scomp = schemaName.compare(o.schemaName);
@@ -123,7 +122,8 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
 }
 
 PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(const Key& key, bool reverse, bool exclusiveKey) {
-    K2DEBUG("hashScheme: " << collection.metadata.hashScheme << ", key: " << key << ", reverse: " << reverse << ", exclusiveKey: " << exclusiveKey);
+    K2LOG_D(log::dto, "hashScheme={}, key={}, reverse={}, exclusiveKey={}",
+        collection.metadata.hashScheme, key, reverse, exclusiveKey);
 
     switch (collection.metadata.hashScheme) {
         case HashScheme::Range:
@@ -150,7 +150,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
                 // greater than the key (start keys are inclusive), so we return the partition before
                 // the one obtained by upper_bound
                 it = std::upper_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
-                K2ASSERT(it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
+                K2ASSERT(log::dto, it != _rangePartitionMap.begin(), "Partition map does not begin with an empty string start key!");
             }
 
             if (it != _rangePartitionMap.end()) {
@@ -209,5 +209,4 @@ bool OwnerPartition::owns(const Key& key, const bool reverse) const {
     }
 }
 
-}  // namespace dto
-}  // namespace k2
+}  // namespace k2::dto

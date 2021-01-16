@@ -58,25 +58,21 @@ Copyright(c) 2020 Futurewei Cloud
         DO_K2LOG_LEVEL_FMT(level, logger.name, fmt_str, ##__VA_ARGS__); \
     }
 
+// allow verbose logging to be compiled-out
+#if K2_VERBOSE_LOGGING == 1
 #define K2LOG_V(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__);
+#else
+#define K2LOG_V(logger, fmt_str, ...)                                                    \
+    if (0) {                                                                             \
+        K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__); \
+    }
+#endif
+
 #define K2LOG_D(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::DEBUG, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_I(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::INFO, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_W(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::WARN, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_E(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::ERROR, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_F(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::FATAL, logger, fmt_str, ##__VA_ARGS__);
-
-// these macros can be used to log without a logger object (i.e. outside of a named module)
-#define K2LOG_LEVEL_FMT_RAW(level, fmt_str, ...)                               \
-    if (level >= k2::logging::Logger::threadLocalLogLevel) {                   \
-        DO_K2LOG_LEVEL_FMT(level, "__UNKNOWN_MODULE__", fmt_str, ##__VA_ARGS__); \
-    }
-
-#define K2LOG_V_RAW(fmt_str, ...) K2LOG_LEVEL_FMT_RAW(k2::logging::LogLevel::VERBOSE, fmt_str, ##__VA_ARGS__);
-#define K2LOG_D_RAW(fmt_str, ...) K2LOG_LEVEL_FMT_RAW(k2::logging::LogLevel::DEBUG, fmt_str, ##__VA_ARGS__);
-#define K2LOG_I_RAW(fmt_str, ...) K2LOG_LEVEL_FMT_RAW(k2::logging::LogLevel::INFO, fmt_str, ##__VA_ARGS__);
-#define K2LOG_W_RAW(fmt_str, ...) K2LOG_LEVEL_FMT_RAW(k2::logging::LogLevel::WARN, fmt_str, ##__VA_ARGS__);
-#define K2LOG_E_RAW(fmt_str, ...) K2LOG_LEVEL_FMT_RAW(k2::logging::LogLevel::ERROR, fmt_str, ##__VA_ARGS__);
-#define K2LOG_F_RAW(fmt_str, ...) K2LOG_LEVEL_FMT_RAW(k2::logging::LogLevel::FATAL, fmt_str, ##__VA_ARGS__);
 
 #ifndef NDEBUG
 // assertion macros which can be compiled-out
@@ -89,26 +85,13 @@ Copyright(c) 2020 Futurewei Cloud
         }                                          \
     }
 
-#define K2ASSERT_RAW(cond, fmt_str, ...)       \
-    {                                          \
-        if (!(cond)) {                         \
-            K2LOG_E_RAW(fmt_str, ##__VA_ARGS__); \
-            assert((cond));                    \
-        }                                      \
-    }
-
-#define K2EXPECT(logger, actual, exp, fmt_str, ...) \
+#define K2EXPECT(logger, actual, exp) \
     K2ASSERT(logger, (actual) == (exp), "{} == {}", (#actual), (#exp));
-
-#define K2EXPECT_RAW(actual, exp, fmt_str, ...) \
-    K2ASSERT_RAW((actual) == (exp), "{} == {}", (#actual), (#exp));
 
 #else
 
 #define K2ASSERT(logger, cond, fmt_str, ...)
-#define K2ASSERT_RAW(cond, fmt_str, ...)
-#define K2EXPECT(logger, actual, exp, fmt_str, ...)
-#define K2EXPECT_RAW(actual, exp, fmt_str, ...)
+#define K2EXPECT(logger, actual, exp)
 #endif
 
 #define K2LOG_W_EXC(logger, exc, fmt_str, ...)                                     \
@@ -142,6 +125,16 @@ const char* const LogLevelNames[] = {
     "FATAL"
 };
 
+inline LogLevel nameToLevel(const String& name) {
+    if (name == "VERBOSE") return LogLevel::VERBOSE;
+    else if (name == "DEBUG") return LogLevel::DEBUG;
+    else if (name == "INFO") return LogLevel::INFO;
+    else if (name == "WARN") return LogLevel::WARN;
+    else if (name == "ERROR") return LogLevel::ERROR;
+    else if (name == "FATAL") return LogLevel::FATAL;
+    throw std::runtime_error((String("invalid log name ") + name).data());
+}
+
 // Users of logging would create an instance of this class at their module level
 // Once created, the K2LOG_* macros can be used to perform logging.
 // A logger is used to provide
@@ -150,24 +143,24 @@ const char* const LogLevelNames[] = {
 class Logger {
 public:
     // the process name to print in the logs
-    static String procName;
+    static inline String procName;
 
     // the global (per-thread) log level. This should be initialized at start of process and
     // can be modified while the process is running to affect the current log level
-    static thread_local LogLevel threadLocalLogLevel;
+    static inline thread_local LogLevel threadLocalLogLevel = LogLevel::INFO;
 
     // the per-module (per-thread) log levels. These are the values which have been set either at
     // process start time, or dynamically at runtime. The reason we need a separate map just for the levels is
     // to ensure that if a logger for a module is created lazily, it will discover this level override.
-    static thread_local std::unordered_map<String, LogLevel> moduleLevels;
+    static inline thread_local std::unordered_map<String, LogLevel> moduleLevels;
 
     // registry of all active log modules. These are used so that we can notify an active logger at runtime if
     // the log level changes for the particular module
-    static thread_local std::unordered_map<String, Logger*> moduleLoggers;
+    static inline thread_local std::unordered_map<String, Logger*> moduleLoggers;
 
     // create logger for a given unique(per-thread) name
     Logger(const char* moduleName) : name(moduleName) {
-        K2ASSERT_RAW(moduleLoggers.find(name) == moduleLoggers.end(), "Duplicate logger for name: {}", name);
+        assert(moduleLoggers.find(name) == moduleLoggers.end());
         moduleLoggers[name] = this;
         auto it = moduleLevels.find(name);
         if (it != moduleLevels.end()) {
@@ -195,19 +188,6 @@ public:
 }  // namespace k2
 
 template <>
-struct fmt::formatter<k2::String> {
-    template <typename ParseContext>
-    constexpr auto parse(ParseContext& ctx) {
-        return ctx.begin();
-    }
-
-    template <typename FormatContext>
-    auto format(k2::String const& str, FormatContext& ctx) {
-        return fmt::format_to(ctx.out(), "{}", str.data());
-    }
-};
-
-template <>
 struct fmt::formatter<k2::logging::LogLevel> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -219,3 +199,38 @@ struct fmt::formatter<k2::logging::LogLevel> {
         return fmt::format_to(ctx.out(), "{}", k2::logging::LogLevelNames[level]);
     }
 };
+
+#define K2_DEF_TO_STREAM_INTR(Type)                                             \
+    friend inline std::ostream& operator<<(std::ostream& os, const Type& obj) { \
+        return os << nlohmann::json(obj);                                       \
+    }
+
+#define K2_DEF_FROM_STREAM_INTR(Type)                                           \
+    friend inline std::istream& operator>>(std::istream& is, Type& obj) {       \
+        nlohmann::json j; \
+        is >> j;                                       \
+        obj = j.get<Type>(); \
+        return is; \
+    }
+
+#define K2_DEF_TO_JSON_INTR(Type, ...)                                                  \
+    friend void to_json(nlohmann::json& nlohmann_json_j, const Type& nlohmann_json_t) { \
+        NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, __VA_ARGS__))        \
+    }
+
+#define K2_DEF_FROM_JSON_INTR(Type, ...)                                                  \
+    friend void from_json(const nlohmann::json& nlohmann_json_j, Type& nlohmann_json_t) { \
+        NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, __VA_ARGS__))        \
+    }
+
+#define K2_DEF_TO_STREAM_JSON_OPS_INTR(Type, ...)  \
+    K2_DEF_TO_JSON_INTR(Type, __VA_ARGS__);       \
+    K2_DEF_TO_STREAM_INTR(Type);
+
+#define K2_DEF_FROM_STREAM_JSON_OPS_INTR(Type, ...)  \
+    K2_DEF_FROM_JSON_INTR(Type, __VA_ARGS__);        \
+    K2_DEF_FROM_STREAM_INTR(Type);
+
+#define K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(Type, ...)    \
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(Type, __VA_ARGS__)    \
+    K2_DEF_FROM_STREAM_JSON_OPS_INTR(Type, __VA_ARGS__)

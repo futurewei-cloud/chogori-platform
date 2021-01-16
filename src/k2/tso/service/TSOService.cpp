@@ -33,53 +33,53 @@ namespace k2 {
 
 TSOService::TSOService()
 {
-    K2INFO("ctor");
+    K2LOG_I(log::tsoserver, "ctor");
 }
 
 TSOService::~TSOService()
 {
-    K2INFO("dtor");
+    K2LOG_I(log::tsoserver, "dtor");
 }
 
 seastar::future<> TSOService::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::tsoserver, "stop");
 
     // Always use core 0 as controller and the rest as workers
     if (seastar::engine().cpu_id() == 0)
     {
-        K2ASSERT(_controller != nullptr, "_controller null!");
-        K2INFO("TSOController stops on core:" <<seastar::engine().cpu_id());
+        K2ASSERT(log::tsoserver, _controller != nullptr, "_controller null!");
+        K2LOG_I(log::tsoserver, "TSOController stops");
         return _controller->gracefulStop();
     }
     else
     {
-        K2ASSERT(_worker != nullptr, "_controller null!");
-        K2INFO("TSOWorder stops on core:" <<seastar::engine().cpu_id());
+        K2ASSERT(log::tsoserver, _worker != nullptr, "_controller null!");
+        K2LOG_I(log::tsoserver, "TSOWorder stops");
         return _worker->gracefulStop();
     }
 }
 
 seastar::future<> TSOService::start()
 {
-    K2INFO("TSOService starts on core:" <<seastar::engine().cpu_id());
+    K2LOG_I(log::tsoserver, "TSOService starts");
 
     // At least two cores, one controller and one worker is required
     if (seastar::smp::count < 2)
     {
-        K2INFO("TSOService starts unexpected on less than 2 cores. Core counts:" <<seastar::smp::count);
+        K2LOG_I(log::tsoserver, "TSOService starts unexpected on less than 2 cores. Core counts: {}", seastar::smp::count);
         return seastar::make_exception_future(TSONotEnoughCoreException(seastar::smp::count));
     }
 
     // Always use core 0 as controller and the rest as workers
     if (seastar::engine().cpu_id() == 0)
     {
-        K2INFO("TSOController starts on core:" <<seastar::engine().cpu_id());
+        K2LOG_I(log::tsoserver, "TSOController starts");
         _controller = std::make_unique<TSOService::TSOController>(*this);
         return _controller->start();
     }
     else
     {
-        K2INFO("TSOWorder starts on core:" <<seastar::engine().cpu_id());
+        K2LOG_I(log::tsoserver, "TSOWorder starts");
         _worker = std::make_unique<TSOService::TSOWorker>(*this);
         return _worker->start();
     }
@@ -87,7 +87,7 @@ seastar::future<> TSOService::start()
 
 void TSOService::UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo)
 {
-    K2ASSERT(seastar::engine().cpu_id() != 0 && _worker != nullptr, "UpdateWorkerControlInfo should be on worker core only!");
+    K2ASSERT(log::tsoserver, seastar::engine().cpu_id() != 0 && _worker != nullptr, "UpdateWorkerControlInfo should be on worker core only!");
 
     return _worker->UpdateWorkerControlInfo(controlInfo);
 }
@@ -96,8 +96,8 @@ std::vector<k2::String> TSOService::GetWorkerURLs()
 {
     // NOTE: this fn is called by controller during start() on worker after the transport is initialized
     // so directly return the transport config info
-    K2ASSERT(seastar::engine().cpu_id() != 0, "GetWorkerURLs should be on worker core only!");
-    K2INFO("GetWorkerURLs on worker core. tcp url is:" <<k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
+    K2ASSERT(log::tsoserver, seastar::engine().cpu_id() != 0, "GetWorkerURLs should be on worker core only!");
+    K2LOG_I(log::tsoserver, "GetWorkerURLs on worker core. tcp url is:{}", k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
 
     std::vector<k2::String> result;
 
@@ -106,37 +106,10 @@ std::vector<k2::String> TSOService::GetWorkerURLs()
 
     if (seastar::engine()._rdma_stack)
     {
-        K2INFO("TSOWorker have RDMA transport.");
+        K2LOG_I(log::tsoserver, "TSOWorker have RDMA transport.");
         result.push_back(k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto)->getURL());
     }
 
     return result;
 }
-
-    /*
-    K2INFO("Registering message handlers");
-    RPC().registerMessageObserver(MsgVerbs::GETTSOSERVERINFO,
-        [this](k2::Request&& request) mutable {
-            (void)request;  // TODO do something with the request
-        });
-
-    K2INFO("Core Id:" << seastar::engine().cpu_id());
-
-    // call msgReceiver method on core#0
-    return _baseApp.getDist<k2::TSOService>().invoke_on(0, &TSOService::msgReceiver);
-
-}
-
-
-seastar::future<> TSOService::msgReceiver()
-{
-    K2INFO("Message received");
-    K2INFO("Core 0 Id:" << seastar::engine().cpu_id());
-    return seastar::make_ready_future<>();
-} */
-
-
-
 } // namespace k2
-
-

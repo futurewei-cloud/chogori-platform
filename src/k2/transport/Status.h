@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <signal.h>
 #include <iostream>
 
-#include <nlohmann/json.hpp>
+#include <k2/json/json.hpp>
 
 #include <k2/common/Log.h>
 #include <k2/transport/PayloadSerialization.h>
@@ -59,16 +59,10 @@ struct Status {
     bool is5xxRetryable() const;
 
     String getDescription() const;
+
+    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(Status, code, message);
 };
 
-void inline to_json(nlohmann::json& j, const Status& status) {
-    j = nlohmann::json{{"code", status.code}, {"message", status.message}};
-}
-
-void inline from_json(const nlohmann::json& j, Status& status) {
-    j.at("code").get_to(status.code);
-    j.at("message").get_to(status.message);
-}
 
 struct Statuses {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -467,22 +461,4 @@ static const inline Status S598_Network_read_timeout_error{.code=598, .message="
 
 }; // struct status
 
-inline std::ostream& operator<<(std::ostream& os, const Status& st) {
-    os << "[" << st.code << " " << st.getDescription() << "]: " << st.message;
-    return os;
-}
-
 } //namespace k2
-
-#define RET_IF_BAD(status)                                     \
-    {                                                          \
-        k2::Status ____status____ = std::move((status));       \
-        if (!____status____.is2xxOK()) return ____status____; \
-    }
-#define THROW_IF_BAD(status)                  \
-    {                                         \
-        k2::Status ____status____ = std::move((status)); \
-        if (!____status____.is2xxOK()) {     \
-            throw ____status____;             \
-        }                                     \
-    }

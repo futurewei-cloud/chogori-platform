@@ -20,10 +20,10 @@ Copyright(c) 2020 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-#include "Log.h"
+#pragma once
 
-namespace k2 {
-namespace tx {
-thread_local k2::logging::Logger log("transport");
-}
+#include <k2/common/Log.h>
+
+namespace k2::log {
+inline thread_local k2::logging::Logger txbench("k2::txbench");
 }

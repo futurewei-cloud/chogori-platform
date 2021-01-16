@@ -29,7 +29,7 @@ Persistence::Persistence() {
     int id = seastar::engine().cpu_id();
     String endpoint = _config.persistenceEndpoint()[id % _config.persistenceEndpoint().size()];
     _remoteEndpoint = RPC().getTXEndpoint(endpoint);
-    K2INFO("ctor with endpoint: " << _remoteEndpoint->getURL());
+    K2LOG_I(log::skvsvr, "ctor with endpoint: {}", _remoteEndpoint->getURL());
 }
 
 }

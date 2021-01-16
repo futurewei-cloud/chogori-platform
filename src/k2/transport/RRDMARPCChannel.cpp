@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "RRDMARPCChannel.h"
 
 #include <k2/config/Config.h>
+#include "Log.h"
 
 namespace k2 {
 
@@ -34,40 +35,37 @@ RRDMARPCChannel::RRDMARPCChannel(std::unique_ptr<seastar::rdma::RDMAConnection> 
     _rconn(std::move(rconn)),
     _closingInProgress(false),
     _running(false) {
-    K2DEBUG("new channel");
+    K2LOG_D(log::tx, "new channel");
     registerMessageObserver(requestObserver);
     registerFailureObserver(failureObserver);
 }
 
 RRDMARPCChannel::~RRDMARPCChannel(){
-    K2DEBUG("dtor");
+    K2LOG_D(log::tx, "dtor");
     if (!_closingInProgress) {
-        K2WARN("destructor without graceful close: " << _endpoint.getURL());
+        K2LOG_W(log::tx, "destructor without graceful close: {}", _endpoint.getURL());
     }
 }
 
 void RRDMARPCChannel::send(Verb verb, std::unique_ptr<Payload> payload, MessageMetadata metadata) {
-    assert(_running);
     if (_closingInProgress) {
-        K2WARN("channel is going down. ignoring send");
+        K2LOG_W(log::tx, "channel is going down. ignoring send");
         return;
     }
     _rconn->send(_rpcParser.prepareForSend(verb, std::move(payload), std::move(metadata)));
 }
 
 void RRDMARPCChannel::run() {
-    assert(!_running);
     _running = true;
-    K2DEBUG("Setting rdma connection")
+    K2LOG_D(log::tx, "Setting rdma connection")
     _rpcParser.registerMessageObserver(
         [this](Verb verb, MessageMetadata metadata, std::unique_ptr<Payload> payload) {
-            K2DEBUG("Received message with verb: " << int(verb));
             this->_messageObserver(Request(verb, _endpoint, std::move(metadata), std::move(payload)));
         }
     );
     _rpcParser.registerParserFailureObserver(
         [this](std::exception_ptr exc) {
-            K2WARN_EXC("Received parser exception", exc);
+            K2LOG_W_EXC(log::tx, exc, "Received parser exception");
             this->_failureObserver(this->_endpoint, exc);
         }
     );
@@ -77,24 +75,23 @@ void RRDMARPCChannel::run() {
         [this] { return _rconn->closed(); }, // end condition for loop
         [this] () mutable { // body of loop
             if (_rpcParser.canDispatch()) {
-                K2DEBUG("RPC parser can dispatch more messages as-is. not reading from socket this round");
+                K2LOG_D(log::tx, "RPC parser can dispatch more messages as-is. not reading from socket this round");
                 _rpcParser.dispatchSome();
                 return seastar::make_ready_future();
             }
             return _rconn->recv().
                 then([this](Binary&& packet) mutable {
                     if (packet.empty()) {
-                        K2DEBUG("remote end closed connection");
+                        K2LOG_D(log::tx, "remote end closed connection");
                         return; // just say we're done so the loop can evaluate the end condition
                     }
-                    K2DEBUG("Read "<< packet.size());
                     _rpcParser.feed(std::move(packet));
                     // process some messages from the packet
                     _rpcParser.dispatchSome();
                 }).
                 handle_exception([] (auto exc) {
                     // let the loop go and check the condition above. Upon exception, the connection should be closed
-                    K2WARN_EXC("Exception while reading connection", exc);
+                    K2LOG_W_EXC(log::tx, exc, "Exception while reading connection");
                     return seastar::make_ready_future();
                 });
         }
@@ -105,13 +102,12 @@ void RRDMARPCChannel::run() {
 }
 
 void RRDMARPCChannel::registerMessageObserver(RequestObserver_t observer) {
-    K2DEBUG("register msg observer");
+    K2LOG_D(log::tx, "register msg observer");
     if (observer == nullptr) {
-        K2DEBUG("Setting default message observer");
+        K2LOG_D(log::tx, "Setting default message observer");
         _messageObserver = [this](Request&& request) {
             if (!this->_closingInProgress) {
-                K2WARN("Message: " << request.verb
-                << " ignored since there is no message observer registered...");
+                K2LOG_W(log::tx, "Message: verb={} ignored since there is no message observer registered...", request.verb);
             }
         };
     }
@@ -121,12 +117,12 @@ void RRDMARPCChannel::registerMessageObserver(RequestObserver_t observer) {
 }
 
 void RRDMARPCChannel::registerFailureObserver(FailureObserver_t observer) {
-    K2DEBUG("register failure observer");
+    K2LOG_D(log::tx, "register failure observer");
     if (observer == nullptr) {
-        K2DEBUG("Setting default failure observer");
+        K2LOG_D(log::tx, "Setting default failure observer");
         _failureObserver = [this](TXEndpoint&, std::exception_ptr) {
             if (!this->_closingInProgress) {
-                K2WARN("Ignoring failure since there is no failure observer registered...");
+                K2LOG_W(log::tx, "Ignoring failure since there is no failure observer registered...");
             }
         };
     }
@@ -138,7 +134,7 @@ void RRDMARPCChannel::registerFailureObserver(FailureObserver_t observer) {
 seastar::future<> RRDMARPCChannel::gracefulClose(Duration timeout) {
     // TODO, setup a timer for shutting down
     (void) timeout;
-    K2DEBUG("graceful close");
+    K2LOG_D(log::tx, "graceful close");
     // close the connection if it wasn't closed already
     _closeRconn();
 
@@ -146,7 +142,7 @@ seastar::future<> RRDMARPCChannel::gracefulClose(Duration timeout) {
 }
 
 void RRDMARPCChannel::_closeRconn() {
-    K2DEBUG("Closing socket: " << _closingInProgress);
+    K2LOG_D(log::tx, "Closing socket: ipr={}", _closingInProgress);
     if (!_closingInProgress) {
         _closingInProgress = true;
         _closeDoneFuture = _rconn->close();

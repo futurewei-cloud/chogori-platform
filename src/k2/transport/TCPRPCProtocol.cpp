@@ -30,15 +30,14 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/net/inet_address.hh> // for inet_address
 
 //k2
-#include <k2/common/Log.h>
+#include "Log.h"
 
 namespace k2 {
-const String TCPRPCProtocol::proto("tcp+k2rpc");
 
 TCPRPCProtocol::TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet):
     IRPCProtocol(vnet, proto),
     _stopped(true) {
-    K2DEBUG("ctor");
+    K2LOG_D(log::tx, "ctor");
 }
 
 TCPRPCProtocol::TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet, SocketAddress addr):
@@ -46,18 +45,18 @@ TCPRPCProtocol::TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet, SocketAddress 
     _addr(addr),
     _svrEndpoint(seastar::make_lw_shared<TXEndpoint>(_endpointFromAddress(_addr))),
     _stopped(true) {
-    K2DEBUG("ctor");
+    K2LOG_D(log::tx, "ctor");
 }
 
 TCPRPCProtocol::~TCPRPCProtocol() {
-    K2DEBUG("dtor");
+    K2LOG_D(log::tx, "dtor");
 }
 
 void TCPRPCProtocol::start() {
-    K2DEBUG("start");
+    K2LOG_D(log::tx, "start");
     _stopped = false;
     if (_svrEndpoint) {
-        K2INFO("Starting listening TCP Proto on: " << _svrEndpoint->getURL());
+        K2LOG_I(log::tx, "Starting listening TCP Proto on: {}", _svrEndpoint->getURL());
 
         seastar::listen_options lo;
         lo.reuse_address = true;
@@ -66,7 +65,7 @@ void TCPRPCProtocol::start() {
         if (_addr.port() == 0) {
             // update the local endpoint if we're binding to port 0
             _svrEndpoint = seastar::make_lw_shared<>(_endpointFromAddress(_listen_socket->local_address()));
-            K2INFO("Effective listening TCP Proto on: " << _svrEndpoint->getURL());
+            K2LOG_I(log::tx, "Effective listening TCP Proto on: {}", _svrEndpoint->getURL());
         }
 
         _listenerClosed = seastar::do_until(
@@ -74,51 +73,51 @@ void TCPRPCProtocol::start() {
             [this] {
             return _listen_socket->accept().then(
                 [this] (seastar::accept_result&& result) {
-                    K2DEBUG("Accepted connection from " << result.remote_address);
+                    K2LOG_D(log::tx, "Accepted connection from {}", result.remote_address);
                     _handleNewChannel(seastar::make_ready_future<seastar::connected_socket>(std::move(result.connection)),  _endpointFromAddress(std::move(result.remote_address)));
                     return seastar::make_ready_future();
                 }
             )
             .handle_exception([this] (auto exc) {
                 if (!_stopped) {
-                    K2WARN_EXC("Accept received exception(ignoring)", exc);
+                    K2LOG_W_EXC(log::tx, exc, "Accept received exception(ignoring)");
                 }
                 else {
                     // let the loop keep going. The _stopped flag above will cause it to break
-                    K2DEBUG("Server is exiting...");
+                    K2LOG_D(log::tx, "Server is exiting...");
                 }
                 return seastar::make_ready_future();
             });
         }).or_terminate();
     }
     else {
-        K2INFO("Starting non-listening TCP Proto...");
+        K2LOG_I(log::tx, "Starting non-listening TCP Proto...");
     }
 }
 
 RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::builder(VirtualNetworkStack::Dist_t& vnet) {
-    K2DEBUG("builder creating non-listening tcp protocol");
+    K2LOG_D(log::tx, "builder creating non-listening tcp protocol");
     return [&vnet]() mutable -> seastar::shared_ptr<IRPCProtocol> {
-        K2DEBUG("builder running");
+        K2LOG_D(log::tx, "builder running");
         return seastar::static_pointer_cast<IRPCProtocol>(
             seastar::make_shared<TCPRPCProtocol>(vnet));
     };
 }
 
 RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::builder(VirtualNetworkStack::Dist_t& vnet, uint16_t port) {
-    K2DEBUG("builder creating tcp protocol on port " << port);
+    K2LOG_D(log::tx, "builder creating tcp protocol on port {}", port);
     return [&vnet, port]() mutable -> seastar::shared_ptr<IRPCProtocol> {
-        K2DEBUG("builder running");
+        K2LOG_D(log::tx, "builder running");
         return seastar::static_pointer_cast<IRPCProtocol>(
             seastar::make_shared<TCPRPCProtocol>(vnet, port));
     };
 }
 
 RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::builder(VirtualNetworkStack::Dist_t& vnet, IAddressProvider& addrProvider) {
-    K2DEBUG("builder creating multi-address tcp protocol");
+    K2LOG_D(log::tx, "builder creating multi-address tcp protocol");
     return [&vnet, &addrProvider]() mutable -> seastar::shared_ptr<IRPCProtocol> {
         auto myID = seastar::engine().cpu_id() % seastar::smp::count;
-        K2DEBUG("builder created");
+        K2LOG_D(log::tx, "builder created");
 
         return seastar::static_pointer_cast<IRPCProtocol>(
             seastar::make_shared<TCPRPCProtocol>(vnet, addrProvider.getAddress(myID)));
@@ -126,7 +125,7 @@ RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::builder(VirtualNetworkStack::D
 }
 
 seastar::future<> TCPRPCProtocol::stop() {
-    K2DEBUG("stop");
+    K2LOG_D(log::tx, "stop");
     // immediately prevent accepting further read/write work
     _stopped = true;
     if (_listen_socket) {
@@ -159,13 +158,12 @@ seastar::future<> TCPRPCProtocol::stop() {
 
 std::unique_ptr<TXEndpoint> TCPRPCProtocol::getTXEndpoint(String url) {
     if (_stopped) {
-        K2WARN("Unable to create endpoint since we're stopped for url " << url);
+        K2LOG_W(log::tx, "Unable to create endpoint since we're stopped for url {}", url);
         return nullptr;
     }
-    K2DEBUG("get endpoint for " << url);
     auto ep = TXEndpoint::fromURL(url, _vnet.local().getTCPAllocator());
     if (!ep || ep->getProtocol() != proto) {
-        K2WARN("Cannot construct non-`" << proto << "` endpoint");
+        K2LOG_W(log::tx, "Cannot construct non-`{}` endpoint", proto);
         return nullptr;
     }
     return ep;
@@ -177,13 +175,13 @@ seastar::lw_shared_ptr<TXEndpoint> TCPRPCProtocol::getServerEndpoint() {
 
 void TCPRPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) {
     if (_stopped) {
-        K2WARN("Dropping message since we're stopped: verb=" << int(verb) << ", url=" << endpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), endpoint.getURL());
         return;
     }
 
     auto&& chan = _getOrMakeChannel(endpoint);
     if (!chan) {
-        K2WARN("Dropping message: Unable to create connection for endpoint " << endpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message: Unable to create connection for endpoint {}", endpoint.getURL());
         return;
     }
     chan->send(verb, std::move(payload), std::move(metadata));
@@ -191,13 +189,11 @@ void TCPRPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoin
 
 seastar::lw_shared_ptr<TCPRPCChannel> TCPRPCProtocol::_getOrMakeChannel(TXEndpoint& endpoint) {
     // look for an existing channel
-    K2DEBUG("get or make channel: " << endpoint.getURL());
     auto iter = _channels.find(endpoint);
     if (iter != _channels.end()) {
-        K2DEBUG("found existing channel");
         return iter->second;
     }
-    K2DEBUG("creating new channel");
+    K2LOG_D(log::tx, "creating new channel for {}", endpoint.getURL());
 
     // TODO support for IPv6?
     auto address = seastar::make_ipv4_address({endpoint.getIP().c_str(), uint16_t(endpoint.getPort())});
@@ -214,10 +210,9 @@ seastar::lw_shared_ptr<TCPRPCChannel> TCPRPCProtocol::_getOrMakeChannel(TXEndpoi
 
 seastar::lw_shared_ptr<TCPRPCChannel>
 TCPRPCProtocol::_handleNewChannel(seastar::future<seastar::connected_socket> futureSocket, const TXEndpoint& endpoint) {
-    K2DEBUG("processing channel: "<< endpoint.getURL());
+    K2LOG_D(log::tx, "processing channel: {}", endpoint.getURL());
     auto chan = seastar::make_lw_shared<TCPRPCChannel>(std::move(futureSocket), endpoint,
         [this] (Request&& request) {
-            K2DEBUG("Message " << request.verb << " received from " << request.endpoint.getURL());
             if (!_stopped) {
                 _messageObserver(std::move(request));
             }
@@ -225,7 +220,8 @@ TCPRPCProtocol::_handleNewChannel(seastar::future<seastar::connected_socket> fut
         [this] (TXEndpoint& endpoint, auto exc) {
             if (!_stopped) {
                 if (exc) {
-                    K2WARN("Channel " << endpoint.getURL() << ", failed due to " << exc);
+
+                    K2LOG_W_EXC(log::tx, exc, "Channel {} failed", endpoint.getURL());
                 }
                 auto chanIter = _channels.find(endpoint);
                 if (chanIter != _channels.end()) {
@@ -236,7 +232,6 @@ TCPRPCProtocol::_handleNewChannel(seastar::future<seastar::connected_socket> fut
             }
             return seastar::make_ready_future();
         });
-    assert(chan->getTXEndpoint().canAllocate());
     _channels.emplace(chan->getTXEndpoint(), chan);
     chan->run();
     return chan;

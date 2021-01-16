@@ -28,7 +28,11 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 // catch
 #include "catch2/catch.hpp"
+
 using namespace k2;
+namespace k2::log {
+inline thread_local k2::logging::Logger pt("k2::payload_test");
+}
 struct blanks {
     K2_PAYLOAD_EMPTY;
 };
@@ -264,8 +268,8 @@ SCENARIO("test empty payload serialization after some data") {
 
         data<embeddedComplex> parsed;
         REQUIRE(dst.read(parsed));
-        K2INFO(parsed.dur);
-        K2INFO(d.dur);
+        K2LOG_I(log::pt, "{}", parsed.dur);
+        K2LOG_I(log::pt, "{}", d.dur);
         REQUIRE(parsed == d);
 
         // try same with embedded type of Payload

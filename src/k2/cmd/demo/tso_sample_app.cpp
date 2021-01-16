@@ -37,7 +37,9 @@ Copyright(c) 2020 Futurewei Cloud
 using namespace seastar;
 
 namespace k2 {
-
+namespace log {
+inline thread_local k2::logging::Logger tsoapp("k2::tso_app");
+}
 using namespace dto;
 
 // debugging print, time point (nano accurate) to a stream
@@ -66,22 +68,22 @@ public:
     sampleTSOApp(){};
 
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::tsoapp, "stop");
         return seastar::make_ready_future<>();
     };
 
     void start()
     {
-        K2INFO("start");
+        K2LOG_I(log::tsoapp, "start");
         (void)seastar::sleep(2s)
         .then([this]
         {
-            K2INFO("Getting 2 timestamps async in loop at least 100us apart from each other");
+            K2LOG_I(log::tsoapp, "Getting 2 timestamps async in loop at least 100us apart from each other");
 
             auto curSteadyTime = Clock::now();
             char timeBuffer[100];
             TimePointToStream(nsec_count(curSteadyTime), timeBuffer);
-            K2INFO("Issuing first 100us apart TS at local request time:" << timeBuffer);
+            K2LOG_I(log::tsoapp, "Issuing first 100us apart TS at local request time: {}", timeBuffer);
             (void) AppBase().getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
                 .then([this](auto&& timestamp)
                 {
@@ -89,14 +91,14 @@ public:
                     char timeBufferE[100];
                     TimePointToStream(timestamp.tStartTSECount(), timeBufferS);
                     TimePointToStream(timestamp.tEndTSECount(), timeBufferE);
-                    K2INFO("got first 100us apart TS value:{[" << timeBufferS <<":"<< timeBufferE<<"] TSOId:" <<timestamp.tsoId());
+                    K2LOG_I(log::tsoapp, "got first 100us apart TS value:[{}:{}], TSOId:{}", timeBufferS, timeBufferE, timestamp.tsoId());
                     (void) seastar::sleep(100us)
                     .then([this]
                     {
                         TimePoint curSteadyTime = Clock::now();
                         char timeBuffer[100];
                         TimePointToStream(nsec_count(curSteadyTime), timeBuffer);
-                        K2INFO("Issuing second 100us apart TS at local request time:" << timeBuffer);
+                        K2LOG_I(log::tsoapp, "Issuing second 100us apart TS at local request time: {}", timeBuffer);
                         (void) AppBase().getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
                         .then([](auto&& ts)
                         {
@@ -104,32 +106,10 @@ public:
                             char timeBufferE[100];
                             TimePointToStream(ts.tStartTSECount(), timeBufferS);
                             TimePointToStream(ts.tEndTSECount(), timeBufferE);
-                            K2INFO("got second 100us apart TS value:{[" << timeBufferS <<":"<< timeBufferE<<"] TSOId:" <<ts.tsoId());
+                            K2LOG_I(log::tsoapp, "got second 100us apart TS value:[{}:{}] TSOId:{}", timeBufferS,timeBufferE, ts.tsoId());
                         });
                     });
                 });
-        /*})
-        .then([this] {
-            K2INFO("Getting 1000 timestamps async in loop continuously from each other");
-            seastar::distributed<k2::TSO_ClientLib>& tso_client_dist =  _baseApp.getDist<k2::TSO_ClientLib>();
-            auto tso_clientlib = tso_client_dist.local();
-
-            for (int i = 0; i < 10; i++)
-            {
-                TimePoint curSteadyTime = Clock::now();
-                K2INFO("Issuing continous TS #"<<i<<" at local request time:" << curSteadyTime.time_since_epoch().count());
-                (void) tso_clientlib.GetTimestampFromTSO(curSteadyTime)
-                    .then([idx=i](auto&& timestamp)
-                    {
-                        K2INFO("got continous TS #"<<idx<<" TS value:" << timestamp.TStartTSECount() <<":"<< timestamp.TEndTSECount());
-                    });
-            }
-        })
-        .then([] {
-            K2INFO("Finished issuing all the request, sleeping for 5 second.");
-            (void) seastar::sleep(5s)
-            .then([]{K2INFO("5 second sleep done, all requests should be finished as well.");});
-           */
         });
     };
 };

@@ -31,6 +31,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/http/httpd.hh>
 
 namespace k2 {
+namespace log {
+inline thread_local k2::logging::Logger apisvr("k2::api_server");
+}
 
 // Helper class for registering HTTP routes
 class api_route_handler : public seastar::httpd::handler_base  {
@@ -41,7 +44,7 @@ public:
         std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override {
         (void) path;
 
-        // seastar returns a 200 status code by default, which is what we want. The k2 status code will 
+        // seastar returns a 200 status code by default, which is what we want. The k2 status code will
         // be embedded in the returned json object
         return _handler(req->content)
         .then([rep=std::move(rep)] (String&& json) mutable {
@@ -68,11 +71,11 @@ public:
     // this method should be called to stop the server (usually on engine exit)
     seastar::future<> gracefulStop();
 
-    // All HTTP paths will be registered under api/ 
+    // All HTTP paths will be registered under api/
     // A GET on api/ will show each path registered this way with a description
     // Request and Response types must be convertable to JSON
     template <class Request_t, class Response_t>
-    void registerAPIObserver(String pathSuffix, String description, 
+    void registerAPIObserver(String pathSuffix, String description,
                              RPCRequestObserver_t<Request_t, Response_t> observer) {
         _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
 

@@ -29,6 +29,7 @@ namespace dto {
 struct PlogCreateRequest {
     String plogId;
     K2_PAYLOAD_FIELDS(plogId);
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(PlogCreateRequest, plogId);
 };
 
 struct PlogCreateResponse {
@@ -40,6 +41,7 @@ struct PlogAppendRequest {
     uint32_t offset;
     Payload payload;
     K2_PAYLOAD_FIELDS(plogId, offset, payload);
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(PlogAppendRequest, plogId, offset);
 };
 
 struct PlogAppendResponse {
@@ -52,6 +54,7 @@ struct PlogReadRequest {
     uint32_t offset;
     uint32_t size;
     K2_PAYLOAD_FIELDS(plogId, offset, size);
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(PlogReadRequest, plogId, offset, size);
 };
 
 struct PlogReadResponse {
@@ -63,11 +66,13 @@ struct PlogSealRequest {
     String plogId;
     uint32_t truncateOffset;
     K2_PAYLOAD_FIELDS(plogId, truncateOffset);
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(PlogSealRequest, plogId, truncateOffset);
 };
 
 struct PlogSealResponse {
     uint32_t sealedOffset;
     K2_PAYLOAD_FIELDS(sealedOffset);
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(PlogSealResponse, sealedOffset);
 };
 
 }  // namespace dto

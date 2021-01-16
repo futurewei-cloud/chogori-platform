@@ -31,6 +31,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future.hh>       // for future stuff
 
 namespace k2 {
+namespace log {
+inline thread_local k2::logging::Logger partmgr("k2::partition_manager");
+}
 
 class PartitionManager {
 public: // application lifespan
@@ -47,6 +50,6 @@ private:
 }; // class PartitionManager
 
 // per-thread/reactor instance of the partition manager
-extern thread_local PartitionManager * __local_pmanager;
+inline thread_local PartitionManager * __local_pmanager;
 inline PartitionManager& PManager() { return *__local_pmanager; }
 } // namespace k2

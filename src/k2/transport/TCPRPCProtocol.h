@@ -50,9 +50,9 @@ public: // types
     static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet, IAddressProvider& addrProvider);
 
     // The official protocol name supported for communications over TCPRPC channels
-    static const String proto;
+    static inline const String proto{"tcp+k2rpc"};
 
-public: // lifecycle
+   public:  // lifecycle
     // Construct the protocol with a vnet which supports TCP and listens on the given address
     TCPRPCProtocol(VirtualNetworkStack::Dist_t& vnet, SocketAddress addr);
 

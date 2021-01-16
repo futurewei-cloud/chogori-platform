@@ -31,32 +31,31 @@ ExponentialBackoffStrategy::ExponentialBackoffStrategy() : _retries(3),
                                                            _currentTimeout(1us),
                                                            _success(false),
                                                            _used(false) {
-    K2DEBUG("ctor retries " << _retries << ", rate " << _rate << ", startTimeout "
-                            << k2::usec(_currentTimeout).count() << "ms");
+    K2LOG_D(log::tx, "ctor retries {}, rate {}, startTimeout {}ms", _retries, _rate, k2::usec(_currentTimeout).count());
 }
 
 // destructor
 ExponentialBackoffStrategy::~ExponentialBackoffStrategy() {
-    K2DEBUG("dtor");
+    K2LOG_D(log::tx, "dtor");
 }
 
 // Set the desired number of retries
 ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRetries(int retries) {
-    K2DEBUG("retries: " << retries);
+    K2LOG_D(log::tx, "retries: {}", retries);
     _retries = retries;
     return *this;
 }
 
 // Set the exponential increase rate
 ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRate(int rate) {
-    K2DEBUG("rate: " << rate);
+    K2LOG_D(log::tx, "rate: {}", rate);
     _rate = rate;
     return *this;
 }
 
 // Set the desired starting value
 ExponentialBackoffStrategy& ExponentialBackoffStrategy::withStartTimeout(Duration startTimeout) {
-    K2DEBUG("startTimeout: " << k2::msec(startTimeout).count() << "ms");
+    K2LOG_D(log::tx, "startTimeout: {}ms", k2::msec(startTimeout).count());
     _currentTimeout = startTimeout;
     return *this;
 }

@@ -38,7 +38,9 @@ Copyright(c) 2020 Futurewei Cloud
 
 
 namespace k2 {
-
+namespace log {
+inline thread_local k2::logging::Logger plogcl("k2::plog_client");
+}
 class PlogClient {
 public:
     PlogClient();
@@ -51,13 +53,13 @@ public:
     bool selectPersistenceGroup(String name);
 
     // create a plog with retry times
-    // TODO: revise this method, making this retry as an internal config variable instead of parameter. 
+    // TODO: revise this method, making this retry as an internal config variable instead of parameter.
     seastar::future<std::tuple<Status, String>> create(uint8_t retries = 1);
 
-    // append a payload into a plog at the given offset 
+    // append a payload into a plog at the given offset
     seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);
 
-    // read a payload 
+    // read a payload
     seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset, uint32_t size);
 
     // seal a payload
@@ -77,10 +79,10 @@ private:
     String _generatePlogId();
 
     // obtain the endpoints of the plog server
-    seastar::future<> _getPlogServerEndpoints(); 
+    seastar::future<> _getPlogServerEndpoints();
 
     // obtain the persistence cluster for a given name from the cpo
-    seastar::future<> _getPersistenceCluster(String clusterName); 
+    seastar::future<> _getPersistenceCluster(String clusterName);
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 100ms};

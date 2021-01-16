@@ -32,6 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "schema.h"
 #include "transactions.h"
+#include "Log.h"
 
 using namespace seastar;
 using namespace k2;
@@ -89,24 +90,24 @@ private:
 
     future<> runPaymentTxn(PaymentT& _payment) {
         return _payment.run().then([] (bool success) {
-            K2ASSERT(success, "Verficiation payment txn failed!");
+            K2ASSERT(log::tpcc, success, "Verficiation payment txn failed!");
         });
     }
 
     void compareCommitValues() {
-        K2ASSERT(_before.w_ytd + _payment._amount == _after.w_ytd, "Warehouse YTD did not commit!");
-        K2ASSERT(_before.d_ytd + _payment._amount == _after.d_ytd, "District YTD did not commit!");
-        K2ASSERT(_before.c_ytd + _payment._amount == _after.c_ytd, "Customer YTD did not commit!");
-        K2ASSERT(_before.c_balance - _payment._amount == _after.c_balance, "Customer Balance did not commit!");
-        K2ASSERT(_before.c_payments + 1 == _after.c_payments, "Customer Payment Count did not commit!");
+        K2ASSERT(log::tpcc, _before.w_ytd + _payment._amount == _after.w_ytd, "Warehouse YTD did not commit!");
+        K2ASSERT(log::tpcc, _before.d_ytd + _payment._amount == _after.d_ytd, "District YTD did not commit!");
+        K2ASSERT(log::tpcc, _before.c_ytd + _payment._amount == _after.c_ytd, "Customer YTD did not commit!");
+        K2ASSERT(log::tpcc, _before.c_balance - _payment._amount == _after.c_balance, "Customer Balance did not commit!");
+        K2ASSERT(log::tpcc, _before.c_payments + 1 == _after.c_payments, "Customer Payment Count did not commit!");
     }
 
     void compareAbortValues() {
-        K2ASSERT(_before.w_ytd == _after.w_ytd, "Warehouse YTD did not abort!");
-        K2ASSERT(_before.d_ytd == _after.d_ytd, "District YTD did not abort!");
-        K2ASSERT(_before.c_ytd == _after.c_ytd, "Customer YTD did not abort!");
-        K2ASSERT(_before.c_balance == _after.c_balance, "Customer Balance did not abort!");
-        K2ASSERT(_before.c_payments == _after.c_payments, "Customer Payment Count did not abort!");
+        K2ASSERT(log::tpcc, _before.w_ytd == _after.w_ytd, "Warehouse YTD did not abort!");
+        K2ASSERT(log::tpcc, _before.d_ytd == _after.d_ytd, "District YTD did not abort!");
+        K2ASSERT(log::tpcc, _before.c_ytd == _after.c_ytd, "Customer YTD did not abort!");
+        K2ASSERT(log::tpcc, _before.c_balance == _after.c_balance, "Customer Balance did not abort!");
+        K2ASSERT(log::tpcc, _before.c_payments == _after.c_payments, "Customer Payment Count did not abort!");
     }
 
     RandomContext& _random;
@@ -136,10 +137,10 @@ public:
             return getVerificationValues(_after);
         }).then([this] () {
             compareAbortValues();
-            K2INFO("Atomicity verification success!");
+            K2LOG_I(log::tpcc, "Atomicity verification success!");
             return make_ready_future<>();
         }).handle_exception([] (auto exc) {
-            K2WARN_EXC("TPC-C Atomicity verification failed!", exc);
+            K2LOG_W_EXC(log::tpcc, exc, "TPC-C Atomicity verification failed!");
             return make_ready_future<>();
         });
     }
@@ -156,7 +157,7 @@ private:
 
     // Consistency condition 1 of spec
     future<> verifyWarehouseYTD() {
-        return do_with((std::decimal::decimal64)0, (int16_t)1, 
+        return do_with((std::decimal::decimal64)0, (int16_t)1,
             [this] (std::decimal::decimal64& total, int16_t& cur_d_id) {
             return do_until(
                     [this, &cur_d_id] () { return cur_d_id > _districts_per_warehouse(); },
@@ -177,9 +178,8 @@ private:
                     std::decimal::decimal64 w_total = *(result.value.YTD);
                     double w_display = std::decimal::decimal64_to_double(w_total);
                     double total_display = std::decimal::decimal64_to_double(total);
-                    K2INFO("YTD consistency (WARNING: displayed values may not match due to conversion \
-                            of decimal type, w_total: " << w_display << " total: " << total_display);
-                    K2ASSERT(w_total == total, "Warehouse and district YTD totals did not match!");
+                    K2LOG_I(log::tpcc, "YTD consistency (WARNING: displayed values may not match due to conversion of decimal type, w_total: {}, total: {}", w_display, total_display);
+                    K2ASSERT(log::tpcc, w_total == total, "Warehouse and district YTD totals did not match!");
                     return make_ready_future<>();
                 });
             });
@@ -213,7 +213,7 @@ private:
                             if (cur_o_id < nextOrderID) {
                                 CHECK_READ_STATUS(result);
                             } else {
-                                K2ASSERT(result.status == dto::K23SIStatus::KeyNotFound, "OrderID exists higher than NextOrderID");
+                                K2ASSERT(log::tpcc, result.status == dto::K23SIStatus::KeyNotFound, "OrderID exists higher than NextOrderID");
                             }
 
                             cur_o_id++;
@@ -255,10 +255,10 @@ private:
 
 public:
     future<> run() {
-        K2INFO("Starting consistency verification");
+        K2LOG_I(log::tpcc, "Starting consistency verification");
         return runForEachWarehouse(&ConsistencyVerify::verifyWarehouseYTD)
         .then([this] () {
-            K2INFO("Starting consistency verification: order ID");
+            K2LOG_I(log::tpcc, "Starting consistency verification: order ID");
             return runForEachWarehouse(&ConsistencyVerify::verifyOrderIDs);
         });
     }

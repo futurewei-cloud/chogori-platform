@@ -34,7 +34,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/Collection.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
-
+#include "Log.h"
 
 namespace k2{
 const char* collname = "skv_collection";
@@ -44,17 +44,17 @@ const char* scETC = "skv_error_case";         // schema name: error test cases
 
 class schemaCreation {
 public: // application lifespan
-    schemaCreation() { K2INFO("ctor"); }
-    ~schemaCreation() {K2INFO("dtor"); }
+    schemaCreation() { K2LOG_I(log::k23si, "ctor"); }
+    ~schemaCreation() {K2LOG_I(log::k23si, "dtor"); }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::k23si, "stop");
         return std::move(_testFuture);
     }
 
     seastar::future<> start() {
-    K2INFO("+++++++ start schema creation test +++++++");
+    K2LOG_I(log::k23si, "+++++++ start schema creation test +++++++");
     ConfigVar<String> configEp("cpo_endpoint");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
@@ -71,22 +71,22 @@ public: // application lifespan
         .then([this] { return runScenario08(); })
         .then([this] { return runScenario09(); })
         .then([this] {
-            K2INFO("======= All tests passed ========");
+            K2LOG_I(log::k23si, "======= All tests passed ========");
             exitcode = 0;
         })
         .handle_exception([this](auto exc) {
             try {
                 std::rethrow_exception(exc);
             } catch (RPCDispatcher::RequestTimeoutException& exc) {
-                K2ERROR("======= Test failed due to timeout ========");
+                K2LOG_E(log::k23si, "======= Test failed due to timeout ========");
                 exitcode = -1;
             } catch (std::exception& e) {
-                K2ERROR("======= Test failed with exception [" << e.what() << "] ========");
+                K2LOG_E(log::k23si, "======= Test failed with exception [{}] ========", e.what());
                 exitcode = -1;
             }
         })
         .finally([this] {
-            K2INFO("======= Test ended ========");
+            K2LOG_I(log::k23si, "======= Test ended ========");
             seastar::engine().exit(exitcode);
         });
     });
@@ -103,7 +103,7 @@ private:
     int exitcode = -1;
 
     seastar::future<> createCollection(){
-        K2INFO("create a collection with assignments");
+        K2LOG_I(log::k23si, "create a collection with assignments");
 
         auto request = dto::CollectionCreateRequest{
             .metadata{
@@ -125,7 +125,7 @@ private:
             .then([](auto&& response) {
                 // create the collection
                 auto& [status, resp] = response;
-                K2EXPECT(status, Statuses::S201_Created);
+                K2EXPECT(log::k23si, status, Statuses::S201_Created);
             })
             .then([] {
                 // wait for collection to get assigned
@@ -139,16 +139,16 @@ private:
             })
             .then([this](auto&& response) {
                 auto& [status, resp] = response;
-                K2EXPECT(status, Statuses::S200_OK);
-                K2EXPECT(resp.collection.metadata.name, collname);
-                K2EXPECT(resp.collection.metadata.hashScheme, dto::HashScheme::HashCRC32C);
-                K2EXPECT(resp.collection.metadata.storageDriver, dto::StorageDriver::K23SI);
-                K2EXPECT(resp.collection.metadata.retentionPeriod, 5h);
-                K2EXPECT(resp.collection.metadata.capacity.dataCapacityMegaBytes, 100);
-                K2EXPECT(resp.collection.metadata.capacity.readIOPs, 100000);
-                K2EXPECT(resp.collection.metadata.capacity.writeIOPs, 100000);
-                K2EXPECT(resp.collection.partitionMap.version, 1);
-                K2EXPECT(resp.collection.partitionMap.partitions.size(), 3);
+                K2EXPECT(log::k23si, status, Statuses::S200_OK);
+                K2EXPECT(log::k23si, resp.collection.metadata.name, collname);
+                K2EXPECT(log::k23si, resp.collection.metadata.hashScheme, dto::HashScheme::HashCRC32C);
+                K2EXPECT(log::k23si, resp.collection.metadata.storageDriver, dto::StorageDriver::K23SI);
+                K2EXPECT(log::k23si, resp.collection.metadata.retentionPeriod, 5h);
+                K2EXPECT(log::k23si, resp.collection.metadata.capacity.dataCapacityMegaBytes, 100);
+                K2EXPECT(log::k23si, resp.collection.metadata.capacity.readIOPs, 100000);
+                K2EXPECT(log::k23si, resp.collection.metadata.capacity.writeIOPs, 100000);
+                K2EXPECT(log::k23si, resp.collection.partitionMap.version, 1);
+                K2EXPECT(log::k23si, resp.collection.partitionMap.partitions.size(), 3);
 
                 // how many partitions we have
                 uint64_t numparts = _k2ConfigEps().size();
@@ -158,13 +158,13 @@ private:
 
                 for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
                     auto& p = resp.collection.partitionMap.partitions[i];
-                    K2EXPECT(p.pvid.rangeVersion, 1);
-                    K2EXPECT(p.astate, dto::AssignmentState::Assigned);
-                    K2EXPECT(p.pvid.assignmentVersion, 1);
-                    K2EXPECT(p.pvid.id, i);
-                    K2EXPECT(p.startKey, std::to_string(i * partSize));
-                    K2EXPECT(p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
-                    K2EXPECT(*p.endpoints.begin(), _k2ConfigEps()[i]);
+                    K2EXPECT(log::k23si, p.pvid.rangeVersion, 1);
+                    K2EXPECT(log::k23si, p.astate, dto::AssignmentState::Assigned);
+                    K2EXPECT(log::k23si, p.pvid.assignmentVersion, 1);
+                    K2EXPECT(log::k23si, p.pvid.id, i);
+                    K2EXPECT(log::k23si, p.startKey, std::to_string(i * partSize));
+                    K2EXPECT(log::k23si, p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
+                    K2EXPECT(log::k23si, *p.endpoints.begin(), _k2ConfigEps()[i]);
                 }
             });
     }
@@ -174,15 +174,15 @@ private:
 public: // tests
 
 seastar::future<> runScenario00() {
-    K2INFO("+++++++ Schema Creation Test 00: initiate a schema with partition&range key +++++++");
-    K2INFO("STEP1: assign a collection named \"" << collname <<"\"");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 00: initiate a schema with partition&range key +++++++");
+    K2LOG_I(log::k23si, "STEP1: assign a collection named {}", collname);
 
     // step 1
     return createCollection()
     // step 2
     .then([this] {
-        K2INFO("------- create collection success. -------");
-        K2INFO("STEP2: create a shema named \"skv_schema\" with 3 fields {FirstName | LastName | Balance}");
+        K2LOG_I(log::k23si, "------- create collection success. -------");
+        K2LOG_I(log::k23si, "STEP2: create a shema named \"skv_schema\" with 3 fields {{FirstName | LastName | Balance}}");
         dto::Schema schema;
         schema.name = scname;
         schema.version = 1;
@@ -199,18 +199,18 @@ seastar::future<> runScenario00() {
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
             dto::GetSchemasRequest request { collname };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
-            K2EXPECT(resp.schemas.size(), 1);
-            K2EXPECT(resp.schemas[0].name, scname);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, resp.schemas.size(), 1);
+            K2EXPECT(log::k23si, resp.schemas[0].name, scname);
 
-            K2INFO("------- create schema success. -------");
+            K2LOG_I(log::k23si, "------- create schema success. -------");
             return seastar::make_ready_future<>();
         });
     });
@@ -218,79 +218,79 @@ seastar::future<> runScenario00() {
 
 // happy path test cases
 seastar::future<> runScenario01(){
-    K2INFO("+++++++ Schema Creation Test 01: Create a new version of an existing schema by renaming a (non-key) field +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 01: Create a new version of an existing schema by renaming a (non-key) field +++++++");
 
-    K2INFO("STEP1: get an existing Schema");
+    K2LOG_I(log::k23si, "STEP1: get an existing Schema");
     dto::GetSchemasRequest request { collname };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this](auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
 
-        K2INFO("STEP2: renaming a non-key field and then create");
+        K2LOG_I(log::k23si, "STEP2: renaming a non-key field and then create");
         auto schema(resp.schemas[0]);
         schema.version = 22;
         schema.fields[2].name = "Age";
-        K2EXPECT(schema.basicValidation(), Statuses::S200_OK);
-        K2EXPECT(resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
+        K2EXPECT(log::k23si, schema.basicValidation(), Statuses::S200_OK);
+        K2EXPECT(log::k23si, resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
 
         dto::CreateSchemaRequest request{ collname, std::move(schema) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
             dto::GetSchemasRequest request { collname };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
-            K2INFO("------- create a new version of schema success. -------");
+            K2LOG_I(log::k23si, "------- create a new version of schema success. -------");
             return seastar::make_ready_future<>();
         });
     });
 }
 
 seastar::future<> runScenario02(){
-    K2INFO("+++++++ Schema Creation Test 02: Create a new version of an existing schema by adding a new field +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 02: Create a new version of an existing schema by adding a new field +++++++");
 
-    K2INFO("STEP1: get an existing Schema");
+    K2LOG_I(log::k23si, "STEP1: get an existing Schema");
     dto::GetSchemasRequest request { collname };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this](auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
 
-        K2INFO("STEP2: using version1 to add a new field \"Age\" with \"INT32_T\" fieldType");
+        K2LOG_I(log::k23si, "STEP2: using version1 to add a new field \"Age\" with \"INT32_T\" fieldType");
         auto schema(resp.schemas[0]);
         schema.version = 333;
         schema.fields.push_back( {dto::FieldType::INT32T, "Age", false, false} );
-        K2EXPECT(schema.basicValidation(), Statuses::S200_OK);
-        K2EXPECT(resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
+        K2EXPECT(log::k23si, schema.basicValidation(), Statuses::S200_OK);
+        K2EXPECT(log::k23si, resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
 
         dto::CreateSchemaRequest request{ collname, std::move(schema) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
             dto::GetSchemasRequest request { collname };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
             return seastar::make_ready_future<>();
         });
     });
 }
 
 seastar::future<> runScenario03(){
-    K2INFO("+++++++ Schema Creation Test 03: Create a schema which does not have any range key fields set +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 03: Create a schema which does not have any range key fields set +++++++");
 
     dto::Schema schema;
     schema.name = scWoRKey;
@@ -310,23 +310,23 @@ seastar::future<> runScenario03(){
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
         dto::GetSchemasRequest request { collname };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
-        K2INFO("------- create schema success. -------");
+        K2LOG_I(log::k23si, "------- create schema success. -------");
         return seastar::make_ready_future<>();
     });
 }
 
 // Error test cases
 seastar::future<> runScenario04(){
-    K2INFO("+++++++ Schema Creation Test 04: Create a schema with duplicate field names +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 04: Create a schema with duplicate field names +++++++");
     dto::Schema schema;
     schema.name = scETC;
     schema.version = 1;
@@ -343,18 +343,18 @@ seastar::future<> runScenario04(){
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S400_Bad_Request);
+        K2EXPECT(log::k23si, status, Statuses::S400_Bad_Request);
 
         dto::GetSchemasRequest request { collname };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
         for(auto& schema : resp.schemas) {
             if (schema.name == scETC) {
-                K2FAIL("Schema should not exist");
+                K2ASSERT(log::k23si, false, "Schema should not exist");
             }
         }
         return seastar::make_ready_future();
@@ -362,7 +362,7 @@ seastar::future<> runScenario04(){
 }
 
 seastar::future<> runScenario05(){
-    K2INFO("+++++++ Schema Creation Test 05: Create a schema by setting partitionKeyFields manually by index, and an index is out of bounds of the fields +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 05: Create a schema by setting partitionKeyFields manually by index, and an index is out of bounds of the fields +++++++");
     dto::Schema schema;
     schema.name = scETC;
     schema.version = 1;
@@ -379,18 +379,18 @@ seastar::future<> runScenario05(){
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S400_Bad_Request);
+        K2EXPECT(log::k23si, status, Statuses::S400_Bad_Request);
 
         dto::GetSchemasRequest request { collname };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
         for(auto& schema : resp.schemas) {
             if (schema.name == scETC) {
-                K2FAIL("Schema shoud not exist");
+                K2ASSERT(log::k23si, false, "Schema shoud not exist");
             }
         }
         return seastar::make_ready_future();
@@ -399,7 +399,7 @@ seastar::future<> runScenario05(){
 }
 
 seastar::future<> runScenario06(){
-    K2INFO("+++++++ Schema Creation Test 06: Create a schema where the field at index 0 is not a partition or range key field +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 06: Create a schema where the field at index 0 is not a partition or range key field +++++++");
     dto::Schema schema;
     schema.name = scETC;
     schema.version = 1;
@@ -417,18 +417,18 @@ seastar::future<> runScenario06(){
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S400_Bad_Request);
+        K2EXPECT(log::k23si, status, Statuses::S400_Bad_Request);
 
         dto::GetSchemasRequest request { collname };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
         for(auto& schema : resp.schemas) {
             if (schema.name == scETC) {
-                K2FAIL("Schema should not exist but was found");
+                K2ASSERT(log::k23si, false, "Schema should not exist but was found");
             }
         }
         return seastar::make_ready_future<>();
@@ -436,12 +436,12 @@ seastar::future<> runScenario06(){
 }
 
 seastar::future<> runScenario07(){
-    K2INFO("+++++++ Schema Creation Test 07: Create a new version of an existing schema where a key field is renamed +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 07: Create a new version of an existing schema where a key field is renamed +++++++");
     dto::GetSchemasRequest request { collname };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
         dto::Schema schema(resp.schemas[0]);
         schema.version = 4444;
         schema.fields[0].name = "Xing";
@@ -450,18 +450,18 @@ seastar::future<> runScenario07(){
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S409_Conflict);
+            K2EXPECT(log::k23si, status, Statuses::S409_Conflict);
 
             dto::GetSchemasRequest request { collname };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
             for(auto& schema : resp.schemas) {
                 if (schema.fields[0].name == "Xing"){
-                    K2FAIL("Schema found but should not exist");
+                    K2ASSERT(log::k23si, false, "Schema found but should not exist");
                 }
             }
             return seastar::make_ready_future();
@@ -470,13 +470,13 @@ seastar::future<> runScenario07(){
 }
 
 seastar::future<> runScenario08(){
-    K2INFO("+++++++ Schema Creation Test 08: Create a new version of an existing schema where the type of a key field changes +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 08: Create a new version of an existing schema where the type of a key field changes +++++++");
 
     dto::GetSchemasRequest request { collname };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
         dto::Schema *sc;
         for(auto& schema : resp.schemas){
             if (schema.name == scWoRKey){
@@ -491,17 +491,17 @@ seastar::future<> runScenario08(){
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S409_Conflict);
+            K2EXPECT(log::k23si, status, Statuses::S409_Conflict);
 
             dto::GetSchemasRequest request { collname };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
             for(auto& schema : resp.schemas) {
                 if (schema.name == scWoRKey && schema.fields[1].type == dto::FieldType::INT32T) {
-                    K2FAIL("Schema found but should not exist");
+                    K2ASSERT(log::k23si, false, "Schema found but should not exist");
                 }
             }
             return seastar::make_ready_future();
@@ -510,13 +510,13 @@ seastar::future<> runScenario08(){
 }
 
 seastar::future<> runScenario09(){
-    K2INFO("+++++++ Schema Creation Test 09: Create a new version of an existing schema where a key field is removed +++++++");
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 09: Create a new version of an existing schema where a key field is removed +++++++");
 
     dto::GetSchemasRequest request { collname };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S200_OK);
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
         dto::Schema *sc;
         for(auto& schema : resp.schemas){
             if (schema.name == scWoRKey){
@@ -532,17 +532,17 @@ seastar::future<> runScenario09(){
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S409_Conflict);
+            K2EXPECT(log::k23si, status, Statuses::S409_Conflict);
 
             dto::GetSchemasRequest request { collname };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
-            K2EXPECT(status, Statuses::S200_OK);
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
             for(auto& schema : resp.schemas) {
                 if (schema.name == scWoRKey && schema.version == 333){
-                    K2FAIL("Schema found but should not exist");
+                    K2ASSERT(log::k23si, false, "Schema found but should not exist");
                 }
             }
             return seastar::make_ready_future();

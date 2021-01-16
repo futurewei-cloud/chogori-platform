@@ -38,7 +38,9 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2
 {
-
+namespace log {
+inline thread_local k2::logging::Logger plogsvr("k2::plog_server");
+}
 // each PlogPage is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
 struct PlogPage {
     PlogPage(){
@@ -49,7 +51,7 @@ struct PlogPage {
 
     bool sealed;
     uint32_t offset;
-    Payload payload; 
+    Payload payload;
 };
 
 class PlogServer
@@ -76,7 +78,7 @@ private:
     //handle the seal request
     seastar::future<std::tuple<Status, dto::PlogSealResponse>>
     _handleSeal(dto::PlogSealRequest&& request);
-    
+
 public:
      PlogServer();
     ~PlogServer();

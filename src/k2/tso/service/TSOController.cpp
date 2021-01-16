@@ -38,9 +38,9 @@ namespace k2
 {
 seastar::future<> TSOService::TSOController::start()
 {
-    K2INFO("TSOController start");
+    K2LOG_I(log::tsoserver, "TSOController start");
 
-    K2ASSERT(!_stopRequested, "start during shutdown is not allowed!");
+    K2ASSERT(log::tsoserver, !_stopRequested, "start during shutdown is not allowed!");
 
     // TODO: handle exception
     return InitializeInternal()
@@ -56,13 +56,13 @@ seastar::future<> TSOService::TSOController::start()
             RegisterGetTSOMasterURL();
             RegisterGetTSOWorkersURLs();
 
-            K2INFO("TSOController started");
+            K2LOG_I(log::tsoserver, "TSOController started");
             return seastar::make_ready_future<>();
         });
 }
 
 seastar::future<> TSOService::TSOController::gracefulStop() {
-    K2INFO("TSOController stop");
+    K2LOG_I(log::tsoserver, "TSOController stop");
     _stopRequested = true;
 
     // need to chain all operations into a sequencial future chain to have them done properly
@@ -85,7 +85,7 @@ seastar::future<> TSOService::TSOController::gracefulStop() {
 
 seastar::future<> TSOService::TSOController::InitializeInternal()
 {
-    K2INFO("InitializeInternal");
+    K2LOG_I(log::tsoserver, "InitializeInternal");
     // step 1/3 initialize worker control info
     InitWorkerControlInfo();
 
@@ -102,14 +102,14 @@ void TSOService::TSOController::InitWorkerControlInfo()
     _lastSentControlInfo.TsDelta =          _defaultTBWindowSize().count();     // uncertain window size of timestamp from the batch is also default _defaultTBWindowSize
     _lastSentControlInfo.BatchTTL =         _defaultTBWindowSize().count();     // batch's TTL is also _defaultTBWindowSize
 
-    _controlInfoToSend.TBENanoSecStep =     seastar::smp::count - 1;            
+    _controlInfoToSend.TBENanoSecStep =     seastar::smp::count - 1;
     _controlInfoToSend.TsDelta =            _defaultTBWindowSize().count();
     _controlInfoToSend.BatchTTL =           _defaultTBWindowSize().count();
 }
 
 seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
 {
-    K2INFO("GetAllWorkerURLs");
+    K2LOG_I(log::tsoserver, "GetAllWorkerURLs");
     return seastar::map_reduce(boost::irange(1u, seastar::smp::count),   // all worker cores, starting from 1
         [this] (unsigned cpuId) {
             return AppBase().getDist<k2::TSOService>().invoke_on(cpuId, &TSOService::GetWorkerURLs)
@@ -124,7 +124,7 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
             if (!singleRes.empty())
             {
                 // just check first one for simplicity, ideally, should check all returned work core url has value.
-                K2ASSERT(singleRes[0].size() > 0, "Invalid worker URLs");
+                K2ASSERT(log::tsoserver, singleRes[0].size() > 0, "Invalid worker URLs");
                 result.insert(result.end(), singleRes.begin(), singleRes.end());
             }
             return result;
@@ -132,14 +132,14 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
     .then([this] (std::vector<std::vector<k2::String>>&& result) mutable
     {
         _workersURLs = std::move(result);
-        K2INFO("got workerURLs:" <<_workersURLs.size());
+        K2LOG_I(log::tsoserver, "got workerURLs: {}", _workersURLs);
         return seastar::make_ready_future<>();
     });
 }
 
 seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold)
 {
-    K2INFO("SetRoleInternal isMaster:" << std::to_string(isMaster));
+    K2LOG_I(log::tsoserver, "SetRoleInternal isMaster: {}", std::to_string(isMaster));
     if (!_isMasterInstance && isMaster)  // change from standby to master
     {
         // when change from standby to master
@@ -183,15 +183,15 @@ seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint
     else if (_isMasterInstance && isMaster)
     {
         // why we are doing this noop, is this a bug? let it crash in debug mode
-        K2ASSERT(false, "Noop update from master to master!");
-        K2WARN("Noop update from master to master!");
+        K2ASSERT(log::tsoserver, false, "Noop update from master to master!");
+        K2LOG_W(log::tsoserver, "Noop update from master to master!");
         return seastar::make_ready_future<>();
     }
     else // !_isMasterInstance && !isMaster
     {
         // why we are doing this noop, is this a bug? let it crash in debug mode
-        K2ASSERT(false, "Noop update from standby to standby!");
-        K2WARN("Noop update from standby to standby!");
+        K2ASSERT(log::tsoserver, false, "Noop update from standby to standby!");
+        K2LOG_W(log::tsoserver, "Noop update from standby to standby!");
         return seastar::make_ready_future<>();
     }
 };
@@ -201,7 +201,7 @@ void TSOService::TSOController::RegisterGetTSOMasterURL()
     k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_MASTERSERVER_URL, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
-        K2INFO("Master TSO TCP endpoint is: " << _masterInstanceURL);
+        K2LOG_I(log::tsoserver, "Master TSO TCP endpoint is: {}", _masterInstanceURL);
         response->write((void*)_masterInstanceURL.c_str(), _masterInstanceURL.size());
         return k2::RPC().sendReply(std::move(response), request);
     });
@@ -245,8 +245,8 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         // case 1, if we lost lease, suicide now
         if (curTimeTSECount >  _myLease)
         {
-            K2INFO("Lost lease detected during HeartBeat. cur time and mylease : " << curTimeTSECount << ":" << _myLease);
-            //K2ASSERT(false, "Lost lease detected during HeartBeat.");
+            K2LOG_I(log::tsoserver, "Lost lease detected during HeartBeat. cur time and mylease : {}:{}",curTimeTSECount, _myLease);
+            //K2ASSERT(log::tsoserver, false, "Lost lease detected during HeartBeat.");
             //Suicide();
         }
 
@@ -277,7 +277,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
                 _controlInfoToSend.ReservedTimeShreshold = std::get<1>(newLeaseAndThreshold);
 
                 uint64_t newCurTimeTSECount = TimeAuthorityNow();
-                K2ASSERT(_controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
+                K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
                     "new lease and ReservedTimeThreshold should be in the future.");
 
                 // update worker!
@@ -295,12 +295,12 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
 
 seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
 {
-    K2ASSERT(_stopRequested, "Why are we here when stop is not requested?");
+    K2ASSERT(log::tsoserver, _stopRequested, "Why are we here when stop is not requested?");
 
     if (!_isMasterInstance)
     {
         // we no longer need to send heart beat as we were standby and are stopping
-        K2ASSERT(_lastSentControlInfo.IsReadyToIssueTS == false, "workers should not be in issuing TS state!");
+        K2ASSERT(log::tsoserver, _lastSentControlInfo.IsReadyToIssueTS == false, "workers should not be in issuing TS state!");
         return seastar::make_ready_future<>();
     }
 
@@ -311,7 +311,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
     if (_prevReservedTimeShreshold > curTimeTSECount)
     {
         // we should not yet enable workers
-        K2ASSERT(_lastSentControlInfo.IsReadyToIssueTS == false, "workers should not be in issuing TS state!");
+        K2ASSERT(log::tsoserver, _lastSentControlInfo.IsReadyToIssueTS == false, "workers should not be in issuing TS state!");
 
         // set no longer master.
         _isMasterInstance = false;
@@ -376,9 +376,9 @@ void TSOService::TSOController::Suicide()
 {
     // suicide when and only when we are master and find we lost lease
     auto curTime = TimeAuthorityNow();
-    K2ASSERT(_isMasterInstance && curTime > _myLease, "Suicide when not lost lease or not master?");
+    K2ASSERT(log::tsoserver, _isMasterInstance && curTime > _myLease, "Suicide when not lost lease or not master?");
 
-    K2ASSERT(false, "Suiciding");
+    K2ASSERT(log::tsoserver, false, "Suiciding");
     std::terminate();
 }
 
@@ -412,11 +412,11 @@ seastar::future<> TSOService::TSOController::DoTimeSync()
 
             auto& [deltaToSteadyClock, uncertaintyWindowSize] = tt;
 
-            K2ASSERT(uncertaintyWindowSize < 3000, "trueTime windows size should be less than 3us.");
+            K2ASSERT(log::tsoserver, uncertaintyWindowSize < 3000, "trueTime windows size should be less than 3us.");
 
             if (_diffTALocalInNanosec == 0)
             {
-                K2INFO("First TimeSyncd - deltaToSteadyClock value:" << deltaToSteadyClock << " uncertaintyWindowSize:" << uncertaintyWindowSize);
+                K2LOG_I(log::tsoserver, "First TimeSyncd - deltaToSteadyClock value: {}, uncertaintyWindowSize: {}", deltaToSteadyClock, uncertaintyWindowSize);
             }
 
             if (!_isMasterInstance)
@@ -424,9 +424,9 @@ seastar::future<> TSOService::TSOController::DoTimeSync()
                 _diffTALocalInNanosec = deltaToSteadyClock;
                 // as localNow is always in TrueTime window, these values will be kept as initialized
                 // The batch uncertainty window size is _defaultTBWindowSize, assuming _defaultTBWindowSize > uncertaintyWindowSize
-                _lastSentControlInfo.TBEAdjustment  = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;     
+                _lastSentControlInfo.TBEAdjustment  = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
                 _lastSentControlInfo.TsDelta        = _defaultTBWindowSize().count();    // batch window size is also default _defaultTBWindowSize
-                _controlInfoToSend.TBEAdjustment    = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;     
+                _controlInfoToSend.TBEAdjustment    = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
                 _controlInfoToSend.TsDelta          = _defaultTBWindowSize().count();
             }
             else // master case
@@ -438,7 +438,7 @@ seastar::future<> TSOService::TSOController::DoTimeSync()
                     if (_diffTALocalInNanosec != 0)
                     {
                         // TODO adjust TBEAdjustment with smearing as well, at the rate less than 1- (TsDelta/MTL) instad of direct one time change.
-                        K2WARN("Local steady_clock drift away from Time Authority! Smearing adjustment in progress. old diff value:" << _diffTALocalInNanosec << "new diff value:" << deltaToSteadyClock);
+                        K2LOG_W(log::tsoserver, "Local steady_clock drift away from Time Authority! Smearing adjustment in progress. old diff value: {}, new diff value: {}", _diffTALocalInNanosec, deltaToSteadyClock);
                     }
                     _diffTALocalInNanosec = deltaToSteadyClock;
                     // The batch uncertainty window size is _defaultTBWindowSize, assuming _defaultTBWindowSize > uncertaintyWindowSize
@@ -457,13 +457,13 @@ seastar::future<std::tuple<uint64_t, uint64_t>> TSOService::TSOController::Check
     uint64_t newDiffTALocalInNanosec = sys_now_nsec_count() - now_nsec_count();
 
     // there is lots of noise for newDiffTALocalInNanosec, fake removing the noise
-    if (_diffTALocalInNanosec!= 0) 
+    if (_diffTALocalInNanosec!= 0)
     {
         /*
         uint64_t driftDelta =  std::abs(_diffTALocalInNanosec, newDiffTALocalInNanosec);
         if (driftDelta > 10 * 1000) // warn if diff drift more than 10 microsecond
         {
-            K2WARN("diff between sys time and steady time changed from "<<_diffTALocalInNanosec <<" to " << newDiffTALocalInNanosec << " ignored !");
+            K2LOG_W(log::tsoserver, "diff between sys time and steady time changed from "<<_diffTALocalInNanosec <<" to " << newDiffTALocalInNanosec << " ignored !");
         }*/
         // always ignore the diff.
         newDiffTALocalInNanosec = _diffTALocalInNanosec;

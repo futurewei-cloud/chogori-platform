@@ -33,6 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "RPCDispatcher.h"  // for RPC
 #include "RPCTypes.h"
 #include "RRDMARPCProtocol.h"
+#include "Log.h"
 
 namespace k2 {
 class Discovery {

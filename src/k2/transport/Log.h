@@ -24,8 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/common/Log.h>
 
-namespace k2 {
-namespace tx {
-extern thread_local k2::logging::Logger log;
-}
+namespace k2::log {
+inline thread_local k2::logging::Logger tx("k2::transport");
 }

@@ -27,15 +27,16 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/prometheus.hh>
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/net/socket_defs.hh>
+#include "Log.h"
 
 namespace k2 {
 
 Prometheus::Prometheus() {
-    K2DEBUG("Prometheus ctor");
+    K2LOG_D(log::tx, "Prometheus ctor");
 }
 seastar::future<>
 Prometheus::start(uint16_t port, const char* helpMessage, const char* prefix) {
-    K2INFO("starting prometheus on port: " << port << ", msg=" << helpMessage <<", prefix=" << prefix);
+    K2LOG_I(log::tx, "starting prometheus on port={}, msg={}, prefix={}", port, helpMessage, prefix);
     seastar::prometheus::config pctx;
     pctx.metric_help=helpMessage;
     pctx.prefix=prefix;
@@ -48,7 +49,7 @@ Prometheus::start(uint16_t port, const char* helpMessage, const char* prefix) {
 }
 
 seastar::future<> Prometheus::stop() {
-    K2INFO("Stopping prometheus");
+    K2LOG_I(log::tx, "Stopping prometheus");
     return  _prometheusServer.stop();
 }
 
@@ -59,9 +60,9 @@ ExponentialHistogram::ExponentialHistogram(uint64_t start, uint64_t end, double 
     // rate^K > end/start -->
     // K > logbase(val=end/start, base=rate) -->
     // K > ln(end/start)/ln(rate)
-    assert(start >= 1);
+    K2ASSERT(log::tx, start >= 1, "invalid start");
     uint64_t numbuckets = uint64_t(std::log(double(end) / start) / _lograte) + 1;
-    assert(numbuckets <= MAX_NUM_BUCKETS);
+    K2ASSERT(log::tx, numbuckets <= MAX_NUM_BUCKETS, "invalid number of buckets");
     _histogram.buckets.resize(numbuckets);
     // we have to assign an upper bound for each bucket.
     for (size_t i = 0; i < _histogram.buckets.size(); ++i) {
@@ -83,7 +84,7 @@ seastar::metrics::histogram& ExponentialHistogram::getHistogram() {
 }
 
 void ExponentialHistogram::add(double sample) {
-    assert(sample >= 0);
+    K2ASSERT(log::tx, sample >= 0, "invalid sample");
     uint64_t bucket = 0;
     if (sample > 1) {
         bucket = std::min(uint64_t(std::log(sample) / _lograte), _histogram.buckets.size() - 1);

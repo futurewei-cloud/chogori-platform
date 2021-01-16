@@ -28,7 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/Collection.h>
 #include <k2/dto/FieldTypes.h>
 #include <k2/dto/ControlPlaneOracle.h>
-
+#include "Log.h"
 namespace k2 {
 
 class K2TxnHandle;

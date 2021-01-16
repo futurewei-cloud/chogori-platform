@@ -32,41 +32,42 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 
 #include "tpcc_rand.h"
-
-static const k2::String tpccCollectionName = "TPCC";
+#include "Log.h"
+using namespace k2;
+static const String tpccCollectionName = "TPCC";
 
 #define CHECK_READ_STATUS(read_result) \
     do { \
         if (!((read_result).status.is2xxOK())) { \
-            K2DEBUG("TPC-C failed to read rows: " << (read_result).status); \
-            return make_exception_future(std::runtime_error(k2::String("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
+            K2LOG_D(log::tpcc, "TPC-C failed to read rows: {}", (read_result).status); \
+            return make_exception_future(std::runtime_error(String("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
         } \
     } \
     while (0) \
 
 template<typename ValueType>
-seastar::future<k2::WriteResult> writeRow(ValueType& row, k2::K2TxnHandle& txn)
+seastar::future<WriteResult> writeRow(ValueType& row, K2TxnHandle& txn)
 {
-    return txn.write<ValueType>(row).then([] (k2::WriteResult&& result) {
+    return txn.write<ValueType>(row).then([] (WriteResult&& result) {
         if (!result.status.is2xxOK()) {
-            K2DEBUG("writeRow failed: " << result.status);
-            return seastar::make_exception_future<k2::WriteResult>(std::runtime_error("writeRow failed!"));
+            K2LOG_D(log::tpcc, "writeRow failed: {}", result.status);
+            return seastar::make_exception_future<WriteResult>(std::runtime_error("writeRow failed!"));
         }
 
-        return seastar::make_ready_future<k2::WriteResult>(std::move(result));
+        return seastar::make_ready_future<WriteResult>(std::move(result));
     });
 }
 
 template<typename ValueType, typename FieldType>
-seastar::future<k2::PartialUpdateResult>
-partialUpdateRow(ValueType& row, FieldType fieldsToUpdate, k2::K2TxnHandle& txn) {
-    return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (k2::PartialUpdateResult&& result) {
+seastar::future<PartialUpdateResult>
+partialUpdateRow(ValueType& row, FieldType fieldsToUpdate, K2TxnHandle& txn) {
+    return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (PartialUpdateResult&& result) {
         if (!result.status.is2xxOK()) {
-            K2DEBUG("partialUpdateRow failed: " << result.status);
-            return seastar::make_exception_future<k2::PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
+            K2LOG_D(log::tpcc, "partialUpdateRow failed: {}", result.status);
+            return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
         }
 
-        return seastar::make_ready_future<k2::PartialUpdateResult>(std::move(result));
+        return seastar::make_ready_future<PartialUpdateResult>(std::move(result));
     });
 }
 
@@ -80,11 +81,11 @@ struct Address {
         Zip = random.RandomZipString();
     }
 
-    std::optional<k2::String> Street_1;
-    std::optional<k2::String> Street_2;
-    std::optional<k2::String> City;
-    std::optional<k2::String> State;
-    std::optional<k2::String> Zip;
+    std::optional<String> Street_1;
+    std::optional<String> Street_2;
+    std::optional<String> City;
+    std::optional<String> State;
+    std::optional<String> Zip;
 
     SKV_RECORD_FIELDS(Street_1, Street_2, City, State, Zip);
 };
@@ -96,19 +97,19 @@ uint64_t getDate()
 
 class Warehouse {
 public:
-    static inline k2::dto::Schema warehouse_schema {
+    static inline dto::Schema warehouse_schema {
         .name = "warehouse",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
-                {k2::dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
-                {k2::dto::FieldType::STRING, "Name", false, false},
-                {k2::dto::FieldType::STRING, "Street1", false, false},
-                {k2::dto::FieldType::STRING, "Street2", false, false},
-                {k2::dto::FieldType::STRING, "City", false, false},
-                {k2::dto::FieldType::STRING, "State", false, false},
-                {k2::dto::FieldType::STRING, "Zip", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
+                {dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
+                {dto::FieldType::STRING, "Name", false, false},
+                {dto::FieldType::STRING, "Street1", false, false},
+                {dto::FieldType::STRING, "Street2", false, false},
+                {dto::FieldType::STRING, "City", false, false},
+                {dto::FieldType::STRING, "State", false, false},
+                {dto::FieldType::STRING, "Zip", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> {}
     };
@@ -129,36 +130,36 @@ public:
     std::optional<int16_t> WarehouseID;
     std::optional<std::decimal::decimal64> Tax;
     std::optional<std::decimal::decimal64> YTD;
-    std::optional<k2::String> Name;
+    std::optional<String> Name;
     Address address;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, Tax, YTD, Name, address);
 
 private:
-    k2::ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
-    k2::ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
+    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 };
 
 class District {
 public:
-    static inline k2::dto::Schema district_schema {
+    static inline dto::Schema district_schema {
         .name = "district",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::INT16T, "DID", false, false},
-                {k2::dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
-                {k2::dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
-                {k2::dto::FieldType::INT64T, "NextOID", false, false},
-                {k2::dto::FieldType::STRING, "Name", false, false},
-                {k2::dto::FieldType::STRING, "Street1", false, false},
-                {k2::dto::FieldType::STRING, "Street2", false, false},
-                {k2::dto::FieldType::STRING, "City", false, false},
-                {k2::dto::FieldType::STRING, "State", false, false},
-                {k2::dto::FieldType::STRING, "Zip", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::INT16T, "DID", false, false},
+                {dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
+                {dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
+                {dto::FieldType::INT64T, "NextOID", false, false},
+                {dto::FieldType::STRING, "Name", false, false},
+                {dto::FieldType::STRING, "Street1", false, false},
+                {dto::FieldType::STRING, "Street2", false, false},
+                {dto::FieldType::STRING, "City", false, false},
+                {dto::FieldType::STRING, "State", false, false},
+                {dto::FieldType::STRING, "Zip", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1 }
     };
@@ -181,45 +182,45 @@ public:
     std::optional<std::decimal::decimal64> Tax;
     std::optional<std::decimal::decimal64> YTD;
     std::optional<int64_t> NextOrderID;
-    std::optional<k2::String> Name;
+    std::optional<String> Name;
     Address address;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
 
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, Tax, YTD, NextOrderID, Name, address);
 
 private:
-   k2::ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
+   ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 };
 
 class Customer {
 public:
-    static inline k2::dto::Schema customer_schema {
+    static inline dto::Schema customer_schema {
         .name = "customer",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::INT16T, "DID", false, false},
-                {k2::dto::FieldType::INT32T, "CID", false, false},
-                {k2::dto::FieldType::INT64T, "SinceDate", false, false},
-                {k2::dto::FieldType::DECIMAL64, "CreditLimit", false, false}, //Requires 12 digits of precision
-                {k2::dto::FieldType::DECIMAL64, "Discount", false, false}, //Requires 4 digits of precision
-                {k2::dto::FieldType::DECIMAL64, "Balance", false, false}, //Requires 12 digits of precision
-                {k2::dto::FieldType::DECIMAL64, "YTDPayment", false, false}, //Requires 12 digits of precision
-                {k2::dto::FieldType::INT32T, "PaymentCount", false, false}, // Requires max >= 9999
-                {k2::dto::FieldType::INT32T, "DeliveryCount", false, false}, // Requires max >= 9999
-                {k2::dto::FieldType::STRING, "FirstName", false, false},
-                {k2::dto::FieldType::STRING, "MiddleName", false, false},
-                {k2::dto::FieldType::STRING, "LastName", false, false},
-                {k2::dto::FieldType::STRING, "Phone", false, false},
-                {k2::dto::FieldType::STRING, "Credit", false, false},
-                {k2::dto::FieldType::STRING, "Info", false, false},
-                {k2::dto::FieldType::STRING, "Street1", false, false},
-                {k2::dto::FieldType::STRING, "Street2", false, false},
-                {k2::dto::FieldType::STRING, "City", false, false},
-                {k2::dto::FieldType::STRING, "State", false, false},
-                {k2::dto::FieldType::STRING, "Zip", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::INT16T, "DID", false, false},
+                {dto::FieldType::INT32T, "CID", false, false},
+                {dto::FieldType::INT64T, "SinceDate", false, false},
+                {dto::FieldType::DECIMAL64, "CreditLimit", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMAL64, "Discount", false, false}, //Requires 4 digits of precision
+                {dto::FieldType::DECIMAL64, "Balance", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMAL64, "YTDPayment", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::INT32T, "PaymentCount", false, false}, // Requires max >= 9999
+                {dto::FieldType::INT32T, "DeliveryCount", false, false}, // Requires max >= 9999
+                {dto::FieldType::STRING, "FirstName", false, false},
+                {dto::FieldType::STRING, "MiddleName", false, false},
+                {dto::FieldType::STRING, "LastName", false, false},
+                {dto::FieldType::STRING, "Phone", false, false},
+                {dto::FieldType::STRING, "Credit", false, false},
+                {dto::FieldType::STRING, "Info", false, false},
+                {dto::FieldType::STRING, "Street1", false, false},
+                {dto::FieldType::STRING, "Street2", false, false},
+                {dto::FieldType::STRING, "City", false, false},
+                {dto::FieldType::STRING, "State", false, false},
+                {dto::FieldType::STRING, "Zip", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
     };
@@ -265,16 +266,16 @@ public:
     std::optional<std::decimal::decimal64> YTDPayment;
     std::optional<int32_t> PaymentCount;
     std::optional<int32_t> DeliveryCount;
-    std::optional<k2::String> FirstName;
-    std::optional<k2::String> MiddleName;
-    std::optional<k2::String> LastName;
-    std::optional<k2::String> Phone;
-    std::optional<k2::String> Credit; // "GC" or "BC"
-    std::optional<k2::String> Info;
+    std::optional<String> FirstName;
+    std::optional<String> MiddleName;
+    std::optional<String> LastName;
+    std::optional<String> Phone;
+    std::optional<String> Credit; // "GC" or "BC"
+    std::optional<String> Info;
     Address address;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, CustomerID, SinceDate, CreditLimit, Discount, Balance,
         YTDPayment, PaymentCount, DeliveryCount, FirstName, MiddleName, LastName, Phone, Credit,
         Info, address);
@@ -282,18 +283,18 @@ public:
 
 class History {
 public:
-    static inline k2::dto::Schema history_schema {
+    static inline dto::Schema history_schema {
         .name = "history",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::INT64T, "Date", false, false},
-                {k2::dto::FieldType::INT32T, "CID", false, false},
-                {k2::dto::FieldType::INT16T, "CWID", false, false},
-                {k2::dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
-                {k2::dto::FieldType::INT16T, "CDID", false, false},
-                {k2::dto::FieldType::INT16T, "DID", false, false},
-                {k2::dto::FieldType::STRING, "Info", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::INT64T, "Date", false, false},
+                {dto::FieldType::INT32T, "CID", false, false},
+                {dto::FieldType::INT16T, "CWID", false, false},
+                {dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
+                {dto::FieldType::INT16T, "CDID", false, false},
+                {dto::FieldType::INT16T, "DID", false, false},
+                {dto::FieldType::STRING, "Info", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1 }
     };
@@ -309,7 +310,7 @@ public:
     }
 
     // For payment transaction
-    History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id, 
+    History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id,
                 std::decimal::decimal64 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
         Date = getDate();
         CustomerID = c_id;
@@ -335,28 +336,28 @@ public:
     std::optional<std::decimal::decimal64> Amount;
     std::optional<int16_t> CustomerDistrictID;
     std::optional<int16_t> DistrictID;
-    std::optional<k2::String> Info;
+    std::optional<String> Info;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, Date, CustomerID, CustomerWarehouseID, Amount, CustomerDistrictID,
         DistrictID, Info);
 };
 
 class Order {
 public:
-    static inline k2::dto::Schema order_schema {
+    static inline dto::Schema order_schema {
         .name = "order",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::INT16T, "DID", false, false},
-                {k2::dto::FieldType::INT64T, "OID", false, false},
-                {k2::dto::FieldType::INT16T, "LineCount", false, false},
-                {k2::dto::FieldType::INT64T, "EntryDate", false, false},
-                {k2::dto::FieldType::INT32T, "CID", false, false},
-                {k2::dto::FieldType::INT32T, "CarrierID", false, false},
-                {k2::dto::FieldType::INT16T, "AllLocal", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::INT16T, "DID", false, false},
+                {dto::FieldType::INT64T, "OID", false, false},
+                {dto::FieldType::INT16T, "LineCount", false, false},
+                {dto::FieldType::INT64T, "EntryDate", false, false},
+                {dto::FieldType::INT32T, "CID", false, false},
+                {dto::FieldType::INT32T, "CarrierID", false, false},
+                {dto::FieldType::INT16T, "AllLocal", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
     };
@@ -398,25 +399,25 @@ public:
     std::optional<int32_t> CarrierID;
     std::optional<int16_t> AllLocal; // boolean, 0 or 1
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineCount, EntryDate, CustomerID,
         CarrierID, AllLocal);
 
 private:
-    k2::ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
-    k2::ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
+    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 };
 
 class NewOrder {
 public:
-    static inline k2::dto::Schema neworder_schema {
+    static inline dto::Schema neworder_schema {
         .name = "neworder",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::INT16T, "DID", false, false},
-                {k2::dto::FieldType::INT64T, "OID", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::INT16T, "DID", false, false},
+                {dto::FieldType::INT64T, "OID", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2 }
     };
@@ -430,27 +431,27 @@ public:
     std::optional<int16_t> DistrictID;
     std::optional<int64_t> OrderID;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID);
 };
 
 class OrderLine {
 public:
-    static inline k2::dto::Schema orderline_schema {
+    static inline dto::Schema orderline_schema {
         .name = "orderline",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::INT16T, "DID", false, false},
-                {k2::dto::FieldType::INT64T, "OID", false, false},
-                {k2::dto::FieldType::INT32T, "LineNumber", false, false},
-                {k2::dto::FieldType::INT64T, "DeliveryDate", false, false},
-                {k2::dto::FieldType::INT32T, "ItemID", false, false},
-                {k2::dto::FieldType::INT16T, "SupplyWID", false, false},
-                {k2::dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
-                {k2::dto::FieldType::INT16T, "Quantity", false, false},
-                {k2::dto::FieldType::STRING, "DistInfo", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::INT16T, "DID", false, false},
+                {dto::FieldType::INT64T, "OID", false, false},
+                {dto::FieldType::INT32T, "LineNumber", false, false},
+                {dto::FieldType::INT64T, "DeliveryDate", false, false},
+                {dto::FieldType::INT32T, "ItemID", false, false},
+                {dto::FieldType::INT16T, "SupplyWID", false, false},
+                {dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
+                {dto::FieldType::INT16T, "Quantity", false, false},
+                {dto::FieldType::STRING, "DistInfo", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3 }
     };
@@ -505,10 +506,10 @@ public:
     std::optional<int16_t> SupplyWarehouseID;
     std::optional<std::decimal::decimal64> Amount;
     std::optional<int16_t> Quantity;
-    std::optional<k2::String> DistInfo;
+    std::optional<String> DistInfo;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, DistrictID, OrderID, OrderLineNumber, DeliveryDate, ItemID,
         SupplyWarehouseID, Amount, Quantity, DistInfo);
 };
@@ -516,15 +517,15 @@ public:
 class Item {
 public:
     static const int32_t InvalidID = 999999;
-    static inline k2::dto::Schema item_schema {
+    static inline dto::Schema item_schema {
         .name = "item",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT32T, "ID", false, false},
-                {k2::dto::FieldType::INT32T, "ImageID", false, false},
-                {k2::dto::FieldType::DECIMAL64, "Price", false, false}, // Requires 5 digits of precision
-                {k2::dto::FieldType::STRING, "Name", false, false},
-                {k2::dto::FieldType::STRING, "Info", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT32T, "ID", false, false},
+                {dto::FieldType::INT32T, "ImageID", false, false},
+                {dto::FieldType::DECIMAL64, "Price", false, false}, // Requires 5 digits of precision
+                {dto::FieldType::STRING, "Name", false, false},
+                {dto::FieldType::STRING, "Info", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> {}
     };
@@ -551,37 +552,37 @@ public:
     std::optional<int32_t> ItemID;
     std::optional<int32_t> ImageID;
     std::optional<std::decimal::decimal64> Price;
-    std::optional<k2::String> Name;
-    std::optional<k2::String> Info;
+    std::optional<String> Name;
+    std::optional<String> Info;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(ItemID, ImageID, Price, Name, Info);
 };
 
 class Stock {
 public:
-    static inline k2::dto::Schema stock_schema {
+    static inline dto::Schema stock_schema {
         .name = "stock",
         .version = 1,
-        .fields = std::vector<k2::dto::SchemaField> {
-                {k2::dto::FieldType::INT16T, "ID", false, false},
-                {k2::dto::FieldType::INT32T, "ItemID", false, false},
-                {k2::dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 8 digits of precision
-                {k2::dto::FieldType::INT16T, "OrderCount", false, false},
-                {k2::dto::FieldType::INT16T, "RemoteCount", false, false},
-                {k2::dto::FieldType::INT16T, "Quantity", false, false},
-                {k2::dto::FieldType::STRING, "Dist_01", false, false},
-                {k2::dto::FieldType::STRING, "Dist_02", false, false},
-                {k2::dto::FieldType::STRING, "Dist_03", false, false},
-                {k2::dto::FieldType::STRING, "Dist_04", false, false},
-                {k2::dto::FieldType::STRING, "Dist_05", false, false},
-                {k2::dto::FieldType::STRING, "Dist_06", false, false},
-                {k2::dto::FieldType::STRING, "Dist_07", false, false},
-                {k2::dto::FieldType::STRING, "Dist_08", false, false},
-                {k2::dto::FieldType::STRING, "Dist_09", false, false},
-                {k2::dto::FieldType::STRING, "Dist_10", false, false},
-                {k2::dto::FieldType::STRING, "Info", false, false}},
+        .fields = std::vector<dto::SchemaField> {
+                {dto::FieldType::INT16T, "ID", false, false},
+                {dto::FieldType::INT32T, "ItemID", false, false},
+                {dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 8 digits of precision
+                {dto::FieldType::INT16T, "OrderCount", false, false},
+                {dto::FieldType::INT16T, "RemoteCount", false, false},
+                {dto::FieldType::INT16T, "Quantity", false, false},
+                {dto::FieldType::STRING, "Dist_01", false, false},
+                {dto::FieldType::STRING, "Dist_02", false, false},
+                {dto::FieldType::STRING, "Dist_03", false, false},
+                {dto::FieldType::STRING, "Dist_04", false, false},
+                {dto::FieldType::STRING, "Dist_05", false, false},
+                {dto::FieldType::STRING, "Dist_06", false, false},
+                {dto::FieldType::STRING, "Dist_07", false, false},
+                {dto::FieldType::STRING, "Dist_08", false, false},
+                {dto::FieldType::STRING, "Dist_09", false, false},
+                {dto::FieldType::STRING, "Dist_10", false, false},
+                {dto::FieldType::STRING, "Info", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
         .rangeKeyFields = std::vector<uint32_t> { 1 }
     };
@@ -648,33 +649,33 @@ public:
     std::optional<int16_t> OrderCount;
     std::optional<int16_t> RemoteCount;
     std::optional<int16_t> Quantity;
-    std::optional<k2::String> Dist_01;
-    std::optional<k2::String> Dist_02;
-    std::optional<k2::String> Dist_03;
-    std::optional<k2::String> Dist_04;
-    std::optional<k2::String> Dist_05;
-    std::optional<k2::String> Dist_06;
-    std::optional<k2::String> Dist_07;
-    std::optional<k2::String> Dist_08;
-    std::optional<k2::String> Dist_09;
-    std::optional<k2::String> Dist_10;
-    std::optional<k2::String> Info;
+    std::optional<String> Dist_01;
+    std::optional<String> Dist_02;
+    std::optional<String> Dist_03;
+    std::optional<String> Dist_04;
+    std::optional<String> Dist_05;
+    std::optional<String> Dist_06;
+    std::optional<String> Dist_07;
+    std::optional<String> Dist_08;
+    std::optional<String> Dist_09;
+    std::optional<String> Dist_10;
+    std::optional<String> Info;
 
-    static inline thread_local std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = tpccCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
     SKV_RECORD_FIELDS(WarehouseID, ItemID, YTD, OrderCount, RemoteCount, Quantity, Dist_01, Dist_02,
         Dist_03, Dist_04, Dist_05, Dist_06, Dist_07, Dist_08, Dist_09, Dist_10, Info);
 };
 
 void setupSchemaPointers() {
-    Warehouse::schema = std::make_shared<k2::dto::Schema>(Warehouse::warehouse_schema);
-    District::schema = std::make_shared<k2::dto::Schema>(District::district_schema);
-    Customer::schema = std::make_shared<k2::dto::Schema>(Customer::customer_schema);
-    History::schema = std::make_shared<k2::dto::Schema>(History::history_schema);
-    Order::schema = std::make_shared<k2::dto::Schema>(Order::order_schema);
-    NewOrder::schema = std::make_shared<k2::dto::Schema>(NewOrder::neworder_schema);
-    OrderLine::schema = std::make_shared<k2::dto::Schema>(OrderLine::orderline_schema);
-    Item::schema = std::make_shared<k2::dto::Schema>(Item::item_schema);
-    Stock::schema = std::make_shared<k2::dto::Schema>(Stock::stock_schema);
+    Warehouse::schema = std::make_shared<dto::Schema>(Warehouse::warehouse_schema);
+    District::schema = std::make_shared<dto::Schema>(District::district_schema);
+    Customer::schema = std::make_shared<dto::Schema>(Customer::customer_schema);
+    History::schema = std::make_shared<dto::Schema>(History::history_schema);
+    Order::schema = std::make_shared<dto::Schema>(Order::order_schema);
+    NewOrder::schema = std::make_shared<dto::Schema>(NewOrder::neworder_schema);
+    OrderLine::schema = std::make_shared<dto::Schema>(OrderLine::orderline_schema);
+    Item::schema = std::make_shared<dto::Schema>(Item::item_schema);
+    Stock::schema = std::make_shared<dto::Schema>(Stock::stock_schema);
 }
 

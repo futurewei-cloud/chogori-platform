@@ -36,10 +36,7 @@ void Schema::setKeyFieldsByName(const std::vector<String>& keys, std::vector<uin
                 break;
             }
         }
-
-        if (!found) {
-            throw CPOClientException("Failed to find field by name");
-        }
+        K2ASSERT(log::dto, found, "failed to find field by name");
     }
 }
 
@@ -63,7 +60,7 @@ Status Schema::basicValidation() const {
     }
 
     if (partitionKeyFields.size() == 0) {
-        K2WARN("Bad CreateSchemaRequest: No partitionKeyFields defined");
+        K2LOG_W(log::dto, "Bad CreateSchemaRequest: No partitionKeyFields defined");
         return Statuses::S400_Bad_Request("No partitionKeyFields defined");
     }
 
@@ -77,12 +74,12 @@ Status Schema::basicValidation() const {
         }
 
         if (keyIndex >= fields.size()) {
-            K2WARN("Bad CreateSchemaRequest: partitionKeyField index out of bounds");
+            K2LOG_W(log::dto, "Bad CreateSchemaRequest: partitionKeyField index out of bounds");
             return Statuses::S400_Bad_Request("partitionKeyField index out of bounds");
         }
 
         if (keyIndex >= foundIndexes.size()) {
-            K2WARN("Bad CreateSchemaRequest: All key fields must precede all value fields");
+            K2LOG_W(log::dto, "Bad CreateSchemaRequest: All key fields must precede all value fields");
             return Statuses::S400_Bad_Request("All key fields must precede all value fields");
         }
         foundIndexes[keyIndex] = true;
@@ -97,12 +94,12 @@ Status Schema::basicValidation() const {
         }
 
         if (keyIndex >= fields.size()) {
-            K2WARN("Bad CreateSchemaRequest: rangeKeyField index out of bounds");
+            K2LOG_W(log::dto, "Bad CreateSchemaRequest: rangeKeyField index out of bounds");
             return Statuses::S400_Bad_Request("rangeKeyField index out of bounds");
         }
 
         if (keyIndex >= foundIndexes.size()) {
-            K2WARN("Bad CreateSchemaRequest: All key fields must precede all value fields");
+            K2LOG_W(log::dto, "Bad CreateSchemaRequest: All key fields must precede all value fields");
             return Statuses::S400_Bad_Request("All key fields must precede all value fields");
         }
         foundIndexes[keyIndex] = true;
@@ -111,7 +108,7 @@ Status Schema::basicValidation() const {
 
     for (uint32_t i = 0; i < maxIndex; ++i) {
         if (!foundIndexes[i]) {
-            K2WARN("Bad CreateSchemaRequest: All key fields must precede all value fields");
+            K2LOG_W(log::dto, "Bad CreateSchemaRequest: All key fields must precede all value fields");
             return Statuses::S400_Bad_Request("All key fields must precede all value fields");
         }
     }

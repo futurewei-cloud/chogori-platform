@@ -31,6 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Request.h"
 #include "TXEndpoint.h"
 #include "VirtualNetworkStack.h"
+#include "Log.h"
 
 namespace k2 {
 

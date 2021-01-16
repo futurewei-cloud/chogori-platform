@@ -29,6 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/shared_ptr.hh>
 #include "Config.h"
 #include "Persistence.h"
+#include "Log.h"
 
 namespace k2 {
 class K23SIPartitionModule;
@@ -110,7 +111,36 @@ struct TxnRecord {
     void unlinkHB(HBList& hblist);
     void unlinkRW(RWList& hblist);
     void unlinkBG(BGList& hblist);
-};  // class TR
+};  // class TxnRecord
+} // namespace k2
+
+template <>
+struct fmt::formatter<k2::TxnRecord::Action> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::TxnRecord::Action const& o, FormatContext& ctx) {
+        const char* straction = "bad action";
+        switch (o) {
+            case k2::TxnRecord::Action::Nil: straction= "nil"; break;
+            case k2::TxnRecord::Action::onCreate: straction= "on_create"; break;
+            case k2::TxnRecord::Action::onForceAbort: straction= "on_force_abort"; break;
+            case k2::TxnRecord::Action::onRetentionWindowExpire: straction= "on_retention_window_expire"; break;
+            case k2::TxnRecord::Action::onHeartbeat: straction= "on_heartbeat"; break;
+            case k2::TxnRecord::Action::onHeartbeatExpire: straction= "on_heartbeat_expire"; break;
+            case k2::TxnRecord::Action::onEndCommit: straction= "on_end_commit"; break;
+            case k2::TxnRecord::Action::onEndAbort: straction= "on_end_abort"; break;
+            case k2::TxnRecord::Action::onFinalizeComplete: straction= "on_finalize_complete"; break;
+            default: break;
+        }
+        return fmt::format_to(ctx.out(), "{}", straction);
+    }
+};
+
+namespace k2 {
 
 // take care of
 // - tr state transitions

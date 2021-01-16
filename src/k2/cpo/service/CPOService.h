@@ -34,7 +34,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/Status.h>
 
 namespace k2 {
-
+namespace log {
+inline thread_local k2::logging::Logger cposvr("k2::cpo_service");
+}
 class CPOService {
 private:
     typedef std::function<seastar::distributed<CPOService>&()> DistGetter;
@@ -76,7 +78,7 @@ private:
 
     seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
     handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request);
-    
+
     seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
     handleCreateSchema(dto::CreateSchemaRequest&& request);
 

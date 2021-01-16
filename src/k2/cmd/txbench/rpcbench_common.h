@@ -25,10 +25,10 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/TXEndpoint.h>
 
 #pragma once
-
+using namespace k2;
 
 // The message verbs supported by this service
-enum MsgVerbs: k2::Verb {
+enum MsgVerbs: Verb {
     REQUEST_COPY = 10, // issue request with a copy
     REQUEST = 11, // incoming requests
     START_SESSION = 12 // used to start a new test session
@@ -39,16 +39,16 @@ struct BenchSession {
     BenchSession(BenchSession&&)=default;
     BenchSession& operator=(BenchSession&&)=default;
     BenchSession(uint64_t sessionId, size_t dataSize): sessionId(sessionId) {
-        dataCopy = k2::String('.', dataSize);
+        dataCopy = String('.', dataSize);
         dataShare.write(dataCopy);
     }
 
     uint64_t sessionId = 0;
     uint64_t totalSize=0;
     uint64_t totalCount=0;
-    k2::Payload dataShare{[]{ return k2::Binary(1446);}};
-    k2::String dataCopy;
-    std::vector<std::unique_ptr<k2::TXEndpoint>> endpoints;
+    Payload dataShare{[]{ return Binary(1446);}};
+    String dataCopy;
+    std::vector<std::unique_ptr<TXEndpoint>> endpoints;
 };
 
 struct TXBenchStartSession {
@@ -64,13 +64,13 @@ struct TXBenchStartSessionAck {
 template <typename ValueType>
 struct TXBenchRequest {
     uint64_t sessionId=0;
-    k2::SerializeAsPayload<ValueType> data;
+    SerializeAsPayload<ValueType> data;
     K2_PAYLOAD_FIELDS(sessionId, data);
 };
 
 template <typename ValueType>
 struct TXBenchResponse {
     uint64_t sessionId=0;
-    k2::SerializeAsPayload<ValueType> data;
+    SerializeAsPayload<ValueType> data;
     K2_PAYLOAD_FIELDS(sessionId, data);
 };

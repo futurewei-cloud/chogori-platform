@@ -35,34 +35,33 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Log.h>
 
 namespace k2 {
-const String AutoRRDMARPCProtocol::proto("auto-rrdma+k2rpc");
 
 AutoRRDMARPCProtocol::AutoRRDMARPCProtocol(VirtualNetworkStack::Dist_t& vnet, RPCProtocolFactory::Dist_t& rrdmaProto):
     IRPCProtocol(vnet, proto),
     _rrdmaProto(rrdmaProto.local().instance()) {
-    K2LOG_D(k2::tx::log, "ctor");
+    K2LOG_D(log::tx, "ctor");
 }
 
 AutoRRDMARPCProtocol::~AutoRRDMARPCProtocol() {
-    K2LOG_D(k2::tx::log, "dtor");
+    K2LOG_D(log::tx, "dtor");
 }
 
 void AutoRRDMARPCProtocol::start() {
-    K2LOG_D(k2::tx::log, "start");
+    K2LOG_D(log::tx, "start");
     _stopped = false;
 }
 
 RPCProtocolFactory::BuilderFunc_t AutoRRDMARPCProtocol::builder(VirtualNetworkStack::Dist_t& vnet, RPCProtocolFactory::Dist_t& rrdmaProto) {
-    K2LOG_D(k2::tx::log, "builder creating");
+    K2LOG_D(log::tx, "builder creating");
     return [&vnet, &rrdmaProto]() mutable -> seastar::shared_ptr<IRPCProtocol> {
-        K2LOG_D(k2::tx::log, "builder running");
+        K2LOG_D(log::tx, "builder running");
         return seastar::static_pointer_cast<IRPCProtocol>(
             seastar::make_shared<AutoRRDMARPCProtocol>(vnet, rrdmaProto));
     };
 }
 
 seastar::future<> AutoRRDMARPCProtocol::stop() {
-    K2LOG_D(k2::tx::log, "stop");
+    K2LOG_D(log::tx, "stop");
     if (!_stopped) {
         _stopped = true;
         return std::move(_pendingDiscovery);
@@ -72,12 +71,12 @@ seastar::future<> AutoRRDMARPCProtocol::stop() {
 
 std::unique_ptr<TXEndpoint> AutoRRDMARPCProtocol::getTXEndpoint(String url) {
     if (_stopped) {
-        K2LOG_W(k2::tx::log, "Auto RRDMA proto is stopped - cannot vend endpoint");
+        K2LOG_W(log::tx, "Auto RRDMA proto is stopped - cannot vend endpoint");
         return nullptr;
     }
     auto ep = TXEndpoint::fromURL(url, _vnet.local().getRRDMAAllocator());
     if (!ep || ep->getProtocol() != proto) {
-        K2LOG_W(k2::tx::log, "Cannot construct non-`{}` endpoint", proto);
+        K2LOG_W(log::tx, "Cannot construct non-`{}` endpoint", proto);
         return nullptr;
     }
     return ep;
@@ -89,19 +88,19 @@ seastar::lw_shared_ptr<TXEndpoint> AutoRRDMARPCProtocol::getServerEndpoint() {
 
 void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& autoEndpoint, MessageMetadata metadata) {
     if (_stopped) {
-        K2LOG_W(k2::tx::log, "Dropping message since we're stopped: verb={}, url={}", int(verb), autoEndpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), autoEndpoint.getURL());
         return;
     }
     auto& [ep, pending] = _endpoints[autoEndpoint]; // create or get the existing
     if (!ep || pending.size() > 0) {
         // queue up against pending request
-        K2LOG_D(k2::tx::log, "queueing up against new ep: {}", autoEndpoint.getURL());
+        K2LOG_D(log::tx, "queueing up against new ep: {}", autoEndpoint.getURL());
         pending.push_back({verb, std::move(payload), std::move(metadata)});
     }
     if (!ep) {
         // we haven't resolved this yet. We should start a resolution only for the first-ever request
         if (pending.size() > 1) {
-            K2LOG_D(k2::tx::log, "resolution request already in progress. Pending size={}", pending.size());
+            K2LOG_D(log::tx, "resolution request already in progress. Pending size={}", pending.size());
             return;
         }
         auto tcpEp = _getTCPEndpoint(autoEndpoint.getURL());
@@ -111,7 +110,7 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
             .then([this, &ep, &pending] (auto&& responseTup) mutable {
                 auto& [status, response] = responseTup;
                 if (!status.is2xxOK()) {
-                    K2LOG_W(k2::tx::log, "received bad status: {}", status);
+                    K2LOG_W(log::tx, "received bad status: {}", status);
                     return seastar::make_exception_future(std::runtime_error("received bad status"));
                 }
                 // set the unique_ptr endpoint to the rdma endpoint from the list we just got
@@ -122,7 +121,7 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
                     }
                 }
                 if (!ep) {
-                    K2LOG_W(k2::tx::log, "Unable to find RRDMA endpoint");
+                    K2LOG_W(log::tx, "Unable to find RRDMA endpoint");
                     return seastar::make_exception_future(std::runtime_error("unable to find an RDMA endpoint in response"));
                 }
                 else if (!_stopped) {
@@ -135,13 +134,13 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
                 return seastar::make_ready_future();
             })
             .handle_exception([this, autoEndpoint](auto exc) {
-                K2LOG_W_EXC(k2::tx::log, exc, "unable to find an RRDMA endpoint");
+                K2LOG_W_EXC(log::tx, exc, "unable to find an RRDMA endpoint");
                 _endpoints.erase(autoEndpoint);
             });
         _pendingDiscovery = seastar::when_all_succeed(std::move(_pendingDiscovery), std::move(newDiscovery)).discard_result();
     }
     else {
-        K2LOG_D(k2::tx::log, "Sending via RRDMA ep: {}", ep->getURL());
+        K2LOG_D(log::tx, "Sending via RRDMA ep: {}", ep->getURL());
         _rrdmaProto->send(verb, std::move(payload), *ep, std::move(metadata));
     }
 }

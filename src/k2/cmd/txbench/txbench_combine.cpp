@@ -30,27 +30,29 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstdlib>
 #include <ctime>
 #include <unordered_map>
+#include "Log.h"
+using namespace k2;
 
 class Service : public seastar::weakly_referencable<Service> {
 public:  // application lifespan
     Service():
         _stopped(true) {
-        K2INFO("ctor");
+        K2LOG_I(log::txbench, "ctor");
     };
 
     virtual ~Service() {
-        K2INFO("dtor");
+        K2LOG_I(log::txbench, "dtor");
     }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::txbench, "stop");
         _stopped = true;
         // unregistar all observers
-        k2::RPC().registerMessageObserver(GET_DATA_URL, nullptr);
-        k2::RPC().registerMessageObserver(REQUEST, nullptr);
-        k2::RPC().registerMessageObserver(START_SESSION, nullptr);
-        k2::RPC().registerLowTransportMemoryObserver(nullptr);
+        RPC().registerMessageObserver(GET_DATA_URL, nullptr);
+        RPC().registerMessageObserver(REQUEST, nullptr);
+        RPC().registerMessageObserver(START_SESSION, nullptr);
+        RPC().registerLowTransportMemoryObserver(nullptr);
         return seastar::make_ready_future<>();
     }
 
@@ -60,30 +62,26 @@ public:  // application lifespan
         _registerDATA_URL();
         _registerSTART_SESSION();
         _registerREQUEST();
-
-        k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
-            K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
-        });
         return seastar::make_ready_future<>();
     }
 
 private:
     void _registerDATA_URL() {
-        K2INFO("TCP endpoint is: " << k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
-        k2::RPC().registerMessageObserver(GET_DATA_URL,
-            [this](k2::Request&& request) mutable {
+        K2LOG_I(log::txbench, "TCP endpoint is: {}",RPC().getServerEndpoint(TCPRPCProtocol::proto)->getURL());
+        RPC().registerMessageObserver(GET_DATA_URL,
+            [this](Request&& request) mutable {
                 auto response = request.endpoint.newPayload();
                 auto ep = (seastar::engine()._rdma_stack?
-                           k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
-                           k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
-                K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
+                           RPC().getServerEndpoint(RRDMARPCProtocol::proto):
+                           RPC().getServerEndpoint(TCPRPCProtocol::proto));
+                K2LOG_I(log::txbench, "GET_DATA_URL responding with data endpoint: {}", *ep);
                 response->write(ep->getURL());
-                return k2::RPC().sendReply(std::move(response), request);
+                return RPC().sendReply(std::move(response), request);
             });
     }
 
     void _registerSTART_SESSION() {
-        k2::RPC().registerMessageObserver(START_SESSION, [this](k2::Request&& request) mutable {
+        RPC().registerMessageObserver(START_SESSION, [this](Request&& request) mutable {
             auto sid = uint64_t(std::rand());
             if (request.payload) {
                 SessionConfig config{};
@@ -91,19 +89,19 @@ private:
 
                 BenchSession session(request.endpoint, sid, config);
                 auto result = _sessions.try_emplace(sid, std::move(session));
-                assert(result.second);
-                K2INFO("Starting new session: " << sid);
+                K2ASSERT(log::txbench, result.second, "session already exists");
+                K2LOG_I(log::txbench, "Starting new session: {}", sid);
                 auto resp = request.endpoint.newPayload();
                 SessionAck ack{.sessionID=sid};
                 resp->write((void*)&ack, sizeof(ack));
-                return k2::RPC().sendReply(std::move(resp), request);
+                return RPC().sendReply(std::move(resp), request);
             }
             return seastar::make_ready_future();
         });
     }
 
     void _registerREQUEST() {
-        k2::RPC().registerMessageObserver(REQUEST, [this](k2::Request&& request) mutable {
+        RPC().registerMessageObserver(REQUEST, [this](Request&& request) mutable {
             if (request.payload) {
                 uint64_t sid = 0;
                 uint64_t reqId = 0;
@@ -132,12 +130,12 @@ private:
                             }
                             _data.clear();
                         }
-                        return k2::RPC().send(ACK, std::move(response), request.endpoint).
+                        return RPC().send(ACK, std::move(response), request.endpoint).
                         then([&] (){
                             session.unackedSize = 0;
                             session.unackedCount = 0;
                         });
-                        
+
                     }
                 }
             }
@@ -149,14 +147,14 @@ private:
     // flag we need to tell if we've been stopped
     bool _stopped;
     std::unordered_map<uint64_t, BenchSession> _sessions;
-    std::vector<k2::Binary> _data;
+    std::vector<Binary> _data;
 }; // class Service
 
 class Client {
 public:  // application lifespan
     Client():
-        _tcpRemotes(k2::Config()["tcp_remotes"].as<std::vector<k2::String>>()),
-        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1ms),
+        _tcpRemotes(Config()["tcp_remotes"].as<std::vector<String>>()),
+        _testDuration(Config()["test_duration_s"].as<uint32_t>()*1ms),
         _data(0),
         _stopped(true),
         _haveSendPromise(false),
@@ -168,30 +166,30 @@ public:  // application lifespan
             }
         })),
         _lastAckedTotal(0) {
-        _session.config = SessionConfig{.echoMode=k2::Config()["echo_mode"].as<bool>(),
-                                        .responseSize=k2::Config()["request_size"].as<uint32_t>(),
-                                        .pipelineSize=k2::Config()["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
-                                        .pipelineCount=k2::Config()["pipeline_depth_count"].as<uint32_t>(),
-                                        .ackCount=k2::Config()["ack_count"].as<uint32_t>()};
+        _session.config = SessionConfig{.echoMode=Config()["echo_mode"].as<bool>(),
+                                        .responseSize=Config()["request_size"].as<uint32_t>(),
+                                        .pipelineSize=Config()["pipeline_depth_mbytes"].as<uint32_t>() * 1024 * 1024,
+                                        .pipelineCount=Config()["pipeline_depth_count"].as<uint32_t>(),
+                                        .ackCount=Config()["ack_count"].as<uint32_t>()};
         _data = (char*)malloc(_session.config.responseSize);
-        K2INFO("ctor");
+        K2LOG_I(log::txbench, "ctor");
     };
 
     ~Client() {
-        K2INFO("dtor");
+        K2LOG_I(log::txbench, "dtor");
         free(_data);
     }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::txbench, "stop");
         if (_stopped) {
             return seastar::make_ready_future<>();
         }
         _stopped = true;
         // unregister all observers
-        k2::RPC().registerMessageObserver(ACK, nullptr);
-        k2::RPC().registerLowTransportMemoryObserver(nullptr);
+        RPC().registerMessageObserver(ACK, nullptr);
+        RPC().registerLowTransportMemoryObserver(nullptr);
         if (_haveSendPromise) {
             _sendProm.set_value();
         }
@@ -219,46 +217,43 @@ public:  // application lifespan
 
     seastar::future<> start() {
         _stopped = false;
-        k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
-            K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
-        });
         return _discovery().then([this](){
             if (_stopped) return seastar::make_ready_future<>();
-            K2INFO("Setup complete. Starting session...");
+            K2LOG_I(log::txbench, "Setup complete. Starting session...");
             return _startSession();
         }).
         then([this]() {
             if (_stopped) return seastar::make_ready_future<>();
-            K2INFO("Setup complete. Starting benchmark in session: " << _session.sessionID);
+            K2LOG_I(log::txbench, "Setup complete. Starting benchmark in session: {}", _session.sessionID);
             return _benchmark();
         }).
         handle_exception([this](auto exc) {
-            K2ERROR_EXC("Unable to execute benchmark", exc);
+            K2LOG_W_EXC(log::txbench, exc, "Unable to execute benchmark");
             _stopped = true;
             return seastar::make_ready_future<>();
         }).finally([this]() {
-            K2INFO("Done with benchmark");
-            auto totalsecs = ((double)k2::msec(_actualTestDuration).count())/1000.0;
+            K2LOG_I(log::txbench, "Done with benchmark");
+            auto totalsecs = ((double)msec(_actualTestDuration).count())/1000.0;
             auto szpsec = (((double)_session.totalSize - _session.unackedSize )/(1024*1024*1024))/totalsecs;
             auto cntpsec = ((double)_session.totalCount - _session.unackedCount)/totalsecs;
-            K2INFO("sessionID=" << _session.sessionID);
-            K2INFO("remote=" << _session.client.getURL());
-            K2INFO("totalSize=" << _session.totalSize << " (" << szpsec*8 << " GBit per sec)");
-            K2INFO("totalCount=" << _session.totalCount << "(" << cntpsec << " per sec)" );
-            K2INFO("unackedSize=" << _session.unackedSize);
-            K2INFO("unackedCount=" << _session.unackedCount);
-            K2INFO("testDuration=" << k2::msec(_actualTestDuration).count()  << "ms");
+            K2LOG_I(log::txbench, "sessionID={}", _session.sessionID);
+            K2LOG_I(log::txbench, "remote={}", _session.client.getURL());
+            K2LOG_I(log::txbench, "totalSize={} ({} GBit per sec)", _session.totalSize, szpsec*8);
+            K2LOG_I(log::txbench, "totalCount={}, ({} per sec)", _session.totalCount, cntpsec);
+            K2LOG_I(log::txbench, "unackedSize={}", _session.unackedSize);
+            K2LOG_I(log::txbench, "unackedCount={}", _session.unackedCount);
+            K2LOG_I(log::txbench, "testDuration={}ms", msec(_actualTestDuration).count());
             uint64_t vector_size = _duration_counts.size();
             if (vector_size > 0){
-                K2INFO("Latency 50% =" << _duration_counts[(int)(vector_size/100.0*50)]  << "ns");
-                K2INFO("Latency 90% =" <<  _duration_counts[(int)(vector_size/100.0*90)] << "ns");
-                K2INFO("Latency 99% ==" <<  _duration_counts[(int)(vector_size/100.0*99)] << "ns");
-                K2INFO("Latency 99.9% ==" << _duration_counts[(int)(vector_size/100.0*99.9)]  << "ns");
-                K2INFO("Latency 99.99% ==" << _duration_counts[(int)(vector_size/100.0*99.99)]  << "ns");
+                K2LOG_I(log::txbench, "Latency 50% ={}ns", _duration_counts[(int)(vector_size/100.0*50)] );
+                K2LOG_I(log::txbench, "Latency 90% ={}ns",  _duration_counts[(int)(vector_size/100.0*90)]);
+                K2LOG_I(log::txbench, "Latency 99% =={}ns",  _duration_counts[(int)(vector_size/100.0*99)]);
+                K2LOG_I(log::txbench, "Latency 99.9% =={}ns", _duration_counts[(int)(vector_size/100.0*99.9)] );
+                K2LOG_I(log::txbench, "Latency 99.99% =={}ns", _duration_counts[(int)(vector_size/100.0*99.99)] );
 
-                K2INFO("Latency Size: " << vector_size);
+                K2LOG_I(log::txbench, "Latency Size: {}", vector_size);
                 for (uint64_t i=10;i>=1;--i){
-                    K2INFO("Latency " << i << " ==" << _duration_counts[vector_size-i]  << "ns");
+                    K2LOG_I(log::txbench, "Latency {}=={}ns",i, _duration_counts[vector_size-i]);
                 }
             }
 
@@ -270,36 +265,32 @@ public:  // application lifespan
 private:
     seastar::future<> _discovery() {
         auto myID = seastar::engine().cpu_id();
-        K2INFO("performing service discovery on core " << myID);
+        K2LOG_I(log::txbench, "performing service discovery on core {}", myID);
         if (myID >= _tcpRemotes.size()) {
-            K2WARN("No TCP remote endpoint defined for core " << myID);
+            K2LOG_W(log::txbench, "No TCP remote endpoint defined for core {}", myID);
             return seastar::make_exception_future<>(std::runtime_error("No remote endpoint defined"));
         }
-        auto myRemote = k2::RPC().getTXEndpoint(_tcpRemotes[myID]);
-        auto retryStrategy = seastar::make_lw_shared<k2::ExponentialBackoffStrategy>();
+        auto myRemote = RPC().getTXEndpoint(_tcpRemotes[myID]);
+        auto retryStrategy = seastar::make_lw_shared<ExponentialBackoffStrategy>();
         retryStrategy->withRetries(10).withStartTimeout(1s).withRate(5);
-        return retryStrategy->run([this, myRemote=std::move(myRemote)](size_t retriesLeft, k2::Duration timeout) {
-            K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
-                    << k2::msec(timeout).count()
-                    << "ms, with " << myRemote->getURL());
+        return retryStrategy->run([this, myRemote=std::move(myRemote)](size_t, Duration timeout) {
             if (_stopped) {
-                K2INFO("Stopping retry since we were stopped");
                 return seastar::make_exception_future<>(std::runtime_error("we were stopped"));
             }
-            return k2::RPC().sendRequest(GET_DATA_URL, myRemote->newPayload(), *myRemote, timeout)
-            .then([this](std::unique_ptr<k2::Payload>&& payload) {
+            return RPC().sendRequest(GET_DATA_URL, myRemote->newPayload(), *myRemote, timeout)
+            .then([this](std::unique_ptr<Payload>&& payload) {
                 if (_stopped) return seastar::make_ready_future<>();
                 if (!payload || payload->getSize() == 0) {
-                    K2ERROR("Remote end did not provide a data endpoint. Giving up");
+                    K2LOG_E(log::txbench, "Remote end did not provide a data endpoint. Giving up");
                     return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
                 }
-                k2::String remoteURL;
+                String remoteURL;
                 if (!payload->read(remoteURL)) {
-                    K2ERROR("Unable to read remote URL in GET_DATA_URL response");
+                    K2LOG_E(log::txbench, "Unable to read remote URL in GET_DATA_URL response");
                     return seastar::make_exception_future<>(std::runtime_error("cannot parse remote endpoint"));
                 }
-                K2INFO("Found remote data endpoint: " << remoteURL);
-                _session.client = *(k2::RPC().getTXEndpoint(remoteURL));
+                K2LOG_I(log::txbench, "Found remote data endpoint: {}", remoteURL);
+                _session.client = *(RPC().getTXEndpoint(remoteURL));
                 return seastar::make_ready_future<>();
             })
             .then_wrapped([this](auto&& fut) {
@@ -311,7 +302,7 @@ private:
             });
         })
         .finally([retryStrategy](){
-            K2INFO("Finished getting remote data endpoint");
+            K2LOG_I(log::txbench, "Finished getting remote data endpoint");
         });
     }
 
@@ -323,64 +314,59 @@ private:
 
         auto req = _session.client.newPayload();
         req->write((void*)&_session.config, sizeof(_session.config));
-        return k2::RPC().sendRequest(START_SESSION, std::move(req), _session.client, 1s).
-        then([this](std::unique_ptr<k2::Payload>&& payload) {
+        return RPC().sendRequest(START_SESSION, std::move(req), _session.client, 1s).
+        then([this](std::unique_ptr<Payload>&& payload) {
             if (_stopped) return seastar::make_ready_future<>();
             if (!payload || payload->getSize() == 0) {
-                K2ERROR("Remote end did not start a session. Giving up");
+                K2LOG_E(log::txbench, "Remote end did not start a session. Giving up");
                 return seastar::make_exception_future<>(std::runtime_error("no remote session"));
             }
             SessionAck ack{};
             payload->read((void*)&ack, sizeof(ack));
             _session.sessionID = ack.sessionID;
-            K2INFO("Starting session id=" << _session.sessionID);
+            K2LOG_I(log::txbench, "Starting session id={}", _session.sessionID);
             return seastar::make_ready_future<>();
         }).
         handle_exception([](auto exc) {
-            K2ERROR_EXC("Unable to start session", exc);
+            K2LOG_W_EXC(log::txbench, exc, "Unable to start session");
             return seastar::make_exception_future<>(exc);
         });
     }
 
     seastar::future<> _benchmark() {
-        K2INFO("Starting benchmark for remote=" << _session.client.getURL() <<
-             ", with requestSize=" << _session.config.responseSize <<
-             ", with pipelineDepthBytes=" << _session.config.pipelineSize <<
-             ", with pipelineDepthCount=" << _session.config.pipelineCount <<
-             ", with ackCount=" << _session.config.ackCount <<
-             ", with echoMode=" << _session.config.echoMode <<
-             ", with testDuration=" << k2::msec(_testDuration).count()  << "ms");
-
-        k2::RPC().registerMessageObserver(ACK, [this](k2::Request&& request) {
-            auto now = k2::Clock::now(); // to compute reqest latencies
+        K2LOG_I(log::txbench, "Starting benchmark for remote={}, config={}", _session.client.getURL(), _session.config);
+        RPC().registerMessageObserver(ACK, [this](Request&& request) {
+            auto now = Clock::now(); // to compute reqest latencies
             if (request.payload) {
                 Ack ack{};
                 request.payload->read((void*)&ack, sizeof(ack));
                 if (ack.sessionID != _session.sessionID) {
-                    K2WARN("Received ack for unknown session: have=" << _session.sessionID
-                           << ", recv=" << ack.sessionID);
+                    K2LOG_W(log::txbench, "Received ack for unknown session: have={}, recv={}",
+                            _session.sessionID, ack.sessionID);
                     return;
                 }
                 if (ack.totalCount > _session.totalCount) {
-                    K2WARN("Received ack for too many messages: have=" << _session.totalCount
-                           << ", recv=" << ack.totalCount);
+                    K2LOG_W(log::txbench, "Received ack for too many messages: have={}, recv={}",
+                        _session.totalCount, ack.totalCount);
                     return;
                 }
                 if (ack.totalCount <= _lastAckedTotal) {
-                    K2WARN("Received ack that is too old tc=" << _session.totalCount << ", uc=" << _session.unackedCount << ", ac=" << ack.totalCount);
+                    K2LOG_W(log::txbench, "Received ack that is too old tc={}, uc={}, ac={}",
+                         _session.totalCount, _session.unackedCount, ack.totalCount);
                 }
                 if (ack.totalSize > _session.totalSize) {
-                    K2WARN("Received ack for too much data: have=" << _session.totalSize
-                           << ", recv=" << ack.totalSize);
+                    K2LOG_W(log::txbench, "Received ack for too much data: have={}, recv={}",
+                        _session.totalSize, ack.totalSize);
                     return;
                 }
                 if (ack.checksum != (ack.totalCount*(ack.totalCount+1)) /2) {
-                    K2WARN("Checksum mismatch. got=" << ack.checksum << ", expected=" << (ack.totalCount*(ack.totalCount+1)) /2);
+                    K2LOG_W(log::txbench, "Checksum mismatch. got={}, exp={}",
+                        ack.checksum, (ack.totalCount*(ack.totalCount+1)) /2);
                 }
                 for (uint64_t reqid = _session.totalCount - _session.unackedCount; reqid < ack.totalCount; reqid++) {
                     auto idx = reqid % _session.config.pipelineCount;
                     auto dur = now - _requestIssueTimes[idx];
-                    _duration_counts.push_back(k2::nsec(dur).count());
+                    _duration_counts.push_back(nsec(dur).count());
                     _requestLatency.add(dur);
                 }
                 _session.unackedCount = _session.totalCount - ack.totalCount;
@@ -394,7 +380,7 @@ private:
 
         _timer.arm(_testDuration);
 
-        _start = k2::Clock::now();
+        _start = Clock::now();
         return seastar::do_until(
             [this] { return _stopped; },
             [this] { // body of loop
@@ -402,7 +388,7 @@ private:
                     return send();
                 }
                 else {
-                    assert(!_haveSendPromise);
+                    K2ASSERT(log::txbench, !_haveSendPromise, "no send promise");
                     _haveSendPromise = true;
                     _sendProm = seastar::promise<>();
                     return _sendProm.get_future();
@@ -410,27 +396,25 @@ private:
             }
         ).finally([this] {
             int vector_size = _duration_counts.size();
-            K2INFO("Total Size: " << vector_size);
+            K2LOG_I(log::txbench, "Total Size: {}", vector_size);
             uint64_t max = 0;
             for (int i = 0; i<vector_size;++i){
                 if (_duration_counts[i] >= 10000000){
-                    K2INFO("Large Size: " << i<<" " << _duration_counts[i]);
+                    K2LOG_I(log::txbench, "Large Size: {} {}", i, _duration_counts[i]);
                 }
                 if (_duration_counts[i] > max)
                     max = _duration_counts[i];
             }
-            K2INFO("Maximum Size: " << max);
-            
-            std::sort(_duration_counts.begin(), _duration_counts.end()); 
-            K2INFO("Total Size2: " << _duration_counts.size());
-            _actualTestDuration = k2::Clock::now() - _start;
+            K2LOG_I(log::txbench, "Maximum Size: {}", max);
+
+            std::sort(_duration_counts.begin(), _duration_counts.end());
+            K2LOG_I(log::txbench, "Total Size2: {}", _duration_counts.size());
+            _actualTestDuration = Clock::now() - _start;
 
         });
     }
 
     bool canSend() {
-        //K2DEBUG("can send: uasize=" << _session.unackedSize <<", ppsize=" << _session.config.pipelineSize
-        //        <<", uacount=" <<  _session.unackedCount <<", ppcount=" << _session.config.pipelineCount);
         return _session.unackedSize < _session.config.pipelineSize &&
                _session.unackedCount < _session.config.pipelineCount;
     }
@@ -438,7 +422,7 @@ private:
     seastar::future<> send() {
         auto payload = _session.client.newPayload();
         auto padding = sizeof(_session.sessionID) + sizeof(_session.totalCount);
-        assert(padding < _session.config.responseSize);
+        K2ASSERT(log::txbench, padding < _session.config.responseSize, "invalid padding");
         _session.totalSize += _session.config.responseSize;
         _session.totalCount += 1;
         _session.unackedSize += _session.config.responseSize;
@@ -447,31 +431,31 @@ private:
         payload->write((void*)&_session.sessionID, sizeof(_session.sessionID));
         payload->write((void*)&_session.totalCount, sizeof(_session.totalCount));
         payload->write(_data, _session.config.responseSize - padding );
-        _requestIssueTimes[_session.totalCount % _session.config.pipelineCount] = k2::Clock::now();
-        return k2::RPC().send(REQUEST, std::move(payload), _session.client);
+        _requestIssueTimes[_session.totalCount % _session.config.pipelineCount] = Clock::now();
+        return RPC().send(REQUEST, std::move(payload), _session.client);
     }
 
 private:
-    std::vector<k2::String> _tcpRemotes;
+    std::vector<String> _tcpRemotes;
     std::vector<uint64_t> _duration_counts;
-    k2::Duration _testDuration;
-    k2::Duration _actualTestDuration;
+    Duration _testDuration;
+    Duration _actualTestDuration;
     char* _data;
     BenchSession _session;
     bool _stopped;
     seastar::promise<> _sendProm;
     seastar::promise<> _stopPromise;
     bool _haveSendPromise;
-    k2::TimePoint _start;
+    TimePoint _start;
     seastar::timer<> _timer;
     sm::metric_groups _metric_groups;
-    k2::ExponentialHistogram _requestLatency;
-    std::vector<k2::TimePoint> _requestIssueTimes;
+    ExponentialHistogram _requestLatency;
+    std::vector<TimePoint> _requestIssueTimes;
     uint64_t _lastAckedTotal;
 }; // class Client
 
 int main(int argc, char** argv) {
-    k2::App app("txbench_client");
+    App app("txbench_client");
     app.addApplet<Service>();
     app.addApplet<Client>();
     app.addOptions()
@@ -481,7 +465,7 @@ int main(int argc, char** argv) {
         ("pipeline_depth_mbytes", bpo::value<uint32_t>()->default_value(200), "How much data do we allow to go un-ACK-ed")
         ("pipeline_depth_count", bpo::value<uint32_t>()->default_value(10), "How many requests do we allow to go un-ACK-ed")
         ("echo_mode", bpo::value<bool>()->default_value(false), "Should we echo all data in requests when we ACK. ")
-        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tcp_remotes", bpo::value<std::vector<String>>()->multitoken()->default_value(std::vector<String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run");
     return app.start(argc, argv);
 }

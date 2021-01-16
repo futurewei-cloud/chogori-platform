@@ -26,8 +26,13 @@ Copyright(c) 2020 Futurewei Cloud
 // third-party
 #include <seastar/core/distributed.hh>  // for distributed<>
 #include <seastar/core/future.hh>       // for future stuff
+#include <k2/common/Log.h>
 
 namespace k2 {
+namespace log {
+inline thread_local k2::logging::Logger psvc("k2::persistence_svc");
+}
+
 class PersistenceService {
 public :  // application lifespan
     PersistenceService();

@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/common/Chrono.h>
 
-#include <nlohmann/json.hpp>
+#include <k2/json/json.hpp>
 
 namespace k2 {
 namespace dto {
@@ -76,34 +76,26 @@ public:
 
     size_t hash() const;
 
-    friend std::ostream& operator<<(std::ostream& os, const Timestamp& ts) {
-        return os << "{tsoId=" << ts._tsoId << ", endCount=" << ts._tEndTSECount
-                  << "(" << printTime(TimePoint{} + 1ns*ts._tEndTSECount)
-                  << "), delta=" << ts._tStartDelta << "}";
+    String print() const {
+        return printTime(TimePoint{} + 1ns*_tEndTSECount);
     }
 
-   private:
-    uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE in TAI 
+private:
+    uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE in TAI
     uint32_t _tsoId = 0;
     uint32_t _tStartDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max
 
 public:
     K2_PAYLOAD_FIELDS(_tEndTSECount, _tsoId, _tStartDelta);
-    friend void to_json(nlohmann::json& j, const Timestamp& ts);
-    friend void from_json(const nlohmann::json& j, Timestamp& ts);
+    K2_DEF_TO_STREAM_INTR(Timestamp);
+    friend void inline to_json(nlohmann::json& j, const Timestamp& o) {
+        j = nlohmann::json{{"endCount", o._tEndTSECount},
+                       {"tsoId", o._tsoId},
+                       {"startDelta", o._tStartDelta},
+                       {"formatted", o.print()}
+                       };
+    }
 };
-
-void inline to_json(nlohmann::json& j, const Timestamp& ts) {
-    j = nlohmann::json{{"_tEndTSECount", ts._tEndTSECount}, 
-                       {"_tsoId", ts._tsoId}, 
-                       {"_tStartDelta", ts._tStartDelta}};
-}
-
-void inline from_json(const nlohmann::json& j, Timestamp& ts) {
-    j.at("_tEndTSECount").get_to(ts._tEndTSECount);
-    j.at("_tsoId").get_to(ts._tsoId);
-    j.at("_tStartDelta").get_to(ts._tStartDelta);
-}
 
 } // ns dto
 } // ns k2

@@ -21,12 +21,6 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include "Log.h"
-namespace k2 {
-namespace logging {
-
-String Logger::procName;
-thread_local LogLevel Logger::threadLocalLogLevel = LogLevel::INFO;
-
+namespace k2::log {
+inline thread_local k2::logging::Logger skvclient("k2::skv_client");
 }
-}// ns k2

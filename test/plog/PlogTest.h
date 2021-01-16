@@ -26,6 +26,10 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/persistence/plog_client/PlogClient.h>
 
+using namespace k2;
+namespace k2::log {
+inline thread_local k2::logging::Logger ptest("k2::ptest");
+}
 class PlogTest {
 public:  // application lifespan
     PlogTest();
@@ -46,6 +50,6 @@ private:
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
-    
+
     k2::String _plogId;
 };

@@ -70,6 +70,7 @@ make_total_operations(string name, Func&& func, string description, std::vector<
 */
 
 namespace k2 {
+constexpr uint64_t MAX_NUM_BUCKETS = 1000;  // make sure users aren't accidentally creating too-large histograms
 
 // This class is used to initialize and manage(start/stop) the metrics subsystem.
 class Prometheus {
@@ -90,8 +91,6 @@ private:
     seastar::httpd::http_server_control _prometheusServer;
 
 }; // class prometheus
-
-uint64_t constexpr MAX_NUM_BUCKETS = 1000; // make sure users aren't accidentally creating too-large histograms
 
 // This histogram creates buckets which exponentially grow/shrink, depending on the given rate
 // It is normally used to report latencies, or any other positive samples

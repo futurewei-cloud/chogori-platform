@@ -32,6 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include "FieldTypes.h"
 #include "SKVRecord.h"
+#include "Log.h"
 
 namespace k2 {
 namespace dto {
@@ -89,10 +90,13 @@ struct Value {
     String fieldName;
     FieldType type = FieldType::NOT_KNOWN;
     Payload literal{Payload::DefaultAllocator};
-    K2_PAYLOAD_FIELDS(fieldName, type, literal);
     bool isReference() const { return !fieldName.empty();}
-    template<typename T>
-    static void _valueStrHelper(const Value& r, std::ostream& os) {
+
+    K2_PAYLOAD_FIELDS(fieldName, type, literal);
+    K2_DEF_TO_STREAM_INTR(Value);
+
+    template<typename T, typename Stream>
+    static void _valueStrHelper(const Value& r, Stream& os) {
         T obj;
         if (!const_cast<Payload*>(&(r.literal))->shareAll().read(obj)) {
             os << TToFieldType<T>() << "_ERROR_READING";
@@ -101,15 +105,26 @@ struct Value {
             os << obj;
         }
     }
-    friend std::ostream& operator<<(std::ostream& os, const Value& r) {
-        os << "{fieldName=" << r.fieldName << ", type=" << r.type << ", literal=";
-        if (r.fieldName.empty()) {
-            return os << "REFERENCE";
-        }
-        K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, r, os);
-        return os;
-    }
 
+    // custom json conversion
+    friend void to_json(nlohmann::json& j, const Value& o) {
+        std::ostringstream otype;
+        otype << o.type;
+
+        std::ostringstream lit;
+        if (o.fieldName.empty()) {
+            lit << "REFERENCE";
+        }
+        else {
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, o, lit);
+        }
+
+        j = {
+            {"fieldName", o.fieldName},
+            {"type", otype.str()},
+            {"literal", lit.str()}
+        };
+    }
 };
 
 // An Expression in the expression model.
@@ -130,7 +145,7 @@ struct Expression {
     bool evaluate(SKVRecord& rec);
 
     K2_PAYLOAD_FIELDS(op, valueChildren, expressionChildren);
-
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(Expression, op, valueChildren, expressionChildren) ;
     // helper methods used to evaluate particular operation
     bool EQ_handler(SKVRecord& rec);
     bool GT_handler(SKVRecord& rec);
@@ -146,17 +161,6 @@ struct Expression {
     bool OR_handler(SKVRecord& rec);
     bool XOR_handler(SKVRecord& rec);
     bool NOT_handler(SKVRecord& rec);
-    friend std::ostream& operator<<(std::ostream& os, const Expression& r) {
-        os << "{op=" << r.op << ", valueChildren=[";
-        for (auto& vc: r.valueChildren) {
-            os << vc << ",";
-        }
-        os << "], expressionChildren=[";
-        for (auto& ec: r.expressionChildren) {
-            os << ec << ", ";
-        }
-        return os << "]}";
-    }
 };
 
 // helper builder: creates a value literal

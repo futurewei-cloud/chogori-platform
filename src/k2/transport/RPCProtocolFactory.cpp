@@ -24,19 +24,19 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future.hh>
 
 #include "RPCProtocolFactory.h"
-#include <k2/common/Log.h>
+#include "Log.h"
 
 namespace k2 {
 RPCProtocolFactory::RPCProtocolFactory(BuilderFunc_t builder): _builder(builder) {
-    K2DEBUG("ctor");
+    K2LOG_D(log::tx, "ctor");
 }
 
 RPCProtocolFactory::~RPCProtocolFactory() {
-    K2DEBUG("dtor");
+    K2LOG_D(log::tx, "dtor");
 }
 
 void RPCProtocolFactory::start() {
-    K2DEBUG("start");
+    K2LOG_D(log::tx, "start");
     // Create the protocol instance
     _instance = _builder();
     if (_instance) {
@@ -45,7 +45,7 @@ void RPCProtocolFactory::start() {
 }
 
 seastar::future<> RPCProtocolFactory::stop() {
-    K2DEBUG("stop");
+    K2LOG_D(log::tx, "stop");
     if (_instance) {
         // pass-on the signal to stop
         auto result = _instance->stop();

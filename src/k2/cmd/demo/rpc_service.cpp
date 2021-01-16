@@ -30,6 +30,9 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 // implements an example RPC Service which can send/receive messages
+namespace log {
+inline thread_local k2::logging::Logger rpcsvc("k2::rpc_service");
+}
 
 struct PUT_Request {
     String key;
@@ -59,23 +62,23 @@ class KVService {
 public:  // application lifespan
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::rpcsvc, "stop");
         return seastar::make_ready_future<>();
     }
 
     // called after construction
     void start() {
-        K2INFO("Registering message handlers");
+        K2LOG_I(log::rpcsvc, "Registering message handlers");
 
         RPC().registerRPCObserver<PUT_Request, PUT_Response>(MessageVerbs::PUT, [this](PUT_Request&& request) {
-            K2INFO("Received put for key: " << request.key);
+            K2LOG_I(log::rpcsvc, "Received put for key: {}", request.key);
             _cache[request.key] = request.value;
             PUT_Response response{.key=std::move(request.key)};
             return RPCResponse(Statuses::S200_OK("put accepted"), std::move(response));
         });
 
         RPC().registerRPCObserver<GET_Request, GET_Response>(MessageVerbs::GET, [this](GET_Request&& request) {
-            K2INFO("Received get for key: " << request.key);
+            K2LOG_I(log::rpcsvc, "Received get for key: {}", request.key);
             GET_Response response;
             response.key=request.key;
             auto iter = _cache.find(request.key);
@@ -92,28 +95,28 @@ private:
 class KVClientTest {
 public:
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::rpcsvc, "stop");
         return seastar::make_ready_future<>();
     }
 
     void start() {
         (void)seastar::sleep(1s)
         .then([] {
-            K2INFO("putting record");
+            K2LOG_I(log::rpcsvc, "putting record");
             PUT_Request request{.key="Key1", .value="Value1"};
             auto ep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
-            K2INFO("found endpoint: " << ep->getURL());
+            K2LOG_I(log::rpcsvc, "found endpoint: {}", ep->getURL());
             return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, request, *ep, 1s);
         })
         .then([](auto&& resp) {
-            K2INFO("Received PUT response with status: " << std::get<0>(resp));
+            K2LOG_I(log::rpcsvc, "Received PUT response with status: {}", std::get<0>(resp));
 
-            K2INFO("getting record");
+            K2LOG_I(log::rpcsvc, "getting record");
             GET_Request request{.key = "Key1"};
             return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, request, *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s);
         })
         .then([](auto&& resp) {
-            K2INFO("Received GET response with status: " << std::get<0>(resp) << ", value=" << std::get<1>(resp).value);
+            K2LOG_I(log::rpcsvc, "Received GET response with status: {}, value={}", std::get<0>(resp), std::get<1>(resp).value);
         });
     }
 };

@@ -27,15 +27,15 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 NodePoolMonitor::NodePoolMonitor() {
-    K2INFO("ctor");
+    K2LOG_I(log::nodepool, "ctor");
 }
 
 NodePoolMonitor::~NodePoolMonitor() {
-    K2INFO("dtor");
+    K2LOG_I(log::nodepool, "dtor");
 }
 
 seastar::future<> NodePoolMonitor::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::nodepool, "stop");
     return seastar::make_ready_future<>();
 }
 

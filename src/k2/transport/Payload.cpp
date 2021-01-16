@@ -74,7 +74,7 @@ void Payload::ensureCapacity(size_t totalCapacity) {
     // we're asked to make sure there is certain total capacity. Make sure we have it allocated
     while (_capacity < totalCapacity) {
         bool canAllocate = _allocateBuffer();
-        K2ASSERT(canAllocate, "unable to increase capacity");
+        K2ASSERT(log::tx, canAllocate, "unable to increase capacity");
     }
     // NB, if our cursor was past the end of the payload before this call, it will now be valid
 }
@@ -93,7 +93,7 @@ void Payload::clear() {
 
 void Payload::appendBinary(Binary&& binary) {
     // we can only append into a non-self-allocating payload
-    K2ASSERT(_allocator == nullptr, "cannot append to non-allocating payload");
+    K2ASSERT(log::tx, _allocator == nullptr, "cannot append to non-allocating payload");
     _size += binary.size();
     _capacity += binary.size();
     _buffers.push_back(std::move(binary));
@@ -303,7 +303,7 @@ void Payload::write(const std::decimal::decimal128& value) {
 
 void Payload::write(const Payload& other) {
     // we only support this write at the end of an existing payload (append)
-    K2ASSERT(getDataRemaining() == 0, "cannot write a payload in the middle of another payload");
+    K2ASSERT(log::tx, getDataRemaining() == 0, "cannot write a payload in the middle of another payload");
 
     // write out how many bytes are following
     write(other.getSize());
@@ -329,14 +329,14 @@ void Payload::writeMany() {
 }
 
 bool Payload::_allocateBuffer() {
-    K2ASSERT(_allocator, "cannot allocate buffer without allocator");
+    K2ASSERT(log::tx, _allocator, "cannot allocate buffer without allocator");
     Binary buf = _allocator();
     if (!buf) {
         return false;
     }
-    assert(buf.size() <= std::numeric_limits<_Size>::max() && buf.size() > 0);
+    K2ASSERT(log::tx, buf.size() <= std::numeric_limits<_Size>::max() && buf.size() > 0, "invalid buffer size");
     // we're about to add one more in. Make sure we have room to add it
-    assert(_buffers.size() < std::numeric_limits<_Size>::max());
+    K2ASSERT(log::tx, _buffers.size() < std::numeric_limits<_Size>::max(), "invalid number of buffers");
 
     _capacity += buf.size();
     _buffers.push_back(std::move(buf));
@@ -345,7 +345,7 @@ bool Payload::_allocateBuffer() {
 
 void Payload::_advancePosition(size_t advance) {
     auto newOffset = advance + _currentPosition.offset;
-    K2ASSERT(newOffset <= _capacity, "offset must be within the existing payload");
+    K2ASSERT(log::tx, newOffset <= _capacity, "offset must be within the existing payload");
 
     _size = std::max(_size, newOffset);
     if (newOffset == _capacity) {

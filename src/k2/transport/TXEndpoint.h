@@ -93,10 +93,9 @@ public: // API
     // Use to determine if this endpoint can allocate
     bool canAllocate() const;
 
-    // pretty print
-    friend std::ostream& operator<<(std::ostream& os, const TXEndpoint& ep) {
-        return os << ep._url;
-    }
+    K2_DEF_TO_JSON_INTR(TXEndpoint, _url);
+    K2_DEF_TO_STREAM_INTR(TXEndpoint);
+
 private: // fields
     String _url;
     String _protocol;
@@ -106,19 +105,14 @@ private: // fields
     BinaryAllocatorFunctor _allocator;
 
 }; // class TXEndpoint
-
 } // namespace k2
 
 // Implement std::hash for TXEndpoint so that we can use it as key in containers
 namespace std {
-
 template <>
 struct hash<k2::TXEndpoint> {
-
 size_t operator()(const k2::TXEndpoint& endpoint) const {
     return endpoint.hash();
 }
-
 }; // struct hash
-
 } // namespace std

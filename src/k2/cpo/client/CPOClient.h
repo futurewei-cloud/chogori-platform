@@ -42,6 +42,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/MessageVerbs.h>
 
 namespace k2 {
+namespace log {
+inline thread_local k2::logging::Logger cpoclient("k2::cpo_client");
+}
 
 class CPOClient {
 public:
@@ -57,7 +60,7 @@ public:
                                              .rangeEnds = std::move(rangeEnds)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        K2DEBUG("making call to CPO with timeout " << timeout);
+        K2LOG_D(log::cpoclient, "making call to CPO with timeout {}", timeout);
         return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, request, *cpo, timeout).then([this, name = request.metadata.name, deadline](auto&& response) {
             auto& [status, k2response] = response;
 
@@ -77,25 +80,25 @@ public:
     // is not assigned or if there was a retryable error. It allows only one outstanding
     // request for a given collection.
     template <typename ClockT=Clock>
-    seastar::future<Status> GetAssignedPartitionWithRetry(Deadline<ClockT> deadline, const String& name, const dto::Key& key, 
+    seastar::future<Status> GetAssignedPartitionWithRetry(Deadline<ClockT> deadline, const String& name, const dto::Key& key,
                                     bool reverse = false, bool excludedKey = false, uint8_t retries = 1) {
         // Check if request is already issued, if so add to waiters and return
-        K2DEBUG("time remaining=" << deadline.getRemaining() << ", for coll=" << name);
+        K2LOG_D(log::cpoclient, "time remaining={}, for coll={}", deadline.getRemaining(), name);
         auto it = requestWaiters.find(name);
         if (it != requestWaiters.end()) {
-            K2DEBUG("found existing waiter");
+            K2LOG_D(log::cpoclient, "found existing waiter");
             it->second.emplace_back(seastar::promise<Status>());
             return it->second.back().get_future().then([this, deadline, name, key, reverse, excludedKey, retries](Status&& status) {
-                K2DEBUG("waiter finished with status: " << status);
+                K2LOG_D(log::cpoclient, "waiter finished with status={}", status);
                 if (status.is2xxOK()) {
                     dto::Partition* partition = collections[name].getPartitionForKey(key, reverse, excludedKey).partition;
                     if (partition && partition->astate == dto::AssignmentState::Assigned) {
                         return seastar::make_ready_future<Status>(std::move(status));
                     }
-                    K2WARN("Partition found but still not completed assignment");
+                    K2LOG_W(log::cpoclient, "Partition found but still not completed assignment");
                 }
                 else {
-                    K2WARN("Partition not found with status: " << status);
+                    K2LOG_W(log::cpoclient, "Partition not found with status={}", status);
                 }
 
                 if (!retries) {
@@ -106,7 +109,7 @@ public:
                 return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), reverse, excludedKey, retries - 1);
             });
         }
-        K2DEBUG("no existing waiter for name=" << name << ". Creating new one");
+        K2LOG_D(log::cpoclient, "no existing waiter for name={}. Creating new one", name);
 
         // Register the ongoing request
         requestWaiters[name] = std::vector<seastar::promise<Status>>();
@@ -117,13 +120,13 @@ public:
         return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *cpo, timeout).then([this, name = request.name, key, deadline, reverse, excludedKey, retries](auto&& response) {
             auto& [status, coll_response] = response;
             bool retry = false;
-            K2DEBUG("collection get response received with status: " << status << ", for name=["<< name << "]");
+            K2LOG_D(log::cpoclient, "collection get response received with status={}, for name={}", status, name);
             if (status.is2xxOK()) {
                 collections[name] = dto::PartitionGetter(std::move(coll_response.collection));
                 dto::Partition* partition = collections[name].getPartitionForKey(key, reverse, excludedKey).partition;
                 FulfillWaiters(name, status);
                 if (!partition || partition->astate != dto::AssignmentState::Assigned) {
-                    K2DEBUG("No partition or not assigned: " << partition);
+                    K2LOG_D(log::cpoclient, "No partition or not assigned");
                     retry = true;
                 }
             } else if (status.is5xxRetryable()) {
@@ -167,31 +170,31 @@ public:
     // duration of the future.
     // RequestT must have a pvid field and a collectionName field
     template<class RequestT, typename ResponseT, Verb verb, typename ClockT=Clock>
-    seastar::future<std::tuple<Status, ResponseT>> PartitionRequest(Deadline<ClockT> deadline, RequestT& request, 
+    seastar::future<std::tuple<Status, ResponseT>> PartitionRequest(Deadline<ClockT> deadline, RequestT& request,
                                     bool reverse=false, bool exclusiveKey=false, uint8_t retries=1) {
-        K2DEBUG("making partition request with deadline=" << deadline.getRemaining());
+        K2LOG_D(log::cpoclient, "making partition request with deadline={}", deadline.getRemaining());
         // If collection is not in cache or partition is not assigned, get collection first
         seastar::future<Status> f = seastar::make_ready_future<Status>(Statuses::S200_OK("default cached response"));
         auto it = collections.find(request.collectionName);
         if (it == collections.end()) {
-            K2DEBUG("Collection not found");
+            K2LOG_D(log::cpoclient, "Collection not found");
             f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey);
         } else {
-            K2DEBUG("Collection found");
+            K2LOG_D(log::cpoclient, "Collection found");
             dto::Partition* partition = collections[request.collectionName].getPartitionForKey(request.key, reverse, exclusiveKey).partition;
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
-                K2DEBUG("Collection found but is in bad state");
+                K2LOG_D(log::cpoclient, "Collection found but is in bad state");
                 f = GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey);
             }
         }
 
         return f.then([this, deadline, &request, reverse, exclusiveKey, retries](Status&& status) {
-            K2DEBUG("Collection get completed with status: " << status << ", request="<< request);
+            K2LOG_D(log::cpoclient, "Collection get completed with status={}, request={} ", status, request);
             auto it = collections.find(request.collectionName);
 
             if (it == collections.end()) {
                 // Failed to get collection, returning status from GetAssignedPartitionWithRetry
-                K2DEBUG("Failed to get collection: " << status);
+                K2LOG_D(log::cpoclient, "Failed to get collection with status={}", status);
                 return RPCResponse(std::move(status), ResponseT());
             }
 
@@ -199,19 +202,19 @@ public:
             auto& partition = collections[request.collectionName].getPartitionForKey(request.key, reverse, exclusiveKey);
             if (!partition.partition || partition.partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
-                K2DEBUG("Failed to get assigned partition");
+                K2LOG_D(log::cpoclient, "Failed to get assigned partition");
                 return RPCResponse(Statuses::S503_Service_Unavailable("partition not assigned"), ResponseT());
             }
 
             Duration timeout = std::min(deadline.getRemaining(), partition_request_timeout());
             request.pvid = partition.partition->pvid;
-            K2DEBUG("making partition call to " << partition.preferredEndpoint->getURL() << ", with timeout=" << timeout);
+            K2LOG_D(log::cpoclient, "making partition call to url={}, with timeout={}", partition.preferredEndpoint->getURL(), timeout);
 
             // Attempt the request RPC
             return RPC().callRPC<RequestT, ResponseT>(verb, request, *partition.preferredEndpoint, timeout).
             then([this, &request, deadline, reverse, exclusiveKey, retries] (auto&& result) {
                 auto& [status, k2response] = result;
-                K2DEBUG("partition call completed with status " << status);
+                K2LOG_D(log::cpoclient, "partition call completed with status={}", status);
 
                 // Success or unrecoverable error
                 if (status != Statuses::S410_Gone("") && !status.is5xxRetryable()) {
@@ -219,20 +222,20 @@ public:
                 }
 
                 if (deadline.isOver()) {
-                    K2DEBUG("Deadline exceeded");
+                    K2LOG_D(log::cpoclient, "Deadline exceeded");
                     status = Statuses::S408_Request_Timeout("partition deadline exceeded");
                     return RPCResponse(std::move(status), ResponseT());
                 }
 
                 if (retries == 0) {
-                    K2DEBUG("Retries exceeded, status: " << status);
+                    K2LOG_D(log::cpoclient, "Retries exceeded, status={}", status);
                     return RPCResponse(Statuses::S408_Request_Timeout("partition retries exceeded"), ResponseT());
                 }
 
                 // S410_Gone (refresh partition map) or retryable error
                 return GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey, 1)
                 .then([this, &request, deadline, reverse, exclusiveKey, retries] (Status&& status) {
-                    K2DEBUG("retrying partition call after status " << status);
+                    K2LOG_D(log::cpoclient, "retrying partition call after status={}", status);
                     (void) status;
                     return PartitionRequest<RequestT, ResponseT, verb>(deadline, request, reverse, exclusiveKey, retries-1);
                 });
@@ -250,7 +253,7 @@ public:
             auto& [status, k2response] = result;
 
             if (deadline.isOver()) {
-                K2DEBUG("Deadline exceeded");
+                K2LOG_D(log::cpoclient, "Deadline exceeded");
                 status = Statuses::S408_Request_Timeout("persistence deadline exceeded");
                 return RPCResponse(std::move(status), dto::PersistenceClusterGetResponse());
             }

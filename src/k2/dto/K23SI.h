@@ -67,12 +67,10 @@ struct K23SI_MTR {
     bool operator!=(const K23SI_MTR& o) const;
     size_t hash() const;
     K2_PAYLOAD_FIELDS(txnid, timestamp, priority);
-    friend std::ostream& operator<<(std::ostream& os, const K23SI_MTR& mtr) {
-        return os << "{txnid=" << mtr.txnid << ", timestamp=" << mtr.timestamp << ", priority=" << mtr.priority << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SI_MTR, txnid, timestamp, priority);
 };
 // zero-value for MTRs
-extern const K23SI_MTR K23SI_MTR_ZERO;
+inline const K23SI_MTR K23SI_MTR_ZERO;
 
 // Complete unique identifier of a transaction in the system
 // Note that trh is used only for routing and debug purposes - the transaction is still
@@ -98,11 +96,9 @@ struct TxnId {
         return !operator==(o);
     }
 
-    friend std::ostream& operator<<(std::ostream& os, const TxnId& txnId) {
-        return os << "{trh=" << txnId.trh << ", mtr=" << txnId.mtr <<"}";
-    }
-
     K2_PAYLOAD_FIELDS(trh, mtr);
+
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(TxnId, trh, mtr);
 };
 
 } // ns dto
@@ -141,9 +137,7 @@ struct DataRecord {
         Aborted       // the record has been aborted and should be removed
     } status;
     K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
-    friend std::ostream& operator<<(std::ostream& os, const DataRecord& rec) {
-        return os << "{key=" << rec.key << ", isTombstone=" << rec.isTombstone << ", txnId=" << rec.txnId << ", status=" << rec.status << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(DataRecord, key, isTombstone, txnId, status);
 };
 
 enum class TxnRecordState : uint8_t {
@@ -184,10 +178,7 @@ struct K23SIReadRequest {
         pvid(std::move(p)), collectionName(std::move(cname)), mtr(std::move(_mtr)), key(std::move(_key)) {}
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
-    friend std::ostream& operator<<(std::ostream& os, const K23SIReadRequest& r) {
-        return os << "{" << "pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", key=" << r.key << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SIReadRequest, pvid, collectionName, mtr, key);
 };
 
 // The response for READs
@@ -240,14 +231,7 @@ struct K23SIWriteRequest {
         key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
-    friend std::ostream& operator<<(std::ostream& os, const K23SIWriteRequest& r) {
-        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", isDelete="
-                  << r.isDelete << ", designate=" << r.designateTRH << ", rejectIfExits= "
-                  << r.rejectIfExists << ", isPartialUpdate="
-                  << (r.fieldsForPartialUpdate.size()!=0) << ", fieldsForPartialUpdate.size()="
-                  << r.fieldsForPartialUpdate.size() << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, fieldsForPartialUpdate);
 };
 
 struct K23SIWriteResponse {
@@ -272,18 +256,8 @@ struct K23SIQueryRequest {
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
                       reverseDirection, filterExpression, projection);
-    friend std::ostream& operator<<(std::ostream& os, const K23SIQueryRequest& r) {
-        os << "{"
-                  << "pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", key=" << r.key << ", endKey=" << r.endKey
-                  << ", exclusiveKey=" << r.exclusiveKey << ", recordLimit=" << r.recordLimit
-                  << ", includeVersionMismatch=" << r.includeVersionMismatch << ", reverseDirection=" << r.reverseDirection
-                  << ", filterExpression=" << r.filterExpression << ", projection=[";
-        for (auto& proj: r.projection) {
-            os << proj << ", ";
-        }
-        return os << "]}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SIQueryRequest, pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
+                      reverseDirection, filterExpression, projection);
 };
 
 struct K23SIQueryResponse {
@@ -305,10 +279,7 @@ struct K23SITxnHeartbeatRequest {
     K23SI_MTR mtr;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
-    friend std::ostream& operator<<(std::ostream& os, const K23SITxnHeartbeatRequest& r) {
-        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", key=" << r.key << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnHeartbeatRequest, pvid, collectionName, key, mtr);
 };
 
 struct K23SITxnHeartbeatResponse {
@@ -348,10 +319,7 @@ struct K23SITxnPushRequest {
     K23SI_MTR challengerMTR;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, incumbentMTR, challengerMTR);
-    friend std::ostream& operator<<(std::ostream& os, const K23SITxnPushRequest& r) {
-        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", Imtr=" << r.incumbentMTR << ", Cmtr=" << r.challengerMTR << ", key=" << r.key << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnPushRequest, pvid, collectionName, key, incumbentMTR, challengerMTR);
 };
 
 // Response for PUSH operation
@@ -362,10 +330,7 @@ struct K23SITxnPushResponse {
     bool allowChallengerRetry = false;
 
     K2_PAYLOAD_FIELDS(winnerMTR, incumbentState, allowChallengerRetry);
-    friend std::ostream& operator<<(std::ostream& os, const K23SITxnPushResponse& r) {
-        return os << "{winnerMTR=" << r.winnerMTR << ", incumbentState="
-                  << r.incumbentState << ", allowChallengerRetry=" << r.allowChallengerRetry << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnPushResponse, winnerMTR, incumbentState, allowChallengerRetry);
 };
 
 enum class EndAction:uint8_t {
@@ -408,14 +373,7 @@ struct K23SITxnEndRequest {
     Duration timeToFinalize{0};
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize, timeToFinalize);
-    friend std::ostream& operator<<(std::ostream& os, const K23SITxnEndRequest& r) {
-        os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", action=" << r.action << ", key=" << r.key << ", writeKeys=[";
-        for (auto& k: r.writeKeys) {
-            os << k << ",";
-        }
-        return os << "]}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, syncFinalize, timeToFinalize);
 };
 
 struct K23SITxnEndResponse {
@@ -437,10 +395,7 @@ struct K23SITxnFinalizeRequest {
     EndAction action;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, trh, mtr, key, action);
-    friend std::ostream& operator<<(std::ostream& os, const K23SITxnFinalizeRequest& r) {
-        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr << ", trh=" << r.trh << ", key=" << r.key << ", action=" << r.action << "}";
-    }
+    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnFinalizeRequest, pvid, collectionName, trh, mtr, key, action);
 };
 
 struct K23SITxnFinalizeResponse {
