@@ -587,7 +587,7 @@ seastar::future<> runScenario04() {
                                 K2EXPECT(log::k23si, *partkey, "partkey_s04");
                                 K2EXPECT(log::k23si, *rangekey, "rangekey_s04");
                                 K2EXPECT(log::k23si, *data1, "data1_v5"); // update a null field
-                                K2EXPECT(log::k23si, *data2, "");         // this field remains null
+                                K2EXPECT(log::k23si, data2.has_value(), false);         // this field remains null
 
                                 return seastar::make_ready_future<>();
                             });
@@ -716,7 +716,7 @@ seastar::future<> runScenario05() {
                     record1.serializeNext<String>("partkey_s05");
                     record1.serializeNext<String>("rangekey_s05");
                     record1.serializeNext<String>("data2_v2");
-                    record1.skipNext();
+                    record1.serializeNull();
 
                     return txnHandle.partialUpdate<dto::SKVRecord>(record1, std::vector<uint32_t>{2})
                     .then([](auto&& response) {
