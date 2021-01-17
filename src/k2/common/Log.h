@@ -196,7 +196,7 @@ struct fmt::formatter<k2::logging::LogLevel> {
 
     template <typename FormatContext>
     auto format(k2::logging::LogLevel const& level, FormatContext& ctx) {
-        return fmt::format_to(ctx.out(), "{}", k2::logging::LogLevelNames[level]);
+        return fmt::format_to(ctx.out(), FMT_COMPILE("{}"), k2::logging::LogLevelNames[level]);
     }
 };
 
