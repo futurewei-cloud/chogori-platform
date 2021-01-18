@@ -38,7 +38,7 @@ inline thread_local k2::logging::Logger echo("k2::rpc_echo");
 struct Echo_Message {
     String message;
     K2_PAYLOAD_FIELDS(message);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(Echo_Message, message);
+    K2_DEF_FMT(Echo_Message, message);
 };
 
 enum MessageVerbs : Verb {

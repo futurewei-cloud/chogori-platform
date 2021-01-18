@@ -162,7 +162,12 @@ struct fmt::formatter<k2::Duration> {
 
 namespace std {
 void inline to_json(nlohmann::json& j, const k2::Duration& obj) {
-    j = nlohmann::json{{"duration", fmt::format("{}", obj)}};
+    j = nlohmann::json{{"duration", k2::usec(obj).count()}};
+}
+
+inline void from_json(const nlohmann::json& j, k2::Duration& obj) {
+    int64_t result = j.get<int64_t>(); // microseconds
+    obj = result * 1us;
 }
 }
 
@@ -180,13 +185,14 @@ struct fmt::formatter<k2::TimePoint> {
 };
 
 namespace std {
-inline std::ostream& operator<<(std::ostream& os, const k2::TimePoint& o) {
+inline ostream& operator<<(ostream& os, const k2::TimePoint& o) {
     fmt::print(os, "{}", o);
     return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const k2::Duration& o) {
+inline ostream& operator<<(ostream& os, const k2::Duration& o) {
     fmt::print(os, "{}", o);
     return os;
 }
+
 }

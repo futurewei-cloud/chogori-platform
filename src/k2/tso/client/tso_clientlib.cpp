@@ -80,7 +80,7 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String&
     return retryStrategy->run([this, myRemote=std::move(myRemote)](size_t retriesLeft, k2::Duration timeout)
     {
         K2LOG_I(log::tsoclient, "Sending with retriesLeft={}, and timeout={}ms, with {}",
-                retriesLeft, k2::msec(timeout).count(), myRemote->getURL());
+                retriesLeft, k2::msec(timeout).count(), myRemote->url);
         if (_stopped)
         {
             K2LOG_I(log::tsoclient, "Stopping retry since we were stopped");
@@ -110,13 +110,13 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String&
                 {
                     auto tempEndPoint = *(k2::RPC().getTXEndpoint(url));
                     K2LOG_I(log::tsoclient, "Found remote data endpoint: {}", url);
-                    if (tempEndPoint.getProtocol() == RRDMARPCProtocol::proto)
+                    if (tempEndPoint.protocol == RRDMARPCProtocol::proto)
                     {
                         // if found RDMA, use it and break out
                         endPointToAdd = tempEndPoint;
                         break;
                     }
-                    else if (tempEndPoint.getProtocol() == TCPRPCProtocol::proto)
+                    else if (tempEndPoint.protocol == TCPRPCProtocol::proto)
                     {
                         // keep it to enPointToAdd, maybe replaced by RDMA endpoint later
                         endPointToAdd = tempEndPoint;

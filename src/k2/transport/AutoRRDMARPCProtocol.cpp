@@ -75,7 +75,7 @@ std::unique_ptr<TXEndpoint> AutoRRDMARPCProtocol::getTXEndpoint(String url) {
         return nullptr;
     }
     auto ep = TXEndpoint::fromURL(url, _vnet.local().getRRDMAAllocator());
-    if (!ep || ep->getProtocol() != proto) {
+    if (!ep || ep->protocol != proto) {
         K2LOG_W(log::tx, "Cannot construct non-`{}` endpoint", proto);
         return nullptr;
     }
@@ -88,13 +88,13 @@ seastar::lw_shared_ptr<TXEndpoint> AutoRRDMARPCProtocol::getServerEndpoint() {
 
 void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& autoEndpoint, MessageMetadata metadata) {
     if (_stopped) {
-        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), autoEndpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), autoEndpoint.url);
         return;
     }
     auto& [ep, pending] = _endpoints[autoEndpoint]; // create or get the existing
     if (!ep || pending.size() > 0) {
         // queue up against pending request
-        K2LOG_D(log::tx, "queueing up against new ep: {}", autoEndpoint.getURL());
+        K2LOG_D(log::tx, "queueing up against new ep: {}", autoEndpoint.url);
         pending.push_back({verb, std::move(payload), std::move(metadata)});
     }
     if (!ep) {
@@ -103,7 +103,7 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
             K2LOG_D(log::tx, "resolution request already in progress. Pending size={}", pending.size());
             return;
         }
-        auto tcpEp = _getTCPEndpoint(autoEndpoint.getURL());
+        auto tcpEp = _getTCPEndpoint(autoEndpoint.url);
         ListEndpointsRequest request{};
         auto newDiscovery = RPC().callRPC<ListEndpointsRequest, ListEndpointsResponse>
             (InternalVerbs::LIST_ENDPOINTS, request, *tcpEp, _listTimeout())
@@ -140,7 +140,7 @@ void AutoRRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXE
         _pendingDiscovery = seastar::when_all_succeed(std::move(_pendingDiscovery), std::move(newDiscovery)).discard_result();
     }
     else {
-        K2LOG_D(log::tx, "Sending via RRDMA ep: {}", ep->getURL());
+        K2LOG_D(log::tx, "Sending via RRDMA ep: {}", ep->url);
         _rrdmaProto->send(verb, std::move(payload), *ep, std::move(metadata));
     }
 }

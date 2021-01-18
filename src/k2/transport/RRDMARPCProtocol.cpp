@@ -49,7 +49,7 @@ void RRDMARPCProtocol::start() {
     K2LOG_D(log::tx, "start");
     if (_svrEndpoint) {
         _listener = _vnet.local().listenRRDMA();
-        K2LOG_I(log::tx, "Starting listening RRDMA Proto on: {}", _svrEndpoint->getURL());
+        K2LOG_I(log::tx, "Starting listening RRDMA Proto on: {}", _svrEndpoint->url);
 
         _stopped = false;
 
@@ -66,7 +66,7 @@ void RRDMARPCProtocol::start() {
                     adjusted_addr.UDQP = adjusted_addr.UDQP << 8;
 
                     auto && ep = _endpointFromAddress(adjusted_addr);
-                    K2LOG_D(log::tx, "Accepted connection from {}", ep.getURL());
+                    K2LOG_D(log::tx, "Accepted connection from {}", ep.url);
                     _handleNewChannel(std::move(rconn), std::move(ep));
                     return seastar::make_ready_future();
                 }
@@ -131,7 +131,7 @@ std::unique_ptr<TXEndpoint> RRDMARPCProtocol::getTXEndpoint(String url) {
         return nullptr;
     }
     auto ep = TXEndpoint::fromURL(url, _vnet.local().getRRDMAAllocator());
-    if (!ep || ep->getProtocol() != proto) {
+    if (!ep || ep->protocol != proto) {
         K2LOG_W(log::tx, "Cannot construct non-`{}` endpoint", proto);
         return nullptr;
     }
@@ -144,13 +144,13 @@ seastar::lw_shared_ptr<TXEndpoint> RRDMARPCProtocol::getServerEndpoint() {
 
 void RRDMARPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) {
     if (_stopped) {
-        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), endpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), endpoint.url);
         return;
     }
 
     auto&& chan = _getOrMakeChannel(endpoint);
     if (!chan) {
-        K2LOG_W(log::tx, "Dropping message: Unable to create connection for endpoint {}", endpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message: Unable to create connection for endpoint {}", endpoint.url);
         return;
     }
     chan->send(verb, std::move(payload), std::move(metadata));
@@ -164,8 +164,8 @@ seastar::lw_shared_ptr<RRDMARPCChannel> RRDMARPCProtocol::_getOrMakeChannel(TXEn
     }
 
     if (seastar::engine()._rdma_stack) {
-        K2LOG_D(log::tx, "creating new channel to {}", endpoint.getURL());
-        auto address = seastar::rdma::EndPoint(endpoint.getIP(), endpoint.getPort());
+        K2LOG_D(log::tx, "creating new channel to {}", endpoint.url);
+        auto address = seastar::rdma::EndPoint(endpoint.ip, endpoint.port);
         auto rconn = _vnet.local().connectRRDMA(address);
 
         // wrap the connection into a RRDMAChannel
@@ -176,10 +176,10 @@ seastar::lw_shared_ptr<RRDMARPCChannel> RRDMARPCProtocol::_getOrMakeChannel(TXEn
 
 seastar::lw_shared_ptr<RRDMARPCChannel>
 RRDMARPCProtocol::_handleNewChannel(std::unique_ptr<seastar::rdma::RDMAConnection> rconn, TXEndpoint endpoint) {
-    K2LOG_D(log::tx, "processing channel: {}", endpoint.getURL());
+    K2LOG_D(log::tx, "processing channel: {}", endpoint.url);
     auto chan = seastar::make_lw_shared<RRDMARPCChannel>(std::move(rconn), std::move(endpoint),
         [this] (Request&& request) {
-            K2LOG_D(log::tx, "Message verb={}, url={} received", request.verb, request.endpoint.getURL());
+            K2LOG_D(log::tx, "Message verb={}, url={} received", request.verb, request.endpoint.url);
             if (!_stopped) {
                 _messageObserver(std::move(request));
             }
@@ -187,7 +187,7 @@ RRDMARPCProtocol::_handleNewChannel(std::unique_ptr<seastar::rdma::RDMAConnectio
         [this] (TXEndpoint& endpoint, auto exc) {
             if (!_stopped) {
                 if (exc) {
-                    K2LOG_W_EXC(log::tx, exc, "Channel {} failed", endpoint.getURL());
+                    K2LOG_W_EXC(log::tx, exc, "Channel {} failed", endpoint.url);
                 }
                 auto chanIter = _channels.find(endpoint);
                 if (chanIter != _channels.end()) {

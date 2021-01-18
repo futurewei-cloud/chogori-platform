@@ -68,7 +68,7 @@ public:  // application lifespan
 
 private:
     void _registerDATA_URL() {
-        K2LOG_I(log::txbench, "TCP endpoint is: {}", RPC().getServerEndpoint(TCPRPCProtocol::proto)->getURL());
+        K2LOG_I(log::txbench, "TCP endpoint is: {}", RPC().getServerEndpoint(TCPRPCProtocol::proto)->url);
         RPC().registerMessageObserver(GET_DATA_URL,
             [this](Request&& request) mutable {
                 auto response = request.endpoint.newPayload();
@@ -76,7 +76,7 @@ private:
                            RPC().getServerEndpoint(RRDMARPCProtocol::proto):
                            RPC().getServerEndpoint(TCPRPCProtocol::proto));
                 K2LOG_I(log::txbench, "GET_DATA_URL responding with data endpoint: {}", *ep);
-                response->write((void*)ep->getURL().c_str(), ep->getURL().size());
+                response->write((void*)ep->url.c_str(), ep->url.size());
                 return RPC().sendReply(std::move(response), request);
             });
     }

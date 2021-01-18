@@ -177,7 +177,7 @@ class TSOService::TSOController
         // fake new master
         std::tuple<bool, uint64_t> result(true, 0);
         _myLease = GenNewLeaseVal();
-        _masterInstanceURL = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL();
+        _masterInstanceURL = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url;
         return seastar::make_ready_future<std::tuple<bool, uint64_t>>(result);
     }
 

@@ -43,7 +43,7 @@ RRDMARPCChannel::RRDMARPCChannel(std::unique_ptr<seastar::rdma::RDMAConnection> 
 RRDMARPCChannel::~RRDMARPCChannel(){
     K2LOG_D(log::tx, "dtor");
     if (!_closingInProgress) {
-        K2LOG_W(log::tx, "destructor without graceful close: {}", _endpoint.getURL());
+        K2LOG_W(log::tx, "destructor without graceful close: {}", _endpoint.url);
     }
 }
 

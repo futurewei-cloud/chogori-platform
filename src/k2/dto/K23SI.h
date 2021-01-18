@@ -67,7 +67,7 @@ struct K23SI_MTR {
     bool operator!=(const K23SI_MTR& o) const;
     size_t hash() const;
     K2_PAYLOAD_FIELDS(txnid, timestamp, priority);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SI_MTR, txnid, timestamp, priority);
+    K2_DEF_FMT(K23SI_MTR, txnid, timestamp, priority);
 };
 // zero-value for MTRs
 inline const K23SI_MTR K23SI_MTR_ZERO;
@@ -97,8 +97,7 @@ struct TxnId {
     }
 
     K2_PAYLOAD_FIELDS(trh, mtr);
-
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(TxnId, trh, mtr);
+    K2_DEF_FMT(TxnId, trh, mtr);
 };
 
 } // ns dto
@@ -137,33 +136,18 @@ struct DataRecord {
         Aborted       // the record has been aborted and should be removed
     } status;
     K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(DataRecord, key, isTombstone, txnId, status);
+    K2_DEF_FMT(DataRecord, key, isTombstone, txnId, status);
 };
 
-enum class TxnRecordState : uint8_t {
-        Created = 0,
+K2_DEF_ENUM(TxnRecordState,
+        Created,
         InProgress,
         ForceAborted,
         Aborted,
         Committed,
         Deleted,
         Unknown
-};
-
-inline std::ostream& operator<<(std::ostream& os, const TxnRecordState& st) {
-    const char* strstate = "bad state";
-    switch (st) {
-        case TxnRecordState::Created: strstate= "created"; break;
-        case TxnRecordState::InProgress: strstate= "in_progress"; break;
-        case TxnRecordState::ForceAborted: strstate= "force_aborted"; break;
-        case TxnRecordState::Aborted: strstate= "aborted"; break;
-        case TxnRecordState::Committed: strstate= "committed"; break;
-        case TxnRecordState::Deleted: strstate= "deleted"; break;
-        case TxnRecordState::Unknown: strstate= "unknown"; break;
-        default: break;
-    }
-    return os << strstate;
-}
+);
 
 // The main READ DTO.
 struct K23SIReadRequest {
@@ -178,7 +162,7 @@ struct K23SIReadRequest {
         pvid(std::move(p)), collectionName(std::move(cname)), mtr(std::move(_mtr)), key(std::move(_key)) {}
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SIReadRequest, pvid, collectionName, mtr, key);
+    K2_DEF_FMT(K23SIReadRequest, pvid, collectionName, mtr, key);
 };
 
 // The response for READs
@@ -231,7 +215,7 @@ struct K23SIWriteRequest {
         key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, fieldsForPartialUpdate);
+    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, fieldsForPartialUpdate);
 };
 
 struct K23SIWriteResponse {
@@ -256,8 +240,8 @@ struct K23SIQueryRequest {
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
                       reverseDirection, filterExpression, projection);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SIQueryRequest, pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
-                      reverseDirection, filterExpression, projection);
+    K2_DEF_FMT(K23SIQueryRequest, pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit,
+        includeVersionMismatch, reverseDirection, filterExpression, projection);
 };
 
 struct K23SIQueryResponse {
@@ -279,7 +263,7 @@ struct K23SITxnHeartbeatRequest {
     K23SI_MTR mtr;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnHeartbeatRequest, pvid, collectionName, key, mtr);
+    K2_DEF_FMT(K23SITxnHeartbeatRequest, pvid, collectionName, key, mtr);
 };
 
 struct K23SITxnHeartbeatResponse {
@@ -319,7 +303,7 @@ struct K23SITxnPushRequest {
     K23SI_MTR challengerMTR;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, incumbentMTR, challengerMTR);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnPushRequest, pvid, collectionName, key, incumbentMTR, challengerMTR);
+    K2_DEF_FMT(K23SITxnPushRequest, pvid, collectionName, key, incumbentMTR, challengerMTR);
 };
 
 // Response for PUSH operation
@@ -330,23 +314,13 @@ struct K23SITxnPushResponse {
     bool allowChallengerRetry = false;
 
     K2_PAYLOAD_FIELDS(winnerMTR, incumbentState, allowChallengerRetry);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnPushResponse, winnerMTR, incumbentState, allowChallengerRetry);
+    K2_DEF_FMT(K23SITxnPushResponse, winnerMTR, incumbentState, allowChallengerRetry);
 };
 
-enum class EndAction:uint8_t {
+K2_DEF_ENUM(EndAction,
     Abort,
     Commit
-};
-
-inline std::ostream& operator<<(std::ostream& os, const EndAction& act) {
-    const char* stract = "bad action";
-    switch (act) {
-        case EndAction::Abort: stract= "abort"; break;
-        case EndAction::Commit: stract= "commit"; break;
-        default: break;
-    }
-    return os << stract;
-}
+);
 
 struct K23SITxnEndRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
@@ -373,7 +347,7 @@ struct K23SITxnEndRequest {
     Duration timeToFinalize{0};
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize, timeToFinalize);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, syncFinalize, timeToFinalize);
+    K2_DEF_FMT(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, syncFinalize, timeToFinalize);
 };
 
 struct K23SITxnEndResponse {
@@ -395,7 +369,7 @@ struct K23SITxnFinalizeRequest {
     EndAction action;
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, trh, mtr, key, action);
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K23SITxnFinalizeRequest, pvid, collectionName, trh, mtr, key, action);
+    K2_DEF_FMT(K23SITxnFinalizeRequest, pvid, collectionName, trh, mtr, key, action);
 };
 
 struct K23SITxnFinalizeResponse {

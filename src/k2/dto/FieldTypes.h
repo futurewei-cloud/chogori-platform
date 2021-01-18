@@ -29,16 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
-namespace std{
-inline ostream& operator<<(ostream& os, const decimal::decimal64& d) {
-    decimal::decimal64::__decfloat64 data = const_cast<decimal::decimal64&>(d).__getval();
-    return os << (double)data;
-}
-inline ostream& operator<<(ostream& os, const decimal::decimal128& d) {
-    decimal::decimal128::__decfloat128 data = const_cast<decimal::decimal128&>(d).__getval();
-    return os << (double)data;
-}
-}
+
 namespace k2 {
 namespace dto {
 

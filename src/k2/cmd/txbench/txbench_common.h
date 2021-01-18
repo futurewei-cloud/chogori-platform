@@ -40,7 +40,7 @@ struct SessionConfig {
     uint64_t pipelineSize;
     uint64_t pipelineCount;
     uint64_t ackCount;
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(SessionConfig, echoMode, responseSize, pipelineSize, pipelineCount, ackCount);
+    K2_DEF_FMT(SessionConfig, echoMode, responseSize, pipelineSize, pipelineCount, ackCount);
 };
 
 struct Ack {

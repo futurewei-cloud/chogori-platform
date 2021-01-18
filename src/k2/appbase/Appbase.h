@@ -61,7 +61,7 @@ class MultiAddressProvider : public k2::IAddressProvider {
             K2LOG_D(log::appbase, "On core {} have url {}", coreID, _urls[coreID]);
             auto ep = k2::TXEndpoint::fromURL(_urls[coreID], nullptr);
             if (ep) {
-                return seastar::socket_address(seastar::ipv4_addr(ep->getIP(), uint16_t(ep->getPort())));
+                return seastar::socket_address(seastar::ipv4_addr(ep->ip, uint16_t(ep->port)));
             }
             // might not be in URL form (e.g. just a plain port)
             K2LOG_D(log::appbase, "attempting to use url as a simple port");

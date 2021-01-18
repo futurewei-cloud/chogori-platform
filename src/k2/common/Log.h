@@ -23,14 +23,17 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 #include <pthread.h>
+
 #include <ctime>
-#include <string>
 #include <iostream>
 #include <seastar/core/reactor.hh>  // for access to reactor
 #include <seastar/core/sstring.hh>
 #include <sstream>
+#include <string>
+
 #include "Chrono.h"
 #include "Common.h"
+#include "FormattingUtils.h"
 
 // disable unicode formatting for a bit more speed
 #define FMT_UNICODE 0
@@ -49,7 +52,7 @@ Copyright(c) 2020 Futurewei Cloud
         fmt::print(K2LOG_STREAM,                                                                             \
                    FMT_STRING("[{}]-{}-({}:{}) [{}] [{}:{} @{}] " fmt_str "\n"),                             \
                    k2::Clock::now(), k2::logging::Logger::procName, module, id,                              \
-                   k2::logging::LogLevelNames[level], __FILE__, __LINE__, __PRETTY_FUNCTION__, ##__VA_ARGS__); \
+                   k2::logging::LogLevelNames[to_integral(level)], __FILE__, __LINE__, __PRETTY_FUNCTION__, ##__VA_ARGS__); \
         K2LOG_STREAM << std::flush;                                                                          \
     }
 
@@ -105,35 +108,15 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 namespace logging {
-enum LogLevel {
-    NOTSET = 0,
+
+K2_DEF_ENUM(LogLevel,
+    NOTSET,
     VERBOSE,
     DEBUG,
     INFO,
     WARN,
     ERROR,
-    FATAL
-};
-
-const char* const LogLevelNames[] = {
-    "NOTSET",
-    "VERBOSE",
-    "DEBUG",
-    "INFO",
-    "WARN",
-    "ERROR",
-    "FATAL"
-};
-
-inline LogLevel nameToLevel(const String& name) {
-    if (name == "VERBOSE") return LogLevel::VERBOSE;
-    else if (name == "DEBUG") return LogLevel::DEBUG;
-    else if (name == "INFO") return LogLevel::INFO;
-    else if (name == "WARN") return LogLevel::WARN;
-    else if (name == "ERROR") return LogLevel::ERROR;
-    else if (name == "FATAL") return LogLevel::FATAL;
-    throw std::runtime_error((String("invalid log name ") + name).data());
-}
+    FATAL);
 
 // Users of logging would create an instance of this class at their module level
 // Once created, the K2LOG_* macros can be used to perform logging.
@@ -186,51 +169,3 @@ public:
 
 }  // namespace logging
 }  // namespace k2
-
-template <>
-struct fmt::formatter<k2::logging::LogLevel> {
-    template <typename ParseContext>
-    constexpr auto parse(ParseContext& ctx) {
-        return ctx.begin();
-    }
-
-    template <typename FormatContext>
-    auto format(k2::logging::LogLevel const& level, FormatContext& ctx) {
-        return fmt::format_to(ctx.out(), FMT_COMPILE("{}"), k2::logging::LogLevelNames[level]);
-    }
-};
-
-#define K2_DEF_TO_STREAM_INTR(Type)                                             \
-    friend inline std::ostream& operator<<(std::ostream& os, const Type& obj) { \
-        return os << nlohmann::json(obj);                                       \
-    }
-
-#define K2_DEF_FROM_STREAM_INTR(Type)                                           \
-    friend inline std::istream& operator>>(std::istream& is, Type& obj) {       \
-        nlohmann::json j; \
-        is >> j;                                       \
-        obj = j.get<Type>(); \
-        return is; \
-    }
-
-#define K2_DEF_TO_JSON_INTR(Type, ...)                                                  \
-    friend void to_json(nlohmann::json& nlohmann_json_j, const Type& nlohmann_json_t) { \
-        NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, __VA_ARGS__))        \
-    }
-
-#define K2_DEF_FROM_JSON_INTR(Type, ...)                                                  \
-    friend void from_json(const nlohmann::json& nlohmann_json_j, Type& nlohmann_json_t) { \
-        NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM, __VA_ARGS__))        \
-    }
-
-#define K2_DEF_TO_STREAM_JSON_OPS_INTR(Type, ...)  \
-    K2_DEF_TO_JSON_INTR(Type, __VA_ARGS__);       \
-    K2_DEF_TO_STREAM_INTR(Type);
-
-#define K2_DEF_FROM_STREAM_JSON_OPS_INTR(Type, ...)  \
-    K2_DEF_FROM_JSON_INTR(Type, __VA_ARGS__);        \
-    K2_DEF_FROM_STREAM_INTR(Type);
-
-#define K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(Type, ...)    \
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(Type, __VA_ARGS__)    \
-    K2_DEF_FROM_STREAM_JSON_OPS_INTR(Type, __VA_ARGS__)

@@ -105,7 +105,7 @@ public:
             K2LOG_I(log::rpcsvc, "putting record");
             PUT_Request request{.key="Key1", .value="Value1"};
             auto ep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
-            K2LOG_I(log::rpcsvc, "found endpoint: {}", ep->getURL());
+            K2LOG_I(log::rpcsvc, "found endpoint: {}", ep->url);
             return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, request, *ep, 1s);
         })
         .then([](auto&& resp) {

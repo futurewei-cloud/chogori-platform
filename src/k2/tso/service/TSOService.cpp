@@ -102,12 +102,12 @@ std::vector<k2::String> TSOService::GetWorkerURLs()
     std::vector<k2::String> result;
 
     // return all endpoint URLs of various transport type, currently, we must have TCP and RDMA
-    result.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
+    result.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
 
     if (seastar::engine()._rdma_stack)
     {
         K2LOG_I(log::tsoserver, "TSOWorker have RDMA transport.");
-        result.push_back(k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto)->getURL());
+        result.push_back(k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto)->url);
     }
 
     return result;

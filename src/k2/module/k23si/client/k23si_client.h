@@ -365,7 +365,7 @@ public:
     // use to obtain the MTR(which acts as a unique transaction identifier) for this transaction
     const dto::K23SI_MTR& mtr() const;
 
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(K2TxnHandle, _mtr);
+    K2_DEF_FMT(K2TxnHandle, _mtr);
 
 private:
     dto::K23SI_MTR _mtr;

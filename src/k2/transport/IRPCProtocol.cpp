@@ -60,7 +60,7 @@ void IRPCProtocol::setMessageObserver(RequestObserver_t observer) {
         K2LOG_D(log::tx, "setting default message observer");
         _messageObserver = [](Request&& request) {
             K2LOG_W(log::tx, "Message verb={}, from ep={} ignored since there is no message observer registered",
-                request.verb, request.endpoint.getURL());
+                request.verb, request.endpoint.url);
         };
     }
     else {

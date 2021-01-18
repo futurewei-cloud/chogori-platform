@@ -110,7 +110,7 @@ private:
 
     seastar::future<> _benchmark() {
         K2LOG_I(log::txbench, "Starting benchmark for main remote={}, with requestSize={}, with responseSize={}, with pipelineDepth={}, with multiConn={}, with copyData={}, with testDuration={}",
-            _session.endpoints[0]->getURL(), _requestSize(), _responseSize(), _pipelineDepth(),
+            _session.endpoints[0]->url, _requestSize(), _responseSize(), _pipelineDepth(),
              _multiConn(), _copyData(), _testDuration());
 
         std::vector<seastar::future<>> reqFuts;

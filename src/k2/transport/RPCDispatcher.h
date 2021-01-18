@@ -161,7 +161,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
     seastar::future<std::tuple<Status, Response_t>> callRPC(Verb verb, Request_t& request, TXEndpoint& endpoint, Duration timeout) {
         auto payload = endpoint.newPayload();
         payload->write(request);
-        K2LOG_D(log::tx, "RPC Request call to endpoint: {}", endpoint.getURL());
+        K2LOG_D(log::tx, "RPC Request call to endpoint: {}", endpoint.url);
 
         return sendRequest(verb, std::move(payload), endpoint, timeout)
             .then([](std::unique_ptr<Payload>&& responsePayload) {
@@ -218,7 +218,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     return observer(std::move(rpcRequest))
                         .then([&](auto&& result) mutable {
                             if (!disp) {
-                                K2LOG_W(log::tx, "dispatcher is going down: unable to send response to {}", request.endpoint.getURL());
+                                K2LOG_W(log::tx, "dispatcher is going down: unable to send response to {}", request.endpoint.url);
                                 return seastar::make_ready_future();
                             }
 

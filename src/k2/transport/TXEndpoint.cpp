@@ -79,27 +79,27 @@ TXEndpoint::~TXEndpoint() {
     K2LOG_D(log::tx, "dtor");
 }
 
-TXEndpoint::TXEndpoint(String&& protocol, String&& ip, uint32_t port, BinaryAllocatorFunctor&& allocator):
-    _protocol(std::move(protocol)),
-    _ip(std::move(ip)),
-    _port(port),
+TXEndpoint::TXEndpoint(String&& pprotocol, String&& pip, uint32_t pport, BinaryAllocatorFunctor&& allocator):
+    protocol(std::move(pprotocol)),
+    ip(std::move(pip)),
+    port(pport),
     _allocator(std::move(allocator)) {
-    bool isIpv6 = _ip.find(":") != String::npos;
-    _url = _protocol + "://" + (isIpv6?"[":"") + _ip + (isIpv6?"]":"");
-    _url += ":" + std::to_string(_port);
-    _hash = std::hash<String>()(_url);
+    bool isIpv6 = ip.find(":") != String::npos;
+    url = protocol + "://" + (isIpv6?"[":"") + ip + (isIpv6?"]":"");
+    url += ":" + std::to_string(port);
+    _hash = std::hash<String>()(url);
 
-    K2LOG_D(log::tx, "Created endpoint {}", _url);
+    K2LOG_D(log::tx, "Created endpoint {}", url);
 }
 
 TXEndpoint::TXEndpoint(const TXEndpoint& o) {
-    _protocol = o._protocol;
-    _ip = o._ip;
-    _port = o._port;
-    _url = o._url;
+    protocol = o.protocol;
+    ip = o.ip;
+    port = o.port;
+    url = o.url;
     _hash = o._hash;
     _allocator = o._allocator;
-    K2LOG_D(log::tx, "Copy endpoint {}", _url);
+    K2LOG_D(log::tx, "Copy endpoint {}", url);
 }
 
 TXEndpoint::TXEndpoint(TXEndpoint&& o) {
@@ -109,10 +109,10 @@ TXEndpoint::TXEndpoint(TXEndpoint&& o) {
         return;
     }
     K2LOG_D(log::tx, "");
-    _protocol = std::move(o._protocol);
-    _ip = std::move(o._ip);
-    _port = o._port; o._port = 0;
-    _url = std::move(o._url);
+    protocol = std::move(o.protocol);
+    ip = std::move(o.ip);
+    port = o.port; o.port = 0;
+    url = std::move(o.url);
     _hash = o._hash; o._hash = 0;
     _allocator = std::move(o._allocator);
     o._allocator = nullptr;
@@ -120,16 +120,8 @@ TXEndpoint::TXEndpoint(TXEndpoint&& o) {
     K2LOG_D(log::tx, "move ctor done");
 }
 
-const String& TXEndpoint::getURL() const { return _url; }
-
-const String& TXEndpoint::getProtocol() const { return _protocol; }
-
-const String& TXEndpoint::getIP() const { return _ip; }
-
-uint32_t TXEndpoint::getPort() const { return _port; }
-
 bool TXEndpoint::operator==(const TXEndpoint& other) const {
-    return _url == other._url;
+    return url == other.url;
 }
 
 size_t TXEndpoint::hash() const { return _hash; }

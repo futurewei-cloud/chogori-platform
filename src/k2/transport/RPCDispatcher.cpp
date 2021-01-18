@@ -53,7 +53,7 @@ RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
     // weird gymnastics to get around the fact that weak pointers aren't copyable
     proto->setMessageObserver(
     [shptr=seastar::make_lw_shared<>(weak_from_this())] (Request&& request) {
-        K2LOG_D(log::tx, "handling request for verb={}, from ep={}", int(request.verb), request.endpoint.getURL());
+        K2LOG_D(log::tx, "handling request for verb={}, from ep={}", int(request.verb), request.endpoint.url);
         seastar::weak_ptr<RPCDispatcher>& weakP = *shptr.get(); // the weak_ptr inside the lw_shared_ptr
         if (weakP) {
             weakP->_handleNewMessage(std::move(request));
@@ -73,8 +73,8 @@ RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
     auto serverep = proto->getServerEndpoint();
     if (serverep){
         std::pair<String, int> url_core;
-        url_core = std::make_pair(serverep->getURL(), seastar::engine().cpu_id());
-        K2LOG_D(log::tx, "BroadCast URL and Core ID {}", serverep->getURL());
+        url_core = std::make_pair(serverep->url, seastar::engine().cpu_id());
+        K2LOG_D(log::tx, "BroadCast URL and Core ID {}", serverep->url);
         return RPCDist().invoke_on_all(&k2::RPCDispatcher::setAddressCore, url_core);
     }
     return seastar::make_ready_future<>();
@@ -121,7 +121,7 @@ seastar::future<> RPCDispatcher::stop() {
 
 // Process new messages received from protocols
 void RPCDispatcher::_handleNewMessage(Request&& request) {
-    K2LOG_D(log::tx, "handling request for verb={}, from ep={}", int(request.verb), request.endpoint.getURL());
+    K2LOG_D(log::tx, "handling request for verb={}, from ep={}", int(request.verb), request.endpoint.url);
     // see if this is a response
     if (request.metadata.isResponseIDSet()) {
         // process as a response
@@ -139,7 +139,7 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
     }
     auto iter = _observers.find(request.verb);
     if (iter != _observers.end()) {
-        K2LOG_D(log::tx, "Dispatching request for verb={}, from ep={}", int(request.verb), request.endpoint.getURL());
+        K2LOG_D(log::tx, "Dispatching request for verb={}, from ep={}", int(request.verb), request.endpoint.url);
         // TODO emit verb-dimension metric for duration of handling
         try {
             iter->second(std::move(request));
@@ -150,7 +150,7 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
         }
     }
     else {
-        K2LOG_D(log::tx, "no observer for verb {}, from {}", request.verb, request.endpoint.getURL());
+        K2LOG_D(log::tx, "no observer for verb {}, from {}", request.verb, request.endpoint.url);
         // TODO emit metric
     }
 }
@@ -158,30 +158,30 @@ void RPCDispatcher::_handleNewMessage(Request&& request) {
 
 seastar::future<>
 RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata meta) {
-    auto ep = RPC().getServerEndpoint(endpoint.getProtocol());
-    auto protoi = _protocols.find(endpoint.getProtocol());
+    auto ep = RPC().getServerEndpoint(endpoint.protocol);
+    auto protoi = _protocols.find(endpoint.protocol);
     if (protoi == _protocols.end()) {
-        K2LOG_W(log::tx, "Unsupported protocol: {}", endpoint.getProtocol());
+        K2LOG_W(log::tx, "Unsupported protocol: {}", endpoint.protocol);
         return seastar::make_ready_future<>();
     }
     auto serverep = protoi->second->getServerEndpoint();
     K2LOG_D(log::tx,
         "sending message for verb={}, to endpoint={}, with server endpoint={}, payload size={}, payload capacity={}",
-        int(verb), endpoint.getURL(), (serverep ? serverep->getURL() : String("none")),
+        int(verb), endpoint.url, (serverep ? serverep->url : String("none")),
         (payload ? payload->getSize() : 0), (payload ? payload->getCapacity() : 0));
     if (_txUseCrossCoreLoopback()) {
-        auto core = _url_cores.find(endpoint.getURL());
+        auto core = _url_cores.find(endpoint.url);
         if (core != _url_cores.end()){
             // rewind the payload to the correct position
             payload->seek(txconstants::MAX_HEADER_SIZE);
             meta.setPayloadSize(payload->getDataRemaining());
 
             if (serverep && endpoint == *serverep){
-                _handleNewMessage(Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload)));
+                _handleNewMessage(Request(verb, *RPC().getServerEndpoint(endpoint.protocol), std::move(meta), std::move(payload)));
             }
             else{
                 //We don't care about the result of this call since we don't make a promise that we're going to deliver the data.
-                (void) RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.getProtocol()), std::move(meta), std::move(payload))).
+                (void) RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.protocol), std::move(meta), std::move(payload))).
                 handle_exception([&](auto exc) mutable {
                     K2LOG_W_EXC(log::tx, exc, "invoke_on failed");
                     return seastar::make_ready_future();
@@ -217,7 +217,7 @@ RPCDispatcher::sendReply(std::unique_ptr<Payload> payload, Request& forRequest) 
 seastar::future<std::unique_ptr<Payload>>
 RPCDispatcher::sendRequest(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, Duration timeout) {
     uint64_t msgid = _msgSequenceID++;
-    K2LOG_D(log::tx, "Request send with msgid={}, timeout={}, ep={}", msgid, timeout, endpoint.getURL());
+    K2LOG_D(log::tx, "Request send with msgid={}, timeout={}, ep={}", msgid, timeout, endpoint.url);
 
     // the promise gets fulfilled when prom for this msgid comes back.
     PayloadPromise prom;
@@ -269,9 +269,9 @@ std::unique_ptr<TXEndpoint> RPCDispatcher::getTXEndpoint(String url) {
         return nullptr;
     }
 
-    auto protoi = _protocols.find(ep->getProtocol());
+    auto protoi = _protocols.find(ep->protocol);
     if (protoi == _protocols.end()) {
-        K2LOG_W(log::tx, "Unsupported protocol: {}", ep->getProtocol());
+        K2LOG_W(log::tx, "Unsupported protocol: {}", ep->protocol);
         return nullptr;
     }
     return protoi->second->getTXEndpoint(std::move(url));

@@ -67,7 +67,7 @@ public:  // application lifespan
 
 private:
     void _registerDATA_URL() {
-        K2LOG_I(log::txbench, "TCP endpoint is: {}",RPC().getServerEndpoint(TCPRPCProtocol::proto)->getURL());
+        K2LOG_I(log::txbench, "TCP endpoint is: {}",RPC().getServerEndpoint(TCPRPCProtocol::proto)->url);
         RPC().registerMessageObserver(GET_DATA_URL,
             [this](Request&& request) mutable {
                 auto response = request.endpoint.newPayload();
@@ -75,7 +75,7 @@ private:
                            RPC().getServerEndpoint(RRDMARPCProtocol::proto):
                            RPC().getServerEndpoint(TCPRPCProtocol::proto));
                 K2LOG_I(log::txbench, "GET_DATA_URL responding with data endpoint: {}", *ep);
-                response->write(ep->getURL());
+                response->write(ep->url);
                 return RPC().sendReply(std::move(response), request);
             });
     }
@@ -237,7 +237,7 @@ public:  // application lifespan
             auto szpsec = (((double)_session.totalSize - _session.unackedSize )/(1024*1024*1024))/totalsecs;
             auto cntpsec = ((double)_session.totalCount - _session.unackedCount)/totalsecs;
             K2LOG_I(log::txbench, "sessionID={}", _session.sessionID);
-            K2LOG_I(log::txbench, "remote={}", _session.client.getURL());
+            K2LOG_I(log::txbench, "remote={}", _session.client.url);
             K2LOG_I(log::txbench, "totalSize={} ({} GBit per sec)", _session.totalSize, szpsec*8);
             K2LOG_I(log::txbench, "totalCount={}, ({} per sec)", _session.totalCount, cntpsec);
             K2LOG_I(log::txbench, "unackedSize={}", _session.unackedSize);
@@ -334,7 +334,7 @@ private:
     }
 
     seastar::future<> _benchmark() {
-        K2LOG_I(log::txbench, "Starting benchmark for remote={}, config={}", _session.client.getURL(), _session.config);
+        K2LOG_I(log::txbench, "Starting benchmark for remote={}, config={}", _session.client.url, _session.config);
         RPC().registerMessageObserver(ACK, [this](Request&& request) {
             auto now = Clock::now(); // to compute reqest latencies
             if (request.payload) {

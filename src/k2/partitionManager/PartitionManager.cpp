@@ -66,11 +66,11 @@ PartitionManager::assignPartition(dto::CollectionMetadata meta, dto::Partition p
         partition.endpoints.clear();
         auto tcp_ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
         if (tcp_ep) {
-            partition.endpoints.insert(tcp_ep->getURL());
+            partition.endpoints.insert(tcp_ep->url);
         }
         auto rdma_ep = k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto);
         if (rdma_ep) {
-            partition.endpoints.insert(rdma_ep->getURL());
+            partition.endpoints.insert(rdma_ep->url);
         }
 
         _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);

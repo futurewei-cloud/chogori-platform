@@ -58,7 +58,7 @@ APIServer::start() {
         auto ep = k2::TXEndpoint::fromURL(_tcp_endpoints()[coreID], nullptr);
         if (ep) {
             parsed = true;
-            listenAddr = seastar::ipv4_addr(ep->getIP(), uint16_t(ep->getPort() + API_PORT_OFFSET));
+            listenAddr = seastar::ipv4_addr(ep->ip, uint16_t(ep->port + API_PORT_OFFSET));
         }
 
         // Try parsing as port only

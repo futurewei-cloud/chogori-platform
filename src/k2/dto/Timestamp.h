@@ -87,14 +87,7 @@ private:
 
 public:
     K2_PAYLOAD_FIELDS(_tEndTSECount, _tsoId, _tStartDelta);
-    K2_DEF_TO_STREAM_INTR(Timestamp);
-    friend void inline to_json(nlohmann::json& j, const Timestamp& o) {
-        j = nlohmann::json{{"endCount", o._tEndTSECount},
-                       {"tsoId", o._tsoId},
-                       {"startDelta", o._tStartDelta},
-                       {"formatted", o.print()}
-                       };
-    }
+    K2_DEF_FMT(Timestamp, _tEndTSECount, _tsoId, _tStartDelta);
 };
 
 } // ns dto

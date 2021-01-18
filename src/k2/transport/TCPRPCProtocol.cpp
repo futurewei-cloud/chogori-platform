@@ -56,7 +56,7 @@ void TCPRPCProtocol::start() {
     K2LOG_D(log::tx, "start");
     _stopped = false;
     if (_svrEndpoint) {
-        K2LOG_I(log::tx, "Starting listening TCP Proto on: {}", _svrEndpoint->getURL());
+        K2LOG_I(log::tx, "Starting listening TCP Proto on: {}", _svrEndpoint->url);
 
         seastar::listen_options lo;
         lo.reuse_address = true;
@@ -65,7 +65,7 @@ void TCPRPCProtocol::start() {
         if (_addr.port() == 0) {
             // update the local endpoint if we're binding to port 0
             _svrEndpoint = seastar::make_lw_shared<>(_endpointFromAddress(_listen_socket->local_address()));
-            K2LOG_I(log::tx, "Effective listening TCP Proto on: {}", _svrEndpoint->getURL());
+            K2LOG_I(log::tx, "Effective listening TCP Proto on: {}", _svrEndpoint->url);
         }
 
         _listenerClosed = seastar::do_until(
@@ -162,7 +162,7 @@ std::unique_ptr<TXEndpoint> TCPRPCProtocol::getTXEndpoint(String url) {
         return nullptr;
     }
     auto ep = TXEndpoint::fromURL(url, _vnet.local().getTCPAllocator());
-    if (!ep || ep->getProtocol() != proto) {
+    if (!ep || ep->protocol != proto) {
         K2LOG_W(log::tx, "Cannot construct non-`{}` endpoint", proto);
         return nullptr;
     }
@@ -175,13 +175,13 @@ seastar::lw_shared_ptr<TXEndpoint> TCPRPCProtocol::getServerEndpoint() {
 
 void TCPRPCProtocol::send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& endpoint, MessageMetadata metadata) {
     if (_stopped) {
-        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), endpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message since we're stopped: verb={}, url={}", int(verb), endpoint.url);
         return;
     }
 
     auto&& chan = _getOrMakeChannel(endpoint);
     if (!chan) {
-        K2LOG_W(log::tx, "Dropping message: Unable to create connection for endpoint {}", endpoint.getURL());
+        K2LOG_W(log::tx, "Dropping message: Unable to create connection for endpoint {}", endpoint.url);
         return;
     }
     chan->send(verb, std::move(payload), std::move(metadata));
@@ -193,10 +193,10 @@ seastar::lw_shared_ptr<TCPRPCChannel> TCPRPCProtocol::_getOrMakeChannel(TXEndpoi
     if (iter != _channels.end()) {
         return iter->second;
     }
-    K2LOG_D(log::tx, "creating new channel for {}", endpoint.getURL());
+    K2LOG_D(log::tx, "creating new channel for {}", endpoint.url);
 
     // TODO support for IPv6?
-    auto address = seastar::make_ipv4_address({endpoint.getIP().c_str(), uint16_t(endpoint.getPort())});
+    auto address = seastar::make_ipv4_address({endpoint.ip.c_str(), uint16_t(endpoint.port)});
 
     // we can only get a future for a connection at some point.
     auto futureConn = _vnet.local().connectTCP(address);
@@ -210,7 +210,7 @@ seastar::lw_shared_ptr<TCPRPCChannel> TCPRPCProtocol::_getOrMakeChannel(TXEndpoi
 
 seastar::lw_shared_ptr<TCPRPCChannel>
 TCPRPCProtocol::_handleNewChannel(seastar::future<seastar::connected_socket> futureSocket, const TXEndpoint& endpoint) {
-    K2LOG_D(log::tx, "processing channel: {}", endpoint.getURL());
+    K2LOG_D(log::tx, "processing channel: {}", endpoint.url);
     auto chan = seastar::make_lw_shared<TCPRPCChannel>(std::move(futureSocket), endpoint,
         [this] (Request&& request) {
             if (!_stopped) {
@@ -221,7 +221,7 @@ TCPRPCProtocol::_handleNewChannel(seastar::future<seastar::connected_socket> fut
             if (!_stopped) {
                 if (exc) {
 
-                    K2LOG_W_EXC(log::tx, exc, "Channel {} failed", endpoint.getURL());
+                    K2LOG_W_EXC(log::tx, exc, "Channel {} failed", endpoint.url);
                 }
                 auto chanIter = _channels.find(endpoint);
                 if (chanIter != _channels.end()) {

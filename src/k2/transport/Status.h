@@ -60,7 +60,7 @@ struct Status {
 
     String getDescription() const;
 
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(Status, code, message);
+    K2_DEF_FMT(Status, code, message);
 };
 
 
@@ -460,5 +460,4 @@ static const inline Status S529_Site_is_overloaded{.code=529, .message=""};
 static const inline Status S598_Network_read_timeout_error{.code=598, .message=""};
 
 }; // struct status
-
 } //namespace k2

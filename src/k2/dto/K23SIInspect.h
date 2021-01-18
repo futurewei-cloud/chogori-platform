@@ -43,11 +43,7 @@ struct K23SIInspectRecordsRequest {
     String collectionName;
     Key key; // the key to gather all records for
     K2_PAYLOAD_FIELDS(pvid, collectionName, key);
-
-    friend std::ostream& operator<<(std::ostream& os, const K23SIInspectRecordsRequest& r) {
-        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                   << ", key=" << r.key << "}";
-    }
+    K2_DEF_FMT(K23SIInspectRecordsRequest, pvid, collectionName, key);
 };
 
 struct K23SIInspectRecordsResponse {
@@ -63,11 +59,7 @@ struct K23SIInspectTxnRequest {
     Key key; // the key of the THR to request
     K23SI_MTR mtr;
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
-
-    friend std::ostream& operator<<(std::ostream& os, const K23SIInspectTxnRequest& r) {
-        return os << "{pvid=" << r.pvid << ", colName=" << r.collectionName
-                  << ", mtr=" << r.mtr  << ", key=" << r.key << "}";
-    }
+    K2_DEF_FMT(K23SIInspectTxnRequest, pvid, collectionName, key, mtr);
 };
 
 // Contains the TRH data (struct TxnRecord) without the internal
@@ -87,13 +79,7 @@ struct K23SIInspectTxnResponse {
     TxnRecordState state;
 
     K2_PAYLOAD_FIELDS(txnId, writeKeys, rwExpiry, state);
-
-    friend std::ostream& operator<<(std::ostream& os, const K23SIInspectTxnResponse& rec) {
-        os << "{txnId=" << rec.txnId << ", writeKeys=[";
-        os << rec.writeKeys.size();
-        os << "], rwExpiry=" << rec.rwExpiry << ", syncfin=" << rec.syncFinalize << "}";
-        return os;
-    }
+    K2_DEF_FMT(K23SIInspectTxnResponse, txnId, writeKeys, rwExpiry, state);
 };
 
 // Requests all WIs on a node for all keys
@@ -119,27 +105,14 @@ struct K23SIInspectAllTxnsResponse {
 // Request all keys stored on a node
 struct K23SIInspectAllKeysRequest {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SIInspectAllKeysRequest);
 };
 
 struct K23SIInspectAllKeysResponse {
     std::vector<Key> keys;
     K2_PAYLOAD_FIELDS(keys);
+    K2_DEF_FMT(K23SIInspectAllKeysResponse, keys);
 };
-
-// This request object is empty, just need the no-op function overload for compilation
-void inline to_json(nlohmann::json&, const K23SIInspectAllKeysRequest&) {}
-
-// This request object is empty, just need the no-op function overload for compilation
-void inline from_json(const nlohmann::json&, K23SIInspectAllKeysRequest&) {}
-
-void inline to_json(nlohmann::json& j, const K23SIInspectAllKeysResponse& resp) {
-    j = nlohmann::json{{"keys", resp.keys}};
-}
-
-void inline from_json(const nlohmann::json& j, K23SIInspectAllKeysResponse& resp) {
-    j.at("keys").get_to(resp.keys);
-}
 
 } // ns dto
 } // ns k2
-

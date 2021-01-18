@@ -39,7 +39,7 @@ public:
             payload->write(val);
             dto::K23SI_PersistenceRequest<Payload> request{};
             request.value.val = std::move(*payload);
-            K2LOG_D(log::skvsvr, "making persistence call to endpoint: {}, with deadline={}", _remoteEndpoint->getURL(), deadline.getRemaining());
+            K2LOG_D(log::skvsvr, "making persistence call to endpoint: {}, with deadline={}", _remoteEndpoint->url, deadline.getRemaining());
             return seastar::do_with(std::move(request), [this, deadline] (auto& request) {
                 return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
                     (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, deadline.getRemaining()).discard_result();

@@ -95,10 +95,10 @@ int App::start(int argc, char** argv) {
                         String second = token.substr(pos+1, token.size() - pos + 1);
                         return std::make_tuple(std::move(first), std::move(second));
                     };
-                    logging::Logger::threadLocalLogLevel = logging::nameToLevel(levels[0]);
+                    logging::Logger::threadLocalLogLevel = logging::LogLevelFromStr(levels[0]);
                     for (size_t i = 1; i < levels.size(); ++i) {
                         auto [module, levelStr] = split(levels[i]);
-                        auto level = logging::nameToLevel(levelStr);
+                        auto level = logging::LogLevelFromStr(levelStr);
                         logging::Logger::moduleLevels[module] = level;
                         auto it = logging::Logger::moduleLoggers.find(module);
                         if (it != logging::Logger::moduleLoggers.end()) {

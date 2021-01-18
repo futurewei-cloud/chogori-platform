@@ -42,7 +42,7 @@ struct DataRec {
     bool operator==(const DataRec& o) {
         return f1 == o.f1 && f2 == o.f2;
     }
-    K2_DEF_TO_STREAM_JSON_OPS_INTR(DataRec, f1, f2);
+    K2_DEF_FMT(DataRec, f1, f2);
 };
 
 const char* collname = "k23si_test_collection";

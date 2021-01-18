@@ -20,44 +20,19 @@ Copyright(c) 2020 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
+#pragma once
 
-#include "Discovery.h"
+// utility macro to generate overloads for up to 64-argument macros (including no-arg: 0 macro)
+#define _K2_OVERLOADED_MACRO(M, ...) _K2_OVR(M, _K2_NARGS(__VA_ARGS__))(__VA_ARGS__)
+#define _K2_OVR(macro_name, number_of_args) _K2_OVR_EXPAND(macro_name, number_of_args)
+#define _K2_OVR_EXPAND(macro_name, number_of_args) macro_name##number_of_args
 
-#include <k2/common/Log.h>
-
-#include "AutoRRDMARPCProtocol.h"
-#include "DiscoveryDTO.h"
-#include "Status.h"
-
-namespace k2 {
-
-Discovery::Discovery() {
-    K2LOG_I(log::tx, "ctor");
-}
-
-Discovery::~Discovery() {
-    K2LOG_I(log::tx, "dtor");
-}
-
-seastar::future<> Discovery::gracefulStop() {
-    K2LOG_I(log::tx, "graceful stop");
-    return seastar::make_ready_future();
-}
-
-seastar::future<> Discovery::start() {
-    K2LOG_I(log::tx, "Registering message handlers");
-    RPC().registerRPCObserver<ListEndpointsRequest, ListEndpointsResponse>(InternalVerbs::LIST_ENDPOINTS,
-    [this](ListEndpointsRequest&&) {
-        ListEndpointsResponse response{};
-        for (auto& serverEndpoint : RPC().getServerEndpoints()) {
-            if (serverEndpoint) {
-                response.endpoints.push_back(serverEndpoint->url);
-            }
-        }
-        return RPCResponse(Statuses::S200_OK("list endpoints success"), std::move(response));
-    });
-
-    return seastar::make_ready_future();
-}
-
-} // namespace k2
+#define _K2_NARGS(...) _K2_RARGS(_, ##__VA_ARGS__, _, \
+    63, 62, 61, 60, \
+    59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, \
+    39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, \
+    19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#define _K2_RARGS(_, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, \
+    _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, \
+    _31, _32, _33, _34, _35, _36, _37, _38, _39, _40, _41, _42, _43, _44, _45, _46, _47, _48, _49, _50, \
+    _51, _52, _53, _54, _55, _56, _57, _58, _59, _60, _61, _62, _63, N, ...) N

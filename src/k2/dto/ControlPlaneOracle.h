@@ -52,15 +52,13 @@ struct CollectionCreateRequest {
     std::vector<String> rangeEnds;
 
     K2_PAYLOAD_FIELDS(metadata, clusterEndpoints, rangeEnds);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(CollectionCreateRequest, metadata, clusterEndpoints, rangeEnds);
+    K2_DEF_FMT(CollectionCreateRequest, metadata, clusterEndpoints, rangeEnds);
 };
 
 // Response to CollectionCreateRequest
 struct CollectionCreateResponse {
     K2_PAYLOAD_EMPTY;
-    K2_DEF_TO_STREAM_INTR(CollectionCreateResponse);
-    friend void inline to_json(nlohmann::json&, const CollectionCreateResponse&) {
-    }
+    K2_DEF_FMT(CollectionCreateResponse);
 };
 
 // Request to get a collection
@@ -68,7 +66,7 @@ struct CollectionGetRequest {
     // The name of the collection to get
     String name;
     K2_PAYLOAD_FIELDS(name);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(CollectionGetRequest, name);
+    K2_DEF_FMT(CollectionGetRequest, name);
 };
 
 // Response to CollectionGetRequest
@@ -76,7 +74,7 @@ struct CollectionGetResponse {
     // The collection we found
     Collection collection;
     K2_PAYLOAD_FIELDS(collection);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(CollectionGetResponse, collection);
+    K2_DEF_FMT(CollectionGetResponse, collection);
 };
 
 struct SchemaField {
@@ -90,7 +88,7 @@ struct SchemaField {
     bool nullLast = false;
 
     K2_PAYLOAD_FIELDS(type, name, descending, nullLast);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(SchemaField, type, name, descending, nullLast);
+    K2_DEF_FMT(SchemaField, type, name, descending, nullLast);
 };
 
 struct Schema {
@@ -114,7 +112,7 @@ struct Schema {
 
     K2_PAYLOAD_FIELDS(name, version, fields, partitionKeyFields, rangeKeyFields);
 
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(Schema, name, version, fields, partitionKeyFields, rangeKeyFields);
+    K2_DEF_FMT(Schema, name, version, fields, partitionKeyFields, rangeKeyFields);
 };
 
 // Request to create a schema and attach it to a collection
@@ -123,28 +121,26 @@ struct CreateSchemaRequest {
     String collectionName;
     Schema schema;
     K2_PAYLOAD_FIELDS(collectionName, schema);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(CreateSchemaRequest, collectionName, schema);
+    K2_DEF_FMT(CreateSchemaRequest, collectionName, schema);
 };
 
 // Response to CreateSchemaRequest
 struct CreateSchemaResponse {
     K2_PAYLOAD_EMPTY;
-    K2_DEF_TO_STREAM_INTR(CreateSchemaResponse);
-    friend void inline to_json(nlohmann::json&, const CreateSchemaResponse&) {
-    }
+    K2_DEF_FMT(CreateSchemaResponse);
 };
 
 // Get all versions of all schemas associated with a collection
 struct GetSchemasRequest {
     String collectionName;
     K2_PAYLOAD_FIELDS(collectionName);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(GetSchemasRequest, collectionName);
+    K2_DEF_FMT(GetSchemasRequest, collectionName);
 };
 
 struct GetSchemasResponse {
     std::vector<Schema> schemas;
     K2_PAYLOAD_FIELDS(schemas);
-    K2_DEF_TOFROM_STREAM_JSON_OPS_INTR(GetSchemasResponse, schemas);
+    K2_DEF_FMT(GetSchemasResponse, schemas);
 };
 
 

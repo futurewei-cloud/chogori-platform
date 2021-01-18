@@ -55,7 +55,7 @@ public :  // application lifespan
         // look for rdma
         if (seastar::engine()._rdma_stack) {
             for (auto& ep: eps) {
-                if (ep->getProtocol() == RRDMARPCProtocol::proto) {
+                if (ep->protocol == RRDMARPCProtocol::proto) {
                     return std::move(ep);
                 }
             }
@@ -63,7 +63,7 @@ public :  // application lifespan
 
         // either we don't support rdma, or remote end doesn't. Look for TCP
         for (auto& ep : eps) {
-            if (ep->getProtocol() == TCPRPCProtocol::proto) {
+            if (ep->protocol == TCPRPCProtocol::proto) {
                 return std::move(ep);
             }
         }
