@@ -1,7 +1,14 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(common STATIC ${HEADERS} ${SOURCES})
+add_custom_command(
+  OUTPUT AutoGenFormattingUtils.h
+  COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/gen_macros.py > ${CMAKE_CURRENT_SOURCE_DIR}/AutoGenFormattingUtils.h
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/gen_macros.py
+)
+add_custom_target(autogen_utils DEPENDS AutoGenFormattingUtils.h)
+
+add_library(common STATIC ${HEADERS} ${SOURCES} AutoGenFormattingUtils.h)
 
 set_target_properties(common PROPERTIES
     VERSION ${PROJECT_VERSION}
