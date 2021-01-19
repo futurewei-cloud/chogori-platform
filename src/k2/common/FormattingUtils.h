@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright(c) 2020 Futurewei Cloud
+Copyright(c) 2021 Futurewei Cloud
 
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
@@ -35,7 +35,7 @@ template <typename T>
 inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e); }
 
 // Intrusive formatting for classes
-// Generates formatting and from/to json conversion methods for a given CType, in a given namespace
+// Generates formatting and from/to json conversion methods for a given _K2_CTYPE_ARG, in a given namespace
 // e.g. usage:
 // namespace k2::dto {
 // struct GetSchemaRequest() {
@@ -43,24 +43,24 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
 //    K2_DEF_FMT(GetSchemaRequest, schemaName)
 // };
 // }
-#define K2_DEF_FMT(CType, ...)                                                                    \
+#define K2_DEF_FMT(_K2_CTYPE_ARG, ...)                                                            \
     template <typename OStream_T>                                                                 \
-    friend OStream_T& operator<<(OStream_T& os, const CType& o) {                                 \
+    friend OStream_T& operator<<(OStream_T& os, const _K2_CTYPE_ARG& o) {                         \
         if constexpr (std::is_same<OStream_T, std::ostream>::value) {                             \
             fmt::print(os,                                                                        \
-                           FMT_STRING("[" _K2_MKLIST(__VA_ARGS__) "]") _K2_MKVARS(__VA_ARGS__));  \
+                       FMT_STRING("[" _K2_MKLIST(__VA_ARGS__) "]") _K2_MKVARS(__VA_ARGS__));      \
         } else {                                                                                  \
             fmt::format_to(os.out(),                                                              \
                            FMT_COMPILE("[" _K2_MKLIST(__VA_ARGS__) "]") _K2_MKVARS(__VA_ARGS__)); \
         }                                                                                         \
         return os;                                                                                \
     }                                                                                             \
-    friend void to_json(nlohmann::json& j, const CType& o) {                                      \
+    friend void to_json(nlohmann::json& j, const _K2_CTYPE_ARG& o) {                              \
         (void)o;                                                                                  \
         j = nlohmann::json{_K2_TO_JSON(__VA_ARGS__)};                                             \
     }                                                                                             \
                                                                                                   \
-    friend void from_json(const nlohmann::json& j, CType& o) {                                    \
+    friend void from_json(const nlohmann::json& j, _K2_CTYPE_ARG& o) {                            \
         _K2_FROM_JSON(__VA_ARGS__)                                                                \
     }
 
@@ -69,62 +69,62 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
 // namespace k2::dto {
 // K2_DEF_ENUM(TxnStatus, Created, Aborted, Committed) )
 // }
-#define K2_DEF_ENUM_IC(Name, ...)                                                   \
-    enum class Name {                                                               \
-        __VA_ARGS__                                                                 \
-    };                                                                              \
-    inline static const char* const Name##Names[] = {                               \
-        _K2_TO_STRING_LIST(__VA_ARGS__)};                                           \
-    inline static Name Name##FromStr(const k2::String& str) {                       \
-        _K2_ENUM_IF_STMT(Name, ##__VA_ARGS__);                                      \
-        std::string s = fmt::format("unsupported value:{} in enum {}", str, #Name); \
-        throw std::runtime_error(s.c_str());                                        \
-    }                                                                               \
-    inline static void to_json(nlohmann::json& j, const Name& o) {                  \
-        (void)o;                                                                    \
-        j["value"] = Name##Names[to_integral(o)];                                   \
-    }                                                                               \
-    inline static void from_json(const nlohmann::json& j, Name& o) {                \
-        String strname;                                                             \
-        j.at("value").get_to(strname);                                              \
-        o = Name##FromStr(strname);                                                 \
-    }                                                                               \
-    template<typename OStream_T>                                                    \
-    friend inline OStream_T& operator<<(OStream_T& os, const Name& o) {             \
-        if constexpr (std::is_same<OStream_T, std::ostream>::value) {               \
-            fmt::print(os, FMT_STRING("{}"), Name##Names[to_integral(o)]);          \
-        } else {                                                                    \
-            fmt::format_to(os.out(),FMT_COMPILE("{}"),Name##Names[to_integral(o)]); \
-        }                                                                           \
-        return os;                                                                  \
+#define K2_DEF_ENUM_IC(_K2_ENUM_TYPE_NAME, ...)                                                     \
+    enum class _K2_ENUM_TYPE_NAME {                                                                 \
+        __VA_ARGS__                                                                                 \
+    };                                                                                              \
+    inline static const char* const _K2_ENUM_TYPE_NAME##Names[] = {                                 \
+        _K2_TO_STRING_LIST(__VA_ARGS__)};                                                           \
+    inline static _K2_ENUM_TYPE_NAME _K2_ENUM_TYPE_NAME##FromStr(const k2::String& str) {           \
+        _K2_ENUM_IF_STMT(_K2_ENUM_TYPE_NAME, ##__VA_ARGS__);                                        \
+        std::string s = fmt::format("unsupported value:{} in enum {}", str, #_K2_ENUM_TYPE_NAME);   \
+        throw std::runtime_error(s.c_str());                                                        \
+    }                                                                                               \
+    inline static void to_json(nlohmann::json& j, const _K2_ENUM_TYPE_NAME& o) {                    \
+        (void)o;                                                                                    \
+        j["value"] = _K2_ENUM_TYPE_NAME##Names[to_integral(o)];                                     \
+    }                                                                                               \
+    inline static void from_json(const nlohmann::json& j, _K2_ENUM_TYPE_NAME& o) {                  \
+        String strname;                                                                             \
+        j.at("value").get_to(strname);                                                              \
+        o = _K2_ENUM_TYPE_NAME##FromStr(strname);                                                   \
+    }                                                                                               \
+    template <typename OStream_T>                                                                   \
+    friend inline OStream_T& operator<<(OStream_T& os, const _K2_ENUM_TYPE_NAME& o) {               \
+        if constexpr (std::is_same<OStream_T, std::ostream>::value) {                               \
+            fmt::print(os, FMT_STRING("{}"), _K2_ENUM_TYPE_NAME##Names[to_integral(o)]);            \
+        } else {                                                                                    \
+            fmt::format_to(os.out(), FMT_COMPILE("{}"), _K2_ENUM_TYPE_NAME##Names[to_integral(o)]); \
+        }                                                                                           \
+        return os;                                                                                  \
     }
 
-#define K2_DEF_ENUM(Name, ...)                                                      \
-    enum class Name {                                                               \
-        __VA_ARGS__                                                                 \
-    };                                                                              \
-    inline static const char* const Name##Names[] = {                               \
-        _K2_TO_STRING_LIST(__VA_ARGS__)};                                           \
-    inline static Name Name##FromStr(const k2::String& str) {                       \
-        _K2_ENUM_IF_STMT(Name, ##__VA_ARGS__);                                      \
-        std::string s = fmt::format("unsupported value:{} in enum {}", str, #Name); \
-        throw std::runtime_error(s.c_str());                                        \
-    }                                                                               \
-    inline static void to_json(nlohmann::json& j, const Name& o) {                  \
-        (void)o;                                                                    \
-        j["value"] = Name##Names[to_integral(o)];                                   \
-    }                                                                               \
-    inline static void from_json(const nlohmann::json& j, Name& o) {                \
-        String strname;                                                             \
-        j.at("value").get_to(strname);                                              \
-        o = Name##FromStr(strname);                                                 \
-    }                                                                               \
-    template<typename OStream_T>                                                    \
-    inline OStream_T& operator<<(OStream_T& os, const Name& o) {                    \
-        if constexpr (std::is_same<OStream_T, std::ostream>::value) {               \
-            fmt::print(os, FMT_STRING("{}"), Name##Names[to_integral(o)]);          \
-        } else {                                                                    \
-            fmt::format_to(os.out(),FMT_COMPILE("{}"),Name##Names[to_integral(o)]); \
-        }                                                                           \
-        return os;                                                                  \
+#define K2_DEF_ENUM(_K2_ENUM_TYPE_NAME, ...)                                                        \
+    enum class _K2_ENUM_TYPE_NAME {                                                                 \
+        __VA_ARGS__                                                                                 \
+    };                                                                                              \
+    inline static const char* const _K2_ENUM_TYPE_NAME##Names[] = {                                 \
+        _K2_TO_STRING_LIST(__VA_ARGS__)};                                                           \
+    inline static _K2_ENUM_TYPE_NAME _K2_ENUM_TYPE_NAME##FromStr(const k2::String& str) {           \
+        _K2_ENUM_IF_STMT(_K2_ENUM_TYPE_NAME, ##__VA_ARGS__);                                        \
+        std::string s = fmt::format("unsupported value:{} in enum {}", str, #_K2_ENUM_TYPE_NAME);   \
+        throw std::runtime_error(s.c_str());                                                        \
+    }                                                                                               \
+    inline static void to_json(nlohmann::json& j, const _K2_ENUM_TYPE_NAME& o) {                    \
+        (void)o;                                                                                    \
+        j["value"] = _K2_ENUM_TYPE_NAME##Names[to_integral(o)];                                     \
+    }                                                                                               \
+    inline static void from_json(const nlohmann::json& j, _K2_ENUM_TYPE_NAME& o) {                  \
+        String strname;                                                                             \
+        j.at("value").get_to(strname);                                                              \
+        o = _K2_ENUM_TYPE_NAME##FromStr(strname);                                                   \
+    }                                                                                               \
+    template <typename OStream_T>                                                                   \
+    inline OStream_T& operator<<(OStream_T& os, const _K2_ENUM_TYPE_NAME& o) {                      \
+        if constexpr (std::is_same<OStream_T, std::ostream>::value) {                               \
+            fmt::print(os, FMT_STRING("{}"), _K2_ENUM_TYPE_NAME##Names[to_integral(o)]);            \
+        } else {                                                                                    \
+            fmt::format_to(os.out(), FMT_COMPILE("{}"), _K2_ENUM_TYPE_NAME##Names[to_integral(o)]); \
+        }                                                                                           \
+        return os;                                                                                  \
     }

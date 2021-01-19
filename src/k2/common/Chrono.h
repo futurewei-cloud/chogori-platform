@@ -29,7 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <fmt/format.h>
 #include <fmt/printf.h>
 #include <fmt/compile.h>
-#include <k2/json/json.hpp>
+#include <nlohmann/json.hpp>
 
 //
 // duration used in a few places to specify timeouts and such

@@ -26,8 +26,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <signal.h>
 #include <iostream>
 
-#include <k2/json/json.hpp>
-
 #include <k2/common/Log.h>
 #include <k2/transport/PayloadSerialization.h>
 namespace k2 {

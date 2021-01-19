@@ -32,8 +32,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <unordered_map>
 #include <functional>
 
-#include <k2/json/json.hpp>
-
 #include "Log.h"
 
 // Collection-related DTOs

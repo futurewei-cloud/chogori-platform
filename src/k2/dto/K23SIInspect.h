@@ -27,8 +27,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 
-#include <k2/json/json.hpp>
-
 namespace k2 {
 namespace dto {
 

@@ -17,6 +17,7 @@ include_directories(src)
 
 find_package (Seastar REQUIRED)
 find_package (fmt REQUIRED)
+find_package(nlohmann_json REQUIRED)
 find_package (yaml-cpp REQUIRED) # required for configuration file parsing
 
 add_subdirectory (src)

@@ -28,7 +28,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Collection.h"
 #include "FieldTypes.h"
 
-#include <k2/json/json.hpp>
 #include "Log.h"
 // This file contains DTOs for K2 ControlPlaneOracle
 
