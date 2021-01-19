@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Request.h"
 #include <k2/common/Log.h>
+#include "Log.h"
 
 namespace k2 {
 
@@ -31,11 +32,11 @@ Request::Request(Verb verb, TXEndpoint& endpoint, MessageMetadata metadata, std:
     endpoint(endpoint),
     metadata(std::move(metadata)),
     payload(std::move(payload)) {
-    K2DEBUG("ctor Request @" << ((void*)this)<< ", with verb=" << int(verb) << ", from " << endpoint.getURL());
+    K2LOG_D(log::tx, "ctor Request @{}, with verb={}, from {}", ((void*)this), int(verb), endpoint.url);
 }
 
 Request::~Request() {
-    K2DEBUG("dtor Request @" << ((void*)this));
+    K2LOG_D(log::tx, "dtor Request @{}", ((void*)this));
 }
 
 Request::Request(Request&& o):
@@ -44,7 +45,7 @@ Request::Request(Request&& o):
     metadata(std::move(o.metadata)),
     payload(std::move(o.payload)) {
     o.verb = InternalVerbs::NIL;
-    K2DEBUG("move Request @" << ((void*)this)<< ", with verb=" << int(verb) << ", from " << endpoint.getURL());
+    K2LOG_D(log::tx, "move Request @{}, with verb={}, from {}", ((void*)this), int(verb), endpoint.url);
 }
 
 } // k2tx

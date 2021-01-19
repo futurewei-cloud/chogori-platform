@@ -22,6 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
+#include "Log.h"
 
 #include <decimal/decimal>
 #include <map>
@@ -31,7 +32,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <limits>
 
 #include <k2/common/Common.h>
-#include <k2/common/Log.h>
 
 namespace k2 {
 
@@ -356,7 +356,7 @@ public: // Write API
     // write a map
     template <typename KeyT, typename ValueT>
     void write(const std::map<KeyT, ValueT>& m) {
-        K2ASSERT(m.size() < std::numeric_limits<_Size>::max(), "map is too long to write out");
+        K2ASSERT(log::tx, m.size() < std::numeric_limits<_Size>::max(), "map is too long to write out");
         write((_Size)m.size());
 
         for (auto& kvp : m) {
@@ -368,7 +368,7 @@ public: // Write API
     // write an unordered_map
     template <typename KeyT, typename ValueT>
     void write(const std::unordered_map<KeyT, ValueT>& m) {
-        K2ASSERT(m.size() < std::numeric_limits<_Size>::max(), "map is too long to write out");
+        K2ASSERT(log::tx, m.size() < std::numeric_limits<_Size>::max(), "map is too long to write out");
         write((_Size)m.size());
 
         for (auto& kvp : m) {
@@ -379,7 +379,7 @@ public: // Write API
     // write a vector
     template <typename ValueT>
     void write(const std::vector<ValueT>& vec) {
-        K2ASSERT(vec.size() < std::numeric_limits<_Size>::max(), "vector is too long to write out");
+        K2ASSERT(log::tx, vec.size() < std::numeric_limits<_Size>::max(), "vector is too long to write out");
         write((_Size)vec.size());
 
         for (const ValueT& value : vec) {
@@ -390,7 +390,7 @@ public: // Write API
     // write a set
     template <typename T>
     void write(const std::set<T>& s) {
-        K2ASSERT(s.size() < std::numeric_limits<_Size>::max(), "set is too long to write out");
+        K2ASSERT(log::tx, s.size() < std::numeric_limits<_Size>::max(), "set is too long to write out");
         write((_Size)s.size());
 
         for (auto& key : s) {
@@ -401,7 +401,7 @@ public: // Write API
     // write a set
     template <typename T>
     void write(const std::unordered_set<T>& s) {
-        K2ASSERT(s.size() < std::numeric_limits<_Size>::max(), "set is too long to write out");
+        K2ASSERT(log::tx, s.size() < std::numeric_limits<_Size>::max(), "set is too long to write out");
         write((_Size)s.size());
 
         for (auto& key : s) {

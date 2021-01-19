@@ -46,22 +46,22 @@ void TxnRecord::unlinkBG(BGList& bglist) {
 }
 
 TxnManager::~TxnManager() {
-    K2INFO("dtor for cname=" << _collectionName);
+    K2LOG_I(log::skvsvr, "dtor for cname={}", _collectionName);
     _hblist.clear();
     _rwlist.clear();
     _bgTasks.clear();
     for (auto& [key, trec]: _transactions) {
-        K2WARN("Shutdown dropping transaction: " << trec);
+        K2LOG_W(log::skvsvr, "Shutdown dropping transaction: {}", trec);
     }
 }
 
 seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline) {
-    K2DEBUG("start");
+    K2LOG_D(log::skvsvr, "start");
     _collectionName = collectionName;
     _hbDeadline = hbDeadline;
     updateRetentionTimestamp(rts);
     _hbTimer.set_callback([this] {
-        K2DEBUG("txn manager check hb");
+        K2LOG_D(log::skvsvr, "txn manager check hb");
         _hbTask = _hbTask.then([this] {
             // refresh the clock
             auto now = CachedSteadyClock::now(true);
@@ -74,24 +74,24 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
                 [this, now] {
                     if (!_hblist.empty() && _hblist.front().hbExpiry <= now) {
                         auto& tr = _hblist.front();
-                        K2WARN("heartbeat expired on: " << tr);
+                        K2LOG_W(log::skvsvr, "heartbeat expired on: {}", tr);
                         _hblist.pop_front();
                         return onAction(TxnRecord::Action::onHeartbeatExpire, tr.txnId);
                     }
                     else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) <= 0) {
                         auto& tr = _rwlist.front();
-                        K2WARN("rw expired on: " << tr);
+                        K2LOG_W(log::skvsvr, "rw expired on: {}", tr);
                         _rwlist.pop_front();
                         return onAction(TxnRecord::Action::onRetentionWindowExpire, tr.txnId);
                     }
-                    K2ERROR("Heartbeat processing failure - expected to find either hb or rw expired item but none found");
+                    K2LOG_E(log::skvsvr, "Heartbeat processing failure - expected to find either hb or rw expired item but none found");
                     return seastar::make_ready_future();
             })
             .then([this] {
                 _hbTimer.arm(_hbDeadline);
             })
             .handle_exception([] (auto exc){
-                K2ERROR_EXC("caught exception while checking hb/rw expiration", exc);
+                K2LOG_W_EXC(log::skvsvr, exc, "caught exception while checking hb/rw expiration");
                 return seastar::make_ready_future();
             });
         });
@@ -102,60 +102,60 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
 }
 
 seastar::future<> TxnManager::gracefulStop() {
-    K2INFO("stopping txn mgr for coll=" << _collectionName);
+    K2LOG_I(log::skvsvr, "stopping txn mgr for coll={}", _collectionName);
     _stopping = true;
     _hbTimer.cancel();
     return _hbTask.then([this] {
-        K2INFO("hb stopped. stopping " << _bgTasks.size() << " bg tasks");
+        K2LOG_I(log::skvsvr, "hb stopped. stopping {} bg tasks", _bgTasks.size());
         std::vector<seastar::future<>> _bgFuts;
         for (auto& txn: _bgTasks) {
-            K2INFO("Waiting for bg task in " << txn);
+            K2LOG_I(log::skvsvr, "Waiting for bg task in {}", txn);
             _bgFuts.push_back(std::move(txn.bgTaskFut));
         }
         return seastar::when_all_succeed(_bgFuts.begin(), _bgFuts.end()).discard_result()
         .then([]{
-            K2INFO("stopped");
+            K2LOG_I(log::skvsvr, "stopped");
         })
         .handle_exception([](auto exc) {
-            K2ERROR_EXC("caught exception on stop", exc);
+            K2LOG_W_EXC(log::skvsvr, exc, "caught exception on stop");
             return seastar::make_ready_future();
         });
     });
 }
 
 void TxnManager::updateRetentionTimestamp(dto::Timestamp rts) {
-    K2DEBUG("retention ts now=" << rts)
+    K2LOG_D(log::skvsvr, "retention ts now={}", rts)
     _retentionTs = rts;
 }
 
 TxnRecord* TxnManager::getTxnRecordNoCreate(const dto::TxnId& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
-        K2DEBUG("found existing record: " << it->second);
+        K2LOG_D(log::skvsvr, "found existing record: {}", it->second);
         return &(it->second);
     }
 
-    K2DEBUG("Txn record not found for " << txnId);
+    K2LOG_D(log::skvsvr, "Txn record not found for {}", txnId);
     return nullptr;
 }
 
 TxnRecord& TxnManager::getTxnRecord(const dto::TxnId& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
-        K2DEBUG("found existing record: " << it->second);
+        K2LOG_D(log::skvsvr, "found existing record: {}", it->second);
         return it->second;
     }
-    K2DEBUG("Txn record not found for " << txnId << ". creating one");
+    K2LOG_D(log::skvsvr, "Txn record not found for {}. creating one", txnId);
     return _createRecord(txnId);
 }
 
 TxnRecord& TxnManager::getTxnRecord(dto::TxnId&& txnId) {
     auto it = _transactions.find(txnId);
     if (it != _transactions.end()) {
-        K2DEBUG("found existing record for " << txnId << ": " << it->second);
+        K2LOG_D(log::skvsvr, "found existing record for {}: {}", txnId, it->second);
         return it->second;
     }
-    K2DEBUG("Txn record not found for " << txnId << ". creating one");
+    K2LOG_D(log::skvsvr, "Txn record not found for {}. creating one", txnId);
     return _createRecord(std::move(txnId));
 }
 
@@ -173,7 +173,7 @@ TxnRecord& TxnManager::_createRecord(dto::TxnId txnId) {
         _hblist.push_back(rec);
         _rwlist.push_back(rec);
     }
-    K2DEBUG("created new txn record: " << it.first->second);
+    K2LOG_D(log::skvsvr, "created new txn record: {}", it.first->second);
     return it.first->second;
 }
 
@@ -181,7 +181,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
     // This method's responsibility is to execute valid state transitions.
     TxnRecord& rec = getTxnRecord(std::move(txnId));
     auto state = rec.state;
-    K2DEBUG("Processing action " << action << ", for state " << state << ", in txn " << rec);
+    K2LOG_D(log::skvsvr, "Processing action {}, for state {}, in txn {}", action, state, rec);
     switch (state) {
         case dto::TxnRecordState::Created:
             // We did not have a transaction record and it was just created
@@ -208,7 +208,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onRetentionWindowExpire:  // internal error - must have a TR
                 case TxnRecord::Action::onFinalizeComplete:       // internal error - must have a TR
                 default: // anything else we just count as internal error
-                    K2ERROR("Invalid transition for txnid: " << txnId << ", in state: " << state);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state {}", txnId, state);
                     return seastar::make_exception_future(ServerError());
             };
         case dto::TxnRecordState::InProgress:
@@ -227,7 +227,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                     return _forceAborted(rec);
                 case TxnRecord::Action::onFinalizeComplete:
                 default:
-                    K2ERROR("Invalid transition for txnid: " << txnId << ", in state: " << state);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state: {}", txnId, state);
                     return seastar::make_exception_future(ServerError());
             };
         case dto::TxnRecordState::ForceAborted:
@@ -251,7 +251,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onFinalizeComplete:
                 case TxnRecord::Action::onHeartbeatExpire:
                 default:
-                    K2ERROR("Invalid transition for txnid: " << txnId);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
                     return seastar::make_exception_future(ServerError());
             };
         case dto::TxnRecordState::Aborted:
@@ -269,7 +269,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onHeartbeatExpire:
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:
-                    K2ERROR("Invalid transition for txnid: " << txnId);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
                     return seastar::make_exception_future(ServerError());
             };
         case dto::TxnRecordState::Committed:
@@ -287,17 +287,17 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onHeartbeatExpire:
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:
-                    K2ERROR("Invalid transition for txnid: " << txnId);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
                     return seastar::make_exception_future(ServerError());
             };
         default:
-            K2ERROR("Invalid record state (" << state << "), for action: " << action << ", in txnid: " << txnId);
+            K2LOG_E(log::skvsvr, "Invalid record state ({}), for action: {}, in txnid: {}", state, action, txnId);
             return seastar::make_exception_future(ServerError());
     }
 }
 
 seastar::future<> TxnManager::_inProgress(TxnRecord& rec) {
-    K2DEBUG("Setting status to inProgress for " << rec);
+    K2LOG_D(log::skvsvr, "Setting status to inProgress for {}", rec);
     // set state
     rec.state = dto::TxnRecordState::InProgress;
     // manage hb expiry: we only come here immediately after Created which sets HB
@@ -307,7 +307,7 @@ seastar::future<> TxnManager::_inProgress(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
-    K2DEBUG("Setting status to forceAborted for " << rec);
+    K2LOG_D(log::skvsvr, "Setting status to forceAborted for {}", rec);
     // set state
     rec.state = dto::TxnRecordState::ForceAborted;
     // manage hb expiry
@@ -318,7 +318,7 @@ seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
-    K2DEBUG("Setting state to " << state << ", for " << rec);
+    K2LOG_D(log::skvsvr, "Setting state to {}, for {}", state, rec);
     // set state
     rec.state = state;
     // manage hb expiry
@@ -354,7 +354,7 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
 }
 
 seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
-    K2DEBUG("Setting status to deleted for " << rec);
+    K2LOG_D(log::skvsvr, "Setting status to deleted for {}", rec);
     // set state
     rec.state = dto::TxnRecordState::Deleted;
     // manage hb expiry
@@ -364,7 +364,7 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
     // persist if needed
 
     return _persistence.makeCall(rec, _config.persistenceTimeout()).then([this, &rec]{
-        K2DEBUG("Erasing txn record: " << rec);
+        K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
         rec.unlinkBG(_bgTasks);
         rec.unlinkRW(_rwlist);
         rec.unlinkHB(_hblist);
@@ -373,7 +373,7 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
-    K2DEBUG("Processing heartbeat for " << rec);
+    K2LOG_D(log::skvsvr, "Processing heartbeat for {}", rec);
     // set state: no change
     // manage hb expiry
     rec.unlinkHB(_hblist);
@@ -385,7 +385,7 @@ seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
 }
 
 seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline deadline) {
-    K2DEBUG("Finalizing " << rec);
+    K2LOG_D(log::skvsvr, "Finalizing {}", rec);
     //TODO we need to keep trying to finalize in cases of failures.
     // this needs to be done in a rate-limited fashion. For now, we just try some configurable number of times and give up
     return seastar::do_with((uint64_t)0, [this, &rec, deadline] (auto& batchStart) {
@@ -402,7 +402,7 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
                     request.mtr = rec.txnId.mtr;
                     request.trh = rec.txnId.trh;
                     request.action = rec.state == dto::TxnRecordState::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
-                    K2DEBUG("Finalizing req=" << request);
+                    K2LOG_D(log::skvsvr, "Finalizing req={}", request);
                     return seastar::do_with(std::move(request), [&rec, this, deadline](auto& request) {
                         return _cpo.PartitionRequest<dto::K23SITxnFinalizeRequest,
                                                     dto::K23SITxnFinalizeResponse,
@@ -411,21 +411,21 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
                         .then([&request](auto&& responsePair) {
                             auto& [status, response] = responsePair;
                             if (!status.is2xxOK()) {
-                                K2ERROR("Finalize request did not succeed for " << request << ", status=" << status);
+                                K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
                                 return seastar::make_exception_future<>(TxnManager::ServerError());
                             }
-                            K2DEBUG("Finalize request succeeded for " << request);
+                            K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
                             return seastar::make_ready_future<>();
-                        }).finally([]{ K2DEBUG("finalize call finished");});
+                        }).finally([]{ K2LOG_D(log::skvsvr, "finalize call finished");});
                     });
                 }).then([&batchStart, &rec]{
-                    K2DEBUG("Batch done, now at: " << batchStart << ", in " << rec);
+                    K2LOG_D(log::skvsvr, "Batch done, now at: {}, in {}", batchStart, rec);
                 });
             }
         );
     })
     .then([this, &rec] {
-        K2DEBUG("finalize completed for: " << rec);
+        K2LOG_D(log::skvsvr, "finalize completed for: {}", rec);
         return onAction(TxnRecord::Action::onFinalizeComplete, rec.txnId);
     });
 }

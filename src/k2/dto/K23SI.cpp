@@ -24,7 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include "K23SI.h"
 namespace k2 {
 namespace dto {
-const K23SI_MTR K23SI_MTR_ZERO;
 
 bool K23SI_MTR::operator==(const K23SI_MTR& o) const {
     return txnid == o.txnid && timestamp.compareUncertain(o.timestamp) == Timestamp::EQ && priority == o.priority;

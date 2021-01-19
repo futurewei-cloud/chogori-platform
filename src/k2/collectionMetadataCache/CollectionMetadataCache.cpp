@@ -27,15 +27,15 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 CollectionMetadataCache::CollectionMetadataCache() {
-    K2INFO("ctor");
+    K2LOG_I(log::collcache, "ctor");
 }
 
 CollectionMetadataCache::~CollectionMetadataCache() {
-    K2INFO("dtor");
+    K2LOG_I(log::collcache, "dtor");
 }
 
 seastar::future<> CollectionMetadataCache::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::collcache, "stop");
     return seastar::make_ready_future<>();
 }
 

@@ -32,6 +32,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/Timestamp.h>
 
 namespace k2 {
+namespace log {
+inline thread_local k2::logging::Logger amgr("k2::assignment_manager");
+}
 
 class AssignmentManager {
 public:  // application lifespan

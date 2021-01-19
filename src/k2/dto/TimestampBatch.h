@@ -28,7 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "k2/common/Log.h"
 #include "Timestamp.h"
 #include <k2/transport/RPCTypes.h>
-
+#include "Log.h"
 namespace k2
 {
 namespace dto
@@ -50,7 +50,7 @@ public:
     // caller is responsible to verify usedCount < TSCount and to increment usedCount after call
     static const Timestamp GenerateTimeStampFromBatch(const TimestampBatch& batch, uint8_t usedCount)
     {
-        K2ASSERT(usedCount < batch.TSCount, "requested timestamp count too large.");
+        K2ASSERT(log::dto, usedCount < batch.TSCount, "requested timestamp count too large.");
 
         uint16_t endingNanoSecAdjust = usedCount * batch.TBENanoSecStep;
         // creat timestamp from batch. Note: tStart are the same for all timestamps in the batch
@@ -63,4 +63,4 @@ public:
 
 };
 }  // dto
-}  // k2 
+}  // k2

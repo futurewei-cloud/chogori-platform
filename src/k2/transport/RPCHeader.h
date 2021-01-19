@@ -35,10 +35,10 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace txconstants {
 
-static const char K2RPCMAGIC = char('K') ^ char('2');
+constexpr char K2RPCMAGIC = char('K') ^ char('2');
 
 // No header of ours would ever exceed this size
-static const uint8_t MAX_HEADER_SIZE = 128;
+constexpr uint8_t MAX_HEADER_SIZE = 128;
 
 } // namespace txconstants
 

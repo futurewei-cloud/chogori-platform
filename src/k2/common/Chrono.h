@@ -24,6 +24,13 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <chrono>
 #include <iostream>
+#define FMT_UNICODE 0
+
+#include <fmt/format.h>
+#include <fmt/printf.h>
+#include <fmt/compile.h>
+#include <nlohmann/json.hpp>
+
 //
 // duration used in a few places to specify timeouts and such
 //
@@ -39,22 +46,6 @@ typedef std::chrono::time_point<Clock> TimePoint;
 inline std::chrono::nanoseconds nsec(const Duration& dur) {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(dur);
 }
-// timeduration of input timepoint since epoch(machine boot) in nanosec
-inline uint64_t nsec_count(const TimePoint& timeP) {
-    return nsec(timeP.time_since_epoch()).count();
-}
-// count of nanosec for steady_clock::now()
-inline uint64_t now_nsec_count() {
-    return nsec_count(Clock::now());
-}
-// timeduration of input timepoint since Unix epoch in nanosec
-inline uint64_t nsec_count(const std::chrono::time_point<std::chrono::system_clock>& timeP) {
-        return nsec(timeP.time_since_epoch()).count();
-}
-// count of nanosec for system_clock::now()
-inline uint64_t sys_now_nsec_count() {
-    return nsec_count(std::chrono::system_clock::now());
-}
 inline std::chrono::microseconds usec(const Duration& dur) {
     return std::chrono::duration_cast<std::chrono::microseconds>(dur);
 }
@@ -65,6 +56,18 @@ inline std::chrono::seconds sec(const Duration& dur) {
     return std::chrono::duration_cast<std::chrono::seconds>(dur);
 }
 
+// timeduration of input timepoint since epoch(machine boot) in nanosec
+inline uint64_t nsec_count(const TimePoint& timeP) {
+    return nsec(timeP.time_since_epoch()).count();
+}
+// count of nanosec for steady_clock::now()
+inline uint64_t now_nsec_count() {
+    return nsec_count(Clock::now());
+}
+// count of nanosec for system_clock::now()
+inline uint64_t sys_now_nsec_count() {
+    return nsec(std::chrono::system_clock::now().time_since_epoch()).count();
+}
 // this clock source should be used when you don't care just how precise you are with timing
 // and you want to avoid a lot of calls to system's clock.
 // It provides monotonically increasing, thread-local sequence of values and refreshes the
@@ -78,7 +81,7 @@ struct CachedSteadyClock {
 
     static time_point now(bool refresh=false) noexcept;
 private:
-    static thread_local TimePoint _now;
+    static inline thread_local TimePoint _now = Clock::now();
 };
 
 // Utility class to keep track of a deadline. Useful for nested requests
@@ -103,35 +106,93 @@ private:
     typename ClockT::time_point _deadline;
 }; // class Deadline
 
+struct Timestamp_ts {
+    uint16_t micros;
+    uint16_t millis;
+    uint8_t secs;
+    uint8_t mins;
+    uint8_t hours;
+    uint16_t days;
+};
 
-inline const char* printTime(TimePoint tp) {
-    // TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
-    static thread_local char buffer[100];
-    auto now = k2::usec(tp.time_since_epoch());
-    auto microsec = now.count();
-    auto millis = microsec/1000;
-    microsec -= millis*1000;
-    auto secs = millis/1000;
-    millis -= secs*1000;
-    auto mins = (secs/60);
-    secs -= (mins*60);
-    auto hours = (mins/60);
-    mins -= (hours*60);
-    auto days = (hours/24);
-    hours -= (days*24);
-    std::snprintf(buffer, sizeof(buffer), "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec);
+inline Timestamp_ts toTimestamp_ts(const TimePoint& tp) {
+    auto now = k2::usec(tp.time_since_epoch()).count();
+    auto [quotient1, micros] = std::ldiv(now, 1000);
+    auto [quotient2, millis] = std::ldiv(quotient1, 1000);
+    auto [quotient3, secs] = std::ldiv(quotient2, 60);
+    auto [quotient4, mins] = std::div((int)quotient3, 60); // the quotient is small enough to fit in an int now
+    auto [days, hours] = std::div(quotient4, 24);
+    return {(uint16_t)micros, (uint16_t)millis, (uint8_t)secs, (uint8_t)mins, (uint8_t)hours, (uint16_t)days};
+}
+
+inline const char* printTime(const TimePoint& tp) {
+    auto ts = toTimestamp_ts(tp);
+    static thread_local char buffer[24];
+    fmt::format_to_n(buffer, sizeof(buffer), "{}", ts);
     return buffer;
 }
+
 } // ns k2
 
-namespace std {
-    inline std::ostream& operator<<(std::ostream& os, const k2::Duration& dur) {
-        os << k2::printTime(k2::TimePoint{} + dur);
-        return os;
+template <>
+struct fmt::formatter<k2::Timestamp_ts> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
     }
 
-    inline std::ostream& operator<<(std::ostream& os, const k2::TimePoint& tp) {
-        os << k2::printTime(tp);
-        return os;
+    template <typename FormatContext>
+    auto format(k2::Timestamp_ts const& ts, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), FMT_COMPILE("{:04}:{:02}:{:02}:{:02}.{:03}.{:03}"), ts.days, ts.hours, ts.mins, ts.secs, ts.millis, ts.micros);
     }
-} // ns std
+};
+
+template <>
+struct fmt::formatter<k2::Duration> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::Duration const& dur, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", k2::TimePoint{} + dur);
+    }
+};
+
+namespace std {
+void inline to_json(nlohmann::json& j, const k2::Duration& obj) {
+    j = nlohmann::json{{"duration", k2::usec(obj).count()}};
+}
+
+inline void from_json(const nlohmann::json& j, k2::Duration& obj) {
+    int64_t result = j.get<int64_t>(); // microseconds
+    obj = result * 1us;
+}
+}
+
+template <>
+struct fmt::formatter<k2::TimePoint> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::TimePoint const& tp, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", k2::toTimestamp_ts(tp));
+    }
+};
+
+namespace std {
+inline ostream& operator<<(ostream& os, const k2::TimePoint& o) {
+    fmt::print(os, "{}", o);
+    return os;
+}
+
+inline ostream& operator<<(ostream& os, const k2::Duration& o) {
+    fmt::print(os, "{}", o);
+    return os;
+}
+
+}

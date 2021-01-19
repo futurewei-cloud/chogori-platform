@@ -20,14 +20,14 @@ Copyright(c) 2020 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-
+#pragma once
 #include <k2/transport/BaseTypes.h>
 #include <k2/transport/TXEndpoint.h>
 
-#pragma once
+using namespace k2;
 
 // The message verbs supported by this service
-enum MsgVerbs: k2::Verb {
+enum MsgVerbs: Verb {
     GET_DATA_URL = 10, // used to discover the data URL for a node (e.g. rdma or tcp url)
     REQUEST = 11, // incoming requests
     ACK = 12, // ACKS for requests
@@ -40,6 +40,7 @@ struct SessionConfig {
     uint64_t pipelineSize;
     uint64_t pipelineCount;
     uint64_t ackCount;
+    K2_DEF_FMT(SessionConfig, echoMode, responseSize, pipelineSize, pipelineCount, ackCount);
 };
 
 struct Ack {
@@ -64,7 +65,7 @@ struct BenchSession {
         runningSum(0) {}
     BenchSession(BenchSession&&) = default;
     ~BenchSession() = default;
-    BenchSession(const k2::TXEndpoint& client, uint64_t sessionID, const SessionConfig& config):
+    BenchSession(const TXEndpoint& client, uint64_t sessionID, const SessionConfig& config):
         client(client),
         sessionID(sessionID),
         config(config),
@@ -75,7 +76,7 @@ struct BenchSession {
         runningSum(0) {
     }
 
-    k2::TXEndpoint client;
+    TXEndpoint client;
     uint64_t sessionID;
     SessionConfig config;
     uint64_t totalSize;

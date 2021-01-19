@@ -45,9 +45,9 @@ public: // types
     static RPCProtocolFactory::BuilderFunc_t builder(VirtualNetworkStack::Dist_t& vnet);
 
     // The official protocol name supported for communications over RRDMARPC channels
-    static const String proto;
+    static inline const String proto{"rrdma+k2rpc"};
 
-public: // lifecycle
+   public:  // lifecycle
     // Construct the protocol with a vnet which supports RRDMA
     RRDMARPCProtocol(VirtualNetworkStack::Dist_t& vnet);
 

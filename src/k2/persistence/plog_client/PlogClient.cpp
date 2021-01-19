@@ -40,11 +40,11 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 PlogClient::PlogClient() {
-    K2INFO("dtor");
+    K2LOG_I(log::plogcl, "dtor");
 }
 
 PlogClient::~PlogClient() {
-    K2INFO("~dtor");
+    K2LOG_I(log::plogcl, "~dtor");
 }
 
 
@@ -53,23 +53,23 @@ PlogClient::init(String clusterName){
     return _getPersistenceCluster(clusterName);
 }
 
-seastar::future<> 
+seastar::future<>
 PlogClient::_getPlogServerEndpoints() {
     for(auto& v : _persistenceCluster.persistenceGroupVector){
-        K2INFO("Persistence Group: " << v.name);
+        K2LOG_I(log::plogcl, "Persistence Group: {}", v.name);
         _persistenceNameMap[v.name] = _persistenceNameList.size();
         _persistenceNameList.push_back(v.name);
-        
+
         std::vector<std::unique_ptr<TXEndpoint>> endpoints;
         for (auto& url: v.plogServerEndpoints){
-            K2INFO("Plog Server Url: " << url);
+            K2LOG_I(log::plogcl, "Plog Server Url: {}", url);
             auto ep = RPC().getTXEndpoint(url);
             if (ep){
                 endpoints.push_back(std::move(ep));
             }
         }
         if (endpoints.size() == 0){
-            K2INFO("Failed to obtain the Endpoint of Plog Servers");
+            K2LOG_I(log::plogcl, "Failed to obtain the Endpoint of Plog Servers");
             return seastar::make_exception_future<>(std::runtime_error("Failed to obtain the Endpoint of Plog Servers"));
         }
         _persistenceMapEndpoints[std::move(v.name)] = std::move(endpoints);
@@ -77,7 +77,7 @@ PlogClient::_getPlogServerEndpoints() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<> 
+seastar::future<>
 PlogClient::_getPersistenceCluster(String clusterName){
     _cpo = CPOClient(String(_cpo_url()));
     return _cpo.GetPersistenceCluster(Deadline<>(_cpo_timeout()), std::move(clusterName)).
@@ -85,7 +85,7 @@ PlogClient::_getPersistenceCluster(String clusterName){
         auto& [status, response] = result;
 
         if (!status.is2xxOK()) {
-            K2INFO("Failed to obtain Persistence Cluster" << status);
+            K2LOG_E(log::plogcl, "Failed to obtain Persistence Cluster {}", status);
             return seastar::make_exception_future<>(std::runtime_error("Failed to obtain Persistence Cluster"));
         }
 
@@ -100,18 +100,18 @@ PlogClient::_getPersistenceCluster(String clusterName){
 seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
     String plogId = _generatePlogId();
     dto::PlogCreateRequest request{.plogId = plogId};
-    
+
     std::vector<seastar::future<std::tuple<Status, dto::PlogCreateResponse> > > createFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
         createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, _plog_timeout()));
     }
     return seastar::when_all_succeed(createFutures.begin(), createFutures.end())
-        .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
+        .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) {
             Status return_status;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
-                if (!return_status.is2xxOK()) 
+                if (!return_status.is2xxOK())
                     break;
             }
             if (return_status.code == 409 && retries > 0){
@@ -132,12 +132,12 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
     }
 
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
-        .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) { 
+        .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) {
             Status return_status;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
-                if (!return_status.is2xxOK()) 
+                if (!return_status.is2xxOK())
                     break;
                 if (response.newOffset != expected_offset){
                     return_status = Statuses::S500_Internal_Server_Error("offset inconsistent");
@@ -169,14 +169,14 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
     }
 
     return seastar::when_all_succeed(sealFutures.begin(), sealFutures.end())
-        .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) { 
+        .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) {
             Status return_status;
             uint32_t sealed_offset;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
                 sealed_offset = response.sealedOffset;
-                if (!return_status.is2xxOK()) 
+                if (!return_status.is2xxOK())
                     break;
             }
             return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(sealed_offset)));

@@ -26,7 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <seastar/core/sleep.hh>
-
+#include "Log.h"
+using namespace k2;
 namespace k2e = k2::dto::expression;
 
 const char* collname = "k23si_test_collection";
@@ -37,24 +38,24 @@ const char* collname = "k23si_test_collection";
 class QueryTest {
 
 public:  // application lifespan
-    QueryTest() : _client(k2::K23SIClientConfig()) { K2INFO("ctor");}
-    ~QueryTest(){ K2INFO("dtor");}
+    QueryTest() : _client(k2::K23SIClientConfig()) { K2LOG_I(log::k23si, "ctor");}
+    ~QueryTest(){ K2LOG_I(log::k23si, "dtor");}
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::k23si, "stop");
         return std::move(_testFuture);
     }
 
     seastar::future<> start(){
-        K2INFO("start");
+        K2LOG_I(log::k23si, "start");
 
         _testFuture = seastar::make_ready_future()
         .then([this] () {
             return _client.start();
         })
         .then([this] {
-            K2INFO("Creating test collection...");
+            K2LOG_I(log::k23si, "Creating test collection...");
             std::vector<k2::String> rangeEnds;
             rangeEnds.push_back(k2::dto::FieldToKeyString<k2::String>("default") +
                                 k2::dto::FieldToKeyString<k2::String>("d"));
@@ -63,7 +64,7 @@ public:  // application lifespan
             return _client.makeCollection(collname, std::move(rangeEnds));
         })
         .then([](auto&& status) {
-            K2EXPECT(status.is2xxOK(), true);
+            K2EXPECT(log::k23si, status.is2xxOK(), true);
         })
         .then([this] () {
             k2::dto::Schema schema;
@@ -83,7 +84,7 @@ public:  // application lifespan
             return _client.createSchema(collname, std::move(schema));
         })
         .then([] (auto&& result) {
-            K2EXPECT(result.status.is2xxOK(), true);
+            K2EXPECT(log::k23si, result.status.is2xxOK(), true);
         })
         .then([this] { return runSetup(); })
         .then([this] { return runScenario01(); })
@@ -93,22 +94,22 @@ public:  // application lifespan
         .then([this] { return runScenario05(); })
         .then([this] { return runScenario06(); })
         .then([this] {
-            K2INFO("======= All tests passed ========");
+            K2LOG_I(log::k23si, "======= All tests passed ========");
             exitcode = 0;
         })
         .handle_exception([this](auto exc) {
             try {
                 std::rethrow_exception(exc);
             } catch (std::exception& e) {
-                K2ERROR("======= Test failed with exception [" << e.what() << "] ========");
+                K2LOG_E(log::k23si, "======= Test failed with exception [{}] ========", e.what());
                 exitcode = -1;
             } catch (...) {
-                K2ERROR("Test failed with unknown exception");
+                K2LOG_E(log::k23si, "Test failed with unknown exception");
                 exitcode = -1;
             }
         })
         .finally([this] {
-            K2INFO("======= Test ended ========");
+            K2LOG_I(log::k23si, "======= Test ended ========");
             seastar::engine().exit(exitcode);
         });
 
@@ -135,7 +136,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                           k2e::Expression filterExpression=k2e::Expression{},
                           std::vector<k2::String> projection=std::vector<k2::String>(),
                           bool doPrefixScan = false) {
-    K2DEBUG("doQuery from " << start << " to: " << end);
+    K2LOG_D(log::k23si, "doQuery from {} to {}", start, end);
     return _client.beginTxn(k2::K2TxnOptions{})
     .then([this] (k2::K2TxnHandle&& t) {
         txn = std::move(t);
@@ -145,7 +146,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                 filterExpression=std::move(filterExpression),
                 projection=std::move(projection),
                 doPrefixScan] (auto&& response) mutable {
-        K2EXPECT(response.status.is2xxOK(), true);
+        K2EXPECT(log::k23si, response.status.is2xxOK(), true);
         query = std::move(response.query);
 
         // Fully specified scan or full schema scan
@@ -178,7 +179,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                 [this, &result_set, &count, &done, expectedStatus] () {
                     return txn.query(query)
                     .then([this, &result_set, &count, &done, expectedStatus] (auto&& response) {
-                        K2EXPECT(response.status, expectedStatus);
+                        K2EXPECT(log::k23si, response.status, expectedStatus);
                         done = response.status.is2xxOK() ? query.isDone() : true;
                         ++count;
                         result_set.push_back(std::move(response.records));
@@ -193,8 +194,8 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
                 for (std::vector<k2::dto::SKVRecord>& set : result_set) {
                     record_count += set.size();
                 }
-                K2EXPECT(record_count, expectedRecords);
-                K2EXPECT(count, expectedPaginations);
+                K2EXPECT(log::k23si, record_count, expectedRecords);
+                K2EXPECT(log::k23si, count, expectedPaginations);
                 return seastar::make_ready_future<std::vector<std::vector<k2::dto::SKVRecord>>>(std::move(result_set));
             });
         });
@@ -204,7 +205,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
 // Write six records with partition2 keys ("a"-"f"), three to each partition
 // Write additional two records with non-default partition1 key
 seastar::future<> runSetup() {
-    K2INFO("QueryTest setup");
+    K2LOG_I(log::k23si, "QueryTest setup");
     k2::K2TxnOptions options{};
     options.syncFinalize = true;
     return _client.beginTxn(options)
@@ -217,7 +218,7 @@ seastar::future<> runSetup() {
     })
     .then([this] (auto&& response) {
         auto& [status, schemaPtr] = response;
-        K2EXPECT(status.is2xxOK(), true);
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
 
         std::vector<seastar::future<>> write_futs;
         std::vector<k2::String> partKeys = {"a", "b", "c", "d", "e", "f"};
@@ -232,7 +233,7 @@ seastar::future<> runSetup() {
             record.serializeNext<int32_t>(data);
             write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
                 .then([] (auto&& response) {
-                    K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
                     return seastar::make_ready_future<>();
                 })
             );
@@ -247,7 +248,7 @@ seastar::future<> runSetup() {
         record.serializeNext<int32_t>(777);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
             .then([] (auto&& response) {
-                K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
                 return seastar::make_ready_future<>();
             })
         );
@@ -260,7 +261,7 @@ seastar::future<> runSetup() {
         record2.serializeNext<int32_t>(777);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record2)
             .then([] (auto&& response) {
-                K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+                K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
                 return seastar::make_ready_future<>();
             })
         );
@@ -271,83 +272,83 @@ seastar::future<> runSetup() {
         return txn.end(true);
     })
     .then([](auto&& response) {
-        K2EXPECT(response.status, k2::dto::K23SIStatus::OK);
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::OK);
         return seastar::make_ready_future<>();
     });
 }
 
 // Simple forward scan queries with no filter or projection
 seastar::future<> runScenario01() {
-    K2INFO("runScenario01");
+    K2LOG_I(log::k23si, "runScenario01");
 
-    K2INFO("Single partition single page result");
+    K2LOG_I(log::k23si, "Single partition single page result");
     return doQuery("a", "c", -1, false, 2, 1).discard_result()
     .then([this] () {
-        K2INFO("Single partition with limit");
+        K2LOG_I(log::k23si, "Single partition with limit");
         return doQuery("a", "d", 1, false, 1, 1).discard_result();
     })
     .then([this] () {
-        K2INFO("Single partition no results");
+        K2LOG_I(log::k23si, "Single partition no results");
         return doQuery("ab", "abz", -1, false, 0, 1).discard_result();
     })
     .then([this] () {
-        K2INFO("Single partition with end key == partition end");
+        K2LOG_I(log::k23si, "Single partition with end key == partition end");
         return doQuery("a", "d", -1, false, 3, 2).discard_result();
     })
     .then([this] () {
-        K2INFO("Multi partition with limit");
+        K2LOG_I(log::k23si, "Multi partition with limit");
         return doQuery("a", "", 5, false, 5, 3).discard_result();
     })
     .then([this] () {
-        K2INFO("Multi partition terminated by end key");
+        K2LOG_I(log::k23si, "Multi partition terminated by end key");
         return doQuery("a", "dz", -1, false, 4, 3).discard_result();
     })
     .then([this] () {
-        K2INFO("Start and end keys the same");
+        K2LOG_I(log::k23si, "Start and end keys the same");
         return doQuery("b", "b", -1, false, 1, 1).discard_result();
     })
     .then([this] () {
-        K2INFO("Multi partition full scan");
+        K2LOG_I(log::k23si, "Multi partition full scan");
         return doQuery("", "", -1, false, 8, 5).discard_result();
     });
 }
 
 // Simple reverse scan queries with no filter or projection
 seastar::future<> runScenario02() {
-    K2INFO("runScenario02");
+    K2LOG_I(log::k23si, "runScenario02");
 
-    K2INFO("Single partition single page result");
+    K2LOG_I(log::k23si, "Single partition single page result");
     return doQuery("c", "a", -1, true, 2, 1).discard_result()
     .then([this] {
-        K2INFO("Single partition with limit");
+        K2LOG_I(log::k23si, "Single partition with limit");
         return doQuery("d", "a", 1, true, 1, 1).discard_result();
     })
     .then([this] {
-        K2INFO("Single partition no results");
+        K2LOG_I(log::k23si, "Single partition no results");
         return doQuery("abz", "ab", -1, true, 0, 1).discard_result();
     })
     .then([this] {
-        K2INFO("Single partition with end key == partition start");
+        K2LOG_I(log::k23si, "Single partition with end key == partition start");
         return doQuery("f", "d", -1, true, 2, 1).discard_result();
     })
     .then([this] {
-        K2INFO("Single partition with end key right smaller than partition start");
+        K2LOG_I(log::k23si, "Single partition with end key right smaller than partition start");
         return doQuery("f", "c", -1, true, 3, 3).discard_result();
     })
     .then([this] () {
-        K2INFO("Multi partition with limit");
+        K2LOG_I(log::k23si, "Multi partition with limit");
         return doQuery("f", "", 5, true, 5, 3).discard_result();
     })
     .then([this] () {
-        K2INFO("Start and end keys the same");
+        K2LOG_I(log::k23si, "Start and end keys the same");
         return doQuery("b", "b", -1, false, 1, 1).discard_result();
     })
     .then([this] () {
-        K2INFO("Multi partition terminated by end key");
+        K2LOG_I(log::k23si, "Multi partition terminated by end key");
         return doQuery("f", "baby", -1, true, 4, 3).discard_result();
     })
     .then([this] () {
-        K2INFO("Multi partition full scan");
+        K2LOG_I(log::k23si, "Multi partition full scan");
         return doQuery("", "", -1, true, 8, 5)
         .then([](auto&& response) {
             std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
@@ -359,8 +360,8 @@ seastar::future<> runScenario02() {
                     std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
                     std::optional<k2::String> part2 = rec.deserializeNext<k2::String>();
                     std::optional<k2::String> range = rec.deserializeNext<k2::String>();
-                    K2INFO("partitonKey:" << *part2 << ", rangeKey:" << *range);
-                    K2EXPECT(*part2, partKeys.front());
+                    K2LOG_I(log::k23si, "partitonKey: {}, rkey: {}", *part2, *range);
+                    K2EXPECT(log::k23si, *part2, partKeys.front());
                     partKeys.pop_front();
                 }
             }
@@ -370,16 +371,16 @@ seastar::future<> runScenario02() {
 
 // Query projection cases
 seastar::future<> runScenario03() {
-    K2INFO("runScenario03");
+    K2LOG_I(log::k23si, "runScenario03");
 
-    K2INFO("Projection reads for the giving field");
+    K2LOG_I(log::k23si, "Projection reads for the giving field");
     return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{}, {"partition2"})
     .then([](auto&& response) {
         std::vector<std::vector<k2::dto::SKVRecord>>& result_set = response;
         uint32_t record_count = 0;
         std::deque<k2::String> partKeys = {"a", "b"};
 
-        K2EXPECT(result_set.size(), 1);
+        K2EXPECT(log::k23si, result_set.size(), 1);
         for (std::vector<k2::dto::SKVRecord>& set : result_set) {
             record_count += set.size();
 
@@ -388,21 +389,21 @@ seastar::future<> runScenario03() {
                 std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
                 std::optional<k2::String> part2 = rec.deserializeNext<k2::String>();
                 std::optional<k2::String> range = rec.deserializeNext<k2::String>();
-                K2ASSERT(part2, "SKVRecord should have got this field");
-                K2EXPECT(*part2, partKeys.front());
+                K2ASSERT(log::k23si, part2, "SKVRecord should have got this field");
+                K2EXPECT(log::k23si, *part2, partKeys.front());
                 partKeys.pop_front();
-                K2ASSERT(!range, "Exclude this field");
+                K2ASSERT(log::k23si, !range, "Exclude this field");
             }
         }
-        K2EXPECT(record_count, 2);
+        K2EXPECT(log::k23si, record_count, 2);
     })
     .then([this] {
-        K2INFO("Full scan with projection over records with null field");
+        K2LOG_I(log::k23si, "Full scan with projection over records with null field");
         return doQuery("", "", -1, false, 8, 5, k2::dto::K23SIStatus::OK, k2e::Expression{},
                        {"data2"}).discard_result();
     })
     .then([this] {
-        K2INFO("Project a field that is not part of the schema");
+        K2LOG_I(log::k23si, "Project a field that is not part of the schema");
         return doQuery("a", "c", -1, false, 2, 1, k2::dto::K23SIStatus::OK, k2e::Expression{},
                        {"partition2", "balance", "age"})
         .then([](auto&& response) {
@@ -410,7 +411,7 @@ seastar::future<> runScenario03() {
             uint32_t record_count = 0;
             std::deque<k2::String> partKeys = {"a", "b"};
 
-            K2EXPECT(result_set.size(), 1);
+            K2EXPECT(log::k23si, result_set.size(), 1);
             for (std::vector<k2::dto::SKVRecord>& set : result_set) {
                 record_count += set.size();
 
@@ -419,13 +420,13 @@ seastar::future<> runScenario03() {
                     std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
                     std::optional<k2::String> part2 = rec.deserializeNext<k2::String>();
                     std::optional<k2::String> range = rec.deserializeNext<k2::String>();
-                    K2ASSERT(part2, "SKVRecord should have got this field");
-                    K2EXPECT(*part2, partKeys.front());
+                    K2ASSERT(log::k23si, part2, "SKVRecord should have got this field");
+                    K2EXPECT(log::k23si, *part2, partKeys.front());
                     partKeys.pop_front();
-                    K2ASSERT(!range, "Exclude this field");
+                    K2ASSERT(log::k23si, !range, "Exclude this field");
                 }
             }
-            K2EXPECT(record_count, 2);
+            K2EXPECT(log::k23si, record_count, 2);
         });
     });
 }
@@ -433,7 +434,7 @@ seastar::future<> runScenario03() {
 // Query filter tests. Filter expressions have extensive unit tests, so
 // only testing end-to-end functionality here
 seastar::future<> runScenario04() {
-    K2INFO("runScenario04");
+    K2LOG_I(log::k23si, "runScenario04");
     return seastar::make_ready_future()
     .then([this] () {
         // Simple Equals filter, all records should be returned
@@ -456,7 +457,7 @@ seastar::future<> runScenario04() {
             k2::dto::SKVRecord& rec = result_set[0][0];
             std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
             std::optional<k2::String> key = rec.deserializeNext<k2::String>();
-            K2EXPECT(*key, "b");
+            K2EXPECT(log::k23si, *key, "b");
         });
     })
     .then([this] () {
@@ -471,7 +472,7 @@ seastar::future<> runScenario04() {
             k2::dto::SKVRecord& rec = result_set[0][0];
             std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
             std::optional<k2::String> key = rec.deserializeNext<k2::String>();
-            K2EXPECT(*key, "b");
+            K2EXPECT(log::k23si, *key, "b");
         });
     })
     .then([this] () {
@@ -501,13 +502,13 @@ seastar::future<> runScenario04() {
 // and the second key can be any value. This requires special handling on the server
 // because the start and end records have the same key string.
 seastar::future<> runScenario05() {
-    K2INFO("runScenario05");
+    K2LOG_I(log::k23si, "runScenario05");
 
-    K2INFO("Forward prefix scan test");
+    K2LOG_I(log::k23si, "Forward prefix scan test");
     return doQuery("", "", -1, false, 6, 4, k2::dto::K23SIStatus::OK,
                    k2e::Expression{}, std::vector<k2::String>(), true /* prefix only */).discard_result()
     .then([this] () {
-        K2INFO("Reverse prefix scan");
+        K2LOG_I(log::k23si, "Reverse prefix scan");
         return doQuery("", "", -1, true, 6, 4, k2::dto::K23SIStatus::OK,
                        k2e::Expression{}, std::vector<k2::String>(), true /* prefix only */).discard_result();
     });
@@ -515,9 +516,9 @@ seastar::future<> runScenario05() {
 
 // Query conflict cases
 seastar::future<> runScenario06() {
-    K2INFO("runScenario06");
+    K2LOG_I(log::k23si, "runScenario06");
 
-    K2INFO("Starting write in range is blocked by readCache test");
+    K2LOG_I(log::k23si, "Starting write in range is blocked by readCache test");
     k2::K2TxnOptions options{};
     options.syncFinalize = true;
     return _client.beginTxn(options)
@@ -533,7 +534,7 @@ seastar::future<> runScenario06() {
     })
     .then([this] (auto&& response) {
         auto& [status, schemaPtr] = response;
-        K2EXPECT(status.is2xxOK(), true);
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
 
         k2::dto::SKVRecord record(collname, schemaPtr);
         record.serializeNext<k2::String>("default");
@@ -542,15 +543,15 @@ seastar::future<> runScenario06() {
         return writeTxn.write<k2::dto::SKVRecord>(record);
     })
     .then([this] (auto&& response) {
-        K2EXPECT(response.status, k2::dto::K23SIStatus::AbortRequestTooOld);
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::AbortRequestTooOld);
         return writeTxn.end(false);
     })
     .then([] (auto&& response) {
-        K2EXPECT(response.status.is2xxOK(), true);
+        K2EXPECT(log::k23si, response.status.is2xxOK(), true);
         return seastar::make_ready_future<>();
     })
     .then([this, options] () mutable {
-        K2INFO("Starting test for query loses PUSH");
+        K2LOG_I(log::k23si, "Starting test for query loses PUSH");
         options.priority = k2::dto::TxnPriority::High;
         return _client.beginTxn(options);
     })
@@ -563,7 +564,7 @@ seastar::future<> runScenario06() {
     })
     .then([this] (auto&& response) {
         auto& [status, schemaPtr] = response;
-        K2EXPECT(status.is2xxOK(), true);
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
 
         k2::dto::SKVRecord record(collname, schemaPtr);
         record.serializeNext<k2::String>("default");
@@ -572,7 +573,7 @@ seastar::future<> runScenario06() {
         return writeTxn.write<k2::dto::SKVRecord>(record);
     })
     .then([this] (auto&& response) {
-        K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
         return seastar::make_ready_future<>();
     })
     .then([this] () {
@@ -582,11 +583,11 @@ seastar::future<> runScenario06() {
         return writeTxn.end(true);
     })
     .then([] (auto&& response) {
-        K2EXPECT(response.status.is2xxOK(), true);
+        K2EXPECT(log::k23si, response.status.is2xxOK(), true);
         return seastar::make_ready_future<>();
     })
     .then([this, options] () mutable {
-        K2INFO("Starting test for query wins PUSH");
+        K2LOG_I(log::k23si, "Starting test for query wins PUSH");
         return _client.beginTxn(options);
     })
     .then([this] (k2::K2TxnHandle&& t) {
@@ -598,7 +599,7 @@ seastar::future<> runScenario06() {
     })
     .then([this] (auto&& response) {
         auto& [status, schemaPtr] = response;
-        K2EXPECT(status.is2xxOK(), true);
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
 
         k2::dto::SKVRecord record(collname, schemaPtr);
         record.serializeNext<k2::String>("default");
@@ -607,7 +608,7 @@ seastar::future<> runScenario06() {
         return writeTxn.write<k2::dto::SKVRecord>(record);
     })
     .then([this] (auto&& response) {
-        K2EXPECT(response.status, k2::dto::K23SIStatus::Created);
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
         return seastar::make_ready_future<>();
     })
     .then([this] () {
@@ -618,7 +619,7 @@ seastar::future<> runScenario06() {
         return writeTxn.end(true);
     })
     .then([] (auto&& response) {
-        K2EXPECT(response.status, k2::dto::K23SIStatus::OperationNotAllowed);
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::OperationNotAllowed);
         return seastar::make_ready_future<>();
     });
 }

@@ -29,6 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/shared_ptr.hh>
 #include "Config.h"
 #include "Persistence.h"
+#include "Log.h"
 
 namespace k2 {
 class K23SIPartitionModule;
@@ -59,23 +60,14 @@ struct TxnRecord {
     // The interval from end to Finalize for a transaction
     Duration timeToFinalize{0};
 
-    friend std::ostream& operator<<(std::ostream& os, const TxnRecord& rec) {
-        os << "{txnId=" << rec.txnId << ", writeKeys=[";
-        os << rec.writeKeys.size();
-        //for (auto& key: rec.writeKeys) {
-        //    os << key << ",";
-        //}
-        os << "], rwExpiry=" << rec.rwExpiry << ", hbExpiry=" << rec.hbExpiry << ", syncfin=" << rec.syncFinalize << "}";
-        return os;
-    }
-
     dto::TxnRecordState state = dto::TxnRecordState::Created;
 
     K2_PAYLOAD_FIELDS(txnId, writeKeys, state);
+    K2_DEF_FMT(TxnRecord, txnId, writeKeys, state);
 
     // The last action on this TR (the action that put us into the above state)
-    enum class Action : uint8_t {
-        Nil = 0,
+    K2_DEF_ENUM_IC(Action,
+        Nil,
         onCreate,
         onForceAbort,
         onRetentionWindowExpire,
@@ -84,24 +76,7 @@ struct TxnRecord {
         onEndCommit,
         onEndAbort,
         onFinalizeComplete
-    };
-
-    friend std::ostream& operator<<(std::ostream& os, const Action& action) {
-        const char* straction = "bad action";
-        switch (action) {
-            case Action::Nil: straction= "nil"; break;
-            case Action::onCreate: straction= "on_create"; break;
-            case Action::onForceAbort: straction= "on_force_abort"; break;
-            case Action::onRetentionWindowExpire: straction= "on_retention_window_expire"; break;
-            case Action::onHeartbeat: straction= "on_heartbeat"; break;
-            case Action::onHeartbeatExpire: straction= "on_heartbeat_expire"; break;
-            case Action::onEndCommit: straction= "on_end_commit"; break;
-            case Action::onEndAbort: straction= "on_end_abort"; break;
-            case Action::onFinalizeComplete: straction= "on_finalize_complete"; break;
-            default: break;
-        }
-        return os << straction;
-    }
+    );
 
     typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::rwLink>> RWList;
     typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::hbLink>> HBList;
@@ -110,7 +85,8 @@ struct TxnRecord {
     void unlinkHB(HBList& hblist);
     void unlinkRW(RWList& hblist);
     void unlinkBG(BGList& hblist);
-};  // class TR
+};  // class TxnRecord
+
 
 // take care of
 // - tr state transitions

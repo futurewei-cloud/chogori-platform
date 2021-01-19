@@ -116,7 +116,7 @@ public:
                     if(payload.getSize() > 0)
                     {
                         if(!parse(payload, records)) {
-                            K2ERROR("Unable to parse records");
+                            K2LOG_E(log::iplog, "Unable to parse records");
                             throw std::move(payload);
                         }
                         activePlog = i;

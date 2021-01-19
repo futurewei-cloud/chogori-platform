@@ -31,6 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Payload.h"
 
 #include <k2/common/Defer.h>
+#include "Log.h"
 
 namespace k2 {
 struct fileutil {

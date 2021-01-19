@@ -38,6 +38,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "dataload.h"
 #include "transactions.h"
 #include "verify.h"
+#include "Log.h"
 
 using namespace k2;
 
@@ -51,7 +52,7 @@ std::vector<String> getRangeEnds(uint32_t numPartitions, uint32_t numWarehouses)
     // Warehouse IDs start at 1, and range end is open interval
     for (uint32_t i = 1; i <= numPartitions; ++i) {
         String range_end = FieldToKeyString<int16_t>((i*share)+1);
-        K2DEBUG("RangeEnd: " << range_end);
+        K2LOG_D(log::tpcc, "RangeEnd: {}", range_end);
         rangeEnds.push_back(range_end);
     }
     rangeEnds[numPartitions-1] = "";
@@ -68,16 +69,16 @@ public:  // application lifespan
         _timer(seastar::timer<>([this] {
             _stopped = true;
         })) {
-        K2INFO("ctor");
+        K2LOG_I(log::tpcc, "ctor");
     };
 
     ~Client() {
-        K2INFO("dtor");
+        K2LOG_I(log::tpcc, "dtor");
     }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::tpcc, "stop");
         _stopped = true;
         // unregister all observers
         k2::RPC().registerLowTransportMemoryObserver(nullptr);
@@ -110,23 +111,20 @@ public:  // application lifespan
 
         setupSchemaPointers();
 
-        k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
-            K2WARN("We're low on memory in transport: " << ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
-        });
         registerMetrics();
 
         _benchFuture = _client.start().then([this] () { return _benchmark(); })
         .handle_exception([this](auto exc) {
-            K2ERROR_EXC("Unable to execute benchmark", exc);
+            K2LOG_W_EXC(log::tpcc, exc, "Unable to execute benchmark");
             _stopped = true;
             return seastar::make_ready_future<>();
         }).finally([this]() {
-            K2INFO("Done with benchmark");
+            K2LOG_I(log::tpcc, "Done with benchmark");
             _stopped = true;
             cores_finished++;
             if (cores_finished == seastar::smp::count) {
                 if (_do_verification()) {
-                    K2INFO("Starting verification");
+                    K2LOG_I(log::tpcc, "Starting verification");
                     return do_with(AtomicVerify(_random, _client, _max_warehouses()),
                                     [] (AtomicVerify& verify) {
                         return verify.run();
@@ -134,7 +132,7 @@ public:  // application lifespan
                         return do_with(ConsistencyVerify(_random, _client, _max_warehouses()),
                                        [] (ConsistencyVerify& verify) {
                            return verify.run().then([] () {
-                               K2INFO("Verify done, exiting");
+                               K2LOG_I(log::tpcc, "Verify done, exiting");
                                seastar::engine().exit(0);
                            });
                         });
@@ -156,73 +154,73 @@ private:
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Warehouse::warehouse_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, District::district_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Customer::customer_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, History::history_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Order::order_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, NewOrder::neworder_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, OrderLine::orderline_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Item::item_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         schema_futures.push_back(_client.createSchema(tpccCollectionName, Stock::stock_schema)
         .then([] (auto&& result) {
-            K2ASSERT(result.status.is2xxOK(), "Failed to create schema");
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
         return seastar::when_all_succeed(schema_futures.begin(), schema_futures.end());
     }
 
     seastar::future<> _data_load() {
-        K2INFO("Creating DataLoader");
+        K2LOG_I(log::tpcc, "Creating DataLoader");
         int cpus = seastar::smp::count;
         int id = seastar::engine().cpu_id();
         int share = _max_warehouses() / cpus;
         if (_max_warehouses() % cpus != 0) {
-            K2WARN("CPUs must divide evenly into num warehouses!");
+            K2LOG_W(log::tpcc, "CPUs must divide evenly into num warehouses!");
             return make_ready_future<>();
         }
 
         auto f = seastar::sleep(5s);
         if (id == 0) {
             f = f.then ([this] {
-                K2INFO("Creating collection");
+                K2LOG_I(log::tpcc, "Creating collection");
                 return _client.makeCollection("TPCC", getRangeEnds(_tcpRemotes().size(), _max_warehouses()));
             }).discard_result()
             .then([this] () {
                 return _schema_load();
             })
             .then([this] {
-                K2INFO("Starting item data load");
+                K2LOG_I(log::tpcc, "Starting item data load");
                 _item_loader = DataLoader(TPCCDataGen().generateItemData());
                 return _item_loader.loadData(_client, _num_concurrent_txns());
             });
@@ -231,12 +229,12 @@ private:
         }
 
         return f.then ([this, share, id] {
-            K2INFO("Starting data gen");
+            K2LOG_I(log::tpcc, "Starting data gen");
             _loader = DataLoader(TPCCDataGen().generateWarehouseData(1+(id*share), 1+(id*share)+share));
-            K2INFO("Starting load to server");
+            K2LOG_I(log::tpcc, "Starting load to server");
             return _loader.loadData(_client, _num_concurrent_txns());
         }).then ([this] {
-            K2INFO("Data load done");
+            K2LOG_I(log::tpcc, "Data load done");
         });
     }
 
@@ -254,7 +252,7 @@ private:
                 } else {
                     curTxn = (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
                 }
-                
+
                 auto txn_start = k2::Clock::now();
                 return curTxn->run()
                 .then([this, txn_type, txn_start] (bool success) {
@@ -285,7 +283,7 @@ private:
     }
 
     seastar::future<> _benchmark() {
-        K2INFO("Creating K23SIClient");
+        K2LOG_I(log::tpcc, "Creating K23SIClient");
 
         if (_do_data_load()) {
             return _data_load();
@@ -293,7 +291,7 @@ private:
 
         return seastar::sleep(5s)
         .then([this] {
-            K2INFO("Starting transactions...");
+            K2LOG_I(log::tpcc, "Starting transactions...");
 
             _timer.arm(_testDuration);
             _start = k2::Clock::now();
@@ -311,10 +309,10 @@ private:
             auto readpsec = (double)_client.read_ops/totalsecs;
             auto writepsec = (double)_client.write_ops/totalsecs;
             auto querypsec = (double)_client.query_ops/totalsecs;
-            K2INFO("completedTxns=" << _completedTxns << "(" << cntpsec << " per sec)" );
-            K2INFO("read ops " << readpsec << " per sec)" );
-            K2INFO("write ops " << writepsec << " per sec)" );
-            K2INFO("query ops " << querypsec << " per sec)" );
+            K2LOG_I(log::tpcc, "completedTxns={} ({} per sec)", _completedTxns, cntpsec);
+            K2LOG_I(log::tpcc, "read ops {} per sec", readpsec);
+            K2LOG_I(log::tpcc, "write ops {} per sec", writepsec);
+            K2LOG_I(log::tpcc, "query ops {} per sec", querypsec);
             return make_ready_future();
         });
     }

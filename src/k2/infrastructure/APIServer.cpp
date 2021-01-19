@@ -49,7 +49,7 @@ private:
 
 seastar::future<>
 APIServer::start() {
-    K2INFO("starting JSON API server on port");
+    K2LOG_I(log::apisvr, "starting JSON API server on port");
 
     int coreID = seastar::engine().cpu_id();
     seastar::ipv4_addr listenAddr;
@@ -58,7 +58,7 @@ APIServer::start() {
         auto ep = k2::TXEndpoint::fromURL(_tcp_endpoints()[coreID], nullptr);
         if (ep) {
             parsed = true;
-            listenAddr = seastar::ipv4_addr(ep->getIP(), uint16_t(ep->getPort() + API_PORT_OFFSET));
+            listenAddr = seastar::ipv4_addr(ep->ip, uint16_t(ep->port + API_PORT_OFFSET));
         }
 
         // Try parsing as port only
@@ -73,7 +73,7 @@ APIServer::start() {
     }
 
     if (!parsed) {
-        K2INFO("No IP/Port provided for API server, aborting server start()");
+        K2LOG_I(log::apisvr, "No IP/Port provided for API server, aborting server start()");
         return seastar::make_ready_future<>();
     }
 
@@ -84,12 +84,12 @@ APIServer::start() {
 }
 
 seastar::future<> APIServer::gracefulStop() {
-    K2INFO("Stopping APIServer");
+    K2LOG_I(log::apisvr, "Stopping APIServer");
     return  _server.stop();
 }
 
 seastar::future<> APIServer::add_routes() {
-    _server._routes.put(seastar::httpd::GET, "/api", 
+    _server._routes.put(seastar::httpd::GET, "/api",
             new get_routes_handler([this] () { return get_current_routes();}));
     return seastar::make_ready_future<>();
 }

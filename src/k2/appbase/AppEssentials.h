@@ -40,4 +40,3 @@ Copyright(c) 2020 Futurewei Cloud
 using namespace std::chrono_literals; // so that we can type "1ms"
 namespace bpo = boost::program_options;
 namespace sm = seastar::metrics;
-

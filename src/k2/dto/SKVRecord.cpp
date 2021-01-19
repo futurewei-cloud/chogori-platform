@@ -169,7 +169,7 @@ String SKVRecord::getPartitionKey() {
 
     // This should not be possible in practice but it is here defensively
     if (schema->partitionKeyFields.size() == 0) {
-        K2WARN("SKVRecord schema has no partitionKeyFields");
+        K2LOG_W(log::dto, "SKVRecord schema has no partitionKeyFields");
         return String("");
     }
 

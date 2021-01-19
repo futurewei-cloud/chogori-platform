@@ -31,10 +31,14 @@ Copyright(c) 2020 Futurewei Cloud
 #include <typeinfo>
 namespace k2 {
 // implements an example RPC Service which can send/receive messages
+namespace log {
+inline thread_local k2::logging::Logger echo("k2::rpc_echo");
+}
 
 struct Echo_Message {
     String message;
     K2_PAYLOAD_FIELDS(message);
+    K2_DEF_FMT(Echo_Message, message);
 };
 
 enum MessageVerbs : Verb {
@@ -45,16 +49,16 @@ class KVService {
 public:  // application lifespan
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::echo, "stop");
         return seastar::make_ready_future<>();
     }
 
     // called after construction
     void start() {
-        K2INFO("Registering message handlers");
+        K2LOG_I(log::echo, "Registering message handlers");
 
         RPC().registerRPCObserver<Echo_Message, Echo_Message>(MessageVerbs::MES, [this](Echo_Message&& request) {
-            K2INFO("Received echo for message: " << request.message);
+            K2LOG_I(log::echo, "Received echo for message: {}", request.message);
             Echo_Message response;
             response.message=request.message;
             return RPCResponse(Statuses::S200_OK("get accepted"), std::move(response));
@@ -70,16 +74,17 @@ private:
 
     void makeHeartbeatTimer() {
         _heartbeat_timer.setCallback([] {
-            Echo_Message request{.message = "Hello World!"}; 
+            Echo_Message request{.message = "Hello World!"};
             return RPC().callRPC<Echo_Message, Echo_Message>(MessageVerbs::MES, request, *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s)
             .then([] (auto&& resp) {
-                K2INFO("CPU_ID: " << seastar::engine().cpu_id() << " Received MEG response with status: " << std::get<0>(resp) << ", value=" << std::get<1>(resp).message);
+                auto& [status, msg] = resp;
+                K2LOG_I(log::echo, "Received MSG response with status {}, value {}", status, msg);
             });
         });
     }
 public:
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::echo, "stop");
         return seastar::make_ready_future<>();
     }
 

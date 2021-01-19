@@ -32,6 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include "FieldTypes.h"
 #include "SKVRecord.h"
+#include "Log.h"
 
 namespace k2 {
 namespace dto {
@@ -45,42 +46,24 @@ namespace expression {
 
 
 // The supported operations
-enum class Operation : uint8_t {
-    EQ,             // A == B. Both A and B must be values
-    GT,             // A > B. Both A and B must be values
-    GTE,            // A >= B. Both A and B must be values
-    LT,             // A < B. Both A and B must be values
-    LTE,            // A <= B. Both A and B must be values
-    IS_NULL,        // IS_NULL A. A must be a reference value
-    IS_EXACT_TYPE,  // A IS_EXACT_TYPE B. A must be a reference, B must be a FieldType literal
-    STARTS_WITH,    // A STARTS_WITH B. A must be a string type value, B must be a string literal
-    CONTAINS,       // A CONTAINS B. A must be a string type value, B must be a string literal
-    ENDS_WITH,      // A ENDS_WITH B. A must be a string type value, B must be a string literal
-    AND,            // A AND B. Each of A and B must be a boolean value, or an expression
-    OR,             // A OR B. Each of A and B must be a boolean value, or an expression
-    XOR,            // A XOR B. Each of A and B must be a boolean value, or an expression
-    NOT,            // NOT A. A must be a boolean value, or an expression
+K2_DEF_ENUM(Operation,
+    EQ,             /* A == B. Both A and B must be values */
+    GT,             /* A > B. Both A and B must be values */
+    GTE,            /* A >= B. Both A and B must be values */
+    LT,             /* A < B. Both A and B must be values */
+    LTE,            /* A <= B. Both A and B must be values */
+    IS_NULL,        /* IS_NULL A. A must be a reference value */
+    IS_EXACT_TYPE,  /* A IS_EXACT_TYPE B. A must be a reference, B must be a FieldType literal */
+    STARTS_WITH,    /* A STARTS_WITH B. A must be a string type value, B must be a string literal */
+    CONTAINS,       /* A CONTAINS B. A must be a string type value, B must be a string literal */
+    ENDS_WITH,      /* A ENDS_WITH B. A must be a string type value, B must be a string literal */
+    AND,            /* A AND B. Each of A and B must be a boolean value, or an expression */
+    OR,             /* A OR B. Each of A and B must be a boolean value, or an expression */
+    XOR,            /* A XOR B. Each of A and B must be a boolean value, or an expression */
+    NOT,            /* NOT A. A must be a boolean value, or an expression */
     UNKNOWN
-};
-inline std::ostream& operator<<(std::ostream& os, const Operation& op) {
-    switch(op) {
-        case Operation::EQ: return os << "EQ";
-        case Operation::GT: return os << "GT";
-        case Operation::GTE: return os << "GTE";
-        case Operation::LT: return os << "LT";
-        case Operation::LTE: return os << "LTE";
-        case Operation::IS_NULL: return os << "IS_NULL";
-        case Operation::IS_EXACT_TYPE: return os << "IS_EXACT_TYPE";
-        case Operation::STARTS_WITH: return os << "STARTS_WITH";
-        case Operation::CONTAINS: return os << "CONTAINS";
-        case Operation::ENDS_WITH: return os << "ENDS_WITH";
-        case Operation::AND: return os << "AND";
-        case Operation::OR: return os << "OR";
-        case Operation::XOR: return os << "XOR";
-        case Operation::NOT: return os << "NOT";
-        default: return os << "UNKNOWN";
-    }
-}
+);
+
 // A Value in the expression model. It can be either
 // - a field reference which sets the fieldName, or
 // - a literal which is a user-supplied value (in the Payload literal) and type (in type).
@@ -89,10 +72,12 @@ struct Value {
     String fieldName;
     FieldType type = FieldType::NOT_KNOWN;
     Payload literal{Payload::DefaultAllocator};
-    K2_PAYLOAD_FIELDS(fieldName, type, literal);
     bool isReference() const { return !fieldName.empty();}
-    template<typename T>
-    static void _valueStrHelper(const Value& r, std::ostream& os) {
+
+    K2_PAYLOAD_FIELDS(fieldName, type, literal);
+
+    template<typename T, typename Stream>
+    static void _valueStrHelper(const Value& r, Stream& os) {
         T obj;
         if (!const_cast<Payload*>(&(r.literal))->shareAll().read(obj)) {
             os << TToFieldType<T>() << "_ERROR_READING";
@@ -101,15 +86,34 @@ struct Value {
             os << obj;
         }
     }
-    friend std::ostream& operator<<(std::ostream& os, const Value& r) {
-        os << "{fieldName=" << r.fieldName << ", type=" << r.type << ", literal=";
-        if (r.fieldName.empty()) {
-            return os << "REFERENCE";
+
+    // custom json conversion
+    friend void to_json(nlohmann::json& j, const Value& o) {
+        std::ostringstream otype;
+        otype << o.type;
+
+        std::ostringstream lit;
+        if (o.fieldName.empty()) {
+            lit << "REFERENCE";
         }
-        K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, r, os);
-        return os;
+        else {
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, o, lit);
+        }
+
+        j = {
+            {"fieldName", o.fieldName},
+            {"type", otype.str()},
+            {"literal", lit.str()}
+        };
+    }
+    friend void from_json(const nlohmann::json&, Value&) {
+        throw std::runtime_error("Value type does not support construct from json");
     }
 
+    friend std::ostream& operator<<(std::ostream&os, const Value& v) {
+        nlohmann::json j = v;
+        return os << j.dump();
+    }
 };
 
 // An Expression in the expression model.
@@ -130,6 +134,7 @@ struct Expression {
     bool evaluate(SKVRecord& rec);
 
     K2_PAYLOAD_FIELDS(op, valueChildren, expressionChildren);
+    K2_DEF_FMT(Expression, op, valueChildren, expressionChildren);
 
     // helper methods used to evaluate particular operation
     bool EQ_handler(SKVRecord& rec);
@@ -146,17 +151,6 @@ struct Expression {
     bool OR_handler(SKVRecord& rec);
     bool XOR_handler(SKVRecord& rec);
     bool NOT_handler(SKVRecord& rec);
-    friend std::ostream& operator<<(std::ostream& os, const Expression& r) {
-        os << "{op=" << r.op << ", valueChildren=[";
-        for (auto& vc: r.valueChildren) {
-            os << vc << ",";
-        }
-        os << "], expressionChildren=[";
-        for (auto& ec: r.expressionChildren) {
-            os << ec << ", ";
-        }
-        return os << "]}";
-    }
 };
 
 // helper builder: creates a value literal

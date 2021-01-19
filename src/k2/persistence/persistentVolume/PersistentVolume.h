@@ -37,6 +37,10 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2
 {
+namespace log {
+inline thread_local k2::logging::Logger iplog("k2::iplog");
+}
+
 class ChunkException : public std::exception {
 public:
     virtual const char* what() const noexcept { return  _msg.c_str(); }

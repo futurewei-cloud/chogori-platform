@@ -40,6 +40,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "RPCProtocolFactory.h"
 #include "Request.h"
 #include "Status.h"
+#include "Log.h"
 
 namespace k2 {
 
@@ -57,7 +58,7 @@ class RPCDispatcher: public seastar::weakly_referencable<RPCDispatcher> {
 public: // types
     // distributed<> version of the class
     typedef seastar::distributed<RPCDispatcher> Dist_t;
-    
+
     // thrown when you attempt to register something more than once
     struct DuplicateRegistrationException : public std::exception {
         virtual const char* what() const noexcept override{ return "duplicate registration not allowed";}
@@ -149,10 +150,10 @@ public: // message-oriented API
     // Use this method to reply to a given Request, with the given payload. This method should be normally used
     // in message observers to respond to clients.
     seastar::future<> sendReply(std::unique_ptr<Payload> payload, Request& forRequest);
-    
+
     seastar::future<> setAddressCore(std::pair<String, int> url_core);
 
-    
+
 
 public: // RPC-oriented interface. Small convenience so that users don't have to deal with Payloads directly
     // Same as sendRequest but for RPC types, not raw payloads
@@ -160,7 +161,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
     seastar::future<std::tuple<Status, Response_t>> callRPC(Verb verb, Request_t& request, TXEndpoint& endpoint, Duration timeout) {
         auto payload = endpoint.newPayload();
         payload->write(request);
-        K2DEBUG("RPC Request call to endpoint: " << endpoint.getURL());
+        K2LOG_D(log::tx, "RPC Request call to endpoint: {}", endpoint.url);
 
         return sendRequest(verb, std::move(payload), endpoint, timeout)
             .then([](std::unique_ptr<Payload>&& responsePayload) {
@@ -185,10 +186,10 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     return std::make_tuple<Status, Response_t>(Statuses::S503_Service_Unavailable("client timed out"), Response_t());
                 }
                 catch (const std::exception &e) {
-                    K2ERROR("RPC send failed with uncaught exception: " << e.what());
+                    K2LOG_E(log::tx, "RPC send failed with uncaught exception: {}", e.what());
                 }
                 catch (...) {
-                    K2ERROR("RPC send failed with unknown exception");
+                    K2LOG_E(log::tx, "RPC send failed with unknown exception");
                 }
 
                 return std::make_tuple<Status, Response_t>(Statuses::S500_Internal_Server_Error("unknown exception while sending request"), Response_t());
@@ -217,7 +218,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                     return observer(std::move(rpcRequest))
                         .then([&](auto&& result) mutable {
                             if (!disp) {
-                                K2WARN("dispatcher is going down: unable to send response to " << request.endpoint.getURL());
+                                K2LOG_W(log::tx, "dispatcher is going down: unable to send response to {}", request.endpoint.url);
                                 return seastar::make_ready_future();
                             }
 
@@ -230,7 +231,7 @@ public: // RPC-oriented interface. Small convenience so that users don't have to
                             return disp->sendReply(std::move(reply), request);
                         })
                         .handle_exception([&](auto exc) mutable {
-                            K2ERROR_EXC("RPC handler failed with uncaught exception", exc);
+                            K2LOG_W_EXC(log::tx, exc, "RPC handler failed with uncaught exception");
                             if (disp) {
                                 auto reply = request.endpoint.newPayload();
                                 reply->write(Statuses::S500_Internal_Server_Error("server caught exception processing request"));
@@ -288,7 +289,7 @@ private: // don't need
 
 // global RPC dist container which can be initialized by main() of an application so that
 // all users of RPC can just use this global to access RPC capabilities
-extern RPCDispatcher::Dist_t ___RPC___;
+inline RPCDispatcher::Dist_t ___RPC___;
 inline RPCDispatcher& RPC() { return ___RPC___.local(); }
 inline RPCDispatcher::Dist_t& RPCDist() { return ___RPC___; }
 } // namespace k2

@@ -27,7 +27,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future.hh>  // for future stuff
 
 namespace k2 {
-
+namespace log {
+inline thread_local k2::logging::Logger nodepool("k2::nodepool_mon");
+}
 class NodePoolMonitor {
 public:  // application lifespan
     NodePoolMonitor();

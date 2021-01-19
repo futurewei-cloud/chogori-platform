@@ -31,6 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "RPCProtocolFactory.h"
 #include "RRDMARPCProtocol.h"
 #include "RPCHeader.h"
+#include "Log.h"
 
 namespace k2 {
 
@@ -45,7 +46,7 @@ public: // types
 
 
     // The official protocol name supported for communications over AutoRRDMARPC channels
-    static const String proto;
+    static inline const String proto{"auto-rrdma+k2rpc"};
 
 public: // lifecycle
     // Construct the protocol with a protocol which supports RRDMA

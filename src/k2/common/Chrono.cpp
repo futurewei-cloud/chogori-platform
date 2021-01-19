@@ -25,8 +25,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-thread_local TimePoint CachedSteadyClock::_now = Clock::now();
-
 CachedSteadyClock::time_point CachedSteadyClock::now(bool refresh) noexcept {
     if (refresh) {
         auto now = Clock::now();

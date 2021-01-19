@@ -42,15 +42,15 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 CPOService::CPOService(DistGetter distGetter) : _dist(distGetter) {
-    K2INFO("ctor");
+    K2LOG_I(log::cposvr, "ctor");
 }
 
 CPOService::~CPOService() {
-    K2INFO("dtor");
+    K2LOG_I(log::cposvr, "dtor");
 }
 
 seastar::future<> CPOService::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::cposvr, "stop");
     std::vector<seastar::future<>> futs;
     for (auto& [k,v]: _assignments) {
         futs.push_back(std::move(v));
@@ -62,7 +62,7 @@ seastar::future<> CPOService::gracefulStop() {
 seastar::future<> CPOService::start() {
     APIServer& api_server = AppBase().getDist<APIServer>().local();
 
-    K2INFO("Registering message handlers");
+    K2LOG_I(log::cposvr, "Registering message handlers");
     RPC().registerRPCObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, [this](dto::CollectionCreateRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));
     });
@@ -115,13 +115,13 @@ int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>
     String lastEnd = "";
 
     if (rangeEnds.size() != eps.size()) {
-        K2WARN("Error in client's make collection request: collection endpoints size does not equal rangeEnds size");
+        K2LOG_W(log::cposvr, "Error in client's make collection request: collection endpoints size does not equal rangeEnds size");
         return -1;
     }
-    // The partition for a key is found using lower_bound on the start keys, 
+    // The partition for a key is found using lower_bound on the start keys,
     // so it is OK for the last range end key to be ""
     if (rangeEnds[rangeEnds.size()-1] != "") {
-        K2WARN("Error in client's make collection request: the last rangeEnd key is not an empty string");
+        K2LOG_W(log::cposvr, "Error in client's make collection request: the last rangeEnd key is not an empty string");
         return -1;
     }
 
@@ -173,7 +173,7 @@ void makeHashPartitionMap(dto::Collection& collection, const std::vector<String>
 
 seastar::future<std::tuple<Status, dto::CollectionCreateResponse>>
 CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
-    K2INFO("Received collection create request for " << request.metadata.name);
+    K2LOG_I(log::cposvr, "Received collection create request for name={}", request.metadata.name);
     auto cpath = _getCollectionPath(request.metadata.name);
     if (fileutil::fileExists(cpath)) {
         return RPCResponse(Statuses::S403_Forbidden("collection already exists"), dto::CollectionCreateResponse());
@@ -186,7 +186,7 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     int err = 0;
     if (collection.metadata.hashScheme == dto::HashScheme::HashCRC32C) {
         makeHashPartitionMap(collection, request.clusterEndpoints);
-    } 
+    }
     else if (collection.metadata.hashScheme == dto::HashScheme::Range) {
         err = makeRangePartitionMap(collection, request.clusterEndpoints, request.rangeEnds);
     }
@@ -205,14 +205,14 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
         return RPCResponse(std::move(status), dto::CollectionCreateResponse());
     }
 
-    K2INFO("Created collection: " << cpath);
+    K2LOG_I(log::cposvr, "Created collection {}", cpath);
     _assignCollection(collection);
     return RPCResponse(std::move(status), dto::CollectionCreateResponse());
 }
 
 seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
 CPOService::handleGet(dto::CollectionGetRequest&& request) {
-    K2INFO("Received collection get request for " << request.name);
+    K2LOG_I(log::cposvr, "Received collection get request for {}", request.name);
     auto [status, collection] = _getCollection(request.name);
 
     dto::CollectionGetResponse response;
@@ -224,7 +224,7 @@ CPOService::handleGet(dto::CollectionGetRequest&& request) {
 
 seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collection, const dto::Schema& schema) {
     std::vector<seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>> pushFutures;
-            
+
     for (const dto::Partition& part : collection.partitionMap.partitions) {
         auto endpoint = RPC().getTXEndpoint(*(part.endpoints.begin()));
         if (!endpoint) {
@@ -242,7 +242,7 @@ seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collectio
         for (const auto& doneFuture : doneFutures) {
             auto& [status, k2response] = doneFuture;
             if (!status.is2xxOK()) {
-                K2WARN("Failed to push schema update: " << status);
+                K2LOG_W(log::cposvr, "Failed to push schema update: status={}", status);
                 return seastar::make_ready_future<Status>(status);
             }
         }
@@ -250,7 +250,7 @@ seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collectio
         return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
     })
     .handle_exception([](auto exc) {
-        K2ERROR_EXC("Failed to push schema update: ", exc);
+        K2LOG_W_EXC(log::cposvr, exc, "Failed to push schema update");
         return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("Failed to push schema"));
     });
 }
@@ -265,7 +265,7 @@ CPOService::handleSchemasGet(dto::GetSchemasRequest&& request) {
         }
 
         it = schemas.find(request.collectionName);
-        K2ASSERT(it != schemas.end(), "Schemas iterator is end after collection refresh");
+        K2ASSERT(log::cposvr, it != schemas.end(), "Schemas iterator is end after collection refresh");
     }
 
     return RPCResponse(Statuses::S200_OK("SchemasGet success"), dto::GetSchemasResponse { it->second });
@@ -273,7 +273,7 @@ CPOService::handleSchemasGet(dto::GetSchemasRequest&& request) {
 
 seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
 CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
-    K2INFO("Received schema create request for " << request.collectionName << " : " << request.schema.name);
+    K2LOG_I(log::cposvr, "Received schema create request for {} : {}", request.collectionName, request.schema.name);
 
     // 1. Stateless validation of request
 
@@ -284,7 +284,7 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // 2. Stateful validation
 
-    // getCollection to make sure in memory cache of schemas is up to date, and we need the 
+    // getCollection to make sure in memory cache of schemas is up to date, and we need the
     // collection with partition map anyway to do the schema push
     auto [status, collection] = _getCollection(request.collectionName);
     if (!status.is2xxOK()) {
@@ -297,7 +297,7 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
             return RPCResponse(Statuses::S403_Forbidden("Schema name and version already exist"), dto::CreateSchemaResponse{});
         }
 
-        // As long as we validate that the key fields match with at least one 
+        // As long as we validate that the key fields match with at least one
         // other schema with the same name then they will always match
         if (!validatedKeys && otherSchema.name == request.schema.name) {
             validation = otherSchema.canUpgradeTo(request.schema);
@@ -339,37 +339,37 @@ String CPOService::_getSchemasPath(String collectionName) {
 
 void CPOService::_assignCollection(dto::Collection& collection) {
     auto &name = collection.metadata.name;
-    K2INFO("Assigning collection " << name << ", to " << collection.partitionMap.partitions.size() << " nodes");
+    K2LOG_I(log::cposvr, "Assigning collection {}, to {} nodes", name, collection.partitionMap.partitions.size());
     std::vector<seastar::future<>> futs;
     for (auto& part : collection.partitionMap.partitions) {
         if (part.endpoints.size() == 0) {
-            K2ERROR("empty endpoint for partition assignment: " << part);
+            K2LOG_E(log::cposvr, "empty endpoint for partition assignment: {}", part);
             continue;
         }
         auto ep = *part.endpoints.begin();
-        K2INFO("Assigning collection " << name << ", to " << part);
+        K2LOG_I(log::cposvr, "Assigning collection {}, to {}", name, part);
         auto txep = RPC().getTXEndpoint(ep);
         if (!txep) {
-            K2WARN("unable to obtain endpoint for " << ep);
+            K2LOG_W(log::cposvr, "unable to obtain endpoint for {}", ep);
             continue;
         }
         dto::AssignmentCreateRequest request;
         request.collectionMeta = collection.metadata;
         request.partition = part;
 
-        K2INFO("Sending assignment for partition: " << request.partition);
+        K2LOG_I(log::cposvr, "Sending assignment for partition: {}", request.partition);
         futs.push_back(
         RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
                 (dto::K2_ASSIGNMENT_CREATE, request, *txep, _assignTimeout())
         .then([this, name, ep](auto&& result) {
             auto& [status, resp] = result;
             if (status.is2xxOK()) {
-                K2INFO("assignment successful for collection " << name << ", for partition " << resp.assignedPartition);
+                K2LOG_I(log::cposvr, "assignment successful for collection {}, for partition {}", name, resp.assignedPartition);
                 _handleCompletedAssignment(name, std::move(resp));
             }
             else {
                 // The node refused to accept the assignment. For now, just ignore this
-                K2WARN("assignment for collection " << name << " was refused by " << ep << ", due to: " << status);
+                K2LOG_W(log::cposvr, "assignment for collection {} was refused by {}, due to: {}", name, ep, status);
                 _handleCompletedAssignment(name, std::move(resp));
             }
             return seastar::make_ready_future();
@@ -386,7 +386,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
 void CPOService::_handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request) {
     auto [status, haveCollection] = _getCollection(cname);
     if (!status.is2xxOK()) {
-        K2ERROR("unable to find collection which reported assignment " << cname);
+        K2LOG_E(log::cposvr, "unable to find collection which reported assignment {}", cname);
         return;
     }
     for (auto& part: haveCollection.partitionMap.partitions) {
@@ -395,14 +395,14 @@ void CPOService::_handleCompletedAssignment(const String& cname, dto::Assignment
             part.pvid.id == request.assignedPartition.pvid.id &&
             part.pvid.assignmentVersion == request.assignedPartition.pvid.assignmentVersion &&
             part.pvid.rangeVersion == request.assignedPartition.pvid.rangeVersion) {
-                K2INFO("Assignment received for active partition " << request.assignedPartition);
+                K2LOG_I(log::cposvr, "Assignment received for active partition {}", request.assignedPartition);
                 part.astate = request.assignedPartition.astate;
                 part.endpoints = std::move(request.assignedPartition.endpoints);
                 _saveCollection(haveCollection);
                 return;
         }
     }
-    K2ERROR("assignment completion does not match any stored partitions: " << request.assignedPartition);
+    K2LOG_E(log::cposvr, "assignment completion does not match any stored partitions: {}", request.assignedPartition);
 }
 
 std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
@@ -417,7 +417,7 @@ std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
         std::get<0>(result) = Statuses::S500_Internal_Server_Error("unable to read collection data");
         return result;
     };
-    K2INFO("Found collection in: " << cpath);
+    K2LOG_I(log::cposvr, "Found collection in: {}", cpath);
     std::get<0>(result) = Statuses::S200_OK("collection found");
 
     // Check to see if we need to load schemas from file too
@@ -445,7 +445,7 @@ Status CPOService::_loadSchemas(const String& collectionName) {
     }
 
     schemas[collectionName] = std::move(loadedSchemas);
-    
+
     return Statuses::S200_OK("Schemas loaded");
 }
 
@@ -457,7 +457,7 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
         return Statuses::S500_Internal_Server_Error("unable to write collection data");
     }
 
-    K2DEBUG("saved collection: " << cpath);
+    K2LOG_D(log::cposvr, "saved collection: {}", cpath);
     return _saveSchemas(collection.metadata.name);
 }
 
@@ -469,13 +469,13 @@ Status CPOService::_saveSchemas(const String& collectionName) {
         return Statuses::S500_Internal_Server_Error("unable to write schema data");
     }
 
-    K2DEBUG("saved schemas: " << cpath);
+    K2LOG_D(log::cposvr, "saved schemas: {}", cpath);
     return Statuses::S201_Created("schema written");
 }
 
 seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
 CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request){
-    K2INFO("Received persistence cluster create request for " << request.cluster.name);
+    K2LOG_I(log::cposvr, "Received persistence cluster create request for {}", request.cluster.name);
     auto cpath = _getPersistenceClusterPath(request.cluster.name);
     dto::PersistenceCluster persistenceCluster;
     Payload p;
@@ -493,7 +493,7 @@ CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&
 
 seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
 CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request) {
-    K2INFO("Received persistence cluster get request with name " << request.name);
+    K2LOG_I(log::cposvr, "Received persistence cluster get request with name {}", request.name);
     auto cpath = _getPersistenceClusterPath(request.name);
     dto::PersistenceCluster persistenceCluster;
     Payload p;
@@ -504,7 +504,7 @@ CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& requ
         return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster data"), dto::PersistenceClusterGetResponse());
     };
 
-    K2INFO("Found persistence cluster in: " << cpath);
+    K2LOG_I(log::cposvr, "Found persistence cluster in: {}", cpath);
     dto::PersistenceClusterGetResponse response{.cluster=std::move(persistenceCluster)};
     return RPCResponse(Statuses::S200_OK("persistence cluster found"), std::move(response));
 }

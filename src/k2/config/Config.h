@@ -38,7 +38,7 @@ typedef seastar::distributed<BPOVarMap> BPOConfigMapDist_t;
 }  // ns config
 
 // for convenient access to globally initialized configuration
-extern config::BPOConfigMapDist_t ___config___;
+inline config::BPOConfigMapDist_t ___config___;
 inline config::BPOConfigMapDist_t& ConfigDist() { return ___config___; }
 inline const config::BPOVarMap& Config() { return ___config___.local(); }
 

@@ -30,27 +30,29 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/Appbase.h>
 
 #include "txbench_common.h"
+#include "Log.h"
+using namespace k2;
 
 class Service : public seastar::weakly_referencable<Service> {
 public:  // application lifespan
     Service():
         _stopped(true) {
-        K2INFO("ctor");
+        K2LOG_I(log::txbench, "ctor");
     };
 
     virtual ~Service() {
-        K2INFO("dtor");
+        K2LOG_I(log::txbench, "dtor");
     }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::txbench, "stop");
         _stopped = true;
         // unregistar all observers
-        k2::RPC().registerMessageObserver(GET_DATA_URL, nullptr);
-        k2::RPC().registerMessageObserver(REQUEST, nullptr);
-        k2::RPC().registerMessageObserver(START_SESSION, nullptr);
-        k2::RPC().registerLowTransportMemoryObserver(nullptr);
+        RPC().registerMessageObserver(GET_DATA_URL, nullptr);
+        RPC().registerMessageObserver(REQUEST, nullptr);
+        RPC().registerMessageObserver(START_SESSION, nullptr);
+        RPC().registerLowTransportMemoryObserver(nullptr);
         return seastar::make_ready_future<>();
     }
 
@@ -61,29 +63,26 @@ public:  // application lifespan
         _registerSTART_SESSION();
         _registerREQUEST();
 
-        k2::RPC().registerLowTransportMemoryObserver([](const k2::String& ttype, size_t requiredReleaseBytes) {
-            K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
-        });
         return seastar::make_ready_future<>();
     }
 
 private:
     void _registerDATA_URL() {
-        K2INFO("TCP endpoint is: " << k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL());
-        k2::RPC().registerMessageObserver(GET_DATA_URL,
-            [this](k2::Request&& request) mutable {
+        K2LOG_I(log::txbench, "TCP endpoint is: {}", RPC().getServerEndpoint(TCPRPCProtocol::proto)->url);
+        RPC().registerMessageObserver(GET_DATA_URL,
+            [this](Request&& request) mutable {
                 auto response = request.endpoint.newPayload();
                 auto ep = (seastar::engine()._rdma_stack?
-                           k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto):
-                           k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
-                K2INFO("GET_DATA_URL responding with data endpoint: " << ep->getURL());
-                response->write((void*)ep->getURL().c_str(), ep->getURL().size());
-                return k2::RPC().sendReply(std::move(response), request);
+                           RPC().getServerEndpoint(RRDMARPCProtocol::proto):
+                           RPC().getServerEndpoint(TCPRPCProtocol::proto));
+                K2LOG_I(log::txbench, "GET_DATA_URL responding with data endpoint: {}", *ep);
+                response->write((void*)ep->url.c_str(), ep->url.size());
+                return RPC().sendReply(std::move(response), request);
             });
     }
 
     void _registerSTART_SESSION() {
-        k2::RPC().registerMessageObserver(START_SESSION, [this](k2::Request&& request) mutable {
+        RPC().registerMessageObserver(START_SESSION, [this](Request&& request) mutable {
             auto sid = uint64_t(std::rand());
             if (request.payload) {
                 SessionConfig config{};
@@ -91,19 +90,19 @@ private:
 
                 BenchSession session(request.endpoint, sid, config);
                 auto result = _sessions.try_emplace(sid, std::move(session));
-                assert(result.second);
-                K2INFO("Starting new session: " << sid);
+                K2ASSERT(log::txbench, result.second, "session already exists");
+                K2LOG_I(log::txbench, "Starting new session: {}", sid);
                 auto resp = request.endpoint.newPayload();
                 SessionAck ack{.sessionID=sid};
                 resp->write((void*)&ack, sizeof(ack));
-                return k2::RPC().sendReply(std::move(resp), request);
+                return RPC().sendReply(std::move(resp), request);
             }
             return seastar::make_ready_future();
         });
     }
 
     void _registerREQUEST() {
-        k2::RPC().registerMessageObserver(REQUEST, [this](k2::Request&& request) mutable {
+        RPC().registerMessageObserver(REQUEST, [this](Request&& request) mutable {
             if (request.payload) {
                 uint64_t sid = 0;
                 uint64_t reqId = 0;
@@ -132,12 +131,12 @@ private:
                             }
                             _data.clear();
                         }
-                        return k2::RPC().send(ACK, std::move(response), request.endpoint).
+                        return RPC().send(ACK, std::move(response), request.endpoint).
                         then([&] (){
                             session.unackedSize = 0;
                             session.unackedCount = 0;
                         });
-                        
+
                     }
                 }
             }
@@ -149,12 +148,12 @@ private:
     // flag we need to tell if we've been stopped
     bool _stopped;
     std::unordered_map<uint64_t, BenchSession> _sessions;
-    std::vector<k2::Binary> _data;
+    std::vector<Binary> _data;
 }; // class Service
 
 int main(int argc, char** argv) {
     std::srand(std::time(nullptr));
-    k2::App app("txbench_server");
+    App app("txbench_server");
     app.addApplet<Service>();
     return app.start(argc, argv);
 }

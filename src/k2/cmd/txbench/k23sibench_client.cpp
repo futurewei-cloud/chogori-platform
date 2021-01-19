@@ -32,29 +32,31 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/tso/client/tso_clientlib.h>
 
 #include <seastar/core/sleep.hh>
+#include "Log.h"
+using namespace k2;
 
 const char* collname="K23SIBench";
-k2::dto::Schema _schema {
+dto::Schema _schema {
     .name = "bench_schema",
     .version = 1,
-    .fields = std::vector<k2::dto::SchemaField> {
-     {k2::dto::FieldType::STRING, "partitionKey", false, false},
-     {k2::dto::FieldType::STRING, "rangeKey", false, false},
-     {k2::dto::FieldType::STRING, "data", false, false}
+    .fields = std::vector<dto::SchemaField> {
+     {dto::FieldType::STRING, "partitionKey", false, false},
+     {dto::FieldType::STRING, "rangeKey", false, false},
+     {dto::FieldType::STRING, "data", false, false}
     },
     .partitionKeyFields = std::vector<uint32_t> { 0 },
     .rangeKeyFields = std::vector<uint32_t> { 1 },
 };
-static thread_local std::shared_ptr<k2::dto::Schema> schemaPtr;
+static thread_local std::shared_ptr<dto::Schema> schemaPtr;
 
 class DataRec{
 public:
-    std::optional<k2::String> partitionKey;
-    std::optional<k2::String> rangeKey;
-    std::optional<k2::String> data;
+    std::optional<String> partitionKey;
+    std::optional<String> rangeKey;
+    std::optional<String> data;
 
-    std::shared_ptr<k2::dto::Schema> schema;
-    static inline k2::String collectionName = collname;
+    std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = collname;
 
     SKV_RECORD_FIELDS(partitionKey, rangeKey, data);
 };
@@ -65,7 +67,7 @@ public:
     KeyGen(size_t start) : _start(start), _idx(start) {}
 
     DataRec next() {
-        k2::String stridx = std::to_string(_idx);
+        String stridx = std::to_string(_idx);
         _idx ++;
 
         DataRec record{
@@ -88,33 +90,30 @@ private:
 class Client {
 public:  // application lifespan
     Client():
-        _client(k2::K23SIClientConfig()) {
-        K2INFO("ctor");
+        _client(K23SIClientConfig()) {
+        K2LOG_I(log::txbench, "ctor");
     }
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stopping");
+        K2LOG_I(log::txbench, "stopping");
         _stopped = true;
         return std::move(_benchFut);
     }
 
     seastar::future<> start() {
-        K2INFO("Starting benchmark" <<
-            ", with dataSize=" << _dataSize() <<
-            ", with reads=" << _reads() <<
-            ", with writes=" << _writes() <<
-            ", with pipelineDepth=" << _pipelineDepth() <<
-            ", with testDuration=" << _testDuration());
-        _data = k2::String('.', _dataSize());
+        K2LOG_I(log::txbench,
+            "Starting benchmark, with dataSize={}, with reads={}, with writes={}, with pipelineDepth={}, with testDuration={}",
+            _dataSize(), _reads(), _writes(), _pipelineDepth(), _testDuration());
+        _data = String('.', _dataSize());
         _stopped = false;
         auto myid = seastar::engine().cpu_id();
-        schemaPtr = std::make_shared<k2::dto::Schema>(_schema);
+        schemaPtr = std::make_shared<dto::Schema>(_schema);
         _gen.seed(myid);
 
         _benchFut = seastar::sleep(5s);
         _benchFut = _benchFut.then([this] {return _client.start();});
         if (myid == 0) {
-            K2INFO("Creating collection...");
+            K2LOG_I(log::txbench, "Creating collection...");
             _benchFut = _benchFut.then([this] {
                 return _client.makeCollection(collname).discard_result()
                 .then([this] () {
@@ -136,11 +135,11 @@ public:  // application lifespan
             return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
         })
         .handle_exception([](auto exc) {
-            K2ERROR_EXC("Unable to execute benchmark", exc);
+            K2LOG_W_EXC(log::txbench, exc, "Unable to execute benchmark");
             return seastar::make_ready_future();
         })
         .finally([this] {
-            K2INFO("Done with benchmark");
+            K2LOG_I(log::txbench, "Done with benchmark");
         });
 
         return seastar::make_ready_future();
@@ -151,26 +150,26 @@ private:
         return seastar::do_until(
             [this] { return _stopped; },
             [this] {
-                k2::K2TxnOptions opts{};
-                opts.deadline = k2::Deadline(_txnTimeout());
+                K2TxnOptions opts{};
+                opts.deadline = Deadline(_txnTimeout());
                 opts.syncFinalize = _sync_finalize();
-                auto start = k2::Clock::now();
+                auto start = Clock::now();
                 return _client.beginTxn(opts)
-                .then([this, start](k2::K2TxnHandle&& txn) {
+                .then([this, start](K2TxnHandle&& txn) {
                     _totalTxns ++;
                     return seastar::do_with(std::move(txn), [this, start] (auto& txn) {
                         return _runTxn(start, txn);
                     });
                 })
                 .handle_exception([] (auto exc) {
-                    K2ERROR_EXC("Txn failed: ", exc);
+                    K2LOG_W_EXC(log::txbench, exc, "Txn failed");
                     return seastar::make_ready_future<>();
                 });
             });
     }
 
-    seastar::future<> _runTxn(k2::TimePoint start, k2::K2TxnHandle& txn) {
-        return seastar::do_with(true, k2::TimePoint{}, KeyGen(_dist(_gen)), [this, &txn, start] (bool& willCommit, k2::TimePoint& endStart, KeyGen& keygen) {
+    seastar::future<> _runTxn(TimePoint start, K2TxnHandle& txn) {
+        return seastar::do_with(true, TimePoint{}, KeyGen(_dist(_gen)), [this, &txn, start] (bool& willCommit, TimePoint& endStart, KeyGen& keygen) {
             return seastar::make_ready_future()
             .then([this, &txn, &keygen] {
                 if (_stopped) return seastar::make_ready_future();
@@ -193,22 +192,22 @@ private:
             })
             // finalize
             .then_wrapped([this, &txn, &willCommit, start, &endStart] (auto&& fut) {
-                if (_stopped) return seastar::make_ready_future<k2::EndResult>(k2::EndResult(k2::dto::K23SIStatus::OperationNotAllowed));
+                if (_stopped) return seastar::make_ready_future<EndResult>(EndResult(dto::K23SIStatus::OperationNotAllowed));
                 fut.ignore_ready_future();
                 willCommit = !fut.failed();
-                endStart = k2::Clock::now();
+                endStart = Clock::now();
                 return txn.end(willCommit);
             }).then_wrapped([this, &txn, &willCommit, start, &endStart] (auto&& fut) {
                 if (_stopped) return seastar::make_ready_future();
-                auto now = k2::Clock::now();
+                auto now = Clock::now();
                 _txnLatency.add(now - start);
                 _endLatency.add(now - endStart);
                 if (fut.failed()) {
-                    K2ERROR_EXC("txn end failed with", fut.get_exception());
+                    K2LOG_W_EXC(log::txbench, fut.get_exception(), "txn end failed with");
                     return seastar::make_ready_future();
                 }
 
-                k2::EndResult result = fut.get0();
+                EndResult result = fut.get0();
 
                 if (result.status.is2xxOK()) {
                     if (willCommit) {
@@ -219,22 +218,22 @@ private:
                     }
                 }
                 else {
-                    K2ERROR("Unable to end transaction " << txn << ", due to : " << result.status);
+                    K2LOG_E(log::txbench, "Unable to end transaction {}, due to: {}", txn, result.status);
                 }
                 return seastar::make_ready_future();
             });
         });
     }
 
-    seastar::future<> _doRead(k2::K2TxnHandle& txn, KeyGen& keygen) {
+    seastar::future<> _doRead(K2TxnHandle& txn, KeyGen& keygen) {
         ++_totalReads;
-        return seastar::do_with(k2::Clock::now(), [this, &txn, &keygen] (auto& start) {
+        return seastar::do_with(Clock::now(), [this, &txn, &keygen] (auto& start) {
             return txn.read<DataRec>(keygen.next())
             .then([this, start](auto&& result) {
-                _readLatency.add(k2::Clock::now() - start);
-                if (!result.status.is2xxOK() && result.status != k2::dto::K23SIStatus::KeyNotFound) {
+                _readLatency.add(Clock::now() - start);
+                if (!result.status.is2xxOK() && result.status != dto::K23SIStatus::KeyNotFound) {
                     ++_failReads;
-                    K2ERROR("Failed to read key due to: " << result.status);
+                    K2LOG_E(log::txbench, "Failed to read key due to: {}", result.status);
                     return seastar::make_exception_future(std::runtime_error("failed to read key"));
                 }
                 ++_successReads;
@@ -243,17 +242,17 @@ private:
         });
     }
 
-    seastar::future<> _doWrite(k2::K2TxnHandle& txn, KeyGen& keygen) {
+    seastar::future<> _doWrite(K2TxnHandle& txn, KeyGen& keygen) {
         ++_totalWrites;
-        return seastar::do_with(k2::Clock::now(), [this, &txn, &keygen](auto& start) {
+        return seastar::do_with(Clock::now(), [this, &txn, &keygen](auto& start) {
             DataRec record = keygen.next();
             record.data = _data;
             return txn.write<DataRec>(record)
                 .then([this, start](auto&& result) {
-                    _writeLatency.add(k2::Clock::now() - start);
+                    _writeLatency.add(Clock::now() - start);
                     if (!result.status.is2xxOK()) {
                         ++_failWrites;
-                        K2ERROR("Failed to write key due to: " << result.status);
+                        K2LOG_E(log::txbench, "Failed to write key due to: {}", result.status);
                         return seastar::make_exception_future(std::runtime_error("failed to write key"));
                     }
                     ++_successWrites;
@@ -287,10 +286,10 @@ private://metrics
     }
 
     sm::metric_groups _metric_groups;
-    k2::ExponentialHistogram _readLatency;
-    k2::ExponentialHistogram _writeLatency;
-    k2::ExponentialHistogram _txnLatency;
-    k2::ExponentialHistogram _endLatency;
+    ExponentialHistogram _readLatency;
+    ExponentialHistogram _writeLatency;
+    ExponentialHistogram _txnLatency;
+    ExponentialHistogram _endLatency;
 
     uint64_t _totalTxns=0;
     uint64_t _abortedTxns=0;
@@ -303,25 +302,25 @@ private://metrics
     uint64_t _failWrites = 0;
 
    private:
-    k2::ConfigVar<uint32_t> _dataSize{"data_size"};
-    k2::ConfigVar<uint32_t> _reads{"reads"};
-    k2::ConfigVar<uint32_t> _writes{"writes"};
-    k2::ConfigVar<uint32_t> _pipelineDepth{"pipeline_depth"};
-    k2::ConfigVar<bool> _sync_finalize{"sync_finalize"};
-    k2::ConfigDuration _testDuration{"test_duration", 30s};
-    k2::ConfigDuration _txnTimeout{"txn_timeout", 10s};
+    ConfigVar<uint32_t> _dataSize{"data_size"};
+    ConfigVar<uint32_t> _reads{"reads"};
+    ConfigVar<uint32_t> _writes{"writes"};
+    ConfigVar<uint32_t> _pipelineDepth{"pipeline_depth"};
+    ConfigVar<bool> _sync_finalize{"sync_finalize"};
+    ConfigDuration _testDuration{"test_duration", 30s};
+    ConfigDuration _txnTimeout{"txn_timeout", 10s};
 
     seastar::future<> _benchFut = seastar::make_ready_future();
     bool _stopped = true;
-    k2::K23SIClient _client;
-    k2::String _data;
+    K23SIClient _client;
+    String _data;
     std::mt19937 _gen;
     std::uniform_int_distribution<> _dist;
 };  // class Client
 
 int main(int argc, char** argv) {
-    k2::App app("K23SIBenchClient");
-    app.addApplet<k2::TSO_ClientLib>();
+    App app("K23SIBenchClient");
+    app.addApplet<TSO_ClientLib>();
     app.addApplet<Client>();
     app.addOptions()
         ("data_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to write in records")
@@ -329,14 +328,14 @@ int main(int argc, char** argv) {
         ("writes", bpo::value<uint32_t>()->default_value(1), "How many writes to do in each txn")
         ("pipeline_depth", bpo::value<uint32_t>()->default_value(10), "How many transactions to run concurrently")
         ("sync_finalize", bpo::value<bool>()->default_value(false), "K23SI Sync finalize option")
-        ("test_duration", bpo::value<k2::ParseableDuration>(), "How long to run")
-        ("txn_timeout", bpo::value<k2::ParseableDuration>(), "timeout for each transaction")
+        ("test_duration", bpo::value<ParseableDuration>(), "How long to run")
+        ("txn_timeout", bpo::value<ParseableDuration>(), "timeout for each transaction")
         // config for dependencies
-        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")
-        ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
-        ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
-        ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff");
+        ("tcp_remotes", bpo::value<std::vector<String>>()->multitoken()->default_value(std::vector<String>()), "A list(space-delimited) of endpoints to assign in the test collection")
+        ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("cpo", bpo::value<String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("tso_endpoint", bpo::value<String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
+        ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
     return app.start(argc, argv);
 }

@@ -26,6 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
 #include "Config.h"
+#include "Log.h"
 
 namespace k2 {
 class Persistence {
@@ -38,7 +39,7 @@ public:
             payload->write(val);
             dto::K23SI_PersistenceRequest<Payload> request{};
             request.value.val = std::move(*payload);
-            K2DEBUG("making persistence call to endpoint: " << _remoteEndpoint->getURL() << ", with deadline=" << deadline.getRemaining());
+            K2LOG_D(log::skvsvr, "making persistence call to endpoint: {}, with deadline={}", _remoteEndpoint->url, deadline.getRemaining());
             return seastar::do_with(std::move(request), [this, deadline] (auto& request) {
                 return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
                     (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, deadline.getRemaining()).discard_result();

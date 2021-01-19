@@ -24,8 +24,12 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include "Log.h"
 
-namespace k2 {
 
+namespace k2::log {
+inline thread_local k2::logging::Logger defer("k2::defer");
+}
+
+namespace k2 {
 // Simple utility class used to defer execution of a function until the end of a scope
 // the function is executed when the Defer instance is destroyed.
 
@@ -37,9 +41,9 @@ public:
         try {
             (void)_func();
         } catch (std::exception& exc) {
-            K2ERROR("deferred func threw exception: " << exc.what());
+            K2LOG_E(log::defer, "deferred func threw exception: {}", exc.what());
         } catch (...) {
-            K2ERROR("deferred func threw unknown exception");
+            K2LOG_E(log::defer, "deferred func threw unknown exception");
         }
     }
 

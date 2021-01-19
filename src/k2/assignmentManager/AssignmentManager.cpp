@@ -34,20 +34,20 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 AssignmentManager::AssignmentManager() {
-    K2INFO("ctor");
+    K2LOG_I(log::amgr, "ctor");
 }
 
 AssignmentManager::~AssignmentManager() {
-    K2INFO("dtor");
+    K2LOG_I(log::amgr, "dtor");
 }
 
 seastar::future<> AssignmentManager::gracefulStop() {
-    K2INFO("stop");
+    K2LOG_I(log::amgr, "stop");
     return seastar::make_ready_future();
 }
 
 seastar::future<> AssignmentManager::start() {
-    K2INFO("Registering message handlers");
+    K2LOG_I(log::amgr, "Registering message handlers");
     RPC().registerRPCObserver<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>(dto::Verbs::K2_ASSIGNMENT_CREATE, [this](dto::AssignmentCreateRequest&& request) {
         return handleAssign(std::move(request));
     });
@@ -60,8 +60,7 @@ seastar::future<> AssignmentManager::start() {
 
 seastar::future<std::tuple<Status, dto::AssignmentCreateResponse>>
 AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
-    K2INFO("Received request to create assignment in collection " << request.collectionMeta.name
-           << ", for partition " << request.partition);
+    K2LOG_I(log::amgr, "Received request to create assignment in collection {}, for partition {}", request.collectionMeta.name, request.partition);
     // TODO, consider current load on all cores and potentially re-route the assignment to a different core
     // for now, simply pass it onto local handler
     return PManager().assignPartition(std::move(request.collectionMeta), std::move(request.partition))
@@ -77,7 +76,7 @@ AssignmentManager::handleOffload(dto::AssignmentOffloadRequest&& request) {
     (void) request;
     // TODO implement - here we should drop our assignment, cleaning up any resources we have
     // allocated for our partition(s). We should be ready to receive new assignments after this.
-    K2INFO("Received request to offload assignment for " << request.collectionName);
+    K2LOG_I(log::amgr, "Received request to offload assignment for {}", request.collectionName);
     return RPCResponse(Statuses::S501_Not_Implemented("offload has not been implemented"), dto::AssignmentOffloadResponse());
 }
 

@@ -28,31 +28,31 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/net/net.hh>
 
 // k2
-#include <k2/common/Log.h>
+#include "Log.h"
 
 // determine the packet size we should allocate: mtu - tcp_header_size - ip_header_size - ethernet_header_size
-const uint16_t tcpsegsize = seastar::net::hw_features().mtu
+constexpr uint16_t tcpsegsize = seastar::net::hw_features().mtu
                             - seastar::net::tcp_hdr_len_min
                             - seastar::net::ipv4_hdr_len_min
                             - seastar::net::eth_hdr_len;
 
-const uint16_t rrdmasegsize = seastar::rdma::RDMAStack::RCDataSize;
+constexpr uint16_t rrdmasegsize = seastar::rdma::RDMAStack::RCDataSize;
 
 namespace k2 {
 
 VirtualNetworkStack::VirtualNetworkStack() {
-    K2DEBUG("ctor");
+    K2LOG_D(log::tx, "ctor");
     registerLowTCPMemoryObserver(nullptr); // install default observer
     registerLowRRDMAMemoryObserver(nullptr); // install default observer
 }
 
 VirtualNetworkStack::~VirtualNetworkStack() {
     _lowTCPMemObserver = nullptr;
-    K2DEBUG("dtor");
+    K2LOG_D(log::tx, "dtor");
 }
 
 seastar::server_socket VirtualNetworkStack::listenTCP(SocketAddress sa, seastar::listen_options opt) {
-    K2DEBUG("listen tcp on: " << sa);
+    K2LOG_D(log::tx, "listen tcp on: {}", sa);
     // TODO For now, just use the engine's global network
     return seastar::engine().net().listen(std::move(sa), std::move(opt));
 }
@@ -64,7 +64,7 @@ VirtualNetworkStack::connectTCP(SocketAddress remoteAddress, SocketAddress sourc
 }
 
 void VirtualNetworkStack::start(){
-    K2DEBUG("start");
+    K2LOG_D(log::tx, "start");
 }
 
 BinaryAllocatorFunctor VirtualNetworkStack::getTCPAllocator() {
@@ -78,15 +78,15 @@ BinaryAllocatorFunctor VirtualNetworkStack::getTCPAllocator() {
 
         // NB, there is no performance benefit of allocating smaller chunks. Chunks up to 16384 are allocated from
         // seastar pool allocator and overhead is the same regardless of size(~10ns per allocation)
-        K2DEBUG("allocating binary with size=" << tcpsegsize);
         return Binary(tcpsegsize);
     };
 }
 
 void VirtualNetworkStack::registerLowTCPMemoryObserver(LowMemoryObserver_t observer) {
     if (observer == nullptr) {
-        _lowTCPMemObserver = [](size_t requiredReleaseBytes){
-            K2WARN("TCP transport needs memory: "<< requiredReleaseBytes << ", but there is no observer registered");
+        _lowTCPMemObserver = [](size_t requiredReleaseBytes) {
+            K2LOG_W(log::tx,
+                "TCP transport needs {}bytes released, but there is no observer registered", requiredReleaseBytes);
         };
     }
     else {
@@ -96,12 +96,12 @@ void VirtualNetworkStack::registerLowTCPMemoryObserver(LowMemoryObserver_t obser
 }
 
 seastar::future<> VirtualNetworkStack::stop() {
-    K2DEBUG("stop");
+    K2LOG_D(log::tx, "stop");
     return seastar::make_ready_future<>();
 }
 
 seastar::rdma::RDMAListener VirtualNetworkStack::listenRRDMA() {
-    K2DEBUG("listen rrdma");
+    K2LOG_D(log::tx, "listen rrdma");
     return seastar::engine()._rdma_stack->listen();
 }
 
@@ -112,15 +112,15 @@ VirtualNetworkStack::connectRRDMA(seastar::rdma::EndPoint remoteAddress) {
 
 BinaryAllocatorFunctor VirtualNetworkStack::getRRDMAAllocator() {
     return []() {
-        K2DEBUG("rrdma allocating binary with size=" << rrdmasegsize);
         return Binary(rrdmasegsize);
     };
 }
 
 void VirtualNetworkStack::registerLowRRDMAMemoryObserver(LowMemoryObserver_t observer) {
     if (observer == nullptr) {
-        _lowRRDMAMemObserver = [](size_t requiredReleaseBytes){
-            K2WARN("RRDMA transport needs memory: "<< requiredReleaseBytes << ", but there is no observer registered");
+        _lowRRDMAMemObserver = [](size_t requiredReleaseBytes) {
+            K2LOG_W(log::tx,
+                "RRDMA transport needs {}bytes released, but there is no observer registered", requiredReleaseBytes);
         };
     }
     else {

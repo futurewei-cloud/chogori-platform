@@ -28,12 +28,14 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sleep.hh>
 
 #include "rpcbench_common.h"
+#include "Log.h"
+using namespace k2;
 
 class Client {
 public:  // application lifespan
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stopping");
+        K2LOG_I(log::txbench, "stopping");
         _stopped = true;
         return std::move(_benchFut);
     }
@@ -61,21 +63,21 @@ public:  // application lifespan
         for (size_t i = myid; i < _multiConn() + myid; ++i) {
             _session.endpoints.push_back(k2::RPC().getTXEndpoint(_remotes()[i%_remotes().size()]));
         }
-        K2INFO("Setup complete. Starting session...");
+        K2LOG_I(log::txbench, "Setup complete. Starting session...");
         _benchFut = _benchFut
         .then([this]{
             return _startSession();
         })
         .then([this]() {
-            K2INFO("Starting benchmark in session: " << _session.sessionId);
+            K2LOG_I(log::txbench, "Starting benchmark in session: {}", _session.sessionId);
             return _benchmark();
         })
         .handle_exception([this](auto exc) {
-            K2ERROR_EXC("Unable to execute benchmark", exc);
+            K2LOG_W_EXC(log::txbench, exc, "Unable to execute benchmark");
             return seastar::make_ready_future<>();
         })
         .finally([this]() {
-            K2INFO("Done with benchmark");
+            K2LOG_I(log::txbench, "Done with benchmark");
         });
 
         return seastar::make_ready_future();
@@ -93,10 +95,10 @@ private:
                 .then([this](auto&& reply) mutable {
                     auto& [status, resp] = reply;
                     if (!status.is2xxOK()) {
-                        K2ERROR("Cannot start session: " << status);
+                        K2LOG_E(log::txbench, "Cannot start session: {}", status);
                         return seastar::make_exception_future(std::runtime_error("server cannot start session"));
                     }
-                    K2INFO("started session " << resp.sessionId);
+                    K2LOG_I(log::txbench, "started session {}", resp.sessionId);
                     _session.sessionId = resp.sessionId;
                     return seastar::make_ready_future();
                 })
@@ -107,13 +109,10 @@ private:
     }
 
     seastar::future<> _benchmark() {
-        K2INFO("Starting benchmark for main remote=" << _session.endpoints[0]->getURL() <<
-             ", with requestSize=" << _requestSize() <<
-             ", with responseSize=" << _responseSize() <<
-             ", with pipelineDepth=" << _pipelineDepth() <<
-             ", with multiConn=" << _multiConn() <<
-             ", with copyData=" << _copyData() <<
-             ", with testDuration=" << _testDuration());
+        K2LOG_I(log::txbench, "Starting benchmark for main remote={}, with requestSize={}, with responseSize={}, with pipelineDepth={}, with multiConn={}, with copyData={}, with testDuration={}",
+            _session.endpoints[0]->url, _requestSize(), _responseSize(), _pipelineDepth(),
+             _multiConn(), _copyData(), _testDuration());
+
         std::vector<seastar::future<>> reqFuts;
         reqFuts.push_back(seastar::sleep(_testDuration()).then([this]{_stopped = true;}));
         for (size_t i = 0; i < _pipelineDepth(); ++i) {

@@ -34,9 +34,11 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/TimestampBatch.h>
+#include "Log.h"
 
 namespace k2
 {
+
 using namespace dto;
 
 // TSO (controller) internal API verbs to Paxos for heart beat etc. and to Atomic/GPS clock for accurate time
@@ -171,11 +173,11 @@ class TSOService::TSOController
     // TODO: implement this
     seastar::future<std::tuple<bool, uint64_t>> JoinServerCluster()
     {
-        K2INFO("JoinServerCluster");
+        K2LOG_I(log::tsoserver, "JoinServerCluster");
         // fake new master
         std::tuple<bool, uint64_t> result(true, 0);
         _myLease = GenNewLeaseVal();
-        _masterInstanceURL = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->getURL();
+        _masterInstanceURL = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url;
         return seastar::make_ready_future<std::tuple<bool, uint64_t>>(result);
     }
 
@@ -304,10 +306,10 @@ class TSOService::TSOController
     ConfigDuration _timeSyncTimerInterval{"tso.ctrol_time_sync_interval", 10ms};
     seastar::future<> _timeSyncFuture = seastar::make_ready_future<>();  // need to keep track of timeSync task future for proper shutdown
 
-    // this is the batch uncertainty windows size, should be less than MTL(minimal transaction latency), 
+    // this is the batch uncertainty windows size, should be less than MTL(minimal transaction latency),
     // this is also used at the TSO client side as batch's TTL(Time To Live)
     // TODO: consider derive this value from MTL configuration.
-    ConfigDuration _defaultTBWindowSize{"tso.ctrol_ts_batch_win_size", 8ms}; 
+    ConfigDuration _defaultTBWindowSize{"tso.ctrol_ts_batch_win_size", 8ms};
 
     seastar::timer<> _statsUpdateTimer;
     ConfigDuration _statsUpdateTimerInterval{"tso.ctrol_stats_update_interval", 1s};
@@ -344,9 +346,9 @@ class TSOService::TSOWorker
     // current worker control info
     TSOWorkerControlInfo _curControlInfo;
 
-    // last request's TBE(Timestamp Batch End) time rounded at microsecond level 
-    uint64_t _lastRequestTBEMicroSecRounded{0};  
-    // count of timestamp issued in last request's timestamp batch 
+    // last request's TBE(Timestamp Batch End) time rounded at microsecond level
+    uint64_t _lastRequestTBEMicroSecRounded{0};
+    // count of timestamp issued in last request's timestamp batch
     // Note: each worker core can issue up to (1000/TBENanoSecStep) timestamps within same microsecond (at TBE)
     uint16_t _lastRequestTimeStampCount{0};
 

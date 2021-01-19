@@ -41,13 +41,13 @@ SocketAddress SinglePortAddressProvider::getAddress(int) const {
 IRPCProtocol::IRPCProtocol(VirtualNetworkStack::Dist_t& vnet, const String& supportedProtocol):
     _vnet(vnet),
     _protocol(supportedProtocol) {
-    K2DEBUG("ctor");
+    K2LOG_D(log::tx, "ctor");
     setMessageObserver(nullptr);
     setLowTransportMemoryObserver(nullptr);
 }
 
 IRPCProtocol::~IRPCProtocol() {
-    K2DEBUG("dtor");
+    K2LOG_D(log::tx, "dtor");
 }
 
 const String& IRPCProtocol::supportedProtocol() {
@@ -55,12 +55,12 @@ const String& IRPCProtocol::supportedProtocol() {
 }
 
 void IRPCProtocol::setMessageObserver(RequestObserver_t observer) {
-    K2DEBUG("set message observer");
+    K2LOG_D(log::tx, "set message observer");
     if (observer == nullptr) {
-        K2DEBUG("setting default message observer");
+        K2LOG_D(log::tx, "setting default message observer");
         _messageObserver = [](Request&& request) {
-            K2WARN("Message: " << request.verb << " from " << request.endpoint.getURL()
-               << " ignored since there is no message observer registered...");
+            K2LOG_W(log::tx, "Message verb={}, from ep={} ignored since there is no message observer registered",
+                request.verb, request.endpoint.url);
         };
     }
     else {
@@ -69,11 +69,11 @@ void IRPCProtocol::setMessageObserver(RequestObserver_t observer) {
 }
 
 void IRPCProtocol::setLowTransportMemoryObserver(LowTransportMemoryObserver_t observer) {
-    K2DEBUG("set low mem observer");
+    K2LOG_D(log::tx, "set low mem observer");
     if (observer == nullptr) {
-        K2DEBUG("setting default low transport memory observer");
+        K2LOG_D(log::tx, "setting default low transport memory observer");
         _lowMemObserver = [](const String& ttype, size_t suggestedBytes) {
-            K2WARN("no low-mem observer installed. Transport: "<< ttype << ", requires release of "<< suggestedBytes << "bytes");
+            K2LOG_W(log::tx, "no low-mem observer installed. Transport: {}, requires release of {}bytes", ttype, suggestedBytes);
         };
     }
     else {

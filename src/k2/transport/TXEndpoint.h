@@ -68,17 +68,6 @@ public: // lifecycle
     ~TXEndpoint();
 
 public: // API
-    // get the URL for this endpoint
-    const String& getURL() const;
-
-    // get the protocol for this endpoint
-    const String& getProtocol() const;
-
-    // get the IP for this endpoint
-    const String& getIP() const;
-
-    // get the port for this endpoint
-    uint32_t getPort() const;
 
     // Comparison
     bool operator==(const TXEndpoint &other) const;
@@ -93,32 +82,27 @@ public: // API
     // Use to determine if this endpoint can allocate
     bool canAllocate() const;
 
-    // pretty print
-    friend std::ostream& operator<<(std::ostream& os, const TXEndpoint& ep) {
-        return os << ep._url;
-    }
-private: // fields
-    String _url;
-    String _protocol;
-    String _ip;
-    uint32_t _port;
+ // fields
+    String url;
+    String protocol;
+    String ip;
+    uint32_t port;
+
+    K2_DEF_FMT(TXEndpoint, url);
+
+private:
     size_t _hash;
     BinaryAllocatorFunctor _allocator;
 
 }; // class TXEndpoint
-
 } // namespace k2
 
 // Implement std::hash for TXEndpoint so that we can use it as key in containers
 namespace std {
-
 template <>
 struct hash<k2::TXEndpoint> {
-
 size_t operator()(const k2::TXEndpoint& endpoint) const {
     return endpoint.hash();
 }
-
 }; // struct hash
-
 } // namespace std

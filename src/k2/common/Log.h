@@ -23,109 +23,149 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 #include <pthread.h>
+
 #include <ctime>
-#include <string>
 #include <iostream>
 #include <seastar/core/reactor.hh>  // for access to reactor
 #include <seastar/core/sstring.hh>
 #include <sstream>
+#include <string>
+
 #include "Chrono.h"
-namespace k2{
-namespace logging {
+#include "Common.h"
+#include "FormattingUtils.h"
 
-class LogEntry {
-public:
-    static seastar::sstring procName;
+// disable unicode formatting for a bit more speed
+#define FMT_UNICODE 0
+#include <fmt/compile.h>
+#include <fmt/printf.h>
 
-    std::ostringstream out;
-    LogEntry()=default;
-    LogEntry(LogEntry&&)=default;
-    ~LogEntry() {
-        // this line should output just the str from the stream since all chained "<<" may cause a thread switch
-        // and thus garbled log output
-        std::cerr << out.rdbuf()->str();
-    }
-    template<typename T>
-    std::ostringstream& operator<<(const T& val) {
-        out << val;
-        return out;
-    }
-private:
-    LogEntry(const LogEntry&) = delete;
-    LogEntry& operator=(const LogEntry&) = delete;
-};
-
-inline LogEntry StartLogStream() {
-    LogEntry entry;
-    auto id = seastar::engine_is_ready() ? seastar::engine().cpu_id() : pthread_self();
-    entry.out << "[" << printTime(Clock::now()) << "]-" << LogEntry::procName << "-(" << id <<") ";
-    return entry;
-}
-
-} // namespace log
-
-} // namepace k2
 // This file contains some utility macros for logging and tracing,
-// TODO hook this up into proper logging
 
-#define K2LOG(level, msg) { \
-    k2::logging::StartLogStream() << "[" << level << "] [" << __FILE__ << ":" << __LINE__ << " @" << __FUNCTION__ << "]" << msg << std::endl; \
+// performance of stdout with line-flush seems best ~800ns per call.
+// For comparison, stderr's performance is ~6000-7000ns
+#define K2LOG_STREAM std::cout
+
+#define DO_K2LOG_LEVEL_FMT(level, module, fmt_str, ...)                                                      \
+    {                                                                                                        \
+        auto id = seastar::engine_is_ready() ? seastar::engine().cpu_id() : pthread_self();                  \
+        fmt::print(K2LOG_STREAM,                                                                             \
+                   FMT_STRING("[{}]-{}-({}:{}) [{}] [{}:{} @{}] " fmt_str "\n"),                             \
+                   k2::Clock::now(), k2::logging::Logger::procName, module, id,                              \
+                   k2::logging::LogLevelNames[to_integral(level)], __FILE__, __LINE__, __PRETTY_FUNCTION__, ##__VA_ARGS__); \
+        K2LOG_STREAM << std::flush;                                                                          \
     }
 
-#if K2_DEBUG_LOGGING == 1
-#define K2DEBUG(msg) K2LOG("DEBUG", msg)
+#define K2LOG_LEVEL_FMT(level, logger, fmt_str, ...)                     \
+    if (logger.isEnabledFor(level)) {                                    \
+        DO_K2LOG_LEVEL_FMT(level, logger.name, fmt_str, ##__VA_ARGS__); \
+    }
+
+// allow verbose logging to be compiled-out
+#if K2_VERBOSE_LOGGING == 1
+#define K2LOG_V(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__);
 #else
-#define K2DEBUG(msg) if(0) {K2LOG("DEBUG", msg);}
+#define K2LOG_V(logger, fmt_str, ...)                                                    \
+    if (0) {                                                                             \
+        K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__); \
+    }
 #endif
 
-// TODO warnings and errors must also emit metrics
-#define K2INFO(msg) K2LOG("INFO", msg)
-#define K2WARN(msg) K2LOG("WARN", msg)
-#define K2ERROR(msg) K2LOG("ERROR", msg)
-
-#define K2WARN_EXC(msg, exc)                                    \
-    {                                                           \
-        try {                                                   \
-            std::rethrow_exception((exc));                      \
-        } catch (const std::exception& e) {                     \
-            K2WARN(msg << ": caught exception " << e.what());   \
-        } catch (...) {                                         \
-            K2WARN(msg << ": caught unknown exception");        \
-        }                                                       \
-    }
-#define K2ERROR_EXC(msg, exc)                                    \
-    {                                                            \
-        try {                                                    \
-            std::rethrow_exception((exc));                       \
-        } catch (const std::exception& e) {                      \
-            K2ERROR(msg << ": caught exception " << e.what());   \
-        } catch (...) {                                          \
-            K2ERROR(msg << ": caught unknown exception");        \
-        }                                                        \
-    }
+#define K2LOG_D(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::DEBUG, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_I(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::INFO, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_W(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::WARN, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_E(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::ERROR, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_F(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::FATAL, logger, fmt_str, ##__VA_ARGS__);
 
 #ifndef NDEBUG
-#define K2ASSERT(cond, msg) \
-    {                       \
-        if (!(cond)) {      \
-            K2ERROR(msg);   \
-            assert((cond)); \
-        }                   \
+// assertion macros which can be compiled-out
+
+#define K2ASSERT(logger, cond, fmt_str, ...)       \
+    {                                              \
+        if (!(cond)) {                             \
+            K2LOG_E(logger, fmt_str, ##__VA_ARGS__); \
+            assert((cond));                        \
+        }                                          \
     }
+
+#define K2EXPECT(logger, actual, exp) \
+    K2ASSERT(logger, (actual) == (exp), "{} == {}", (#actual), (#exp));
+
 #else
-#define K2ASSERT(cond, msg)
+
+#define K2ASSERT(logger, cond, fmt_str, ...)
+#define K2EXPECT(logger, actual, exp)
 #endif
 
-#define K2FAIL(msg) { \
-    K2ERROR("+++++++++++++++++++++ Expectation failed ++++++++++++++++(" << msg << ")"); \
-    throw std::runtime_error("expectation failed"); \
-}
+#define K2LOG_W_EXC(logger, exc, fmt_str, ...)                                     \
+    try {                                                                          \
+        std::rethrow_exception((exc));                                             \
+    } catch (const std::exception& e) {                                            \
+        K2LOG_W(logger, fmt_str ": caught exception {}", ##__VA_ARGS__, e.what()); \
+    } catch (...) {                                                                \
+        K2LOG_W(logger, fmt_str ": caught unknown exception", ##__VA_ARGS__);      \
+    }
 
-#define K2EXPECT(actual, exp) { \
-    if (!((actual) == (exp))) { \
-        K2ERROR((#actual) << " == " << (#exp)); \
-        K2FAIL("actual=" << actual <<", exp="<< exp<< ")"); \
-    } \
-}
+namespace k2 {
+namespace logging {
 
+K2_DEF_ENUM(LogLevel,
+    NOTSET,
+    VERBOSE,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR,
+    FATAL);
 
+// Users of logging would create an instance of this class at their module level
+// Once created, the K2LOG_* macros can be used to perform logging.
+// A logger is used to provide
+// - a log module name for log identification
+// - ability to enable particular log level for particular modules, even in a running system
+class Logger {
+public:
+    // the process name to print in the logs
+    static inline String procName;
+
+    // the global (per-thread) log level. This should be initialized at start of process and
+    // can be modified while the process is running to affect the current log level
+    static inline thread_local LogLevel threadLocalLogLevel = LogLevel::INFO;
+
+    // the per-module (per-thread) log levels. These are the values which have been set either at
+    // process start time, or dynamically at runtime. The reason we need a separate map just for the levels is
+    // to ensure that if a logger for a module is created lazily, it will discover this level override.
+    static inline thread_local std::unordered_map<String, LogLevel> moduleLevels;
+
+    // registry of all active log modules. These are used so that we can notify an active logger at runtime if
+    // the log level changes for the particular module
+    static inline thread_local std::unordered_map<String, Logger*> moduleLoggers;
+
+    // create logger for a given unique(per-thread) name
+    Logger(const char* moduleName) : name(moduleName) {
+        assert(moduleLoggers.find(name) == moduleLoggers.end());
+        moduleLoggers[name] = this;
+        auto it = moduleLevels.find(name);
+        if (it != moduleLevels.end()) {
+            // there is a per-module level set for this module. Use it instead
+            moduleLevel = it->second;
+        }
+
+    }
+    ~Logger() {
+        moduleLoggers.erase(name);
+    }
+    // see if we should log at the given level
+    bool isEnabledFor(LogLevel level) {
+        if (moduleLevel > LogLevel::NOTSET) {
+            return level >= moduleLevel;
+        }
+        return level >= threadLocalLogLevel;
+    }
+
+    String name; // the name for this logger
+    LogLevel moduleLevel = LogLevel::NOTSET; // the module level isn't set by default - use the global level
+};
+
+}  // namespace logging
+}  // namespace k2

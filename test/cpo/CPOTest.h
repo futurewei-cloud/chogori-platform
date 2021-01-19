@@ -24,7 +24,9 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
-
+namespace k2::log {
+inline thread_local k2::logging::Logger cpotest("k2::cpotest");
+}
 class CPOTest {
 public:  // application lifespan
     CPOTest();

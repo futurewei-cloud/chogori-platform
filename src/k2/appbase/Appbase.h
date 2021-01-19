@@ -44,6 +44,10 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "AppEssentials.h"
 
+namespace k2::log {
+inline thread_local k2::logging::Logger appbase("k2::appbase");
+}
+
 namespace k2 {
 
 // Helper class used to provide listening addresses for the TCP protocol
@@ -54,21 +58,21 @@ class MultiAddressProvider : public k2::IAddressProvider {
     MultiAddressProvider& operator=(MultiAddressProvider&&) = default;
     seastar::socket_address getAddress(int coreID) const override {
         if (size_t(coreID) < _urls.size()) {
-            K2DEBUG("Have url: " << coreID << ":" << _urls[coreID]);
+            K2LOG_D(log::appbase, "On core {} have url {}", coreID, _urls[coreID]);
             auto ep = k2::TXEndpoint::fromURL(_urls[coreID], nullptr);
             if (ep) {
-                return seastar::socket_address(seastar::ipv4_addr(ep->getIP(), uint16_t(ep->getPort())));
+                return seastar::socket_address(seastar::ipv4_addr(ep->ip, uint16_t(ep->port)));
             }
             // might not be in URL form (e.g. just a plain port)
-            K2DEBUG("attempting to use url as a simple port");
+            K2LOG_D(log::appbase, "attempting to use url as a simple port");
             try {
                 auto port = std::stoi(_urls[coreID]);
                 return seastar::socket_address((uint16_t)port);
             } catch (...) {
             }
-            K2ASSERT(false, "Unable to construct Endpoint from URL: " << _urls[coreID]);
+            K2ASSERT(log::appbase, false, "Unable to construct Endpoint from URL: {}", _urls[coreID]);
         }
-        K2INFO("This core does not have a port assignment: " << coreID);
+        K2LOG_I(log::appbase, "This core does not have a port assignment: {}", coreID);
         return seastar::socket_address(seastar::ipv4_addr{0});
     }
 
@@ -174,6 +178,6 @@ private:
 };                                                              // class App
 
 // global access to the AppBase
-extern App* ___appBase___;
+inline App* ___appBase___;
 inline App& AppBase() { return *___appBase___; }
 } // namespace k2

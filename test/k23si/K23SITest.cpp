@@ -32,6 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/Collection.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
+#include "Log.h"
 
 namespace k2 {
 struct DataRec {
@@ -41,10 +42,7 @@ struct DataRec {
     bool operator==(const DataRec& o) {
         return f1 == o.f1 && f2 == o.f2;
     }
-
-    friend std::ostream& operator<<(std::ostream& os, const DataRec& r) {
-        return os << "{f1=" << r.f1 << ", f2=" << r.f2 << "}";
-    }
+    K2_DEF_FMT(DataRec, f1, f2);
 };
 
 const char* collname = "k23si_test_collection";
@@ -52,8 +50,8 @@ const char* collname = "k23si_test_collection";
 class K23SITest {
 
 public:  // application lifespan
-    K23SITest() { K2INFO("ctor");}
-    ~K23SITest(){ K2INFO("dtor");}
+    K23SITest() { K2LOG_I(log::k23si, "ctor");}
+    ~K23SITest(){ K2LOG_I(log::k23si, "dtor");}
 
     static seastar::future<dto::Timestamp> getTimeNow() {
         // TODO call TSO service with timeout and retry logic
@@ -63,14 +61,14 @@ public:  // application lifespan
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::k23si, "stop");
         return std::move(_testFuture);
     }
 
     seastar::future<> start(){
-        K2INFO("start");
+        K2LOG_I(log::k23si, "start");
 
-        K2EXPECT(_k2ConfigEps().size(), 3);
+        K2EXPECT(log::k23si, _k2ConfigEps().size(), 3);
         for (auto& ep: _k2ConfigEps()) {
             _k2Endpoints.push_back(RPC().getTXEndpoint(ep));
         }
@@ -80,7 +78,7 @@ public:  // application lifespan
         _testTimer.set_callback([this] {
             _testFuture = seastar::make_ready_future()
             .then([this] {
-                K2INFO("Creating test collection...");
+                K2LOG_I(log::k23si, "Creating test collection...");
                 auto request = dto::CollectionCreateRequest{
                     .metadata{
                         .name = collname,
@@ -102,7 +100,7 @@ public:  // application lifespan
             .then([](auto&& response) {
                 // response for collection create
                 auto& [status, resp] = response;
-                K2EXPECT(status, Statuses::S201_Created);
+                K2EXPECT(log::k23si, status, Statuses::S201_Created);
                 // wait for collection to get assigned
                 return seastar::sleep(100ms);
             })
@@ -115,7 +113,7 @@ public:  // application lifespan
             .then([this](auto&& response) {
                 // check collection was assigned
                 auto& [status, resp] = response;
-                K2EXPECT(status, Statuses::S200_OK);
+                K2EXPECT(log::k23si, status, Statuses::S200_OK);
                 _pgetter = dto::PartitionGetter(std::move(resp.collection));
             })
             .then([this] () {
@@ -136,7 +134,7 @@ public:  // application lifespan
             })
             .then([] (auto&& response) {
                 auto& [status, resp] = response;
-                K2EXPECT(status, Statuses::S200_OK);
+                K2EXPECT(log::k23si, status, Statuses::S200_OK);
             })
             .then([this] { return runScenario00(); })
             .then([this] { return runScenario01(); })
@@ -145,22 +143,22 @@ public:  // application lifespan
             .then([this] { return runScenario04(); })
             .then([this] { return runScenario05(); })
             .then([this] {
-                K2INFO("======= All tests passed ========");
+                K2LOG_I(log::k23si, "======= All tests passed ========");
                 exitcode = 0;
             })
             .handle_exception([this](auto exc) {
                 try {
                     std::rethrow_exception(exc);
                 } catch (RPCDispatcher::RequestTimeoutException& exc) {
-                    K2ERROR("======= Test failed due to timeout ========");
+                    K2LOG_E(log::k23si, "======= Test failed due to timeout ========");
                     exitcode = -1;
                 } catch (std::exception& e) {
-                    K2ERROR("======= Test failed with exception [" << e.what() << "] ========");
+                    K2LOG_E(log::k23si, "======= Test failed with exception [{}] ========", e.what());
                     exitcode = -1;
                 }
             })
             .finally([this] {
-                K2INFO("======= Test ended ========");
+                K2LOG_I(log::k23si, "======= Test ended ========");
                 seastar::engine().exit(exitcode);
             });
         });
@@ -192,7 +190,7 @@ private:
         record.serializeNext<String>(key.rangeKey);
         record.serializeNext<String>(data.f1);
         record.serializeNext<String>(data.f2);
-        K2DEBUG("cname: " << cname << " key=" << key << ",partition hash=" << key.partitionHash())
+        K2LOG_D(log::k23si, "cname={}, key={}, phash={}", cname, key, key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
         dto::K23SIWriteRequest request {
             .pvid = part.partition->pvid,
@@ -211,7 +209,7 @@ private:
 
     seastar::future<std::tuple<Status, DataRec>>
     doRead(const dto::Key& key, const dto::K23SI_MTR& mtr, const String& cname) {
-        K2DEBUG("key=" << key << ",partition hash=" << key.partitionHash())
+        K2LOG_D(log::k23si, "key={}, phash={}", key, key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
         dto::K23SIReadRequest request {
             .pvid = part.partition->pvid,
@@ -237,7 +235,7 @@ private:
 
     seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
     doEnd(dto::Key trh, dto::K23SI_MTR mtr, const String& cname, bool isCommit, std::vector<dto::Key> wkeys) {
-        K2DEBUG("key=" << trh << ",partition hash=" << trh.partitionHash())
+        K2LOG_D(log::k23si, "key={}, phash={}", trh, trh.partitionHash())
         auto& part = _pgetter.getPartitionForKey(trh);
         dto::K23SITxnEndRequest request;
         request.pvid = part.partition->pvid;
@@ -282,20 +280,20 @@ private:
 public: // tests
 
 seastar::future<> runScenario00() {
-    K2INFO("Scenario 00: unassigned nodes");
+    K2LOG_I(log::k23si, "Scenario 00: unassigned nodes");
     return seastar::make_ready_future();
 }
 
 seastar::future<> runScenario01() {
-    K2INFO("Scenario 01: empty node");
+    K2LOG_I(log::k23si, "Scenario 01: empty node");
     return seastar::make_ready_future()
     .then([this] {
         return doRequestRecords({"schema", "Key1", "rKey1"}).
         then([this] (auto&& response) {
             auto& [status, k2response] = response;
-            K2EXPECT(status, Statuses::S404_Not_Found);
-            K2EXPECT(k2response.records.size(), 0);
-            K2INFO("doRequestRecords done");
+            K2EXPECT(log::k23si, status, Statuses::S404_Not_Found);
+            K2EXPECT(log::k23si, k2response.records.size(), 0);
+            K2LOG_I(log::k23si, "doRequestRecords done");
             return seastar::make_ready_future<>();
         });
     })
@@ -304,7 +302,7 @@ seastar::future<> runScenario01() {
     })
     .then([](auto&& response) {
         auto& [status, resp] = response;
-        K2EXPECT(status, Statuses::S410_Gone);
+        K2EXPECT(log::k23si, status, Statuses::S410_Gone);
     });
     /*
     Scenario 1: empty node:
@@ -326,7 +324,7 @@ seastar::future<> runScenario01() {
     */
 }
 seastar::future<> runScenario02() {
-    K2INFO("Scenario 02");
+    K2LOG_I(log::k23si, "Scenario 02");
     /*
     Scenario 2: node with single version data:
             - ("pkey1","", v10) -> commited
@@ -392,7 +390,7 @@ cases requiring client to refresh collection pmap
                 return doWrite(key, rec, mtr, trh, collname, false, true)
                 .then([this](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
                     return seastar::make_ready_future<>();
                 })
                 // Verify there is one WI on node
@@ -400,9 +398,9 @@ cases requiring client to refresh collection pmap
                     return doRequestRecords(key).
                     then([this] (auto&& response) {
                         auto& [status, k2response] = response;
-                        K2EXPECT(status, Statuses::S200_OK);
-                        K2EXPECT(k2response.records.size(), 1);
-                        K2EXPECT(k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
+                        K2EXPECT(log::k23si, status, Statuses::S200_OK);
+                        K2EXPECT(log::k23si, k2response.records.size(), 1);
+                        K2EXPECT(log::k23si, k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
                         return seastar::make_ready_future<>();
                     });
                 })
@@ -411,8 +409,8 @@ cases requiring client to refresh collection pmap
                         return doRequestTRH(trh, mtr).
                         then([this] (auto&& response) {
                             auto& [status, k2response] = response;
-                            K2EXPECT(status, Statuses::S200_OK);
-                            K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+                            K2EXPECT(log::k23si, status, Statuses::S200_OK);
+                            K2EXPECT(log::k23si, k2response.state, k2::dto::TxnRecordState::InProgress);
                             return seastar::make_ready_future<>();
                         });
                 })
@@ -421,24 +419,24 @@ cases requiring client to refresh collection pmap
                 })
                 .then([this, &key, &mtr](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(status, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
                     return doRead(key, mtr, collname);
                 })
                 .then([&rec](auto&& response) {
                     auto& [status, value] = response;
-                    K2EXPECT(status, dto::K23SIStatus::OK);
-                    K2EXPECT(value, rec);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, value, rec);
                 });
         });
     });
     return seastar::make_ready_future();
 }
 seastar::future<> runScenario03() {
-    K2INFO("Scenario 03");
+    K2LOG_I(log::k23si, "Scenario 03");
     return seastar::make_ready_future();
 }
 seastar::future<> runScenario04() {
-    K2INFO("Scenario 04: concurrent transactions same keys");
+    K2LOG_I(log::k23si, "Scenario 04: concurrent transactions same keys");
     return seastar::do_with(
         dto::K23SI_MTR{},
         dto::Key{"schema", "s04-pkey1", "rkey1"},
@@ -454,7 +452,7 @@ seastar::future<> runScenario04() {
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
-                    K2EXPECT(status, dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
                     return getTimeNow();
                 })
                 .then([&](dto::Timestamp&& ts) {
@@ -465,7 +463,7 @@ seastar::future<> runScenario04() {
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
-                    K2EXPECT(status, dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
                     return seastar::make_ready_future<>();
                 })
                 .then([&] () {
@@ -474,17 +472,17 @@ seastar::future<> runScenario04() {
                 .then([&] (auto&& response) {
                     // Verify there is a single WI for key
                     auto& [status, k2response] = response;
-                    K2EXPECT(status, Statuses::S200_OK);
-                    K2EXPECT(k2response.records.size(), 1);
-                    K2EXPECT(k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
+                    K2EXPECT(log::k23si, status, Statuses::S200_OK);
+                    K2EXPECT(log::k23si, k2response.records.size(), 1);
+                    K2EXPECT(log::k23si, k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
 
                     return doRequestTRH(k2, m2);
                 })
                 .then([&] (auto&& response) {
                     // Verify newer txn is still InProgress
                     auto& [status, k2response] = response;
-                    K2EXPECT(status, Statuses::S200_OK);
-                    K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+                    K2EXPECT(log::k23si, status, Statuses::S200_OK);
+                    K2EXPECT(log::k23si, k2response.state, k2::dto::TxnRecordState::InProgress);
 
                     return seastar::when_all(doEnd(k1, m1, collname, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
                 })
@@ -494,14 +492,14 @@ seastar::future<> runScenario04() {
                     auto [status1, result1] = r1.get0();
                     auto [status2, result2] = r2.get0();
                     // first txn gets aborted in this scenario since on push, the newer txn wins. The status should not be OK
-                    K2EXPECT(status1, dto::K23SIStatus::OperationNotAllowed);
-                    K2EXPECT(status2, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status1, dto::K23SIStatus::OperationNotAllowed);
+                    K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
                     // do end for first txn with Abort
                     return doEnd(k1, m1, collname, false, {k1});
                 })
                 .then([&](auto&& result) {
                     auto& [status, resp] = result;
-                    K2EXPECT(status, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
 
                     return seastar::when_all(doRead(k1, m1, collname), doRead(k2, m2, collname));
                 })
@@ -509,16 +507,16 @@ seastar::future<> runScenario04() {
                     auto& [r1, r2] = result;
                     auto [status1, value1] = r1.get0();
                     auto [status2, value2] = r2.get0();
-                    K2EXPECT(status1, dto::K23SIStatus::KeyNotFound);
-                    K2EXPECT(status2, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status1, dto::K23SIStatus::KeyNotFound);
+                    K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
                     DataRec d2{"fk2", "f2"};
-                    K2EXPECT(value2, d2);
+                    K2EXPECT(log::k23si, value2, d2);
                 });
         });
 }
 
 seastar::future<> runScenario05() {
-    K2INFO("Scenario 05: concurrent transactions different keys");
+    K2LOG_I(log::k23si, "Scenario 05: concurrent transactions different keys");
     return seastar::do_with(
         dto::K23SI_MTR{},
         dto::Key{"schema", "s05-pkey1", "rkey1"},
@@ -534,7 +532,7 @@ seastar::future<> runScenario05() {
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
-                    K2EXPECT(status, dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
                     return getTimeNow();
                 })
                 .then([&](dto::Timestamp&& ts) {
@@ -545,22 +543,22 @@ seastar::future<> runScenario05() {
                 })
                 .then([&](auto&& result) {
                     auto& [status, r] = result;
-                    K2EXPECT(status, dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
 
                     return doRequestTRH(k1, m1);
                 })
                 // Verify both txns are InProgress
                 .then([&] (auto&& response) {
                     auto& [status, k2response] = response;
-                    K2EXPECT(status, Statuses::S200_OK);
-                    K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+                    K2EXPECT(log::k23si, status, Statuses::S200_OK);
+                    K2EXPECT(log::k23si, k2response.state, k2::dto::TxnRecordState::InProgress);
 
                     return doRequestTRH(k2, m2);
                 })
                 .then([&] (auto&& response) {
                     auto& [status, k2response] = response;
-                    K2EXPECT(status, Statuses::S200_OK);
-                    K2EXPECT(k2response.state, k2::dto::TxnRecordState::InProgress);
+                    K2EXPECT(log::k23si, status, Statuses::S200_OK);
+                    K2EXPECT(log::k23si, k2response.state, k2::dto::TxnRecordState::InProgress);
 
                     return seastar::when_all(doEnd(k1, m1, collname, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
                 })
@@ -568,20 +566,20 @@ seastar::future<> runScenario05() {
                     auto& [r1, r2] = result;
                     auto [status1, result1] = r1.get0();
                     auto [status2, result2] = r2.get0();
-                    K2EXPECT(status1, dto::K23SIStatus::OK);
-                    K2EXPECT(status2, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
                     return seastar::when_all(doRead(k1, m1, collname), doRead(k2, m2, collname));
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;
                     auto [status1, value1] = r1.get0();
                     auto [status2, value2] = r2.get0();
-                    K2EXPECT(status1, dto::K23SIStatus::OK);
-                    K2EXPECT(status2, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
                     DataRec d1{"fk1", "f2"};
                     DataRec d2{"fk2", "f2"};
-                    K2EXPECT(value1, d1);
-                    K2EXPECT(value2, d2);
+                    K2EXPECT(log::k23si, value1, d1);
+                    K2EXPECT(log::k23si, value2, d2);
                 });
         });
 }

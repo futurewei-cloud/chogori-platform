@@ -29,10 +29,12 @@ namespace dto {
 struct PlogCreateRequest {
     String plogId;
     K2_PAYLOAD_FIELDS(plogId);
+    K2_DEF_FMT(PlogCreateRequest, plogId);
 };
 
 struct PlogCreateResponse {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(PlogCreateResponse);
 };
 
 struct PlogAppendRequest {
@@ -40,6 +42,7 @@ struct PlogAppendRequest {
     uint32_t offset;
     Payload payload;
     K2_PAYLOAD_FIELDS(plogId, offset, payload);
+    K2_DEF_FMT(PlogAppendRequest, plogId, offset);
 };
 
 struct PlogAppendResponse {
@@ -52,22 +55,26 @@ struct PlogReadRequest {
     uint32_t offset;
     uint32_t size;
     K2_PAYLOAD_FIELDS(plogId, offset, size);
+    K2_DEF_FMT(PlogReadRequest, plogId, offset, size);
 };
 
 struct PlogReadResponse {
     Payload payload;
     K2_PAYLOAD_FIELDS(payload);
+    K2_DEF_FMT(PlogReadResponse);
 };
 
 struct PlogSealRequest {
     String plogId;
     uint32_t truncateOffset;
     K2_PAYLOAD_FIELDS(plogId, truncateOffset);
+    K2_DEF_FMT(PlogSealRequest, plogId, truncateOffset);
 };
 
 struct PlogSealResponse {
     uint32_t sealedOffset;
     K2_PAYLOAD_FIELDS(sealedOffset);
+    K2_DEF_FMT(PlogSealResponse, sealedOffset);
 };
 
 }  // namespace dto

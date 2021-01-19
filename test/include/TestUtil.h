@@ -27,12 +27,14 @@ Copyright(c) 2020 Futurewei Cloud
 #include <pthread.h>
 #include <filesystem>
 #include <iostream>
-
+namespace k2::log {
+inline thread_local k2::logging::Logger testutil("k2::testutil");
+}
 std::string generateTempFolderPath(const char* id)
 {
     char folder[255];
     int res = snprintf(folder, sizeof(folder), "/%s_%lx%x%x/", id ? id : "", pthread_self(), (uint32_t)time(nullptr), (uint32_t)rand());
-    K2ASSERT(res > 0 && res < (int)sizeof(folder), "unable to construct folder name");
+    K2ASSERT(k2::log::testutil, res > 0 && res < (int)sizeof(folder), "unable to construct folder name");
 
     return std::filesystem::temp_directory_path().concat(folder);
 }

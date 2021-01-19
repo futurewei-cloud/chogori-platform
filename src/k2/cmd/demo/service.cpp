@@ -27,6 +27,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Timer.h>
 
 namespace k2 {
+namespace log {
+inline thread_local k2::logging::Logger svc("k2::demo_service");
+}
 // implements an example RPC Service which can send/receive messages
 class Service : public seastar::weakly_referencable<Service> {
 public: // public types
@@ -46,16 +49,16 @@ public:  // application lifespan
         // Constructors should not do much more than just remembering the passed state because
         // not all dependencies may have been created yet.
         // The initialization should happen in Start() since at that point all deps should have been created
-        K2INFO("ctor");
+        K2LOG_I(log::svc, "ctor");
     };
 
     virtual ~Service() {
-        K2INFO("dtor");
+        K2LOG_I(log::svc, "dtor");
     }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
-        K2INFO("stop");
+        K2LOG_I(log::svc, "stop");
         return _updateTimer.stop().
         then([] () {
             // unregister all observers
@@ -77,7 +80,7 @@ public:  // application lifespan
             throw std::runtime_error("unable to get an endpoint for url");
         }
 
-        K2INFO("Registering message handlers");
+        K2LOG_I(log::svc, "Registering message handlers");
         RPC().registerMessageObserver(MsgVerbs::POST,
             [this](Request&& request) mutable {
                 return this->handlePOST(std::move(request));
@@ -89,14 +92,13 @@ public:  // application lifespan
         RPC().registerMessageObserver(MsgVerbs::ACK,
             [this](Request&& request) mutable {
                 auto received = getPayloadString(request.payload.get());
-                K2INFO("Received ACK from " << request.endpoint.getURL() <<
-                      ", and payload: " << received);
+                K2LOG_I(log::svc, "Received ACK from {}, and payload {}", request.endpoint, received);
             });
 
         RPC().registerLowTransportMemoryObserver([](const String& ttype, size_t requiredReleaseBytes) {
             // we should release any payloads we're holding
             // ideally, we should release enough payloads whose size() sums up to more than requiredReleaseBytes
-            K2WARN("We're low on memory in transport: "<< ttype <<", requires release of "<< requiredReleaseBytes << " bytes");
+            K2LOG_W(log::svc, "We're low on memory in transport: {}, requires release of {}bytes", ttype, requiredReleaseBytes);
         });
         // also start the heartbeat timer
         _updateTimer.arm(_updateTimerInterval);
@@ -105,7 +107,7 @@ public:  // application lifespan
 
 public: // Work generators
     seastar::future<> sendHeartbeat() {
-        K2INFO("Sending reqid="<< _msgCount);
+        K2LOG_I(log::svc, "Sending reqid={}", _msgCount);
         // send a GET
         String msg("Requesting GET reqid=");
         msg += std::to_string(_msgCount++);
@@ -127,11 +129,8 @@ public: // Work generators
             // NB: since seastar future continuations may be scheduled to run at later points,
             // it may be possible that the Service instance goes away in a middle of a retry.
             // To avoid a segmentation fault, either use copies, or as in this example - weak reference
-            return retryStrategy->run([self=weak_from_this(), msground](size_t retriesLeft, Duration timeout) {
-                K2INFO("Sending with retriesLeft=" << retriesLeft << ", and timeout="
-                       << timeout.count() << ", in reqid="<< msground);
+            return retryStrategy->run([self=weak_from_this(), msground](size_t, Duration timeout) {
                 if (!self) {
-                    K2INFO("Stopping retry since dispatcher has exited");
                     return seastar::make_ready_future<>();
                 }
                 String msgData = "Requesting POST reqid=";
@@ -149,7 +148,7 @@ public: // Work generators
                 .then([msground](std::unique_ptr<Payload>&& payload) {
                     // happy case is chained right onto the dispatcher Send call
                     auto received = getPayloadString(payload.get());
-                    K2INFO("Received reply for reqid=" << msground << " : " << received);
+                    K2LOG_I(log::svc, "Received reply for reqid={}:{}", msground, received);
                     // if the application wants to retry again (in case of some retryable server error)
                     // ServiceMessage msg(payload);
                     // if (msg.Status != msg.StatusOK) {
@@ -161,11 +160,11 @@ public: // Work generators
             .handle_exception([msground](auto exc){
                 // here we handle the exception case (e.g. timeout, unable to connect, invalid endpoint, etc)
                 // this is the handler which handles the exception AFTER the retry strategy is exhausted
-                K2ERROR_EXC("Failed to get response for message reqid=" << msground, exc);
+                K2LOG_W_EXC(log::svc, exc, "Failed to get response for message reqid={}", msground);
             }).finally([self=weak_from_this(), retryStrategy, msground](){
                 // to keep the retry strategy around while we're working on it, use a shared ptr and capture it
                 // here by copy so that it is only released after Do completes.
-                K2DEBUG("done with retry strategy for reqid=" << msground);
+                K2LOG_D(log::svc, "done with retry strategy for reqid={}", msground);
                 if (self) {
                     // reschedule again since we're still alive
                     self->_updateTimer.arm(_updateTimerInterval);
@@ -173,15 +172,14 @@ public: // Work generators
             });
         });
 
-        
+
     }
 
 public:
     // Message handlers
     seastar::future<> handlePOST(Request&& request) {
         auto received = getPayloadString(request.payload.get());
-        K2INFO("Received POST message from endpoint: " << request.endpoint.getURL()
-              << ", with payload: " << received);
+        K2LOG_I(log::svc, "Received POST message from endpoint: {}, with payload {}", request.endpoint, received);
         String msgData("POST Message received reqid=");
         msgData += std::to_string(_msgCount++);
 
@@ -193,8 +191,7 @@ public:
 
     seastar::future<> handleGET(Request&& request) {
         auto received = getPayloadString(request.payload.get());
-        K2INFO("Received GET message from endpoint: " << request.endpoint.getURL()
-              << ", with payload: " << received);
+        K2LOG_I(log::svc, "Received GET message from endpoint: {}, with payload {}", request.endpoint, received);
         String msgData("GET Message received reqid=");
         msgData += std::to_string(_msgCount++);
 
@@ -212,7 +209,7 @@ private:
         }
         std::string result;
         for (auto& binary: payload->release()) {
-            K2DEBUG("Processing received binary of size=" << binary.size());
+            K2LOG_D(log::svc, "Processing received binary of size={}", binary.size());
             auto datap = binary.get();
             for (size_t i = 0; i < binary.size(); ++i) {
                 if (std::isprint(static_cast<unsigned char>(datap[i]))) {

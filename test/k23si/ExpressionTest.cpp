@@ -30,6 +30,8 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2d = k2::dto;
 namespace k2e = k2::dto::expression;
 using namespace k2;
+#include "Log.h"
+
 using K2Exp = k2::dto::expression::Expression;
 using K2Val = k2::dto::expression::Value;
 
@@ -127,7 +129,7 @@ k2d::SKVRecord makeRec() {
 
 void runner(std::vector<TestCase>& tcases) {
     for (auto& tcase: tcases) {
-        std::cout << "tcase name: " << tcase.name << std::endl;
+        K2LOG_I(log::k23si, "tcase name: {}", tcase.name);
         try {
             bool result = tcase.run();
             if (tcase.expectedResult.has_value()) {

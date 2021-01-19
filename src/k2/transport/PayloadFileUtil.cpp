@@ -29,7 +29,7 @@ namespace k2 {
 bool fileutil::makeDir(String path, int mode) {
     if (::mkdir(path.c_str(), mode) != 0) {
         if (errno != EEXIST) {
-            K2ERROR("Unable to create directory " << path << ": " << strerror(errno));
+            K2LOG_E(log::tx, "Unable to create directory {}: {}", path, strerror(errno));
             return false;
         }
     }
@@ -41,7 +41,7 @@ bool fileutil::fileExists(String path) {
     int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
         if (errno != ENOENT) {
-            K2ERROR("problem reading file: name=" << path << ":: " << strerror(errno));
+            K2LOG_E(log::tx, "problem reading file {}: {}", path, strerror(errno));
         }
         return false;
     }
@@ -54,7 +54,7 @@ bool fileutil::readFile(Payload& payload, String path) {
     if (!fileExists(path)) return false;
     int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
-        K2ERROR("error openning file: " << path << " -->" << strerror(errno));
+        K2LOG_E(log::tx, "error openning file {}: {}",path, strerror(errno));
         return false;
     }
 
@@ -72,7 +72,7 @@ bool fileutil::readFile(Payload& payload, String path) {
         Binary buf(4096);
         auto rd = ::read(fd, buf.get_write(), buf.size());
         if (rd < 0) {
-            K2ERROR("problem reading file: " << strerror(errno));
+            K2LOG_E(log::tx, "problem reading file {}: {}", path, strerror(errno));
             success = false;
             break;
         }
@@ -93,7 +93,7 @@ bool fileutil::writeFile(Payload&& payload, String path) {
 
     int fd = ::open(path.c_str(), O_CREAT | O_WRONLY);
     if (fd < 0) {
-        K2ERROR("Unable to open file for writing: name=" << path << ", err=" << strerror(errno));
+        K2LOG_E(log::tx, "Unable to open file for writing {}: {}", path, strerror(errno));
         return false;
     }
 

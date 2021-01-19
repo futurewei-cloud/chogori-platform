@@ -32,12 +32,11 @@ Copyright(c) 2020 Futurewei Cloud
 #include <unordered_map>
 #include <functional>
 
-#include <nlohmann/json.hpp>
+#include "Log.h"
 
 // Collection-related DTOs
 
-namespace k2 {
-namespace dto {
+namespace k2::dto {
 
 // A key for data in K2. We use the partitionKey when determining which partition will own the data, but
 // we store the data against a compound key of ${partitionKey}:${rangeKey} to allow user ability to group records
@@ -66,42 +65,16 @@ struct Key {
     size_t partitionHash() const noexcept;
 
     K2_PAYLOAD_FIELDS(schemaName, partitionKey, rangeKey);
-
-    friend std::ostream& operator<<(std::ostream& os, const Key& key) {
-        return os << "{schema=" << key.schemaName << " pkey=" << key.partitionKey << ", rkey=" << key.rangeKey << "}";
-    }
+    K2_DEF_FMT(Key, schemaName, partitionKey, rangeKey);
 };
 
-void inline to_json(nlohmann::json& j, const Key& key) {
-    j = nlohmann::json{{"schemaName", key.schemaName}, {"partitionKey", key.partitionKey},
-                       {"rangeKey", key.rangeKey}};
-}
-
-void inline from_json(const nlohmann::json& j, Key& key) {
-    j.at("schemaName").get_to(key.schemaName);
-    j.at("partitionKey").get_to(key.partitionKey);
-    j.at("rangeKey").get_to(key.rangeKey);
-}
-
 // the assignment state of a partition
-enum class AssignmentState: uint8_t {
+K2_DEF_ENUM(AssignmentState,
     NotAssigned,
     PendingAssignment,
     Assigned,
     FailedAssignment
-};
-
-inline std::ostream& operator<<(std::ostream& os, const AssignmentState& state) {
-    const char* strstate = "bad state";
-    switch (state) {
-        case AssignmentState::NotAssigned: strstate= "not_assigned"; break;
-        case AssignmentState::PendingAssignment: strstate= "pending_assignment"; break;
-        case AssignmentState::Assigned: strstate= "assigned"; break;
-        case AssignmentState::FailedAssignment: strstate= "failed_assignment"; break;
-        default: break;
-    }
-    return os << strstate;
-}
+);
 
 // Partition in a K2 Collection. By default, the key-range type is String (for range-based partitioning)
 // but it can also be an integral type for hash-based partitioning
@@ -114,15 +87,13 @@ struct Partition {
         uint64_t rangeVersion = 0;
         // version incremented each time we assign the partition to different K2 node
         uint64_t assignmentVersion = 0;
+        K2_DEF_FMT(PVID, id, rangeVersion, assignmentVersion);
+
         K2_PAYLOAD_COPYABLE;
 
         // operators
         bool operator==(const PVID& o) const;
         bool operator!=(const PVID& o) const;
-        friend std::ostream& operator<<(std::ostream& os, const PVID& pvid) {
-            return os << "{id=" << pvid.id << ", rangeV=" << pvid.rangeVersion << ", assignmentV=" << pvid.assignmentVersion << "}";
-        }
-
     } pvid;
 
     // the starting key for the partition
@@ -135,121 +106,37 @@ struct Partition {
     AssignmentState astate = AssignmentState::NotAssigned;
 
     K2_PAYLOAD_FIELDS(pvid, startKey, endKey, endpoints, astate);
+    K2_DEF_FMT(Partition, pvid, startKey, endKey, endpoints, astate);
 
     // Partitions are ordered based on the ordering of their start keys
     bool operator<(const Partition& other) const noexcept {
         return startKey < other.startKey;
     }
-
-    // for debug printing
-    friend std::ostream& operator<<(std::ostream& os, const Partition& part) {
-        os << "{"
-           << "rVersion=" << part.pvid.rangeVersion
-           << ", aVersion=" << part.pvid.assignmentVersion
-           << ", id=" << part.pvid.id
-           << ", sKey=" << part.startKey
-           << ", eKey=" << part.endKey
-           << ", eps=[";
-        for (auto& ep: part.endpoints) {
-            os << ep << ", ";
-        }
-        os << "], astate=" << part.astate << "}";
-        return os;
-    }
 };
-
-void inline to_json(nlohmann::json& j, const Partition::PVID& pvid) {
-    j = nlohmann::json{{"id", pvid.id},
-                       {"rangeVersion", pvid.rangeVersion},
-                       {"assignmentVersion", pvid.assignmentVersion}};
-}
-
-void inline from_json(const nlohmann::json& j, Partition::PVID& pvid) {
-    j.at("id").get_to(pvid.id);
-    j.at("rangeVersion").get_to(pvid.rangeVersion);
-    j.at("assignmentVersion").get_to(pvid.assignmentVersion);
-}
-
-
-void inline to_json(nlohmann::json& j, const Partition& partition) {
-    j = nlohmann::json{{"pvid", partition.pvid},
-                       {"startKey", partition.startKey},
-                       {"endKey", partition.endKey},
-                       {"endpoints", partition.endpoints},
-                       {"astate", partition.astate}};
-}
-
-void inline from_json(const nlohmann::json& j, Partition& partition) {
-    j.at("pvid").get_to(partition.pvid);
-    j.at("startKey").get_to(partition.startKey);
-    j.at("endKey").get_to(partition.endKey);
-    j.at("endpoints").get_to(partition.endpoints);
-    j.at("astate").get_to(partition.astate);
-}
 
 struct PartitionMap {
     uint64_t version =0;
     std::vector<Partition> partitions;
     K2_PAYLOAD_FIELDS(version, partitions);
-
-    // for debug printing
-    friend std::ostream& operator<<(std::ostream& os, const PartitionMap& pmap) {
-        os << "{"
-           << "version=" << pmap.version
-           << ", partitions=[";
-        for (auto& part : pmap.partitions) {
-            os << part << " ";
-        }
-        os << "]}";
-        return os;
-    }
+    K2_DEF_FMT(PartitionMap, version, partitions);
 };
-
-void inline to_json(nlohmann::json& j, const PartitionMap& map) {
-    j = nlohmann::json{{"version", map.version},
-                       {"partitions", map.partitions}};
-}
-
-void inline from_json(const nlohmann::json& j, PartitionMap& map) {
-    j.at("version").get_to(map.version);
-    j.at("partitions").get_to(map.partitions);
-}
 
 struct CollectionCapacity {
     uint64_t dataCapacityMegaBytes = 0;
     uint64_t readIOPs = 0;
     uint64_t writeIOPs = 0;
     K2_PAYLOAD_FIELDS(dataCapacityMegaBytes, readIOPs, writeIOPs);
+    K2_DEF_FMT(CollectionCapacity, dataCapacityMegaBytes, readIOPs, writeIOPs);
 };
 
-enum struct HashScheme {
+K2_DEF_ENUM(HashScheme,
     Range,
     HashCRC32C
-};
+);
 
-inline std::ostream& operator<<(std::ostream& os, const HashScheme& scheme) {
-    switch (scheme) {
-        case HashScheme::Range:
-            return os << "Range";
-        case HashScheme::HashCRC32C:
-            return os << "Hash-CRC32C";
-        default:
-            return os << "Unknown hash scheme";
-    }
-}
+K2_DEF_ENUM(StorageDriver,
+            K23SI);
 
-enum struct StorageDriver {
-    K23SI
-};
-
-inline std::ostream& operator<<(std::ostream& os, const StorageDriver& driver) {
-    switch (driver) {
-        case StorageDriver::K23SI:
-            return os << "K23SI";
-        default:
-            return os << "Unknown storage driver";
-    }
-}
 
 struct CollectionMetadata {
     String name;
@@ -259,18 +146,9 @@ struct CollectionMetadata {
     Duration retentionPeriod{0};
     Duration heartbeatDeadline{0}; // set by the CPO
     K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
+    K2_DEF_FMT(CollectionMetadata, name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
 };
 
-// TODO additional fields
-void inline to_json(nlohmann::json& j, const CollectionMetadata& meta) {
-    j = nlohmann::json{{"name", meta.name},
-                       {"hashScheme", meta.hashScheme}};
-}
-
-void inline from_json(const nlohmann::json& j, CollectionMetadata& meta) {
-    j.at("name").get_to(meta.name);
-    j.at("hashScheme").get_to(meta.hashScheme);
-}
 
 struct Collection {
     PartitionMap partitionMap;
@@ -278,17 +156,9 @@ struct Collection {
     CollectionMetadata metadata;
 
     K2_PAYLOAD_FIELDS(partitionMap, userMetadata, metadata);
+    K2_DEF_FMT(Collection, partitionMap, userMetadata, metadata);
 };
 
-void inline to_json(nlohmann::json& j, const Collection& collection) {
-    j = nlohmann::json{{"partitionMap", collection.partitionMap},
-                       {"metadata", collection.metadata}};
-}
-
-void inline from_json(const nlohmann::json& j, Collection& collection) {
-    j.at("partitionMap").get_to(collection.partitionMap);
-    j.at("metadata").get_to(collection.metadata);
-}
 
 class PartitionGetter {
 public:
@@ -359,21 +229,16 @@ public:
     Partition& operator()() { return _partition; }
     const Partition& operator()() const { return _partition; }
     HashScheme getHashScheme() { return _scheme; }
-    friend std::ostream& operator<<(std::ostream& os, const OwnerPartition& p) {
-        return os << p._partition;
-    }
-
+    K2_DEF_FMT(OwnerPartition, _partition);
 
 private:
     Partition _partition;
     HashScheme _scheme;
     uint64_t _hstart;
     uint64_t _hend;
-
 };
 
-} // namespace dto
-} // namespace k2
+} // namespace k2::dto
 
 // Define std::hash for Keys so that we can use them in hash maps/sets
 namespace std {

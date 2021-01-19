@@ -21,9 +21,9 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include "Collection.h"
-
 #pragma once
+#include "Collection.h"
+#include "Log.h"
 // This file contains DTOs for K2 AssignmentManager
 
 namespace k2 {

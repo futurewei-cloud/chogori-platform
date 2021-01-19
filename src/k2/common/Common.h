@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <algorithm>
+#include <decimal/decimal>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -32,8 +33,20 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
+#include <set>
 
 #include "Chrono.h"
+
+namespace std {
+inline ostream& operator<<(ostream& os, const decimal::decimal64& d) {
+    decimal::decimal64::__decfloat64 data = const_cast<decimal::decimal64&>(d).__getval();
+    return os << (double)data;
+}
+inline ostream& operator<<(ostream& os, const decimal::decimal128& d) {
+    decimal::decimal128::__decfloat128 data = const_cast<decimal::decimal128&>(d).__getval();
+    return os << (double)data;
+}
+}
 
 #define DISABLE_COPY(className)           \
     className(const className&) = delete; \
@@ -81,16 +94,10 @@ typedef seastar::temporary_buffer<char> Binary;
 //
 typedef std::function<Binary()> BinaryAllocatorFunctor;
 
-// helper function for converting enum class into an integral type
-// e.g. usage: auto integralColor = to_integral(MyEnum::Red);
-// or  std::array<MyEnum, to_integral(MyEnum::Red)>;
-template <typename T>
-auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e); }
-
 // from https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c/34571089#34571089
-static const char* B64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+inline const char* B64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static const int B64index[256] =
+inline const int B64index[256] =
     {
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -154,19 +161,52 @@ inline std::string b64decode(const void* data, const size_t len) {
 
 }  //  namespace k2
 
-namespace nlohmann {
-
-template <>
-struct adl_serializer<k2::String> {
+template <> // json (de)serialization support
+struct nlohmann::adl_serializer<k2::String> {
     // since we transport raw/binary with strings, we just b64 encode all strings in json
-    static void to_json(json& j, const k2::String& str) {
+    static void to_json(nlohmann::json& j, const k2::String& str) {
         j = k2::b64encode(str.data(), str.size());
     }
 
-    static void from_json(const json& j, k2::String& str) {
+    static void from_json(const nlohmann::json& j, k2::String& str) {
         auto result = j.get<std::string>();
         str = k2::b64decode(result.data(), result.size());
     }
 };
 
-}  // namespace nlohmann
+template <> // fmt support
+struct fmt::formatter<k2::String> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::String const& str, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", str.data());
+    }
+};
+
+template <> // fmt support
+struct fmt::formatter<std::set<k2::String>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(std::set<k2::String> const& str, FormatContext& ctx) {
+        fmt::format_to(ctx.out(), "{{");
+        const auto it = str.begin();
+        size_t processed = 0;
+        while(it != str.end()) {
+            if (processed == str.size() - 1) {
+                fmt::format_to(ctx.out(), "{}", *it);
+            }
+            else {
+                fmt::format_to(ctx.out(), "{}, ", *it);
+            }
+        }
+        return fmt::format_to(ctx.out(), "}}");
+    }
+};
