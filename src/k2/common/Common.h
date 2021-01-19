@@ -94,83 +94,118 @@ typedef seastar::temporary_buffer<char> Binary;
 //
 typedef std::function<Binary()> BinaryAllocatorFunctor;
 
-// from https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c/34571089#34571089
-inline const char* B64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+class HexCodec {
+private:
+    inline static const int __k2__str_encode_bytesz = 4;
+    inline static const char __k2__str_encode_char = '^';
+    inline static const char* __k2_str_bytetohex[] = {
+        "00","01","02","03","04","05","06","07","08","09","0a","0b","0c","0d","0e","0f",
+        "10","11","12","13","14","15","16","17","18","19","1a","1b","1c","1d","1e","1f",
+        "20","21","22","23","24","25","26","27","28","29","2a","2b","2c","2d","2e","2f",
+        "30","31","32","33","34","35","36","37","38","39","3a","3b","3c","3d","3e","3f",
+        "40","41","42","43","44","45","46","47","48","49","4a","4b","4c","4d","4e","4f",
+        "50","51","52","53","54","55","56","57","58","59","5a","5b","5c","5d","5e","5f",
+        "60","61","62","63","64","65","66","67","68","69","6a","6b","6c","6d","6e","6f",
+        "70","71","72","73","74","75","76","77","78","79","7a","7b","7c","7d","7e","7f",
+        "80","81","82","83","84","85","86","87","88","89","8a","8b","8c","8d","8e","8f",
+        "90","91","92","93","94","95","96","97","98","99","9a","9b","9c","9d","9e","9f",
+        "a0","a1","a2","a3","a4","a5","a6","a7","a8","a9","aa","ab","ac","ad","ae","af",
+        "b0","b1","b2","b3","b4","b5","b6","b7","b8","b9","ba","bb","bc","bd","be","bf",
+        "c0","c1","c2","c3","c4","c5","c6","c7","c8","c9","ca","cb","cc","cd","ce","cf",
+        "d0","d1","d2","d3","d4","d5","d6","d7","d8","d9","da","db","dc","dd","de","df",
+        "e0","e1","e2","e3","e4","e5","e6","e7","e8","e9","ea","eb","ec","ed","ee","ef",
+        "f0","f1","f2","f3","f4","f5","f6","f7","f8","f9","fa","fb","fc","fd","fe","ff"
+    };
 
-inline const int B64index[256] =
-    {
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 63, 62, 62, 63,
-        52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-        15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 0, 0, 0, 0, 63,
-        0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-        41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
-
-inline const std::string b64encode(const void* data, const size_t len) {
-    std::string result((len + 2) / 3 * 4, '=');
-    char* p = (char*)data;
-    char* str = &result[0];
-    size_t j = 0, pad = len % 3;
-    const size_t last = len - pad;
-
-    for (size_t i = 0; i < last; i += 3) {
-        int n = int(p[i]) << 16 | int(p[i + 1]) << 8 | p[i + 2];
-        str[j++] = B64chars[n >> 18];
-        str[j++] = B64chars[n >> 12 & 0x3F];
-        str[j++] = B64chars[n >> 6 & 0x3F];
-        str[j++] = B64chars[n & 0x3F];
-    }
-    if (pad) {
-        int n = --pad ? int(p[last]) << 8 | p[last + 1] : p[last];
-        str[j++] = B64chars[pad ? n >> 10 & 0x3F : n >> 2];
-        str[j++] = B64chars[pad ? n >> 4 & 0x03F : n << 4 & 0x3F];
-        str[j++] = pad ? B64chars[n << 2 & 0x3F] : '=';
-    }
-    return result;
-}
-
-inline std::string b64decode(const void* data, const size_t len) {
-    if (len == 0) return "";
-
-    unsigned char* p = (unsigned char*)data;
-    size_t j = 0,
-           pad1 = len % 4 || p[len - 1] == '=',
-           pad2 = pad1 && (len % 4 > 2 || p[len - 2] != '=');
-    const size_t last = (len - pad1) / 4 << 2;
-    std::string result(last / 4 * 3 + pad1 + pad2, '\0');
-    unsigned char* str = (unsigned char*)&result[0];
-
-    for (size_t i = 0; i < last; i += 4) {
-        int n = B64index[p[i]] << 18 | B64index[p[i + 1]] << 12 | B64index[p[i + 2]] << 6 | B64index[p[i + 3]];
-        str[j++] = n >> 16;
-        str[j++] = n >> 8 & 0xFF;
-        str[j++] = n & 0xFF;
-    }
-    if (pad1) {
-        int n = B64index[p[last]] << 18 | B64index[p[last + 1]] << 12;
-        str[j++] = n >> 16;
-        if (pad2) {
-            n |= B64index[p[last + 2]] << 6;
-            str[j++] = n >> 8 & 0xFF;
+    inline static const int __k2_str__char2int[] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0-15
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16-31
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 32-47
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0, 0, 0, 0, // 48-63
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 64-79
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 80-95
+        0, 10, 11, 12, 13, 14, 15, // 96-102
+    };
+public:
+    inline static String encode(const char* data, size_t size) {
+        static const int enc_byte_sz = 4;
+        static const int bufsz = 3*enc_byte_sz;
+        String result(String::initialized_later{}, size + bufsz + 1);
+        size_t c = 0;
+        for (size_t i = 0; i < size; ++i) {
+            if (c > result.size() - enc_byte_sz) {
+                // make sure we have enough space to write out a binary char+null with some factor to reduce
+                // multiple allocations
+                result.resize(c + 4*enc_byte_sz);
+            }
+            if (std::isprint(data[i])) {
+                if (data[i] == __k2__str_encode_char) {
+                    result[c++] = __k2__str_encode_char;
+                }
+                result[c++] = data[i];
+            }
+            else {
+                result[c++] = __k2__str_encode_char;
+                result[c++] = __k2_str_bytetohex[(uint8_t) data[i]][0];
+                result[c++] = __k2_str_bytetohex[(uint8_t) data[i]][1];
+            }
         }
+        result[c] = '\0';
+        result.resize(c);
+        return result;
     }
-    return result;
-}
 
+    inline static String encode(const std::string& str) {
+        return encode(str.data(), str.size());
+    }
+
+    inline static String encode(const String& str) {
+        return encode(str.data(), str.size());
+    }
+
+    inline static String decode(const char* data, size_t size) {
+        String result(String::initialized_later{}, size);
+        size_t c = 0;
+        for (size_t i = 0; i < size; ++i) {
+            if (data[i] == __k2__str_encode_char) {
+                ++i; // advance since we're skipping the encode char
+                if (data[i] == __k2__str_encode_char) {
+                    result[c++] = __k2__str_encode_char; // escaped encode char in original
+                }
+                else {
+                    result[c++] = (__k2_str__char2int[(uint8_t)data[i]] << 4) + __k2_str__char2int[(uint8_t)data[i+1]];
+                    ++i;
+                }
+            }
+            else {
+                result[c++] = data[i];
+            }
+        }
+        result[c] = '\0';
+        result.resize(c);
+        return result;
+    }
+
+    inline static String decode(const std::string& str) {
+        return decode(str.data(), str.size());
+    }
+
+    inline static String decode(const String& str) {
+        return decode(str.data(), str.size());
+    }
+};
 }  //  namespace k2
 
 template <> // json (de)serialization support
 struct nlohmann::adl_serializer<k2::String> {
     // since we transport raw/binary with strings, we just b64 encode all strings in json
     static void to_json(nlohmann::json& j, const k2::String& str) {
-        j = k2::b64encode(str.data(), str.size());
+        j = k2::HexCodec::encode(str);
     }
 
     static void from_json(const nlohmann::json& j, k2::String& str) {
         auto result = j.get<std::string>();
-        str = k2::b64decode(result.data(), result.size());
+        str = k2::HexCodec::decode(result);
     }
 };
 
@@ -183,7 +218,8 @@ struct fmt::formatter<k2::String> {
 
     template <typename FormatContext>
     auto format(k2::String const& str, FormatContext& ctx) {
-        return fmt::format_to(ctx.out(), "{}", str.data());
+        k2::String encoded = k2::HexCodec::encode(str);
+        return fmt::format_to(ctx.out(), "{}", encoded.data());
     }
 };
 
