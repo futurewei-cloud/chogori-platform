@@ -85,7 +85,7 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
         j["value"] = _K2_ENUM_TYPE_NAME##Names[to_integral(o)];                                     \
     }                                                                                               \
     inline static void from_json(const nlohmann::json& j, _K2_ENUM_TYPE_NAME& o) {                  \
-        String strname;                                                                             \
+        k2::String strname;                                                                         \
         j.at("value").get_to(strname);                                                              \
         o = _K2_ENUM_TYPE_NAME##FromStr(strname);                                                   \
     }                                                                                               \
@@ -115,7 +115,7 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
         j["value"] = _K2_ENUM_TYPE_NAME##Names[to_integral(o)];                                     \
     }                                                                                               \
     inline static void from_json(const nlohmann::json& j, _K2_ENUM_TYPE_NAME& o) {                  \
-        String strname;                                                                             \
+        k2::String strname;                                                                         \
         j.at("value").get_to(strname);                                                              \
         o = _K2_ENUM_TYPE_NAME##FromStr(strname);                                                   \
     }                                                                                               \
