@@ -155,7 +155,7 @@ Copyright(c) 2021 Futurewei Cloud
 #pragma once
 #include "MacroUtils.h"
     ''')
-    N = 21
+    N = 60
     genlst(N)
     print()
     genvars(N)
