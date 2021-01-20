@@ -219,6 +219,7 @@ void TSOService::TSOController::RegisterGetTSOWorkersURLs()
 
 void TSOService::TSOController::HeartBeat()
 {
+    K2LOG_D(log::tsoserver, "HeartBeat triggered");
     _heartBeatFuture = DoHeartBeat()
         .then([this] () mutable
         {
@@ -255,9 +256,11 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         if (_prevReservedTimeShreshold > curTimeTSECount &&
             (_prevReservedTimeShreshold - curTimeTSECount < (uint64_t) _heartBeatTimerInterval().count()))
         {
+            K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold is one heardbead away to expire, sleep over it and do HeartBeat again");
             std::chrono::nanoseconds sleepDur(_prevReservedTimeShreshold - curTimeTSECount);
             return seastar::sleep(sleepDur).then([this]
             {
+                K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold was one heardbead away to expire, slept over it and about to HeartBeat again");
                 return DoHeartBeat();
             });
         }
@@ -266,6 +269,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         if (_prevReservedTimeShreshold > curTimeTSECount &&
             (_prevReservedTimeShreshold - curTimeTSECount >= (uint64_t) _heartBeatTimerInterval().count()))
         {
+            K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold is in the future and beyong one heardbead, just renew lease without SendWorkerControlInfo");
             return RenewLeaseOnly().then([this](uint64_t newLease) {_myLease = newLease;});
         }
 
@@ -280,6 +284,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
                 K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
                     "new lease and ReservedTimeThreshold should be in the future.");
 
+                K2LOG_D(log::tsoserver, "SendWorkersControlInfo during regular HeartBeat. new ReservedTimeShreshold:{}", _controlInfoToSend.ReservedTimeShreshold);
                 // update worker!
                 return SendWorkersControlInfo();
             });

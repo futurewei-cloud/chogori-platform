@@ -240,10 +240,11 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
     if (curTBEMicroSecRounded + 1000 > _curControlInfo.ReservedTimeShreshold)
     {
         // this is really a bug if ReservedTimeShreshold is not updated promptly.
-         K2LOG_W(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeShreshold");
+         K2LOG_W(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeShreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}. BUGBUG- currently ignored",  curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeShreshold);
 
-        // TODO: consider giving more detail information
-        throw TSONotReadyException();
+        // BUGBUG need to throw here, for now lets just let go through 
+        // Currently this happens as sometime the controller heartbeat/timesyn timed task was not promptly executed due to likely controller core being busy, thus TSOWorkerControlInfo was not properly updated on the worker. 
+        // throw TSONotReadyException();
     }
 
     // step 3/4 if somehow current time is smaller than last request time
