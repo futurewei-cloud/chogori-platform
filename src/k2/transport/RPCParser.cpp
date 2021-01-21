@@ -212,7 +212,7 @@ void RPCParser::_stWAIT_FOR_FIXED_HEADER() {
         return;
     }
     _pState = ParseState::WAIT_FOR_VARIABLE_HEADER;  // onto getting the variable header
-    K2LOG_D(log::tx, "wait_for_fixed_header: parsed");
+    K2LOG_V(log::tx, "wait_for_fixed_header: parsed");
 }
 
 void RPCParser::_stIN_PARTIAL_FIXED_HEADER() {

@@ -231,12 +231,11 @@ struct fmt::formatter<std::set<k2::String>> {
     }
 
     template <typename FormatContext>
-    auto format(std::set<k2::String> const& str, FormatContext& ctx) {
+    auto format(std::set<k2::String> const& strset, FormatContext& ctx) {
         fmt::format_to(ctx.out(), "{{");
-        const auto it = str.begin();
         size_t processed = 0;
-        while(it != str.end()) {
-            if (processed == str.size() - 1) {
+        for(auto it = strset.cbegin(); it != strset.cend(); ++it) {
+            if (processed == strset.size() - 1) {
                 fmt::format_to(ctx.out(), "{}", *it);
             }
             else {
