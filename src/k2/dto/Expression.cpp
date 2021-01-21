@@ -57,7 +57,8 @@ struct SchematizedValue {
     template <typename T>
     std::tuple<bool, std::optional<T>> get() {
         if (TToFieldType<T>() != type) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("bad type in schematized value get: have {}, got {}", type, TToFieldType<T>());
+            throw TypeMismatchException(msg);
         }
         if (val.fieldName.empty()) {
             val.literal.seek(0);
@@ -91,7 +92,9 @@ struct is_comparable<T1, T2,
 template <typename T1, typename T2>
 std::enable_if_t<!is_comparable<T1, T2>::value, int>
 compareOptionals(std::tuple<bool, std::optional<T1>>&, std::tuple<bool, std::optional<T2>>&) {
-    throw TypeMismatchException();
+    auto msg = fmt::format("non-comparable types: {}, {}", TToFieldType<T1>(), TToFieldType<T1>());
+
+    throw TypeMismatchException(msg);
 }
 
 // template specialization comparing two optionals of comparable types
@@ -295,7 +298,8 @@ bool Expression::STARTS_WITH_handler(SKVRecord& rec) {
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
     if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
-        throw TypeMismatchException();
+        auto msg = fmt::format("STARTS_WITH handler non-string fields: {}, {}", aVal.type, bVal.type);
+        throw TypeMismatchException(msg);
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
@@ -315,7 +319,8 @@ bool Expression::CONTAINS_handler(SKVRecord& rec) {
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
     if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
-        throw TypeMismatchException();
+        auto msg = fmt::format("CONTAINS handler non-string fields: {}, {}", aVal.type, bVal.type);
+        throw TypeMismatchException(msg);
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
@@ -333,7 +338,8 @@ bool Expression::ENDS_WITH_handler(SKVRecord& rec) {
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
     if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
-        throw TypeMismatchException();
+        auto msg = fmt::format("ENDS_WITH handler non-string fields: {}, {}", aVal.type, bVal.type);
+        throw TypeMismatchException(msg);
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
@@ -355,7 +361,8 @@ bool Expression::AND_handler(SKVRecord& rec) {
         SchematizedValue aVal(valueChildren[0], rec);
         SchematizedValue bVal(valueChildren[1], rec);
         if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("AND handler 2 values non-bool fields: {}, {}", aVal.type, bVal.type);
+            throw TypeMismatchException(msg);
         }
         auto [nullA, aOpt] = aVal.get<bool>();
         auto [nullB, bOpt] = bVal.get<bool>();
@@ -364,7 +371,8 @@ bool Expression::AND_handler(SKVRecord& rec) {
     else if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("AND handler single non-bool field: {}", aVal.type);
+            throw TypeMismatchException(msg);
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
         // make sure to always evaluate in order to trigger type exceptions if any
@@ -387,7 +395,8 @@ bool Expression::OR_handler(SKVRecord& rec) {
         SchematizedValue aVal(valueChildren[0], rec);
         SchematizedValue bVal(valueChildren[1], rec);
         if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("OR handler two non-bool fields: {}, {}", aVal.type, bVal.type);
+            throw TypeMismatchException(msg);
         }
         auto [nullA, aOpt] = aVal.get<bool>();
         auto [nullB, bOpt] = bVal.get<bool>();
@@ -395,7 +404,8 @@ bool Expression::OR_handler(SKVRecord& rec) {
     } else if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("OR handler single non-bool field: {}", aVal.type);
+            throw TypeMismatchException(msg);
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
         // make sure to always evaluate in order to trigger type exceptions if any
@@ -419,7 +429,8 @@ bool Expression::XOR_handler(SKVRecord& rec) {
         SchematizedValue aVal(valueChildren[0], rec);
         SchematizedValue bVal(valueChildren[1], rec);
         if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("XOR handler two non-bool fields: {}, {}", aVal.type, bVal.type);
+            throw TypeMismatchException(msg);
         }
         auto [nullA, aOpt] = aVal.get<bool>();
         auto [nullB, bOpt] = bVal.get<bool>();
@@ -427,7 +438,8 @@ bool Expression::XOR_handler(SKVRecord& rec) {
     } else if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("XOR handler single non-bool field: {}", aVal.type);
+            throw TypeMismatchException(msg);
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
         // make sure to always evaluate in order to trigger type exceptions if any
@@ -449,7 +461,8 @@ bool Expression::NOT_handler(SKVRecord& rec) {
     if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            throw TypeMismatchException();
+            auto msg = fmt::format("NOT handler single non-bool field: {}", aVal.type);
+            throw TypeMismatchException(msg);
         }
         auto [nullA, aOpt] = aVal.get<bool>();
 

@@ -135,7 +135,9 @@ String NullLastToKeyString();
                 func<FieldType>((a), __VA_ARGS__);                  \
             } break;                                                \
             default:                                                \
-                throw TypeMismatchException();                      \
+                auto msg = fmt::format(                             \
+                    "cannot apply field of type {}", (a).type);     \
+                throw TypeMismatchException(msg);                   \
         }                                                           \
     } while (0)
 
