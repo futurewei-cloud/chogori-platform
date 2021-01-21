@@ -30,7 +30,7 @@ def genlst(N):
     mn="_K2_MKLIST"
     print("#define", mn + "(...) _K2_OVERLOADED_MACRO(" + mn + ", __VA_ARGS__)")
     print("#define", mn + "0()")
-    print("#define", mn + '1(a1) #a1 "=a1"')
+    print("#define", mn + '1(a1) #a1 "={}"')
     for i in range(2,N):
         vrs.append("a" + str(i))
         v = " ".join(["#define",

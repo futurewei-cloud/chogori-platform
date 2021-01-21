@@ -29,7 +29,7 @@ Copyright(c) 2021 Futurewei Cloud
 // _K2_MKLIST(...) generates a list for formatting variables, e.g. _K2_MKLIST(a, b, c) -> "a" = a, "b" = b, "c" = c
 #define _K2_MKLIST(...) _K2_OVERLOADED_MACRO(_K2_MKLIST, __VA_ARGS__)
 #define _K2_MKLIST0()
-#define _K2_MKLIST1(a1) #a1 "=a1"
+#define _K2_MKLIST1(a1) #a1 "={}"
 #define _K2_MKLIST2(a1,a2) _K2_MKLIST1(a1) ", " _K2_MKLIST1(a2)
 #define _K2_MKLIST3(a1,a2,a3) _K2_MKLIST2(a1,a2) ", " _K2_MKLIST1(a3)
 #define _K2_MKLIST4(a1,a2,a3,a4) _K2_MKLIST3(a1,a2,a3) ", " _K2_MKLIST1(a4)
