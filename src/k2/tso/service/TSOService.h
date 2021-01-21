@@ -289,6 +289,8 @@ class TSOService::TSOController
     // Lease at the Paxos, whem this is master, updated by heartbeat.
     uint64_t _myLease;
 
+    uint64_t _lastHeartBeat{0};
+
     // set when stop() is called
     bool _stopRequested{false};
 

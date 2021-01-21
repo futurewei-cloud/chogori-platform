@@ -219,6 +219,20 @@ void TSOService::TSOController::RegisterGetTSOWorkersURLs()
 
 void TSOService::TSOController::HeartBeat()
 {
+    // delayed heartbeat detection and logging
+    uint64_t nowCnt = now_nsec_count();
+
+    if ((nowCnt - _lastHeartBeat) > (uint64_t)( 2 * (nsec(_heartBeatTimerInterval()).count())))
+    {
+        if (_lastHeartBeat != 0)
+        {
+            K2LOG_I(log::tsoserver, "HeartBeat delayed more than two preset intervals, _lastHeartBeat:{}, preset duration in nano sec: {}", 
+                _lastHeartBeat,  nsec(_heartBeatTimerInterval()).count());
+        }
+    }
+    _lastHeartBeat = nowCnt;
+    // end of delayed heart beat detection and logging
+
     K2LOG_D(log::tsoserver, "HeartBeat triggered");
     _heartBeatFuture = DoHeartBeat()
         .then([this] () mutable
