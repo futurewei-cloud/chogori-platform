@@ -193,9 +193,19 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
 
     // most straightward happy case, fast path
     if (_curControlInfo.IsReadyToIssueTS &&
-        curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold &&
+//        curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold &&
         curTBEMicroSecRounded > _lastRequestTBEMicroSecRounded)
     {
+        if (curTBEMicroSecRounded + 1000 > _curControlInfo.ReservedTimeShreshold)
+        {
+            // this is really a bug if ReservedTimeShreshold is not updated promptly. 
+            K2LOG_W(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeShreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}. BUGBUG- currently ignored",  curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeShreshold);
+
+            // BUGBUG 
+            // Temporary ignore this error, remove this if block and commented out line 
+            // in out if condition statement "curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold &&"
+        }
+
         uint16_t batchSizeToIssue = std::min(batchSizeRequested, (uint16_t)(1000/_curControlInfo.TBENanoSecStep));
 
         result.TBEBase = curTBEMicroSecRounded + seastar::engine().cpu_id() - 1;
