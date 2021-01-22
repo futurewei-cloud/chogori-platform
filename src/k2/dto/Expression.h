@@ -93,7 +93,7 @@ struct Value {
         otype << o.type;
 
         std::ostringstream lit;
-        if (o.fieldName.empty()) {
+        if (o.isReference()) {
             lit << "REFERENCE";
         }
         else {
