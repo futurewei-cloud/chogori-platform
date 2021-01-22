@@ -93,17 +93,26 @@ struct Value {
         otype << o.type;
 
         std::ostringstream lit;
-        if (o.fieldName.empty()) {
+        if (o.isReference()) {
             lit << "REFERENCE";
         }
         else {
-            K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, o, lit);
+            if (o.type != FieldType::NULL_T && o.type != FieldType::NOT_KNOWN && o.type != FieldType::NULL_LAST) {
+                // no need to log the other types - we wrote what they are above.
+                try {
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, o, lit);
+                }
+                catch (const std::exception& e) {
+                    // just in case, log the exception here so that we can do something about it
+                    K2LOG_E(log::dto, "Caught exception in expression serialize: {}", e.what());
+                    lit << "!!!EXCEPTION!!!: " << e.what();
+                }
+            }
         }
-
         j = {
             {"fieldName", o.fieldName},
-            {"type", otype.str()},
-            {"literal", lit.str()}
+            {"type", k2::HexCodec::encode(otype.str())},
+            {"literal", k2::HexCodec::encode(lit.str())}
         };
     }
     friend void from_json(const nlohmann::json&, Value&) {

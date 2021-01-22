@@ -31,7 +31,7 @@ namespace expression {
 struct SchematizedValue {
     SchematizedValue(Value& v, SKVRecord& rec) : val(v), rec(rec), type(v.type) {
         K2ASSERT(log::dto, rec.schema, "Record must have a schema");
-        if (!val.fieldName.empty()) {
+        if (val.isReference()) {
             for (size_t i = 0; i < rec.schema->fields.size(); ++i) {
                 if (rec.schema->fields[i].name == val.fieldName) {
                     sfieldIndex = i;
@@ -60,7 +60,7 @@ struct SchematizedValue {
             auto msg = fmt::format("bad type in schematized value get: have {}, got {}", type, TToFieldType<T>());
             throw TypeMismatchException(msg);
         }
-        if (val.fieldName.empty()) {
+        if (!val.isReference()) {
             val.literal.seek(0);
             T result{};
             if (val.literal.read(result)) {
