@@ -60,7 +60,7 @@ struct SchematizedValue {
             auto msg = fmt::format("bad type in schematized value get: have {}, got {}", type, TToFieldType<T>());
             throw TypeMismatchException(msg);
         }
-        if (val.isReference()) {
+        if (!val.isReference()) {
             val.literal.seek(0);
             T result{};
             if (val.literal.read(result)) {
