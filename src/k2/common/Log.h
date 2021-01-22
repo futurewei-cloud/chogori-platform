@@ -52,7 +52,7 @@ Copyright(c) 2020 Futurewei Cloud
         fmt::print(K2LOG_STREAM,                                                                             \
                    FMT_STRING("[{}]-{}-({}:{}) [{}] [{}:{} @{}] " fmt_str "\n"),                             \
                    k2::Clock::now(), k2::logging::Logger::procName, module, id,                              \
-                   k2::logging::LogLevelNames[to_integral(level)], __FILE__, __LINE__, __PRETTY_FUNCTION__, ##__VA_ARGS__); \
+                   k2::logging::LogLevelNames[to_integral(level)], __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
         K2LOG_STREAM << std::flush;                                                                          \
     }
 
