@@ -200,7 +200,8 @@ template <> // json (de)serialization support
 struct nlohmann::adl_serializer<k2::String> {
     // since we transport raw/binary with strings, we just b64 encode all strings in json
     static void to_json(nlohmann::json& j, const k2::String& str) {
-        j = k2::HexCodec::encode(str);
+        // use the raw char* to avoid recursion
+        j = k2::HexCodec::encode(str).data();
     }
 
     static void from_json(const nlohmann::json& j, k2::String& str) {

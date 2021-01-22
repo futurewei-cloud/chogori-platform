@@ -120,30 +120,8 @@ struct Value {
     }
 
     friend std::ostream& operator<<(std::ostream&os, const Value& v) {
-        //nlohmann::json j = v;
-        //return os << j.dump();
-        std::ostringstream otype;
-        otype << v.type;
-
-        std::ostringstream lit;
-        if (v.isReference()) {
-            lit << "REFERENCE";
-        }
-        else {
-            if (v.type != FieldType::NULL_T && v.type != FieldType::NOT_KNOWN && v.type != FieldType::NULL_LAST) {
-                // no need to log the other types - we wrote what they are above.
-                try {
-                    K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, v, lit);
-                }
-                catch (const std::exception& e) {
-                    // just in case, log the exception here so that we can do something about it
-                    K2LOG_E(log::dto, "Caught exception in expression serialize: {}", e.what());
-                    lit << "!!!EXCEPTION!!!: " << e.what();
-                }
-            }
-        }
-        fmt::print(os, "{{name='{}', type='{}', literal='{}'}}", v.fieldName, otype.str(), lit.str());
-        return os;
+        nlohmann::json j = v;
+        return os << j.dump();
     }
 };
 
