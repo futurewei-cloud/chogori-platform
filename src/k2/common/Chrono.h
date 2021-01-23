@@ -85,29 +85,6 @@ private:
     static inline thread_local TimePoint _now = Clock::now();
 };
 
-// Utility class to keep track of a deadline. Useful for nested requests
-template<typename ClockT=Clock>
-class Deadline {
-public:
-    Deadline(typename ClockT::duration dur) : _deadline(ClockT::now() + dur) {}
-
-    typename ClockT::duration getRemaining() const {
-        auto now = ClockT::now();
-        if (now >= _deadline) {
-            return typename ClockT::duration(0);
-        }
-        return _deadline - now;
-    }
-
-    bool isOver() const {
-        return ClockT::now() >= _deadline;
-    }
-    K2_DEF_FMT(Deadline, _deadline);
-
-private:
-    typename ClockT::time_point _deadline;
-}; // class Deadline
-
 struct Timestamp_ts {
     uint16_t micros;
     uint16_t millis;
@@ -196,5 +173,31 @@ inline ostream& operator<<(ostream& os, const k2::Duration& o) {
     fmt::print(os, "{}", o);
     return os;
 }
+
+}
+
+namespace k2 {
+// Utility class to keep track of a deadline. Useful for nested requests
+template<typename ClockT=Clock>
+class Deadline {
+public:
+    Deadline(typename ClockT::duration dur) : _deadline(ClockT::now() + dur) {}
+
+    typename ClockT::duration getRemaining() const {
+        auto now = ClockT::now();
+        if (now >= _deadline) {
+            return typename ClockT::duration(0);
+        }
+        return _deadline - now;
+    }
+
+    bool isOver() const {
+        return ClockT::now() >= _deadline;
+    }
+    K2_DEF_FMT(Deadline, _deadline);
+
+private:
+    typename ClockT::time_point _deadline;
+}; // class Deadline
 
 }
