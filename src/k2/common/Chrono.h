@@ -30,6 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <fmt/printf.h>
 #include <fmt/compile.h>
 #include <nlohmann/json.hpp>
+#include "FormattingUtils.h"
 
 //
 // duration used in a few places to specify timeouts and such
@@ -101,6 +102,7 @@ public:
     bool isOver() const {
         return ClockT::now() >= _deadline;
     }
+    K2_DEF_FMT(Deadline, _deadline);
 
 private:
     typename ClockT::time_point _deadline;
