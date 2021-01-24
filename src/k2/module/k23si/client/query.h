@@ -55,6 +55,7 @@ public:
     // {ID = 1, NAME = J} is valid.
     dto::SKVRecord startScanRecord;
     dto::SKVRecord endScanRecord;
+    K2_DEF_FMT(Query, startScanRecord, endScanRecord, done, inprogress, keysProjected, continuationToken, request);
 
 private:
     void checkKeysProjected();
@@ -80,6 +81,7 @@ public:
 
     Status status;
     std::vector<dto::SKVRecord> records;
+    K2_DEF_FMT(QueryResult, status);
 };
 
 } // namespace k2

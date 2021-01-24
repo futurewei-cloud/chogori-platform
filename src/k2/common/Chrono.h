@@ -148,6 +148,16 @@ inline void from_json(const nlohmann::json& j, k2::Duration& obj) {
     int64_t result = j.get<int64_t>(); // microseconds
     obj = result * 1us;
 }
+
+void inline to_json(nlohmann::json& j, const k2::TimePoint& tp) {
+    j = nlohmann::json{{ "timepoint", fmt::format("{}", k2::toTimestamp_ts(tp)) }};
+}
+
+inline void from_json(const nlohmann::json& j, k2::TimePoint& tp) {
+    // timepoint deserialize expects a json with int64_t microseconds
+    int64_t result = j.get<int64_t>(); // microseconds
+    tp = k2::TimePoint{} + result * 1us;
+}
 }
 
 template <>
