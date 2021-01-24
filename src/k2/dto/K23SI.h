@@ -136,7 +136,7 @@ struct DataRecord {
         Aborted       // the record has been aborted and should be removed
     } status;
     K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
-    K2_DEF_FMT(DataRecord, key, isTombstone, txnId, status);
+    K2_DEF_FMT(DataRecord, key, value, isTombstone, txnId, status);
 };
 
 K2_DEF_ENUM(TxnRecordState,
@@ -169,6 +169,7 @@ struct K23SIReadRequest {
 struct K23SIReadResponse {
     SKVRecord::Storage value; // the value we found
     K2_PAYLOAD_FIELDS(value);
+    K2_DEF_FMT(K23SIReadResponse, value);
 };
 
 // status codes for reads
@@ -215,11 +216,12 @@ struct K23SIWriteRequest {
         key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
-    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, fieldsForPartialUpdate);
+    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
 };
 
 struct K23SIWriteResponse {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SIWriteResponse);
 };
 
 struct K23SIQueryRequest {
@@ -249,6 +251,7 @@ struct K23SIQueryResponse {
     bool exclusiveToken = false; // whether nextToScan should be excluded or included
     std::vector<SKVRecord::Storage> results;
     K2_PAYLOAD_FIELDS(nextToScan, exclusiveToken, results);
+    K2_DEF_FMT(K23SIQueryResponse, nextToScan, exclusiveToken, results);
 };
 
 struct K23SITxnHeartbeatRequest {
@@ -268,24 +271,29 @@ struct K23SITxnHeartbeatRequest {
 
 struct K23SITxnHeartbeatResponse {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SITxnHeartbeatResponse);
 };
 
 template <typename ValueType>
 struct K23SI_PersistenceRequest {
     SerializeAsPayload<ValueType> value;  // the value of the write
     K2_PAYLOAD_FIELDS(value);
+    K2_DEF_FMT(K23SI_PersistenceRequest);
 };
 
 struct K23SI_PersistenceResponse {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SI_PersistenceResponse);
 };
 
 struct K23SI_PersistenceRecoveryRequest {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SI_PersistenceRecoveryRequest);
 };
 
 struct K23SI_PersistencePartialUpdate {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SI_PersistencePartialUpdate);
 };
 
 // we route requests to the TRH the same way as standard keys therefore we need pvid and collection name
@@ -347,11 +355,12 @@ struct K23SITxnEndRequest {
     Duration timeToFinalize{0};
 
     K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize, timeToFinalize);
-    K2_DEF_FMT(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, syncFinalize, timeToFinalize);
+    K2_DEF_FMT(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, syncFinalize, timeToFinalize, writeKeys);
 };
 
 struct K23SITxnEndResponse {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SITxnEndResponse);
 };
 
 struct K23SITxnFinalizeRequest {
@@ -374,16 +383,19 @@ struct K23SITxnFinalizeRequest {
 
 struct K23SITxnFinalizeResponse {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SITxnFinalizeResponse);
 };
 
 struct K23SIPushSchemaRequest {
     String collectionName;
     Schema schema;
     K2_PAYLOAD_FIELDS(collectionName, schema);
+    K2_DEF_FMT(K23SIPushSchemaRequest, collectionName, schema);
 };
 
 struct K23SIPushSchemaResponse {
     K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(K23SIPushSchemaResponse);
 };
 
 } // ns dto

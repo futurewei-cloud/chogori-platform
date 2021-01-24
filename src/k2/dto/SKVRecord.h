@@ -198,6 +198,7 @@ public:
         Storage share();
         Storage copy();
         K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaVersion);
+        K2_DEF_FMT(Storage, excludedFields, schemaVersion);
     };
 
     SKVRecord() = default;
@@ -206,6 +207,26 @@ public:
     // The constructor for an SKVRecord that is created by the SKV client to be returned to the
     // user in a response
     SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
+
+    friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
+        return os << "{"
+            << "collectionName=" << rec.collectionName
+            << ", excludedFields=" << fmt::format("{}", rec.storage.excludedFields)
+            << ", getKey=" << const_cast<SKVRecord&>(rec).getKey()
+            << ", pk=" << const_cast<SKVRecord&>(rec).getPartitionKey()
+            << ", rk=" << const_cast<SKVRecord&>(rec).getRangeKey()
+            << ", partitionKeys=" << fmt::format("{}", rec.partitionKeys)
+            << ", rangeKeys=" << fmt::format("{}", rec.rangeKeys);
+    }
+
+    void friend inline to_json(nlohmann::json& j, const SKVRecord& o) {
+        j = nlohmann::json{{ "skv_record", fmt::format("{}", o) }};
+    }
+
+    void friend inline from_json(const nlohmann::json&, SKVRecord&) {
+        throw std::runtime_error("cannot construct SKVRecord from json");
+    }
+
 private:
     void constructKeyStrings();
     template <typename T>
