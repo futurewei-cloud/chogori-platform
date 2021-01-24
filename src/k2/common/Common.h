@@ -34,6 +34,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
 #include <set>
+#include <unordered_set>
+#include <vector>
 
 #include "Chrono.h"
 
@@ -233,6 +235,52 @@ struct fmt::formatter<std::set<k2::String>> {
 
     template <typename FormatContext>
     auto format(std::set<k2::String> const& strset, FormatContext& ctx) {
+        fmt::format_to(ctx.out(), "{{");
+        size_t processed = 0;
+        for(auto it = strset.cbegin(); it != strset.cend(); ++it) {
+            if (processed == strset.size() - 1) {
+                fmt::format_to(ctx.out(), "{}", *it);
+            }
+            else {
+                fmt::format_to(ctx.out(), "{}, ", *it);
+            }
+        }
+        return fmt::format_to(ctx.out(), "}}");
+    }
+};
+
+template <> // fmt support
+struct fmt::formatter<std::vector<k2::String>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(std::vector<k2::String> const& strvec, FormatContext& ctx) {
+        fmt::format_to(ctx.out(), "{{");
+        size_t processed = 0;
+        for(auto it = strvec.cbegin(); it != strvec.cend(); ++it) {
+            if (processed == strvec.size() - 1) {
+                fmt::format_to(ctx.out(), "{}", *it);
+            }
+            else {
+                fmt::format_to(ctx.out(), "{}, ", *it);
+            }
+        }
+        return fmt::format_to(ctx.out(), "}}");
+    }
+};
+
+template <> // fmt support
+struct fmt::formatter<std::unordered_set<k2::String>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(std::unordered_set<k2::String> const& strset, FormatContext& ctx) {
         fmt::format_to(ctx.out(), "{{");
         size_t processed = 0;
         for(auto it = strset.cbegin(); it != strset.cend(); ++it) {

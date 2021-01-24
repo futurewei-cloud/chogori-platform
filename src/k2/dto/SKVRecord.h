@@ -209,14 +209,13 @@ public:
     SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
 
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
-        return os << "{"
-            << "collectionName=" << rec.collectionName
-            << ", excludedFields=" << fmt::format("{}", rec.storage.excludedFields)
-            << ", getKey=" << const_cast<SKVRecord&>(rec).getKey()
-            << ", pk=" << const_cast<SKVRecord&>(rec).getPartitionKey()
-            << ", rk=" << const_cast<SKVRecord&>(rec).getRangeKey()
-            << ", partitionKeys=" << fmt::format("{}", rec.partitionKeys)
-            << ", rangeKeys=" << fmt::format("{}", rec.rangeKeys);
+        return os << fmt::format(
+            "{{collectionName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
+            rec.collectionName,
+            rec.storage.excludedFields,
+            const_cast<SKVRecord&>(rec).getKey(),
+            rec.partitionKeys,
+            rec.rangeKeys);
     }
 
     void friend inline to_json(nlohmann::json& j, const SKVRecord& o) {
