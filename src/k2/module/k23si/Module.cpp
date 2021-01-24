@@ -462,17 +462,17 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
 }
 
 template <typename RequestT>
-bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, VersionsT& versions) {
+Status K23SIPartitionModule::_validateStaleWrite(const RequestT& request, VersionsT& versions) {
     if (!_validateRetentionWindow(request)) {
         // the request is outside the retention window
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request is outside retention window");
     }
     // check read cache for R->W conflicts
     auto ts = _readCache->checkInterval(request.key, request.key);
     if (request.mtr.timestamp.compareCertain(ts) < 0) {
         // this key range was read more recently than this write
         K2LOG_D(log::skvsvr, "Partition: {}, read cache validation failed for key: {}", _partition, request.key);
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as this key (or key range) has been observed by another transaction");
     }
 
     // check if we have a committed value newer than the request. The latest committed
@@ -489,18 +489,18 @@ bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, Versions
         // newest version is the latest committed and its newer than the request
         // or committed version from same transaction is found (e.g. bad retry on a write came through after commit)
         K2LOG_D(log::skvsvr, "Partition: {}, failing write older than latest commit for key {}", _partition, request.key);
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as we have a newer committed write for this key from another transaction");
     }
     else if (versions.size() > 1 && versions[0].status == dto::DataRecord::WriteIntent &&
         request.mtr.timestamp.compareCertain(versions[1].txnId.mtr.timestamp) <= 0) {
         // second newest version is the latest committed and its newer than the request.
         // no need to push since this request would fail anyway against the committed value
         K2LOG_D(log::skvsvr, "Partition: {}, failing write older than latest commit for key {}", _partition, request.key);
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as we have a newer committed write (and wi) for this key from other transactions");
     }
 
     K2LOG_D(log::skvsvr, "Partition: {}, stale write check passed for key {}", _partition, request.key);
-    return true;
+    return dto::K23SIStatus::OK("");
 }
 
 std::size_t K23SIPartitionModule::_findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype) {
@@ -862,9 +862,13 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
 
     auto& versions = _indexer[request.key];
     // in this situation, return AbortRequestTooOld error.
-    if (!_validateStaleWrite(request, versions)) {
-        K2LOG_D(log::skvsvr, "Partition: {}, request too old for key {}", _partition, request.key);
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIWriteResponse{});
+    {
+        Status validateStatus = _validateStaleWrite(request, versions);
+        if (!validateStatus.is2xxOK()) {
+            K2LOG_D(log::skvsvr, "Partition: {}, request too old for key {} due to {}",
+                    _partition, request.key, validateStatus);
+            return RPCResponse(std::move(validateStatus), dto::K23SIWriteResponse{});
+        }
     }
 
     // check to see if we should push or is this a write from same txn
