@@ -1038,7 +1038,7 @@ K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
 
 seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
 K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
-    K2LOG_D(log::skvsvr, "Partition: {}, transaction end: ", _partition, request);
+    K2LOG_D(log::skvsvr, "Partition: {}, transaction end: {}", _partition, request);
     if (!_validateRequestPartition(request)) {
         // tell client their collection partition is gone
         K2LOG_D(log::skvsvr, "Partition: {}, transaction end too old for txn={}", _partition, request.mtr);
