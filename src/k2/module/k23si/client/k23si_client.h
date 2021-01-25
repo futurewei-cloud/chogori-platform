@@ -62,6 +62,7 @@ public:
     Deadline<> deadline;
     dto::TxnPriority priority;
     bool syncFinalize = false;
+    K2_DEF_FMT(K2TxnOptions, deadline, priority, syncFinalize);
 };
 
 template<typename ValueType>
@@ -71,12 +72,14 @@ public:
 
     Status status;
     ValueType value;
+    K2_DEF_FMT(ReadResult, status);
 };
 
 class WriteResult{
 public:
     WriteResult(Status s, dto::K23SIWriteResponse&& r) : status(std::move(s)), response(std::move(r)) {}
     Status status;
+    K2_DEF_FMT(WriteResult, status);
 
 private:
     dto::K23SIWriteResponse response;
@@ -86,23 +89,27 @@ class PartialUpdateResult{
 public:
     PartialUpdateResult(Status s) : status(std::move(s)) {}
     Status status;
+    K2_DEF_FMT(PartialUpdateResult, status);
 };
 
 class EndResult{
 public:
     EndResult(Status s) : status(std::move(s)) {}
     Status status;
+    K2_DEF_FMT(EndResult, status);
 };
 
 // This is the response to a getSchema request
 struct GetSchemaResult {
     Status status;                        // the status of the response
     std::shared_ptr<dto::Schema> schema;  // the schema if the response was OK
+    K2_DEF_FMT(GetSchemaResult, status);
 };
 
 // This is the response to a createSchema request
 struct CreateSchemaResult {
     Status status;  // the status of the response
+    K2_DEF_FMT(CreateSchemaResult, status);
 };
 
 class K23SIClientConfig {
@@ -113,6 +120,7 @@ public:
 struct CreateQueryResult {
     Status status;                        // the status of the response
     Query query;  // the query if the response was OK
+    K2_DEF_FMT(CreateQueryResult, status, query);
 };
 
 class K2TxnHandle;

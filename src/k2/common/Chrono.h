@@ -30,6 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <fmt/printf.h>
 #include <fmt/compile.h>
 #include <nlohmann/json.hpp>
+#include "FormattingUtils.h"
 
 //
 // duration used in a few places to specify timeouts and such
@@ -83,28 +84,6 @@ struct CachedSteadyClock {
 private:
     static inline thread_local TimePoint _now = Clock::now();
 };
-
-// Utility class to keep track of a deadline. Useful for nested requests
-template<typename ClockT=Clock>
-class Deadline {
-public:
-    Deadline(typename ClockT::duration dur) : _deadline(ClockT::now() + dur) {}
-
-    typename ClockT::duration getRemaining() const {
-        auto now = ClockT::now();
-        if (now >= _deadline) {
-            return typename ClockT::duration(0);
-        }
-        return _deadline - now;
-    }
-
-    bool isOver() const {
-        return ClockT::now() >= _deadline;
-    }
-
-private:
-    typename ClockT::time_point _deadline;
-}; // class Deadline
 
 struct Timestamp_ts {
     uint16_t micros;
@@ -169,6 +148,16 @@ inline void from_json(const nlohmann::json& j, k2::Duration& obj) {
     int64_t result = j.get<int64_t>(); // microseconds
     obj = result * 1us;
 }
+
+void inline to_json(nlohmann::json& j, const k2::TimePoint& tp) {
+    j = nlohmann::json{{ "timepoint", fmt::format("{}", k2::toTimestamp_ts(tp)) }};
+}
+
+inline void from_json(const nlohmann::json& j, k2::TimePoint& tp) {
+    // timepoint deserialize expects a json with int64_t microseconds
+    int64_t result = j.get<int64_t>(); // microseconds
+    tp = k2::TimePoint{} + result * 1us;
+}
 }
 
 template <>
@@ -194,5 +183,31 @@ inline ostream& operator<<(ostream& os, const k2::Duration& o) {
     fmt::print(os, "{}", o);
     return os;
 }
+
+}
+
+namespace k2 {
+// Utility class to keep track of a deadline. Useful for nested requests
+template<typename ClockT=Clock>
+class Deadline {
+public:
+    Deadline(typename ClockT::duration dur) : _deadline(ClockT::now() + dur) {}
+
+    typename ClockT::duration getRemaining() const {
+        auto now = ClockT::now();
+        if (now >= _deadline) {
+            return typename ClockT::duration(0);
+        }
+        return _deadline - now;
+    }
+
+    bool isOver() const {
+        return ClockT::now() >= _deadline;
+    }
+    K2_DEF_FMT(Deadline, _deadline);
+
+private:
+    typename ClockT::time_point _deadline;
+}; // class Deadline
 
 }

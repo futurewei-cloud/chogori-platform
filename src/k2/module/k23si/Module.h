@@ -167,7 +167,7 @@ private: // methods
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     template <typename RequestT>
-    bool _validateStaleWrite(const RequestT& req, VersionsT& versions);
+    Status _validateStaleWrite(const RequestT& req, VersionsT& versions);
 
     template <class RequestT>
     Status _validateReadRequest(const RequestT& request) const {

@@ -385,6 +385,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         if (response.results.size() >= _config.queryPushLimit()) {
             break;
         }
+        K2LOG_D(log::skvsvr, "Partition {}, query from txn {}, updates read cache for key range {} - {}",
+                _partition, request.mtr, request.key, key_it->first);
 
         // Do a push but we need to save our place in the query
         // TODO we can test the filter condition against the WI and last committed version and possibly
@@ -418,6 +420,9 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     } else {
         endInterval = key_it->first;
     }
+
+    K2LOG_D(log::skvsvr, "Partition {}, query from txn {}, updates read cache for key range {} - {}",
+                _partition, request.mtr, request.key, endInterval);
     request.reverseDirection ?
         _readCache->insertInterval(endInterval, request.key, request.mtr.timestamp) :
         _readCache->insertInterval(request.key, endInterval, request.mtr.timestamp);
@@ -437,6 +442,8 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
         return RPCResponse(std::move(validateStatus), dto::K23SIReadResponse{});
     }
 
+    K2LOG_D(log::skvsvr, "Partition {}, read from txn {}, updates read cache for key {}",
+                _partition, request.mtr, request.key);
     // update the read cache to lock out any future writers which may attempt to modify the key range
     // before this read's timestamp
     _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
@@ -462,17 +469,17 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
 }
 
 template <typename RequestT>
-bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, VersionsT& versions) {
+Status K23SIPartitionModule::_validateStaleWrite(const RequestT& request, VersionsT& versions) {
     if (!_validateRetentionWindow(request)) {
         // the request is outside the retention window
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request is outside retention window");
     }
     // check read cache for R->W conflicts
     auto ts = _readCache->checkInterval(request.key, request.key);
     if (request.mtr.timestamp.compareCertain(ts) < 0) {
         // this key range was read more recently than this write
         K2LOG_D(log::skvsvr, "Partition: {}, read cache validation failed for key: {}", _partition, request.key);
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as this key (or key range) has been observed by another transaction");
     }
 
     // check if we have a committed value newer than the request. The latest committed
@@ -489,18 +496,18 @@ bool K23SIPartitionModule::_validateStaleWrite(const RequestT& request, Versions
         // newest version is the latest committed and its newer than the request
         // or committed version from same transaction is found (e.g. bad retry on a write came through after commit)
         K2LOG_D(log::skvsvr, "Partition: {}, failing write older than latest commit for key {}", _partition, request.key);
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as we have a newer committed write for this key from another transaction");
     }
     else if (versions.size() > 1 && versions[0].status == dto::DataRecord::WriteIntent &&
         request.mtr.timestamp.compareCertain(versions[1].txnId.mtr.timestamp) <= 0) {
         // second newest version is the latest committed and its newer than the request.
         // no need to push since this request would fail anyway against the committed value
         K2LOG_D(log::skvsvr, "Partition: {}, failing write older than latest commit for key {}", _partition, request.key);
-        return false;
+        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as we have a newer committed write (and wi) for this key from other transactions");
     }
 
     K2LOG_D(log::skvsvr, "Partition: {}, stale write check passed for key {}", _partition, request.key);
-    return true;
+    return dto::K23SIStatus::OK("");
 }
 
 std::size_t K23SIPartitionModule::_findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype) {
@@ -862,9 +869,13 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
 
     auto& versions = _indexer[request.key];
     // in this situation, return AbortRequestTooOld error.
-    if (!_validateStaleWrite(request, versions)) {
-        K2LOG_D(log::skvsvr, "Partition: {}, request too old for key {}", _partition, request.key);
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request too old in write"), dto::K23SIWriteResponse{});
+    {
+        Status validateStatus = _validateStaleWrite(request, versions);
+        if (!validateStatus.is2xxOK()) {
+            K2LOG_D(log::skvsvr, "Partition: {}, request too old for key {} due to {}",
+                    _partition, request.key, validateStatus);
+            return RPCResponse(std::move(validateStatus), dto::K23SIWriteResponse{});
+        }
     }
 
     // check to see if we should push or is this a write from same txn
@@ -894,6 +905,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
         // If the condition passes (ie, there was no previous version and the insert succeeds) then
         // we do not need to insert into the read cache because the write intent will handle conflicts
         // and if the transaction aborts then any state it implicitly observes does not matter
+        K2LOG_D(log::skvsvr, "Partition {}, write from txn {}, updates read cache for key {}", _partition, request.mtr, request.key);
         _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
 
         // The ConditionFailed status does not mean that the transaction must abort. It is up to the user
@@ -1026,7 +1038,7 @@ K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
 
 seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
 K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
-    K2LOG_D(log::skvsvr, "Partition: {}, transaction end: ", _partition, request);
+    K2LOG_D(log::skvsvr, "Partition: {}, transaction end: {}", _partition, request);
     if (!_validateRequestPartition(request)) {
         // tell client their collection partition is gone
         K2LOG_D(log::skvsvr, "Partition: {}, transaction end too old for txn={}", _partition, request.mtr);
