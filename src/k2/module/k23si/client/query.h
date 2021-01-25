@@ -55,7 +55,7 @@ public:
     // {ID = 1, NAME = J} is valid.
     dto::SKVRecord startScanRecord;
     dto::SKVRecord endScanRecord;
-    K2_DEF_FMT(Query, startScanRecord, endScanRecord, done, inprogress, keysProjected, continuationToken, request);
+    K2_DEF_FMT(Query, startScanRecord, endScanRecord, done, inprogress, keysProjected, request);
 
 private:
     void checkKeysProjected();
@@ -64,7 +64,6 @@ private:
     bool done = false;
     bool inprogress = false; // Used to prevent user from changing predicates after query has started
     bool keysProjected = true;
-    dto::Key continuationToken;
     dto::K23SIQueryRequest request;
 
     friend class K2TxnHandle;
