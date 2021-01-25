@@ -35,7 +35,7 @@ template <typename KeyT, typename TimestampT>
 class ReadCache
 {
 public:
-    ReadCache(TimestampT min_timestamp, size_t cache_size=10000) : _min(min_timestamp), _max_size(cache_size) {}
+    ReadCache(TimestampT min_timestamp, size_t cache_size) : _min(min_timestamp), _max_size(cache_size) {}
 
     TimestampT checkInterval(KeyT low, KeyT high)
     {
