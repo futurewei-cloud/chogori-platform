@@ -226,7 +226,7 @@ void TSOService::TSOController::HeartBeat()
     {
         if (_lastHeartBeat != 0)
         {
-            K2LOG_I(log::tsoserver, "HeartBeat delayed more than two preset intervals, _lastHeartBeat:{}, preset duration in nano sec: {}", 
+            K2LOG_D(log::tsoserver, "HeartBeat delayed more than two preset intervals, _lastHeartBeat:{}, preset duration in nano sec: {}",
                 _lastHeartBeat,  nsec(_heartBeatTimerInterval()).count());
         }
     }

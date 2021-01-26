@@ -183,6 +183,15 @@ template <> String FieldToKeyString<int32_t>(const int32_t& field) {
     return s;
 }
 
+template <> String FieldToKeyString<bool>(const bool& field) {
+    String s(String::initialized_later(), 4);
+    s[0] = (char) FieldType::BOOL;
+    s[1] = field ? 1 : 0;
+    s[2] = ESCAPE;
+    s[3] = TERM;
+    return s;
+}
+
 String NullFirstToKeyString() {
     String s(String::initialized_later(), 3);
     s[0] = (char) FieldType::NULL_T;
