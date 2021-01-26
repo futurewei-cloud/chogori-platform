@@ -86,6 +86,7 @@ template<> String FieldToKeyString<int16_t>(const int16_t&);
 template<> String FieldToKeyString<int32_t>(const int32_t&);
 template<> String FieldToKeyString<int64_t>(const int64_t&);
 template<> String FieldToKeyString<String>(const String&);
+template<> String FieldToKeyString<bool>(const bool&);
 
 // all other types are not supported as key fields
 template <typename T>

@@ -202,3 +202,27 @@ TEST_CASE("Test4: signed int key ordering") {
         REQUIRE(small_s < large_s);
     }
 }
+
+TEST_CASE("Test5: bool key ordering") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::BOOL, "myBool", false, false},
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"myBool"});
+    std::shared_ptr<k2::dto::Schema> schema_ptr = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    k2::dto::SKVRecord isfalse("collection", schema_ptr);
+    k2::dto::SKVRecord istrue("collection", schema_ptr);
+
+    isfalse.serializeNext<bool>(false);
+    istrue.serializeNext<bool>(true);
+
+    k2::String falseKey = isfalse.getPartitionKey();
+    k2::String trueKey = istrue.getPartitionKey();
+
+    REQUIRE(falseKey < trueKey);
+}
+
