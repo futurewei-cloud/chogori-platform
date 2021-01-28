@@ -113,7 +113,7 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
     // Note that the following is not a normal use case of SKVRecord.
     // Normally a user will not serialize and deserialize out of the same SKVRecord, they
     // will serialize for a read or write request, and then deserialize a different SKVRecord
-    // for a read result. Here we are manually rewinding the record so that we can test 
+    // for a read result. Here we are manually rewinding the record so that we can test
     // deserialization
     doc.seekField(0);
 
@@ -160,6 +160,57 @@ TEST_CASE("Test2: invalid serialization tests") {
     try {
         // Out-of-bounds serialzation
         doc.serializeNext<int32_t>(111);
+        REQUIRE(false);
+    } catch (...) {}
+}
+
+TEST_CASE("Test3: clone to other schema") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::STRING, "LastName", false, false},
+            {k2::dto::FieldType::STRING, "FirstName", false, false},
+            {k2::dto::FieldType::INT32T, "Balance", false, false}
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
+    schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
+
+    k2::dto::Schema compatible_schema;
+    compatible_schema.name = "compatible_schema";
+    compatible_schema.version = 1;
+    compatible_schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::STRING, "LastName", false, false},
+            {k2::dto::FieldType::STRING, "FirstName", false, false},
+            {k2::dto::FieldType::INT32T, "Balance", false, false}
+    };
+    compatible_schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
+    compatible_schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
+
+    k2::dto::Schema noncompatible_schema;
+    noncompatible_schema.name = "noncompatible_schema";
+    noncompatible_schema.version = 1;
+    noncompatible_schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::INT32T, "LastName", false, false},
+            {k2::dto::FieldType::INT32T, "FirstName", false, false},
+            {k2::dto::FieldType::INT32T, "Balance", false, false}
+    };
+    noncompatible_schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
+    noncompatible_schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
+
+    k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
+    doc.serializeNext<k2::String>("a");
+    doc.serializeNext<k2::String>("b");
+    doc.serializeNext<int32_t>(12);
+
+    // Should clone without error
+    k2::dto::SKVRecord clone = doc.cloneToOtherSchema("collection",
+                                    std::make_shared<k2::dto::Schema>(compatible_schema));
+
+    try {
+        // Non-compatible schema, should throw exception
+        k2::dto::SKVRecord clone = doc.cloneToOtherSchema("collection",
+                                    std::make_shared<k2::dto::Schema>(noncompatible_schema));
         REQUIRE(false);
     } catch (...) {}
 }
