@@ -208,6 +208,8 @@ public:
     // user in a response
     SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
 
+    SKVRecord cloneToOtherSchema(const String& collection, std::shared_ptr<Schema> other_schema);
+
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
         return os << fmt::format(
             "{{collectionName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
