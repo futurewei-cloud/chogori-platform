@@ -53,6 +53,8 @@ public:
         return most_recent;
     }
 
+    const TimestampT min_TimeStamp() { return _min; }
+
     void insertInterval(KeyT low, KeyT high, TimestampT timestamp)
     {
         Interval<KeyT, TreeValue>* found = _tree.find(Interval<KeyT, TreeValue>(low, high));

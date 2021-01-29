@@ -478,8 +478,16 @@ Status K23SIPartitionModule::_validateStaleWrite(const RequestT& request, Versio
     auto ts = _readCache->checkInterval(request.key, request.key);
     if (request.mtr.timestamp.compareCertain(ts) < 0) {
         // this key range was read more recently than this write
-        K2LOG_D(log::skvsvr, "Partition: {}, read cache validation failed for key: {}", _partition, request.key);
-        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as this key (or key range) has been observed by another transaction");
+        K2LOG_D(log::skvsvr, "Partition: {}, read cache validation failed for key: {}, transaction timestamp: {}, < readCache key timestamp: {}, readcache min_TimeStamp: {}", _partition, request.key, request.mtr.timestamp, ts, _readCache->min_TimeStamp());
+        bool belowReadCacheWaterMark = (request.mtr.timestamp.compareCertain(_readCache->min_TimeStamp()) <= 0);
+        if (belowReadCacheWaterMark)
+        {
+            return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as this key (or key range) is older than min timestamp(watermark) server maintains.");
+        }
+        else
+        {
+            return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as this key (or key range) has been observed by another transaction");
+        }
     }
 
     // check if we have a committed value newer than the request. The latest committed
