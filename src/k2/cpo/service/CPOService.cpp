@@ -101,7 +101,7 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
     });
 
-    if (seastar::engine().cpu_id() == 0) {
+    if (seastar::this_shard_id() == 0) {
         // only core 0 handles CPO business
         if (!fileutil::makeDir(_dataDir())) {
             throw std::runtime_error("unable to create data directory");

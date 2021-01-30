@@ -32,6 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 // seastar stuff
 #include <seastar/core/distributed.hh>  // for distributed<>
 #include <seastar/core/future.hh>       // for future stuff
+#include <seastar/core/when_all.hh>
 #include <seastar/core/metrics.hh>
 #include <seastar/core/metrics_registration.hh>  // metrics
 #include <seastar/core/timer.hh>                 // periodic timer
