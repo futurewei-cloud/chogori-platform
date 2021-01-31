@@ -97,11 +97,15 @@ seastar::future<> TSOService::TSOController::InitializeInternal()
 
 void TSOService::TSOController::InitWorkerControlInfo()
 {
+    
     // initialize TSOWorkerControlInfo
+    _lastSentControlInfo.IgnoreThreshold =  _ignoreReservedTimeThreshold();
     _lastSentControlInfo.TBENanoSecStep =   seastar::smp::count - 1;            // same as number of worker cores
     _lastSentControlInfo.TsDelta =          _defaultTBWindowSize().count();     // uncertain window size of timestamp from the batch is also default _defaultTBWindowSize
     _lastSentControlInfo.BatchTTL =         _defaultTBWindowSize().count();     // batch's TTL is also _defaultTBWindowSize
 
+    _controlInfoToSend.IgnoreThreshold =    _ignoreReservedTimeThreshold();
+    K2LOG_I(log::tsoserver, "InitWorkerControlInfo, IgnoreThreshold:{}", _controlInfoToSend.IgnoreThreshold);
     _controlInfoToSend.TBENanoSecStep =     seastar::smp::count - 1;
     _controlInfoToSend.TsDelta =            _defaultTBWindowSize().count();
     _controlInfoToSend.BatchTTL =           _defaultTBWindowSize().count();
@@ -294,9 +298,12 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
                 _myLease = std::get<0>(newLeaseAndThreshold);
                 _controlInfoToSend.ReservedTimeShreshold = std::get<1>(newLeaseAndThreshold);
 
-                uint64_t newCurTimeTSECount = TimeAuthorityNow();
-                K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
-                    "new lease and ReservedTimeThreshold should be in the future.");
+                if (!_controlInfoToSend.IgnoreThreshold)
+                {
+                    uint64_t newCurTimeTSECount = TimeAuthorityNow();
+                    K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
+                        "new lease and ReservedTimeThreshold should be in the future.");
+                }
 
                 K2LOG_D(log::tsoserver, "SendWorkersControlInfo during regular HeartBeat. new ReservedTimeShreshold:{}", _controlInfoToSend.ReservedTimeShreshold);
                 // update worker!
@@ -372,7 +379,7 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
         // worker can only issue TS under following condition
         if (!_stopRequested &&                                              // stop is not requested
             _prevReservedTimeShreshold < curTimeTSECount &&                 // _prevReservedTimeShreshold is in the past
-            _controlInfoToSend.ReservedTimeShreshold > curTimeTSECount )    // new ReservedTimeShreshold is in the future
+            (_controlInfoToSend.ReservedTimeShreshold > curTimeTSECount || _controlInfoToSend.IgnoreThreshold))    // new ReservedTimeShreshold is in the future OR it is ignored
         {
             readyToIssue = true;
         }
