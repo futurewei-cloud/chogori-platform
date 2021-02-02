@@ -116,6 +116,17 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
 
     // step 1/3 Validate current status and input
     K2ASSERT(log::tsoserver, controlInfo.IsReadyToIssueTS && _curControlInfo.IsReadyToIssueTS, "pre and post state need to be both ready!");
+    if (controlInfo.IgnoreThreshold)
+    {
+        if (!_curControlInfo.IgnoreThreshold)
+        {
+            K2LOG_W(log::tsoserver, "TSo worker starts to ignore time shreshold!" );
+        }
+        else
+        {
+            K2LOG_D(log::tsoserver, "TSo worker continue to ignore time shreshold!" );
+        }
+    }
     // TODO: validate other member in controlInfo
 
     // step 2/3 process changed controlInfo, currently only need to pause worker when needed
@@ -192,18 +203,17 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
     K2LOG_D(log::tsoserver, "Start getting a timestamp batch, got current time.");
 
     // most straightward happy case, fast path
+    // IsReadyToIssueTS is set, and ReservedTimeShreshold is in the future or ignored, and cur time is in a new microsecond where no timestamp is issued yet.
     if (_curControlInfo.IsReadyToIssueTS &&
-//        curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold &&
+        (_curControlInfo.IgnoreThreshold || curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold) &&
         curTBEMicroSecRounded > _lastRequestTBEMicroSecRounded)
     {
         if (curTBEMicroSecRounded + 1000 > _curControlInfo.ReservedTimeShreshold)
         {
-            // this is really a bug if ReservedTimeShreshold is not updated promptly. 
-            K2LOG_W(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeShreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}. BUGBUG- currently ignored",  curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeShreshold);
-
-            // BUGBUG 
-            // Temporary ignore this error, remove this if block and commented out line 
-            // in out if condition statement "curTBEMicroSecRounded + 1000 < _curControlInfo.ReservedTimeShreshold &&"
+            K2ASSERT(log::tsoserver, _curControlInfo.IgnoreThreshold, "Only when shreshold is ignored, we can issue timestamp beyond researvedTimeShreshold.");
+            // this is really a bug if ReservedTimeShreshold is not updated promptly, this could happen in single machine dev env where the control core is busy.
+            K2LOG_D(log::tsoserver, "Issue timestamp batch ignoring reservedTimeShreshold. CurTime + 1000us : {} and shreshold(us counts): {}. ",  
+                curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeShreshold);
         }
 
         uint16_t batchSizeToIssue = std::min(batchSizeRequested, (uint16_t)(1000/_curControlInfo.TBENanoSecStep));
@@ -240,21 +250,28 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
     // step 1/4 sanity check, check IsReadyToIssueTS and possible issued timestamp is within ReservedTimeShreshold
     if (!_curControlInfo.IsReadyToIssueTS)
     {
-        K2LOG_W(log::tsoserver, "Not ready to issue timestamp batch due to IsReadyToIssueTS");
+        K2LOG_W(log::tsoserver, "Not ready to issue timestamp batch due to IsReadyToIssueTS is not set.");
 
         // TODO: consider giving more detail information on why IsReadyToIssueTS is false, e.g. the instance is not master, not init, or wait/sleep
         throw TSONotReadyException();
     }
 
-    // step 2/4 this is case when we try to issue timestamp batch beyond ReservedTimeShreshold (indicating it is not refreshed), this is really a bug and need to root cause.
+    // step 2/4 this is case when we try to issue timestamp batch beyond ReservedTimeShreshold (indicating it is not refreshed). It is allowed only when IgnoreThreshold is set.
     if (curTBEMicroSecRounded + 1000 > _curControlInfo.ReservedTimeShreshold)
     {
-        // this is really a bug if ReservedTimeShreshold is not updated promptly.
-         K2LOG_W(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeShreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}. BUGBUG- currently ignored",  curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeShreshold);
+        if (!_curControlInfo.IgnoreThreshold)
+        {
+            // this is really a bug if ReservedTimeShreshold is not updated promptly.
+            K2LOG_E(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeShreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}.",  
+                curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeShreshold);
 
-        // BUGBUG need to throw here, for now lets just let go through 
-        // Currently this happens as sometime the controller heartbeat/timesyn timed task was not promptly executed due to likely controller core being busy, thus TSOWorkerControlInfo was not properly updated on the worker. 
-        // throw TSONotReadyException();
+            throw TSONotReadyException();
+        }
+        else
+        {
+            K2LOG_I(log::tsoserver, "Issue timestamp batch as IgnoreThreshold is set, ReservedTimeShreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}.",  
+                curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeShreshold);
+        }
     }
 
     // step 3/4 if somehow current time is smaller than last request time

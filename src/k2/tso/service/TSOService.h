@@ -61,13 +61,15 @@ public: // types
    struct TSOWorkerControlInfo
     {
         bool        IsReadyToIssueTS;       // if this core is allowed to issue TS, could be false for various reasons (TODO: consider adding reasons)
+        bool        IgnoreThreshold;        // Ignore ReservedTimeShreshold to allow issue Timestamp regardless. This is for testing or single machine dev env where shreshold update can be delayed.
         uint8_t     TBENanoSecStep;         // step to skip between timestamp in nanoSec, actually same as the number of worker cores
         uint64_t    TBEAdjustment;       // batch ending time adjustment from current chrono::system_clock::now(), in nanoSec;
         uint16_t    TsDelta;                // batch starting time adjustment from TbeTSEAdjustment, basically the uncertainty window size, in nanoSec
+        // TODO: typo ReservedTimeShreshold, should be ReservedTimehreshold
         uint64_t    ReservedTimeShreshold;  // reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that, in nanoSec counts
         uint16_t    BatchTTL;               // TTL of batch issued in nanoseconds, not expected to change once set
 
-        TSOWorkerControlInfo() : IsReadyToIssueTS(false), TBENanoSecStep(0), TBEAdjustment(0), TsDelta(0), ReservedTimeShreshold(0), BatchTTL(0) {};
+        TSOWorkerControlInfo() : IsReadyToIssueTS(false), IgnoreThreshold(false), TBENanoSecStep(0), TBEAdjustment(0), TsDelta(0), ReservedTimeShreshold(0), BatchTTL(0) {};
     };
 
     // TODO: worker/controller statistics structure typedef
@@ -285,6 +287,12 @@ class TSOService::TSOController
     // when this instance become (new) master, it need to get previous master's ReservedTimeShreshold
     // and wait out this time if current time is less than this value
     uint64_t _prevReservedTimeShreshold{ULLONG_MAX};
+
+    // _ignoreReservedTimeThreshold, let TSO controller and worker ignore the _ignoreReservedTimeThreshold
+    // This is need for testing and single box dev env, where the controller core can be too busy to update ReservedTimeShreshold
+    // as controller core(core 0) can run other process/threads, instead of being dedicated only the controller as designed in production env.
+    // TODO: change the default value to false.
+    ConfigVar<bool> _ignoreReservedTimeThreshold{"tso.ignore_reserved_time_threshold", true};
 
     // Lease at the Paxos, whem this is master, updated by heartbeat.
     uint64_t _myLease;
