@@ -100,12 +100,12 @@ private:
         future<> district_update = districtUpdate();
         future<> CId_get = getCIdByLastName();
 
-        return when_all_succeed(std::move(warehouse_update), std::move(district_update), std::move(CId_get))
+        return when_all_succeed(std::move(warehouse_update), std::move(district_update), std::move(CId_get)).discard_result()
         .then([this] () {
             future<> history_update = historyUpdate();
             future<> customer_update = customerUpdate();
 
-            return when_all_succeed(std::move(customer_update), std::move(history_update))
+            return when_all_succeed(std::move(customer_update), std::move(history_update)).discard_result()
             .then_wrapped([this] (auto&& fut) {
                 if (fut.failed()) {
                     _failed = true;
@@ -390,7 +390,7 @@ private:
             return when_all_succeed(std::move(line_updates), std::move(order_update), std::move(new_order_update), std::move(district_update)).discard_result();
         });
 
-        return when_all_succeed(std::move(main_f), std::move(customer_f), std::move(warehouse_f))
+        return when_all_succeed(std::move(main_f), std::move(customer_f), std::move(warehouse_f)).discard_result()
         .then_wrapped([this] (auto&& fut) {
             if (fut.failed()) {
                 _failed = true;
@@ -504,13 +504,13 @@ private:
             // Get most recent order_ID when get_customer_id is done
             future<> order_f = getOrderdByCId();
 
-            future<> order_line_f = when_all_succeed(std::move(order_f))
+            future<> order_line_f = when_all_succeed(std::move(order_f)).discard_result()
             .then([this] () {
                 // Get all order-line rows when get_order is done
                 return getOrderLine();
             });
 
-            return when_all_succeed(std::move(customer_f), std::move(order_line_f));
+            return when_all_succeed(std::move(customer_f), std::move(order_line_f)).discard_result();
         })
         // commit txn
         .then_wrapped([this] (auto&& fut) {

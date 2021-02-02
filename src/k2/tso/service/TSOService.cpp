@@ -45,7 +45,7 @@ seastar::future<> TSOService::gracefulStop() {
     K2LOG_I(log::tsoserver, "stop");
 
     // Always use core 0 as controller and the rest as workers
-    if (seastar::engine().cpu_id() == 0)
+    if (seastar::this_shard_id() == 0)
     {
         K2ASSERT(log::tsoserver, _controller != nullptr, "_controller null!");
         K2LOG_I(log::tsoserver, "TSOController stops");
@@ -71,7 +71,7 @@ seastar::future<> TSOService::start()
     }
 
     // Always use core 0 as controller and the rest as workers
-    if (seastar::engine().cpu_id() == 0)
+    if (seastar::this_shard_id() == 0)
     {
         K2LOG_I(log::tsoserver, "TSOController starts");
         _controller = std::make_unique<TSOService::TSOController>(*this);
@@ -87,7 +87,7 @@ seastar::future<> TSOService::start()
 
 void TSOService::UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo)
 {
-    K2ASSERT(log::tsoserver, seastar::engine().cpu_id() != 0 && _worker != nullptr, "UpdateWorkerControlInfo should be on worker core only!");
+    K2ASSERT(log::tsoserver, seastar::this_shard_id() != 0 && _worker != nullptr, "UpdateWorkerControlInfo should be on worker core only!");
 
     return _worker->UpdateWorkerControlInfo(controlInfo);
 }
@@ -96,7 +96,7 @@ std::vector<k2::String> TSOService::GetWorkerURLs()
 {
     // NOTE: this fn is called by controller during start() on worker after the transport is initialized
     // so directly return the transport config info
-    K2ASSERT(log::tsoserver, seastar::engine().cpu_id() != 0, "GetWorkerURLs should be on worker core only!");
+    K2ASSERT(log::tsoserver, seastar::this_shard_id() != 0, "GetWorkerURLs should be on worker core only!");
     K2LOG_I(log::tsoserver, "GetWorkerURLs on worker core. tcp url is:{}", k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto));
 
     std::vector<k2::String> result;

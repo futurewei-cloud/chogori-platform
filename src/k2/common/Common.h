@@ -31,6 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <seastar/core/shared_ptr.hh>
+#include <seastar/core/when_all.hh>
 #include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
 #include <set>

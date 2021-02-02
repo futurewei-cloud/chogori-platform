@@ -116,7 +116,7 @@ RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::builder(VirtualNetworkStack::D
 RPCProtocolFactory::BuilderFunc_t TCPRPCProtocol::builder(VirtualNetworkStack::Dist_t& vnet, IAddressProvider& addrProvider) {
     K2LOG_D(log::tx, "builder creating multi-address tcp protocol");
     return [&vnet, &addrProvider]() mutable -> seastar::shared_ptr<IRPCProtocol> {
-        auto myID = seastar::engine().cpu_id() % seastar::smp::count;
+        auto myID = seastar::this_shard_id() % seastar::smp::count;
         K2LOG_D(log::tx, "builder created");
 
         return seastar::static_pointer_cast<IRPCProtocol>(

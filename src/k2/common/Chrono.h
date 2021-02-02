@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <chrono>
 #include <iostream>
+#undef FMT_UNICODE
 #define FMT_UNICODE 0
 
 #include <fmt/format.h>

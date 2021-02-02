@@ -264,7 +264,7 @@ public:  // application lifespan
 
 private:
     seastar::future<> _discovery() {
-        auto myID = seastar::engine().cpu_id();
+        auto myID = seastar::this_shard_id();
         K2LOG_I(log::txbench, "performing service discovery on core {}", myID);
         if (myID >= _tcpRemotes.size()) {
             K2LOG_W(log::txbench, "No TCP remote endpoint defined for core {}", myID);

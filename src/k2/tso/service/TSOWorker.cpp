@@ -218,7 +218,7 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
 
         uint16_t batchSizeToIssue = std::min(batchSizeRequested, (uint16_t)(1000/_curControlInfo.TBENanoSecStep));
 
-        result.TBEBase = curTBEMicroSecRounded + seastar::engine().cpu_id() - 1;
+        result.TBEBase = curTBEMicroSecRounded + seastar::this_shard_id() - 1;
         result.TSOId = _tsoId;
         result.TsDelta = _curControlInfo.TsDelta;
         result.TTLNanoSec = _curControlInfo.BatchTTL;
@@ -303,7 +303,7 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
     K2ASSERT(log::tsoserver, curTBEMicroSecRounded == _lastRequestTBEMicroSecRounded, "last and this requests are in same microsecond!");
 
     TimestampBatch result;
-    result.TBEBase = curTBEMicroSecRounded + seastar::engine().cpu_id() - 1 + _lastRequestTimeStampCount * _curControlInfo.TBENanoSecStep;
+    result.TBEBase = curTBEMicroSecRounded + seastar::this_shard_id() - 1 + _lastRequestTimeStampCount * _curControlInfo.TBENanoSecStep;
     result.TSOId = _tsoId;
     result.TsDelta = _curControlInfo.TsDelta;
     result.TTLNanoSec = _curControlInfo.BatchTTL;

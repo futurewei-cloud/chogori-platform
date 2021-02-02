@@ -106,7 +106,7 @@ public:  // application lifespan
             _dataSize(), _reads(), _writes(), _pipelineDepth(), _testDuration());
         _data = String('.', _dataSize());
         _stopped = false;
-        auto myid = seastar::engine().cpu_id();
+        auto myid = seastar::this_shard_id();
         schemaPtr = std::make_shared<dto::Schema>(_schema);
         _gen.seed(myid);
 

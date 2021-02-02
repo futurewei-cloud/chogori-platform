@@ -83,7 +83,7 @@ public:  // application lifespan
 
 private:
     std::unordered_map<uint64_t, BenchSession> _sessions;
-    uint64_t _sessionId = seastar::engine().cpu_id();
+    uint64_t _sessionId = seastar::this_shard_id();
 }; // class Service
 
 int main(int argc, char** argv) {

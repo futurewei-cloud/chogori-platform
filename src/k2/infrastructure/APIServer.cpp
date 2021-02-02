@@ -51,7 +51,7 @@ seastar::future<>
 APIServer::start() {
     K2LOG_I(log::apisvr, "starting JSON API server on port");
 
-    int coreID = seastar::engine().cpu_id();
+    int coreID = seastar::this_shard_id();
     seastar::ipv4_addr listenAddr;
     bool parsed = false;
     if (size_t(coreID) < _tcp_endpoints().size()) {

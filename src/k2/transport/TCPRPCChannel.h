@@ -26,7 +26,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 // third-party
 #include <seastar/net/api.hh> // seastar's network stuff
-#include <seastar/util/std-compat.hh>
 #include <seastar/net/packet.hh>
 
 // k2
@@ -133,7 +132,7 @@ private: // fields
     seastar::future<seastar::connected_socket> _futureSocket;
 
     // used to properly chain sends
-    seastar::compat::optional<seastar::future<>> _sendFuture;
+    std::optional<seastar::future<>> _sendFuture;
 
 private: // Not needed
     TCPRPCChannel(const TCPRPCChannel& o) = delete;
