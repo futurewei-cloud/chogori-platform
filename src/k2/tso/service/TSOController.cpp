@@ -264,7 +264,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         // case 1, if we lost lease, suicide now
         if (curTimeTSECount >  _myLease)
         {
-            K2LOG_I(log::tsoserver, "Lost lease detected during HeartBeat. cur time and mylease : {}:{}",curTimeTSECount, _myLease);
+            K2LOG_D(log::tsoserver, "Lost lease detected during HeartBeat. cur time and mylease : {}:{}",curTimeTSECount, _myLease);
             //K2ASSERT(log::tsoserver, false, "Lost lease detected during HeartBeat.");
             //Suicide();
         }
