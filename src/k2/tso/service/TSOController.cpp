@@ -296,16 +296,16 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
             .then([this] (std::tuple<uint64_t, uint64_t> newLeaseAndThreshold) mutable {
                 // set new lease and new threshold
                 _myLease = std::get<0>(newLeaseAndThreshold);
-                _controlInfoToSend.ReservedTimeShreshold = std::get<1>(newLeaseAndThreshold);
+                _controlInfoToSend.ReservedTimeThreshold = std::get<1>(newLeaseAndThreshold);
 
                 if (!_controlInfoToSend.IgnoreThreshold)
                 {
                     uint64_t newCurTimeTSECount = TimeAuthorityNow();
-                    K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
+                    K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeThreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
                         "new lease and ReservedTimeThreshold should be in the future.");
                 }
 
-                K2LOG_D(log::tsoserver, "SendWorkersControlInfo during regular HeartBeat. new ReservedTimeShreshold:{}", _controlInfoToSend.ReservedTimeShreshold);
+                K2LOG_D(log::tsoserver, "SendWorkersControlInfo during regular HeartBeat. new ReservedTimeThreshold:{}", _controlInfoToSend.ReservedTimeThreshold);
                 // update worker!
                 return SendWorkersControlInfo();
             });
@@ -347,7 +347,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
     }
 
     // set _isMasterInstance to false send to workers first to stop issuing timestamp
-    // and then nicely reduce ReservedTimeShreshold to new currentTime + _lastSentControlInfo.TBEAdjustment and remove lease
+    // and then nicely reduce ReservedTimeThreshold to new currentTime + _lastSentControlInfo.TBEAdjustment and remove lease
     // so that other standby can quickly become new master
     _isMasterInstance = false;
 
@@ -356,7 +356,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
             //uint64_t newReservedTimeShresholdTSECount = now_nsec_count()
             //    + std::max(_lastSentControlInfo.TBEAdjustment, (uint64_t) _defaultTBWindowSize().count());
 
-            // remove our lease on Paxos and update ReservedTimeShreshold
+            // remove our lease on Paxos and update ReservedTimeThreshold
             return RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*newReservedTimeShresholdTSECount*/);
         });
 }
@@ -379,7 +379,7 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
         // worker can only issue TS under following condition
         if (!_stopRequested &&                                              // stop is not requested
             _prevReservedTimeShreshold < curTimeTSECount &&                 // _prevReservedTimeShreshold is in the past
-            (_controlInfoToSend.ReservedTimeShreshold > curTimeTSECount || _controlInfoToSend.IgnoreThreshold))    // new ReservedTimeShreshold is in the future OR it is ignored
+            (_controlInfoToSend.ReservedTimeThreshold > curTimeTSECount || _controlInfoToSend.IgnoreThreshold))    // new ReservedTimeThreshold is in the future OR it is ignored
         {
             readyToIssue = true;
         }

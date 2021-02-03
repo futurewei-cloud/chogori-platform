@@ -60,16 +60,15 @@ public: // types
     // all ticks are in nanoseconds
    struct TSOWorkerControlInfo
     {
-        bool        IsReadyToIssueTS;       // if this core is allowed to issue TS, could be false for various reasons (TODO: consider adding reasons)
-        bool        IgnoreThreshold;        // Ignore ReservedTimeShreshold to allow issue Timestamp regardless. This is for testing or single machine dev env where shreshold update can be delayed.
+        bool        IsReadyToIssueTS;       // if this worker core is allowed to issue TS, could be false for various reasons (TODO: consider adding reasons)
+        bool        IgnoreThreshold;        // Ignore ReservedTimeThreshold to allow issue Timestamp regardless. This is for testing or single machine dev env where shreshold update can be delayed.
         uint8_t     TBENanoSecStep;         // step to skip between timestamp in nanoSec, actually same as the number of worker cores
-        uint64_t    TBEAdjustment;       // batch ending time adjustment from current chrono::system_clock::now(), in nanoSec;
+        uint64_t    TBEAdjustment;          // batch ending time adjustment from current chrono::system_clock::now(), in nanoSec;
         uint16_t    TsDelta;                // batch starting time adjustment from TbeTSEAdjustment, basically the uncertainty window size, in nanoSec
-        // TODO: typo ReservedTimeShreshold, should be ReservedTimehreshold
-        uint64_t    ReservedTimeShreshold;  // reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that, in nanoSec counts
+        uint64_t    ReservedTimeThreshold;  // reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that, in nanoSec counts. It is extended with each TimeSync with TimeAuthority/Atomic clock.
         uint16_t    BatchTTL;               // TTL of batch issued in nanoseconds, not expected to change once set
 
-        TSOWorkerControlInfo() : IsReadyToIssueTS(false), IgnoreThreshold(false), TBENanoSecStep(0), TBEAdjustment(0), TsDelta(0), ReservedTimeShreshold(0), BatchTTL(0) {};
+        TSOWorkerControlInfo() : IsReadyToIssueTS(false), IgnoreThreshold(false), TBENanoSecStep(0), TBEAdjustment(0), TsDelta(0), ReservedTimeThreshold(0), BatchTTL(0) {};
     };
 
     // TODO: worker/controller statistics structure typedef
@@ -114,8 +113,8 @@ private:
 // TSOController - core 0 of a TSO server, all other cores are TSOWorkers.
 // responsible to handle following four things
 // 1. Upon start, join the cluster and get the for instance (role of instance can change upon API SetRole() as well)
-// 2. Upon role change, set or adjust heartbeat - If master role, heartbeat also extends lease and extends ReservedTimeShreshold. If standby role, hearbeat check master's lease/healthness.
-//    In master role, if ReservedTimeShreshold get extended, update TSOWorkerControlInfo to all workers.
+// 2. Upon role change, set or adjust heartbeat - If master role, heartbeat also extends lease and extends ReservedTimeThreshold. If standby role, hearbeat check master's lease/healthness.
+//    In master role, if ReservedTimeThreshold get extended, update TSOWorkerControlInfo to all workers.
 // 3. Periodically checkAtomicGPSClock, and adjust TBEAdjustment if needed and further more update TSOWorkerControlInfo to all workers upon such adjustment. Note: If not master role, doing this for optimization.
 // 4. If master role, periodically collect statistics from all worker cores and reports.
 class TSOService::TSOController
@@ -204,7 +203,7 @@ class TSOService::TSOController
     seastar::future<> SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold);
 
     // periodically send heart beat and handle heartbeat response
-    // If this is Master Instance, heart beat will renew the lease, extend the ReservedTimeShreshold if needed
+    // If this is Master Instance, heart beat will renew the lease, extend the ReservedTimeThreshold if needed
     // If this is Standby Instance, heart beat will maintain the membership, and check Master Instance status and take master role if needed
     void HeartBeat();
 
@@ -228,7 +227,7 @@ class TSOService::TSOController
     // The current time (uncertainty window) will be <steady_clock::now() + T - V/2, steady_clock::now() + T + V/2>
     seastar::future<std::tuple<uint64_t, uint64_t>> CheckAtomicGPSClock();
 
-    // Once we have updated controlInfo due to any reason, e.g. role change, ReservedTimeShreshold or drift from atomic clock,
+    // Once we have updated controlInfo due to any reason, e.g. role change, ReservedTimeThreshold or drift from atomic clock,
     // propagate the update to all workers and
     // The control into to send is at member _controlInfoToSend, except IsReadyToIssueTS, which will be set inside this fn based on the current state
     seastar::future<> SendWorkersControlInfo();
@@ -284,12 +283,12 @@ class TSOService::TSOController
     // known current time of TA(TimeAuthority), local steady_clock time now + the diff between, in units of nanosec since Jan. 1, 1970 (TAI)
     inline uint64_t TimeAuthorityNow() {return now_nsec_count() +  _diffTALocalInNanosec; }
 
-    // when this instance become (new) master, it need to get previous master's ReservedTimeShreshold
+    // when this instance become (new) master, it need to get previous master's ReservedTimeThreshold
     // and wait out this time if current time is less than this value
     uint64_t _prevReservedTimeShreshold{ULLONG_MAX};
 
     // _ignoreReservedTimeThreshold, let TSO controller and worker ignore the _ignoreReservedTimeThreshold
-    // This is need for testing and single box dev env, where the controller core can be too busy to update ReservedTimeShreshold
+    // This is need for testing and single box dev env, where the controller core can be too busy to update ReservedTimeThreshold
     // as controller core(core 0) can run other process/threads, instead of being dedicated only the controller as designed in production env.
     // TODO: change the default value to false.
     ConfigVar<bool> _ignoreReservedTimeThreshold{"tso.ignore_reserved_time_threshold", true};
