@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+apt install nlohmann-json3-dev
 
 mkdir -p deps
 cd deps
