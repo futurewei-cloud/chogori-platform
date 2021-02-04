@@ -249,6 +249,10 @@ private:
                     curTxn = (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses());
                 } else if (txn_type <= 47) {
                     curTxn = (TPCCTxn*) new OrderStatusT(_random, _client, w_id);
+                } else if (txn_type <= 51) {
+                    // range from 1-10 is allowed, otherwise set to 10
+                    uint16_t batch_size = (_delivery_txn_batch_size() <= 10 && _delivery_txn_batch_size() > 0) ? batch_size : 10;
+                    curTxn = (TPCCTxn*) new DeliveryT(_random, _client, w_id, batch_size);
                 } else {
                     curTxn = (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
                 }
@@ -270,6 +274,9 @@ private:
                     } else if (txn_type <= 47) {
                         _orderStatusTxns++;
                         _orderStatusLatency.add(dur);
+                    } else if (txn_type <= 51) {
+                        _deliveryTxns++;
+                        _deliveryLatency.add(dur);
                     } else {
                         _newOrderTxns++;
                         _newOrderLatency.add(dur);
@@ -334,15 +341,18 @@ private:
     ConfigVar<bool> _do_verification{"do_verification"};
     ConfigVar<int> _max_warehouses{"num_warehouses"};
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
+    ConfigVar<uint16_t> _delivery_txn_batch_size{"delivery_txn_batch_size"};
 
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _newOrderLatency;
     k2::ExponentialHistogram _paymentLatency;
     k2::ExponentialHistogram _orderStatusLatency;
+    k2::ExponentialHistogram _deliveryLatency;
     uint64_t _completedTxns{0};
     uint64_t _newOrderTxns{0};
     uint64_t _paymentTxns{0};
     uint64_t _orderStatusTxns{0};
+    uint64_t _deliveryTxns{0};
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
 }; // class Client
@@ -364,7 +374,8 @@ int main(int argc, char** argv) {;
         ("customers_per_district", bpo::value<uint32_t>()->default_value(3000), "The number of customers per district")
         ("do_verification", bpo::value<bool>()->default_value(true), "Run verification tests after run")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
-        ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
+        ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
+        ("delivery_txn_batch_size", bpo::value<uint16_t>()->default_value(10), "The batch number of Delivery transaction");
 
     app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<Client>();
