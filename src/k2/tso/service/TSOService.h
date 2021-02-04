@@ -124,6 +124,7 @@ class TSOService::TSOController
         _outer(outer),
         _heartBeatTimer([this]{this->HeartBeat();}),
         _timeSyncTimer([this]{this->TimeSync();}),
+        _clusterGossipTimer([this]{this->ClusterGossip();}),
         _statsUpdateTimer([this]{this->CollectAndReportStats();}){};
 
     // start the controller
@@ -218,6 +219,11 @@ class TSOService::TSOController
     // The control into to send is at member _controlInfoToSend, except IsReadyToIssueTS, which will be set inside this fn based on the current state
     seastar::future<> SendWorkersControlInfo();
 
+    // cluster gossip timer callback fn.
+    void ClusterGossip();
+    //  helper function which do the real work of cluster gossip
+    seastar::future<> DoClusterGossip();
+
     // periodically collect stats from workers and report
     void CollectAndReportStats();
     seastar::future<> DoCollectAndReportStats();
@@ -285,6 +291,14 @@ class TSOService::TSOController
     seastar::timer<> _timeSyncTimer;
     ConfigDuration _timeSyncTimerInterval{"tso.ctrol_time_sync_interval", 10ms};
     seastar::future<> _timeSyncFuture = seastar::make_ready_future<>();  // need to keep track of timeSync task future for proper shutdown
+
+    // timer for cluster gossip
+    // TODO: implement HUYGENS algorithm during gossip to further reduce uncertainty window.
+    // 1000ms should be good default value as 2s is used in [HUYGENS] algorithm (https://www.usenix.org/system/files/conference/nsdi18/nsdi18-geng.pdf)
+    seastar::timer<> _clusterGossipTimer;
+    ConfigDuration _clusterGossipTimerInterval{"tso.ctrol_cluster_gossip_interval", 1000ms};
+    seastar::future<> _clusterGossipFuture = seastar::make_ready_future<>();  // need to keep track of cluster gossip task future for proper shutdown
+    uint64_t _lastClusterGossipTime{0};     // last time cluster gossip happened. After fully implementation, it could be updated during handling of incoming gossip as well as outgoing message.
 
     // this is the batch uncertainty windows size, should be less than MTL(minimal transaction latency),
     // this is also used at the TSO client side as batch's TTL(Time To Live)

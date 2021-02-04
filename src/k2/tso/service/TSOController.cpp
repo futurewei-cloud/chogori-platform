@@ -49,6 +49,7 @@ seastar::future<> TSOService::TSOController::start()
             // set timers
             _heartBeatTimer.arm(_heartBeatTimerInterval());
             _timeSyncTimer.arm(_timeSyncTimerInterval());
+            _clusterGossipTimer.arm(_clusterGossipTimerInterval());
             _statsUpdateTimer.arm(_statsUpdateTimerInterval());
 
             // register RPC APIs
@@ -70,6 +71,7 @@ seastar::future<> TSOService::TSOController::gracefulStop() {
         .then([this] () mutable {
             _heartBeatTimer.cancel();
             _timeSyncTimer.cancel();
+            _clusterGossipTimer.cancel();
             _statsUpdateTimer.cancel();
 
             // unregistar all APIs
@@ -242,7 +244,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
 // really send the _controlInfoToSend to worker, and only place to set IsReadyToIssueTS inside _controlInfoToSend based on current state
 seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
 {
-    // step 1/3 decide IsReadyToIssueTS should be true or not
+    // step 1/3 decide IsReadyToIssueTS to be true or not
     bool readyToIssue = false;
     uint64_t curTimeTSECount = TimeAuthorityNow();
 
@@ -254,6 +256,7 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
 
     // worker can only issue TS under following condition
     if (!_stopRequested &&                                              // stop is not requested
+        _inSyncWithCluster &&                                           // our time is correct according the cluster gossip
         (_controlInfoToSend.ReservedTimeThreshold > curTimeTSECount || _controlInfoToSend.IgnoreThreshold))    // new ReservedTimeThreshold is in the future OR it is ignored
     {
         readyToIssue = true;
@@ -360,13 +363,63 @@ seastar::future<std::tuple<uint64_t, uint64_t>> TSOService::TSOController::Check
     return seastar::make_ready_future<std::tuple<uint64_t, uint64_t>>(fakeResult);
 }
 
+void TSOService::TSOController::ClusterGossip()
+{
+    // cluster gossip task will do nothing when _stopRequested
+    if (_stopRequested)
+        return;
+
+    _timeSyncFuture = DoClusterGossip().then( [this] () mutable
+    {
+        if (!_stopRequested)
+        {
+            _clusterGossipTimer.arm(_clusterGossipTimerInterval());
+        }
+    });
+
+    return;
+}
+
+seastar::future<> TSOService::TSOController::DoClusterGossip()
+{
+    //TODO: implement HUYGEN algorithm in gossip and verify our own TimeAuthority/AtomicClock
+    //      further more, even our AtomicClock may be off, it may be consistent off from cluster's time with no/little drifting
+    //      consider insert an adjustment, instead of disable this server
+
+    auto curTime = TimeAuthorityNow();
+
+    if (_clusterGossipTimerInterval().count() < (int64_t)(curTime - _lastClusterGossipTime))
+    {
+        K2LOG_D(log::tsoserver, "skip DoClusterGossip, last clust gossip time:{}, gossip timer interval:{}", _lastClusterGossipTime, _clusterGossipTimerInterval().count());
+        return seastar::make_ready_future<>();
+    }
+    else
+    {
+        K2LOG_D(log::tsoserver, "DoClusterGossip, last clust gossip time:{}", _lastClusterGossipTime);
+        _lastClusterGossipTime = curTime;
+    }
+
+    // TODO: updating cluster members, check time etc.
+    //_TSOServerURLs.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
+    // K2LOG_I(log::tsoserver, "TSO Server TCP endpoints are: {}", _TSOServerURLs);
+    _inSyncWithCluster = true;
+
+    if (!_inSyncWithCluster)
+    {
+        K2LOG_F(log::tsoserver, "This TSO server time is off from cluster based on gossip result. It is not able to serve client request! Please check its atomic clock!");
+    }
+
+    return seastar::make_ready_future<>();
+
+}
+
 void TSOService::TSOController::CollectAndReportStats()
 {
     _statsUpdateFuture = DoCollectAndReportStats().then( [this] () mutable
     {
         if (!_stopRequested)
         {
-            _statsUpdateTimer.arm(_timeSyncTimerInterval());
+            _statsUpdateTimer.arm(_statsUpdateTimerInterval());
         }
     });
 
