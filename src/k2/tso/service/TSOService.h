@@ -272,10 +272,6 @@ class TSOService::TSOController
     // known current time of TA(TimeAuthority), local steady_clock time now + the diff between, in units of nanosec since Jan. 1, 1970 (TAI)
     inline uint64_t TimeAuthorityNow() {return now_nsec_count() +  _diffTALocalInNanosec; }
 
-    // when this instance become (new) master, it need to get previous master's ReservedTimeThreshold
-    // and wait out this time if current time is less than this value
-    uint64_t _prevReservedTimeShreshold{0};
-
     // _ignoreReservedTimeThreshold, let TSO controller and worker ignore the _ignoreReservedTimeThreshold
     // This is need for testing and single box dev env, where the controller core can be too busy to update ReservedTimeThreshold
     // as controller core(core 0) can run other process/threads, instead of being dedicated only the controller as designed in production env.

@@ -219,28 +219,6 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         //Suicide();
     }
 
-    // case 2, if prevReservedTimeShreshold is in future and within one heartbeat, sleep out and recursive call DoHeartBeat()
-    // prevReservedTimeShreshold - curTimeTSECount < _heartBeatTimerInterval().count()
-    if (_prevReservedTimeShreshold > curTimeTSECount &&
-        (_prevReservedTimeShreshold - curTimeTSECount < (uint64_t) _heartBeatTimerInterval().count()))
-    {
-        K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold is one heardbead away to expire, sleep over it and do HeartBeat again");
-        std::chrono::nanoseconds sleepDur(_prevReservedTimeShreshold - curTimeTSECount);
-        return seastar::sleep(sleepDur).then([this]
-        {
-            K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold was one heardbead away to expire, slept over it and about to HeartBeat again");
-            return DoHeartBeat();
-        });
-    }
-
-    // case 3, if prevReservedTimeShreshold is in future and beyond one heartbeat, send heartbeat with renew lease only
-    if (_prevReservedTimeShreshold > curTimeTSECount &&
-        (_prevReservedTimeShreshold - curTimeTSECount >= (uint64_t) _heartBeatTimerInterval().count()))
-    {
-        K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold is in the future and beyong one heardbead, just renew lease without SendWorkerControlInfo");
-        return RenewLeaseOnly().then([this](uint64_t newLease) {_myLease = newLease;});
-    }
-
     // case 4, regular situation, extending lease and ReservedTimeThreshold, then SendWorkersControlInfo
     return RenewLeaseAndExtendReservedTimeThreshold()
         .then([this] (std::tuple<uint64_t, uint64_t> newLeaseAndThreshold) mutable {
@@ -261,21 +239,9 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
         });
 }
 
-
 seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
 {
     K2ASSERT(log::tsoserver, _stopRequested, "Why are we here when stop is not requested?");
-
-    uint64_t curTimeTSECount = TimeAuthorityNow();
-
-    if (_prevReservedTimeShreshold > curTimeTSECount)
-    {
-        // we should not yet enable workers
-        K2ASSERT(log::tsoserver, _lastSentControlInfo.IsReadyToIssueTS == false, "workers should not be in issuing TS state!");
-
-        // remove our lease on Paxos
-        return RemoveLeaseFromPaxos();
-    }
 
     return SendWorkersControlInfo()
         .then([this] () mutable {
