@@ -199,9 +199,6 @@ class TSOService::TSOController
     // helper to do the HeartBeat(), could be called from regular HeartBeat(), or during initialization or inside HearBeat() when role need to be changed
     seastar::future<> DoHeartBeat();
 
-    // helper for DoHeartBeat() when _stopRequested
-    seastar::future<> DoHeartBeatDuringStop();
-
     // this is lambda set in HeartBeat() to handle the response,
     // For standby instance, may
     seastar::future<> HandleHeartBeatResponse() { return seastar::make_ready_future<>(); }
@@ -228,17 +225,6 @@ class TSOService::TSOController
 
     // suicide when and only when we are master and find we lost lease
     void Suicide();
-
-
-    // helpers to talk to Paxos
-    // TODO: Consider role change,
-    // TODO: implement this
-    seastar::future<> RemoveLeaseFromPaxos() {return seastar::make_ready_future<>();}
-    seastar::future<> RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*uint64_t newReservedTimsShreshold*/) {return seastar::make_ready_future<>();}
-    seastar::future<uint64_t> RenewLeaseOnly() {return seastar::make_ready_future<uint64_t>(GenNewLeaseVal());}
-
-    // regular heartbeat update to Paxos when not a master
-    seastar::future<> UpdateStandByHeartBeat() {return seastar::make_ready_future<>();}
 
     // regular heartbeat update to Paxos when is a master
     // return future contains newly extended Lease and ReservedTimeThreshold in nanosec count

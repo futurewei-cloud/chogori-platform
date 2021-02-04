@@ -206,7 +206,7 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
 {
     if (_stopRequested)
     {
-        return DoHeartBeatDuringStop();
+        return SendWorkersControlInfo();
     }
 
     uint64_t curTimeTSECount = TimeAuthorityNow();
@@ -236,20 +236,6 @@ seastar::future<> TSOService::TSOController::DoHeartBeat()
             K2LOG_D(log::tsoserver, "SendWorkersControlInfo during regular HeartBeat. new ReservedTimeThreshold:{}", _controlInfoToSend.ReservedTimeThreshold);
             // update worker!
             return SendWorkersControlInfo();
-        });
-}
-
-seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
-{
-    K2ASSERT(log::tsoserver, _stopRequested, "Why are we here when stop is not requested?");
-
-    return SendWorkersControlInfo()
-        .then([this] () mutable {
-            //uint64_t newReservedTimeShresholdTSECount = now_nsec_count()
-            //    + std::max(_lastSentControlInfo.TBEAdjustment, (uint64_t) _defaultTBWindowSize().count());
-
-            // remove our lease on Paxos and update ReservedTimeThreshold
-            return RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*newReservedTimeShresholdTSECount*/);
         });
 }
 
