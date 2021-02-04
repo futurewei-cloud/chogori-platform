@@ -807,7 +807,7 @@ class DeliveryT : public TPCCTxn
 public:
     DeliveryT(RandomContext& random, K23SIClient& client, int16_t w_id, uint16_t batch_size) :
                 _random(random), _client(client), _batch_size(batch_size), _w_id(w_id) {
-        if (_batch_size > 10) K2WARN("DeliveryT Ctor with batch_size bigger than 10. It should be between 1 to 10");
+        if (_batch_size > 10) K2LOG_W(log::tpcc, "DeliveryT Ctor with batch_size bigger than 10. It should be between 1 to 10");
         for (uint16_t i = 0; i < 10; ++i){
             _d_id.push_back(_random.UniformRandom(1, _districts_per_warehouse()));
             _o_carrier_id.push_back(_random.UniformRandom(1, 10));
@@ -838,7 +838,7 @@ public:
                     return runWithTxn(start, end); // run txn
                 })
                 .then([this, &batchStart] {
-                    K2LOG_I(log::tpcc, "DeliveryT End status: {0} at {1}th req of batch", _failed, batchStart);
+                    K2LOG_I(log::tpcc, "DeliveryT End status: {} at {}th req of batch", _failed, batchStart);
 
                     // end txn
                     if (_failed) {
@@ -951,13 +951,13 @@ private:
                         dto::SKVRecord& rec = response.records[0];
                         // get order id
                         std::optional<int64_t> orderIDOpt = rec.deserializeField<int64_t>("OID");
-                        K2ASSERT(orderIDOpt, "DeliveryT getOrderID() retrieved null value.");
+                        K2ASSERT(log::tpcc, orderIDOpt, "DeliveryT getOrderID() retrieved null value.");
                         _NO_O_ID[idx] = *orderIDOpt;
 
                         return make_ready_future<bool>(true);
                     } else {
-                        K2LOG_I(log::tpcc, "DeliveryT parallel request [{0}]: not found Order ID "
-                                "matches w_id:{1}, d_id:{2}", idx, _w_id, _d_id[idx]);
+                        K2LOG_I(log::tpcc, "DeliveryT parallel request [{}]: not found Order ID "
+                                "matches w_id:{}, d_id:{}", idx, _w_id, _d_id[idx]);
                         // set all output values to -1
                         _NO_O_ID[idx] = -1;
                         _O_C_ID[idx] = -1;
@@ -965,8 +965,8 @@ private:
 
                         // report MISS_condition occurs more than once of the delivery transaction
                         if (_miss_once) {
-                            K2INFO("TPCC DeliveryT MISS_Condition: occurs more than once! not Found Order ID matches w_id["
-                                    << _w_id << "] & d_id[" << _d_id[idx] << "] in New-Order table"); 
+                            K2LOG_I(log::tpcc, "TPCC DeliveryT MISS_Condition: occurs more than once! not Found "
+                                    "Order ID matches w_id[{}] & d_id[{}] in New-Order table", _w_id, _d_id[idx]);
                         }
                         _miss_once = true;
 
