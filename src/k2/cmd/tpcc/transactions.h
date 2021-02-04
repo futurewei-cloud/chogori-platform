@@ -838,7 +838,7 @@ public:
                     return runWithTxn(start, end); // run txn
                 })
                 .then([this, &batchStart] {
-                    K2LOG_D(log::tpcc, "DeliveryT End status: {}", _failed, " at ", batchStart);
+                    K2LOG_I(log::tpcc, "DeliveryT End status: {0} at {1}th req of batch", _failed, batchStart);
 
                     // end txn
                     if (_failed) {
@@ -919,7 +919,7 @@ private:
         return _client.createQuery(tpccCollectionName, "neworder")
         .then([this, idx](auto&& response) mutable {
             if (!response.status.is2xxOK()) {
-                K2LOG_D(log::tpcc, "DeliveryT getOrderID createQuery failed, status: {}", response.status);
+                K2LOG_I(log::tpcc, "DeliveryT getOrderID createQuery failed, status: {}", response.status);
                 _failed = true;
                 return make_ready_future<bool>(false);
             }
@@ -942,7 +942,7 @@ private:
                 return _txn.query(query_oid)
                 .then([this, idx, &query_oid] (auto&& response) mutable {
                     if (!response.status.is2xxOK()) {
-                        K2LOG_D(log::tpcc, "DeliveryT getOrderID query response Error, status: {}", response.status);
+                        K2LOG_I(log::tpcc, "DeliveryT getOrderID query response Error, status: {}", response.status);
                         _failed = true;
                         return make_ready_future<bool>(false);
                     }
@@ -956,8 +956,8 @@ private:
 
                         return make_ready_future<bool>(true);
                     } else {
-                        K2LOG_D(log::tpcc, "DeliveryT parallel request [", idx, "]: not found Order ID matches w_id:",
-                                _w_id, ", d_id:", _d_id[idx]);
+                        K2LOG_I(log::tpcc, "DeliveryT parallel request [{0}]: not found Order ID "
+                                "matches w_id:{1}, d_id:{2}", idx, _w_id, _d_id[idx]);
                         // set all output values to -1
                         _NO_O_ID[idx] = -1;
                         _O_C_ID[idx] = -1;
