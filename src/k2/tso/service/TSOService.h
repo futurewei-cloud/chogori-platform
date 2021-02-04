@@ -178,13 +178,15 @@ class TSOService::TSOController
         // fake new master
         std::tuple<bool, uint64_t> result(true, 0);
         _myLease = GenNewLeaseVal();
-        _masterInstanceURL = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url;
+        // currently just put myself into the cluster. 
+        _TSOServerURLs.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
+        K2LOG_I(log::tsoserver, "TSO Server TCP endpoints are: {}", _TSOServerURLs);
         return seastar::make_ready_future<std::tuple<bool, uint64_t>>(result);
     }
 
     // APIs registration
     // APIs to TSO clients
-    void RegisterGetTSOMasterURL();
+    void RegisterGetTSOServerURLs();
     void RegisterGetTSOWorkersURLs();
     // internal API responses Paxos and Atomic/GPS clock();
     void RegisterACKPaxos() { return; }
@@ -270,8 +272,8 @@ class TSOService::TSOController
     // _isMasterInstance, set when join cluster or with heartbeat
     bool _isMasterInstance{false};
 
-    // URL of current TSO master instance
-    k2::String _masterInstanceURL;
+    // tcp URLs of all current live TSO server instances in the TSO server cluster
+    std::vector<k2::String> _TSOServerURLs;
 
     // worker cores' URLs, each worker can have mulitple urls
     std::vector<std::vector<k2::String>> _workersURLs;

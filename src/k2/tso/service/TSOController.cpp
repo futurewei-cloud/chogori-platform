@@ -53,7 +53,7 @@ seastar::future<> TSOService::TSOController::start()
             _statsUpdateTimer.arm(_statsUpdateTimerInterval());
 
             // register RPC APIs
-            RegisterGetTSOMasterURL();
+            RegisterGetTSOServerURLs();
             RegisterGetTSOWorkersURLs();
 
             K2LOG_I(log::tsoserver, "TSOController started");
@@ -74,7 +74,7 @@ seastar::future<> TSOService::TSOController::gracefulStop() {
             _statsUpdateTimer.cancel();
 
             // unregistar all APIs
-            RPC().registerMessageObserver(dto::Verbs::GET_TSO_MASTERSERVER_URL, nullptr);
+            RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVER_URLS, nullptr);
             RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, nullptr);
             // unregister internal APIs
             //RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
@@ -200,13 +200,25 @@ seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint
     }
 };
 
-void TSOService::TSOController::RegisterGetTSOMasterURL()
+/*
+   GET_TSO_SERVER_URLS
+
+   TSO servers are a group of independent servers connected to its own TimeAuthority/AtomicClock
+   This API allow client to get all currently live TSO servers from any one of them. 
+   TSO client is expected to start with a cmd option prividing a subset of TSO servers and update the list later. 
+   TODO:
+      1. implment client side logic of updating the server list by calling this API.
+      2. TSO servers could form a gossip cluster, to discovery each other and more rarely to detech if anyone's 
+         TimeAuthroity/AtomicClock is out of band. 
+ 
+*/
+void TSOService::TSOController::RegisterGetTSOServerURLs()
 {
-    k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_MASTERSERVER_URL, [this](k2::Request&& request) mutable
+    k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_SERVER_URLS, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
-        K2LOG_I(log::tsoserver, "Master TSO TCP endpoint is: {}", _masterInstanceURL);
-        response->write((void*)_masterInstanceURL.c_str(), _masterInstanceURL.size());
+        response->write(_TSOServerURLs);
+        K2LOG_D(log::tsoserver, "returned TSO Server TCP endpoints are: {}", _TSOServerURLs);
         return k2::RPC().sendReply(std::move(response), request);
     });
 }
