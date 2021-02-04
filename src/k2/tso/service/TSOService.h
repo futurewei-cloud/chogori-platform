@@ -149,17 +149,12 @@ class TSOService::TSOController
     private:
 
     // Design Note:
-    // 1. Interaction between controller and workers
-    //    a) during start(), controller collect workers URLs
-    //       and if controller after JoinServerCluster() find itself is master,
-    //       it will UpdateWorkerControlInfo() through out of band DoHeartBeat() to enable workers start serving requests
-    //    b) Once started, controller will only UpdateWorkerControlInfo() through regular HeartBeat()
-    // 2. Internally inside controller
-    //    a) during start(), initialize controller JoinServerCluster() and if master, update workers through out of band DoHeartBeat()
-    //    b) Once started, only periodically HeartBeat() will handle all complex logic including role change, updating worker, handle gracefully stop()/lost lease suicide().
-    //    c) TimeSyn() only update in memory _controlInfoToSend, which will be sent with next HeartBeat();
+    //    a) during start(), controller collect workers URLs and issue first time DoTimeSync() and update in memory _controlInfoToSend
+    //       and if controller after JoinServerCluster() find if out not itself could continue as the cluster (other servers) may find this server time is off and disallow it to contine
+    //    b) Once can continue starting, controller will do periodically TimeSync() which will update in memory _controlInfoToSend and send to worker by calling UpdateWorkerControlInfo()
 
     // First step of Initialize controller before JoinServerCluster() during start()
+    // Most important thing is to do a time check with local TimeAuthority/AtomicClock
     seastar::future<> InitializeInternal();
 
     // initialize TSOWorkerControlInfo at start()
@@ -168,20 +163,18 @@ class TSOService::TSOController
     seastar::future<> GetAllWorkerURLs();
 
     // Join the TSO server cluster during start().
-    // return tuple
-    //  - element 0 - if this instance is a master or not.
-    //  - element 1 - prevReservedTimeShreshold if this instance is mater, the value need to be waited out by this master instnace to avoid duplicate timestamp.
+    // Get other server URLs and check if this server time is in sync with that of cluster
     // TODO: implement this
-    seastar::future<std::tuple<bool, uint64_t>> JoinServerCluster()
+    seastar::future<> JoinServerCluster()
     {
         K2LOG_I(log::tsoserver, "JoinServerCluster");
-        // fake new master
-        std::tuple<bool, uint64_t> result(true, 0);
+        // fake join cluster
         _myLease = GenNewLeaseVal();
         // currently just put myself into the cluster. 
         _TSOServerURLs.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
         K2LOG_I(log::tsoserver, "TSO Server TCP endpoints are: {}", _TSOServerURLs);
-        return seastar::make_ready_future<std::tuple<bool, uint64_t>>(result);
+        _inSyncWithCluster = true;
+        return seastar::make_ready_future<>();
     }
 
     // APIs registration
@@ -197,12 +190,6 @@ class TSOService::TSOController
     {
         return seastar::make_ready_future<>();
     }
-
-    // Change my role inside the controller, from Master to StandBy(isMaster passed in is true) or from Standby to Master
-    // SetRoleInternal will, if needed, trigger out of band heartbeat and worker control info update, to prepare workers in ready mode
-    // Note: Asssumption - When this is called, Paxos already had properly updated master related record. This assumption is also the reason this fn is called "Internal" (of the controller object)
-    //       This fn is called during start() after JoinServerCluster, and during regular HeartBeat() which could find out role change.
-    seastar::future<> SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold);
 
     // periodically send heart beat and handle heartbeat response
     // If this is Master Instance, heart beat will renew the lease, extend the ReservedTimeThreshold if needed
@@ -269,8 +256,8 @@ class TSOService::TSOController
     // outer TSOService object
     TSOService& _outer;
 
-    // _isMasterInstance, set when join cluster or with heartbeat
-    bool _isMasterInstance{false};
+    // if this server is in sync with others in the cluster, if not, this server can't issue timestamp
+    bool _inSyncWithCluster{false};
 
     // tcp URLs of all current live TSO server instances in the TSO server cluster
     std::vector<k2::String> _TSOServerURLs;
@@ -287,7 +274,7 @@ class TSOService::TSOController
 
     // when this instance become (new) master, it need to get previous master's ReservedTimeThreshold
     // and wait out this time if current time is less than this value
-    uint64_t _prevReservedTimeShreshold{ULLONG_MAX};
+    uint64_t _prevReservedTimeShreshold{0};
 
     // _ignoreReservedTimeThreshold, let TSO controller and worker ignore the _ignoreReservedTimeThreshold
     // This is need for testing and single box dev env, where the controller core can be too busy to update ReservedTimeThreshold
