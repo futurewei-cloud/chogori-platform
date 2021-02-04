@@ -47,7 +47,6 @@ seastar::future<> TSOService::TSOController::start()
         .then([this] () mutable {return JoinServerCluster();})
         .then([this] () mutable {
             // set timers
-            _heartBeatTimer.arm(_heartBeatTimerInterval());
             _timeSyncTimer.arm(_timeSyncTimerInterval());
             _clusterGossipTimer.arm(_clusterGossipTimerInterval());
             _statsUpdateTimer.arm(_statsUpdateTimerInterval());
@@ -67,9 +66,8 @@ seastar::future<> TSOService::TSOController::gracefulStop() {
 
     // need to chain all operations into a sequencial future chain to have them done properly
     // gracefully wait all future done here
-    return seastar::when_all_succeed(std::move(_heartBeatFuture), std::move(_timeSyncFuture), std::move(_statsUpdateFuture)).discard_result()
+    return seastar::when_all_succeed(std::move(_timeSyncFuture), std::move(_clusterGossipFuture), std::move(_statsUpdateFuture)).discard_result()
         .then([this] () mutable {
-            _heartBeatTimer.cancel();
             _timeSyncTimer.cancel();
             _clusterGossipTimer.cancel();
             _statsUpdateTimer.cancel();
@@ -175,72 +173,6 @@ void TSOService::TSOController::RegisterGetTSOWorkersURLs()
     });
 }
 
-void TSOService::TSOController::HeartBeat()
-{
-    // delayed heartbeat detection and logging
-    uint64_t nowCnt = now_nsec_count();
-
-    if ((nowCnt - _lastHeartBeat) > (uint64_t)( 2 * (nsec(_heartBeatTimerInterval()).count())))
-    {
-        if (_lastHeartBeat != 0)
-        {
-            K2LOG_D(log::tsoserver, "HeartBeat delayed more than two preset intervals, _lastHeartBeat:{}, preset duration in nano sec: {}",
-                _lastHeartBeat,  nsec(_heartBeatTimerInterval()).count());
-        }
-    }
-    _lastHeartBeat = nowCnt;
-    // end of delayed heart beat detection and logging
-
-    K2LOG_D(log::tsoserver, "HeartBeat triggered");
-    _heartBeatFuture = DoHeartBeat()
-        .then([this] () mutable
-        {
-            if (!_stopRequested)
-            {
-                _heartBeatTimer.arm(_heartBeatTimerInterval());
-            }
-        });
-
-    return;
-}
-
-seastar::future<> TSOService::TSOController::DoHeartBeat()
-{
-    if (_stopRequested)
-    {
-        return SendWorkersControlInfo();
-    }
-
-    uint64_t curTimeTSECount = TimeAuthorityNow();
-
-    // case 1, if we lost lease, suicide now
-    if (curTimeTSECount >  _myLease)
-    {
-        K2LOG_D(log::tsoserver, "Lost lease detected during HeartBeat. cur time and mylease : {}:{}",curTimeTSECount, _myLease);
-        //K2ASSERT(log::tsoserver, false, "Lost lease detected during HeartBeat.");
-        //Suicide();
-    }
-
-    // case 4, regular situation, extending lease and ReservedTimeThreshold, then SendWorkersControlInfo
-    return RenewLeaseAndExtendReservedTimeThreshold()
-        .then([this] (std::tuple<uint64_t, uint64_t> newLeaseAndThreshold) mutable {
-            // set new lease and new threshold
-            _myLease = std::get<0>(newLeaseAndThreshold);
-            _controlInfoToSend.ReservedTimeThreshold = std::get<1>(newLeaseAndThreshold);
-
-            if (!_controlInfoToSend.IgnoreThreshold)
-            {
-                uint64_t newCurTimeTSECount = TimeAuthorityNow();
-                K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeThreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
-                    "new lease and ReservedTimeThreshold should be in the future.");
-            }
-
-            K2LOG_D(log::tsoserver, "SendWorkersControlInfo during regular HeartBeat. new ReservedTimeThreshold:{}", _controlInfoToSend.ReservedTimeThreshold);
-            // update worker!
-            return SendWorkersControlInfo();
-        });
-}
-
 // really send the _controlInfoToSend to worker, and only place to set IsReadyToIssueTS inside _controlInfoToSend based on current state
 seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
 {
@@ -248,18 +180,16 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
     bool readyToIssue = false;
     uint64_t curTimeTSECount = TimeAuthorityNow();
 
-    // if lost lease, suicide.
-    if(curTimeTSECount > _myLease)
-    {
-        Suicide();
-    }
-
     // worker can only issue TS under following condition
     if (!_stopRequested &&                                              // stop is not requested
         _inSyncWithCluster &&                                           // our time is correct according the cluster gossip
         (_controlInfoToSend.ReservedTimeThreshold > curTimeTSECount || _controlInfoToSend.IgnoreThreshold))    // new ReservedTimeThreshold is in the future OR it is ignored
     {
         readyToIssue = true;
+    }
+    else
+    {
+        K2LOG_I(log::tsoserver, "TSO Server not ready to serve. _stopRequested:{}, _inSyncWithCluster:{}, ReservedTimeThreshold obsoleted:{},  IgnoreThreshold:{}", _stopRequested, _inSyncWithCluster, (_controlInfoToSend.ReservedTimeThreshold <= curTimeTSECount), _controlInfoToSend.IgnoreThreshold);
     }
 
     _controlInfoToSend.IsReadyToIssueTS = readyToIssue;
@@ -273,16 +203,6 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
         [info=_controlInfoToSend] (auto& worker) {
             worker.UpdateWorkerControlInfo(info);
         });
-}
-
-void TSOService::TSOController::Suicide()
-{
-    // suicide when and only when we are master and find we lost lease
-    auto curTime = TimeAuthorityNow();
-    K2ASSERT(log::tsoserver, curTime > _myLease, "Suicide when not lost lease?");
-    K2LOG_F(log::tsoserver, "TSO suicide requested!");
-    K2ASSERT(log::tsoserver, false, "Suiciding");
-    std::terminate();
 }
 
 void TSOService::TSOController::TimeSync()
@@ -336,7 +256,11 @@ seastar::future<> TSOService::TSOController::DoTimeSync()
                 _controlInfoToSend.TBEAdjustment =   deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
             }
 
-            return seastar::make_ready_future<>();
+            // also update ReservedTimeThreshold after we sync time with atomicClock.
+            _controlInfoToSend.ReservedTimeThreshold = GenNewReservedTimeThreshold();
+
+            //TODO: consider update worker less frequently than timeSync
+            return SendWorkersControlInfo();
         });
 }
 

@@ -87,7 +87,14 @@ seastar::future<> TSOService::start()
 
 void TSOService::UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo)
 {
-    K2ASSERT(log::tsoserver, seastar::this_shard_id() != 0 && _worker != nullptr, "UpdateWorkerControlInfo should be on worker core only!");
+    K2ASSERT(log::tsoserver, seastar::this_shard_id() != 0, "UpdateWorkerControlInfo should be on worker core only!");
+
+    if (_worker == nullptr)
+    {
+        // This situation could happen during service starting up, worker core is not yet ready when controller trying to update.
+        K2LOG_I(log::tsoserver, "TSOWorker is not yet started, ignore UpdateWorkerControlInfo.");
+        return;
+    }
 
     return _worker->UpdateWorkerControlInfo(controlInfo);
 }

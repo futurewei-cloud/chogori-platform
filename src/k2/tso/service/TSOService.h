@@ -122,7 +122,6 @@ class TSOService::TSOController
     public:
     TSOController(TSOService& outer) :
         _outer(outer),
-        _heartBeatTimer([this]{this->HeartBeat();}),
         _timeSyncTimer([this]{this->TimeSync();}),
         _clusterGossipTimer([this]{this->ClusterGossip();}),
         _statsUpdateTimer([this]{this->CollectAndReportStats();}){};
@@ -170,7 +169,6 @@ class TSOService::TSOController
     {
         K2LOG_I(log::tsoserver, "JoinServerCluster");
         // fake join cluster
-        _myLease = GenNewLeaseVal();
         // currently just put myself into the cluster. 
         _TSOServerURLs.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
         K2LOG_I(log::tsoserver, "TSO Server TCP endpoints are: {}", _TSOServerURLs);
@@ -185,24 +183,6 @@ class TSOService::TSOController
     // internal API responses Paxos and Atomic/GPS clock();
     void RegisterACKPaxos() { return; }
     void RegisterACKTime() { return; }
-
-    // TODO: implement this
-    seastar::future<> ExitServerCluster()
-    {
-        return seastar::make_ready_future<>();
-    }
-
-    // periodically send heart beat and handle heartbeat response
-    // If this is Master Instance, heart beat will renew the lease, extend the ReservedTimeThreshold if needed
-    // If this is Standby Instance, heart beat will maintain the membership, and check Master Instance status and take master role if needed
-    void HeartBeat();
-
-    // helper to do the HeartBeat(), could be called from regular HeartBeat(), or during initialization or inside HearBeat() when role need to be changed
-    seastar::future<> DoHeartBeat();
-
-    // this is lambda set in HeartBeat() to handle the response,
-    // For standby instance, may
-    seastar::future<> HandleHeartBeatResponse() { return seastar::make_ready_future<>(); }
 
     // TimeSync timer call back fn.
     void TimeSync();
@@ -228,22 +208,9 @@ class TSOService::TSOController
     void CollectAndReportStats();
     seastar::future<> DoCollectAndReportStats();
 
-
-    // suicide when and only when we are master and find we lost lease
-    void Suicide();
-
-    // regular heartbeat update to Paxos when is a master
-    // return future contains newly extended Lease and ReservedTimeThreshold in nanosec count
-    seastar::future<std::tuple<uint64_t, uint64_t>>RenewLeaseAndExtendReservedTimeThreshold()
-    {
-
-        auto extendedLeaseAndThreshold = GenNewLeaseVal();
-        std::tuple<uint64_t, uint64_t> tup(extendedLeaseAndThreshold, extendedLeaseAndThreshold);
-        return seastar::make_ready_future<std::tuple<uint64_t, uint64_t>>(tup);
-    }
-
-    // (in nanosec counts) Current TA time + three times of heartBeat + 1 extra millisecond to allow missing up to 3 heartbeat before loose leases
-    inline uint64_t GenNewLeaseVal() { return TimeAuthorityNow() + _heartBeatTimerInterval().count() * 3 + 1*1000*1000;}
+    // (in nanosec counts) Current TA time + 10 times of timeSync interval. 
+    // Picking 10 as the local crytal clock drifting allowrance is at less than 10 ms per second level, i.e. new threshold is less than 1 second away in the future is ok.
+    inline uint64_t GenNewReservedTimeThreshold() {return TimeAuthorityNow() + _timeSyncTimerInterval().count() * 10;};
 
     // outer TSOService object
     TSOService& _outer;
@@ -270,11 +237,6 @@ class TSOService::TSOController
     // TODO: change the default value to false.
     ConfigVar<bool> _ignoreReservedTimeThreshold{"tso.ignore_reserved_time_threshold", true};
 
-    // Lease at the Paxos, whem this is master, updated by heartbeat.
-    uint64_t _myLease;
-
-    uint64_t _lastHeartBeat{0};
-
     // set when stop() is called
     bool _stopRequested{false};
 
@@ -283,10 +245,6 @@ class TSOService::TSOController
     // current control info that is updated and to be sent to worker
     // Note: IsReadyToIssueTS is only set inside SendWorkersControlInfo() based on the state when SendWorkersControlInfo() is called
     TSOWorkerControlInfo _controlInfoToSend;
-
-    seastar::timer<> _heartBeatTimer;
-    ConfigDuration _heartBeatTimerInterval{"tso.ctrol_heart_beat_interval", 10ms};
-    seastar::future<> _heartBeatFuture = seastar::make_ready_future<>();  // need to keep track of heartbeat task future for proper shutdown
 
     seastar::timer<> _timeSyncTimer;
     ConfigDuration _timeSyncTimerInterval{"tso.ctrol_time_sync_interval", 10ms};
