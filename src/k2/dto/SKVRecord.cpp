@@ -248,5 +248,11 @@ SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_pt
     return SKVRecord(collection, other_schema, storage.share(), keyValuesAvailable);
 }
 
+// deepCopies an SKVRecord including copying (not sharing) the storage payload
+SKVRecord SKVRecord::deepCopy() {
+    Storage new_storage = storage.copy();
+    return SKVRecord(collectionName, schema, std::move(new_storage), keyValuesAvailable);
+}
+
 } // ns dto
 } // ns k2

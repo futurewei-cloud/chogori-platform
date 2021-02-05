@@ -209,6 +209,8 @@ public:
     SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
 
     SKVRecord cloneToOtherSchema(const String& collection, std::shared_ptr<Schema> other_schema);
+    // deepCopies an SKVRecord including copying (not sharing) the storage payload
+    SKVRecord deepCopy();
 
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
         return os << fmt::format(
