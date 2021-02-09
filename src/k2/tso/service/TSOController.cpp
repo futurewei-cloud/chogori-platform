@@ -45,16 +45,15 @@ seastar::future<> TSOService::TSOController::start()
     // TODO: handle exception
     return InitializeInternal()
         .then([this] () mutable {return JoinServerCluster();})
-        .then([this] (std::tuple<bool, uint64_t> joinResult) mutable { return SetRoleInternal(std::get<0>(joinResult), std::get<1>(joinResult)); })
         .then([this] () mutable {
             // set timers
-            _heartBeatTimer.arm(_heartBeatTimerInterval());
             _timeSyncTimer.arm(_timeSyncTimerInterval());
+            _clusterGossipTimer.arm(_clusterGossipTimerInterval());
             _statsUpdateTimer.arm(_statsUpdateTimerInterval());
 
             // register RPC APIs
-            RegisterGetTSOMasterURL();
-            RegisterGetTSOWorkersURLs();
+            RegisterGetTSOServerURLs();
+            RegisterGetTSOServiceNodeURLs();
 
             K2LOG_I(log::tsoserver, "TSOController started");
             return seastar::make_ready_future<>();
@@ -67,15 +66,15 @@ seastar::future<> TSOService::TSOController::gracefulStop() {
 
     // need to chain all operations into a sequencial future chain to have them done properly
     // gracefully wait all future done here
-    return seastar::when_all_succeed(std::move(_heartBeatFuture), std::move(_timeSyncFuture), std::move(_statsUpdateFuture)).discard_result()
+    return seastar::when_all_succeed(std::move(_timeSyncFuture), std::move(_clusterGossipFuture), std::move(_statsUpdateFuture)).discard_result()
         .then([this] () mutable {
-            _heartBeatTimer.cancel();
             _timeSyncTimer.cancel();
+            _clusterGossipTimer.cancel();
             _statsUpdateTimer.cancel();
 
             // unregistar all APIs
-            RPC().registerMessageObserver(dto::Verbs::GET_TSO_MASTERSERVER_URL, nullptr);
-            RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, nullptr);
+            RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVER_URLS, nullptr);
+            RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, nullptr);
             // unregister internal APIs
             //RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
 
@@ -141,79 +140,31 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
     });
 }
 
-seastar::future<> TSOService::TSOController::SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold)
+/*
+   GET_TSO_SERVER_URLS
+
+   TSO server pool are a group of independent TSO servers/nodes connected to its own TimeAuthority/AtomicClock.
+   This API allow client to get all currently live TSO servers/nodes from any one of them. 
+   TSO client is expected to start with a cmd option prividing a subset of TSO servers and update the list later. 
+   TODO:
+      1. implement client side logic of updating the server list by calling this API.
+      2. TSO servers could form a gossip cluster, to discovery each other and more rarely to detect if anyone's 
+         TimeAuthority/AtomicClock is out of band. 
+*/
+void TSOService::TSOController::RegisterGetTSOServerURLs()
 {
-    K2LOG_I(log::tsoserver, "SetRoleInternal isMaster: {}", std::to_string(isMaster));
-    if (!_isMasterInstance && isMaster)  // change from standby to master
-    {
-        // when change from standby to master
-        // we need to immediately set the _isMasterInstance flag and _prevReservedTimeShreshold (so current regular heartbeat and SendWorkersControlInfo will pick latest change)
-        // then issue out of band heartBeat, to make our own TimeShreshold reservation and start service immediately afterwards.
-        // If prevReservedTimeShreshold is in the future, we need to wait out that time before issue out of band heartBeat
-        _prevReservedTimeShreshold = prevReservedTimeShreshold;
-        _isMasterInstance = isMaster; // true
-
-        // If prevReservedTimeShreshold is in the past, or within next heartbeat cycle,
-        // then issue out of band heartBeat, to make our own TimeShreshold reservation and start service immediately afterwards,
-        // otherwise, let regular hearBeat to pick up the work.
-        uint64_t curTimeTSECount = TimeAuthorityNow();
-
-        if (prevReservedTimeShreshold < curTimeTSECount)
-        {
-            // we do not need to hold as prevReservedTimeShreshold is past
-            return DoHeartBeat();
-        }
-        else if (prevReservedTimeShreshold - curTimeTSECount < (uint64_t) _heartBeatTimerInterval().count())
-        {
-            std::chrono::nanoseconds sleepDur(prevReservedTimeShreshold - curTimeTSECount);
-            return seastar::sleep(sleepDur).then([this]
-            {
-                return DoHeartBeat();
-            });
-        }
-
-        // let regular heartbeat to deal with _prevReservedTimeShreshold
-        return seastar::make_ready_future<>();
-    }
-    else if (_isMasterInstance && !isMaster) // change from master to standby
-    {
-        // set the _isMasterInstance to false, and update worker
-        _isMasterInstance = false;
-        // reuse latest control info,  IsReadyToIssueTS will be set inside SendWorkersControlInfo()
-        _controlInfoToSend =  _lastSentControlInfo;
-
-        return SendWorkersControlInfo();
-    }
-    else if (_isMasterInstance && isMaster)
-    {
-        // why we are doing this noop, is this a bug? let it crash in debug mode
-        K2ASSERT(log::tsoserver, false, "Noop update from master to master!");
-        K2LOG_W(log::tsoserver, "Noop update from master to master!");
-        return seastar::make_ready_future<>();
-    }
-    else // !_isMasterInstance && !isMaster
-    {
-        // why we are doing this noop, is this a bug? let it crash in debug mode
-        K2ASSERT(log::tsoserver, false, "Noop update from standby to standby!");
-        K2LOG_W(log::tsoserver, "Noop update from standby to standby!");
-        return seastar::make_ready_future<>();
-    }
-};
-
-void TSOService::TSOController::RegisterGetTSOMasterURL()
-{
-    k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_MASTERSERVER_URL, [this](k2::Request&& request) mutable
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVER_URLS, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
-        K2LOG_I(log::tsoserver, "Master TSO TCP endpoint is: {}", _masterInstanceURL);
-        response->write((void*)_masterInstanceURL.c_str(), _masterInstanceURL.size());
+        response->write(_TSOServerURLs);
+        K2LOG_D(log::tsoserver, "returned TSO Server TCP endpoints are: {}", _TSOServerURLs);
         return k2::RPC().sendReply(std::move(response), request);
     });
 }
 
-void TSOService::TSOController::RegisterGetTSOWorkersURLs()
+void TSOService::TSOController::RegisterGetTSOServiceNodeURLs()
 {
-    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, [this](k2::Request&& request) mutable
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
         response->write(_workersURLs);
@@ -221,168 +172,23 @@ void TSOService::TSOController::RegisterGetTSOWorkersURLs()
     });
 }
 
-void TSOService::TSOController::HeartBeat()
-{
-    // delayed heartbeat detection and logging
-    uint64_t nowCnt = now_nsec_count();
-
-    if ((nowCnt - _lastHeartBeat) > (uint64_t)( 2 * (nsec(_heartBeatTimerInterval()).count())))
-    {
-        if (_lastHeartBeat != 0)
-        {
-            K2LOG_D(log::tsoserver, "HeartBeat delayed more than two preset intervals, _lastHeartBeat:{}, preset duration in nano sec: {}",
-                _lastHeartBeat,  nsec(_heartBeatTimerInterval()).count());
-        }
-    }
-    _lastHeartBeat = nowCnt;
-    // end of delayed heart beat detection and logging
-
-    K2LOG_D(log::tsoserver, "HeartBeat triggered");
-    _heartBeatFuture = DoHeartBeat()
-        .then([this] () mutable
-        {
-            if (!_stopRequested)
-            {
-                _heartBeatTimer.arm(_heartBeatTimerInterval());
-            }
-        });
-
-    return;
-}
-
-seastar::future<> TSOService::TSOController::DoHeartBeat()
-{
-    if (_stopRequested)
-    {
-        return DoHeartBeatDuringStop();
-    }
-
-    if (_isMasterInstance)
-    {
-        uint64_t curTimeTSECount = TimeAuthorityNow();
-
-        // case 1, if we lost lease, suicide now
-        if (curTimeTSECount >  _myLease)
-        {
-            K2LOG_D(log::tsoserver, "Lost lease detected during HeartBeat. cur time and mylease : {}:{}",curTimeTSECount, _myLease);
-            //K2ASSERT(log::tsoserver, false, "Lost lease detected during HeartBeat.");
-            //Suicide();
-        }
-
-        // case 2, if prevReservedTimeShreshold is in future and within one heartbeat, sleep out and recursive call DoHeartBeat()
-        // prevReservedTimeShreshold - curTimeTSECount < _heartBeatTimerInterval().count()
-        if (_prevReservedTimeShreshold > curTimeTSECount &&
-            (_prevReservedTimeShreshold - curTimeTSECount < (uint64_t) _heartBeatTimerInterval().count()))
-        {
-            K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold is one heardbead away to expire, sleep over it and do HeartBeat again");
-            std::chrono::nanoseconds sleepDur(_prevReservedTimeShreshold - curTimeTSECount);
-            return seastar::sleep(sleepDur).then([this]
-            {
-                K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold was one heardbead away to expire, slept over it and about to HeartBeat again");
-                return DoHeartBeat();
-            });
-        }
-
-        // case 3, if prevReservedTimeShreshold is in future and beyond one heartbeat, send heartbeat with renew lease only
-        if (_prevReservedTimeShreshold > curTimeTSECount &&
-            (_prevReservedTimeShreshold - curTimeTSECount >= (uint64_t) _heartBeatTimerInterval().count()))
-        {
-            K2LOG_D(log::tsoserver, "_prevReservedTimeShreshold is in the future and beyong one heardbead, just renew lease without SendWorkerControlInfo");
-            return RenewLeaseOnly().then([this](uint64_t newLease) {_myLease = newLease;});
-        }
-
-        // case 4, regular situation, extending lease and ReservedTimeThreshold, then SendWorkersControlInfo
-        return RenewLeaseAndExtendReservedTimeThreshold()
-            .then([this] (std::tuple<uint64_t, uint64_t> newLeaseAndThreshold) mutable {
-                // set new lease and new threshold
-                _myLease = std::get<0>(newLeaseAndThreshold);
-                _controlInfoToSend.ReservedTimeShreshold = std::get<1>(newLeaseAndThreshold);
-
-                if (!_controlInfoToSend.IgnoreThreshold)
-                {
-                    uint64_t newCurTimeTSECount = TimeAuthorityNow();
-                    K2ASSERT(log::tsoserver, _controlInfoToSend.ReservedTimeShreshold > newCurTimeTSECount && _myLease > newCurTimeTSECount,
-                        "new lease and ReservedTimeThreshold should be in the future.");
-                }
-
-                K2LOG_D(log::tsoserver, "SendWorkersControlInfo during regular HeartBeat. new ReservedTimeShreshold:{}", _controlInfoToSend.ReservedTimeShreshold);
-                // update worker!
-                return SendWorkersControlInfo();
-            });
-    }
-    else
-    {
-        return UpdateStandByHeartBeat()
-            .then([this] () mutable {
-                return SendWorkersControlInfo();
-            });
-    }
-}
-
-seastar::future<> TSOService::TSOController::DoHeartBeatDuringStop()
-{
-    K2ASSERT(log::tsoserver, _stopRequested, "Why are we here when stop is not requested?");
-
-    if (!_isMasterInstance)
-    {
-        // we no longer need to send heart beat as we were standby and are stopping
-        K2ASSERT(log::tsoserver, _lastSentControlInfo.IsReadyToIssueTS == false, "workers should not be in issuing TS state!");
-        return seastar::make_ready_future<>();
-    }
-
-    // now we are master instance and stopping
-
-    uint64_t curTimeTSECount = TimeAuthorityNow();
-
-    if (_prevReservedTimeShreshold > curTimeTSECount)
-    {
-        // we should not yet enable workers
-        K2ASSERT(log::tsoserver, _lastSentControlInfo.IsReadyToIssueTS == false, "workers should not be in issuing TS state!");
-
-        // set no longer master.
-        _isMasterInstance = false;
-
-        // remove our lease on Paxos
-        return RemoveLeaseFromPaxos();
-    }
-
-    // set _isMasterInstance to false send to workers first to stop issuing timestamp
-    // and then nicely reduce ReservedTimeShreshold to new currentTime + _lastSentControlInfo.TBEAdjustment and remove lease
-    // so that other standby can quickly become new master
-    _isMasterInstance = false;
-
-    return SendWorkersControlInfo()
-        .then([this] () mutable {
-            //uint64_t newReservedTimeShresholdTSECount = now_nsec_count()
-            //    + std::max(_lastSentControlInfo.TBEAdjustment, (uint64_t) _defaultTBWindowSize().count());
-
-            // remove our lease on Paxos and update ReservedTimeShreshold
-            return RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*newReservedTimeShresholdTSECount*/);
-        });
-}
-
 // really send the _controlInfoToSend to worker, and only place to set IsReadyToIssueTS inside _controlInfoToSend based on current state
 seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
 {
-    // step 1/3 decide IsReadyToIssueTS should be true or not
+    // step 1/3 decide IsReadyToIssueTS to be true or not
     bool readyToIssue = false;
-    if (_isMasterInstance)
+    uint64_t curTimeTSECount = TimeAuthorityNow();
+
+    // worker can only issue TS under following condition
+    if (!_stopRequested &&                                              // stop is not requested
+        _inSyncWithCluster &&                                           // our time is correct according the cluster gossip
+        (_controlInfoToSend.ReservedTimeThreshold > curTimeTSECount || _controlInfoToSend.IgnoreThreshold))    // new ReservedTimeThreshold is in the future OR it is ignored
     {
-        uint64_t curTimeTSECount = TimeAuthorityNow();
-
-        // if lost lease, suicide.
-        if(curTimeTSECount > _myLease)
-        {
-            Suicide();
-        }
-
-        // worker can only issue TS under following condition
-        if (!_stopRequested &&                                              // stop is not requested
-            _prevReservedTimeShreshold < curTimeTSECount &&                 // _prevReservedTimeShreshold is in the past
-            (_controlInfoToSend.ReservedTimeShreshold > curTimeTSECount || _controlInfoToSend.IgnoreThreshold))    // new ReservedTimeShreshold is in the future OR it is ignored
-        {
-            readyToIssue = true;
-        }
+        readyToIssue = true;
+    }
+    else
+    {
+        K2LOG_W(log::tsoserver, "TSO Server not ready to serve. _stopRequested:{}, _inSyncWithCluster:{}, ReservedTimeThreshold obsoleted:{},  IgnoreThreshold:{}", _stopRequested, _inSyncWithCluster, (_controlInfoToSend.ReservedTimeThreshold <= curTimeTSECount), _controlInfoToSend.IgnoreThreshold);
     }
 
     _controlInfoToSend.IsReadyToIssueTS = readyToIssue;
@@ -396,16 +202,6 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
         [info=_controlInfoToSend] (auto& worker) {
             worker.UpdateWorkerControlInfo(info);
         });
-}
-
-void TSOService::TSOController::Suicide()
-{
-    // suicide when and only when we are master and find we lost lease
-    auto curTime = TimeAuthorityNow();
-    K2ASSERT(log::tsoserver, _isMasterInstance && curTime > _myLease, "Suicide when not lost lease or not master?");
-
-    K2ASSERT(log::tsoserver, false, "Suiciding");
-    std::terminate();
 }
 
 void TSOService::TSOController::TimeSync()
@@ -445,34 +241,25 @@ seastar::future<> TSOService::TSOController::DoTimeSync()
                 K2LOG_I(log::tsoserver, "First TimeSyncd - deltaToSteadyClock value: {}, uncertaintyWindowSize: {}", deltaToSteadyClock, uncertaintyWindowSize);
             }
 
-            if (!_isMasterInstance)
+            // local steady_clock drifted from time authority or time authority changed time for more than 1000 nanosecond or 1 microsecond, need to do smearing adjustment
+            uint64_t driftDelta = std::abs(((int64_t) _diffTALocalInNanosec) - ((int64_t) deltaToSteadyClock));
+            if (driftDelta > 1000)
             {
-                _diffTALocalInNanosec = deltaToSteadyClock;
-                // as localNow is always in TrueTime window, these values will be kept as initialized
-                // The batch uncertainty window size is _defaultTBWindowSize, assuming _defaultTBWindowSize > uncertaintyWindowSize
-                _lastSentControlInfo.TBEAdjustment  = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
-                _lastSentControlInfo.TsDelta        = _defaultTBWindowSize().count();    // batch window size is also default _defaultTBWindowSize
-                _controlInfoToSend.TBEAdjustment    = deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
-                _controlInfoToSend.TsDelta          = _defaultTBWindowSize().count();
-            }
-            else // master case
-            {
-                // local steady_clock drifted from time authority or time authority changed time for more than 1000 nanosecond or 1 microsecond, need to do smearing adjustment
-                uint64_t driftDelta = std::abs(((int64_t) _diffTALocalInNanosec) - ((int64_t) deltaToSteadyClock));
-                if (driftDelta > 1000)
+                if (_diffTALocalInNanosec != 0)
                 {
-                    if (_diffTALocalInNanosec != 0)
-                    {
-                        // TODO adjust TBEAdjustment with smearing as well, at the rate less than 1- (TsDelta/MTL) instad of direct one time change.
-                        K2LOG_W(log::tsoserver, "Local steady_clock drift away from Time Authority! Smearing adjustment in progress. old diff value: {}, new diff value: {}", _diffTALocalInNanosec, deltaToSteadyClock);
-                    }
-                    _diffTALocalInNanosec = deltaToSteadyClock;
-                    // The batch uncertainty window size is _defaultTBWindowSize, assuming _defaultTBWindowSize > uncertaintyWindowSize
-                    _controlInfoToSend.TBEAdjustment =   deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
+                    // TODO adjust TBEAdjustment with smearing as well, at the rate less than 1- (TsDelta/MTL) instad of direct one time change.
+                    K2LOG_W(log::tsoserver, "Local steady_clock drift away from Time Authority! Smearing adjustment in progress. old diff value: {}, new diff value: {}", _diffTALocalInNanosec, deltaToSteadyClock);
                 }
+                _diffTALocalInNanosec = deltaToSteadyClock;
+                // The batch uncertainty window size is _defaultTBWindowSize, assuming _defaultTBWindowSize > uncertaintyWindowSize
+                _controlInfoToSend.TBEAdjustment =   deltaToSteadyClock + _defaultTBWindowSize().count() - uncertaintyWindowSize / 2;
             }
 
-            return seastar::make_ready_future<>();
+            // also update ReservedTimeThreshold after we sync time with atomicClock.
+            _controlInfoToSend.ReservedTimeThreshold = GenNewReservedTimeThreshold();
+
+            //TODO: consider update worker less frequently than timeSync
+            return SendWorkersControlInfo();
         });
 }
 
@@ -499,13 +286,63 @@ seastar::future<std::tuple<uint64_t, uint64_t>> TSOService::TSOController::Check
     return seastar::make_ready_future<std::tuple<uint64_t, uint64_t>>(fakeResult);
 }
 
+void TSOService::TSOController::ClusterGossip()
+{
+    // cluster gossip task will do nothing when _stopRequested
+    if (_stopRequested)
+        return;
+
+    _timeSyncFuture = DoClusterGossip().then( [this] () mutable
+    {
+        if (!_stopRequested)
+        {
+            _clusterGossipTimer.arm(_clusterGossipTimerInterval());
+        }
+    });
+
+    return;
+}
+
+seastar::future<> TSOService::TSOController::DoClusterGossip()
+{
+    //TODO: implement HUYGEN algorithm in gossip and verify our own TimeAuthority/AtomicClock
+    //      further more, even our AtomicClock may be off, it may be consistent off from cluster's time with no/little drifting
+    //      consider insert an adjustment, instead of disable this server
+
+    auto curTime = TimeAuthorityNow();
+
+    if (_clusterGossipTimerInterval().count() < (int64_t)(curTime - _lastClusterGossipTime))
+    {
+        K2LOG_D(log::tsoserver, "skip DoClusterGossip, last clust gossip time:{}, gossip timer interval:{}", _lastClusterGossipTime, _clusterGossipTimerInterval().count());
+        return seastar::make_ready_future<>();
+    }
+    else
+    {
+        K2LOG_D(log::tsoserver, "DoClusterGossip, last clust gossip time:{}", _lastClusterGossipTime);
+        _lastClusterGossipTime = curTime;
+    }
+
+    // TODO: updating cluster members, check time etc.
+    //_TSOServerURLs.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
+    // K2LOG_I(log::tsoserver, "TSO Server TCP endpoints are: {}", _TSOServerURLs);
+    _inSyncWithCluster = true;
+
+    if (!_inSyncWithCluster)
+    {
+        K2LOG_F(log::tsoserver, "This TSO server time is off from cluster based on gossip result. It is not able to serve client request! Please check its atomic clock!");
+    }
+
+    return seastar::make_ready_future<>();
+
+}
+
 void TSOService::TSOController::CollectAndReportStats()
 {
     _statsUpdateFuture = DoCollectAndReportStats().then( [this] () mutable
     {
         if (!_stopRequested)
         {
-            _statsUpdateTimer.arm(_timeSyncTimerInterval());
+            _statsUpdateTimer.arm(_statsUpdateTimerInterval());
         }
     });
 

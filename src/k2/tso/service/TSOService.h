@@ -60,16 +60,15 @@ public: // types
     // all ticks are in nanoseconds
    struct TSOWorkerControlInfo
     {
-        bool        IsReadyToIssueTS;       // if this core is allowed to issue TS, could be false for various reasons (TODO: consider adding reasons)
-        bool        IgnoreThreshold;        // Ignore ReservedTimeShreshold to allow issue Timestamp regardless. This is for testing or single machine dev env where shreshold update can be delayed.
+        bool        IsReadyToIssueTS;       // if this worker core is allowed to issue TS, could be false for various reasons (TODO: consider adding reasons)
+        bool        IgnoreThreshold;        // Ignore ReservedTimeThreshold to allow issue Timestamp regardless. This is for testing or single machine dev env where shreshold update can be delayed.
         uint8_t     TBENanoSecStep;         // step to skip between timestamp in nanoSec, actually same as the number of worker cores
-        uint64_t    TBEAdjustment;       // batch ending time adjustment from current chrono::system_clock::now(), in nanoSec;
+        uint64_t    TBEAdjustment;          // batch ending time adjustment from current chrono::system_clock::now(), in nanoSec;
         uint16_t    TsDelta;                // batch starting time adjustment from TbeTSEAdjustment, basically the uncertainty window size, in nanoSec
-        // TODO: typo ReservedTimeShreshold, should be ReservedTimehreshold
-        uint64_t    ReservedTimeShreshold;  // reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that, in nanoSec counts
+        uint64_t    ReservedTimeThreshold;  // reservedTimeShreshold upper bound, the generated batch and TS in it can't be bigger than that, in nanoSec counts. It is extended with each TimeSync with TimeAuthority/Atomic clock.
         uint16_t    BatchTTL;               // TTL of batch issued in nanoseconds, not expected to change once set
 
-        TSOWorkerControlInfo() : IsReadyToIssueTS(false), IgnoreThreshold(false), TBENanoSecStep(0), TBEAdjustment(0), TsDelta(0), ReservedTimeShreshold(0), BatchTTL(0) {};
+        TSOWorkerControlInfo() : IsReadyToIssueTS(false), IgnoreThreshold(false), TBENanoSecStep(0), TBEAdjustment(0), TsDelta(0), ReservedTimeThreshold(0), BatchTTL(0) {};
     };
 
     // TODO: worker/controller statistics structure typedef
@@ -114,8 +113,8 @@ private:
 // TSOController - core 0 of a TSO server, all other cores are TSOWorkers.
 // responsible to handle following four things
 // 1. Upon start, join the cluster and get the for instance (role of instance can change upon API SetRole() as well)
-// 2. Upon role change, set or adjust heartbeat - If master role, heartbeat also extends lease and extends ReservedTimeShreshold. If standby role, hearbeat check master's lease/healthness.
-//    In master role, if ReservedTimeShreshold get extended, update TSOWorkerControlInfo to all workers.
+// 2. Upon role change, set or adjust heartbeat - If master role, heartbeat also extends lease and extends ReservedTimeThreshold. If standby role, hearbeat check master's lease/healthness.
+//    In master role, if ReservedTimeThreshold get extended, update TSOWorkerControlInfo to all workers.
 // 3. Periodically checkAtomicGPSClock, and adjust TBEAdjustment if needed and further more update TSOWorkerControlInfo to all workers upon such adjustment. Note: If not master role, doing this for optimization.
 // 4. If master role, periodically collect statistics from all worker cores and reports.
 class TSOService::TSOController
@@ -123,8 +122,8 @@ class TSOService::TSOController
     public:
     TSOController(TSOService& outer) :
         _outer(outer),
-        _heartBeatTimer([this]{this->HeartBeat();}),
         _timeSyncTimer([this]{this->TimeSync();}),
+        _clusterGossipTimer([this]{this->ClusterGossip();}),
         _statsUpdateTimer([this]{this->CollectAndReportStats();}){};
 
     // start the controller
@@ -150,17 +149,12 @@ class TSOService::TSOController
     private:
 
     // Design Note:
-    // 1. Interaction between controller and workers
-    //    a) during start(), controller collect workers URLs
-    //       and if controller after JoinServerCluster() find itself is master,
-    //       it will UpdateWorkerControlInfo() through out of band DoHeartBeat() to enable workers start serving requests
-    //    b) Once started, controller will only UpdateWorkerControlInfo() through regular HeartBeat()
-    // 2. Internally inside controller
-    //    a) during start(), initialize controller JoinServerCluster() and if master, update workers through out of band DoHeartBeat()
-    //    b) Once started, only periodically HeartBeat() will handle all complex logic including role change, updating worker, handle gracefully stop()/lost lease suicide().
-    //    c) TimeSyn() only update in memory _controlInfoToSend, which will be sent with next HeartBeat();
+    //    a) during start(), controller collect workers URLs and issue first time DoTimeSync() and update in memory _controlInfoToSend
+    //       and if controller after JoinServerCluster() find if out not itself could continue as the cluster (other servers) may find this server time is off and disallow it to contine
+    //    b) Once can continue starting, controller will do periodically TimeSync() which will update in memory _controlInfoToSend and send to worker by calling UpdateWorkerControlInfo()
 
     // First step of Initialize controller before JoinServerCluster() during start()
+    // Most important thing is to do a time check with local TimeAuthority/AtomicClock
     seastar::future<> InitializeInternal();
 
     // initialize TSOWorkerControlInfo at start()
@@ -169,54 +163,23 @@ class TSOService::TSOController
     seastar::future<> GetAllWorkerURLs();
 
     // Join the TSO server cluster during start().
-    // return tuple
-    //  - element 0 - if this instance is a master or not.
-    //  - element 1 - prevReservedTimeShreshold if this instance is mater, the value need to be waited out by this master instnace to avoid duplicate timestamp.
+    // Get other server URLs and check if this server time is in sync with that of cluster
     // TODO: implement this
-    seastar::future<std::tuple<bool, uint64_t>> JoinServerCluster()
+    seastar::future<> JoinServerCluster()
     {
         K2LOG_I(log::tsoserver, "JoinServerCluster");
-        // fake new master
-        std::tuple<bool, uint64_t> result(true, 0);
-        _myLease = GenNewLeaseVal();
-        _masterInstanceURL = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url;
-        return seastar::make_ready_future<std::tuple<bool, uint64_t>>(result);
+        // fake join cluster
+        // currently just put myself into the cluster. 
+        _TSOServerURLs.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
+        K2LOG_I(log::tsoserver, "TSO Server TCP endpoints are: {}", _TSOServerURLs);
+        _inSyncWithCluster = true;
+        return seastar::make_ready_future<>();
     }
 
     // APIs registration
     // APIs to TSO clients
-    void RegisterGetTSOMasterURL();
-    void RegisterGetTSOWorkersURLs();
-    // internal API responses Paxos and Atomic/GPS clock();
-    void RegisterACKPaxos() { return; }
-    void RegisterACKTime() { return; }
-
-    // TODO: implement this
-    seastar::future<> ExitServerCluster()
-    {
-        return seastar::make_ready_future<>();
-    }
-
-    // Change my role inside the controller, from Master to StandBy(isMaster passed in is true) or from Standby to Master
-    // SetRoleInternal will, if needed, trigger out of band heartbeat and worker control info update, to prepare workers in ready mode
-    // Note: Asssumption - When this is called, Paxos already had properly updated master related record. This assumption is also the reason this fn is called "Internal" (of the controller object)
-    //       This fn is called during start() after JoinServerCluster, and during regular HeartBeat() which could find out role change.
-    seastar::future<> SetRoleInternal(bool isMaster, uint64_t prevReservedTimeShreshold);
-
-    // periodically send heart beat and handle heartbeat response
-    // If this is Master Instance, heart beat will renew the lease, extend the ReservedTimeShreshold if needed
-    // If this is Standby Instance, heart beat will maintain the membership, and check Master Instance status and take master role if needed
-    void HeartBeat();
-
-    // helper to do the HeartBeat(), could be called from regular HeartBeat(), or during initialization or inside HearBeat() when role need to be changed
-    seastar::future<> DoHeartBeat();
-
-    // helper for DoHeartBeat() when _stopRequested
-    seastar::future<> DoHeartBeatDuringStop();
-
-    // this is lambda set in HeartBeat() to handle the response,
-    // For standby instance, may
-    seastar::future<> HandleHeartBeatResponse() { return seastar::make_ready_future<>(); }
+    void RegisterGetTSOServerURLs();
+    void RegisterGetTSOServiceNodeURLs();
 
     // TimeSync timer call back fn.
     void TimeSync();
@@ -228,51 +191,31 @@ class TSOService::TSOController
     // The current time (uncertainty window) will be <steady_clock::now() + T - V/2, steady_clock::now() + T + V/2>
     seastar::future<std::tuple<uint64_t, uint64_t>> CheckAtomicGPSClock();
 
-    // Once we have updated controlInfo due to any reason, e.g. role change, ReservedTimeShreshold or drift from atomic clock,
+    // Once we have updated controlInfo due to any reason, e.g. role change, ReservedTimeThreshold or drift from atomic clock,
     // propagate the update to all workers and
     // The control into to send is at member _controlInfoToSend, except IsReadyToIssueTS, which will be set inside this fn based on the current state
     seastar::future<> SendWorkersControlInfo();
+
+    // cluster gossip timer callback fn.
+    void ClusterGossip();
+    //  helper function which do the real work of cluster gossip
+    seastar::future<> DoClusterGossip();
 
     // periodically collect stats from workers and report
     void CollectAndReportStats();
     seastar::future<> DoCollectAndReportStats();
 
-
-    // suicide when and only when we are master and find we lost lease
-    void Suicide();
-
-
-    // helpers to talk to Paxos
-    // TODO: Consider role change,
-    // TODO: implement this
-    seastar::future<> RemoveLeaseFromPaxos() {return seastar::make_ready_future<>();}
-    seastar::future<> RemoveLeaseFromPaxosWithUpdatingReservedTimeShreshold(/*uint64_t newReservedTimsShreshold*/) {return seastar::make_ready_future<>();}
-    seastar::future<uint64_t> RenewLeaseOnly() {return seastar::make_ready_future<uint64_t>(GenNewLeaseVal());}
-
-    // regular heartbeat update to Paxos when not a master
-    seastar::future<> UpdateStandByHeartBeat() {return seastar::make_ready_future<>();}
-
-    // regular heartbeat update to Paxos when is a master
-    // return future contains newly extended Lease and ReservedTimeThreshold in nanosec count
-    seastar::future<std::tuple<uint64_t, uint64_t>>RenewLeaseAndExtendReservedTimeThreshold()
-    {
-
-        auto extendedLeaseAndThreshold = GenNewLeaseVal();
-        std::tuple<uint64_t, uint64_t> tup(extendedLeaseAndThreshold, extendedLeaseAndThreshold);
-        return seastar::make_ready_future<std::tuple<uint64_t, uint64_t>>(tup);
-    }
-
-    // (in nanosec counts) Current TA time + three times of heartBeat + 1 extra millisecond to allow missing up to 3 heartbeat before loose leases
-    inline uint64_t GenNewLeaseVal() { return TimeAuthorityNow() + _heartBeatTimerInterval().count() * 3 + 1*1000*1000;}
+    // (in nanosec counts) Current TA time + drifting allowarnce (in term of mulitple, default 10, times of timeSync interval). 
+    inline uint64_t GenNewReservedTimeThreshold() {return TimeAuthorityNow() + _timeSyncTimerInterval().count() * _timeDriftingAllowanceMulitple();};
 
     // outer TSOService object
     TSOService& _outer;
 
-    // _isMasterInstance, set when join cluster or with heartbeat
-    bool _isMasterInstance{false};
+    // if this server is in sync with others in the cluster, if not, this server can't issue timestamp
+    bool _inSyncWithCluster{false};
 
-    // URL of current TSO master instance
-    k2::String _masterInstanceURL;
+    // tcp URLs of all current live TSO server instances in the TSO server cluster
+    std::vector<k2::String> _TSOServerURLs;
 
     // worker cores' URLs, each worker can have mulitple urls
     std::vector<std::vector<k2::String>> _workersURLs;
@@ -284,20 +227,11 @@ class TSOService::TSOController
     // known current time of TA(TimeAuthority), local steady_clock time now + the diff between, in units of nanosec since Jan. 1, 1970 (TAI)
     inline uint64_t TimeAuthorityNow() {return now_nsec_count() +  _diffTALocalInNanosec; }
 
-    // when this instance become (new) master, it need to get previous master's ReservedTimeShreshold
-    // and wait out this time if current time is less than this value
-    uint64_t _prevReservedTimeShreshold{ULLONG_MAX};
-
     // _ignoreReservedTimeThreshold, let TSO controller and worker ignore the _ignoreReservedTimeThreshold
-    // This is need for testing and single box dev env, where the controller core can be too busy to update ReservedTimeShreshold
+    // This is need for testing and single box dev env, where the controller core can be too busy to update ReservedTimeThreshold
     // as controller core(core 0) can run other process/threads, instead of being dedicated only the controller as designed in production env.
     // TODO: change the default value to false.
     ConfigVar<bool> _ignoreReservedTimeThreshold{"tso.ignore_reserved_time_threshold", true};
-
-    // Lease at the Paxos, whem this is master, updated by heartbeat.
-    uint64_t _myLease;
-
-    uint64_t _lastHeartBeat{0};
 
     // set when stop() is called
     bool _stopRequested{false};
@@ -308,13 +242,21 @@ class TSOService::TSOController
     // Note: IsReadyToIssueTS is only set inside SendWorkersControlInfo() based on the state when SendWorkersControlInfo() is called
     TSOWorkerControlInfo _controlInfoToSend;
 
-    seastar::timer<> _heartBeatTimer;
-    ConfigDuration _heartBeatTimerInterval{"tso.ctrol_heart_beat_interval", 10ms};
-    seastar::future<> _heartBeatFuture = seastar::make_ready_future<>();  // need to keep track of heartbeat task future for proper shutdown
-
     seastar::timer<> _timeSyncTimer;
     ConfigDuration _timeSyncTimerInterval{"tso.ctrol_time_sync_interval", 10ms};
     seastar::future<> _timeSyncFuture = seastar::make_ready_future<>();  // need to keep track of timeSync task future for proper shutdown
+
+    // local cyrstal clock drifting allowance, in term of mulitple of _timeSyncTimerInterval
+    // Picking 10 as the local crystal clock drifting allowance is at less than 10 ms per second level, i.e. new threshold is less than 1 second away in the future is ok.
+    ConfigVar<uint32_t> _timeDriftingAllowanceMulitple{"tso.control_time_drifting_allowance_multiple", 10u};
+
+    // timer for cluster gossip
+    // TODO: implement HUYGENS algorithm during gossip to further reduce uncertainty window.
+    // 1000ms should be good default value as 2s is used in [HUYGENS] algorithm (https://www.usenix.org/system/files/conference/nsdi18/nsdi18-geng.pdf)
+    seastar::timer<> _clusterGossipTimer;
+    ConfigDuration _clusterGossipTimerInterval{"tso.ctrol_cluster_gossip_interval", 1000ms};
+    seastar::future<> _clusterGossipFuture = seastar::make_ready_future<>();  // need to keep track of cluster gossip task future for proper shutdown
+    uint64_t _lastClusterGossipTime{0};     // last time cluster gossip happened. After fully implementation, it could be updated during handling of incoming gossip as well as outgoing message.
 
     // this is the batch uncertainty windows size, should be less than MTL(minimal transaction latency),
     // this is also used at the TSO client side as batch's TTL(Time To Live)
