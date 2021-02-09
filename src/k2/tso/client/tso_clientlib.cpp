@@ -43,7 +43,7 @@ seastar::future<> TSO_ClientLib::start()
 
     _tSOServerURLs.emplace_back(TSOServerURL());
     // for now we use the first server URL only, in the future, allow to check other server in case first one is not available
-    return DiscoverServerWorkerEndPoints(_tSOServerURLs[0]);
+    return DiscoverServiceNodes(_tSOServerURLs[0]);
 }
 
 seastar::future<> TSO_ClientLib::gracefulStop() {
@@ -67,7 +67,7 @@ seastar::future<> TSO_ClientLib::gracefulStop() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String& serverURL)
+seastar::future<> TSO_ClientLib::DiscoverServiceNodes(const k2::String& serverURL)
 {
     auto myRemote = k2::RPC().getTXEndpoint(serverURL);
     if (!myRemote) {
@@ -87,7 +87,7 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String&
             return seastar::make_exception_future<>(TSOClientLibShutdownException());
         }
 
-        return k2::RPC().sendRequest(dto::Verbs::GET_TSO_WORKERS_URLS, myRemote->newPayload(), *myRemote, timeout)
+        return k2::RPC().sendRequest(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, myRemote->newPayload(), *myRemote, timeout)
         .then([this](std::unique_ptr<k2::Payload> payload) {
             if (_stopped) return seastar::make_ready_future<>();
 
@@ -97,16 +97,16 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String&
                 return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
             }
 
-            std::vector<std::vector<k2::String>> workerURLs;
-            payload->read(workerURLs);
-            K2ASSERT(log::tsoclient, !workerURLs.empty(), "TSO server should have workers");
+            std::vector<std::vector<k2::String>> nodeURLs;
+            payload->read(nodeURLs);
+            K2ASSERT(log::tsoclient, !nodeURLs.empty(), "TSO server should have workers");
 
-            _curTSOServerWorkerEndPoints.clear();
-            // each worker may have mulitple endPoints URLs, we only pick the fastest supported one, currently RDMA, if no RDMA, pick TCPIP
-            for (auto& singleWorkerURLs : workerURLs)
+            _curTSOServiceNodes.clear();
+            // each node may have mulitple endPoints URLs, we only pick the fastest supported one, currently RDMA, if no RDMA, pick TCPIP
+            for (auto& singleNodeURLs : nodeURLs)
             {
                 k2::TXEndpoint endPointToAdd;
-                for (auto& url : singleWorkerURLs)
+                for (auto& url : singleNodeURLs)
                 {
                     auto tempEndPoint = *(k2::RPC().getTXEndpoint(url));
                     K2LOG_I(log::tsoclient, "Found remote data endpoint: {}", url);
@@ -122,17 +122,17 @@ seastar::future<> TSO_ClientLib::DiscoverServerWorkerEndPoints(const k2::String&
                         endPointToAdd = tempEndPoint;
                     }
                 }
-                _curTSOServerWorkerEndPoints.emplace_back(endPointToAdd);
+                _curTSOServiceNodes.emplace_back(endPointToAdd);
             }
 
-            K2ASSERT(log::tsoclient, !_curTSOServerWorkerEndPoints.empty(), "workers should property configured")
+            K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "nodes should property configured and not empty!")
 
-            // to reduce run-time computation, we shuffle the _curTSOServerWorkerEndPoints here
+            // to reduce run-time computation, we shuffle the _curTSOServiceNodes here
             // to simulate random pick of workers(load balance) in run time by increment a moded index
             std::random_device rd;
             std::mt19937 ranAlg(rd());
 
-            std::shuffle(_curTSOServerWorkerEndPoints.begin(), _curTSOServerWorkerEndPoints.end(), ranAlg);
+            std::shuffle(_curTSOServiceNodes.begin(), _curTSOServiceNodes.end(), ranAlg);
 
             // set ready to serve requests
             _readyToServe = true;
@@ -495,17 +495,17 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
                 return seastar::make_exception_future<>(TSOClientLibShutdownException());
             }
 
-            K2ASSERT(log::tsoclient, !_curTSOServerWorkerEndPoints.empty(), "we should have workers");
-            // pick next worker (effecitvely random one, as _curTSOServerWorkerEndPoints is shuffled already when it is populated)
-            int randWorker = (_curWorkerIdx++) %  _curTSOServerWorkerEndPoints.size();
+            K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "we should have workers");
+            // pick next worker (effecitvely random one, as _curTSOServiceNodes is shuffled already when it is populated)
+            int randNode = (_curWorkerIdx++) %  _curTSOServiceNodes.size();
 
-            auto myRemote = _curTSOServerWorkerEndPoints[randWorker];
+            auto myRemote = _curTSOServiceNodes[randNode];
             std::unique_ptr<Payload> payload = myRemote.newPayload();
             payload->write(batchSize);
 
             (void) retriesLeft;
             // K2LOG_I(log::tsoclient, "Requesting timestampBatch with retriesLeft=" << retriesLeft << ", and timeout=" << k2::usec(timeout).count()
-            //        << "us, with worker " << randWorker);
+            //        << "us, with worker " << randNode);
 
             return k2::RPC().sendRequest(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, std::move(payload), myRemote, timeout)
             .then([this, &batch](std::unique_ptr<k2::Payload> replyPayload) mutable {

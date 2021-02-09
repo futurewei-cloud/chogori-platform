@@ -61,8 +61,9 @@ public:
 
 private:
 
-    // discover TSO server worker cores, populating _curTSOServerWorkerEndPoints, during start() and server change.
-    seastar::future<> DiscoverServerWorkerEndPoints(const k2::String& serverURL);
+    // discover TSO service end points by a node/server url, as each TSO server/node in general has multiple service end points(each worker CPU core have one), 
+    // to populate _curTSOServiceNodes, during start() and server change.
+    seastar::future<> DiscoverServiceNodes(const k2::String& serverURL);
 
     seastar::future<TimestampBatch> GetTimestampBatch(uint16_t batchSize);
 
@@ -83,7 +84,7 @@ private:
     std::vector<k2::String> _tSOServerURLs;
 
     // all URLs of workers of current TSO server
-    std::vector<k2::TXEndpoint> _curTSOServerWorkerEndPoints;
+    std::vector<k2::TXEndpoint> _curTSOServiceNodes;
     size_t _curWorkerIdx{0};
 
     // For debugging and verification purpose, as we are processing request with steady clock, use this to verify

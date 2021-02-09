@@ -53,7 +53,7 @@ seastar::future<> TSOService::TSOController::start()
 
             // register RPC APIs
             RegisterGetTSOServerURLs();
-            RegisterGetTSOWorkersURLs();
+            RegisterGetTSOServiceNodeURLs();
 
             K2LOG_I(log::tsoserver, "TSOController started");
             return seastar::make_ready_future<>();
@@ -74,7 +74,7 @@ seastar::future<> TSOService::TSOController::gracefulStop() {
 
             // unregistar all APIs
             RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVER_URLS, nullptr);
-            RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, nullptr);
+            RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, nullptr);
             // unregister internal APIs
             //RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
 
@@ -143,18 +143,17 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
 /*
    GET_TSO_SERVER_URLS
 
-   TSO servers are a group of independent servers connected to its own TimeAuthority/AtomicClock
-   This API allow client to get all currently live TSO servers from any one of them. 
+   TSO server pool are a group of independent TSO servers/nodes connected to its own TimeAuthority/AtomicClock.
+   This API allow client to get all currently live TSO servers/nodes from any one of them. 
    TSO client is expected to start with a cmd option prividing a subset of TSO servers and update the list later. 
    TODO:
-      1. implment client side logic of updating the server list by calling this API.
-      2. TSO servers could form a gossip cluster, to discovery each other and more rarely to detech if anyone's 
-         TimeAuthroity/AtomicClock is out of band. 
- 
+      1. implement client side logic of updating the server list by calling this API.
+      2. TSO servers could form a gossip cluster, to discovery each other and more rarely to detect if anyone's 
+         TimeAuthority/AtomicClock is out of band. 
 */
 void TSOService::TSOController::RegisterGetTSOServerURLs()
 {
-    k2::RPC().registerMessageObserver(dto::Verbs:: GET_TSO_SERVER_URLS, [this](k2::Request&& request) mutable
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVER_URLS, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
         response->write(_TSOServerURLs);
@@ -163,9 +162,9 @@ void TSOService::TSOController::RegisterGetTSOServerURLs()
     });
 }
 
-void TSOService::TSOController::RegisterGetTSOWorkersURLs()
+void TSOService::TSOController::RegisterGetTSOServiceNodeURLs()
 {
-    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_WORKERS_URLS, [this](k2::Request&& request) mutable
+    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, [this](k2::Request&& request) mutable
     {
         auto response = request.endpoint.newPayload();
         response->write(_workersURLs);
@@ -189,7 +188,7 @@ seastar::future<> TSOService::TSOController::SendWorkersControlInfo()
     }
     else
     {
-        K2LOG_I(log::tsoserver, "TSO Server not ready to serve. _stopRequested:{}, _inSyncWithCluster:{}, ReservedTimeThreshold obsoleted:{},  IgnoreThreshold:{}", _stopRequested, _inSyncWithCluster, (_controlInfoToSend.ReservedTimeThreshold <= curTimeTSECount), _controlInfoToSend.IgnoreThreshold);
+        K2LOG_W(log::tsoserver, "TSO Server not ready to serve. _stopRequested:{}, _inSyncWithCluster:{}, ReservedTimeThreshold obsoleted:{},  IgnoreThreshold:{}", _stopRequested, _inSyncWithCluster, (_controlInfoToSend.ReservedTimeThreshold <= curTimeTSECount), _controlInfoToSend.IgnoreThreshold);
     }
 
     _controlInfoToSend.IsReadyToIssueTS = readyToIssue;

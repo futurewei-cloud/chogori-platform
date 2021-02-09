@@ -179,10 +179,7 @@ class TSOService::TSOController
     // APIs registration
     // APIs to TSO clients
     void RegisterGetTSOServerURLs();
-    void RegisterGetTSOWorkersURLs();
-    // internal API responses Paxos and Atomic/GPS clock();
-    void RegisterACKPaxos() { return; }
-    void RegisterACKTime() { return; }
+    void RegisterGetTSOServiceNodeURLs();
 
     // TimeSync timer call back fn.
     void TimeSync();
@@ -208,9 +205,8 @@ class TSOService::TSOController
     void CollectAndReportStats();
     seastar::future<> DoCollectAndReportStats();
 
-    // (in nanosec counts) Current TA time + 10 times of timeSync interval. 
-    // Picking 10 as the local crytal clock drifting allowrance is at less than 10 ms per second level, i.e. new threshold is less than 1 second away in the future is ok.
-    inline uint64_t GenNewReservedTimeThreshold() {return TimeAuthorityNow() + _timeSyncTimerInterval().count() * 10;};
+    // (in nanosec counts) Current TA time + drifting allowarnce (in term of mulitple, default 10, times of timeSync interval). 
+    inline uint64_t GenNewReservedTimeThreshold() {return TimeAuthorityNow() + _timeSyncTimerInterval().count() * _timeDriftingAllowanceMulitple();};
 
     // outer TSOService object
     TSOService& _outer;
@@ -249,6 +245,10 @@ class TSOService::TSOController
     seastar::timer<> _timeSyncTimer;
     ConfigDuration _timeSyncTimerInterval{"tso.ctrol_time_sync_interval", 10ms};
     seastar::future<> _timeSyncFuture = seastar::make_ready_future<>();  // need to keep track of timeSync task future for proper shutdown
+
+    // local cyrstal clock drifting allowance, in term of mulitple of _timeSyncTimerInterval
+    // Picking 10 as the local crystal clock drifting allowance is at less than 10 ms per second level, i.e. new threshold is less than 1 second away in the future is ok.
+    ConfigVar<uint32_t> _timeDriftingAllowanceMulitple{"tso.control_time_drifting_allowance_multiple", 10u};
 
     // timer for cluster gossip
     // TODO: implement HUYGENS algorithm during gossip to further reduce uncertainty window.
