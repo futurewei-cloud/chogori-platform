@@ -45,6 +45,10 @@ public:
 
     bool isDone(); // If false, more results may be available
 
+    // Recursively copies the payloads if the expression's values and children. This is used so that the
+    // memory of the payloads will be allocated in the context of the current thread.
+    void copyPayloads() { request.filterExpression.copyPayloads(); }
+
     // The user must specify the inclusive start and exclusive end keys for the range scan, but the client
     // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an
     // appropriate schema by the client createQuery function. The user is then expected to serialize the

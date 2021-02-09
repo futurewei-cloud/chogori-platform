@@ -430,9 +430,8 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     return shared;
 }
 
-Payload Payload::copy() {
-    Payload copied;
-    Binary b(_size); // allocate a single binary for all the data we need to copy
+Payload Payload::copy(BinaryAllocatorFunctor allocator) {
+    Payload copied(allocator);
 
     // copy exactly the data we need
     size_t toCopy = _size;
@@ -441,11 +440,12 @@ Payload Payload::copy() {
         auto& curBuf = _buffers[curBufIndex];
         auto copySizeFromCurBuf = std::min(toCopy, curBuf.size());
 
-        std::memcpy(b.get_write() + (b.size() - toCopy), curBuf.get(), copySizeFromCurBuf);
+        copied.write(curBuf.get(), copySizeFromCurBuf);
         toCopy -= copySizeFromCurBuf;
         curBufIndex++;
     }
-    copied.appendBinary(std::move(b));
+
+    copied.seek(0);
     return copied;
 }
 

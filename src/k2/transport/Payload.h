@@ -127,7 +127,7 @@ public: // memory management
     Payload shareRegion(size_t startOffset, size_t nbytes);
 
     // Creates a new payload as a copy of this payload. The underlying data is copied over to the new payload
-    Payload copy();
+    Payload copy(BinaryAllocatorFunctor dest_allocator=DefaultAllocator);
 
     // clear this payload
     void clear();

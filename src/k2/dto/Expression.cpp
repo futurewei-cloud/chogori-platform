@@ -148,6 +148,17 @@ int _compareSValues(SchematizedValue& a, SchematizedValue& b) {
     return result;
 }
 
+void Expression::copyPayloads() {
+    for (Value& value : valueChildren) {
+        Payload copied = value.literal.copy();
+        value.literal = std::move(copied);
+    }
+
+    for (Expression& exp : expressionChildren) {
+        exp.copyPayloads();
+    }
+}
+
 bool Expression::evaluate(SKVRecord& rec) {
     switch(op) {
         case Operation::EQ: {
