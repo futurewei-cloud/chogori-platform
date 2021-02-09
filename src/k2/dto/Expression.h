@@ -142,6 +142,10 @@ struct Expression {
     // NoFieldFoundException if we cannot find a field of a given name in the schema
     bool evaluate(SKVRecord& rec);
 
+    // Recursively copies the payloads if the expression's values and children. This is used so that the
+    // memory of the payloads will be allocated in the context of the current thread.
+    void copyPayloads();
+
     K2_PAYLOAD_FIELDS(op, valueChildren, expressionChildren);
     K2_DEF_FMT(Expression, op, valueChildren, expressionChildren);
 
