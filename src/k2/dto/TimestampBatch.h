@@ -34,10 +34,8 @@ namespace k2
 namespace dto
 {
 // timestampBatch between TSO client and TSO server
-class TimestampBatch
+struct TimestampBatch
 {
-public:
-
     uint64_t    TBEBase;        // Timestamp Batch uncertain window End time base, number of nanosecond ticks from TAI
     uint32_t    TSOId;          // TSOId
     uint16_t    TsDelta;        //  time difference between Ts and Te, in nanosecond unit
@@ -58,9 +56,53 @@ public:
         return ts;
     }
 
-    DEFAULT_COPY_MOVE_INIT(TimestampBatch);
     K2_PAYLOAD_FIELDS(TBEBase, TSOId, TsDelta, TTLNanoSec, TSCount, TBENanoSecStep);
-
+    K2_DEF_FMT(TimestampBatch, TBEBase, TSOId, TsDelta, TTLNanoSec, TSCount, TBENanoSecStep);
 };
+
+struct GetTimeStampBatchRequest
+{
+    uint16_t batchSizeRequested = 8;
+
+    K2_PAYLOAD_FIELDS(batchSizeRequested);
+    K2_DEF_FMT(GetTimeStampBatchRequest, batchSizeRequested);
+};
+
+struct GetTimeStampBatchResponse
+{
+    TimestampBatch timeStampBatch;
+
+    K2_PAYLOAD_FIELDS(timeStampBatch);
+    K2_DEF_FMT(GetTimeStampBatchResponse, timeStampBatch);
+};
+
+struct GetTSOServerURLsRequest
+{
+    K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(GetTSOServerURLsRequest);
+};
+
+struct GetTSOServerURLsResponse
+{
+    std::vector<String> serverURLs;
+
+    K2_PAYLOAD_FIELDS(serverURLs);
+    K2_DEF_FMT(GetTSOServerURLsResponse, serverURLs);
+};
+
+struct GetTSOServiceNodeURLsRequest
+{
+    K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(GetTSOServiceNodeURLsRequest);
+};
+
+struct GetTSOServiceNodeURLsResponse
+{
+    std::vector<std::vector<String>> serviceNodeURLs;
+
+    K2_PAYLOAD_FIELDS(serviceNodeURLs);
+    K2_DEF_FMT(GetTSOServiceNodeURLsResponse, serviceNodeURLs);
+};
+
 }  // dto
 }  // k2
