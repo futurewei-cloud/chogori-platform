@@ -107,29 +107,17 @@ seastar::future<> TSO_ClientLib::DiscoverServiceNodes(const k2::String& serverUR
                 K2LOG_E(log::tsoclient, "Remote end did not provide node URLs. Giving up");
                 return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
             }
+            else
+            {
+                K2LOG_I(log::tsoclient, "received node URLs:{}", nodeURLs);
+            }
 
             _curTSOServiceNodes.clear();
             // each node may have mulitple endPoints URLs, we only pick the fastest supported one, currently RDMA, if no RDMA, pick TCPIP
             for (auto& singleNodeURLs : nodeURLs)
             {
-                k2::TXEndpoint endPointToAdd;
-                for (auto& url : singleNodeURLs)
-                {
-                    auto tempEndPoint = *(k2::RPC().getTXEndpoint(url));
-                    K2LOG_I(log::tsoclient, "Found remote data endpoint: {}", url);
-                    if (tempEndPoint.protocol == RRDMARPCProtocol::proto)
-                    {
-                        // if found RDMA, use it and break out
-                        endPointToAdd = tempEndPoint;
-                        break;
-                    }
-                    else if (tempEndPoint.protocol == TCPRPCProtocol::proto)
-                    {
-                        // keep it to enPointToAdd, maybe replaced by RDMA endpoint later
-                        endPointToAdd = tempEndPoint;
-                    }
-                }
-                _curTSOServiceNodes.emplace_back(endPointToAdd);
+                _curTSOServiceNodes.push_back( Discovery::selectBestEndpoint(singleNodeURLs));
+                K2LOG_I(log::tsoclient, "Selected node endpoint:{}", _curTSOServiceNodes.back()->url);
             }
 
             K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "nodes should property configured and not empty!")
@@ -510,7 +498,7 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
             GetTimeStampBatchRequest request{.batchSizeRequested = batchSize};
             K2LOG_D(log::tsoclient, "Requesting timestampBatch of batchsize:{} with retriesLeft:{} and timeout:{} to node:{}", batchSize, retriesLeft, timeout, randNode);
 
-            return k2::RPC().callRPC<dto::GetTimeStampBatchRequest, dto::GetTimeStampBatchResponse>(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, request, myRemote, timeout)
+            return k2::RPC().callRPC<dto::GetTimeStampBatchRequest, dto::GetTimeStampBatchResponse>(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, request, *myRemote, timeout)
             .then([this, &batch](auto&& response) {
                 if (_stopped)
                 {
