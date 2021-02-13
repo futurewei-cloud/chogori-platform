@@ -492,7 +492,8 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
 
             K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "we should have workers");
             // pick next worker (effecitvely random one, as _curTSOServiceNodes is shuffled already when it is populated)
-            int randNode = (_curWorkerIdx++) %  _curTSOServiceNodes.size();
+            if (retriesLeft != 2) {_curWorkerIdx++;}  // if this is not first try, it means we had error and are retrying, thus change to a new service node. 
+            int randNode = _curWorkerIdx %  _curTSOServiceNodes.size();
             auto& myRemote = _curTSOServiceNodes[randNode];
 
             GetTimeStampBatchRequest request{.batchSizeRequested = batchSize};
