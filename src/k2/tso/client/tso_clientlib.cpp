@@ -96,7 +96,7 @@ seastar::future<> TSO_ClientLib::DiscoverServiceNodes(const k2::String& serverUR
             auto& [status, r] = response;
             if (!status.is2xxOK())
             {
-                K2LOG_E(log::tsoclient, "Error during get TSO node URLs, code:{}, error message:{}", status.code, status.message);
+                K2LOG_E(log::tsoclient, "Error during get TSO node URLs, status:{}", status);
                 // currently, it is not expected 
                 return seastar::make_exception_future<>(std::runtime_error(status.message));
             }
@@ -510,16 +510,13 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
                 auto& [status, r] = response;
                 if (!status.is2xxOK())
                 {
-                    K2LOG_E(log::tsoclient, "Error during get timestampBatch, code:{}, error message:{}", status.code, status.message);
-                    // currently, we should only have 5xx retryable error
+                    K2LOG_E(log::tsoclient, "Error during get timestampBatch, status:{}", status);
+                    // currently, we should only have 5xx retryable error, assert to confirm here to make sure future other error status added is handled.
                     K2ASSERT(log::tsoclient, status.is5xxRetryable(), "GetTimeStampBatch error should be 5xxRetryable.");
                     return seastar::make_exception_future<>(std::runtime_error(status.message));
                 }
-                else
-                {
-                    K2LOG_D(log::tsoclient, "got timestampBatch:{}", r.timeStampBatch);
-                }
 
+                K2LOG_V(log::tsoclient, "got timestampBatch:{}", r.timeStampBatch);
                 batch = r.timeStampBatch;
                 return seastar::make_ready_future();
             });
