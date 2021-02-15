@@ -84,8 +84,9 @@ private:
     std::vector<k2::String> _tSOServerURLs;
 
     // all URLs of workers of current TSO server
-    std::vector<k2::TXEndpoint> _curTSOServiceNodes;
-    size_t _curWorkerIdx{0};
+    std::vector<std::unique_ptr<k2::TXEndpoint>> _curTSOServiceNodes;
+    // Try to use the same endpoint untill there is an error to minimize connection usage
+    size_t _curWorkerIdx{0};  
 
     // For debugging and verification purpose, as we are processing request with steady clock, use this to verify
     // the requet we see are always coming in with bigger value steady clock.

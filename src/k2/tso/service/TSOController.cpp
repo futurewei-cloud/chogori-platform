@@ -52,8 +52,14 @@ seastar::future<> TSOService::TSOController::start()
             _statsUpdateTimer.arm(_statsUpdateTimerInterval());
 
             // register RPC APIs
-            RegisterGetTSOServerURLs();
-            RegisterGetTSOServiceNodeURLs();
+            RPC().registerRPCObserver<dto::GetTSOServerURLsRequest, dto::GetTSOServerURLsResponse>
+            (dto::Verbs::GET_TSO_SERVER_URLS, [this](dto::GetTSOServerURLsRequest&& request) {
+                return handleGetTSOServerURLs(std::move(request));
+            });
+            RPC().registerRPCObserver<dto::GetTSOServiceNodeURLsRequest, dto::GetTSOServiceNodeURLsResponse>
+            (dto::Verbs::GET_TSO_SERVICE_NODE_URLS, [this](dto::GetTSOServiceNodeURLsRequest&& request) {
+                return handleGetTSOServiceNodeURLs(std::move(request));
+            });
 
             K2LOG_I(log::tsoserver, "TSOController started");
             return seastar::make_ready_future<>();
@@ -71,12 +77,6 @@ seastar::future<> TSOService::TSOController::gracefulStop() {
             _timeSyncTimer.cancel();
             _clusterGossipTimer.cancel();
             _statsUpdateTimer.cancel();
-
-            // unregistar all APIs
-            RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVER_URLS, nullptr);
-            RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, nullptr);
-            // unregister internal APIs
-            //RPC().registerMessageObserver(MsgVerbs::ACK, nullptr);
 
             return seastar::make_ready_future<>();
         });
@@ -151,25 +151,26 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
       2. TSO servers could form a gossip cluster, to discovery each other and more rarely to detect if anyone's 
          TimeAuthority/AtomicClock is out of band. 
 */
-void TSOService::TSOController::RegisterGetTSOServerURLs()
+seastar::future<std::tuple<Status, dto::GetTSOServerURLsResponse>>
+TSOService::TSOController::handleGetTSOServerURLs(dto::GetTSOServerURLsRequest&& request)
 {
-    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVER_URLS, [this](k2::Request&& request) mutable
-    {
-        auto response = request.endpoint.newPayload();
-        response->write(_TSOServerURLs);
-        K2LOG_D(log::tsoserver, "returned TSO Server TCP endpoints are: {}", _TSOServerURLs);
-        return k2::RPC().sendReply(std::move(response), request);
-    });
+    K2LOG_D(log::tsoserver, "handleGetTSOServerURLs");
+    (void) request;
+
+    GetTSOServerURLsResponse response{.serverURLs = _TSOServerURLs};
+    K2LOG_D(log::tsoserver, "returned TSO Server TCP endpoints are: {}", _TSOServerURLs);
+    return RPCResponse(Statuses::S200_OK("OK"), std::move(response));
 }
 
-void TSOService::TSOController::RegisterGetTSOServiceNodeURLs()
+seastar::future<std::tuple<Status, dto::GetTSOServiceNodeURLsResponse>>
+TSOService::TSOController::handleGetTSOServiceNodeURLs(dto::GetTSOServiceNodeURLsRequest&& request)
 {
-    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, [this](k2::Request&& request) mutable
-    {
-        auto response = request.endpoint.newPayload();
-        response->write(_workersURLs);
-        return k2::RPC().sendReply(std::move(response), request);
-    });
+    K2LOG_D(log::tsoserver, "handleGetTSOServiceNodeURLs");
+    (void) request;
+
+    GetTSOServiceNodeURLsResponse response{.serviceNodeURLs = _workersURLs};
+    K2LOG_D(log::tsoserver, "returned TSO service nodes endpoints are: {}", _workersURLs);
+    return RPCResponse(Statuses::S200_OK("OK"), std::move(response));
 }
 
 // really send the _controlInfoToSend to worker, and only place to set IsReadyToIssueTS inside _controlInfoToSend based on current state
