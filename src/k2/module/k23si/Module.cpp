@@ -1039,6 +1039,13 @@ K23SIPartitionModule::handleTxnPush(dto::K23SITxnPushRequest&& request) {
                                         .allowChallengerRetry=true}
             );
         case dto::TxnRecordState::Deleted:
+            // possible race condition - the incumbent has just finished finalizing and
+            // is being removed from memory. The caller should not see this as a WI anymore
+            return RPCResponse(dto::K23SIStatus::OK("incumbent won in push"),
+                dto::K23SITxnPushResponse{.winnerMTR = std::move(txnId.mtr),
+                                        .incumbentState=dto::TxnRecordState::Deleted,
+                                        .allowChallengerRetry=true}
+            );
         default:
             K2ASSERT(log::skvsvr, false, "Invalid transaction state: {}", incumbent.state);
     }
@@ -1135,7 +1142,7 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
 
             // update the write intent if necessary
             auto* rec = _getDataRecord(key, request.incumbentMTR.timestamp);
-            if (rec && rec->status == dto::DataRecord::WriteIntent) {
+            if (rec && rec->status == dto::DataRecord::WriteIntent && rec->txnId.mtr == request.incumbentMTR) {
                 switch (response.incumbentState) {
                     case dto::TxnRecordState::InProgress: {
                         break;
@@ -1143,15 +1150,20 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
                     case dto::TxnRecordState::Aborted: {
                         rec->status = dto::DataRecord::Aborted;
                         //NB this call invalidates rec since we're modifying the indexer
-                        _removeRecord(*rec); // TODO-persistence: This shouldn't be done here but after succesful persist, probably during txn finalization and/or GC for abandoned WIs
+                        _removeRecord(*rec); // TODO-persistence: This shouldn't be done here but after successful persist, probably during txn finalization and/or GC for abandoned WIs
                         break;
                     }
                     case dto::TxnRecordState::Committed: {
+                        // TODO-persistence this needs to be persisted
                         rec->status = dto::DataRecord::Committed;
                         break;
                     }
+                    case dto::TxnRecordState::Deleted: {
+                        K2LOG_E(log::skvsvr, "Invalid write intent. Transaction is in state Deleted but WI is still present and not finalized in txn {}", rec->txnId);
+                        break;
+                    }
                     default:
-                        K2LOG_E(log::skvsvr, "Unable to convert WI state based on txn state: {}", response.incumbentState);
+                        K2LOG_E(log::skvsvr, "Unable to convert WI state based on txn state: {}, in txn: {}", response.incumbentState, rec->txnId);
                 }
             }
 
@@ -1403,7 +1415,7 @@ K23SIPartitionModule::_getVersion(VersionsT& versions, const dto::Timestamp& tim
     return viter;
 }
 
-// the the data record with the given key which is not newer than the given timestsamp
+// get the data record with the given key which is not newer than the given timestsamp
 dto::DataRecord*
 K23SIPartitionModule::_getDataRecord(const dto::Key& key, const dto::Timestamp& timestamp) {
     auto versions = _indexer.find(key);
