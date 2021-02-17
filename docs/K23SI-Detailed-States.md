@@ -4,7 +4,7 @@ For a typical K2-3SI distributed transaction, there are Transaction Record(TR) t
 
 TR and MTR has less persisted states and simpler transition map, while their in memory states and transition map are much more complex. 
 
-TR and MTR are persisted normally togeter with data (SKV record Wright Intend, or SKV record status change record) for persistence optimization, but to simplify the document, we ignored the data (SKV) persistence here.
+TR and MTR are persisted normally togeter with data (SKV record Write Intend, or SKV record status change record) for persistence optimization, but to simplify the document, we ignored the data (SKV) persistence here.
 
 This document will describe these states and transition in following order:
 1) Persisted Transaction Record (TR) states and transition map
@@ -49,7 +49,7 @@ Also notice that T3 and T5 are finalized state of transaction, which only exists
 | Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
 |---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
 | 0 Starting Transaction    | Client Starts a TXN with first write | T0(Created <i>(NP)</i>) -> T0.9(InProgressPIP)| N/A                  | To persist TR in state T1() state into WAL              |
-| 1. Transaction In Progress| T1(InProgress) TR persisted          | T0.9(InProgressPIP) -> T1(InProgress)     | T1(InProgress)           | None                                                    |
+| 1. Transaction In Progress| T1(InProgress) TR persisted          | T0.9(InProgressPIP) -> T1(InProgress)     | N/A                      | None                                                    |
 | 1.9 Commmiting transaction| Commmit transaction requested        | T1(InProgress) -> T1.9(CommitPIP)         | T1(InProgress)           | To persist TR in state T2(Committed) state into WAL     |
 | 2  Committed & finalizing | T2(Committed) TR persisted           | T1.9(CommitPIP) -> T2 (Committed)         | T2(Committed)            | Send finalizing requestes to participant partitions     |
 | 2.9 Finalized & Deleting  | All finalizing requests succeed      | T2 (Committed)  ->T2.9(CommitDeletePIP)   | T2(Committed)            | To persist TR in state T3(Committed&Deleted) state into WAL|
@@ -66,7 +66,7 @@ Note: PIP stands for Persistence in Progress. NP stands for Non-Persistentable.
 | Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
 |---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
 | 0 Starting Transaction    | Client Starts a TXN with first write | T0(Created <i>(NP)</i>) -> T0.9(InProgressPIP)| N/A                  | To persist TR in state T1() state into WAL              |
-| 1. Transaction In Progress|T1.0(InProgress) TR persisted         | T0.9(InProgressPIP) -> T1(InProgress)     | T1(InProgress)           | None                                                    |
+| 1. Transaction In Progress|T1.0(InProgress) TR persisted         | T0.9(InProgressPIP) -> T1(InProgress)     | N/A                      | None                                                    |
 | 3.9 aborting transaction  |abort transaction requested           | T1(InProgress) -> T3.9(AbortPIP)          | T1(InProgress)           | To persist TR in state T4(Aborted) state into WAL       |
 | 4. Aborted & finalizing   |T4(Aborted) TR persisted              | T3.9(AbortPIP) -> T4 (Aborted)            | T4(Aborted)              | Send finalizing requestes to participant partitions     |
 | 4.9 Finalized & Deleting  |All finalizing requests succeed       | T4 (Aborted)  ->T4.9(AbortDeletePIP)      | T4(Aborted)              | To persist TR in state T5(Aborted&Deleted) state into WAL |
