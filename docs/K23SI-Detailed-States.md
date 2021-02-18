@@ -1,5 +1,7 @@
 
 # 1. Overview
+This is a temporary design document for detailed description of transaction states, persistence and replay. Once it is mature, we will merge the content here into the master [K23SI design doc](./K2-3SI-TXN.md).
+
 For a typical K2-3SI distributed transaction, there are Transaction Record(TR) that is managed at TRH (designated Transaction Record holder partition) and MTR (MiniTransactionRecord) that is managed at participant partitions. Both TR and MTR are managed in memory and persisted in WAL. 
 
 TR and MTR has less persisted states and simpler transition map, while their in memory states and transition map are much more complex. 
@@ -13,27 +15,40 @@ This document will describe these states and transition in following order:
 <br/><br/>
 
 # 2. Persisted Transaction Record (TR) states and transition map
-There are only 5 Transaction states (of Transaction) that could be persisted in WAL:
-1) T1 (InProgress)        - transaction is created
-2) T2 (Committed)         - transaction is commited
-3) T3 (Committed&Deleted) - transaction, after commited, complete finalization and is deleted from memory.
-4) T4 (Aborted)           - transaction is aborted
-5) T5 (Aborted&Deleted)   - transaction, after aborted, complete finalization and is deleted from memory.
+There are only 5 Transaction states, as in the TxnStates graph below described in [K23SI design doc](./K2-3SI-TXN.md).
+![TxnStates](./images/TxnStates.png)
 
-The persisted state transition (completed) is following:
-Two typical path:
+1) S1 (InProgress)        - transaction is created
+2) S2 (Committed)         - transaction is commited
+3) S3 (Aborted)           - transaction is aborted
+4) S4 (Finalized)         - transaction, after comit/aborted, complete finalization and transaction record is removed from memory.
+5) S5 (ForcedAborted)     - transaction, for one of three different reasons, is forced to be in aborted state, which is different from S3 in the case that it may never have clean up information to go through a proper finalization process. 
+
+For Transaction Record, as truth authority for a transaction state, it have exacly above 5 persistable states, appearing in Write-Ahead-Log(WAL).
+
+As shown in above picture, inside WAL, the sequence of TR record states can be
 <br/>
-(a) T1 -> T2 -> T3 : transaction is started, commited and deleted(after sucessful finalization)
+(a) S1 -> S2 -> S4 : Typical committed transaction - transaction is started, committed and finalized
 <br/>
-(b) T1 -> T4 -> T5 : transaction is started, aborted and deleted (after sucessful finalization)
+(b) S1 -> S3 -> S4 : Typical aborted transaction - transaction is started, aborted and finalized
 
-One rare but possible path:
+Also, when ForcedAborted state occurred, the sequence of TR record in WAL can be
 <br/>
-(c) T1 -> T2 -> T4 -> T5 : transaction is started, tried to commit but couldn't sucessfully got comit record persistance confirmed after max amount of retry, then start to abort the transaction. 
+(c) S1 -> S5 -> S3 -> S4 : most typical fored aborted transaction - transaction is stared, foreced aborted for one of three reasons, and then client properly request abort with write-set information for finalization, continue go through S3 Aborted and S4 Finalized afterward.
+<br/>
+(d) S5 -> S3 -> S4 : Less common race condition cause case, that a push operation comes to TRH so early that the first write of TRH is not arrived to TRH yet, thus the transaction is forced aborted. Client becomes awared when trying to creat transaction on TRH and then instead properly abort the transaction.
+<br/>
+(e) S1 -> S5 : When transaction is started, it is forced abort for one of three reasons, but client crashed and never end the transaction properly. Such TR will be removed when Retention Window Ends(onRWE).
+<br/>
+(f) S5 : Some ophan Write-Intend in participant partition triggered other confliciting transaction to push on TRH, where there is no TR in memory, we created the TR in this state and client is not aware of this re-created transaction thus no finalization. Such TR will be removed when Retention Window Ends(onRWE).
 
-All position in above three path of state transition could happen to a transaction in WAL. During replay, depends on which state record is the last one, we will push the transaction to next sate according to replay rules. For example, in simplified discription, if replay process see last one is T1, it will follow (b) during replay. If see T2, it will try to follow (a), If see T4, it will follow (b). T3 and T5 means fully completed transaction and nothing need to be done future during the replay.  
+One rare but possible path in WAL
+<br/>
+(c) S1 -> S2 -> S3 -> S4 : transaction is started, tried to commit but couldn't sucessfully got comit record persistance confirmed after max amount of retries(even the commit record S2 is indeed persisted in WAL), then start to abort the transaction and it got aborted suceessfully and finalized. Note, from client point of view, the transaction is never committed successfully and thus aborted and finalized.
 
-Also notice that T3 and T5 are finalized state of transaction, which only exists in WAL, but never in memory. 
+All position in above three path of state transition could happen to a transaction in WAL. During replay, depends on which state record is the last one, we will push the transaction to next sate according to replay rules. For example, in simplified discription, if replay process see last record is S2(Committed), it will follow (a) during replay, trying to finalize the transaction. If see S3, it will try to follow (b), trying to finalize the abortion. If last state is S1, it will follow (e), force abort this transaction. If last is S5, it will follow (f), keep the S5 record in memory till RWE.  
+
+Also notice that S4 finalized state of transaction, which only exists in WAL, but never in memory. 
 
 For a transaction, TR (and MTR) are persisted normally togeter with data (SKV record Write Intend, or SKV record status change record) for persistence optimization, but to simplify the document, we ignored the data (SKV record) persistence here. One fact we should point out about persistence is that when applicable, TR/SKV and MTR/SKV are persisted combined in one networked request to persistence layer and TR or MTR is before SKV record. So for any persisted state changes(of TR/MRT and SKV data), in WAL, new state records of TR/MTR always appears before those of SKV data records. This important fact can be used for correct execution (including state transition validation) as well as debugging validation.
 
