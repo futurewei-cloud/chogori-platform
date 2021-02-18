@@ -49,7 +49,7 @@ For a transaction, TR (and MTR) are persisted normally togeter with data (SKV re
 | Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
 |---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
 | 0 Starting Transaction    | Client Starts a TXN with first write | T0(Created <i>(NP)</i>) -> T0.9(InProgressPIP)| N/A                  | To persist TR in state T1() state into WAL              |
-| 1. Transaction In Progress| T1(InProgress) TR persisted          | T0.9(InProgressPIP) -> T1(InProgress)     | N/A                      | None                                                    |
+| 1. Transaction becomes InProgress| T1(InProgress) TR persisted          | T0.9(InProgressPIP) -> T1(InProgress)     | N/A                      | None                                                    |
 | 1.9 Commmiting transaction| Commmit transaction requested        | T1(InProgress) -> T1.9(CommitPIP)         | T1(InProgress)           | To persist TR in state T2(Committed) state into WAL     |
 | 2  Committed & finalizing | T2(Committed) TR persisted           | T1.9(CommitPIP) -> T2 (Committed)         | T2(Committed)            | Send finalizing requestes to participant partitions     |
 | 2.9 Finalized & Deleting  | All finalizing requests succeed      | T2 (Committed)  ->T2.9(CommitDeletePIP)   | T2(Committed)            | To persist TR in state T3(Committed&Deleted) state into WAL|
@@ -155,9 +155,9 @@ Finalization process is a requests fan out process from TRH to mulitple particip
 
 But, in practice, when only one or just a minor few participants failed to finalizing, an optimization can be done is to record/persist (again) only these failed write-set subset keys(or key ranges), so, in case the TRH is reloaded, only these failed few partition(s) will be called to retry finalization.
 
-## 3. 4 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion
+## 3. 4 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Distributed multiple steps transaction
 ### Optimized case (where commit can be requested before all data is persisted)
-For a transaction contains mulitple steps of write (and read) operations, one optimization is for client to move to next step when previous one is acknowledged by participant partitions (the write operation is kept in memory and in parallel asyn persistence of the change record is happening). Further more, the participant can directly notify the TRH on the complete of persistence later, where the TRH was notified with each intended write by client at the same time when it was issued to the participant. Then whole transaction could have higher parallelism (of persistence and operations) and less network message roundtrip. In such optimization case, it is possible that when client requests commit, not all write-set was successfully persisted.   
+For a distributed transaction contains mulitple steps of write (and read) operations, one optimization is for client to move to next step when previous one is acknowledged by participant partitions (the write operation is kept in memory and in parallel asyn persistence of the change record is happening). Further more, the participant can directly notify the TRH on the complete of persistence later, where the TRH was notified with each intended write by client at the same time when it was issued to the participant. Then whole transaction could have higher parallelism (of persistence and operations) and less network message roundtrip. In such optimization case, it is possible that when client requests commit, not all write-set was successfully persisted.   
 
 For this case, a in memory TR state T1.8(CommitWait - ForReady) is introduced, which means the TR got request for commit, but not receiving all the sucessfull persistnce notice yet.
 <br/>
@@ -180,6 +180,10 @@ Table 6.2 - Special (optimized/quick) commit requested at state 0.9 (InProgressP
 | T1.8 Wait for ready           | Local T1(InProgress)TR persisted&not last persistence | NoChange T1.8(CommitWait)| T1                   | None                                                    |
 | T1.8 Wait for ready           | last persistence notification local or remote |T1.8(CommitWait) ->T1.9(CommitPIP)| T1                   | To persist TR in state T2(Committed) state into WAL     |
 <br/>
+
+## 3. 5 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Non-Distributed transaction
+
+For non-distribued transaction (where there is only one partition is involved), the final write operation (the last operation for a multiple step transaction or only write operation for a single step transaction) will be combined with commit request (in happen commit case). 
 
 <br/>
 
@@ -210,3 +214,20 @@ There are 3 in memory MTR states:
 1) M1 (InProgress) - in the process of transaction read/write operations
 2) M1.9 (CommitPIP) - Received Commit request, processing it, e.g. persisting MTR and related SKV write-set (WriteIntent) state change to commited.
 3) M2.9 (AbortPIP) - Received abort request
+
+MTR is created in memory with first write operation of a transaction requested on the participant partition, and persisted first time with InProgress state together with first write operation SKV data/WriteIntent (in front of SKV data record in position) in WAL. Upon finalization requests from TRH arrives (for both commit and abort case), its in memory state changes to M1.9 or M2.9, and trigginger persistence of M2 or M3 record (together of SKV data/Write Intent state change to commit/abort) into WAL.
+
+In participant partition, there is a container for all in memory MTR (on going transactions). Each in memory MTR, besides transaction ID info (where to find TRH etc), contains a list of WriteOperations, each WriteOperation contains a list of keys of SKV that is written in this WriteOperation. Each WriteOperation, same with the Write Intend/Keys it contains, has persistence state as PIP or Persisted. This also makes MTR in memory state doesn't need a InProgressPIP state, unlike TR which has such in memory state. 
+
+## 5.1 MTR States and transition - basic cases
+
+### Table 5-1 - MTR <I>Typical transaction life cycle (committed)</I>
+| Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
+|---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
+| First write               | First write with MTR arrives         | {emptry} -> M1(InProgress)                | N/A                      | To persist MTR in state M1(InProgress) into WAL         |
+| Consequent write          | Consequent write with same MTR arrives| Unchanged M1                             | N/A or M1                | None on MTR, but persisting new WriteOperation          |
+| (WriteOperation) Persisted| Wrrite Persistence complete          | Unchanged M1                              | M1 (InProgress)          | None on MTR, But update WriteOperation and WI in memory state from PIP to persisted|
+| Commit finalization       | CommitFinalization reqeust arrives   | M1 (InProgress) -> M1.9 (CommitPIP)       | M1
+
+
+Note, when MTR in memory state is created upon write request, first WriteOperation with PIP is created under MTR and all its containing SKV records/WriteIntends are added in indexer in memoery with PIP state and are being persisted together (positionally behind) with MTR into WAL. 
