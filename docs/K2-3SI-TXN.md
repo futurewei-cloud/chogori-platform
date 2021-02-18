@@ -124,7 +124,7 @@ Transaction records are records stored in the system similarly to user records. 
 There is a server-side timeout of 100ms per transaction, maintained at the TRH for the transaction. The client is required to emit a heartbeat to the TRH to make sure the transaction is not marked as abandoned and thus aborted (`ForcedAbort` state) by the server automatically. The heartbeat is a K2Timestamp.
 
 ### Transaction states
-Here is the TR state machine. we cover each state below
+Here is the TR state machine. There are 5 states and they are all persistable states for a transaction. We cover each state below
 ![TxnStates](./images/TxnStates.png)
 
 #### Transitions
@@ -133,7 +133,6 @@ Here is the TR state machine. we cover each state below
 - onHBTimeout: TRH did not receive heartbeat for a transaction in time.
 - onRWE: (on retention window expiry) The TR has been in the system longer than our retention window
 - onEnd(A|C): the client is signalling that they want to end the transaction with either an Abort(A) or Commit(C) action
-- onTimer: this means that we will perform the state transition asynchronously after some time
 - onFinalizeDone: The transaction has been successfully finalized. All participants have been contacted and they have converted all of their write intents.
 
 ### Creation of a TR
