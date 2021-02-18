@@ -4,8 +4,6 @@ For a typical K2-3SI distributed transaction, there are Transaction Record(TR) t
 
 TR and MTR has less persisted states and simpler transition map, while their in memory states and transition map are much more complex. 
 
-TR and MTR are persisted normally togeter with data (SKV record Write Intend, or SKV record status change record) for persistence optimization, but to simplify the document, we ignored the data (SKV) persistence here.
-
 This document will describe these states and transition in following order:
 1) Persisted Transaction Record (TR) states and transition map
 2) In Memory Transaction Record (TR) states and transition map
@@ -36,6 +34,8 @@ One rare but possible path:
 All position in above three path of state transition could happen to a transaction in WAL. During replay, depends on which state record is the last one, we will push the transaction to next sate according to replay rules. For example, in simplified discription, if replay process see last one is T1, it will follow (b) during replay. If see T2, it will try to follow (a), If see T4, it will follow (b). T3 and T5 means fully completed transaction and nothing need to be done future during the replay.  
 
 Also notice that T3 and T5 are finalized state of transaction, which only exists in WAL, but never in memory. 
+
+For a transaction, TR (and MTR) are persisted normally togeter with data (SKV record Write Intend, or SKV record status change record) for persistence optimization, but to simplify the document, we ignored the data (SKV record) persistence here. One fact we should point out about persistence is that when applicable, TR/SKV and MTR/SKV are persisted combined in one networked request to persistence layer and TR or MTR is before SKV record. So for any persisted state changes(of TR/MRT and SKV data), in WAL, new state records of TR/MTR always appears before those of SKV data records. This important fact can be used for correct execution (including state transition validation) as well as debugging validation.
 
 <br/><br/>
 
