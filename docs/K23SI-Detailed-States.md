@@ -2,7 +2,7 @@
 # 1. Overview
 This is a temporary design document for detailed description of transaction states, persistence and replay. Once it is mature, we will merge the content here into the master [K23SI design doc](./K2-3SI-TXN.md).
 
-For a typical K2-3SI distributed transaction, there are Transaction Record(TR) that is managed at TRH (designated Transaction Record holder partition) and MTR (MiniTransactionRecord) that is managed at participant partitions. Both TR and MTR are managed in memory and persisted in WAL. 
+For a typical K2-3SI distributed transaction, there are Transaction Record(TR) that is managed at TRH (designated Transaction Record holder partition) and MTR (MiniTransactionRecord) that is managed at participant partitions. Both TR and MTR are managed in memory and persisted in WAL. Of course, each transaction write-set, i.e. the SKV record(s) written/updated in the transaction, are in WAL as well, typically appearing first as Write-Intent record(with data), then as finalized state change record(Key only, with flag indicating it was committed or aborted).  
 
 TR and MTR has less persisted states and simpler transition map, while their in memory states and transition map are much more complex. 
 
@@ -18,44 +18,49 @@ This document will describe these states and transition in following order:
 There are only 5 Transaction states, as in the TxnStates graph below described in [K23SI design doc](./K2-3SI-TXN.md).
 ![TxnStates](./images/TxnStates.png)
 
-1) S1 (InProgress)        - transaction is created
-2) S2 (Committed)         - transaction is commited
-3) S3 (Aborted)           - transaction is aborted
-4) S4 (Finalized)         - transaction, after comit/aborted, complete finalization and transaction record is removed from memory.
-5) S5 (ForcedAborted)     - transaction, for one of three different reasons, is forced to be in aborted state, which is different from S3 in the case that it may never have clean up information to go through a proper finalization process. 
+1) `InProgress`(S1)   - transaction is created, in progress.
+2) `Committed`(S2)   - transaction is commited
+3) `Aborted`(S3)   - transaction is aborted
+4) `Finalized`(S4)   - transaction, after comit/aborted, complete finalization and transaction record is removed from memory.
+5) `ForcedAborted`(S5)   - transaction, for one of three different reasons, is forced to be aborted, which is different from S3 in the case that it may never have complete write-set information to go through a proper finalization process. 
 
-For Transaction Record, as truth authority for a transaction state, it have exacly above 5 persistable states, appearing in Write-Ahead-Log(WAL).
+In Write-Ahead-Log(WAL), For Transaction Record, as truth authority for a transaction state, it have exacly above 5 persistable states, appearing .
 
-As shown in above picture, inside WAL, the sequence of TR record states can be
+As shown in above picture, inside WAL, the sequence of TR record states can be one of following:
 <br/>
-(a) S1 -> S2 -> S4 : Typical committed transaction - transaction is started, committed and finalized
+- (a) Typical committed transaction : InProgress(S1) -> Committed(S2) -> Finalized(S4) - Transaction is started, committed and finalized
 <br/>
-(b) S1 -> S3 -> S4 : Typical aborted transaction - transaction is started, aborted and finalized
+- (b) Typical aborted transaction : InProgress(S1) -> Aborted(S3) -> Finalized(S4) - transaction is started, aborted and finalized
 
 Also, when ForcedAborted state occurred, the sequence of TR record in WAL can be
 <br/>
-(c) S1 -> S5 -> S3 -> S4 : most typical fored aborted transaction - transaction is stared, foreced aborted for one of three reasons, and then client properly request abort with write-set information for finalization, continue go through S3 Aborted and S4 Finalized afterward.
+- (c) Most typical fored aborted transaction : InProgress(S1) -> ForcedAborted(S5) -> Aborted(S3) -> Finalized(S4)  - transaction is stared, foreced aborted for one of three reasons, and then client properly request abort with complete write-set information for finalization, continue go through S3 Aborted and S4 Finalized afterward.
 <br/>
-(d) S5 -> S3 -> S4 : Less common race condition cause case, that a push operation comes to TRH so early that the first write of TRH is not arrived to TRH yet, thus the transaction is forced aborted. Client becomes awared when trying to creat transaction on TRH and then instead properly abort the transaction.
+- (d) Less common race condition caused forced aborted case :  ForcedAborted(S5) -> Aborted(S3) -> Finalized(S4) - As write operations can happen currently at TRH and participant partition, a push operation comes to TRH so early that the first write at TRH is not arrived to TRH yet, thus the transaction is forced aborted. Client becomes aware later when first write arrives at TRH and then properly abort the transaction instead of creating it.
 <br/>
-(e) S1 -> S5 : When transaction is started, it is forced abort for one of three reasons, but client crashed and never end the transaction properly. Such TR will be removed when Retention Window Ends(onRWE).
+- (e) Client Disappearing : InProgress(S1) -> ForcedAborted(S5) : When transaction is started, it is forced abort for one of three reasons, but client crashed and never end the transaction properly. Such TR will be removed when Retention Window Ends(onRWE).
 <br/>
-(f) S5 : Some ophan Write-Intend in participant partition triggered other confliciting transaction to push on TRH, where there is no TR in memory, we created the TR in this state and client is not aware of this re-created transaction thus no finalization. Such TR will be removed when Retention Window Ends(onRWE).
+- (f) Orphan Write-Intent push : ForcedAborted(S5) : Some orphan Write-Intend in participant partition triggered other confliciting transaction to push on TRH, where there is no TR in memory, we created the TR in this state and client is not aware of this (re)created transaction thus no finalization. Such TR will be removed when Retention Window Ends(onRWE). The reason causing orphan Write-Intend in general is above sequence (e) where the client never give complete write-set for a foreced aborted transaction to proper finalize. 
 
-One rare but possible path in WAL
+One rare but possible state sequece in WAL ()
 <br/>
-(c) S1 -> S2 -> S3 -> S4 : transaction is started, tried to commit but couldn't sucessfully got comit record persistance confirmed after max amount of retries(even the commit record S2 is indeed persisted in WAL), then start to abort the transaction and it got aborted suceessfully and finalized. Note, from client point of view, the transaction is never committed successfully and thus aborted and finalized.
+- (g) Failed to Commit caused abort : S1 -> S2 -> S3 -> S4 : transaction is started, tried to commit but couldn't sucessfully got comit record persistance confirmed after max amount of retries(even the commit record S2 is indeed persisted in WAL), then start to abort the transaction and it got aborted suceessfully and finalized. Note, from client point of view, the transaction is never committed successfully and thus aborted and finalized.
 
-All position in above three path of state transition could happen to a transaction in WAL. During replay, depends on which state record is the last one, we will push the transaction to next sate according to replay rules. For example, in simplified discription, if replay process see last record is S2(Committed), it will follow (a) during replay, trying to finalize the transaction. If see S3, it will try to follow (b), trying to finalize the abortion. If last state is S1, it will follow (e), force abort this transaction. If last is S5, it will follow (f), keep the S5 record in memory till RWE.  
+All position in above sequence paths of state transition could happen to a transaction in WAL. During replay, depends on which state record is the last one, we will push the transaction to next sate according to replay rules. For example, in simplified discription, if replay process see last record is `Committed`(S2), it will follow (a) during replay, trying to finalize the transaction. If see `Aborted` S3, it will try to follow (b), trying to finalize the abortion. If last state is S1, it will follow (e), force abort this transaction. If last is S5, it will follow (f), keep the S5 record in memory till RWE (or got client proper request for abortion, then follow (d), moving to `Aborted`(S3)). Of course, if last state record is `Finalized` (S4), no further state transition need to be done as it is final state.
 
-Also notice that S4 finalized state of transaction, which only exists in WAL, but never in memory. 
+Also notice that `Finalized` (S4) state of transaction only exists in WAL, but never in memory. 
 
-For a transaction, TR (and MTR) are persisted normally togeter with data (SKV record Write Intend, or SKV record status change record) for persistence optimization, but to simplify the document, we ignored the data (SKV record) persistence here. One fact we should point out about persistence is that when applicable, TR/SKV and MTR/SKV are persisted combined in one networked request to persistence layer and TR or MTR is before SKV record. So for any persisted state changes(of TR/MRT and SKV data), in WAL, new state records of TR/MTR always appears before those of SKV data records. This important fact can be used for correct execution (including state transition validation) as well as debugging validation.
+For a transaction, TR (and MTR) are persisted normally togeter with data (SKV record Write Intend, or SKV record status change record) for persistence optimization, but to simplify the document, we ignored the data (SKV record) persistence here. One fact we should point out about persistence is that when applicable, TR/SKV and MTR/SKV records are persisted combined in one persistence request to persistence layer and TR or MTR record is before SKV record. So for any persisted state changes(of TR/MRT and SKV data), in WAL, new state records of TR/MTR always appears before those of SKV data records. This important fact can be used for correct execution (including state transition validation) as well as debugging validation.
 
 <br/><br/>
 
 # 3. In memory Transaction Record(TR) states and transition map at TRH(Transaction Record Holder)
-
+With async peristence request, all 5 above persisted state for a TR, there is a in momory state that persistence is requested and not yet complete, i.e. Persistence In Progress (PIP) states. We give a give them near Sx.9 code to corresponding persisted state.     
+1) `InProgressPIP`(S0.9) - before `InProgress`(S1)   
+2) `CommittedPIP`(S1.9) - before `Committed`(S2)   
+3) `AbortedPIP`(S2.9) - before `Aborted`(S3)   
+4) `FinalizedPIP`(S3.9) - before `Finalized`(S4), actually `FinalizedPIP`(S3.9) is last in momory TR state as `Finalized`(S4) is only a peresited state never exists in memory.
+5) `ForcedAbortedPIP`(S4.9) - before `ForcedAborted`(S5) 
 ## 3. 1 Transaction Record States and transition - basic cases
 <br/>
 
