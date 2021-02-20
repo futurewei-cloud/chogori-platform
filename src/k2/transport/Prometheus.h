@@ -115,14 +115,8 @@ private:
     // flag we use to signal the background pusher task to exit.
     bool _shouldExit = false;
 
-    // this is the address where we'll push metrics
-    String _pushAddress;
-
     // this is the path at the above address to which we'll push metrics
     String _pushPath;
-
-    // how often to push metrics
-    Duration _pushInterval;
 
     // the last time we pushed
     TimePoint _lastPushTime{};

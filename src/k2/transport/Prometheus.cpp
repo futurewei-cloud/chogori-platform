@@ -60,8 +60,8 @@ Prometheus::_pushMetricsLoop(seastar::input_stream<char>& input, seastar::output
         [&] {
             auto elapsed = Clock::now() - _lastPushTime;
             K2LOG_D(log::prom, "time since last push: {}", elapsed);
-            if (elapsed < _pushInterval) {
-                return seastar::sleep(std::min(Duration(1s), _pushInterval - elapsed));
+            if (elapsed < _config.pushInterval) {
+                return seastar::sleep(std::min(Duration(1s), _config.pushInterval - elapsed));
             }
             K2LOG_D(log::prom, "posting data for metrics push");
             return output.write("POST ", 5)
@@ -112,13 +112,13 @@ Prometheus::_setupPusher(){
         [this] { return _shouldExit; },
         [this] {
             auto hostname = getHostName();
-            K2LOG_D(log::prom, "connecting to push address {}, from hostname {}", _pushAddress, hostname);
-            auto address = seastar::make_ipv4_address({_pushAddress});
+            K2LOG_D(log::prom, "connecting to push address {}, from hostname {}", _config.pushAddress, hostname);
+            auto address = seastar::make_ipv4_address({_config.pushAddress});
 
             // we don't have a proper http client library, so we're doing this POST by hand
             return seastar::engine().net().connect(std::move(address), {})
                 .then([this, hostname=std::move(hostname)] (auto&& fd) {
-                    K2LOG_D(log::prom, "connected to push address {}", _pushAddress);
+                    K2LOG_D(log::prom, "connected to push address {}", _config.pushAddress);
                     // inner loop: we have a valid connection, keep trying to send metrics over it
                     return seastar::do_with(std::move(fd), fd.input(), fd.output(), std::move(hostname),
                         [this] (auto& fd, auto& input, auto& output, auto& hostname) {
@@ -156,10 +156,9 @@ seastar::future<> Prometheus::start(PromConfig cfg) {
     K2LOG_I(log::prom, "starting prometheus on port={}, msg={}, prefix={}", _config.port, _config.helpMessage, _config.prefix);
 
     if (!_config.pushAddress.empty() && seastar::this_shard_id() == 0) {
-        _pushAddress = String(_config.pushAddress);
+        _config.pushAddress = String(_config.pushAddress);
         _pushPath = String("/metrics/job/k2/instance/") + getHostName() + ":" + std::to_string(::pthread_self());
-        _pushInterval = _config.pushInterval;
-        K2LOG_I(log::prom, "enabling prometheus push to url: {}{}, with interval: {}", _pushAddress, _pushPath, _config.pushInterval);
+        K2LOG_I(log::prom, "enabling prometheus push to url: {}{}, with interval: {}", _config.pushAddress, _pushPath, _config.pushInterval);
 
         // outer loop: create a connection and keep pushing metrics. Keep creating a new connection if a connection
         // failure occurs.
