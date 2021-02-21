@@ -18,11 +18,11 @@ This document will describe these states and transition in following order:
 There are only 5 Transaction states, as in the TxnStates graph below described in [K23SI design doc](./K2-3SI-TXN.md).
 ![TxnStates](./images/TxnStates.png)
 
-1) `InProgress`(S1)   - transaction is created, in progress.
-2) `Committed`(S2)   - transaction is commited
-3) `Aborted`(S3)   - transaction is aborted
-4) `Finalized`(S4)   - transaction, after comit/aborted, complete finalization and transaction record is removed from memory.
-5) `ForcedAborted`(S5)   - transaction, for one of three different reasons, is forced to be aborted, which is different from S3 in the case that it may never have complete write-set information to go through a proper finalization process. 
+1) `InProgress(S1)`   - transaction is created, in progress.
+2) `Committed(S2)`   - transaction is commited
+3) `Aborted(S3)`   - transaction is aborted
+4) `Finalized(S4)`  - transaction, after comit/aborted, complete finalization and transaction record is removed from memory.
+5) `ForcedAborted(S5)`   - transaction, for one of three different reasons, is forced to be aborted, which is different from S3 in the case that it may never have complete write-set information to go through a proper finalization process. 
 
 In Write-Ahead-Log(WAL), For Transaction Record, as truth authority for a transaction state, it have exacly above 5 persistable states, appearing .
 
@@ -55,127 +55,80 @@ For a transaction, TR (and MTR) are persisted normally togeter with data (SKV re
 <br/><br/>
 
 # 3. In memory Transaction Record(TR) states and transition map at TRH(Transaction Record Holder)
-With async peristence request, all 5 above persisted state for a TR, there is a in momory state that persistence is requested and not yet complete, i.e. Persistence In Progress (PIP) states. We give a give them near Sx.9 code to corresponding persisted state.     
+## 3. 1 Extra In memory Transaction Record States, Persistence In Progress(PIP) states 
+With async peristence request, for all 5 above persisted states of a TR, there is a in momory state when persistence is requested and not yet complete, i.e. Persistence In Progress (PIP) states. We give a give them near Sx.9 code to corresponding persisted state. The transition between a PIP state to its persisted state (e.g.  `InProgressPIP`(S0.9) and `InProgress`(S1)) is triggerred when persistence asyn call succeeded.
 1) `InProgressPIP`(S0.9) - before `InProgress`(S1)   
 2) `CommittedPIP`(S1.9) - before `Committed`(S2)   
 3) `AbortedPIP`(S2.9) - before `Aborted`(S3)   
 4) `FinalizedPIP`(S3.9) - before `Finalized`(S4), actually `FinalizedPIP`(S3.9) is last in momory TR state as `Finalized`(S4) is only a peresited state never exists in memory.
 5) `ForcedAbortedPIP`(S4.9) - before `ForcedAborted`(S5) 
-## 3. 1 Transaction Record States and transition - basic cases
 <br/>
 
-### Table 3-1-1 - Transaction Record States <I>Typical transaction life cycle (committed)</I>
+All above 5 PIP states and their persisted states, except `Finalized`(S4), totaling 9 states, compose full set of in memory states. 
 
-| Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
-|---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
-| 0 Starting Transaction    | Client Starts a TXN with first write | T0(Created <i>(NP)</i>) -> T0.9(InProgressPIP)| N/A                  | To persist TR in state T1() state into WAL              |
-| 1. Transaction becomes InProgress| T1(InProgress) TR persisted          | T0.9(InProgressPIP) -> T1(InProgress)     | N/A                      | None                                                    |
-| 1.9 Commmiting transaction| Commmit transaction requested        | T1(InProgress) -> T1.9(CommitPIP)         | T1(InProgress)           | To persist TR in state T2(Committed) state into WAL     |
-| 2  Committed & finalizing | T2(Committed) TR persisted           | T1.9(CommitPIP) -> T2 (Committed)         | T2(Committed)            | Send finalizing requestes to participant partitions     |
-| 2.9 Finalized & Deleting  | All finalizing requests succeed      | T2 (Committed)  ->T2.9(CommitDeletePIP)   | T2(Committed)            | To persist TR in state T3(Committed&Deleted) state into WAL|
-| 3  (Committed)Deleted     | T3(Committed&Deleted TR persisted    | T2.9(CommitDeletePIP) -> {DELETED}        | T3(Committed&Deleted)    | None                                                    |
+Async perisistence request may fail as well, and when it fails(time out etc.), a transaction state may transit to other in memory state instead of its corresponding persisted state. Detailed discussion for such persistence failure will be discussed below
+## 3. 2 In memory Transaction Record States transition - basic cases
 <br/>
 
-Note: PIP stands for Persistence in Progress. NP stands for Non-Persistentable.
+### <I>Typical Committed transaction in memory state transitions</I>
+![DetailedTRState1-CommonCommit](./images/DetailedTRState1-CommonCommit.png)
+### <I>Typical Aborted transaction in memory state transitions</I>
+![DetailedTRState2-CommonAbort](./images/DetailedTRState2-CommonAbort.png)
 
+NOTE:
+<br/>
+- Persistence request can be for different state, `OnPersisted(I)` is for `InProgress` record got persisted successfully. Similarly, `OnPersisted(C)` for that of `Committed`, `OnPersisted(A)` for that of `Aborted`. 
+- Transition between S1-> S1.9 (in commit case) or S1->S2.9 (in Abort case) is triggerred by client `End(Commit)` or `End(Abort)` request.
+- Once transaction is in `Committed(S2)`, Finalizing process, which is sending finalization request(s) to all participant partition(s), is triggered. Such request in this commit case is for commiting the Write-Intent(s). While for abort case, it will be for aborting the Write-Intent(s). Upon all requests sucessfully complete, the transction enters `FinalizedPIP` state, which is also have flag indicating it is for Committed case `FinalizedPIP(C)` or for Aborted case `FinalizedPIP(A)`.
 
-<br/><br/>
-
-### Table 3-1-2 - Transaction Record States <I>Typical transaction life cycle (aborted)</I>
-
-| Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
-|---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
-| 0 Starting Transaction    | Client Starts a TXN with first write | T0(Created <i>(NP)</i>) -> T0.9(InProgressPIP)| N/A                  | To persist TR in state T1() state into WAL              |
-| 1. Transaction In Progress|T1.0(InProgress) TR persisted         | T0.9(InProgressPIP) -> T1(InProgress)     | N/A                      | None                                                    |
-| 3.9 aborting transaction  |abort transaction requested           | T1(InProgress) -> T3.9(AbortPIP)          | T1(InProgress)           | To persist TR in state T4(Aborted) state into WAL       |
-| 4. Aborted & finalizing   |T4(Aborted) TR persisted              | T3.9(AbortPIP) -> T4 (Aborted)            | T4(Aborted)              | Send finalizing requestes to participant partitions     |
-| 4.9 Finalized & Deleting  |All finalizing requests succeed       | T4 (Aborted)  ->T4.9(AbortDeletePIP)      | T4(Aborted)              | To persist TR in state T5(Aborted&Deleted) state into WAL |
-| 5 (Aborted)Deleted        |T5(Aborted&Deleted) TR persisted      | T4.9(AbortDeletePIP) -> {DELETED}         | T5(Aborted&Deleted)      | None                                                    |
+## 3.3 `ForcedAborted(S5)` cases when `Push` operation is not involved.
+`ForcedAborted` is a state can be transited into by three reasons, inlcluding `PushAbort`, `Transaction Heartbeat Timeout(HBTimeout)`, `Retention Window End(RWE)`. `Push` is a important and relative complex operation , which will be discussed in next section 3.4. Following are states change triggered by other two reasons. 
+### <I>ForcedAborted transaction by HBTimeout and TWE in memory state transitions</I>
+![DetailedTRState3-HBTimeoutRWE](./images/DetailedTRState3-HBTimeoutRWE.png)                                                  |
 <br/>
 
-Note, Normal Committed state record T2 and Aborted state T2 are persisted together with transaction write-set, which are the Keys it wrote and need to send finalization requests. 
+Note:
+- ForcedAbort to Abort or End
 
-<br/><br/>
+## 3.4 `Push` operation
 
-### Table 3-1-3 - Transaction Record State <I>Obsolete transaction life cycle (aborted)</I>
-An ongoing transaction could become obsolete due to possible two reasons: 1) the client didn't sent transaction heartbeat promptly (likely client crashed or network disconnected) 2) a transaction that is long running, runs out of retention window. Obsolete transaction is detected at TRH with timer based check operation and will be triggered into abortion. Once a transaction starts commit( get into state T1.9 CommitPIP), or starts abort (get into state 3.9 AbortPIP), it will not become obsolete any more regardless how long it need to finish its state transitions. 
-<br/>
-It is common that a transaction becomes obosolete when it is at state of T1 (InProgress), but it is also possible, though very unlikely, it become obsolete when it is at state of T0.9 InProgressPIP., e.g. the client crashed/lost heartbeat when TRH is still trying to persist TR of state T1(InProgress). 
+### <I>`PushAbort` state transitions</I>
+![DetailedTRState4-PushAbortTransitionCases](./images/DetailedTRState4-PushAbortTransitionCases.png) 
 
-| Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
-|---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
-| T1 (InProgress)           | Become Obsolete / request abort      |  T1(InProgress) -> T3.9(AbortPIP)         | T1(InProgress)           | To persist TR in state T4(Aborted) state into WAL       |
-| T0.9 (InProgressPIP)      | Become Obsolete / request abort      | T0.9 -> T3.9(AbortPIP)                    | None Or T1               | To persist TR in state T4(Aborted) state into WAL       |
-| T3.9 (AbortPIP)           | T1(InProgress) TR persisted          | NoChange T3.9                             | T1 or T4                 | None                                                    |
-<br/>
-
-The common case of becoming obsolete, where state transits from T1 -> T3.9, is actually already covered in above Table 2. The difference is that when the transaction become obsolete, it aborts without knowning all participant thus may not sending finalizing requests to all participant partitiona. The unlikely case, T0.9 -> T3.9, is new transition route. In implementation, we can also add obsolete flag/bit in such abort record indicating it is obsoletion triggered for debugging/explicitness. 
-
-<br/><br/>
-
-## 3. 2 Push operation triggered Transaction Record States and transition
-
-### Table 3-2-1 - Push Operation (being pushed) at Typical transaction life cycle triggered TR state change </I>
-
-| In Memory State Push requested/Current | Triggering Action       | After Push In memory State   | WAL Last Persisted State     | Triggered (Async) Action                             |
-|----------------------------------------|-------------------------|------------------------------|------------------------------|------------------------------------------------------|
-| T0.9 (InProgressPIP)                   | Push & Win              | NoChange T0.9 (InProgressPIP)| NONE or T1(InProgress)       | None                                                 |
-| T0.9 (InProgressPIP)                   | Push & Lose             | T0.9 -> T3.9 (AbortPIP)      | NONE or T1(InProgress)       | To persist TR in state T4(Aborted) state into WAL    |
-| T0.9 (InProgressPIP) & Push lost(T3.9) | T1(InProgress) Persisted| NoChange T3.9 (AbortPIP)     | T1(InProgress) or T4(Aborted)| None                                                 |
-| T0.9 (InProgressPIP) & Push lost(T3.9) | T4(Aborted) Persisted   | T3.9 -> T4(Aborted)          | T4(Aborted)                  | Send finalizing requestes to participant partitions  |
-| T1 (InProgress)                        | Push & Win              | NoChange T1 (InProgress)     | T1(InProgress)               | None                                                 |
-| T1 (InProgress)                        | Push & Lose             | T1 -> T3.9 (AbortPIP)        | T1(InProgress)               | To persist TR in state T4(Aborted) state into WAL    |
-| T1.9 (CommitPIP)                       | Push & Win              | NoChange T1.9 (CommitPIP)    | T1 or T2                     | None                                                 |  
-| T2 (Committed)                         | Push & Win              | NoChange T2 (Committed)      | T2                           | None                                                 |
-| T2.9(CommitDeletePIP)                  | Push & Win              | NoChange T2.9                | T2 or T3                     | None                                                 |
-| T3.9 (AbortPIP)                        | Push & Lose             | NoChange T3.9                | None, T1, T2, or T4          | None                                                 |
-| T4 (Aborted)                           | Push & Lose             | NoChange T4                  | T4                           | None                                                 |
-| T4.9 (AbortDeletePIP)                  | Push & Lose             | NoChange T4.9                | T4 or T5                     | None                                                 |
-<br/>
-
-<br/>
-
-### Table 3-2-2 - ForcedAbort State T9.9 - Push on a non-exist transation
 When a push operation gets to a TRH, the Transaction (record) may not exist in memory. The transaction may or may not exists in WAL either and even it does, there is no efficient way to find the transaction record from the WAL. Such situation could happen in a few uncommon cases, e.g. when client crashed (after started a transaction), the TRH after loose transaction heartbeat have to abort the transaction without completed finalization as TRH doesn't know other transaction participant partitions (to send finalizing request to), and if TRH reload, the transaction will not be in memory any more (as it is fully aborted and completed). If in this case, a push request comes from a partipant, we need to process it in following case. For the trasaction, we will recreate a Transaction Record in memory but in ForcedAbort state T9.9, and keep it in memory (up to retention window time). And for push operation, let the challenger win and incumbent is aborted already. Note, ForceAbort T9.9 is an in memory state, never persisted in WAL. (BTW, 9.9 is a strange number and means it is a strange state)
 
-<br/>
+### <I>Other `Push` triggered state transitions</I>
+![DetailedTRState5-OtherPushCases](./images/DetailedTRState5-OtherPushCases.png) 
 
-| In Memory State Push requested/Current | Triggering Action       | After Push In memory State    | WAL Last Persisted State     | Triggered (Async) Action                             |
-|----------------------------------------|-------------------------|-------------------------------|------------------------------|------------------------------------------------------|
-| {DELTED}                               | Push & Lose             | {DELETED}-> T9.9 (ForcedAbort)| NONE or T5(AbortDeleted)     | None                                                 |
-| T9.9 (ForceAbort)                      | Push & Lose             | NoChange T9.9                 | NONE or T5                   | None                                                 |
 <br/><br/>
 
-
-## 3. 3 Error handling in Transaction Record States and transition
-
-### Table 3-3-1 - Persistence Error
+## 3.5 Persistence Failure(PFailure)
+### <I>Persistence Failure(PFailure) triggered state transitions</I>
+![DetailedTRState6-PersistenceFailure](./images/DetailedTRState6-PersistenceFailure.png) 
 
 There are two situations that persistence error we need to handle. Persistence failures are retryable, but should be within a configuable max allowance amount of times (e.g. 10 times) for system wide catastrophic error. The first situation is the retry times exceeds the max allowance. If retry succeeded, the persistence error can't be fully masked as the previous persistence requests may returned out of order. The second situation is to handle these out of order retried result. 
-
 <br/>
-
-For first situation, when retry exceeds the max allowance, following Table 5.1 describe the state transition. Note, we only consider configuable max allowance of retry when we try to persist T1(InProgress) T2 (Committed), in other 3 type of persisted record case, we ignore the failure and retry unlimited (with backoff).
-| Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State  | Triggered (Async) Action                               |
-|---------------------------|--------------------------------------|-------------------------------------------|---------------------------|--------------------------------------------------------|
-| T0.9 (InProgressPIP)      | Persists(T1) error max out           |  T0.9(InProgress) -> T3.9(AbortPIP)       | None or T1(InProgress)    | To persist TR state T4(Aborted) into WAL               |
-| T1.9 (CommitPIP)          | Persists(T2) error max out           |  T1.9 -> T3.9(AbortPIP)                   | T1 or T2                  | To Perisit TR state T4(Aborted) into WAL               |
-| T2.9 (CommitDeletePIP)    | Persists(T3) error ignoring max out  |  No change T2.9                           | T2 or T3                  | None (continue exponetial backoff and retry)           |
-| T3.9 (AbortPIP)           | Persists(T4) error ignoring max out  |  No change T3.9                           | T1 or T4 (rarely T2)      | None (continue exponetial backoff and retry)           |
-| T4.9 (AbortDeletePIP)     | Persists(T5) error ignoring max out  |  No change T4.9                           | T4(Aborted) or T5         | None (continue exponetial backoff and retry)           |
-<br/>
-
 Note, when Persistes (T2) error at T1.9 state (CommitPIP) maxed out, we transit to T 3.9, we do not notify client commit failed till T4 is persisted sucessful as T2 may be persisted already. Also once transit happens, even if the T2 pesistence success response message comes back (in case of time out), we ignore that as well. 
 
 <br/>
-<br/>
 
-### Finalizing Error 
+## 3.6 Finalization Failure(FFailure)
+
+### <I>Finalization Failure(FFailure) triggered state transitions</I>
+![DetailedTRState7FinalizationFailure](./images/DetailedTRState7FinalizationFailure.png) 
+
+Note: Partial finalization optimization.
 Finalization process is a requests fan out process from TRH to mulitple participants, potentially likehood of one or a few participants may not response successfully in time. Theoretically, such error are mostly timeout error and/or retryable and once a transaction is in state 2 or 4, where it start to sending out finalization requests, its state will only move to 2.9 or 4.9 respectively when all requests are responded with success asynchronously later. So Finalizing error will be ignored. 
 
 But, in practice, when only one or just a minor few participants failed to finalizing, an optimization can be done is to record/persist (again) only these failed write-set subset keys(or key ranges), so, in case the TRH is reloaded, only these failed few partition(s) will be called to retry finalization.
 
-## 3. 4 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Distributed multiple steps transaction
+## 3. 7 Complete Transaction Record in memory States and transition
+### <I>Complete Transaction Record in memory state transitions</I>
+![DetailedTRState8-Complete](./images/DetailedTRState8-Complete.png) 
+<br/>
+
+
+## 3. 7 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Distributed multiple steps transaction
 ### Optimized case (where commit can be requested before all data is persisted)
 For a distributed transaction contains mulitple steps of write (and read) operations, one optimization is for client to move to next step when previous one is acknowledged by participant partitions (the write operation is kept in memory and in parallel asyn persistence of the change record is happening). Further more, the participant can directly notify the TRH on the complete of persistence later, where the TRH was notified with each intended write by client at the same time when it was issued to the participant. Then whole transaction could have higher parallelism (of persistence and operations) and less network message roundtrip. In such optimization case, it is possible that when client requests commit, not all write-set was successfully persisted.   
 
@@ -201,7 +154,7 @@ Table 6.2 - Special (optimized/quick) commit requested at state 0.9 (InProgressP
 | T1.8 Wait for ready           | last persistence notification local or remote |T1.8(CommitWait) ->T1.9(CommitPIP)| T1                   | To persist TR in state T2(Committed) state into WAL     |
 <br/>
 
-## 3. 5 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Non-Distributed transaction
+## 3. 8 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Non-Distributed transaction
 
 For non-distribued transaction (where there is only one partition is involved), the final write operation (the last operation for a multiple step transaction or only write operation for a single step transaction) will be combined with commit request (in happen commit case). 
 
