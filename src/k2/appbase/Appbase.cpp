@@ -193,11 +193,11 @@ int App::start(int argc, char** argv) {
         })
         .then([&] {
             K2LOG_I(log::appbase, "create prometheus");
-            thread_local k2::String prommsg = _name + " metrics";
+            static k2::String prommsg = _name + " metrics";
 
-            thread_local ConfigVar<uint16_t> promport{"prometheus_port"};
-            thread_local ConfigVar<k2::String> promaddr{"prometheus_push_address"};
-            thread_local ConfigDuration prominterval{"prometheus_push_interval", 10s};
+            static ConfigVar<uint16_t> promport{"prometheus_port"};
+            static ConfigVar<k2::String> promaddr{"prometheus_push_address"};
+            static ConfigDuration prominterval{"prometheus_push_interval", 10s};
             PromConfig pconf{.port=promport(), .helpMessage=prommsg.c_str(), .prefix=_name.c_str(), .pushAddress=promaddr().c_str(), .pushInterval=prominterval()};
 
             return prometheus.start(pconf);

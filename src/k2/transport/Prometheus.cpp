@@ -55,6 +55,8 @@ Prometheus::_pullMetrics() {
 
 seastar::future<>
 Prometheus::_pushMetricsLoop(seastar::input_stream<char>& input, seastar::output_stream<char>& output, String& hostname) {
+    static String responseLine;
+    responseLine = "POST " + _pushPath + " HTTP/1.1\r\n";
     return seastar::do_until(
         [&] { return _shouldExit || input.eof(); },
         [&] {
@@ -64,13 +66,7 @@ Prometheus::_pushMetricsLoop(seastar::input_stream<char>& input, seastar::output
                 return seastar::sleep(std::min(Duration(1s), _config.pushInterval - elapsed));
             }
             K2LOG_D(log::prom, "posting data for metrics push");
-            return output.write("POST ", 5)
-                .then([&] {
-                    return output.write(_pushPath);
-                })
-                .then([&] {
-                    return output.write(" HTTP/1.1\r\n", 11);
-                })
+            return output.write(responseLine)
                 .then([&] {
                     return _pullMetrics();
                 })
@@ -157,7 +153,7 @@ seastar::future<> Prometheus::start(PromConfig cfg) {
 
     if (!_config.pushAddress.empty() && seastar::this_shard_id() == 0) {
         _config.pushAddress = String(_config.pushAddress);
-        _pushPath = String("/metrics/job/k2/instance/") + getHostName() + ":" + std::to_string(::pthread_self());
+        _pushPath = String("/metrics/job/k2/instance/") + getHostName() + ":" + std::to_string(::getpid());
         K2LOG_I(log::prom, "enabling prometheus push to url: {}{}, with interval: {}", _config.pushAddress, _pushPath, _config.pushInterval);
 
         // outer loop: create a connection and keep pushing metrics. Keep creating a new connection if a connection
