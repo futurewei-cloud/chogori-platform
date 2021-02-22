@@ -24,6 +24,7 @@ There are only 5 Transaction states, as in the TxnStates graph below described i
 4) `Finalized(S4)`  - transaction, after comit/aborted, complete finalization and transaction record is removed from memory.
 5) `ForcedAborted(S5)`   - transaction, for one of three different reasons, is forced to be aborted, which is different from S3 in the case that it may never have complete write-set information to go through a proper finalization process. 
 
+### Possible persisted TR records sequence inside WAL
 In Write-Ahead-Log(WAL), For Transaction Record, as truth authority for a transaction state, it have exacly above 5 persistable states, appearing .
 
 As shown in above picture, inside WAL, the sequence of TR record states can be one of following:
@@ -42,11 +43,17 @@ Also, when ForcedAborted state occurred, the sequence of TR record in WAL can be
 <br/>
 - (f) Orphan Write-Intent push : ForcedAborted(S5) : Some orphan Write-Intend in participant partition triggered other confliciting transaction to push on TRH, where there is no TR in memory, we created the TR in this state and client is not aware of this (re)created transaction thus no finalization. Such TR will be removed when Retention Window Ends(onRWE). The reason causing orphan Write-Intend in general is above sequence (e) where the client never give complete write-set for a foreced aborted transaction to proper finalize. 
 
-One rare but possible state sequece in WAL ()
+One rare but possible state sequece in WAL:
 <br/>
-- (g) Failed to Commit caused abort : S1 -> S2 -> S3 -> S4 : transaction is started, tried to commit but couldn't sucessfully got comit record persistance confirmed after max amount of retries(even the commit record S2 is indeed persisted in WAL), then start to abort the transaction and it got aborted suceessfully and finalized. Note, from client point of view, the transaction is never committed successfully and thus aborted and finalized.
+- (g) Failed to Commit caused abort : InProgress(S1) -> -> Committed(S2) -> Aborted(S3) -> Finalized(S4) : transaction is started, tried to commit but couldn't sucessfully got comit record persistance confirmed after max amount of retries and timed out (even the commit record S2 is indeed persisted in WAL), then start to abort the transaction and it got aborted suceessfully and finalized. Note, from client point of view, the transaction is never committed successfully and thus aborted and finalized. As in such case, the commit request was not acknowledged success to client but an abortion instead is. 
 
-All position in above sequence paths of state transition could happen to a transaction in WAL. During replay, depends on which state record is the last one, we will push the transaction to next sate according to replay rules. For example, in simplified discription, if replay process see last record is `Committed`(S2), it will follow (a) during replay, trying to finalize the transaction. If see `Aborted` S3, it will try to follow (b), trying to finalize the abortion. If last state is S1, it will follow (e), force abort this transaction. If last is S5, it will follow (f), keep the S5 record in memory till RWE (or got client proper request for abortion, then follow (d), moving to `Aborted`(S3)). Of course, if last state record is `Finalized` (S4), no further state transition need to be done as it is final state.
+### TR replay rules during partition reload.
+All position in above sequence paths of state transition could happen to a transaction in WAL. During replay, depends on which state record is the last one, we will push the transaction to next sate according to replay rules. They can be discribed in simplified way as following:
+- If last state record is `InProgress(S1)`, it will follow above (e) sequence,force abort this transaction. Replay in this case as if the client is crashed. 
+- If last state record is `Committed(S2)`, it will follow above (a) sequence, trying to finalize the transaction. 
+- If last state record is `Aborted(S3)`, it will follow above (b) sequence, trying to finalize the abortion. 
+- If last state record is `ForcedAborted(S5)`, it will follow above (f), keep the S5 record in memory till RWE (or got client proper request for abortion in possible but rare case, then follow (d), moving to `Aborted`(S3)). 
+- Of course, if last state record is `Finalized` (S4), no further state transition need to be done as it is final state.
 
 Also notice that `Finalized` (S4) state of transaction only exists in WAL, but never in memory. 
 
@@ -55,6 +62,8 @@ For a transaction, TR (and MTR) are persisted normally togeter with data (SKV re
 <br/><br/>
 
 # 3. In memory Transaction Record(TR) states and transition map at TRH(Transaction Record Holder)
+<br/>
+
 ## 3. 1 Extra In memory Transaction Record States, Persistence In Progress(PIP) states 
 With async peristence request, for all 5 above persisted states of a TR, there is a in momory state when persistence is requested and not yet complete, i.e. Persistence In Progress (PIP) states. We give a give them near Sx.9 code to corresponding persisted state. The transition between a PIP state to its persisted state (e.g.  `InProgressPIP`(S0.9) and `InProgress`(S1)) is triggerred when persistence asyn call succeeded.
 1) `InProgressPIP`(S0.9) - before `InProgress`(S1)   
@@ -64,9 +73,12 @@ With async peristence request, for all 5 above persisted states of a TR, there i
 5) `ForcedAbortedPIP`(S4.9) - before `ForcedAborted`(S5) 
 <br/>
 
-All above 5 PIP states and their persisted states, except `Finalized`(S4), totaling 9 states, compose full set of in memory states. 
+All above 5 PIP states and their persisted states, except `Finalized`(S4), <b> total 9 states </b>, compose full set of in memory states. 
 
-Async perisistence request may fail as well, and when it fails(time out etc.), a transaction state may transit to other in memory state instead of its corresponding persisted state. Detailed discussion for such persistence failure will be discussed below
+Async perisistence request may fail as well, and when it fails(time out etc.), a transaction state may transit to other in memory state instead of its corresponding persisted state. Detailed discussion for such persistence failure will be discussed below.
+
+<br/>
+
 ## 3. 2 In memory Transaction Record States transition - basic cases
 <br/>
 
@@ -77,18 +89,21 @@ Async perisistence request may fail as well, and when it fails(time out etc.), a
 
 NOTE:
 <br/>
-- Persistence request can be for different state, `OnPersisted(I)` is for `InProgress` record got persisted successfully. Similarly, `OnPersisted(C)` for that of `Committed`, `OnPersisted(A)` for that of `Aborted`. 
-- Transition between S1-> S1.9 (in commit case) or S1->S2.9 (in Abort case) is triggerred by client `End(Commit)` or `End(Abort)` request.
+- Persistence completion response can be for different states, `OnPersisted(I)` is for `InProgress` record got persisted successfully. Similarly, `OnPersisted(C)` for that of `Committed`, `OnPersisted(A)` for that of `Aborted`. 
+- Transition between `InProgress(S1)` -> `CommittedPIP`(S1.9) (in commit case) or S1 -> `AbortedPIP`(S2.9) (in Abort case) is triggerred by client `End(Commit)` or `End(Abort)` request respectively.
 - Once transaction is in `Committed(S2)`, Finalizing process, which is sending finalization request(s) to all participant partition(s), is triggered. Such request in this commit case is for commiting the Write-Intent(s). While for abort case, it will be for aborting the Write-Intent(s). Upon all requests sucessfully complete, the transction enters `FinalizedPIP` state, which is also have flag indicating it is for Committed case `FinalizedPIP(C)` or for Aborted case `FinalizedPIP(A)`.
-
+<br/>
 ## 3.3 `ForcedAborted(S5)` cases when `Push` operation is not involved.
-`ForcedAborted` is a state can be transited into by three reasons, inlcluding `PushAbort`, `Transaction Heartbeat Timeout(HBTimeout)`, `Retention Window End(RWE)`. `Push` is a important and relative complex operation , which will be discussed in next section 3.4. Following are states change triggered by other two reasons. 
+<br/>
+
+`ForcedAborted(S5)` is a state can be transited into by three reasons, inlcluding `PushAbort`, `Transaction Heartbeat Timeout(HBTimeout)`, `Retention Window End(RWE)`. `Push` is a important and relative complex operation , which will be discussed in next section 3.4. Following are states change triggered by other two reasons into `ForcedAborted(S5)`  
 ### <I>ForcedAborted transaction by HBTimeout and TWE in memory state transitions</I>
 ![DetailedTRState3-HBTimeoutRWE](./images/DetailedTRState3-HBTimeoutRWE.png)                                                  |
 <br/>
 
 Note:
-- ForcedAbort to Abort or End
+- When a transaction is in `InProgress(S1)` state, TRH need to have hearbeat message from client (if no operation on TRH) periodically to make sure client is still alive or detect orphan transaction. When hearbeat timeout happens, client and TRH are disconnected and the transaction become orphan and should be forced to abort. Similarly, when `Retention Window Ends`, which means transaction over run max allowed time, it should be forced to abort as well.
+- `ForcedAbort(S5)` state of transction may be known to client, in such case, client will request to `End(Abort)` transaction with complete write-set of transaction to finalize it. The state will transit to `AbortedPIP(S2.9)`. More likely when client is disconnected, the `ForcedAbort(S5)` state will stay in memory till `Rentetion Window End(RWE)` in case there is orphan write-intent from other partitions (triggering push request which will be discussed later.)
 
 ## 3.4 `Push` operation
 
@@ -109,6 +124,8 @@ When a push operation gets to a TRH, the Transaction (record) may not exist in m
 There are two situations that persistence error we need to handle. Persistence failures are retryable, but should be within a configuable max allowance amount of times (e.g. 10 times) for system wide catastrophic error. The first situation is the retry times exceeds the max allowance. If retry succeeded, the persistence error can't be fully masked as the previous persistence requests may returned out of order. The second situation is to handle these out of order retried result. 
 <br/>
 Note, when Persistes (T2) error at T1.9 state (CommitPIP) maxed out, we transit to T 3.9, we do not notify client commit failed till T4 is persisted sucessful as T2 may be persisted already. Also once transit happens, even if the T2 pesistence success response message comes back (in case of time out), we ignore that as well. 
+
+OnPersisted(I) need to be ignored.
 
 <br/>
 
