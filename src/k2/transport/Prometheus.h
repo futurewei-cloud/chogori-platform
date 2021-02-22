@@ -23,12 +23,14 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <cmath>
+#include <k2/common/Chrono.h>
+#include <k2/common/Common.h>
+#include <k2/common/Log.h>
 
+#include <cmath>
 #include <seastar/core/future.hh>
 #include <seastar/core/metrics_types.hh>
 #include <seastar/http/httpd.hh>
-
 
 /*
 see https://prometheus.io/docs/concepts/metric_types/ for reference on metric types
@@ -70,7 +72,24 @@ make_total_operations(string name, Func&& func, string description, std::vector<
 */
 
 namespace k2 {
+namespace log {
+inline thread_local logging::Logger prom("k2::prometheus");
+}
+
 constexpr uint64_t MAX_NUM_BUCKETS = 1000;  // make sure users aren't accidentally creating too-large histograms
+
+struct PromConfig {
+    // the http port on which we will expose metrics. 0 means any port
+    uint16_t port{0};
+    // message that describes what these metrics are about (e.g. "K2 NodePool metrics")
+    String helpMessage;
+    // this string will be prefix of the exported Prometheus metrics. It is used to key dashboards
+    String prefix;
+    // If this string and the associated interval are set, we will setup a background task to push metrics
+    // the metrics will be pushed to the given pushAddress, every pushInterval.
+    String pushAddress;
+    Duration pushInterval{0};
+};
 
 // This class is used to initialize and manage(start/stop) the metrics subsystem.
 class Prometheus {
@@ -79,17 +98,39 @@ public:
     Prometheus();
 
     // initialize prometheus.
-    // @param port: the http port on which we will expose metrics
-    // @param helpMessage: message that describes what these metrics are about (e.g. "K2 NodePool metrics")
-    // @param prefix: this string will be prefix of the exported Prometheus metrics. It is used to key dashboards
-    seastar::future<> start(uint16_t port, const char* helpMessage, const char* prefix);
+    // @param config: the configuration for prometheus
+    seastar::future<> start(PromConfig config);
 
     // this method should be called to stop the server (usually on engine exit)
     seastar::future<> stop();
 
 private:
+    PromConfig _config;
+
     seastar::httpd::http_server_control _prometheusServer;
 
+    // The pusher background task;
+    seastar::future<> _pusher = seastar::make_ready_future();
+
+    // flag we use to signal the background pusher task to exit.
+    bool _shouldExit = false;
+
+    // this is the path at the above address to which we'll push metrics
+    String _pushPath;
+
+    // the last time we pushed
+    TimePoint _lastPushTime{};
+
+    // pulls the current metrics and returns the http reply as would be rendered if
+    // one calls the http :/metrics endpoint
+    seastar::future<std::unique_ptr<seastar::httpd::reply>> _pullMetrics();
+
+    // push metrics loop for sending metrics out to pushProxy
+    seastar::future<>
+    _pushMetricsLoop(seastar::input_stream<char>& input, seastar::output_stream<char>& output, String& hostname);
+
+    // helper method to setup the pusher task
+    seastar::future<> _setupPusher();
 }; // class prometheus
 
 // This histogram creates buckets which exponentially grow/shrink, depending on the given rate

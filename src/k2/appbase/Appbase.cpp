@@ -43,11 +43,12 @@ int App::start(int argc, char** argv) {
 
     addOptions()
     ("prometheus_port", bpo::value<uint16_t>()->default_value(8089), "HTTP port for the prometheus server")
+    ("prometheus_push_address", bpo::value<k2::String>(), "Address for the prometheus push proxy, e.g. localhost:1234")
+    ("prometheus_push_interval", bpo::value<k2::ParseableDuration>(), "How often to push metrics to prometheus push proxy, e.g. 10s ")
     ("tcp_port", bpo::value<uint16_t>(), "If specified, this TCP port will be opened on all shards (kernel-based incoming connection load-balancing via shared bind on same port from multiple listeners. Conflicts with --tcp_endpoints")
     ("tcp_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "A list(space-delimited) of TCP listening endpoints to assign to each core. You can specify either full endpoints, e.g. 'tcp+k2rpc://192.168.1.2:12345' or just ports , e.g. '12345'. If simple ports are specified, the stack will bind to 0.0.0.0. Conflicts with --tcp_port")
-    ("enable_tx_checksum", bpo::value<bool>()->default_value(false), "enables transport-level checksums (and validation) on all messages. it incurs double - read penalty(data is read separately to compute checksum)")
+    ("enable_tx_checksum", bpo::value<bool>()->default_value(false), "enables transport-level checksums (and validation) on all messages. it incurs double read penalty(data is read separately to compute checksum)")
     ("log_level", bpo::value<std::vector<k2::String>>()->multitoken(), "A list(space-delimited) of log levels. The very first entry must be one of VERBOSE|DEBUG|INFO|WARN|ERROR|FATAL and it sets the global log level. Subsequent entries are of the form <log_module_name>=<log_level> and allow the user to override the log level for particular log modules")
-    //("vservers", bpo::value<std::vector<int>>()->multitoken(), "This option accepts exactly 2 integers, which specify how many virtual servers to create(1) and how many cores each server should have(2). The servers are reachable within the same process over the sim protocol, with auto-assigned names.")
     ;
 
     //modify some seastar::reactor default options so that it's straight-forward to write simple apps (1 core/50M memory)
@@ -192,9 +193,14 @@ int App::start(int argc, char** argv) {
         })
         .then([&] {
             K2LOG_I(log::appbase, "create prometheus");
-            ConfigVar<uint16_t> promport{"prometheus_port"};
+            static k2::String prommsg = _name + " metrics";
 
-            return prometheus.start(promport(), (String(_name) + " metrics").c_str(), _name.c_str());
+            static ConfigVar<uint16_t> promport{"prometheus_port"};
+            static ConfigVar<k2::String> promaddr{"prometheus_push_address"};
+            static ConfigDuration prominterval{"prometheus_push_interval", 10s};
+            PromConfig pconf{.port=promport(), .helpMessage=prommsg.c_str(), .prefix=_name.c_str(), .pushAddress=promaddr().c_str(), .pushInterval=prominterval()};
+
+            return prometheus.start(pconf);
         })
         .then([&] {
             K2LOG_I(log::appbase, "create vnet");
