@@ -186,75 +186,49 @@ NOTE:
 
 ### 3.8.4 General optimization - pipelined operations for distributed mulitple steps/operations transaction.
 
-For a distributed transaction contains mulitple steps of write (and read) operations, a general optimization approach is to allow client to move to next step when previous one is acknowledged by participant partitions (the write operation is kept in memory and in parallel asyn persistence of the change record is happening). This way the transaction operations/steps can be pipelined. 
+For a distributed transaction contains mulitple steps of write (and read) operations, a general optimization approach is to allow client to move to next step when previous one is acknowledged by participant partitions (the write operation is kept in memory and in parallel asyn persistence of the change record is happening). This way the transaction operations/steps can be pipelined. There are two implementation approaches for this optimization depends on where the persistence response information is maintained. 
 
-There are two im
-Further more, the participant can directly notify the TRH on the complete of persistence later, where the TRH was notified with each intended write by client at the same time when it was issued to the participant. Then whole transaction could have higher parallelism (of persistence and operations) and less network message roundtrip. In such optimization case, it is possible that when client requests commit, not all write-set was successfully persisted.   
+One approach is the client keeps track of what write operation has already got persistence confirmed. In this approach, the client need to wait for all the distributed write operation got persistence confirmed before it can issue commit request to TRH. Of course, if the last write operation is only to the TRH, this last write operation can be combined with commit request to save one network round trip between client and TRH. This saving can be significant on transaction latency especially when total number of steps/operations in a transaction is small. Even this optimization in general improve transaction latency (thus overall system throughput), the in memory states and transition doesn't change, same as general case show in section 3.7 as below. When last write is on TRH only, we can think last write is boundled with `onEnd(Commit)` request and the written data is persisted together with TR commit state record, changing TR state into `Committed(S2)` upon persistence completion. 
+![DetailedTRState8-Complete](./images/DetailedTRState8-Complete.png) 
 
-For this case, a in memory TR state T1.8(CommitWait - ForReady) is introduced, which means the TR got request for commit, but not receiving all the sucessfull persistnce notice yet.
-<br/>
-
-Table 6.1 - common case commit requested at state 1 (InProgress) but not all persistence operations are done/notified to TRH
-
-| Stages                        | Triggering Action                    | In Memory State(s)                        | WAL Persisted State  | Triggered (Async) Action                                |
-|-------------------------------|--------------------------------------|-------------------------------------------|----------------------|---------------------------------------------------------|
-| T1(InProgress)&CommitNotReady | Commmit transaction requested        | T1(InProgress) -> T1.8(CommitWaitForReady)| T1                   | None                                                    |
-| 1.8 Wait for ready            | Last persist sucess notification     | T1.8(CommitWait) ->T1.9(CommitPIP)        | T1                   | To persist TR in state T2(Committed) state into WAL     |
-<br/>
+Another approach is that the TRH keeps track of what write operation has already got persistence confirmed. In this approach, the client need to let TRH know each operations/steps as well when issuing them to participant partitions, and participant partition notify TRH instead of client upond the completion of persistence. Compare with first approach, the downside of this approah is extra network message from client to TRH when write requests are issued to participant partitions, while the benefit is an important one, partial finalization in case of (forced) abortion. As TRH knows in advance what write-set is, even maybe just paritial, in case that transaction need to abort, as long as it never been in `CommitPIP(S1.9)` state previously, even in `AbortPIP(S2.9)` or `ForcedAbortPIP(4.9)`, it can start to finalize(abort) write-set/writeIntent locally and into other partitions, similarly, if push request comes in, it can `PushAbort` and respond to push challenger even before Persistence of Abort or ForcedAbord state are done. The TR state transition map is same as above general map, with minor contraint that besides the `End(Commit)` request from client arrives to TRH, TRH also need to make sure by waiting that all write-intents local or remote are pereisted successfully, before it can move to next state `CommittedPIP(S1.9)`. In case of write-intent persistence failure arrives to TRH, the TR state will transit from `InProgress(S1)`/`InProgressPIP(S0.9)` to `ForcedAbortedPIP(S4.9)`, as if the transaction was `PushAbort`. 
 
 <br/>
-
-Table 6.2 - Special (optimized/quick) commit requested at state 0.9 (InProgressPIP)
-
-| Stages                        | Triggering Action                    | In Memory State(s)                        | WAL Persisted State  | Triggered (Async) Action                                |
-|-------------------------------|--------------------------------------|-------------------------------------------|----------------------|---------------------------------------------------------|
-| T0.9 Starting transaction     | Commmit transaction requested        | T0.9(InProgressPIP) -> T1.8(CommitWait)   |NONE or T1(InProgress)| None                                               |
-| T1.8 Wait for ready           | Local T1(InProgress)TR persisted&not last persistence | NoChange T1.8(CommitWait)| T1                   | None                                                    |
-| T1.8 Wait for ready           | last persistence notification local or remote |T1.8(CommitWait) ->T1.9(CommitPIP)| T1                   | To persist TR in state T2(Committed) state into WAL     |
-<br/>
-
-
 
 # 4. Persisted MTR states and transition map
 There are only 3 MTR states that could be persisted in WAL:
-1) M1 (InProgress)  - transaction is created, MTR created in memory
-2) M2 (Committed)   - transaction is commited, which means also finalized at this participant, and MTR deleted. 
-3) M3 (Aborted)     - transaction is aborted, which means also finalized at this participant, and MTR deleted. 
+1) `InProgress(S1)`   - transaction is created, MTR created in memory
+2) `Committed(S2)`    - transaction is commited, which means also finalized at this participant, MTR deleted from memory and responded the TRH finalization(C) completed.
+3) `Aborted(S3)`      - transaction is aborted, which means also finalized at this participant, MTR deleted from memory and responded the TRH finalization(A) completed..
+
+### <I>MTR persisted state transitions in WAL</I>
+![MTRPersistedStates](./images/MTRPersistedStates.png) 
 
 The persisted MTR state transition (completed) contains two path following:
 <br/>
-(a) M1 -> M2 : transaction/MTR is started, commited and deleted(after sucessful finalization)
+(a) `InProgress(S1)` -> `Committed(S2)` : transaction/MTR is started, commited and deleted(after sucessful finalization)
 <br/>
-(b) M1 -> M3 : transaction/MTR is started, aborted and deleted (after sucessful finalization)
+(b) `InProgress(S1)` -> `Aborted(S3)` : transaction/MTR is started, aborted and deleted(after sucessful finalization)
 
-During the partition reload and replay the WAL, if a MTR has reached M2 or M3 state, it is completed in this participant and nothing need to be done. If for a transaction in WAL, M1 is met without M2 or M3, at the end of replay, the participant will trigger a query to TRH about the transaction state. Based on current transaction state at TRH, the MTR and related SKV changes/WriteIntent will be handled differently.
-1) If the transaction is ongoing, (i.e. in state of T1-InProgress, or T0.9-InProgressPIP, or T1.9), the MTR and related changed SKV will be left alone. 
-2) If the transactin is in committed (i.e. in state of T2), the MTR and related write-set can move to state of committed&Deleted M2. Note, at TRH, state T2.9 is invalid in memory state for the transaction means this is a fatal error/bug, as this means the TRH already received successful Commit&finalization from this participants, but this participants sends out such notice without sucessful persistence M2.
-3) If the transaction is in abort (i.e. in state of T3.9, T4, T9.9), the MTR and related write-set can move to state of aborted&Deleted M2. Note, at TRH, state T4.9 is invalid in memory state for the transaction means this is a fatal error/bug, as this means the TRH already received successful Abort&finalization from this participants, but this participants sends out such notice without sucessful persistence M3.
-4) If the transaction is no in memory at TRH, A ForceAbort T9.9 will be generated (just like being pushed) at TRH, the  the MTR and related write-set can move to state of aborted&Deleted M2. Note, the TRH will not send out any finalization request in ForceAbort situation.  (Danger, if the system has bug here, it will cause data loss!!!).
+
+During the partition reload and replay the WAL, if a MTR has reached `Committed(S2)` or `Aborted(S3)`  state, it is completed in this participant and nothing need to be done. If for a transaction in WAL, `InProgress(S1)` is met without `Committed(S2)` or M3, at the end of replay, the participant will trigger a query to TRH about the transaction state. Based on current transaction/TR state at TRH, the MTR and related SKV changes/WriteIntent will be handled differently.
+1) If the transactio/TR is ongoing, (i.e. in state of `InProgress`, or `InProgressPIP`, or `CommmitPIP`), the MTR and related changed SKV will be left alone. 
+2) If the transaction/TR is in `Committed(S2)` , the MTR and related write-set can move to state of `Committed(S2)`. Note, at TRH, `FinalizedPIP(Commited)`is invalid in memory state when MTR is only at `InProgress(S1)`, which indicating there is a fatal error/bug, as this means the TRH already received successful Commit&finalization from this participants, but this participants sends out such notice without sucessful persistence `Committed(S2)`/finalization(C).
+3) If the transaction is in abort (i.e. in state of `AbortPIP(S2.9)`, `Abort(S3)`, `ForcedAbortPIP(S4.9)`, `AbortPIP(S5)`), the MTR and related write-set can move to state of `Aborted(S3)`. Note, similar to the situation mentioned in above 2., at TRH, state `FinalizedPIP(Abort)` is invalid in memory state as TR can't get into this state as well before MTR get into `Aborted(S3)` and responded finalization complete for this partition.
+4) If the transaction is no in memory at TRH, A `ForceAbortPIP(4.9)` will be generated (just like being pushed) at TRH, the  the MTR and related write-set can move(and persist) to state of `Aborted(S3)`. Note, the TRH will not send out any finalization request in ForceAbort situation. 
 <br/>
 
 <br/>
 
 # 5. In memory MTR states and transition map
 There are 3 in memory MTR states:
-1) M1 (InProgress) - in the process of transaction read/write operations
-2) M1.9 (CommitPIP) - Received Commit request, processing it, e.g. persisting MTR and related SKV write-set (WriteIntent) state change to commited.
-3) M2.9 (AbortPIP) - Received abort request
+1) `InProgress(S1)`     - in the process of transaction read/write operations
+2) `CommittedPIP(S1.9)` - Received Commit request, persisting MTR and related SKV write-set (WriteIntent) state change to committed.
+3) `AbortedPIP(S2.9)`      - Received abort request, persisting MTR and related SKV write-set (WriteIntent) state change to aborted.
+### <I>MTR in memory state transitions </I>
+![MTRInMemoryStates](./images/MTRInMemoryStates.png) 
 
-MTR is created in memory with first write operation of a transaction requested on the participant partition, and persisted first time with InProgress state together with first write operation SKV data/WriteIntent (in front of SKV data record in position) in WAL. Upon finalization requests from TRH arrives (for both commit and abort case), its in memory state changes to M1.9 or M2.9, and trigginger persistence of M2 or M3 record (together of SKV data/Write Intent state change to commit/abort) into WAL.
-
-In participant partition, there is a container for all in memory MTR (on going transactions). Each in memory MTR, besides transaction ID info (where to find TRH etc), contains a list of WriteOperations, each WriteOperation contains a list of keys of SKV that is written in this WriteOperation. Each WriteOperation, same with the Write Intend/Keys it contains, has persistence state as PIP or Persisted. This also makes MTR in memory state doesn't need a InProgressPIP state, unlike TR which has such in memory state. 
-
-## 5.1 MTR States and transition - basic cases
-
-### Table 5-1 - MTR <I>Typical transaction life cycle (committed)</I>
-| Stages                    | Triggering Action                    | In Memory State(s)                        | WAL Last Persisted State | Triggered (Async) Action                                |
-|---------------------------|--------------------------------------|-------------------------------------------|--------------------------|---------------------------------------------------------|
-| First write               | First write with MTR arrives         | {emptry} -> M1(InProgress)                | N/A                      | To persist MTR in state M1(InProgress) into WAL         |
-| Consequent write          | Consequent write with same MTR arrives| Unchanged M1                             | N/A or M1                | None on MTR, but persisting new WriteOperation          |
-| (WriteOperation) Persisted| Wrrite Persistence complete          | Unchanged M1                              | M1 (InProgress)          | None on MTR, But update WriteOperation and WI in memory state from PIP to persisted|
-| Commit finalization       | CommitFinalization reqeust arrives   | M1 (InProgress) -> M1.9 (CommitPIP)       | M1
-
-
-Note, when MTR in memory state is created upon write request, first WriteOperation with PIP is created under MTR and all its containing SKV records/WriteIntends are added in indexer in memoery with PIP state and are being persisted together (positionally behind) with MTR into WAL. 
+NOTE:
+- MTR is created in memory with first write operation of a transaction requested on the participant partition, and persisted first time with `InProgress` state together with first write operation SKV data/WriteIntent (in front of SKV data record in position) in WAL. Upon finalization requests from TRH arrives (for both commit and abort case), its in memory state changes to `InProgress(S1)` or `Aborted(S2.9)`, and trigginger persistence of M2 or M3 record (together of SKV data/Write Intent state change to commit/abort) into WAL. In participant partition, there is a container for all in memory MTR (on going transactions). Each in memory MTR, besides transaction ID info (where to find TRH etc), contains a list of WriteOperations, each WriteOperation contains a list of keys of SKV that is written in this WriteOperation. Each WriteOperation, same with the Write Intend/Keys it contains, has persistence state as PIP or Persisted. This also makes MTR in memory state doesn't need a InProgressPIP state, unlike TR which has such in memory state. 
+- Upon received `Finalization(Commit or Abort)` request from TRH, the transaction commit/abort decision is final, the participant partition can change in memory state of write-intent immediately to new version(for commit) or removed(for abort) respectively, i.e. finalizing write-intents, at same time issuing asyn persistence call. This can reduce the window for push operation in case there is an conflicting concurrent transaction while the persistence call is executing.
+- In case of pipelined operation optimization where the participant partition could acknoledge the write request first, it is not expected that the commit finalization request will arrive before partition local data persistence is done(as local persistence need to be noticed to client or TRH for them to commit), but it is possible to get abort finalization even there is incomplete data persistence request. In latter case, it is ok to move to `AbortedPIP(S2.9)` directly, with ignoring of data persistence request completion response.
