@@ -96,24 +96,32 @@ NOTE:
 ## 3.3 `ForcedAborted(S5)` cases when `Push` operation is not involved.
 <br/>
 
-`ForcedAborted(S5)` is a state can be transited into by three reasons, inlcluding `PushAbort`, `Transaction Heartbeat Timeout(HBTimeout)`, `Retention Window End(RWE)`. `Push` is a important and relative complex operation , which will be discussed in next section 3.4. Following are states change triggered by other two reasons into `ForcedAborted(S5)`  
+`ForcedAborted(S5)` is a state can be transited into for three reasons, inlcluding `PushAbort`, `Transaction Heartbeat Timeout(HBTimeout)`, `Retention Window End(RWE)`. `Push` is a important and relative complex operation , which will be discussed in next section 3.4. Following are cases that `ForcedAborted(S5)` is triggered by other two reasons.
 ### <I>ForcedAborted transaction by HBTimeout and TWE in memory state transitions</I>
 ![DetailedTRState3-HBTimeoutRWE](./images/DetailedTRState3-HBTimeoutRWE.png)                                                  |
 <br/>
 
 Note:
 - When a transaction is in `InProgress(S1)` state, TRH need to have hearbeat message from client (if no operation on TRH) periodically to make sure client is still alive or detect orphan transaction. When hearbeat timeout happens, client and TRH are disconnected and the transaction become orphan and should be forced to abort. Similarly, when `Retention Window Ends`, which means transaction over run max allowed time, it should be forced to abort as well.
-- `ForcedAbort(S5)` state of transction may be known to client, in such case, client will request to `End(Abort)` transaction with complete write-set of transaction to finalize it. The state will transit to `AbortedPIP(S2.9)`. More likely when client is disconnected, the `ForcedAbort(S5)` state will stay in memory till `Rentetion Window End(RWE)` in case there is orphan write-intent from other partitions (triggering push request which will be discussed later.)
+- `ForcedAbort(S5)` state of transation may be known to client after the transaction gets into this state. In such case, client will request to `End(Abort)` transaction with complete write-set of transaction to finalize it. The state will transit to `AbortedPIP(S2.9)`. More likely, when client is disconnected, the `ForcedAbort(S5)` state will stay in memory till `Rentetion Window End(RWE)` in case there is orphan write-intent from other partitions (triggering push request which will be discussed later.)
 
 ## 3.4 `Push` operation
 
 ### <I>`PushAbort` state transitions</I>
 ![DetailedTRState4-PushAbortTransitionCases](./images/DetailedTRState4-PushAbortTransitionCases.png) 
 
-When a push operation gets to a TRH, the Transaction (record) may not exist in memory. The transaction may or may not exists in WAL either and even it does, there is no efficient way to find the transaction record from the WAL. Such situation could happen in a few uncommon cases, e.g. when client crashed (after started a transaction), the TRH after loose transaction heartbeat have to abort the transaction without completed finalization as TRH doesn't know other transaction participant partitions (to send finalizing request to), and if TRH reload, the transaction will not be in memory any more (as it is fully aborted and completed). If in this case, a push request comes from a partipant, we need to process it in following case. For the trasaction, we will recreate a Transaction Record in memory but in ForcedAbort state T9.9, and keep it in memory (up to retention window time). And for push operation, let the challenger win and incumbent is aborted already. Note, ForceAbort T9.9 is an in memory state, never persisted in WAL. (BTW, 9.9 is a strange number and means it is a strange state)
+NOTE:
+- Common `PushAbort` operation - Most common cases when PushAbort happens, the transaction is in `InProgress(S1)`, or less likely case `InProgressPIP(S0.9)`, the transaction will transit to `ForcedAbortPIP(S4.9)` case starting force abort process.
+- Push on non-exist transaction - When a push operation gets to a TRH, the Transaction may not exist in memory. The transaction (record of any state) may or may not exists in WAL either and even it does, there is no efficient way to find the last transaction record from the WAL. Such situation could happen in a few uncommon cases, e.g. in an optimized case where we allow concurrent (first) write operation at TRH as well as participant partition. The write-intent at participant partition may be pushed before the TRH receive the write request set up TR. In this case, we will recreate a Transaction Record in memory but in 'ForcedAbortPIP(S4.9)' state, follow the `ForcedAbortted` process. 
+- An important observation is that once a transaction get into `Committed(S2)` or `Aborted(S3)` state, it can never get into forced abort path, as such commit/Abort record will be persisted with full write-set of transaction, and so transaction always have such info to move into `FinalizedPIP(S3.9)` state, even when crash/replay happens.
+- For persistence failure(timeout), we will discuss later.
 
 ### <I>Other `Push` triggered state transitions</I>
 ![DetailedTRState5-OtherPushCases](./images/DetailedTRState5-OtherPushCases.png) 
+
+NOTE:
+- Depends on the state of the incumbent transaction, In progress transaction result maybe one of two between `PushAbort` or `Win` for the incumbent transaction. Committed or Committing transaction alawys win. For aborting or aborted transaction, challenger transaction wins(`PushAbort` for incumbent).
+- When transaction is in `AbortPIP(S2.9)` or `ForcedAbortPIP(S4.9)`, even a push will result into `PushAbort`, but we can't give the response till the transaction is indeed aborted(Persistence of Abort record done). Otherwise we break the rule that truth authority of a transaction state is TR, to be more accurate, the TR state in WAL, as memory state when inconsistent with that in WAL may be lost when crash happens. 
 
 <br/><br/>
 
@@ -121,11 +129,12 @@ When a push operation gets to a TRH, the Transaction (record) may not exist in m
 ### <I>Persistence Failure(PFailure) triggered state transitions</I>
 ![DetailedTRState6-PersistenceFailure](./images/DetailedTRState6-PersistenceFailure.png) 
 
-There are two situations that persistence error we need to handle. Persistence failures are retryable, but should be within a configuable max allowance amount of times (e.g. 10 times) for system wide catastrophic error. The first situation is the retry times exceeds the max allowance. If retry succeeded, the persistence error can't be fully masked as the previous persistence requests may returned out of order. The second situation is to handle these out of order retried result. 
-<br/>
-Note, when Persistes (T2) error at T1.9 state (CommitPIP) maxed out, we transit to T 3.9, we do not notify client commit failed till T4 is persisted sucessful as T2 may be persisted already. Also once transit happens, even if the T2 pesistence success response message comes back (in case of time out), we ignore that as well. 
-
-OnPersisted(I) need to be ignored.
+NOTE:
+- There are 5 persisted states, thus there are 5 persistence failure`(PFailure)` case to deal with.
+- `onPFailure(InProgress)`, transaction will have to abort. As the TRH doesn't know the complete transaction write-set, it has to get into force abort process, into `ForcedAbortPIP` state. 
+- `onPFailure(ForcedAbort)`, transaction in `ForcedAbortPIP(S4.9)` state can't get persistence done, there is no other way out but stay in this state, keep retrying the persistence request(with backoff) and issuing operation warning. But transaction state correctness is maintained.
+- `onPFailure(CommitPIP)`, transaction (after max out retry counts or timeout with commit persistence request) will get into normal abort process, as TRH has complete write-set information from client (with its `onEnd(Commit)` request). 
+- `onPFailure(AbortPIP)`, transaction in memory state will stay in `AbortPIP(S2.9)` state. One possible difficult issue is that if Push request comes in, as we previously mentioned, we could not respond to that till the abort persistence request is done successfully, i.e. the state moved into `Aborted(S3)`. This may blocking other conflicting transactions if the persistence keep failing. Of course, a fall back work around of this issue is to let this partition offload and load at different server, hoping that will work aournd contingous persistence error (likely due to previous hosting node network issue, a reload from other hosting node is likely solution). More importantly, an optimization without lose correctness is that as long as the transaction is never been in `CommitPIP(S1.9)` state(i.e. it is impossible that `Committed(S2)` is the last state record in WAL), we could notify the `PushAbort` result to push challenger even in `AbortPIP` state, even more, since the transaction write-set is available, it is ok to finalize(abort) all write-intent in other partitions as well in this case. 
 
 <br/>
 
@@ -134,20 +143,53 @@ OnPersisted(I) need to be ignored.
 ### <I>Finalization Failure(FFailure) triggered state transitions</I>
 ![DetailedTRState7FinalizationFailure](./images/DetailedTRState7FinalizationFailure.png) 
 
-Note: Partial finalization optimization.
-Finalization process is a requests fan out process from TRH to mulitple participants, potentially likehood of one or a few participants may not response successfully in time. Theoretically, such error are mostly timeout error and/or retryable and once a transaction is in state 2 or 4, where it start to sending out finalization requests, its state will only move to 2.9 or 4.9 respectively when all requests are responded with success asynchronously later. So Finalizing error will be ignored. 
-
-But, in practice, when only one or just a minor few participants failed to finalizing, an optimization can be done is to record/persist (again) only these failed write-set subset keys(or key ranges), so, in case the TRH is reloaded, only these failed few partition(s) will be called to retry finalization.
+NOTE: 
+- Once transaction get into `Committed(S2)` or `Aborted(S3)`, finalization request(s) will be send out to all participant partitions. Failed to receiving all successful response will keep the Transaction in this state and retry.
+- Partial finalization optimization - In practice, when only one or just a minor few participants failed to finalizing, an optimization is to record/persist (again) only these failed write-set subset keys(or key ranges), so, in case the TRH is reloaded, only these failed few partition(s) will be called to retry finalization.
 
 ## 3. 7 Complete Transaction Record in memory States and transition
 ### <I>Complete Transaction Record in memory state transitions</I>
 ![DetailedTRState8-Complete](./images/DetailedTRState8-Complete.png) 
+
+NOTE:
+- This is the complete TR in memomy state and transition map as described above for a general distributed K2-3SI transaction. There are several optimization for simple transactions which doesn't need to literally go through each states. 
+- With Async persistence process at different states, the transaction could move to next operations in parallel till when it can't to preserve correctness. Such optimization could impact above general state transition map as well.
+- The discussion of these optimization is following section 3.8.
+
 <br/>
 
 
-## 3. 7 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Distributed multiple steps transaction
-### Optimized case (where commit can be requested before all data is persisted)
-For a distributed transaction contains mulitple steps of write (and read) operations, one optimization is for client to move to next step when previous one is acknowledged by participant partitions (the write operation is kept in memory and in parallel asyn persistence of the change record is happening). Further more, the participant can directly notify the TRH on the complete of persistence later, where the TRH was notified with each intended write by client at the same time when it was issued to the participant. Then whole transaction could have higher parallelism (of persistence and operations) and less network message roundtrip. In such optimization case, it is possible that when client requests commit, not all write-set was successfully persisted.   
+## 3. 8 Optimization cases in K2-3SI and its impact on Transaction Record States and transition 
+ 
+### 3.8.1 Read-only transaction 
+Read-only transaction doesn't need to keep track of transaction states in WAL at all. Regardless for a transaction the client knows it is or not a read only transaction when it start the transaction, no transaction state is maintained ever in K2. After a transaction starts (at client), only when there is a first write operation, the transaction state moves into `InProgressPIP(S0.9)` at TRH which is select based on the first write, otherwise, there is even no TRH and read request comes in with a transaction timestamp without MTR either. In such read-only transaction, the client knows the transaction is a read-only and at the end, it doesn't need to issue commit either. There will be no TR/MTR trace for such transaction. 
+
+In this sense, in K2-3SI protocol, for read only transaction, it can be treated as a set of unrelated read operations, except with the same timestamp, as there is no transaction state maintained for it. 
+
+<br/>
+
+### 3.8.2 Non-Distributed single write transaction
+The most simple transaction contains only single write operation (maybe on mulitple SKV record of same partition) into one partition. The client is aware of such case and should start the transaction with such info. In such case, there is no `InProgress` related states, nor finalization process. i.e. `Commit` and `Finalize` states are combined.  The state transition can be described in following graph.
+### <I>Complete Transaction Record in memory state transitions for Non-Distributed single write transaction</I>
+![DetailedTRState9-SingleWrite](./images/DetailedTRState9-SingleWrite.png) 
+NOTE:
+- The Commit record in WAL need to be marked that the record also means finalization. 
+- Still, if the Commit persistence request failed(timeout), the transaction will move to `AbortPIP(S2.9)` (with Finalization) state. In such situation, there may or may not be the `Committed(withFinalization)` record in WAL, but the client is not acknowledged about the transaction commit result. So only when `Abort` persistence request is sucessfully persisted, the TRH can acknowledge to the client that transaction was aborted. In WAL, only latest state record counts regarding to the transaction state during relay.
+- When `Push` request comes to the transaction, the handling is same to general case, as described in the graph as well. 
+
+### 3.8.3 Non-Distributed multiple operations/steps transaction
+Another expanded case from 3.8.2 for non-distributed transaction is that it contains muliptle interaction between client and TRH(only partition related with the write operations in the partition). In this case, the last write operation/step can be combined with commit request for the transaction and as all write-set(write intent) is local as TRH, there is no need for asyn finalization process. 
+### <I>Complete Transaction Record in memory state transitions for Non-Distributed multipel operations/steps transaction</I>
+![DetailedTRStateA-NonDistributedMultipleStep](./images/DetailedTRStateA-NonDistributedMultipleStep.png) 
+NOTE:
+- Due to the parition may be split or merger, only when at the last write oepration, the client is for sure knows about the transaction is such non-distributed mulitple steps transaction. So, only at this last write step, client could and should notify TRH abour such transaction. This holds true in case transaction ever got into `ForcedAborted(S5)` state, client have such info about transaction to optimize away finalization process. 
+
+### 3.8.4 General optimization - pipelined operations for distributed mulitple steps/operations transaction.
+
+For a distributed transaction contains mulitple steps of write (and read) operations, a general optimization approach is to allow client to move to next step when previous one is acknowledged by participant partitions (the write operation is kept in memory and in parallel asyn persistence of the change record is happening). This way the transaction operations/steps can be pipelined. 
+
+There are two im
+Further more, the participant can directly notify the TRH on the complete of persistence later, where the TRH was notified with each intended write by client at the same time when it was issued to the participant. Then whole transaction could have higher parallelism (of persistence and operations) and less network message roundtrip. In such optimization case, it is possible that when client requests commit, not all write-set was successfully persisted.   
 
 For this case, a in memory TR state T1.8(CommitWait - ForReady) is introduced, which means the TR got request for commit, but not receiving all the sucessfull persistnce notice yet.
 <br/>
@@ -171,11 +213,6 @@ Table 6.2 - Special (optimized/quick) commit requested at state 0.9 (InProgressP
 | T1.8 Wait for ready           | last persistence notification local or remote |T1.8(CommitWait) ->T1.9(CommitPIP)| T1                   | To persist TR in state T2(Committed) state into WAL     |
 <br/>
 
-## 3. 8 Optimization cases in K2-3SI and its impact on Transaction Record States and transitiion - Non-Distributed transaction
-
-For non-distribued transaction (where there is only one partition is involved), the final write operation (the last operation for a multiple step transaction or only write operation for a single step transaction) will be combined with commit request (in happen commit case). 
-
-<br/>
 
 
 # 4. Persisted MTR states and transition map
