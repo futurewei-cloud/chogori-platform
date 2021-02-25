@@ -211,6 +211,8 @@ String SKVRecord::getRangeKey() {
 }
 
 dto::Key SKVRecord::getKey() {
+    if (!schema) return dto::Key{};
+
     return dto::Key {
         .schemaName = schema->name,
         .partitionKey = getPartitionKey(),
