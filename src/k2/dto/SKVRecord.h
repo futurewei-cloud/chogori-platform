@@ -217,7 +217,7 @@ public:
             "{{collectionName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
             rec.collectionName,
             rec.storage.excludedFields,
-            const_cast<SKVRecord&>(rec).getKey(),
+            rec.schema ? const_cast<SKVRecord&>(rec).getKey() : dto::Key{},
             rec.partitionKeys,
             rec.rangeKeys);
     }
