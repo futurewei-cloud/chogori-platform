@@ -153,7 +153,7 @@ seastar::future<> Prometheus::start(PromConfig cfg) {
 
     if (!_config.pushAddress.empty() && seastar::this_shard_id() == 0) {
         _config.pushAddress = String(_config.pushAddress);
-        _pushPath = String("/metrics/job/k2/instance/") + getHostName() + ":" + std::to_string(::getpid());
+        _pushPath = String("/metrics/job/k2/instance/") + getHostName();
         K2LOG_I(log::prom, "enabling prometheus push to url: {}{}, with interval: {}", _config.pushAddress, _pushPath, _config.pushInterval);
 
         // outer loop: create a connection and keep pushing metrics. Keep creating a new connection if a connection
