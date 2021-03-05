@@ -818,7 +818,7 @@ public:
 
     future<bool> run() override {
         return do_with(
-            (uint16_t)0, std::vector<uint32_t> {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, 
+            (uint16_t)0, std::vector<uint32_t> {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
             [this] (uint16_t& batchStart, std::vector<uint32_t>& vIdx) {
             return do_until(
             [this, &batchStart, &vIdx] { return batchStart >= 10; },
@@ -838,12 +838,12 @@ public:
                     return runWithTxn(start, end); // run txn
                 })
                 .then([this, &batchStart] {
-                    K2LOG_I(log::tpcc, "DeliveryT End status: {} at {}th req of batch", _failed, batchStart);
+                    K2LOG_D(log::tpcc, "DeliveryT End status: {} at {}th req of batch", _failed, batchStart);
 
                     // end txn
                     if (_failed) {
                         return _txn.end(false);
-                    }                    
+                    }
                     return _txn.end(true);
                 })
                 .then_wrapped([this] (auto&& fut) {
@@ -1039,17 +1039,17 @@ private:
         return _client.createQuery(tpccCollectionName, "orderline")
         .then([this, idx](auto&& response) mutable {
             CHECK_READ_STATUS(response);
-    
+
             return do_with(
-            std::move(response.query), 
-            std::vector<std::vector<dto::SKVRecord>>(), 
-            false, 
+            std::move(response.query),
+            std::vector<std::vector<dto::SKVRecord>>(),
+            false,
             (uint32_t) 0,
-            [this, idx] (Query& query_order_line, std::vector<std::vector<dto::SKVRecord>>& result_set, 
+            [this, idx] (Query& query_order_line, std::vector<std::vector<dto::SKVRecord>>& result_set,
                     bool& done, uint32_t& count) {
-                // make Query request and set query rules. 
+                // make Query request and set query rules.
                 // 1) add Projection fields (i.e. amount) as needed;
-                query_order_line.startScanRecord.serializeNext<int16_t>(_w_id); 
+                query_order_line.startScanRecord.serializeNext<int16_t>(_w_id);
                 query_order_line.startScanRecord.serializeNext<int16_t>(_d_id[idx]);
                 query_order_line.startScanRecord.serializeNext<int64_t>(_NO_O_ID[idx]);
                 query_order_line.startScanRecord.serializeNext<int32_t>(1);
@@ -1104,7 +1104,7 @@ private:
         return parallel_for_each(LineNumber.begin(), LineNumber.end(), [this, idx] (int32_t& lineNum) {
             OrderLine updateOLRow(_w_id, _d_id[idx], _NO_O_ID[idx], lineNum);
             updateOLRow.DeliveryDate = getDate();
-            
+
             std::vector<String> OLUpdateFields{"DeliveryDate"};
 
             return partialUpdateRow<OrderLine, std::vector<String>>(updateOLRow, OLUpdateFields, _txn).discard_result();
@@ -1144,7 +1144,7 @@ private:
                     Customer updateCustomer(_w_id, _d_id[idx], _O_C_ID[idx]);
                     updateCustomer.Balance = *balanceOpt + _OL_SUM_AMOUNT[idx];
                     updateCustomer.DeliveryCount = *deliveryCountOpt + 1;
-                    
+
                     std::vector<String> updateCustomerFileds{"Balance", "DeliveryCount"};
 
                     return partialUpdateRow<Customer, std::vector<String>>
@@ -1161,7 +1161,7 @@ private:
     bool _failed;
     bool _miss_once = false;
     uint16_t _batch_size; // range from 1-10 is allowed
-    
+
     int16_t _w_id;
     std::vector<int16_t> _d_id;
     std::vector<int32_t> _o_carrier_id;
