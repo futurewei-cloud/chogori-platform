@@ -64,7 +64,7 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
         K2LOG_D(log::skvsvr, "txn manager check hb");
         _hbTask = _hbTask.then([this] {
             // refresh the clock
-            auto now = CachedSteadyClock::now(true);
+            auto now = Clock::now();
             return seastar::do_until(
                 [this, now] {
                     auto noHB = _hblist.empty() || _hblist.front().hbExpiry > now;
@@ -168,7 +168,7 @@ TxnRecord& TxnManager::_createRecord(dto::TxnId txnId) {
         rec.txnId = it.first->first;
         rec.state = dto::TxnRecordState::Created;
         rec.rwExpiry = txnId.mtr.timestamp;
-        rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
+        rec.hbExpiry = Clock::now() + 2*_hbDeadline;
 
         _hblist.push_back(rec);
         _rwlist.push_back(rec);
@@ -377,7 +377,7 @@ seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
     // set state: no change
     // manage hb expiry
     rec.unlinkHB(_hblist);
-    rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
+    rec.hbExpiry = Clock::now() + 2*_hbDeadline;
     _hblist.push_back(rec);
     // manage rw expiry: no change
     // persist if needed: no need
