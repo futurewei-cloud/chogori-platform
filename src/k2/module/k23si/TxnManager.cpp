@@ -381,7 +381,7 @@ seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
     // set state: no change
     // manage hb expiry
     rec.unlinkHB(_hblist);
-    rec.hbExpiry = Clock::now() + 2*_hbDeadline;
+    rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
     _hblist.push_back(rec);
     // manage rw expiry: no change
     // persist if needed: no need
