@@ -60,6 +60,10 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
     _collectionName = collectionName;
     _hbDeadline = hbDeadline;
     updateRetentionTimestamp(rts);
+    // We need to call this now so that a recent time is used for a new
+    // transaction's heartbeat expiry if it comes in before the first heartbeat timer callback
+    CachedSteadyClock::now(true);
+
     _hbTimer.set_callback([this] {
         K2LOG_D(log::skvsvr, "txn manager check hb");
         _hbTask = _hbTask.then([this] {
