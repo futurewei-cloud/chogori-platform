@@ -124,20 +124,51 @@ struct hash<k2::dto::TxnId> {
 namespace k2 {
 namespace dto {
 
-// A record in the 3SI version cache.
+// The core data needed by any 3SI record version, used by both write intents and
+// committed records. It is split into a separate struct so that code can more easily
+// be written to handle both write intents and committed records.
 struct DataRecord {
-    dto::Key key;
     SKVRecord::Storage value;
     bool isTombstone = false;
-    dto::TxnId txnId;
+
+    K2_PAYLOAD_FIELDS(value, isTombstone);
+    K2_DEF_FMT(DataRecord, value, isTombstone);
+}
+
+// A write intent. This is separate from the DataRecord structure below which is used for
+// committed records because a write intent needs to store more information.
+struct WriteIntent {
+    DataRecord data;
+    TxnId txnId;
+
     enum Status: uint8_t {
         WriteIntent,  // the record hasn't been committed/aborted yet
-        Committed,    // the record has been committed and we should use the key/value
         Aborted       // the record has been aborted and should be removed
     } status;
-    K2_PAYLOAD_FIELDS(key, value, isTombstone, txnId, status);
-    K2_DEF_FMT(DataRecord, key, value, isTombstone, txnId, status);
+    // The request_id as given to the server by the client, it is used to
+    // provide idempotent behavior in the case of retries
+    uint32_t request_id = 0;
+
+    WriteIntent() = default;
+    WriteIntent(DataRecord&& d, TxnId&& txn, Status s, uint32_t id) : data(std::move(d)),
+            txnId(std::move(txn)), status(s), request_id(id) {}
+
+    K2_PAYLOAD_FIELDS(data, txnId, status, request_id);
+    K2_DEF_FMT(WriteIntent, data, txnId, status, request_id);
 };
+
+// A committed record in the 3SI version cache.
+struct CommittedRecord {
+    DataRecord data;
+    Timestamp timestamp;
+
+    CommittedRecord() = default;
+    CommittedRecord(WriteIntent&& WI): data(std::move(WI.data)), timestamp(WI.txnId.mtr.timestamp) {}
+
+    K2_PAYLOAD_FIELDS(data, timestamp);
+    K2_DEF_FMT(CommittedRecord, data, timestamp);
+};
+
 
 K2_DEF_ENUM(TxnRecordState,
         Created,
@@ -202,6 +233,8 @@ struct K23SIWriteRequest {
     // In the future we want more expressive preconditions, but those will be on the fields of a record
     // whereas this is the only record-level precondition that makes sense so it is its own flag
     bool rejectIfExists = false;
+    // Generated on the client and stored on by the server so that
+    uint32_t request_id;
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write

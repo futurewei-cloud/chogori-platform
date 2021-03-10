@@ -342,17 +342,18 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     for (; !_isScanDone(key_it, request, response.results.size());
                         _scanAdvance(key_it, request.reverseDirection, request.key.schemaName)) {
         auto& versions = key_it->second;
-        auto viter = _getVersion(versions, request.mtr.timestamp);
+        DataRecord* record = _getDataRecord(versions, request.mtr.timestamp);
+        bool needPush = !record ? _needPush(versions, request.mtr.timestamp) : false;
 
-        if (viter == versions.end()) {
+        if (!record && !needPush) {
             // happy case: we either had no versions, or all versions were newer than the requested timestamp
             continue;
         }
 
         // happy case: either committed, or txn is reading its own write
-        if (viter->status == dto::DataRecord::Committed || viter->txnId.mtr == request.mtr) {
-            if (!viter->isTombstone) {
-                auto [status, keep] = _doQueryFilter(request, viter->value);
+        if (record) {
+            if (!record->isTombstone) {
+                auto [status, keep] = _doQueryFilter(request, record->value);
                 if (!status.is2xxOK()) {
                     return RPCResponse(std::move(status), dto::K23SIQueryResponse{});
                 }
@@ -363,11 +364,11 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                 // apply projection if the user call addProjection
                 if (request.projection.size() == 0) {
                     // want all fields
-                    response.results.push_back(viter->value.share());
+                    response.results.push_back(record->value.share());
                 } else {
                     // serialize partial SKVRecord according to projection
                     dto::SKVRecord::Storage storage;
-                    bool success = _makeProjection(viter->value, request, storage);
+                    bool success = _makeProjection(record->value, request, storage);
                     if (!success) {
                         K2LOG_W(log::skvsvr, "Error making projection!");
                         return RPCResponse(dto::K23SIStatus::InternalError("Error making projection"),
@@ -398,7 +399,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
         K2LOG_D(log::skvsvr, "About to PUSH in query request");
         request.key = key_it->first; // if we retry, do so with the key we're currently iterating on
-        return _doPush(request.collectionName, viter->key, viter->txnId, request.mtr, deadline)
+        return _doPush(request.collectionName, key_it->first, versions.WI.txnId, request.mtr, deadline)
         .then([this, request=std::move(request),
                         resp=std::move(response), deadline](bool retryChallenger) mutable {
             if (!retryChallenger) {
@@ -1141,8 +1142,8 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
             }
 
             // update the write intent if necessary
-            auto* rec = _getDataRecord(key, request.incumbentMTR.timestamp);
-            if (rec && rec->status == dto::DataRecord::WriteIntent && rec->txnId.mtr == request.incumbentMTR) {
+            dto::WriteIntent* rec = _getWriteIntent(key, request.incumbentMTR.timestamp);
+            if (rec) {
                 switch (response.incumbentState) {
                     case dto::TxnRecordState::InProgress: {
                         break;
@@ -1150,12 +1151,12 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
                     case dto::TxnRecordState::Aborted: {
                         rec->status = dto::DataRecord::Aborted;
                         //NB this call invalidates rec since we're modifying the indexer
-                        _removeRecord(*rec); // TODO-persistence: This shouldn't be done here but after successful persist, probably during txn finalization and/or GC for abandoned WIs
+                        _removeRecord(key, request.incumbentMTR.timestamp); // TODO-persistence: This shouldn't be done here but after successful persist, probably during txn finalization and/or GC for abandoned WIs
                         break;
                     }
                     case dto::TxnRecordState::Committed: {
                         // TODO-persistence this needs to be persisted
-                        rec->status = dto::DataRecord::Committed;
+                        _commitWriteIntent(key, , request.incumbentMTR.timestamp);
                         break;
                     }
                     case dto::TxnRecordState::Deleted: {
@@ -1174,19 +1175,18 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
 }
 
 seastar::future<>
-K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, VersionsT& versions, FastDeadline deadline) {
+K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, VersionSet& versions, FastDeadline deadline) {
     K2LOG_D(log::skvsvr, "Partition: {}, Write Request creating WI: {}", _partition, request);
     dto::DataRecord rec;
-    rec.key = std::move(request.key);
     // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
     rec.value = request.value.copy();
     rec.isTombstone = request.isDelete;
-    rec.txnId = dto::TxnId{.trh = std::move(request.trh), .mtr = std::move(request.mtr)};
-    rec.status = dto::DataRecord::WriteIntent;
+    TxnId txnId = dto::TxnId{.trh = std::move(request.trh), .mtr = std::move(request.mtr)};
 
-    versions.push_front(std::move(rec));
+    versions.WI.emplace(std::move(rec), std::move(txnId), dto::DataRecord::WriteIntent, request.request_id);
+
     // TODO write to WAL
-    return _persistence.makeCall(versions.front(), deadline);
+    return _persistence.makeCall(versions.WI, deadline);
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnFinalizeResponse>>
@@ -1402,20 +1402,8 @@ K23SIPartitionModule::handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& req
     return RPCResponse(dto::K23SIStatus::OK("Inspect AllKeys success"), std::move(response));
 }
 
-
-// get the data record from the given versions which is not newer than the given timestamp
-VersionsT::iterator
-K23SIPartitionModule::_getVersion(VersionsT& versions, const dto::Timestamp& timestamp) {
-    auto viter = versions.begin();
-    // position the version iterator at the version we are after
-    while (viter != versions.end() && timestamp.compareCertain(viter->txnId.mtr.timestamp) < 0) {
-         // skip newer records
-        ++viter;
-    }
-    return viter;
-}
-
-// get the data record with the given key which is not newer than the given timestsamp
+// get the data record with the given key which is not newer than the given timestsamp, or if it
+// is an exact match for a write intent (for read your own writes, etc.)
 dto::DataRecord*
 K23SIPartitionModule::_getDataRecord(const dto::Key& key, const dto::Timestamp& timestamp) {
     auto versions = _indexer.find(key);
