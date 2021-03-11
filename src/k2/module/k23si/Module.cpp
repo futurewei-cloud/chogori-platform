@@ -1255,54 +1255,51 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         }
     }
 
-    if (!found) {
-        // we don't have a record from this transaction
-        if (request.action == dto::EndAction::Abort) {
-            // we don't have it but it was an abort anyway
+    if (request.action == dto::EndAction::Abort) {
+        // Nothing to do, it was already aborted or never existed, but not an error
+        if (!found || isAborted) {
             K2LOG_D(log::skvsvr, "Partition: {}, abort for missing version {}, in txn {}", _partition, request.key, txnId);
             return RPCResponse(dto::K23SIStatus::OK("finalize key missing in abort"), dto::K23SITxnFinalizeResponse());
         }
-        // we can't allow the commit since we don't have the write intent and we don't have a committed version
-        K2LOG_D(log::skvsvr, "Partition: {}, rejecting commit for missing version {}, in txn {}", _partition, request.key, txnId);
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"), dto::K23SITxnFinalizeResponse());
-    }
-
-    // we found a record from this transaction
-
-    if (isWI && !isAborted) {
-        // if it is currently a write intent, modify as needed
-        if (request.action == dto::EndAction::Commit) {
+        // Normal abort case
+        else if (found && isWI) {
+            K2LOG_D(log::skvsvr, "Partition: {}, aborting {}, in txn {}", _partition, request.key, txnId);
+            versions.WI->status = dto::WriteIntent::Status::Aborted;
+        }
+        // Error case, trying to abort but it was already committed
+        else {
+            K2LOG_D(log::skvsvr, "Partition: {}, cannot abort committed record", _partition);
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot finalize txn"), dto::K23SITxnFinalizeResponse());
+        }
+    } else if (request.action == dto::EndAction::Commit) {
+        // Nothing to do, it was already committed, but not an error
+        if (found && !isWI) {
+            K2LOG_D(log::skvsvr, "Partition: {}, committing an already committed record, in txn {}", _partition, txnId);
+            return RPCResponse(dto::K23SIStatus::OK("Tried to commit a committed record"), dto::K23SITxnFinalizeResponse());
+        }
+        else if (isWI && !isAborted) {
             K2LOG_D(log::skvsvr, "Partition: {}, committing {}, in txn {}", _partition, request.key, txnId);
             versions.committed.emplace_front(std::move(versions.WI->data), versions.WI->txnId.mtr.timestamp);
             versions.WI.reset();
         }
+        // Error case, it was aborted or never existed
         else {
-            K2LOG_D(log::skvsvr, "Partition: {}, aborting {}, in txn {}", _partition, request.key, txnId);
-            versions.WI->status = dto::WriteIntent::Status::Aborted;
+            K2LOG_D(log::skvsvr, "Partition: {}, rejecting commit for missing version {}, in txn {}",
+                                 _partition, request.key, txnId);
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"),
+                               dto::K23SITxnFinalizeResponse());
         }
     }
-    else if (!isWI && request.action != dto::EndAction::Commit) {
-        K2LOG_D(log::skvsvr, "Partition: {}, cannot abort committed record", _partition);
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot finalize txn"), dto::K23SITxnFinalizeResponse());
-    }
-    else if (isWI && isAborted && request.action != dto::EndAction::Abort) {
-        K2LOG_D(log::skvsvr, "Partition: {}, cannot commit aborted record", _partition);
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot finalize txn"), dto::K23SITxnFinalizeResponse());
-    }
-    else if (!isWI && request.action == dto::EndAction::Commit) {
-        K2LOG_D(log::skvsvr, "Partition: {}, committing an already committed record, in txn {}", _partition, txnId);
-        return RPCResponse(dto::K23SIStatus::OK("Tried to commit a committed record"), dto::K23SITxnFinalizeResponse());
-    }
-    else if (isWI && isAborted && request.action == dto::EndAction::Abort) {
-        K2LOG_D(log::skvsvr, "Partition: {}, abort an already aborted record, in txn {}", _partition, txnId);
-        return RPCResponse(dto::K23SIStatus::OK("Tried to abort an aborted record"), dto::K23SITxnFinalizeResponse());
-    } else {
-        // the action did not match the state
+    // Error case, something wrong with the request
+    else {
         K2LOG_D(log::skvsvr,
             "Partition: {}, failing finalize due to action mismatch {}, in txn {}, asked={}",
             _partition, request.key, txnId, request.action);
         return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot finalize txn"), dto::K23SITxnFinalizeResponse());
     }
+
+    // If we get here then it was a happy-case abort or commit
+
 
     // TODO-persistence: For now, remove aborted records right-away. With persistence we should do so after successfully
     // persisting

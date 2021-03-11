@@ -2358,7 +2358,6 @@ seastar::future<> testScenario06() {
         }); // end do-with
     }) // end case 11
     .then([&] {
-        K2LOG_I(log::k23si, "------- SC06.case12 ( The TRH and MTR parameters of Finalize do not match ) -------");
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -2379,14 +2378,7 @@ seastar::future<> testScenario06() {
                 K2EXPECT(log::k23si, status2, dto::K23SIStatus::Created);
             })
             .then([&] {
-                return doFinalize(k8, k8, mtr, collname, true, ErrorCaseOpt::NoInjection)
-                .then([](auto&& response)  {
-                    auto& [status, val] = response;
-                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed);
-                });
-            })
-            .then([&] {
-                K2LOG_I(log::k23si, "------- SC06.case13 ( During async end_abort interval, finalize_commit those keys ) -------");
+                K2LOG_I(log::k23si, "------- SC06.case12 ( During async end_abort interval, finalize_commit those keys ) -------");
                 return doEnd(k7, mtr, collname, false, {k7, k8}, Duration{200ms}, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response)  {
                     auto& [status, val] = response;
