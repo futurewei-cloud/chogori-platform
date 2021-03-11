@@ -49,7 +49,7 @@ typedef std::deque<dto::CommittedRecord> VersionsT;
 
 struct VersionSet {
     std::optional<WriteIntent> WI;
-    VersionsT versions;
+    VersionsT committed;
 };
 
 // the type holding versions for all keys, i.e. the indexer
@@ -173,7 +173,7 @@ private: // methods
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     template <typename RequestT>
-    Status _validateStaleWrite(const RequestT& req, VersionsT& versions);
+    Status _validateStaleWrite(const RequestT& req, const VersionSet& versions);
 
     template <class RequestT>
     Status _validateReadRequest(const RequestT& request) const {
@@ -238,17 +238,13 @@ private: // methods
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
 
-    // the the data record with the given key which is not newer than the given timestsamp
+    // the the data record in the version set which is not newer than the given timestsamp
     // The returned pointer is invalid if any modifications are made to the indexer. Will also
-    // return the current WI if it matches the given timestamp.
-    dto::DataRecord* _getDataRecord(const dto::Key& key, const dto::Timestamp& timestamp);
-    dto::DataRecord* _getDataRecord(const VersionsT& versions, const dto::Timestamp& timestamp);
+    // return the current WI if it matches exactly the given timestamp.
+    dto::DataRecord* _getDataRecord(VersionSet& versions, dto::Timestamp& timestamp);
 
     // For a given challenger timestamp and key, check if a push is needed against a WI
-    bool _needPush(const VersionsT& versions, const dto::Timestamp& timestamp);
-
-    // utility method used to update the indexer when removing a record
-    void _removeRecord(const dto::Key& key, const dto::Timestamp& timestamp);
+    bool _needPush(const VersionSet& versions, const dto::Timestamp& timestamp);
 
     // get timeNow Timestamp from TSO
     seastar::future<dto::Timestamp> getTimeNow() {

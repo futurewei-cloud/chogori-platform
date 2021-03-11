@@ -160,6 +160,8 @@ private:
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     doWrite(const dto::Key& key, const DataRec& data, const dto::K23SI_MTR mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH, ErrorCaseOpt errOpt) {
+        static uint32_t id = 0;
+
         SKVRecord record(cname, std::make_shared<k2::dto::Schema>(_schema));
         record.serializeNext<String>(key.partitionKey);
         record.serializeNext<String>(key.rangeKey);
@@ -175,6 +177,7 @@ private:
             .isDelete = isDelete,
             .designateTRH = isTRH,
             .rejectIfExists = false,
+            .request_id = id++,
             .key = key,
             .value = std::move(record.storage),
             .fieldsForPartialUpdate = std::vector<uint32_t>()
@@ -1834,7 +1837,6 @@ seastar::future<> testScenario04() {
                         return doInspectRecords(k2, collname)
                         .then([&](auto&& response)  {
                             auto& [status, val] = response;
-                            K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound);
                             K2EXPECT(log::k23si, val.records.empty(), true);
                         });
                     })
@@ -2485,10 +2487,6 @@ seastar::future<> testScenario07() {
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr.txnid);
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::Committed);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr.txnid);
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::WriteIntent);
                     });
                 });
             })
@@ -2518,10 +2516,6 @@ seastar::future<> testScenario07() {
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr2.txnid);
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::WriteIntent);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr2.txnid);
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::Committed);
                     });
                 });
             })
@@ -2551,10 +2545,6 @@ seastar::future<> testScenario07() {
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr.txnid); // last txn id who committed k1 is mtr
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::Committed);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr3.txnid);
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::WriteIntent);
                     });
                 });
             })
@@ -2584,10 +2574,6 @@ seastar::future<> testScenario07() {
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr4.txnid);
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::WriteIntent);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr2.txnid); // last txn id who committed k2 is mtr2
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::Committed);
                     });
                 });
             })

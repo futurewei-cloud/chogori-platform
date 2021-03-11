@@ -183,6 +183,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
         erase,
         _write_set.size() == 1,
         rejectIfExists,
+        _client->write_ops,
         key,
         record.storage.share(),
         std::vector<uint32_t>()
@@ -205,6 +206,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dt
             false, // Partial update cannot be a delete
             _write_set.size() == 1,
             false, // Partial update must be applied on existing record
+            _client->write_ops,
             std::move(key),
             record.storage.share(),
             fieldsForPartialUpdate

@@ -133,7 +133,7 @@ struct DataRecord {
 
     K2_PAYLOAD_FIELDS(value, isTombstone);
     K2_DEF_FMT(DataRecord, value, isTombstone);
-}
+};
 
 // A write intent. This is separate from the DataRecord structure below which is used for
 // committed records because a write intent needs to store more information.
@@ -142,15 +142,16 @@ struct WriteIntent {
     TxnId txnId;
 
     enum Status: uint8_t {
-        WriteIntent,  // the record hasn't been committed/aborted yet
+        InProgress,  // the record hasn't been committed/aborted yet
         Aborted       // the record has been aborted and should be removed
     } status;
+
     // The request_id as given to the server by the client, it is used to
     // provide idempotent behavior in the case of retries
-    uint32_t request_id = 0;
+    uint64_t request_id = 0;
 
     WriteIntent() = default;
-    WriteIntent(DataRecord&& d, TxnId&& txn, Status s, uint32_t id) : data(std::move(d)),
+    WriteIntent(DataRecord&& d, TxnId txn, Status s, uint64_t id) : data(std::move(d)),
             txnId(std::move(txn)), status(s), request_id(id) {}
 
     K2_PAYLOAD_FIELDS(data, txnId, status, request_id);
@@ -163,7 +164,7 @@ struct CommittedRecord {
     Timestamp timestamp;
 
     CommittedRecord() = default;
-    CommittedRecord(WriteIntent&& WI): data(std::move(WI.data)), timestamp(WI.txnId.mtr.timestamp) {}
+    CommittedRecord(DataRecord&& d, Timestamp t): data(std::move(d)), timestamp(t) {}
 
     K2_PAYLOAD_FIELDS(data, timestamp);
     K2_DEF_FMT(CommittedRecord, data, timestamp);
@@ -234,7 +235,7 @@ struct K23SIWriteRequest {
     // whereas this is the only record-level precondition that makes sense so it is its own flag
     bool rejectIfExists = false;
     // Generated on the client and stored on by the server so that
-    uint32_t request_id;
+    uint64_t request_id;
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
@@ -242,14 +243,14 @@ struct K23SIWriteRequest {
 
     K23SIWriteRequest() = default;
     K23SIWriteRequest(Partition::PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, bool _isDelete,
-                      bool _designateTRH, bool _rejectIfExists, Key _key, SKVRecord::Storage _value,
+                      bool _designateTRH, bool _rejectIfExists, uint64_t id, Key _key, SKVRecord::Storage _value,
                       std::vector<uint32_t> _fields) :
         pvid(std::move(_pvid)), collectionName(std::move(cname)), mtr(std::move(_mtr)), trh(std::move(_trh)),
-        isDelete(_isDelete), designateTRH(_designateTRH), rejectIfExists(_rejectIfExists),
+        isDelete(_isDelete), designateTRH(_designateTRH), rejectIfExists(_rejectIfExists), request_id(id),
         key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
-    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, key, value, fieldsForPartialUpdate);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, request_id, key, value, fieldsForPartialUpdate);
+    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, request_id, key, value, fieldsForPartialUpdate);
 };
 
 struct K23SIWriteResponse {
