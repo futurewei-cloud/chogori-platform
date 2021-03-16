@@ -342,7 +342,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     for (; !_isScanDone(key_it, request, response.results.size());
                         _scanAdvance(key_it, request.reverseDirection, request.key.schemaName)) {
         auto& versions = key_it->second;
-        DataRecord* record = _getDataRecord(versions, request.mtr.timestamp);
+        DataRecord* record = _getDataRecordForRead(versions, request.mtr.timestamp);
         bool needPush = !record ? _needPush(versions, request.mtr.timestamp) : false;
 
         if (!record && !needPush) {
@@ -457,7 +457,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
     }
 
     VersionSet& versions = IndexIt->second;
-    DataRecord* rec = _getDataRecord(versions, request.mtr.timestamp);
+    DataRecord* rec = _getDataRecordForRead(versions, request.mtr.timestamp);
     bool needPush = !rec ? _needPush(versions, request.mtr.timestamp) : false;
 
     // happy case: either committed, or txn is reading its own write, or there is no matching version
@@ -1166,7 +1166,7 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
                         break;
                     }
                     case dto::TxnRecordState::Aborted: {
-                        versions.WI.reset(); // TODO-persistence: This shouldn't be done here but after successful persist, probably during txn finalization and/or GC for abandoned WIs
+                        _removeWI(IndexerIt);
                         break;
                     }
                     case dto::TxnRecordState::Committed: {
@@ -1304,7 +1304,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     // TODO-persistence: For now, remove aborted records right-away. With persistence we should do so after successfully
     // persisting
     if (versions.WI.has_value() && versions.WI->status == dto::WriteIntent::Status::Aborted) {
-        versions.WI.reset();
+        _removeWI(IndexerIt);
     }
 
     // send a partial update for updating the status of the record
@@ -1473,9 +1473,11 @@ bool K23SIPartitionModule::_needPush(const VersionSet& versions, const dto::Time
 // get the data record with the given key which is not newer than the given timestsamp, or if it
 // is an exact match for a write intent (for read your own writes, etc)
 dto::DataRecord*
-K23SIPartitionModule::_getDataRecord(VersionSet& versions, dto::Timestamp& timestamp) {
+K23SIPartitionModule::_getDataRecordForRead(VersionSet& versions, dto::Timestamp& timestamp) {
     if (versions.WI.has_value() && versions.WI->txnId.mtr.timestamp.compareCertain(timestamp) == 0) {
         return &(versions.WI->data);
+    } else if (versions.WI.has_value() && timestamp.compareCertain(versions.WI->txnId.mtr.timestamp) > 0) {
+        return nullptr;
     }
 
     auto viter = versions.committed.begin();
@@ -1490,6 +1492,16 @@ K23SIPartitionModule::_getDataRecord(VersionSet& versions, dto::Timestamp& times
     }
 
     return &(viter->data);
+}
+
+// Helper to remove a WI and delete the key from the indexer of there are no committed records
+void K23SIPartitionModule::_removeWI(IndexerIterator it) {
+    if (it->second.committed.size() == 0) {
+        _indexer.erase(it);
+        return;
+    }
+
+    it->second.WI.reset();
 }
 
 } // ns k2

@@ -240,11 +240,15 @@ private: // methods
 
     // the the data record in the version set which is not newer than the given timestsamp
     // The returned pointer is invalid if any modifications are made to the indexer. Will also
-    // return the current WI if it matches exactly the given timestamp.
-    dto::DataRecord* _getDataRecord(VersionSet& versions, dto::Timestamp& timestamp);
+    // return the current WI if it matches exactly the given timestamp. In other words, it
+    // returns a record that is valid to return for to a read request for the given timestamp.
+    dto::DataRecord* _getDataRecordForRead(VersionSet& versions, dto::Timestamp& timestamp);
 
     // For a given challenger timestamp and key, check if a push is needed against a WI
     bool _needPush(const VersionSet& versions, const dto::Timestamp& timestamp);
+
+    // Helper to remove a WI and delete the key from the indexer of there are no committed records
+    void _removeWI(IndexerIterator it);
 
     // get timeNow Timestamp from TSO
     seastar::future<dto::Timestamp> getTimeNow() {

@@ -416,6 +416,15 @@ private:
                 (dto::Verbs::K23SI_INSPECT_RECORDS, request, *part.preferredEndpoint, 100ms);
     }
 
+    // The key parameter is only used for routing, it is not part of the request
+    seastar::future<std::tuple<Status, dto::K23SIInspectWIsResponse>>
+    doInspectWIs(const dto::Key& key) {
+        auto& part = _pgetter.getPartitionForKey(key);
+        dto::K23SIInspectWIsRequest request;
+        return RPC().callRPC<dto::K23SIInspectWIsRequest, dto::K23SIInspectWIsResponse>
+                (dto::Verbs::K23SI_INSPECT_WIS, request, *part.preferredEndpoint, 100ms);
+    }
+
     seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>>
     doInspectTxn(const dto::Key& key, const dto::K23SI_MTR& mtr, const String& cname) {
         auto& part = _pgetter.getPartitionForKey(key);
@@ -1837,6 +1846,7 @@ seastar::future<> testScenario04() {
                         return doInspectRecords(k2, collname)
                         .then([&](auto&& response)  {
                             auto& [status, val] = response;
+                            K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound);
                             K2EXPECT(log::k23si, val.records.empty(), true);
                         });
                     })
@@ -2358,6 +2368,7 @@ seastar::future<> testScenario06() {
         }); // end do-with
     }) // end case 11
     .then([&] {
+        K2LOG_I(log::k23si, "------- SC06.case12 ( The MTR parameters of Finalize do not match ) -------");
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -2378,7 +2389,14 @@ seastar::future<> testScenario06() {
                 K2EXPECT(log::k23si, status2, dto::K23SIStatus::Created);
             })
             .then([&] {
-                K2LOG_I(log::k23si, "------- SC06.case12 ( During async end_abort interval, finalize_commit those keys ) -------");
+                return doFinalize(k7, k8, K23SI_MTR_ZERO, collname, true, ErrorCaseOpt::NoInjection);
+            })
+            .then([](auto&& response)  {
+                auto& [status, val] = response;
+                K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed);
+            })
+            .then([&] {
+                K2LOG_I(log::k23si, "------- SC06.case13 ( During async end_abort interval, finalize_commit those keys ) -------");
                 return doEnd(k7, mtr, collname, false, {k7, k8}, Duration{200ms}, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response)  {
                     auto& [status, val] = response;
@@ -2472,13 +2490,22 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectWIs(k2))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        K2EXPECT(log::k23si, val1.records.size(), 1);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val2.WIs) {
+                            if (WI.txnId.mtr == mtr) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
                     });
                 });
             })
@@ -2501,13 +2528,22 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectWIs(k1), doInspectRecords(k2, collname))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val1.WIs) {
+                            if (WI.txnId.mtr == mtr2) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
+                        K2EXPECT(log::k23si, val2.records.size(), 1);
                     });
                 });
             })
@@ -2530,13 +2566,25 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectWIs(k2))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
-                        K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
+                        K2EXPECT(log::k23si, val1.records.size(), 1);
+
+                        K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val2.WIs) {
+                            if (WI.txnId.mtr == mtr3) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
+
                     });
                 });
             })
@@ -2559,13 +2607,23 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectWIs(k1), doInspectRecords(k2, collname))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
+
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val1.WIs) {
+                            if (WI.txnId.mtr == mtr4) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
+                        K2EXPECT(log::k23si, val2.records.size(), 1);
                     });
                 });
             })
