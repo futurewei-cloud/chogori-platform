@@ -1241,11 +1241,10 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     // Check for a matching committed record if needed
     if (!found) {
         for (const CommittedRecord& record : versions.committed) {
+            int comp = record.timestamp.compareCertain(txnId.mtr.timestamp);
             // timestamps are unique, so they can identify a txn match
-            if (record.timestamp.compareCertain(txnId.mtr.timestamp) == 0) {
-                found = true;
-                break;
-            } else if (record.timestamp.compareCertain(txnId.mtr.timestamp) < 0) {
+            found = comp == 0;
+            if (comp <= 0) {
                 break;
             }
         }
