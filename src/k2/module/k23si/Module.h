@@ -245,7 +245,7 @@ private: // methods
     dto::DataRecord* _getDataRecordForRead(VersionSet& versions, dto::Timestamp& timestamp);
 
     // For a given challenger timestamp and key, check if a push is needed against a WI
-    bool _needPush(const VersionSet& versions, const dto::Timestamp& timestamp);
+    bool _checkPushForRead(const VersionSet& versions, const dto::Timestamp& timestamp);
 
     // Helper to remove a WI and delete the key from the indexer of there are no committed records
     void _removeWI(IndexerIterator it);

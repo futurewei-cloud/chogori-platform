@@ -141,21 +141,16 @@ struct WriteIntent {
     DataRecord data;
     TxnId txnId;
 
-    enum Status: uint8_t {
-        InProgress,  // the record hasn't been committed/aborted yet
-        Aborted       // the record has been aborted and should be removed
-    } status;
-
     // The request_id as given to the server by the client, it is used to
     // provide idempotent behavior in the case of retries
     uint64_t request_id = 0;
 
     WriteIntent() = default;
-    WriteIntent(DataRecord&& d, TxnId txn, Status s, uint64_t id) : data(std::move(d)),
-            txnId(std::move(txn)), status(s), request_id(id) {}
+    WriteIntent(DataRecord&& d, TxnId txn, uint64_t id) : data(std::move(d)),
+            txnId(std::move(txn)), request_id(id) {}
 
-    K2_PAYLOAD_FIELDS(data, txnId, status, request_id);
-    K2_DEF_FMT(WriteIntent, data, txnId, status, request_id);
+    K2_PAYLOAD_FIELDS(data, txnId, request_id);
+    K2_DEF_FMT(WriteIntent, data, txnId, request_id);
 };
 
 // A committed record in the 3SI version cache.

@@ -343,7 +343,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                         _scanAdvance(key_it, request.reverseDirection, request.key.schemaName)) {
         auto& versions = key_it->second;
         DataRecord* record = _getDataRecordForRead(versions, request.mtr.timestamp);
-        bool needPush = !record ? _needPush(versions, request.mtr.timestamp) : false;
+        bool needPush = !record ? _checkPushForRead(versions, request.mtr.timestamp) : false;
 
         if (!record && !needPush) {
             // happy case: we either had no versions, or all versions were newer than the requested timestamp
@@ -458,7 +458,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
 
     VersionSet& versions = IndexIt->second;
     DataRecord* rec = _getDataRecordForRead(versions, request.mtr.timestamp);
-    bool needPush = !rec ? _needPush(versions, request.mtr.timestamp) : false;
+    bool needPush = !rec ? _checkPushForRead(versions, request.mtr.timestamp) : false;
 
     // happy case: either committed, or txn is reading its own write, or there is no matching version
     if (!needPush) {
@@ -497,30 +497,25 @@ Status K23SIPartitionModule::_validateStaleWrite(const RequestT& request, const 
         }
     }
 
-    // check if we have a committed value newer than the request. The latest committed
-    // is either the first or second in deque as we may have at most one outstanding WI
-    // NB(1) if we try to place a WI over a committed value from different transaction with same ts.end
-    // (even if from different TSO), reject the incoming write in order to avoid weird read-my-write problem
-    // for in-progress transactions
+    // check if we have a committed value newer than the request.
+    // NB(1) if we try to place a WI over a committed value from different transaction with same ts.end,
+    // reject the incoming write in order to avoid weird read-my-write problem for in-progress transactions
     // NB(2) we cannot allow writes past a committed value since a write has to imply a read causality, so
     // if a txn committed a value at time T5, then we must also assume they did a read at time T5
-    // NB(3) if we encounter a WI, we check the second oldest version to see if there is a need to push.
-    // If the second oldest is newer than we are, then we won't commit even if we win a PUSH against the WI.
-    if (!versionSet.WI.has_value() && versionSet.committed.size() > 0 &&
+    // NB(3) This code does not care if there is a WI. If there is a WI, then this check can help avoid
+    // an unnecessay PUSH.
+    if (versionSet.committed.size() > 0 &&
         request.mtr.timestamp.compareCertain(versionSet.committed[0].timestamp) <= 0) {
         // newest version is the latest committed and its newer than the request
         // or committed version from same transaction is found (e.g. bad retry on a write came through after commit)
         K2LOG_D(log::skvsvr, "Partition: {}, failing write older than latest commit for key {}", _partition, request.key);
         return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as we have a newer committed write for this key from another transaction");
     }
-    else if (versionSet.WI.has_value() && versionSet.WI->status == dto::WriteIntent::Status::InProgress &&
-        versionSet.committed.size() > 0 &&
-        request.mtr.timestamp.compareCertain(versionSet.committed[0].timestamp) <= 0) {
-        // second newest version is the latest committed and its newer than the request.
-        // no need to push since this request would fail anyway against the committed value
-        K2LOG_D(log::skvsvr, "Partition: {}, failing write older than latest commit for key {}", _partition, request.key);
-        return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as we have a newer committed write (and wi) for this key from other transactions");
-    }
+
+    // Note that we could also check the request id against the WI request id if it exists, and enforce
+    // that it is non-decreasing. This would only catch a problem where: there is a bug in the client or
+    // application code and the client does parallel writes to the same key. If the client wants to order
+    // writes to the same key they must be done in serial.
 
     K2LOG_D(log::skvsvr, "Partition: {}, stale write check passed for key {}", _partition, request.key);
     return dto::K23SIStatus::OK("");
@@ -915,7 +910,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
     // and we should return OK
     if (versions.WI.has_value() && request.mtr == versions.WI->txnId.mtr &&
                                    request.request_id == versions.WI->request_id) {
-        return RPCResponse(dto::K23SIStatus::Created("wi created"), dto::K23SIWriteResponse{});
+        return RPCResponse(dto::K23SIStatus::Created("wi was already created"), dto::K23SIWriteResponse{});
     }
 
     // Note that if we are here and a WI exists, it must be from the txn of the current request
@@ -1199,7 +1194,7 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, VersionSet& ve
     rec.isTombstone = request.isDelete;
     TxnId txnId = dto::TxnId{.trh = std::move(request.trh), .mtr = std::move(request.mtr)};
 
-    versions.WI.emplace(std::move(rec), std::move(txnId), dto::WriteIntent::Status::InProgress, request.request_id);
+    versions.WI.emplace(std::move(rec), std::move(txnId), request.request_id);
 
     // TODO write to WAL
     return _persistence.makeCall(versions.WI->data, deadline);
@@ -1237,13 +1232,11 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     VersionSet& versions = IndexerIt->second;
     bool found = false;
     bool isWI = false;
-    bool isAborted = false;
 
     // Check for matching WI first
     if (versions.WI.has_value() && versions.WI->txnId == txnId) {
         found = true;
         isWI = true;
-        isAborted = versions.WI->status == dto::WriteIntent::Status::Aborted;
     }
     // Check for a matching committed record if needed
     if (!found) {
@@ -1251,51 +1244,62 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
             // timestamps are unique, so they can identify a txn match
             if (record.timestamp.compareCertain(txnId.mtr.timestamp) == 0) {
                 found = true;
+                break;
+            } else if (record.timestamp.compareCertain(txnId.mtr.timestamp) < 0) {
+                break;
             }
         }
     }
 
-    if (request.action == dto::EndAction::Abort) {
-        // Nothing to do, it was already aborted or never existed, but not an error
-        if (!found || isAborted) {
-            K2LOG_D(log::skvsvr, "Partition: {}, abort for missing version {}, in txn {}", _partition, request.key, txnId);
-            return RPCResponse(dto::K23SIStatus::OK("finalize key missing in abort"), dto::K23SITxnFinalizeResponse());
-        }
-        // Normal abort case
-        else if (found && isWI) {
-            K2LOG_D(log::skvsvr, "Partition: {}, aborting {}, in txn {}", _partition, request.key, txnId);
-            versions.WI->status = dto::WriteIntent::Status::Aborted;
-        }
-        // Error case, trying to abort but it was already committed
-        else {
-            K2LOG_D(log::skvsvr, "Partition: {}, cannot abort committed record", _partition);
-            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot finalize txn"), dto::K23SITxnFinalizeResponse());
-        }
-    } else if (request.action == dto::EndAction::Commit) {
-        // Nothing to do, it was already committed, but not an error
-        if (found && !isWI) {
-            K2LOG_D(log::skvsvr, "Partition: {}, committing an already committed record, in txn {}", _partition, txnId);
-            return RPCResponse(dto::K23SIStatus::OK("Tried to commit a committed record"), dto::K23SITxnFinalizeResponse());
-        }
-        else if (isWI && !isAborted) {
-            K2LOG_D(log::skvsvr, "Partition: {}, committing {}, in txn {}", _partition, request.key, txnId);
-            versions.committed.emplace_front(std::move(versions.WI->data), versions.WI->txnId.mtr.timestamp);
-            versions.WI.reset();
-        }
-        // Error case, it was aborted or never existed
-        else {
-            K2LOG_D(log::skvsvr, "Partition: {}, rejecting commit for missing version {}, in txn {}",
-                                 _partition, request.key, txnId);
-            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"),
-                               dto::K23SITxnFinalizeResponse());
-        }
-    }
-    // Error case, something wrong with the request
-    else {
-        K2LOG_D(log::skvsvr,
-            "Partition: {}, failing finalize due to action mismatch {}, in txn {}, asked={}",
-            _partition, request.key, txnId, request.action);
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot finalize txn"), dto::K23SITxnFinalizeResponse());
+    switch (request.action) {
+        case dto::EndAction::Abort:
+            // Nothing to do, it was already aborted or never existed, but not an error
+            if (!found) {
+                K2LOG_D(log::skvsvr, "Partition: {}, abort for missing version {}, in txn {}", _partition,
+                                     request.key, txnId);
+                return RPCResponse(dto::K23SIStatus::OK("finalize key missing in abort"),
+                                    dto::K23SITxnFinalizeResponse());
+            }
+            // Normal abort case
+            else if (found && isWI) {
+                K2LOG_D(log::skvsvr, "Partition: {}, aborting {}, in txn {}", _partition, request.key, txnId);
+                _removeWI(IndexerIt);
+            }
+            // Error case, trying to abort but it was already committed
+            else {
+                K2LOG_D(log::skvsvr, "Partition: {}, cannot abort committed record", _partition);
+                return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot abort committed record"),
+                                    dto::K23SITxnFinalizeResponse());
+            }
+            break;
+        case dto::EndAction::Commit:
+            // Nothing to do, it was already committed, but not an error
+            if (found && !isWI) {
+                K2LOG_D(log::skvsvr, "Partition: {}, committing an already committed record, in txn {}",
+                                        _partition, txnId);
+                return RPCResponse(dto::K23SIStatus::OK("Tried to commit a committed record"),
+                                        dto::K23SITxnFinalizeResponse());
+            }
+            else if (isWI) {
+                K2LOG_D(log::skvsvr, "Partition: {}, committing {}, in txn {}", _partition, request.key, txnId);
+                versions.committed.emplace_front(std::move(versions.WI->data), versions.WI->txnId.mtr.timestamp);
+                versions.WI.reset();
+            }
+            // Error case, it was aborted or never existed
+            else {
+                K2LOG_D(log::skvsvr, "Partition: {}, rejecting commit for missing version {}, in txn {}",
+                                     _partition, request.key, txnId);
+                return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"),
+                                   dto::K23SITxnFinalizeResponse());
+            }
+            break;
+        // Error case, something wrong with the request
+        default:
+            K2LOG_D(log::skvsvr,
+                "Partition: {}, failing finalize due to action mismatch {}, in txn {}, asked={}",
+                _partition, request.key, txnId, request.action);
+            return RPCResponse(dto::K23SIStatus::OperationNotAllowed("request was not an abort or commit, likely memory corruption"),
+                                    dto::K23SITxnFinalizeResponse());
     }
 
     // If we get here then it was a happy-case abort or commit
@@ -1303,10 +1307,6 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
 
     // TODO-persistence: For now, remove aborted records right-away. With persistence we should do so after successfully
     // persisting
-    if (versions.WI.has_value() && versions.WI->status == dto::WriteIntent::Status::Aborted) {
-        _removeWI(IndexerIt);
-    }
-
     // send a partial update for updating the status of the record
     return _persistence.makeCall(dto::K23SI_PersistencePartialUpdate{}, _config.persistenceTimeout()).then([] {
         return RPCResponse(dto::K23SIStatus::OK("persistence call succeeded"), dto::K23SITxnFinalizeResponse{});
@@ -1404,7 +1404,6 @@ K23SIPartitionModule::handleInspectWIs(dto::K23SIInspectWIsRequest&& request) {
         dto::WriteIntent copy {
             .data = {rec.data.value.share(), rec.data.isTombstone},
             .txnId = rec.txnId,
-            .status = rec.status,
             .request_id = rec.request_id
         };
 
@@ -1457,13 +1456,14 @@ K23SIPartitionModule::handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& req
 }
 
 // For a given challenger timestamp and key, check if a push is needed against a WI
-bool K23SIPartitionModule::_needPush(const VersionSet& versions, const dto::Timestamp& timestamp) {
+bool K23SIPartitionModule::_checkPushForRead(const VersionSet& versions, const dto::Timestamp& timestamp) {
     if (!versions.WI.has_value()) {
         return false;
     }
 
     // timestamps are unique, so if it is an exact match we know it is the same txn
-    if (versions.WI->txnId.mtr.timestamp.compareCertain(timestamp) == 0) {
+    // If our timestamp is lower than the WI, we also don't need to push for read
+    if (versions.WI->txnId.mtr.timestamp.compareCertain(timestamp) >= 0) {
         return false;
     }
 
@@ -1476,7 +1476,8 @@ dto::DataRecord*
 K23SIPartitionModule::_getDataRecordForRead(VersionSet& versions, dto::Timestamp& timestamp) {
     if (versions.WI.has_value() && versions.WI->txnId.mtr.timestamp.compareCertain(timestamp) == 0) {
         return &(versions.WI->data);
-    } else if (versions.WI.has_value() && timestamp.compareCertain(versions.WI->txnId.mtr.timestamp) > 0) {
+    } else if (versions.WI.has_value() &&
+                timestamp.compareCertain(versions.WI->txnId.mtr.timestamp) > 0) {
         return nullptr;
     }
 
