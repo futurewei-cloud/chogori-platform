@@ -44,10 +44,16 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 
-// the type holding multiple versions of a key
-typedef std::deque<dto::DataRecord> VersionsT;
+// the type holding multiple committed versions of a key
+typedef std::deque<dto::CommittedRecord> VersionsT;
+
+struct VersionSet {
+    std::optional<WriteIntent> WI;
+    VersionsT committed;
+};
+
 // the type holding versions for all keys, i.e. the indexer
-typedef std::map<dto::Key, VersionsT> IndexerT;
+typedef std::map<dto::Key, VersionSet> IndexerT;
 typedef IndexerT::iterator IndexerIterator;
 
 class K23SIPartitionModule {
@@ -167,7 +173,7 @@ private: // methods
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     template <typename RequestT>
-    Status _validateStaleWrite(const RequestT& req, VersionsT& versions);
+    Status _validateStaleWrite(const RequestT& req, const VersionSet& versions);
 
     template <class RequestT>
     Status _validateReadRequest(const RequestT& request) const {
@@ -192,7 +198,7 @@ private: // methods
     }
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, VersionsT& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, VersionSet& versions, FastDeadline deadline);
 
     // helper method used to make a projection SKVRecord payload
     bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
@@ -232,23 +238,30 @@ private: // methods
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
 
+    // the the data record in the version set which is not newer than the given timestsamp
+    // The returned pointer is invalid if any modifications are made to the indexer. Will also
+    // return the current WI if it matches exactly the given timestamp. In other words, it
+    // returns a record that is valid to return for to a read request for the given timestamp.
+    dto::DataRecord* _getDataRecordForRead(VersionSet& versions, dto::Timestamp& timestamp);
+
+    // For a given challenger timestamp and key, check if a push is needed against a WI
+    bool _checkPushForRead(const VersionSet& versions, const dto::Timestamp& timestamp);
+
+    // Helper to remove a WI and delete the key from the indexer of there are no committed records
+    void _removeWI(IndexerIterator it);
+
+    // get timeNow Timestamp from TSO
+    seastar::future<dto::Timestamp> getTimeNow() {
+        TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
+        return tsoClient.GetTimestampFromTSO(Clock::now());
+    }
+
 private: // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
 
     // the partition we're assigned
     dto::OwnerPartition _partition;
-
-    // get the data record iterator from the given versions which is not newer than the given timestamp
-    // The returned iterator is invalid if any modifications are made to the indexer;
-    VersionsT::iterator _getVersion(VersionsT& versions, const dto::Timestamp& timestamp);
-
-    // the the data record with the given key which is not newer than the given timestsamp
-    // The returned pointer is invalid if any modifications are made to the indexer;
-    dto::DataRecord* _getDataRecord(const dto::Key& key, const dto::Timestamp& timestamp);
-
-    // utility method used to update the indexer when removing a record
-    void _removeRecord(dto::DataRecord& rec);
 
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
     // (newest item is at front of the deque)
@@ -280,12 +293,6 @@ private: // members
     Persistence _persistence;
 
     CPOClient _cpo;
-
-    // get timeNow Timestamp from TSO
-    seastar::future<dto::Timestamp> getTimeNow() {
-        thread_local TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
-        return tsoClient.GetTimestampFromTSO(Clock::now());
-    }
 };
 
 } // ns k2

@@ -160,6 +160,8 @@ private:
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     doWrite(const dto::Key& key, const DataRec& data, const dto::K23SI_MTR mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH, ErrorCaseOpt errOpt) {
+        static uint32_t id = 0;
+
         SKVRecord record(cname, std::make_shared<k2::dto::Schema>(_schema));
         record.serializeNext<String>(key.partitionKey);
         record.serializeNext<String>(key.rangeKey);
@@ -175,6 +177,7 @@ private:
             .isDelete = isDelete,
             .designateTRH = isTRH,
             .rejectIfExists = false,
+            .request_id = id++,
             .key = key,
             .value = std::move(record.storage),
             .fieldsForPartialUpdate = std::vector<uint32_t>()
@@ -411,6 +414,15 @@ private:
         request.key = key;
         return RPC().callRPC<dto::K23SIInspectRecordsRequest, dto::K23SIInspectRecordsResponse>
                 (dto::Verbs::K23SI_INSPECT_RECORDS, request, *part.preferredEndpoint, 100ms);
+    }
+
+    // The key parameter is only used for routing, it is not part of the request
+    seastar::future<std::tuple<Status, dto::K23SIInspectWIsResponse>>
+    doInspectWIs(const dto::Key& key) {
+        auto& part = _pgetter.getPartitionForKey(key);
+        dto::K23SIInspectWIsRequest request;
+        return RPC().callRPC<dto::K23SIInspectWIsRequest, dto::K23SIInspectWIsResponse>
+                (dto::Verbs::K23SI_INSPECT_WIS, request, *part.preferredEndpoint, 100ms);
     }
 
     seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>>
@@ -2356,7 +2368,7 @@ seastar::future<> testScenario06() {
         }); // end do-with
     }) // end case 11
     .then([&] {
-        K2LOG_I(log::k23si, "------- SC06.case12 ( The TRH and MTR parameters of Finalize do not match ) -------");
+        K2LOG_I(log::k23si, "------- SC06.case12 ( The MTR parameters of Finalize do not match ) -------");
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -2377,11 +2389,11 @@ seastar::future<> testScenario06() {
                 K2EXPECT(log::k23si, status2, dto::K23SIStatus::Created);
             })
             .then([&] {
-                return doFinalize(k8, k8, mtr, collname, true, ErrorCaseOpt::NoInjection)
-                .then([](auto&& response)  {
-                    auto& [status, val] = response;
-                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed);
-                });
+                return doFinalize(k7, k8, K23SI_MTR_ZERO, collname, true, ErrorCaseOpt::NoInjection);
+            })
+            .then([](auto&& response)  {
+                auto& [status, val] = response;
+                K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed);
             })
             .then([&] {
                 K2LOG_I(log::k23si, "------- SC06.case13 ( During async end_abort interval, finalize_commit those keys ) -------");
@@ -2478,17 +2490,22 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectWIs(k2))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        K2EXPECT(log::k23si, val1.records.size(), 1);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr.txnid);
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::Committed);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr.txnid);
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::WriteIntent);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val2.WIs) {
+                            if (WI.txnId.mtr == mtr) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
                     });
                 });
             })
@@ -2511,17 +2528,22 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectWIs(k1), doInspectRecords(k2, collname))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val1.WIs) {
+                            if (WI.txnId.mtr == mtr2) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr2.txnid);
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::WriteIntent);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr2.txnid);
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::Committed);
+                        K2EXPECT(log::k23si, val2.records.size(), 1);
                     });
                 });
             })
@@ -2544,17 +2566,25 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectRecords(k1, collname), doInspectWIs(k2))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
-                        K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr.txnid); // last txn id who committed k1 is mtr
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::Committed);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr3.txnid);
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::WriteIntent);
+                        K2EXPECT(log::k23si, val1.records.size(), 1);
+
+                        K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val2.WIs) {
+                            if (WI.txnId.mtr == mtr3) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
+
                     });
                 });
             })
@@ -2577,17 +2607,23 @@ seastar::future<> testScenario07() {
                     });
                 })
                 .then([&] {
-                    return seastar::when_all(doInspectRecords(k1, collname), doInspectRecords(k2, collname))
+                    return seastar::when_all(doInspectWIs(k1), doInspectRecords(k2, collname))
                     .then([&](auto&& response)  {
                         auto& [resp1, resp2] = response;
                         auto [status1, val1] = resp1.get0();
                         auto [status2, val2] = resp2.get0();
+
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
+                        bool found = false;
+                        for (const k2::dto::WriteIntent& WI : val1.WIs) {
+                            if (WI.txnId.mtr == mtr4) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        K2EXPECT(log::k23si, found, true);
                         K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val1.records[0].txnId.mtr.txnid, mtr4.txnid);
-                        K2EXPECT(log::k23si, val1.records[0].status, dto::DataRecord::WriteIntent);
-                        K2EXPECT(log::k23si, val2.records[0].txnId.mtr.txnid, mtr2.txnid); // last txn id who committed k2 is mtr2
-                        K2EXPECT(log::k23si, val2.records[0].status, dto::DataRecord::Committed);
+                        K2EXPECT(log::k23si, val2.records.size(), 1);
                     });
                 });
             })

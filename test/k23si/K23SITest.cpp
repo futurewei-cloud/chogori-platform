@@ -185,6 +185,8 @@ private:
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     doWrite(const dto::Key& key, const DataRec& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH) {
+        uint64_t id = 0;
+
         SKVRecord record(cname, std::make_shared<k2::dto::Schema>(_schema));
         record.serializeNext<String>(key.partitionKey);
         record.serializeNext<String>(key.rangeKey);
@@ -200,6 +202,7 @@ private:
             .isDelete = isDelete,
             .designateTRH = isTRH,
             .rejectIfExists = false,
+            .request_id = id++,
             .key = key,
             .value = std::move(record.storage),
             .fieldsForPartialUpdate = std::vector<uint32_t>()
@@ -400,7 +403,6 @@ cases requiring client to refresh collection pmap
                         auto& [status, k2response] = response;
                         K2EXPECT(log::k23si, status, Statuses::S200_OK);
                         K2EXPECT(log::k23si, k2response.records.size(), 1);
-                        K2EXPECT(log::k23si, k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
                         return seastar::make_ready_future<>();
                     });
                 })
@@ -474,7 +476,6 @@ seastar::future<> runScenario04() {
                     auto& [status, k2response] = response;
                     K2EXPECT(log::k23si, status, Statuses::S200_OK);
                     K2EXPECT(log::k23si, k2response.records.size(), 1);
-                    K2EXPECT(log::k23si, k2response.records[0].status, k2::DataRecord::Status::WriteIntent);
 
                     return doRequestTRH(k2, m2);
                 })
