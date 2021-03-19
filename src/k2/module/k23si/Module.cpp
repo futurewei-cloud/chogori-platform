@@ -937,8 +937,10 @@ template<typename ResponseT>
 seastar::future<std::tuple<Status, ResponseT>>
 K23SIPartitionModule::_respondAfterFlush(Status&& status, ResponseT&& response) {
     return _persistence->flush()
-        .then([status=std::move(status), response=std::forward<ResponseT>(response)] () mutable {
-            return RPCResponse<ResponseT>(std::move(status), std::move(response));
+        .then([status=std::move(status), response=std::forward<ResponseT>(response)] (auto&& flushStatus) mutable {
+            if (flushStatus.is2xxOK())
+                return RPCResponse<ResponseT>(std::move(status), std::move(response));
+            return RPCResponse<ResponseT>(std::move(flushStatus), ResponseT{});
         });
 }
 

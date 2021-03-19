@@ -34,12 +34,12 @@ Persistence::Persistence() {
 
 seastar::future<> Persistence::stop() {
     _stopped = true;
-    return flush();
+    return flush().discard_result();
 }
 
-seastar::future<> Persistence::flush() {
+seastar::future<Status> Persistence::flush() {
     if (!_buffer) {
-        return seastar::make_ready_future<>();
+        return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
     }
 
     // In this method we have to execute a bunch of async steps:
@@ -62,17 +62,16 @@ seastar::future<> Persistence::flush() {
 
     return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
         (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, _config.persistenceTimeout())
-        .discard_result()
         .then_wrapped([proms=std::move(proms)] (auto&& fut) mutable {
             if (fut.failed()) {
                 auto exc = fut.get_exception();
                 for (auto&prom: proms) prom.set_exception(exc);
+                return seastar::make_exception_future<Status>(exc);
             }
-            else {
-                for (auto&prom: proms) prom.set_value();
-            }
-            fut.ignore_ready_future();
-            return seastar::make_ready_future<>();
+
+            for (auto&prom: proms) prom.set_value();
+
+            return seastar::make_ready_future<Status>(std::get<0>(fut.get()));
         });
 }
 }

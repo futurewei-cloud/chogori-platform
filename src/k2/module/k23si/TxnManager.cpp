@@ -348,33 +348,36 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
     rec.unlinkHB(_hblist);
     // manage rw expiry
     rec.unlinkRW(_rwlist);
-    // manage bg expiry
-    rec.unlinkBG(_bgTasks);
-    _bgTasks.push_back(rec);
 
-    auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
+    _addBgTaskFuture(rec, _persistence->append(rec));
 
-    if (rec.syncFinalize) {
-        // append to WAL
-        _addBgTaskFuture(rec, _persistence->append(rec));
+    return _persistence->flush().then([this, &rec] (auto&& flushStatus) {
+        if (!flushStatus.is2xxOK()) {
+            return seastar::make_exception_future(ServerError("persistence flush failed"));
+        }
 
-        return _finalizeTransaction(rec, FastDeadline(timeout));
-    }
-    else {
-        // enqueue in background tasks
-        rec.bgTaskFut = rec.bgTaskFut
-            .then([&rec] {
-                return seastar::sleep(rec.timeToFinalize);
-            })
-            .then([this, &rec]() {
-                // TODO Deadline based on transaction size
-                auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size())/_config.finalizeBatchSize();
-                return _finalizeTransaction(rec, FastDeadline(timeout));
-            });
-        // append to WAL
-        _addBgTaskFuture(rec, _persistence->append(rec));
-        return seastar::make_ready_future();
-    }
+        auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
+
+        if (rec.syncFinalize) {
+            // append to WAL
+            _addBgTaskFuture(rec, _persistence->append(rec));
+
+            return _finalizeTransaction(rec, FastDeadline(timeout));
+        }
+        else {
+            // enqueue in background tasks
+            rec.bgTaskFut = rec.bgTaskFut
+                .then([&rec] {
+                    return seastar::sleep(rec.timeToFinalize);
+                })
+                .then([this, &rec, timeout]() {
+                    return _finalizeTransaction(rec, FastDeadline(timeout));
+                });
+            // append to WAL
+            _addBgTaskFuture(rec, _persistence->append(rec));
+            return seastar::make_ready_future();
+        }
+    });
 }
 
 seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
@@ -387,15 +390,17 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
     rec.unlinkRW(_rwlist);
 
     // append to WAL
-    _addBgTaskFuture(rec, _persistence->append(rec)
-                              .then([this, &rec] {
-                                  // once flushed, erase from memory
-                                  K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
-                                  rec.unlinkBG(_bgTasks);
-                                  rec.unlinkRW(_rwlist);
-                                  rec.unlinkHB(_hblist);
-                                  _transactions.erase(rec.txnId);
-                              }));
+    _addBgTaskFuture(rec,
+        _persistence->append(rec)
+        .then([this, &rec] {
+            // once flushed, erase from memory
+            K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
+            rec.unlinkBG(_bgTasks);
+            rec.unlinkRW(_rwlist);
+            rec.unlinkHB(_hblist);
+            _transactions.erase(rec.txnId);
+        })
+    );
 
     return seastar::make_ready_future();
 }

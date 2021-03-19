@@ -37,7 +37,7 @@ public:
     seastar::future<> stop();
 
     // flush all pending writes to persistence.
-    seastar::future<> flush();
+    seastar::future<Status> flush();
 
     // Appends are always asynchronous (buffered locally) until an explicit call to flush()
     // The returned future is satisfied when the data is successfully persisted.
