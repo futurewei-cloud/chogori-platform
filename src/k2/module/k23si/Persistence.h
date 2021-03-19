@@ -54,7 +54,7 @@ public:
             _buffer = _remoteEndpoint->newPayload();
         }
         _buffer->write(val);
-        _pendingRequests.emplace({});
+        _pendingRequests.emplace_back();
         return _pendingRequests.back().get_future();
     }
 
