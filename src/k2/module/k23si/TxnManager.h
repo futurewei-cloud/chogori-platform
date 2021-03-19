@@ -67,7 +67,6 @@ struct TxnRecord {
 
     // The last action on this TR (the action that put us into the above state)
     K2_DEF_ENUM_IC(Action,
-        Nil,
         onCreate,
         onForceAbort,
         onRetentionWindowExpire,
@@ -103,7 +102,7 @@ public: // lifecycle
     // When started, we need to be told:
     // - the current retentionTimestamp
     // - the heartbeat interval for the collection
-    seastar::future<> start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline);
+    seastar::future<> start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence);
 
     // called when
     seastar::future<> gracefulStop();
@@ -118,6 +117,7 @@ public: // lifecycle
     TxnRecord& getTxnRecord(dto::TxnId&& txnId);
 
     // delivers the given action for the given transaction.
+    // Returns the updated transaction record.
     // If there is a failure we return an exception future with:
     // ClientError: indicates the client has attempted an invalid action and so the transaction should abort
     // ServerError: indicates that we had trouble processing the transaction. The client should abort.
@@ -125,10 +125,14 @@ public: // lifecycle
 
     // onAction can complete successfully or with one of these errors
     struct ClientError: public std::exception{
-        virtual const char* what() const noexcept override { return "client error"; }
+        const char* _msg;
+        ClientError(const char* msg):_msg(msg){};
+        virtual const char* what() const noexcept override { return _msg; }
     };
     struct ServerError: public std::exception{
-        virtual const char* what() const noexcept override { return "server error"; }
+        const char* _msg;
+        ServerError(const char* msg):_msg(msg){};
+        virtual const char* what() const noexcept override { return _msg; }
     };
 
 private: // methods driving the state machine
@@ -143,6 +147,13 @@ private: // methods driving the state machine
     seastar::future<> _finalizeTransaction(TxnRecord& rec, FastDeadline deadline);
 
     TxnRecord& _createRecord(dto::TxnId txnId);
+
+    // add a function to the list of background tasks to monitor
+    template<typename Func>
+    void _addBgTask(TxnRecord& rec, Func&& func);
+
+    // chain an existing future to the list of background tasks to monitor
+    void _addBgTaskFuture(TxnRecord& rec, seastar::future<>&& fut);
 
 private: // fields
     friend class K23SIPartitionModule;
@@ -170,12 +181,13 @@ private: // fields
     // this is the retention window timestamp we should use for new transactions
     dto::Timestamp _retentionTs;
 
-    Persistence _persistence;
-
     bool _stopping = false;
 
     String _collectionName;
     CPOClient _cpo;
+
+    std::shared_ptr<Persistence> _persistence;
+
 }; // class TxnManager
 
 }  // namespace k2

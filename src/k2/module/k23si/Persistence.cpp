@@ -32,4 +32,47 @@ Persistence::Persistence() {
     K2LOG_I(log::skvsvr, "ctor with endpoint: {}", _remoteEndpoint->url);
 }
 
+seastar::future<> Persistence::stop() {
+    _stopped = true;
+    return flush();
+}
+
+seastar::future<> Persistence::flush() {
+    if (!_buffer) {
+        return seastar::make_ready_future<>();
+    }
+
+    // In this method we have to execute a bunch of async steps:
+    // 1. persist the current batch (1 op)
+    // 2. notify the writers that their writes completed (N concurrent ops)
+    // As 1 and 2 above are happening, there could be new modifications arriving (e.g. new WIs being
+    // placed, or even writes issued by the continuations on the promises satisfied by 2).
+    // To prevent all of these cases of concurrent modification of the buffers and promises,
+    // we swap those out here, forcing any new modifications to be appended to a new batch.
+
+    // swap out the pending promises, clearing the active batch promises
+    std::vector<seastar::promise<>> proms;
+    proms.swap(_pendingRequests);
+
+    // move the buffered data into a single request and delete the buffer.
+    // Any writes after this point will be appended to a new buffer/batch
+    dto::K23SI_PersistenceRequest<Payload> request{};
+    request.value.val = std::move(*_buffer);
+    _buffer.reset(nullptr);
+
+    return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
+        (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, _config.persistenceTimeout())
+        .discard_result()
+        .then_wrapped([proms=std::move(proms)] (auto&& fut) mutable {
+            if (fut.failed()) {
+                auto exc = fut.get_exception();
+                for (auto&prom: proms) prom.set_exception(exc);
+            }
+            else {
+                for (auto&prom: proms) prom.set_value();
+            }
+            fut.ignore_ready_future();
+            return seastar::make_ready_future<>();
+        });
+}
 }

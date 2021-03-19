@@ -32,24 +32,36 @@ namespace k2 {
 class Persistence {
 public:
     Persistence();
+
+    // flush all pending writes and prevent further writes
+    seastar::future<> stop();
+
+    // flush all pending writes to persistence.
+    seastar::future<> flush();
+
+    // Appends are always asynchronous (buffered locally) until an explicit call to flush()
+    // The returned future is satisfied when the data is successfully persisted.
     template<typename ValueType>
-    seastar::future<> makeCall(const ValueType& val, FastDeadline deadline) {
-        if (_remoteEndpoint) {
-            auto payload = _remoteEndpoint->newPayload();
-            payload->write(val);
-            dto::K23SI_PersistenceRequest<Payload> request{};
-            request.value.val = std::move(*payload);
-            K2LOG_D(log::skvsvr, "making persistence call to endpoint: {}, with deadline={}", _remoteEndpoint->url, deadline.getRemaining());
-            return seastar::do_with(std::move(request), [this, deadline] (auto& request) {
-                return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
-                    (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, deadline.getRemaining()).discard_result();
-            });
+    seastar::future<> append(const ValueType& val) {
+        if (_stopped) {
+            return seastar::make_exception_future(std::runtime_error("Persistence has stopped"));
         }
-        else {
-            return seastar::make_exception_future(std::runtime_error("Persistence not availabe"));
+        if (!_remoteEndpoint) {
+            return seastar::make_exception_future(std::runtime_error("Persistence is not available"));
         }
+
+        if (!_buffer) {
+            _buffer = _remoteEndpoint->newPayload();
+        }
+        _buffer->write(val);
+        _pendingRequests.emplace({});
+        return _pendingRequests.back().get_future();
     }
+
 private:
+    bool _stopped{false};
+    std::unique_ptr<Payload> _buffer;
+    std::vector<seastar::promise<>> _pendingRequests;
     std::unique_ptr<TXEndpoint> _remoteEndpoint;
     K23SIConfig _config;
 };
