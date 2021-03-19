@@ -38,7 +38,7 @@ namespace dto {
 
 void K23SIPartitionModule::_chainPersistenceFut(seastar::future<> fut) {
     _persistenceFuts = _persistenceFuts.then([fut=std::move(fut)] () mutable {
-        return fut;
+        return std::move(fut);
     });
 }
 
