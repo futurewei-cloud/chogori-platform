@@ -47,23 +47,26 @@ public:
     ~PlogClient();
 
     // obtain the persistence cluster for a given name from the cpo and obtain the endpoints of the plog server
-    seastar::future<> init(String clusterName);
+    seastar::future<> init(String clusterName, String cpo_url);
 
     // allow users to select a specific persistence group by its name
     bool selectPersistenceGroup(String name);
 
     // create a plog with retry times
-    // TODO: revise this method, making this retry as an internal config variable instead of parameter.
+    // TODO: revise this method, making this retry as an internal config variable instead of parameter. 
     seastar::future<std::tuple<Status, String>> create(uint8_t retries = 1);
 
-    // append a payload into a plog at the given offset
+    // append a payload into a plog at the given offset 
     seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);
 
-    // read a payload
+    // read a payload 
     seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset, uint32_t size);
 
     // seal a payload
     seastar::future<std::tuple<Status, uint32_t>> seal(String plogId, uint32_t offset);
+
+    // obtain the current offset and status of a plog
+    seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> getPlogStatus(String plogId);
 
 private:
     dto::PersistenceCluster _persistenceCluster; // the current persistence cluster the client holds
@@ -79,15 +82,14 @@ private:
     String _generatePlogId();
 
     // obtain the endpoints of the plog server
-    seastar::future<> _getPlogServerEndpoints();
+    seastar::future<> _getPlogServerEndpoints(); 
 
     // obtain the persistence cluster for a given name from the cpo
-    seastar::future<> _getPersistenceCluster(String clusterName);
+    seastar::future<> _getPersistenceCluster(String clusterName, String cpo_url); 
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
-    ConfigDuration _plog_timeout{"plog_timeout", 100ms};
-    ConfigVar<String> _cpo_url{"cpo_url", ""};
-
+    ConfigDuration _plog_timeout{"plog_timeout", 1s};
 };
+
 
 } // k2

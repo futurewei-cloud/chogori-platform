@@ -31,6 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/AssignmentManager.h>
 #include <k2/dto/PersistenceCluster.h>
+#include <k2/dto/LogStream.h>
 #include <k2/transport/Status.h>
 
 namespace k2 {
@@ -49,6 +50,7 @@ private:
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
     ConfigDuration _collectionHeartbeatDeadline{"heartbeat_deadline", 100ms};
     std::unordered_map<String, seastar::future<>> _assignments;
+    std::unordered_map<String, std::vector<dto::MetadataRecord>> _metadataRecords;
     std::tuple<Status, dto::Collection> _getCollection(String name);
     Status _saveCollection(dto::Collection& collection);
     Status _saveSchemas(const String& collectionName);
@@ -84,6 +86,12 @@ private:
 
     seastar::future<std::tuple<Status, dto::GetSchemasResponse>>
     handleSchemasGet(dto::GetSchemasRequest&& request);
+
+    seastar::future<std::tuple<Status, dto::MetadataPersistResponse>>
+    handleMetadataPersist(dto::MetadataPersistRequest&& request);
+
+    seastar::future<std::tuple<Status, dto::MetadataGetResponse>>
+    handleMetadataGet(dto::MetadataGetRequest&& request);
 };  // class CPOService
 
 } // namespace k2

@@ -49,8 +49,8 @@ PlogClient::~PlogClient() {
 
 
 seastar::future<>
-PlogClient::init(String clusterName){
-    return _getPersistenceCluster(clusterName);
+PlogClient::init(String clusterName, String cpo_url){
+    return _getPersistenceCluster(clusterName, cpo_url);
 }
 
 seastar::future<>
@@ -78,8 +78,8 @@ PlogClient::_getPlogServerEndpoints() {
 }
 
 seastar::future<>
-PlogClient::_getPersistenceCluster(String clusterName){
-    _cpo = CPOClient(String(_cpo_url()));
+PlogClient::_getPersistenceCluster(String clusterName, String cpo_url){
+    _cpo = CPOClient(cpo_url);
     return _cpo.GetPersistenceCluster(Deadline<>(_cpo_timeout()), std::move(clusterName)).
     then([this] (auto&& result) {
         auto& [status, response] = result;
@@ -100,18 +100,17 @@ PlogClient::_getPersistenceCluster(String clusterName){
 seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
     String plogId = _generatePlogId();
     dto::PlogCreateRequest request{.plogId = plogId};
-
     std::vector<seastar::future<std::tuple<Status, dto::PlogCreateResponse> > > createFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
         createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, _plog_timeout()));
     }
     return seastar::when_all_succeed(createFutures.begin(), createFutures.end())
-        .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) {
+        .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
             Status return_status;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
-                if (!return_status.is2xxOK())
+                if (!return_status.is2xxOK()) 
                     break;
             }
             if (return_status.code == 409 && retries > 0){
@@ -124,6 +123,7 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
 seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, uint32_t offset, Payload payload){
     uint32_t expected_offset = offset + payload.getSize();
     uint32_t appended_offset = payload.getSize();
+    //K2LOG_I(log::plogcl, "a:{}, b:{}, c:{}", offset, payload.getSize(), offset+payload.getSize());
     dto::PlogAppendRequest request{.plogId = std::move(plogId), .offset=offset, .payload=std::move(payload)};
 
     std::vector<seastar::future<std::tuple<Status, dto::PlogAppendResponse> > > appendFutures;
@@ -132,12 +132,12 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
     }
 
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
-        .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) {
+        .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) { 
             Status return_status;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
-                if (!return_status.is2xxOK())
+                if (!return_status.is2xxOK()) 
                     break;
                 if (response.newOffset != expected_offset){
                     return_status = Statuses::S500_Internal_Server_Error("offset inconsistent");
@@ -169,19 +169,49 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
     }
 
     return seastar::when_all_succeed(sealFutures.begin(), sealFutures.end())
-        .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) {
+        .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) { 
             Status return_status;
             uint32_t sealed_offset;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
                 sealed_offset = response.sealedOffset;
-                if (!return_status.is2xxOK())
+                if (!return_status.is2xxOK()) 
                     break;
             }
             return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(sealed_offset)));
         });
 }
+
+seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getPlogStatus(String plogId){
+    dto::PlogStatusRequest request{.plogId = std::move(plogId)};
+
+    std::vector<seastar::future<std::tuple<Status, dto::PlogStatusResponse> > > statusFutures;
+    for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
+        statusFutures.push_back(RPC().callRPC<dto::PlogStatusRequest, dto::PlogStatusResponse>(dto::Verbs::PERSISTENT_STATUS, request, *ep, _plog_timeout()));
+    }
+
+    return seastar::when_all_succeed(statusFutures.begin(), statusFutures.end())
+        .then([this](std::vector<std::tuple<Status, dto::PlogStatusResponse> >&& results) { 
+            Status return_status;
+            uint32_t current_offset=UINT_MAX;
+            bool sealed=false;
+            for (auto& result: results){
+                auto& [status, response] = result;
+                return_status = std::move(status);
+                if (current_offset > response.currentOffset){
+                    current_offset = response.currentOffset;
+                }
+                if (sealed < response.sealed){
+                    sealed = response.sealed;
+                }
+                if (!return_status.is2xxOK())
+                    break;
+            }
+            return seastar::make_ready_future<std::tuple<Status, std::tuple<uint32_t, bool>> >(std::tuple<Status, std::tuple<uint32_t, bool>>(std::move(return_status), std::make_tuple(std::move(current_offset), std::move(sealed))));
+        });
+}
+
 
 // TODO: change the method to generate the random plog id later
 String PlogClient::_generatePlogId(){

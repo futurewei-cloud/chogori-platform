@@ -38,9 +38,13 @@ enum Verbs : k2::Verb {
     CPO_PERSISTENCE_CLUSTER_CREATE,
     // ControlPlaneOracle: asked to return a collection of persistence servers
     CPO_PERSISTENCE_CLUSTER_GET,
+    PERSISTENCE_CLUSTER_CREATE,
+    PERSISTENCE_CLUSTER_GET,
+    
     CPO_SCHEMA_CREATE,
     CPO_SCHEMAS_GET,
-
+    CPO_METADATA_PERSIST,
+    CPO_METADATA_GET,
     /************ Assignment *****************/
     // K2Assignment: CPO asks K2 to assign a partition
     K2_ASSIGNMENT_CREATE = 20,
@@ -69,7 +73,7 @@ enum Verbs : k2::Verb {
     PERSISTENT_APPEND,
     PERSISTENT_READ,
     PERSISTENT_SEAL,
-
+    PERSISTENT_STATUS,
     /************ K23SI Inspection ******************/
     K23SI_INSPECT_RECORDS = 45,
     K23SI_INSPECT_TXN,

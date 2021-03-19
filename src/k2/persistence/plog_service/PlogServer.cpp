@@ -69,6 +69,10 @@ seastar::future<> PlogServer::start() {
     RPC().registerRPCObserver<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PERSISTENT_SEAL, [this](dto::PlogSealRequest&& request) {
         return _handleSeal(std::move(request));
     });
+
+    RPC().registerRPCObserver<dto::PlogStatusRequest, dto::PlogStatusResponse>(dto::Verbs::PERSISTENT_STATUS, [this](dto::PlogStatusRequest&& request) {
+        return _handleGetStatus(std::move(request));
+    });
     _plogMap.clear();
 
     return seastar::make_ready_future<>();
@@ -81,7 +85,7 @@ PlogServer::_handleCreate(dto::PlogCreateRequest&& request){
     if (iter != _plogMap.end()) {
         return RPCResponse(Statuses::S409_Conflict("plog id already exists"), dto::PlogCreateResponse());
     }
-    _plogMap.insert(std::pair<String,PlogPage >(std::move(request.plogId), PlogPage()));
+    _plogMap.insert(std::pair<String,InternalPlog >(std::move(request.plogId), InternalPlog()));
     return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse());
 };
 
@@ -108,7 +112,7 @@ PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
     iter->second.offset += request.payload.getSize();
     // We want to use copy in order to prevent memory fragmentation. If we use shareAll() instead of copy, the payload we obtained will occupy a entire 8K block
     iter->second.payload.copyFromPayload(request.payload, request.payload.getSize());
-
+    
     return RPCResponse(Statuses::S200_OK("append scuccess"), std::move(response));
 };
 
@@ -123,7 +127,7 @@ PlogServer::_handleRead(dto::PlogReadRequest&& request){
     if (iter->second.offset < request.offset + request.size){
          return RPCResponse(Statuses::S413_Payload_Too_Large("exceed the maximun length"), dto::PlogReadResponse());
     }
-
+    
     dto::PlogReadResponse response{.payload=iter->second.payload.shareRegion(request.offset, request.size)};
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
@@ -161,5 +165,16 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
     return RPCResponse(Statuses::S200_OK("sealed success"), std::move(response));
 };
 
+seastar::future<std::tuple<Status, dto::PlogStatusResponse>>
+PlogServer::_handleGetStatus(dto::PlogStatusRequest&& request){
+    K2LOG_I(log::plogsvr, "Received GetStatus request for {}", request);
+    auto iter = _plogMap.find(request.plogId);
+    if (iter == _plogMap.end()) {
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogStatusResponse());
+    }
+    
+    dto::PlogStatusResponse response{.currentOffset=iter->second.offset, .sealed=iter->second.sealed};
+    return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
+};
 
 } // namespace k2

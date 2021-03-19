@@ -40,6 +40,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/TXEndpoint.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
+#include <k2/dto/LogStream.h>
 
 namespace k2 {
 namespace log {
@@ -260,6 +261,22 @@ public:
 
             return RPCResponse(std::move(status), std::move(k2response));
         });
+    }
+
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::MetadataPersistResponse>> PersistMetadata(Deadline<ClockT> deadline, String partitionName, uint32_t sealed_offset, String new_plogId) {
+        dto::MetadataPersistRequest request{.partitionName = std::move(partitionName), .sealed_offset=std::move(sealed_offset), .new_plogId=std::move(new_plogId)};
+
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::MetadataPersistRequest, dto::MetadataPersistResponse>(dto::Verbs::CPO_METADATA_PERSIST, request, *cpo, timeout);
+    }
+
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::MetadataGetResponse>> GetMetadata(Deadline<ClockT> deadline, String partitionName) {
+        dto::MetadataGetRequest request{.partitionName = std::move(partitionName)};
+
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::MetadataGetRequest, dto::MetadataGetResponse>(dto::Verbs::CPO_METADATA_GET, request, *cpo, timeout);
     }
 
     seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);
