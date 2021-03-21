@@ -142,11 +142,6 @@ Status K23SIPartitionModule::_validateReadRequest(const RequestT& request) const
 }
 
 Status K23SIPartitionModule::_validateWrite(const dto::K23SIWriteRequest& request, const VersionSet& versions) {
-    if (!_validateRequestPartition(request)) {
-        // tell client their collection partition is gone
-        K2LOG_D(log::skvsvr, "Partition: {}, failed validation for {}", _partition, request.key);
-        return dto::K23SIStatus::RefreshCollection("collection refresh needed in write");
-    }
     if (!_validateRequestPartitionKey(request)) {
         // do not allow empty partition key
         return dto::K23SIStatus::BadParameter("missing partition key in write");
@@ -297,10 +292,9 @@ K23SIPartitionModule::~K23SIPartitionModule() {
 seastar::future<> K23SIPartitionModule::gracefulStop() {
     K2LOG_I(log::skvsvr, "stop for cname={}, part={}", _cmeta.name, _partition);
     _retentionUpdateTimer.cancel();
-    return seastar::when_all_succeed(std::move(_retentionRefresh), _txnMgr.gracefulStop())
-        .discard_result()
+    return _persistence->stop()
         .then([this] {
-            return _persistence->stop();
+            return seastar::when_all_succeed(std::move(_retentionRefresh), _txnMgr.gracefulStop()).discard_result();
         })
         .then([this] {
             return std::move(_persistenceFuts);
@@ -944,11 +938,61 @@ K23SIPartitionModule::_respondAfterFlush(Status&& status, ResponseT&& response) 
         });
 }
 
+seastar::future<Status>
+K23SIPartitionModule::_designateTRH(dto::TxnId txnId) {
+    K2LOG_D(log::skvsvr, "Partition: {}, designating trh for {}", _partition, txnId);
+    if (!_validateRetentionWindow(txnId.mtr.timestamp)) {
+        return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortRequestTooOld("TRH create request is too old"));
+    }
+    if (txnId.trh.partitionKey.empty()) {
+        return seastar::make_ready_future<Status>(dto::K23SIStatus::BadParameter("missing partition key in TRH create"));
+    }
+
+    return _txnMgr.onAction(TxnRecord::Action::onCreate, std::move(txnId))
+        .then([] {
+            return seastar::make_ready_future<Status>(dto::K23SIStatus::Created("TR created"));
+        })
+        .handle_exception_type([this](TxnManager::ClientError& err) {
+            // Failed to create
+            K2LOG_D(log::skvsvr, "Partition: {}, failed creating TR: {}", _partition, err.what());
+            return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("txn too old in write"));
+        })
+        .handle_exception_type([this](TxnManager::ServerError& err) {
+            // Failed to create
+            K2LOG_D(log::skvsvr, "Partition: {}, failed creating TR, {}", _partition, err.what());
+            return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("Unable to create transaction"));
+        });
+}
+
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
 K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline) {
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in write"), dto::K23SIWriteResponse());
+    }
     // NB: failures in processing a write do not require that we set the TR state to aborted at the TRH. We rely on
     //     the client to do the correct thing and issue an abort on a failure.
     K2LOG_D(log::skvsvr, "Partition: {}, handle write: {}", _partition, request);
+    if (request.designateTRH) {
+        K2LOG_D(log::skvsvr, "Partition: {}, designating TRH in {}", _partition, request.mtr);
+        return _designateTRH({.trh=request.trh, .mtr=request.mtr})
+            .then([this, request=std::move(request), deadline] (auto&& status) mutable {
+                if (status.is2xxOK()) {
+                    K2LOG_D(log::skvsvr, "Partition: {}, succeeded creating TR. Processing write for {}", _partition, request.mtr);
+                    request.designateTRH = false;
+                    return _processWrite(std::move(request), deadline);
+                }
+                K2LOG_D(log::skvsvr, "Partition: {}, failed creating TR for {}", _partition, request.mtr);
+                return _respondAfterFlush(std::move(status), dto::K23SIWriteResponse{});
+            });
+    }
+
+    return _processWrite(std::move(request), deadline);
+}
+
+seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
+K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline) {
+    K2LOG_D(log::skvsvr, "Partition: {}, processing write: {}", _partition, request);
     auto& vset = _indexer[request.key];
     Status validateStatus = _validateWrite(request, vset);
 
@@ -959,25 +1003,6 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
         }
         // we may come here after a TRH create. Make sure to flush that
         return _respondAfterFlush(std::move(validateStatus), dto::K23SIWriteResponse{});
-    }
-
-    // at this point the request is valid. Check to see if we should be creating a TR
-    // we want to create the TR now even if the write may fail due to some other constraints. In case
-    // of such failure, the client is expected to come in and end the transaction with Abort
-    if (request.designateTRH) {
-        K2LOG_D(log::skvsvr, "Partition: {}, designating trh for key {}", _partition, request.key);
-        return _txnMgr.onAction(TxnRecord::Action::onCreate, {.trh=request.trh, .mtr=request.mtr})
-        .then([this, request=std::move(request), deadline] () mutable {
-            K2LOG_D(log::skvsvr, "Partition: {}, tr created and re-driving request for key {}", _partition, request.key);
-            request.designateTRH = false; // unset the flag and re-run
-            // recursive call - no need to flush now.
-            return handleWrite(std::move(request), deadline);
-        })
-        .handle_exception_type([this](const TxnManager::ClientError& err) {
-            // Failed to create TR. No need to flush
-            K2LOG_D(log::skvsvr, "Partition: {}, failed creating TR due to {}", _partition, err.what());
-            return RPCResponse(dto::K23SIStatus::AbortConflict(err.what()), dto::K23SIWriteResponse{});
-        });
     }
 
     // check to see if we should push or is this a write from same txn

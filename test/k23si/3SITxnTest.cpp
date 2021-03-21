@@ -2749,7 +2749,6 @@ seastar::future<> testScenario08() {
                     .then([&](auto&& response)  {
                         auto& [status, val] = response;
                         K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
-                        K2EXPECT(log::k23si, val.state, dto::TxnRecordState::InProgress);
                     });
                 })
                 .then([&] {

@@ -216,6 +216,14 @@ private: // methods
     // Helper method which generates an RPCResponce chained after a successful persistence flush
     template<typename ResponseT>
     seastar::future<std::tuple<Status, ResponseT>> _respondAfterFlush(Status&& status, ResponseT&& response);
+
+    // helper used to process the designate TRH part of a write request
+    seastar::future<Status> _designateTRH(dto::TxnId txnId);
+
+    // helper used to process the write part of a write request
+    seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
+    _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
+
 private:  // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;

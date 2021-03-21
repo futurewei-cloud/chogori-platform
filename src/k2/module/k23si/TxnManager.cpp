@@ -208,6 +208,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
             switch (action) {
                 case TxnRecord::Action::onCreate:
                     return _inProgress(rec);
+                case TxnRecord::Action::onRetentionWindowExpire:
                 case TxnRecord::Action::onForceAbort:
                     return _forceAborted(rec);
                 case TxnRecord::Action::onHeartbeat: // illegal - create a ForceAborted entry and wait for End
@@ -225,10 +226,9 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onEndAbort:  // create an entry in Aborted state so that it can be finalized
                     return _end(rec, dto::TxnRecordState::Aborted);
                 case TxnRecord::Action::onHeartbeatExpire:        // internal error - must have a TR
-                case TxnRecord::Action::onRetentionWindowExpire:  // internal error - must have a TR
                 case TxnRecord::Action::onFinalizeComplete:       // internal error - must have a TR
                 default: // anything else we just count as internal error
-                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state {}", txnId, state);
+                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, txnId, state);
                     return seastar::make_exception_future(ServerError("invalid transition"));
             };
         case dto::TxnRecordState::InProgress:
@@ -304,6 +304,21 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                     return seastar::make_ready_future();
                 case TxnRecord::Action::onFinalizeComplete:
                     return _deleted(rec);
+                case TxnRecord::Action::onHeartbeatExpire:
+                case TxnRecord::Action::onRetentionWindowExpire:
+                default:
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
+                    return seastar::make_exception_future(ServerError("invalid transition"));
+            };
+        case dto::TxnRecordState::Deleted:
+            switch (action) {
+                case TxnRecord::Action::onEndAbort:
+                    return seastar::make_ready_future();  // allow as no-op
+                case TxnRecord::Action::onCreate:
+                case TxnRecord::Action::onForceAbort:
+                case TxnRecord::Action::onHeartbeat:
+                case TxnRecord::Action::onEndCommit: // accept this to be re-entrant
+                case TxnRecord::Action::onFinalizeComplete:
                 case TxnRecord::Action::onHeartbeatExpire:
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:

@@ -44,11 +44,14 @@ public:
     template<typename ValueType>
     seastar::future<> append(const ValueType& val) {
         if (_stopped) {
+            K2LOG_W(log::skvsvr, "Attempt to append while stopped with {} pending requests", _pendingRequests.size());
             return seastar::make_exception_future(std::runtime_error("Persistence has stopped"));
         }
         if (!_remoteEndpoint) {
+            K2LOG_W(log::skvsvr, "Attempt to append with no configured remote endpoint");
             return seastar::make_exception_future(std::runtime_error("Persistence is not available"));
         }
+        K2LOG_D(log::skvsvr, "appending new write to {} pending requests", _pendingRequests.size());
 
         if (!_buffer) {
             _buffer = _remoteEndpoint->newPayload();

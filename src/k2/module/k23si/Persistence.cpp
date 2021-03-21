@@ -34,10 +34,13 @@ Persistence::Persistence() {
 
 seastar::future<> Persistence::stop() {
     _stopped = true;
+    K2LOG_D(log::skvsvr, "Stopping with {} pending requests", _pendingRequests.size());
+
     return flush().discard_result();
 }
 
 seastar::future<Status> Persistence::flush() {
+    K2LOG_D(log::skvsvr, "flush with bs={} and {} pending requests", (_buffer? _buffer->getSize() : 0), _pendingRequests.size());
     if (!_buffer) {
         return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
     }
@@ -63,6 +66,8 @@ seastar::future<Status> Persistence::flush() {
     return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
         (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, _config.persistenceTimeout())
         .then_wrapped([proms=std::move(proms)] (auto&& fut) mutable {
+        K2LOG_D(log::skvsvr, "flushed. Notifying {} pending requests", proms.size());
+
             if (fut.failed()) {
                 auto exc = fut.get_exception();
                 for (auto&prom: proms) prom.set_exception(exc);
@@ -70,7 +75,6 @@ seastar::future<Status> Persistence::flush() {
             }
 
             for (auto&prom: proms) prom.set_value();
-
             return seastar::make_ready_future<Status>(std::get<0>(fut.get()));
         });
 }
