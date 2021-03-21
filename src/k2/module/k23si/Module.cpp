@@ -36,12 +36,6 @@ namespace dto {
     }
 } // ns dto
 
-void K23SIPartitionModule::_chainPersistenceFut(seastar::future<> fut) {
-    _persistenceFuts = _persistenceFuts.then([fut=std::move(fut)] () mutable {
-        return std::move(fut);
-    });
-}
-
 // ********************** Validators
 bool K23SIPartitionModule::_validateRetentionWindow(const dto::Timestamp& ts) const {
     bool result = ts.compareCertain(_retentionTimestamp) >= 0;
@@ -141,7 +135,7 @@ Status K23SIPartitionModule::_validateReadRequest(const RequestT& request) const
     return dto::K23SIStatus::OK("");
 }
 
-Status K23SIPartitionModule::_validateWrite(const dto::K23SIWriteRequest& request, const VersionSet& versions) {
+Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest& request, const VersionSet& versions) {
     if (!_validateRequestPartitionKey(request)) {
         // do not allow empty partition key
         return dto::K23SIStatus::BadParameter("missing partition key in write");
@@ -295,9 +289,6 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
     return _persistence->stop()
         .then([this] {
             return seastar::when_all_succeed(std::move(_retentionRefresh), _txnMgr.gracefulStop()).discard_result();
-        })
-        .then([this] {
-            return std::move(_persistenceFuts);
         })
         .then([] {
             K2LOG_I(log::skvsvr, "stopped");
@@ -994,7 +985,7 @@ seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
 K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline) {
     K2LOG_D(log::skvsvr, "Partition: {}, processing write: {}", _partition, request);
     auto& vset = _indexer[request.key];
-    Status validateStatus = _validateWrite(request, vset);
+    Status validateStatus = _validateWriteRequest(request, vset);
 
     if (!validateStatus.is2xxOK()) {
         if (vset.empty()) {
@@ -1311,7 +1302,7 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, VersionSet& ve
     versions.WI.emplace(std::move(rec), std::move(txnId), request.request_id);
 
     // TODO persistence
-    _chainPersistenceFut(_persistence->append(versions.WI->data));
+    _persistence->append(versions.WI->data);
     return seastar::make_ready_future();
 }
 
@@ -1422,7 +1413,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     // TODO-persistence: For now, remove aborted records right-away. With persistence we should do so after successfully
     // persisting
     // send a partial update for updating the status of the record
-    _chainPersistenceFut(_persistence->append(dto::K23SI_PersistencePartialUpdate{}));
+    _persistence->append(dto::K23SI_PersistencePartialUpdate{});
     return _respondAfterFlush(dto::K23SIStatus::OK("persistence call succeeded"), dto::K23SITxnFinalizeResponse{});
 }
 

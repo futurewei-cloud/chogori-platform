@@ -172,7 +172,6 @@ K2_DEF_ENUM(TxnRecordState,
         ForceAborted, // The txn has been force-aborted (e.g. due to PUSH)
         Aborted,      // The txn has been successfully aborted by the client
         Committed,    // The txn has been successfully committed by the client
-        Finalized,     // The txn has been finalized
         Deleted
 );
 

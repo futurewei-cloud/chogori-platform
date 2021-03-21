@@ -34,13 +34,13 @@ Persistence::Persistence() {
 
 seastar::future<> Persistence::stop() {
     _stopped = true;
-    K2LOG_D(log::skvsvr, "Stopping with {} pending requests", _pendingRequests.size());
+    K2LOG_D(log::skvsvr, "Stopping with {} pending promises", _pendingProms.size());
 
     return flush().discard_result();
 }
 
 seastar::future<Status> Persistence::flush() {
-    K2LOG_D(log::skvsvr, "flush with bs={} and {} pending requests", (_buffer? _buffer->getSize() : 0), _pendingRequests.size());
+    K2LOG_D(log::skvsvr, "flush with bs={} and {} pending promises", (_buffer? _buffer->getSize() : 0), _pendingProms.size());
     if (!_buffer) {
         return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
     }
@@ -55,7 +55,7 @@ seastar::future<Status> Persistence::flush() {
 
     // swap out the pending promises, clearing the active batch promises
     std::vector<seastar::promise<>> proms;
-    proms.swap(_pendingRequests);
+    proms.swap(_pendingProms);
 
     // move the buffered data into a single request and delete the buffer.
     // Any writes after this point will be appended to a new buffer/batch
@@ -66,7 +66,7 @@ seastar::future<Status> Persistence::flush() {
     return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
         (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, _config.persistenceTimeout())
         .then_wrapped([proms=std::move(proms)] (auto&& fut) mutable {
-        K2LOG_D(log::skvsvr, "flushed. Notifying {} pending requests", proms.size());
+        K2LOG_D(log::skvsvr, "flushed. Notifying {} pending promises", proms.size());
 
             if (fut.failed()) {
                 auto exc = fut.get_exception();

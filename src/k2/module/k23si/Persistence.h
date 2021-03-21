@@ -42,29 +42,36 @@ public:
     // Appends are always asynchronous (buffered locally) until an explicit call to flush()
     // The returned future is satisfied when the data is successfully persisted.
     template<typename ValueType>
-    seastar::future<> append(const ValueType& val) {
+    seastar::future<> append_cont(const ValueType& val) {
         if (_stopped) {
-            K2LOG_W(log::skvsvr, "Attempt to append while stopped with {} pending requests", _pendingRequests.size());
+            K2LOG_W(log::skvsvr, "Attempt to append while stopped with {} pending promises", _pendingProms.size());
             return seastar::make_exception_future(std::runtime_error("Persistence has stopped"));
         }
         if (!_remoteEndpoint) {
             K2LOG_W(log::skvsvr, "Attempt to append with no configured remote endpoint");
             return seastar::make_exception_future(std::runtime_error("Persistence is not available"));
         }
-        K2LOG_D(log::skvsvr, "appending new write to {} pending requests", _pendingRequests.size());
+        K2LOG_D(log::skvsvr, "appending new write to {} pending promises", _pendingProms.size());
 
+        append(val);
+
+        _pendingProms.emplace_back();
+        return _pendingProms.back().get_future();
+    }
+
+    // Append the given value to the persistence buffer. An explicit call to flush() is needed to send the data out
+    template<typename ValueType>
+    void append(const ValueType& val) {
         if (!_buffer) {
             _buffer = _remoteEndpoint->newPayload();
         }
         _buffer->write(val);
-        _pendingRequests.emplace_back();
-        return _pendingRequests.back().get_future();
     }
 
 private:
     bool _stopped{false};
     std::unique_ptr<Payload> _buffer;
-    std::vector<seastar::promise<>> _pendingRequests;
+    std::vector<seastar::promise<>> _pendingProms;
     std::unique_ptr<TXEndpoint> _remoteEndpoint;
     K23SIConfig _config;
 };

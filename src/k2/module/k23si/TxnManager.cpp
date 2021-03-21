@@ -351,7 +351,7 @@ seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
     // we still want to keep the record inked in the retention window since we want to take action if it goes past the RWE
 
     // append to WAL
-    _addBgTaskFuture(rec, _persistence->append(rec));
+    _persistence->append(rec);
     return seastar::make_ready_future();
 }
 
@@ -364,7 +364,7 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
     // manage rw expiry
     rec.unlinkRW(_rwlist);
 
-    _addBgTaskFuture(rec, _persistence->append(rec));
+    _persistence->append(rec);
 
     return _persistence->flush().then([this, &rec] (auto&& flushStatus) {
         if (!flushStatus.is2xxOK()) {
@@ -375,7 +375,7 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
 
         if (rec.syncFinalize) {
             // append to WAL
-            _addBgTaskFuture(rec, _persistence->append(rec));
+            _persistence->append(rec);
 
             return _finalizeTransaction(rec, FastDeadline(timeout));
         }
@@ -389,7 +389,7 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
                     return _finalizeTransaction(rec, FastDeadline(timeout));
                 });
             // append to WAL
-            _addBgTaskFuture(rec, _persistence->append(rec));
+            _persistence->append(rec);
             return seastar::make_ready_future();
         }
     });
@@ -406,7 +406,7 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
 
     // append to WAL
     _addBgTaskFuture(rec,
-        _persistence->append(rec)
+        _persistence->append_cont(rec)
         .then([this, &rec] {
             // once flushed, erase from memory
             K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);

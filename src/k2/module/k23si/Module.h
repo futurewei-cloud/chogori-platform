@@ -149,7 +149,7 @@ private: // methods
     Status _validateStaleWrite(const RequestT& req, const VersionSet& versions);
 
     // validate an incoming write request
-    Status _validateWrite(const dto::K23SIWriteRequest& request, const VersionSet& versions);
+    Status _validateWriteRequest(const dto::K23SIWriteRequest& request, const VersionSet& versions);
 
     template <class RequestT>
     Status _validateReadRequest(const RequestT& request) const;
@@ -259,8 +259,6 @@ private:  // members
 
     // TODO persistence
     std::shared_ptr<Persistence> _persistence;
-    seastar::future<> _persistenceFuts = seastar::make_ready_future();
-    void _chainPersistenceFut(seastar::future<> fut);
 
     CPOClient _cpo;
 };

@@ -117,7 +117,6 @@ public: // lifecycle
     TxnRecord& getTxnRecord(dto::TxnId&& txnId);
 
     // delivers the given action for the given transaction.
-    // Returns the updated transaction record.
     // If there is a failure we return an exception future with:
     // ClientError: indicates the client has attempted an invalid action and so the transaction should abort
     // ServerError: indicates that we had trouble processing the transaction. The client should abort.
@@ -125,14 +124,16 @@ public: // lifecycle
 
     // onAction can complete successfully or with one of these errors
     struct ClientError: public std::exception{
-        const char* _msg;
+        String _msg;
         ClientError(const char* msg):_msg(msg){};
-        virtual const char* what() const noexcept override { return _msg; }
+        ClientError(String&& msg):_msg(msg){};
+        virtual const char* what() const noexcept override { return _msg.c_str(); }
     };
     struct ServerError: public std::exception{
-        const char* _msg;
+        String _msg;
         ServerError(const char* msg):_msg(msg){};
-        virtual const char* what() const noexcept override { return _msg; }
+        ServerError(String&& msg):_msg(msg){};
+        virtual const char* what() const noexcept override { return _msg.c_str(); }
     };
 
 private: // methods driving the state machine
