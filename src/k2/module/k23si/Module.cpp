@@ -923,9 +923,10 @@ seastar::future<std::tuple<Status, ResponseT>>
 K23SIPartitionModule::_respondAfterFlush(Status&& status, ResponseT&& response) {
     return _persistence->flush()
         .then([status=std::move(status), response=std::forward<ResponseT>(response)] (auto&& flushStatus) mutable {
-            if (flushStatus.is2xxOK())
-                return RPCResponse<ResponseT>(std::move(status), std::move(response));
-            return RPCResponse<ResponseT>(std::move(flushStatus), ResponseT{});
+            if (!flushStatus.is2xxOK())
+                return RPCResponse<ResponseT>(std::move(flushStatus), ResponseT{});
+
+            return RPCResponse<ResponseT>(std::move(status), std::move(response));
         });
 }
 
@@ -968,13 +969,14 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
         K2LOG_D(log::skvsvr, "Partition: {}, designating TRH in {}", _partition, request.mtr);
         return _designateTRH({.trh=request.trh, .mtr=request.mtr})
             .then([this, request=std::move(request), deadline] (auto&& status) mutable {
-                if (status.is2xxOK()) {
-                    K2LOG_D(log::skvsvr, "Partition: {}, succeeded creating TR. Processing write for {}", _partition, request.mtr);
-                    request.designateTRH = false;
-                    return _processWrite(std::move(request), deadline);
+                if (!status.is2xxOK()) {
+                    K2LOG_D(log::skvsvr, "Partition: {}, failed creating TR for {}", _partition, request.mtr);
+                    return _respondAfterFlush(std::move(status), dto::K23SIWriteResponse{});
                 }
-                K2LOG_D(log::skvsvr, "Partition: {}, failed creating TR for {}", _partition, request.mtr);
-                return _respondAfterFlush(std::move(status), dto::K23SIWriteResponse{});
+
+                K2LOG_D(log::skvsvr, "Partition: {}, succeeded creating TR. Processing write for {}", _partition, request.mtr);
+                request.designateTRH = false;
+                return _processWrite(std::move(request), deadline);
             });
     }
 
@@ -1003,13 +1005,14 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         K2LOG_D(log::skvsvr, "Partition: {}, different WI found for key {}", _partition, request.key);
         return _doPush(request.collectionName, request.key, vset.WI->txnId, request.mtr, deadline)
             .then([this, request = std::move(request), deadline](auto&& retryChallenger) mutable {
-                if (retryChallenger) {
-                    K2LOG_D(log::skvsvr, "Partition: {}, write push retry for key {}", _partition, request.key);
-                    return handleWrite(std::move(request), deadline);
+                if (!retryChallenger) {
+                    // challenger must fail. Flush in case a TR was created during this call to handle write
+                    K2LOG_D(log::skvsvr, "Partition: {}, write push challenger lost for key {}", _partition, request.key);
+                    return _respondAfterFlush(dto::K23SIStatus::AbortConflict("incumbent txn won in write push"), dto::K23SIWriteResponse{});
                 }
-                // challenger must fail. Flush in case a TR was created during this call to handle write
-                K2LOG_D(log::skvsvr, "Partition: {}, write push challenger lost for key {}", _partition, request.key);
-                return _respondAfterFlush(dto::K23SIStatus::AbortConflict("incumbent txn won in write push"), dto::K23SIWriteResponse{});
+
+                K2LOG_D(log::skvsvr, "Partition: {}, write push retry for key {}", _partition, request.key);
+                return handleWrite(std::move(request), deadline);
             });
     }
 

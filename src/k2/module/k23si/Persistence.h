@@ -62,6 +62,10 @@ public:
     // Append the given value to the persistence buffer. An explicit call to flush() is needed to send the data out
     template<typename ValueType>
     void append(const ValueType& val) {
+        if (_stopped) {
+            K2LOG_W(log::skvsvr, "Attempt to append while stopped with {} pending promises", _pendingProms.size());
+            return;
+        }
         if (!_buffer) {
             _buffer = _remoteEndpoint->newPayload();
         }

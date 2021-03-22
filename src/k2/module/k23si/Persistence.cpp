@@ -42,6 +42,7 @@ seastar::future<> Persistence::stop() {
 seastar::future<Status> Persistence::flush() {
     K2LOG_D(log::skvsvr, "flush with bs={} and {} pending promises", (_buffer? _buffer->getSize() : 0), _pendingProms.size());
     if (!_buffer) {
+        K2ASSERT(log::skvsvr, _pendingProms.size() == 0, "There are {} pending proms", _pendingProms.size());
         return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
     }
 
