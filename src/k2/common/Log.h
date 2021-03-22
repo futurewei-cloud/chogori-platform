@@ -90,7 +90,7 @@ Copyright(c) 2020 Futurewei Cloud
     }
 
 #define K2EXPECT(logger, actual, exp) \
-    K2ASSERT(logger, (actual) == (exp), "{} == {}", (#actual), (#exp));
+    K2ASSERT(logger, (actual) == (exp), "{}({}) == {}({})", (#actual), (actual), (#exp), (exp));
 
 #else
 

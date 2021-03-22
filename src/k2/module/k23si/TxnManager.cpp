@@ -24,6 +24,21 @@ Copyright(c) 2020 Futurewei Cloud
 #include "TxnManager.h"
 
 namespace k2 {
+template <typename Func>
+void TxnManager::_addBgTask(TxnRecord& rec, Func&& func) {
+    // unlink if necessary
+    rec.unlinkBG(_bgTasks);
+    _bgTasks.push_back(rec);
+
+    rec.bgTaskFut = rec.bgTaskFut.then(std::forward<Func>(func));
+}
+
+void TxnManager::_addBgTaskFuture(TxnRecord& rec, seastar::future<>&& fut) {
+    _addBgTask(rec, [fut=std::move(fut)] () mutable {
+        return std::move(fut);
+    });
+}
+
 
 TxnManager::TxnManager():
     _cpo(_config.cpoEndpoint()) {
@@ -55,10 +70,11 @@ TxnManager::~TxnManager() {
     }
 }
 
-seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline) {
+seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence) {
     K2LOG_D(log::skvsvr, "start");
     _collectionName = collectionName;
     _hbDeadline = hbDeadline;
+    _persistence= persistence;
     updateRetentionTimestamp(rts);
     // We need to call this now so that a recent time is used for a new
     // transaction's heartbeat expiry if it comes in before the first heartbeat timer callback
@@ -101,8 +117,8 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
         });
     });
     _hbTimer.arm(_hbDeadline);
-    // TODO recover transaction state
-    return _persistence.makeCall(dto::K23SI_PersistenceRecoveryRequest{}, _config.persistenceTimeout());
+
+    return seastar::make_ready_future();
 }
 
 seastar::future<> TxnManager::gracefulStop() {
@@ -192,28 +208,28 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
             switch (action) {
                 case TxnRecord::Action::onCreate:
                     return _inProgress(rec);
+                case TxnRecord::Action::onRetentionWindowExpire:
                 case TxnRecord::Action::onForceAbort:
                     return _forceAborted(rec);
                 case TxnRecord::Action::onHeartbeat: // illegal - create a ForceAborted entry and wait for End
                     return _forceAborted(rec)
                         .then([]{
                             // respond with failure since we had to force abort but were asked to heartbeat
-                            return seastar::make_exception_future(ClientError());
+                            return seastar::make_exception_future(ClientError("cannot heartbeat transaction since it doesn't exist"));
                         });
                 case TxnRecord::Action::onEndCommit:  // create an entry in Aborted state so that it can be finalized
                     return _end(rec, dto::TxnRecordState::Aborted)
                         .then([] {
                             // respond with failure since we had to abort but were asked to commit
-                            return seastar::make_exception_future(ClientError());
+                            return seastar::make_exception_future(ClientError("cannot commit transaction since it has been aborted"));
                         });
                 case TxnRecord::Action::onEndAbort:  // create an entry in Aborted state so that it can be finalized
                     return _end(rec, dto::TxnRecordState::Aborted);
                 case TxnRecord::Action::onHeartbeatExpire:        // internal error - must have a TR
-                case TxnRecord::Action::onRetentionWindowExpire:  // internal error - must have a TR
                 case TxnRecord::Action::onFinalizeComplete:       // internal error - must have a TR
                 default: // anything else we just count as internal error
-                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state {}", txnId, state);
-                    return seastar::make_exception_future(ServerError());
+                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, txnId, state);
+                    return seastar::make_exception_future(ServerError("invalid transition"));
             };
         case dto::TxnRecordState::InProgress:
             switch (action) {
@@ -232,12 +248,12 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onFinalizeComplete:
                 default:
                     K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state: {}", txnId, state);
-                    return seastar::make_exception_future(ServerError());
+                    return seastar::make_exception_future(ServerError("invalid transition"));
             };
         case dto::TxnRecordState::ForceAborted:
             switch (action) {
                 case TxnRecord::Action::onCreate: // this has been aborted already. Signal the client to issue endAbort
-                    return seastar::make_exception_future(ClientError());
+                    return seastar::make_exception_future(ClientError("cannot create transaction since it has been force-aborted"));
                 case TxnRecord::Action::onForceAbort:  // no-op
                     return seastar::make_ready_future();
                 case TxnRecord::Action::onRetentionWindowExpire:
@@ -246,17 +262,17 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                     return _end(rec, dto::TxnRecordState::Aborted)
                         .then([] {
                             // respond with failure since we had to abort but were asked to commit
-                            return seastar::make_exception_future(ClientError());
+                            return seastar::make_exception_future(ClientError("cannot commit transaction since it has been force-aborted"));
                         });
                 case TxnRecord::Action::onEndAbort:
                     return _end(rec, dto::TxnRecordState::Aborted);
                 case TxnRecord::Action::onHeartbeat: // signal client to abort
-                    return seastar::make_exception_future(ClientError());
+                    return seastar::make_exception_future(ClientError("cannot heartbeat transaction since it has been force-aborted"));
                 case TxnRecord::Action::onFinalizeComplete:
                 case TxnRecord::Action::onHeartbeatExpire:
                 default:
                     K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
-                    return seastar::make_exception_future(ServerError());
+                    return seastar::make_exception_future(ServerError("invalid transition"));
             };
         case dto::TxnRecordState::Aborted:
             switch (action) {
@@ -265,7 +281,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onHeartbeat:
                     return seastar::make_ready_future();  // allow as no-op
                 case TxnRecord::Action::onEndCommit:
-                    return seastar::make_exception_future(ClientError());
+                    return seastar::make_exception_future(ClientError("cannot commit transaction since it has been aborted"));
                 case TxnRecord::Action::onEndAbort: // accept this to be re-entrant
                     return seastar::make_ready_future();
                 case TxnRecord::Action::onFinalizeComplete: // on to deleting this record
@@ -274,7 +290,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:
                     K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
-                    return seastar::make_exception_future(ServerError());
+                    return seastar::make_exception_future(ServerError("invalid transition"));
             };
         case dto::TxnRecordState::Committed:
             switch (action) {
@@ -283,7 +299,7 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onHeartbeat:
                     return seastar::make_ready_future();  // allow as no-op
                 case TxnRecord::Action::onEndAbort:
-                    return seastar::make_exception_future(ClientError());
+                    return seastar::make_exception_future(ClientError("cannot abort transaction since it has been committed"));
                 case TxnRecord::Action::onEndCommit: // accept this to be re-entrant
                     return seastar::make_ready_future();
                 case TxnRecord::Action::onFinalizeComplete:
@@ -292,11 +308,26 @@ seastar::future<> TxnManager::onAction(TxnRecord::Action action, dto::TxnId txnI
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:
                     K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
-                    return seastar::make_exception_future(ServerError());
+                    return seastar::make_exception_future(ServerError("invalid transition"));
+            };
+        case dto::TxnRecordState::Deleted:
+            switch (action) {
+                case TxnRecord::Action::onEndAbort:
+                    return seastar::make_ready_future();  // allow as no-op
+                case TxnRecord::Action::onCreate:
+                case TxnRecord::Action::onForceAbort:
+                case TxnRecord::Action::onHeartbeat:
+                case TxnRecord::Action::onEndCommit: // accept this to be re-entrant
+                case TxnRecord::Action::onFinalizeComplete:
+                case TxnRecord::Action::onHeartbeatExpire:
+                case TxnRecord::Action::onRetentionWindowExpire:
+                default:
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", txnId);
+                    return seastar::make_exception_future(ServerError("invalid transition"));
             };
         default:
             K2LOG_E(log::skvsvr, "Invalid record state ({}), for action: {}, in txnid: {}", state, action, txnId);
-            return seastar::make_exception_future(ServerError());
+            return seastar::make_exception_future(ServerError("invalid record state"));
     }
 }
 
@@ -314,11 +345,14 @@ seastar::future<> TxnManager::_forceAborted(TxnRecord& rec) {
     K2LOG_D(log::skvsvr, "Setting status to forceAborted for {}", rec);
     // set state
     rec.state = dto::TxnRecordState::ForceAborted;
-    // manage hb expiry
+    // there is no longer a heartbeat expectation
     rec.unlinkHB(_hblist);
-    // manage rw expiry: we want to track expiration on retention window
-    // persist if needed
-    return _persistence.makeCall(rec, _config.persistenceTimeout());
+
+    // we still want to keep the record inked in the retention window since we want to take action if it goes past the RWE
+
+    // append to WAL
+    _persistence->append(rec);
+    return seastar::make_ready_future();
 }
 
 seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
@@ -329,32 +363,36 @@ seastar::future<> TxnManager::_end(TxnRecord& rec, dto::TxnRecordState state) {
     rec.unlinkHB(_hblist);
     // manage rw expiry
     rec.unlinkRW(_rwlist);
-    // manage bg expiry
-    rec.unlinkBG(_bgTasks);
-    _bgTasks.push_back(rec);
 
-    auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
+    _persistence->append(rec);
 
-    if (rec.syncFinalize) {
-        return _persistence.makeCall(rec, _config.persistenceTimeout())
-        .then([timeout, this, &rec] {
+    return _persistence->flush().then([this, &rec] (auto&& flushStatus) {
+        if (!flushStatus.is2xxOK()) {
+            return seastar::make_exception_future(ServerError("persistence flush failed"));
+        }
+
+        auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
+
+        if (rec.syncFinalize) {
+            // append to WAL
+            _persistence->append(rec);
+
             return _finalizeTransaction(rec, FastDeadline(timeout));
-        });
-    }
-    else {
-        // enqueue in background tasks
-        rec.bgTaskFut = rec.bgTaskFut
-            .then([&rec] {
-                return seastar::sleep(rec.timeToFinalize);
-            })
-            .then([this, &rec]() {
-                // TODO Deadline based on transaction size
-                auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size())/_config.finalizeBatchSize();
-                return _finalizeTransaction(rec, FastDeadline(timeout));
-            });
-        // persist if needed
-        return _persistence.makeCall(rec, _config.persistenceTimeout());
-    }
+        }
+        else {
+            // enqueue in background tasks
+            rec.bgTaskFut = rec.bgTaskFut
+                .then([&rec] {
+                    return seastar::sleep(rec.timeToFinalize);
+                })
+                .then([this, &rec, timeout]() {
+                    return _finalizeTransaction(rec, FastDeadline(timeout));
+                });
+            // append to WAL
+            _persistence->append(rec);
+            return seastar::make_ready_future();
+        }
+    });
 }
 
 seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
@@ -365,15 +403,21 @@ seastar::future<> TxnManager::_deleted(TxnRecord& rec) {
     rec.unlinkHB(_hblist);
     // manage rw expiry
     rec.unlinkRW(_rwlist);
-    // persist if needed
 
-    return _persistence.makeCall(rec, _config.persistenceTimeout()).then([this, &rec]{
-        K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
-        rec.unlinkBG(_bgTasks);
-        rec.unlinkRW(_rwlist);
-        rec.unlinkHB(_hblist);
-        _transactions.erase(rec.txnId);
-    });
+    // append to WAL
+    _addBgTaskFuture(rec,
+        _persistence->append_cont(rec)
+        .then([this, &rec] {
+            // once flushed, erase from memory
+            K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
+            rec.unlinkBG(_bgTasks);
+            rec.unlinkRW(_rwlist);
+            rec.unlinkHB(_hblist);
+            _transactions.erase(rec.txnId);
+        })
+    );
+
+    return seastar::make_ready_future();
 }
 
 seastar::future<> TxnManager::_heartbeat(TxnRecord& rec) {
@@ -416,7 +460,7 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
                             auto& [status, response] = responsePair;
                             if (!status.is2xxOK()) {
                                 K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
-                                return seastar::make_exception_future<>(TxnManager::ServerError());
+                                return seastar::make_exception_future<>(TxnManager::ServerError("finalize request failed after retrying"));
                             }
                             K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
                             return seastar::make_ready_future<>();

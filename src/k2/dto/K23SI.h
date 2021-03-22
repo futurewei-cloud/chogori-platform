@@ -167,13 +167,12 @@ struct CommittedRecord {
 
 
 K2_DEF_ENUM(TxnRecordState,
-        Created,
-        InProgress,
-        ForceAborted,
-        Aborted,
-        Committed,
-        Deleted,
-        Unknown
+        Created,      // The state in which all new TxnRecords are put when first created in memory
+        InProgress,   // The txn is active and we're persisting this fact
+        ForceAborted, // The txn has been force-aborted (e.g. due to PUSH)
+        Aborted,      // The txn has been successfully aborted by the client
+        Committed,    // The txn has been successfully committed by the client
+        Deleted
 );
 
 // The main READ DTO.
@@ -347,7 +346,7 @@ struct K23SITxnPushRequest {
 struct K23SITxnPushResponse {
     // the mtr of the winning transaction
     K23SI_MTR winnerMTR;
-    TxnRecordState incumbentState = TxnRecordState::Unknown;
+    TxnRecordState incumbentState = TxnRecordState::Created;
     bool allowChallengerRetry = false;
 
     K2_PAYLOAD_FIELDS(winnerMTR, incumbentState, allowChallengerRetry);

@@ -50,6 +50,9 @@ typedef std::deque<dto::CommittedRecord> VersionsT;
 struct VersionSet {
     std::optional<WriteIntent> WI;
     VersionsT committed;
+    bool empty() const {
+        return !WI.has_value() && committed.empty();
+    }
 };
 
 // the type holding versions for all keys, i.e. the indexer
@@ -64,7 +67,10 @@ public: // lifecycle
     seastar::future<> start();
     seastar::future<> gracefulStop();
 
-   public:
+    // recover data upon startup
+    seastar::future<> _recovery();
+
+public:
     // verb handlers
     // Read is called when we either get a new read, or after we perform a push operation
     // on behalf of an incoming read (recursively). We only perform the recursive attempt
@@ -128,77 +134,28 @@ private: // methods
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
-    bool _validateRequestPartition(const RequestT& req) const {
-        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid;
-        // validate partition owns the requests' key.
-        // 1. common case assumes RequestT a Read request;
-        // 2. now for the other cases, only Query request is implemented.
-        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            result =  result && _partition.owns(req.key, req.reverseDirection);
-        } else {
-            result = result && _partition.owns(req.key);
-        }
-        K2LOG_D(log::skvsvr, "Partition: {}, partition validation {}, for request={}", _partition, (result ? "passed" : "failed"), req);
-        return result;
-    }
+    bool _validateRequestPartition(const RequestT& req) const;
 
-    // validate requests are within the retention window for the collection. return true if request is valid
-    template <typename RequestT>
-    bool _validateRetentionWindow(const RequestT& req) const {
-        auto result = req.mtr.timestamp.compareCertain(_retentionTimestamp) >= 0;
-        K2LOG_D(log::skvsvr, "Partition: {}, retention validation {}, have={}, for request={}", _partition, (result ? "passed" : "failed"), _retentionTimestamp, req);
-        return result;
-    }
-
-    // validate challengerMTR in PUSH requests is within the retention window for the collection. return true if request is valid
-    bool _validatePushRetention(const dto::K23SITxnPushRequest& req) const {
-        bool result = req.challengerMTR.timestamp.compareCertain(_retentionTimestamp) >= 0;
-        K2LOG_D(log::skvsvr, "Partition: {}, retention validation {}, have={}, for request={}", _partition, (result ? "passed" : "failed"), _retentionTimestamp, req);
-        return result;
-    }
+    // return true iff the given timestamp is within the retention window for the collection.
+    bool _validateRetentionWindow(const dto::Timestamp& ts) const;
 
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
-    bool _validateRequestPartitionKey(const RequestT& req) const {
-        K2LOG_D(log::skvsvr, "Request: {}", req);
-
-        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            // Query is allowed to have empty partition key which means start or end of schema set
-            return true;
-        } else {
-            return !req.key.partitionKey.empty();
-        }
-    }
+    bool _validateRequestPartitionKey(const RequestT& req) const;
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     template <typename RequestT>
     Status _validateStaleWrite(const RequestT& req, const VersionSet& versions);
 
-    template <class RequestT>
-    Status _validateReadRequest(const RequestT& request) const {
-        if (!_validateRequestPartition(request)) {
-            // tell client their collection partition is gone
-            return dto::K23SIStatus::RefreshCollection("collection refresh needed in read-type request");
-        }
-        if (!_validateRequestPartitionKey(request)){
-            // do not allow empty partition key
-            return dto::K23SIStatus::BadParameter("missing partition key in read-type request");
-        }
-        if (!_validateRetentionWindow(request)) {
-            // the request is outside the retention window
-            return dto::K23SIStatus::AbortRequestTooOld("request too old in read-type request");
-        }
-        if (_schemas.find(request.key.schemaName) == _schemas.end()) {
-            // server does not have schema
-            return dto::K23SIStatus::OperationNotAllowed("schema does not exist in read-type request");
-        }
+    // validate an incoming write request
+    Status _validateWriteRequest(const dto::K23SIWriteRequest& request, const VersionSet& versions);
 
-        return dto::K23SIStatus::OK("");
-    }
+    template <class RequestT>
+    Status _validateReadRequest(const RequestT& request) const;
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, VersionSet& versions, FastDeadline deadline);
+    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, VersionSet& versions);
 
     // helper method used to make a projection SKVRecord payload
     bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
@@ -208,17 +165,15 @@ private: // methods
 
     // make every fields for a partial update request in the condition of same schema and same version
     bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
+
     // make every fields for a partial update request in the condition of same schema and different versions
     bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
 
-    // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
+    // find field number matches to 'fieldName' and 'fieldtype' in schema, return -1 if do not find
     std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
 
     // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate).
     bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
-
-    // recover data upon startup
-    seastar::future<> _recovery();
 
     // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
     // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must
@@ -256,7 +211,20 @@ private: // methods
         return tsoClient.GetTimestampFromTSO(Clock::now());
     }
 
-private: // members
+    seastar::future<> _registerVerbs();
+
+    // Helper method which generates an RPCResponce chained after a successful persistence flush
+    template<typename ResponseT>
+    seastar::future<std::tuple<Status, ResponseT>> _respondAfterFlush(Status&& status, ResponseT&& response);
+
+    // helper used to process the designate TRH part of a write request
+    seastar::future<Status> _designateTRH(dto::TxnId txnId);
+
+    // helper used to process the write part of a write request
+    seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
+    _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
+
+private:  // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
 
@@ -290,7 +258,7 @@ private: // members
     seastar::future<> _retentionRefresh = seastar::make_ready_future();
 
     // TODO persistence
-    Persistence _persistence;
+    std::shared_ptr<Persistence> _persistence;
 
     CPOClient _cpo;
 };
