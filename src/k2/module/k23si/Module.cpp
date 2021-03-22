@@ -136,6 +136,11 @@ Status K23SIPartitionModule::_validateReadRequest(const RequestT& request) const
 }
 
 Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest& request, const VersionSet& versions) {
+    if (!_validateRequestPartition(request)) {
+        // tell client their collection partition is gone
+        return dto::K23SIStatus::RefreshCollection("collection refresh needed in read-type request");
+    }
+
     if (!_validateRequestPartitionKey(request)) {
         // do not allow empty partition key
         return dto::K23SIStatus::BadParameter("missing partition key in write");
@@ -958,14 +963,14 @@ K23SIPartitionModule::_designateTRH(dto::TxnId txnId) {
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
 K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline) {
-    if (!_validateRequestPartition(request)) {
-        // tell client their collection partition is gone
-        return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in write"), dto::K23SIWriteResponse());
-    }
     // NB: failures in processing a write do not require that we set the TR state to aborted at the TRH. We rely on
     //     the client to do the correct thing and issue an abort on a failure.
     K2LOG_D(log::skvsvr, "Partition: {}, handle write: {}", _partition, request);
     if (request.designateTRH) {
+        if (!_validateRequestPartition(request)) {
+            // tell client their collection partition is gone
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in write"), dto::K23SIWriteResponse());
+        }
         K2LOG_D(log::skvsvr, "Partition: {}, designating TRH in {}", _partition, request.mtr);
         return _designateTRH({.trh=request.trh, .mtr=request.mtr})
             .then([this, request=std::move(request), deadline] (auto&& status) mutable {
@@ -975,7 +980,6 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
                 }
 
                 K2LOG_D(log::skvsvr, "Partition: {}, succeeded creating TR. Processing write for {}", _partition, request.mtr);
-                request.designateTRH = false;
                 return _processWrite(std::move(request), deadline);
             });
     }
@@ -1012,7 +1016,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
                 }
 
                 K2LOG_D(log::skvsvr, "Partition: {}, write push retry for key {}", _partition, request.key);
-                return handleWrite(std::move(request), deadline);
+                return _processWrite(std::move(request), deadline);
             });
     }
 
