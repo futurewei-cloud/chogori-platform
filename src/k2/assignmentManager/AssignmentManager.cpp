@@ -29,7 +29,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/MessageVerbs.h>         // our DTO
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include <k2/transport/Status.h>         // for RPC
-#include <k2/partitionManager/PartitionManager.h> // partition manager
 
 namespace k2 {
 
@@ -43,6 +42,10 @@ AssignmentManager::~AssignmentManager() {
 
 seastar::future<> AssignmentManager::gracefulStop() {
     K2LOG_I(log::amgr, "stop");
+    if (_pmodule) {
+        K2LOG_I(log::amgr, "stopping module");
+        return _pmodule->gracefulStop();
+    }
     return seastar::make_ready_future();
 }
 
@@ -63,12 +66,55 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
     K2LOG_I(log::amgr, "Received request to create assignment in collection {}, for partition {}", request.collectionMeta.name, request.partition);
     // TODO, consider current load on all cores and potentially re-route the assignment to a different core
     // for now, simply pass it onto local handler
-    return PManager().assignPartition(std::move(request.collectionMeta), std::move(request.partition))
-        .then([](auto&& partition) {
-            auto status = (partition.astate == dto::AssignmentState::Assigned) ? Statuses::S201_Created("assignment accepted") : Statuses::S403_Forbidden("partition assignment was not allowed");
-            dto::AssignmentCreateResponse resp{.assignedPartition = std::move(partition)};
-            return RPCResponse(std::move(status), std::move(resp));
-        });
+
+    dto::CollectionMetadata& meta = request.collectionMeta;
+    dto::Partition& partition = request.partition;
+
+    if (_pmodule) {
+        K2LOG_W(log::amgr, "Partition already assigned");
+        partition.astate = dto::AssignmentState::FailedAssignment;
+        auto status = Statuses::S403_Forbidden("partition assignment was not allowed");
+        dto::AssignmentCreateResponse resp{.assignedPartition = std::move(partition)};
+        return RPCResponse(std::move(status), std::move(resp));
+    }
+
+    if (meta.storageDriver != dto::StorageDriver::K23SI) {
+        K2LOG_W(log::amgr, "Storage driver not supported: {}", meta.storageDriver);
+        partition.astate = dto::AssignmentState::FailedAssignment;
+        auto status = Statuses::S403_Forbidden("partition assignment was not allowed");
+        dto::AssignmentCreateResponse resp{.assignedPartition = std::move(partition)};
+        return RPCResponse(std::move(status), std::move(resp));
+    }
+
+    partition.astate = dto::AssignmentState::Assigned;
+
+    partition.endpoints.clear();
+    auto tcp_ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
+    if (tcp_ep) {
+        partition.endpoints.insert(tcp_ep->url);
+    }
+    auto rdma_ep = k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto);
+    if (rdma_ep) {
+        partition.endpoints.insert(rdma_ep->url);
+    }
+
+    _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);
+    return _pmodule->start().then([partition = std::move(partition)] () mutable {
+        if (partition.endpoints.size() > 0) {
+            partition.astate = dto::AssignmentState::Assigned;
+            K2LOG_I(log::amgr, "Assigned partition for driver k23si");
+        }
+        else {
+            K2LOG_E(log::amgr, "Server not configured correctly. there were no listening protocols configured");
+            partition.astate = dto::AssignmentState::FailedAssignment;
+        }
+
+        auto status = (partition.astate == dto::AssignmentState::Assigned) ?
+            Statuses::S201_Created("assignment accepted") :
+            Statuses::S403_Forbidden("partition assignment was not allowed");
+        dto::AssignmentCreateResponse resp{.assignedPartition = std::move(partition)};
+        return RPCResponse(std::move(status), std::move(resp));
+    });
 }
 
 seastar::future<std::tuple<Status, dto::AssignmentOffloadResponse>>
