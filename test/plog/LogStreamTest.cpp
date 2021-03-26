@@ -41,9 +41,9 @@ private:
     int exitcode = -1;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
     k2::MetadataMgr _mmgr;
-    k2::LogStream* _client;
+    k2::LogStream* _logStream;
     k2::MetadataMgr _reload_mmgr;
-    k2::LogStream* _reload_client;
+    k2::LogStream* _reload_logStream;
     String _initPlogId;
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
@@ -122,31 +122,26 @@ public:  // application lifespan
         ConfigVar<String> configEp("cpo_url");
         String cpo_url = configEp();
 
-        return _mmgr.init(cpo_url, "Partition-1", "Persistence_Cluster_1")
+        return _mmgr.init(cpo_url, "Partition-1", "Persistence_Cluster_1", false)
         .then([this] (){
-            _client = _mmgr.obtainLogStream("WAL");
-        })
-        .then([this] (){
-            return _mmgr.create();
-        })
-        .then([this] (){
-            return _client -> create();
+            return seastar::make_ready_future<>();
         });
     }
 
     seastar::future<> runTest3() {
         K2LOG_I(log::ltest, ">>> Test3: Write and Read a Value from log stream");
+        _logStream = _mmgr.obtainLogStream(LogStreamType::WAL);
         String header;
         for (uint32_t i = 0; i < 10000; ++i){
             header = header + "0";
         }
         Payload payload([] { return Binary(20000); });
         payload.write(header);
-        return _client->append(std::move(payload))
+        return _logStream->append(std::move(payload))
         .then([this, header] (auto&& response){
             auto& [plogId, appended_offset] = response;
             _initPlogId = plogId;
-            return _client->read(plogId, 0, appended_offset);
+            return _logStream->read(plogId, 0, appended_offset);
         })
         .then([this, header] (auto&& payloads){
             String str;
@@ -169,7 +164,7 @@ public:  // application lifespan
         for (uint32_t i = 0; i < 2000; ++i){
             Payload payload([] { return Binary(20000); });
             payload.write(header);
-            writeFutures.push_back(_client->append(std::move(payload)));
+            writeFutures.push_back(_logStream->append(std::move(payload)));
         }
         return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end())
         .then([this, header] (std::vector<std::pair<String, uint32_t> >&& responses){
@@ -178,7 +173,7 @@ public:  // application lifespan
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
             K2LOG_I(log::ltest, ">>> Test4.1: Write Done");
-            return _client->read(_initPlogId, 0, 2001*10005);
+            return _logStream->read(_initPlogId, 0, 2001*10005);
         })
         .then([this, header] (auto&& payloads){
             K2LOG_I(log::ltest, ">>> Test4.2: Read Done");
@@ -197,7 +192,7 @@ public:  // application lifespan
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
                 payload.write(header);
-                writeFutures.push_back(_client->append(std::move(payload)));
+                writeFutures.push_back(_logStream->append(std::move(payload)));
             }
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
@@ -207,7 +202,7 @@ public:  // application lifespan
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
             K2LOG_I(log::ltest, ">>> Test4.3: Write Done");
-            return _client->read(_initPlogId, 0, 4001*10005);
+            return _logStream->read(_initPlogId, 0, 4001*10005);
         })
         .then([this, header] (auto&& payloads){
             K2LOG_I(log::ltest, ">>> Test4.4: Read Done");
@@ -235,7 +230,7 @@ public:  // application lifespan
         .then([this] (auto&& response){
             auto& status  = response;
             K2LOG_D(log::ltest, "{}", status);
-            _reload_client = _reload_mmgr.obtainLogStream("WAL");
+            _reload_logStream = _reload_mmgr.obtainLogStream(LogStreamType::WAL);
             return seastar::make_ready_future<>();
         });
     }
@@ -247,7 +242,7 @@ public:  // application lifespan
         for (uint32_t i = 0; i < 10000; ++i){
             header = header + "0";
         }
-        return _reload_client->read(_initPlogId, 0, 4001*10005)
+        return _reload_logStream->read(_initPlogId, 0, 4001*10005)
         .then([this, header] (auto&& payloads){
             String str;
             uint32_t count = 0;
@@ -264,7 +259,7 @@ public:  // application lifespan
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
                 payload.write(header);
-                writeFutures.push_back(_reload_client->append(std::move(payload)));
+                writeFutures.push_back(_reload_logStream->append(std::move(payload)));
             }
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
@@ -274,7 +269,7 @@ public:  // application lifespan
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
             K2LOG_I(log::ltest, ">>> Test6.2: Write Done");
-            return _reload_client->read(_initPlogId, 0, 6001*10005);
+            return _reload_logStream->read(_initPlogId, 0, 6001*10005);
         })
         .then([this, header] (auto&& payloads){
             K2LOG_I(log::ltest, ">>> Test6.3: Read Done");

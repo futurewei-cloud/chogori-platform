@@ -485,7 +485,7 @@ Status CPOService::_saveSchemas(const String& collectionName) {
 
 seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
 CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request){
-    K2LOG_I(log::cposvr, "Received persistence cluster create request for {}", request.cluster.name);
+    K2LOG_D(log::cposvr, "Received persistence cluster create request for {}", request.cluster.name);
     auto cpath = _getPersistenceClusterPath(request.cluster.name);
     dto::PersistenceCluster persistenceCluster;
     Payload p;
@@ -503,7 +503,7 @@ CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&
 
 seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
 CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request) {
-    K2LOG_I(log::cposvr, "Received persistence cluster get request with name {}", request.name);
+    K2LOG_D(log::cposvr, "Received persistence cluster get request with name {}", request.name);
     auto cpath = _getPersistenceClusterPath(request.name);
     dto::PersistenceCluster persistenceCluster;
     Payload p;
@@ -521,7 +521,7 @@ CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& requ
 
 seastar::future<std::tuple<Status, dto::MetadataPersistResponse>>
 CPOService::handleMetadataPersist(dto::MetadataPersistRequest&& request){
-    K2LOG_I(log::cposvr, "Received metadata persist request for partition {}", request.partitionName);
+    K2LOG_D(log::cposvr, "Received metadata persist request for partition {}", request.partitionName);
     auto records = _metadataRecords.find(request.partitionName);
     if (records == _metadataRecords.end()) {
         std::vector<dto::MetadataRecord> log;
@@ -530,7 +530,7 @@ CPOService::handleMetadataPersist(dto::MetadataPersistRequest&& request){
         _metadataRecords[std::move(request.partitionName)] = std::move(log);
     }
     else{
-        records->second[records->second.size()-1].sealed_offset = request.sealed_offset;
+        records->second.back().sealed_offset = request.sealed_offset;
         dto::MetadataRecord element{.plogId=std::move(request.new_plogId), .sealed_offset=0};
         records->second.push_back(std::move(element));
     }
@@ -540,7 +540,7 @@ CPOService::handleMetadataPersist(dto::MetadataPersistRequest&& request){
 
 seastar::future<std::tuple<Status, dto::MetadataGetResponse>>
 CPOService::handleMetadataGet(dto::MetadataGetRequest&& request){
-    K2LOG_I(log::cposvr, "Received metadata get request for partition {}", request.partitionName);
+    K2LOG_D(log::cposvr, "Received metadata get request for partition {}", request.partitionName);
     auto records = _metadataRecords.find(request.partitionName);
     if (records == _metadataRecords.end()) {
         return RPCResponse(Statuses::S409_Conflict("request parition's metadata does not exist"), dto::MetadataGetResponse());

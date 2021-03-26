@@ -49,6 +49,15 @@ namespace log {
 inline thread_local k2::logging::Logger logstream("k2::logstream");
 }
 
+enum LogStreamType : Verb {
+    LogStreamTypeHead = 100,
+    WAL,
+    IndexerSnapshot,
+    Aux,
+    LogStreamTypeEnd
+};
+
+
 class LogStreamBase;
 class LogStream;
 class MetadataMgr;
@@ -71,9 +80,6 @@ private:
 public:
     LogStreamBase();
     ~LogStreamBase();
-    
-    // create a log stream base
-    seastar::future<> create();
 
     // write data to the the current plog, return the latest Plog ID and latest offset
     seastar::future<std::pair<String, uint32_t> > append(Payload payload);
@@ -85,10 +91,7 @@ public:
     seastar::future<std::vector<Payload> > read(String start_plogId, uint32_t start_offset, uint32_t size);
 
     // reload the _usedPlogIdVector and _usedPlogInfo for replay purpose
-    seastar::future<Status> reload(std::vector<dto::MetadataRecord> records);
-
-    // init the plog client client
-    seastar::future<> init_plog_client(String cpo_url, String persistenceClusrerName);
+    seastar::future<Status> reload(std::vector<dto::MetadataRecord> plogsOfTheStream);
 
     // obtain the target plog status
     seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> get_plog_status(String plogId);
@@ -103,20 +106,31 @@ private:
     bool _create = false; 
 
     // The vector to store the redundant plog Id
-    std::vector<String> _redundantPlogPool;
+    std::vector<String> _preallocatedPlogPool;
     // The vector to store the used plog Id
     std::vector<String> _usedPlogIdVector;
     // The map to store the used plog information
     std::unordered_map<String, PlogInfo> _usedPlogInfo;
     // whether the logstream is switching the plog 
     bool _switched;
-    std::vector<seastar::promise<>> _requestWaiters;
+    std::vector<seastar::promise<>> _switchRequestWaiters;
 
     // a virtual API that used to persist the Plog Id and sealed offset of each used plog
     virtual seastar::future<Status> _persistSelfMetadata(uint32_t sealed_offset, String new_plogId)=0;
 
     // when exceed the size limit of current plog, we need to seal the current plog, write the sealed offset to metadata, and write the contents to the new plog
-    seastar::future<std::pair<String, uint32_t> > _switchPlog(Payload payload);
+    seastar::future<std::pair<String, uint32_t> > _switchPlogAndAppend(Payload payload);
+
+protected:
+     // create a log stream base
+    seastar::future<> _preallocatePlogs();
+
+    // init the plog client client
+    seastar::future<> _init_plog_client(String cpo_url, String persistenceClusterName);
+
+    // retrive a plog from _preallocatedPlogPool to be ready to serve requests and persist its plogId
+    seastar::future<> _activeAndPersistTheFirstPlog();
+    
 };
 
 
@@ -126,10 +140,10 @@ public:
     ~LogStream();
 
     // set the name of this log stream and the meta data manager pointer
-    seastar::future<> init(String name, MetadataMgr* metadataMgr, String cpo_url, String persistenceClusrerName);
+    seastar::future<> init(Verb name, MetadataMgr* metadataMgr, String cpo_url, String persistenceClusterName, bool reload);
 private:
-    // the name of this log stream, such as "WAL", etc
-    String _name;
+    // the name of this log stream, such as "WAL", "IndexerSnapshot", "Aux", etc
+    Verb _name;
     // the pointer to the metadata manager
     MetadataMgr* _metadataMgr;
     virtual seastar::future<Status> _persistSelfMetadata(uint32_t sealed_offset, String new_plogId);
@@ -143,18 +157,17 @@ public:
     ~MetadataMgr();
     
     // set the partition name, init all the log streams this metadata mgr used
-    seastar::future<> init(String cpo_url, String partitionName, String persistenceClusrerName);
+    seastar::future<> init(String cpo_url, String partitionName, String persistenceClusterName, bool reload);
     // handle the persistence requests from all the logstreams
-    seastar::future<Status> persistMetadata(String name, uint32_t sealed_offset, String new_plogId);
+    seastar::future<Status> persistMetadata(Verb name, uint32_t sealed_offset, String new_plogId);
     // return the request logstream to client
-    LogStream* obtainLogStream(String log_stream_name);
+    LogStream* obtainLogStream(Verb log_stream_name);
     // replay the entire Metadata Manager
-    seastar::future<Status> replay(String cpo_url, String partitionName, String persistenceClusrerName);
+    seastar::future<Status> replay(String cpo_url, String partitionName, String persistenceClusterName);
 private:
     // a map to store all the log streams managed by this metadata manager
-    std::unordered_map<String, LogStream* > _logStreamMap;
+    std::unordered_map<Verb, LogStream*> _logStreamMap;
     CPOClient _cpo;
-    LogStream _wal;
     String _partitionName;
     virtual seastar::future<Status> _persistSelfMetadata(uint32_t sealed_offset, String new_plogId);
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
