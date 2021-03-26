@@ -258,6 +258,26 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     return seastar::make_ready_future();
 }
 
+void K23SIPartitionModule::_unregisterVerbs() {
+    APIServer& api_server = AppBase().getDist<APIServer>().local();
+
+    RPC().registerMessageObserver(dto::Verbs::K23SI_READ, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_QUERY, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_WRITE, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_TXN_PUSH, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_TXN_END, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_TXN_HEARTBEAT, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_TXN_FINALIZE, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_PUSH_SCHEMA, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_INSPECT_RECORDS, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_INSPECT_TXN, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_INSPECT_WIS, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_INSPECT_ALL_TXNS, nullptr);
+    RPC().registerMessageObserver(dto::Verbs::K23SI_INSPECT_ALL_KEYS, nullptr);
+
+    api_server.deregisterAPIObserver("InspectAllKeys");
+}
+
 seastar::future<> K23SIPartitionModule::start() {
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
         K2LOG_W(log::skvsvr,
@@ -295,7 +315,8 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
         .then([this] {
             return seastar::when_all_succeed(std::move(_retentionRefresh), _txnMgr.gracefulStop()).discard_result();
         })
-        .then([] {
+        .then([this] {
+            _unregisterVerbs();
             K2LOG_I(log::skvsvr, "stopped");
         });
 }

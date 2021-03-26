@@ -30,6 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/Status.h>
 #include <k2/dto/AssignmentManager.h>
 #include <k2/dto/Timestamp.h>
+#include <k2/module/k23si/Module.h>
 
 namespace k2 {
 namespace log {
@@ -50,6 +51,9 @@ public:  // application lifespan
 
     seastar::future<std::tuple<Status, dto::AssignmentOffloadResponse>>
     handleOffload(dto::AssignmentOffloadRequest&& request);
+
+private:
+    std::unique_ptr<K23SIPartitionModule> _pmodule;
 };  // class AssignmentManager
 
 } // namespace k2

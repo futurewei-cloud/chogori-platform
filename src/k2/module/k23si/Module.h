@@ -224,6 +224,8 @@ private: // methods
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
 
+    void _unregisterVerbs();
+
 private:  // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
