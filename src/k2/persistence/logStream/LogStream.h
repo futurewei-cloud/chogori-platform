@@ -125,7 +125,7 @@ protected:
     
 };
 
-
+// TODO: Test the performance of the Inheritance
 class LogStream:public LogStreamBase{
 public:
     LogStream();
