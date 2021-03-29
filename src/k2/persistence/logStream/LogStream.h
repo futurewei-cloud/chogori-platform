@@ -41,14 +41,6 @@ namespace log {
 inline thread_local k2::logging::Logger lgbase("k2::logstream_base");
 }
 
-namespace log {
-inline thread_local k2::logging::Logger mdmgr("k2::metadata_manager");
-}
-
-namespace log {
-inline thread_local k2::logging::Logger logstream("k2::logstream");
-}
-
 enum LogStreamType : Verb {
     LogStreamTypeHead = 100,
     WAL,
@@ -116,7 +108,7 @@ private:
     std::vector<seastar::promise<>> _switchRequestWaiters;
 
     // a virtual API that used to persist the Plog Id and sealed offset of each used plog
-    virtual seastar::future<Status> _persistSelfMetadata(uint32_t sealed_offset, String new_plogId)=0;
+    virtual seastar::future<Status> _addNewPlog(uint32_t sealed_offset, String new_plogId)=0;
 
     // when exceed the size limit of current plog, we need to seal the current plog, write the sealed offset to metadata, and write the contents to the new plog
     seastar::future<std::pair<String, uint32_t> > _switchPlogAndAppend(Payload payload);
@@ -146,7 +138,7 @@ private:
     Verb _name;
     // the pointer to the metadata manager
     MetadataMgr* _metadataMgr;
-    virtual seastar::future<Status> _persistSelfMetadata(uint32_t sealed_offset, String new_plogId);
+    virtual seastar::future<Status> _addNewPlog(uint32_t sealed_offset, String new_plogId);
 };
 
 
@@ -159,7 +151,7 @@ public:
     // set the partition name, init all the log streams this metadata mgr used
     seastar::future<> init(String cpo_url, String partitionName, String persistenceClusterName, bool reload);
     // handle the persistence requests from all the logstreams
-    seastar::future<Status> persistMetadata(Verb name, uint32_t sealed_offset, String new_plogId);
+    seastar::future<Status> addNewPLogIntoLogStream(Verb name, uint32_t sealed_offset, String new_plogId);
     // return the request logstream to client
     LogStream* obtainLogStream(Verb log_stream_name);
     // replay the entire Metadata Manager
@@ -169,7 +161,7 @@ private:
     std::unordered_map<Verb, LogStream*> _logStreamMap;
     CPOClient _cpo;
     String _partitionName;
-    virtual seastar::future<Status> _persistSelfMetadata(uint32_t sealed_offset, String new_plogId);
+    virtual seastar::future<Status> _addNewPlog(uint32_t sealed_offset, String new_plogId);
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
 };
 

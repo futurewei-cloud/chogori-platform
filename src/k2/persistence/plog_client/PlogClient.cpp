@@ -202,8 +202,8 @@ seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getP
                 if (current_offset > response.currentOffset){
                     current_offset = response.currentOffset;
                 }
-                if (sealed < response.sealed){
-                    sealed = response.sealed;
+                if (response.sealed){
+                    sealed = true;
                 }
                 if (!return_status.is2xxOK())
                     break;

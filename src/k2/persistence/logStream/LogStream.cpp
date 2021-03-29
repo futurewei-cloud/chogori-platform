@@ -90,7 +90,7 @@ LogStreamBase::_activeAndPersistTheFirstPlog(){
     _usedPlogInfo[std::move(plogId)] = std::move(info);
     
     // persist this used plog info
-    return _persistSelfMetadata(0, _usedPlogIdVector.back())
+    return _addNewPlog(0, _usedPlogIdVector.back())
     .then([this] (auto&& response){
         if (!response.is2xxOK()) {
             throw k2::dto::LogStreamBasePersistError("unable to persist metadata");
@@ -118,7 +118,11 @@ LogStreamBase::append(Payload payload){
     }
     String plogId = _usedPlogIdVector.back();
 
-    if (_usedPlogInfo[plogId].currentOffset + payload.getSize() < PLOG_MAX_SIZE){
+    if (_usedPlogInfo[plogId].currentOffset + payload.getSize() > PLOG_MAX_SIZE){
+        // switch to a new plog
+        return _switchPlogAndAppend(std::move(payload));
+    }
+    else{
         uint32_t current_offset = _usedPlogInfo[plogId].currentOffset;
         _usedPlogInfo[plogId].currentOffset += payload.getSize();
         uint32_t expect_appended_offset = _usedPlogInfo[plogId].currentOffset;
@@ -143,10 +147,6 @@ LogStreamBase::append(Payload payload){
             }
         });
     }
-    else{
-        // switch to a new plog
-        return _switchPlogAndAppend(std::move(payload));
-    }
 };
 
 seastar::future<std::pair<String, uint32_t> > 
@@ -169,35 +169,50 @@ LogStreamBase::_switchPlogAndAppend(Payload payload){
 
     uint32_t expect_appended_offset =  _usedPlogInfo[new_plogId].currentOffset;
 
-    return _client.append(new_plogId, 0, std::move(payload)).
-    then([this, new_plogId, sealed_plogId, sealed_offest, expect_appended_offset] (auto&& response){
+    // The following process could be asynchronous 
+    std::vector<seastar::future<>> waitFutures;
+    // Append to the new Plog
+    waitFutures.push_back(_client.append(new_plogId, 0, std::move(payload))
+    .then([expect_appended_offset] (auto&& response){
         auto& [status, appended_offset] = response;
         if (!status.is2xxOK() || expect_appended_offset != appended_offset) {
             throw k2::dto::PlogAppendError("unable to append a plog");
         }
-        return _client.seal(sealed_plogId, sealed_offest);
-    }).
-    then([this, new_plogId, sealed_plogId, sealed_offest, expect_appended_offset] (auto&& response){
+        return seastar::make_ready_future<>();
+    }));
+    // Seal the old Plog
+    waitFutures.push_back(_client.seal(sealed_plogId, sealed_offest)
+    .then([this, sealed_plogId] (auto&& response){
         auto& [status, resp] = response;
         if (!status.is2xxOK()) {
             throw k2::dto::PlogAppendError("unable to seal a plog");
         }
         _usedPlogInfo[sealed_plogId].sealed = true;
-        // create a redundant plog
-        return _client.create();
-    }).
-    then([this, new_plogId, sealed_offest, expect_appended_offset] (auto&& response){
+        return seastar::make_ready_future<>();
+    }));
+    // Preallocated a new plog
+    waitFutures.push_back(_client.create()
+    .then([this] (auto&& response){
         auto& [status, plogId] = response;
         if (!status.is2xxOK()){
             throw k2::dto::PlogCreateError("unable to create plog for Logstream Base");
         }
         _preallocatedPlogPool.push_back(std::move(plogId));
-        return _persistSelfMetadata(sealed_offest, new_plogId);
-    }).
-    then([this, new_plogId, expect_appended_offset] (auto&& response){
-        if (!response.is2xxOK()) {
-            throw k2::dto::LogStreamBasePersistError("unable to persist metadata");
+        return seastar::make_ready_future<>();
+    }));
+    // Persist the metadata of sealed Plog's Offset and new PlogId
+    waitFutures.push_back(_addNewPlog(sealed_offest, new_plogId)
+    .then([this] (auto&& response){
+        auto& status = response;
+        if (!status.is2xxOK()){
+            throw k2::dto::PlogCreateError("unable to create plog for Logstream Base");
         }
+        return seastar::make_ready_future<>();
+    }));
+
+    // Clear the switchRequestWaiters
+    return seastar::when_all_succeed(waitFutures.begin(), waitFutures.end())
+    .then([this, new_plogId, expect_appended_offset] (){
         _switched = false;
         // send all the pending response to client 
         for (auto& request: _switchRequestWaiters){
@@ -206,7 +221,6 @@ LogStreamBase::_switchPlogAndAppend(Payload payload){
         _switchRequestWaiters.clear();
         return seastar::make_ready_future<std::pair<String, uint32_t> >(std::make_pair(std::move(new_plogId), expect_appended_offset));
     });
-    
 }
 
 seastar::future<std::vector<Payload> > 
@@ -283,11 +297,11 @@ LogStreamBase::get_plog_status(String plogId){
     return _client.getPlogStatus(std::move(plogId));
 }
 LogStream::LogStream() {
-    K2LOG_I(log::logstream, "dtor");
+    K2LOG_I(log::lgbase, "dtor");
 }
 
 LogStream::~LogStream() {
-    K2LOG_I(log::logstream, "dtor");
+    K2LOG_I(log::lgbase, "dtor");
 }
 
 seastar::future<> 
@@ -309,17 +323,17 @@ LogStream::init(Verb name, MetadataMgr* metadataMgr, String cpo_url, String pers
 }
 
 seastar::future<Status>
-LogStream::_persistSelfMetadata(uint32_t sealed_offset, String new_plogId){
-    return _metadataMgr->persistMetadata(_name, sealed_offset, std::move(new_plogId));
+LogStream::_addNewPlog(uint32_t sealed_offset, String new_plogId){
+    return _metadataMgr->addNewPLogIntoLogStream(_name, sealed_offset, std::move(new_plogId));
 }
 
 
 MetadataMgr::MetadataMgr() {
-    K2LOG_I(log::mdmgr, "dtor");
+    K2LOG_I(log::lgbase, "dtor");
 }
 
 MetadataMgr::~MetadataMgr() {
-    K2LOG_I(log::mdmgr, "dtor");
+    K2LOG_I(log::lgbase, "dtor");
 }
 
 seastar::future<> 
@@ -353,7 +367,7 @@ MetadataMgr::init(String cpo_url, String partitionName, String persistenceCluste
 }
 
 seastar::future<Status>
-MetadataMgr::_persistSelfMetadata(uint32_t sealed_offset, String new_plogId){
+MetadataMgr::_addNewPlog(uint32_t sealed_offset, String new_plogId){
     return _cpo.PersistMetadata(Deadline<>(_cpo_timeout()), _partitionName, sealed_offset, std::move(new_plogId)).
     then([this] (auto&& response){
         auto& [status, resp] = response;
@@ -374,7 +388,7 @@ LogStream* MetadataMgr::obtainLogStream(Verb log_stream_name){
 
 
 seastar::future<Status> 
-MetadataMgr::persistMetadata(Verb name, uint32_t sealed_offset, String new_plogId){
+MetadataMgr::addNewPLogIntoLogStream(Verb name, uint32_t sealed_offset, String new_plogId){
     Payload temp_payload(Payload::DefaultAllocator);
     temp_payload.write(name);
     temp_payload.write(sealed_offset);
@@ -382,7 +396,7 @@ MetadataMgr::persistMetadata(Verb name, uint32_t sealed_offset, String new_plogI
     return append(std::move(temp_payload))
     .then([this] (auto&& response){
         auto& [plogId, appended_offset] = response;
-        K2LOG_D(log::mdmgr, "{}, {}", plogId, appended_offset);
+        K2LOG_D(log::lgbase, "{}, {}", plogId, appended_offset);
         return seastar::make_ready_future<Status>(Statuses::S200_OK("successfully persist metadata"));
     });
 }
