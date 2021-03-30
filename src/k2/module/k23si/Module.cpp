@@ -672,13 +672,14 @@ void _advancePayloadPosition(const dto::SchemaField& field, Payload& payload, bo
 template <typename T>
 void _copyPayloadBaseToUpdate(const dto::SchemaField& field, Payload& base, Payload& update, bool& success) {
     (void) field;
-    T value{};
-    success = base.read(value);
-    if (!success) {
-        return;
-    }
-
-    update.write(value);
+//    T value{};
+//    success = base.read(value);
+//    if (!success) {
+//        return;
+//    }
+//
+//    update.write(value);
+    success = base.copyToPayload<T>(update);
 }
 
 template <typename T>

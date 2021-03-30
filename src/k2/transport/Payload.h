@@ -328,6 +328,37 @@ public: // Write API
     // copy size bytes from the given payload into this payload
     bool copyFromPayload(Payload& src, size_t toCopy);
 
+    // copy the type T data from the current payload to dst payload
+    template <typename T>
+    bool copyToPayload(Payload& dst);
+
+    bool copyToPayload(Payload& dst, String& s);
+
+    bool copyToPayload(Payload& dst, std::decimal::decimal64& value);
+
+    bool copyToPayload(Payload& dst, std::decimal::decimal128& value);
+
+    template <typename KeyT, typename ValueT>
+    bool copyPairToPayload(Payload& dst);
+
+    template <typename KeyT, typename ValueT>
+    bool copyToPayload(Payload& dst, std::map<KeyT, ValueT>& m);
+
+    template <typename KeyT, typename ValueT>
+    bool copyToPayload(Payload& dst, std::unordered_map<KeyT, ValueT>& m);
+
+    template <typename T>
+    bool copySingleToPayload(Payload& dst);
+
+    template <typename T>
+    bool copyToPayload(Payload& dst, std::vector<T>& vec);
+
+    template <typename T>
+    bool copyToPayload(Payload& dst, std::set<T>& s);
+
+    template <typename T>
+    bool copyToPayload(Payload& dst, std::unordered_set<T>& s);
+
     // this method skips the given number of bytes as if a write of that size occurred
     void skip(size_t advance);
 
