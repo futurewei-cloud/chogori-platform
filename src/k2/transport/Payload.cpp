@@ -258,59 +258,6 @@ bool Payload::copyToPayload(Payload& dst, std::decimal::decimal128& value) {
     return dst.copyFromPayload(*this, sizeof(std::decimal::decimal128::__decfloat128));
 }
 
-template <typename KeyT, typename ValueT>
-bool Payload::copyPairToPayload(Payload& dst) {
-    _Size size;
-    if (!read(size)) return false;
-    dst.write(size);
-    for (_Size i = 0; i < size; i++) {
-        if (!copyToPayload<KeyT>(dst)) return false;
-        if (!copyToPayload<ValueT>(dst)) return false;
-    }
-    return true;
-}
-
-template <typename KeyT, typename ValueT>
-bool Payload::copyToPayload(Payload& dst, std::map<KeyT, ValueT>& m) {
-    (void) m;
-    return copyPairToPayload<KeyT, ValueT>(dst);
-}
-
-template <typename KeyT, typename ValueT>
-bool Payload::copyToPayload(Payload& dst, std::unordered_map<KeyT, ValueT>& m) {
-    (void) m;
-    return copyPairToPayload<KeyT, ValueT>(dst);
-}
-
-template <typename T>
-bool Payload::copySingleToPayload(Payload& dst) {
-    _Size size;
-    if (!read(size)) return false;
-    dst.write(size);
-    for (_Size i = 0; i < size; i++) {
-        if (!copyToPayload<T>(dst)) return false;
-    }
-    return true;
-}
-
-template <typename T>
-bool Payload::copyToPayload(Payload& dst, std::vector<T>& vec) {
-    (void) vec;
-    return copySingleToPayload<T>(dst);
-}
-
-template <typename T>
-bool Payload::copyToPayload(Payload& dst, std::set<T>& s) {
-    (void) s;
-    return copySingleToPayload<T>(dst);
-}
-
-template <typename T>
-bool Payload::copyToPayload(Payload& dst, std::unordered_set<T>& s) {
-    (void) s;
-    return copySingleToPayload<T>(dst);
-}
-
 void Payload::skip(size_t advance) {
     ensureCapacity(_currentPosition.offset + advance);
     _advancePosition(advance);
@@ -548,6 +495,5 @@ bool Payload::read(Duration& dur) {
 void Payload::write(const Duration& dur) {
     write(dur.count());                 // write the tick count
 }
-
 
 } // namespace k2

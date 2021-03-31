@@ -335,38 +335,22 @@ public: // Write API
         return copyToPayload(dst, value);
     }
 
+    // for those primitive types with fixed size, such as int32_t, float, bool etc.,
+    // just call copyFromPayload to finish the work
     template <typename T>
     std::enable_if_t<isNumericType<T>(), bool> copyToPayload(Payload& dst, T& value) {
         (void) value;
         return dst.copyFromPayload(*this, sizeof(T));
     }
 
+    // we want copy a String from the current payload to dst payload
     bool copyToPayload(Payload& dst, String& s);
 
+    // we want copy a decimal64 from the current payload to dst payload
     bool copyToPayload(Payload& dst, std::decimal::decimal64& value);
 
+    // we want copy a decimal128 from the current payload to dst payload
     bool copyToPayload(Payload& dst, std::decimal::decimal128& value);
-
-    template <typename KeyT, typename ValueT>
-    bool copyPairToPayload(Payload& dst);
-
-    template <typename KeyT, typename ValueT>
-    bool copyToPayload(Payload& dst, std::map<KeyT, ValueT>& m);
-
-    template <typename KeyT, typename ValueT>
-    bool copyToPayload(Payload& dst, std::unordered_map<KeyT, ValueT>& m);
-
-    template <typename T>
-    bool copySingleToPayload(Payload& dst);
-
-    template <typename T>
-    bool copyToPayload(Payload& dst, std::vector<T>& vec);
-
-    template <typename T>
-    bool copyToPayload(Payload& dst, std::set<T>& s);
-
-    template <typename T>
-    bool copyToPayload(Payload& dst, std::unordered_set<T>& s);
 
     // this method skips the given number of bytes as if a write of that size occurred
     void skip(size_t advance);
