@@ -104,7 +104,7 @@ seastar::future<> CPOService::start() {
     if (seastar::this_shard_id() == 0) {
         // only core 0 handles CPO business
         if (!fileutil::makeDir(_dataDir())) {
-            throw std::runtime_error("unable to create data directory");
+            return seastar::make_exception_future<>(std::runtime_error("unable to create data directory"));
         }
     }
 
@@ -247,7 +247,7 @@ seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collectio
             }
         }
 
-        return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
+        return seastar::make_ready_future<Status>(Statuses::S200_OK);
     })
     .handle_exception([](auto exc) {
         K2LOG_W_EXC(log::cposvr, exc, "Failed to push schema update");

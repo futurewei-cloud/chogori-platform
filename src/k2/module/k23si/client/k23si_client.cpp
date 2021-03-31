@@ -92,12 +92,12 @@ template <>
 seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::SKVRecord record) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
-            throw K23SIClientException("Partition key field not set for read request");
+            return seastar::make_exception_future<ReadResult<dto::SKVRecord>>(K23SIClientException("Partition key field not set for read request"));
         }
     }
     for (const String& key : record.rangeKeys) {
         if (key == "") {
-            throw K23SIClientException("Range key field not set for read request");
+            return seastar::make_exception_future<ReadResult<dto::SKVRecord>>(K23SIClientException("Range key field not set for read request"));
         }
     }
 

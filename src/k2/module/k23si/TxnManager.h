@@ -23,16 +23,18 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <k2/dto/K23SI.h>
 #include <k2/cpo/client/CPOClient.h>
+#include <k2/dto/K23SI.h>
+#include <k2/dto/K23SIInspect.h>
+
 #include <boost/intrusive/list.hpp>
 #include <seastar/core/shared_ptr.hh>
+
 #include "Config.h"
-#include "Persistence.h"
 #include "Log.h"
+#include "Persistence.h"
 
 namespace k2 {
-class K23SIPartitionModule;
 
 namespace nsbi = boost::intrusive;
 
@@ -62,8 +64,14 @@ struct TxnRecord {
 
     dto::TxnRecordState state = dto::TxnRecordState::Created;
 
-    K2_PAYLOAD_FIELDS(txnId, writeKeys, state);
-    K2_DEF_FMT(TxnRecord, txnId, writeKeys, state);
+    // to tell what end action was used to finalize
+    dto::EndAction finalizeAction = dto::EndAction::None;
+
+    // if this transaction ever attempts to commit, we set this flag.
+    bool hasAttemptedCommit{false};
+
+    K2_PAYLOAD_FIELDS(txnId, writeKeys, syncFinalize, state, finalizeAction, hasAttemptedCommit);
+    K2_DEF_FMT(TxnRecord, txnId, writeKeys, rwExpiry, hbExpiry, syncFinalize, timeToFinalize, state, finalizeAction, hasAttemptedCommit);
 
     // The last action on this TR (the action that put us into the above state)
     K2_DEF_ENUM_IC(Action,
@@ -72,9 +80,11 @@ struct TxnRecord {
         onRetentionWindowExpire,
         onHeartbeat,
         onHeartbeatExpire,
-        onEndCommit,
-        onEndAbort,
-        onFinalizeComplete
+        onCommit,
+        onAbort,
+        onFinalizeComplete,
+        onPersistSucceed,
+        onPersistFail
     );
 
     typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::rwLink>> RWList;
@@ -87,13 +97,7 @@ struct TxnRecord {
 };  // class TxnRecord
 
 
-// take care of
-// - tr state transitions
-// - persisting tr state
-// - recovery of tr state
-// - heartbeat tr transition
-// - txn finalization
-// - txn recovery
+// Manage K23SI transaction records.
 class TxnManager {
 public: // lifecycle
     TxnManager();
@@ -111,53 +115,60 @@ public: // lifecycle
     // We cache this value and use it to expire transactions when they are outside retention window.
     void updateRetentionTimestamp(dto::Timestamp rts);
 
-    TxnRecord* getTxnRecordNoCreate(const dto::TxnId& txnId);
+    // Returns the record for an id, or nullptr if one does not exist
+    TxnRecord* getTxnRecordNoCreate(dto::TxnId&& txnId);
+
     // returns the record for an id. Creates a new record in Created state if one does not exist
-    TxnRecord& getTxnRecord(const dto::TxnId& txnId);
     TxnRecord& getTxnRecord(dto::TxnId&& txnId);
 
-    // delivers the given action for the given transaction.
-    // If there is a failure we return an exception future with:
-    // ClientError: indicates the client has attempted an invalid action and so the transaction should abort
-    // ServerError: indicates that we had trouble processing the transaction. The client should abort.
-    seastar::future<> onAction(TxnRecord::Action action, dto::TxnId txnId);
+    // creates a new transaction. Returns 2xx code on success or other codes on failure
+    seastar::future<Status> createTxn(dto::TxnId&& txnId);
 
-    // onAction can complete successfully or with one of these errors
-    struct ClientError: public std::exception{
-        String _msg;
-        ClientError(const char* msg):_msg(msg){};
-        ClientError(String&& msg):_msg(msg){};
-        virtual const char* what() const noexcept override { return _msg.c_str(); }
-    };
-    struct ServerError: public std::exception{
-        String _msg;
-        ServerError(const char* msg):_msg(msg){};
-        ServerError(String&& msg):_msg(msg){};
-        virtual const char* what() const noexcept override { return _msg.c_str(); }
-    };
+    // process a heartbeat for the given transaction. Returns 2xx code on success or other codes on failure
+    seastar::future<Status> heartbeat(dto::TxnId&& txnId);
 
-private: // methods driving the state machine
+    // executes a push of the given challenger against the given incumbent.
+    seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
+    push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR);
+
+    // process a client's request to end a transaction
+    seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
+    endTxn(dto::K23SITxnEndRequest&& request);
+
+    // inspect transactions
+    seastar::future<std::tuple<Status, dto::K23SIInspectAllTxnsResponse>> inspectTxns();
+    seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>> inspectTxn(dto::TxnId&& txnId);
+
+private:  // methods driving the state machine
+    // delivers the given action for the given transaction and returns the status of executing the action
+    // Returns the response from the execution of the newly entered state
+    seastar::future<Status> _onAction(TxnRecord::Action action, TxnRecord& rec);
+
     // helper state handlers for each state we want to enter.
     // The contract here is that the state transition has been validated (i.e. the state transition is an allowed one)
-    // but no other validation has been performed. Upon problem, we return either a ClientError or ServerError
-    seastar::future<> _inProgress(TxnRecord& rec);
-    seastar::future<> _forceAborted(TxnRecord& rec);
-    seastar::future<> _end(TxnRecord& rec, dto::TxnRecordState state);
-    seastar::future<> _deleted(TxnRecord& rec);
-    seastar::future<> _heartbeat(TxnRecord& rec);
-    seastar::future<> _finalizeTransaction(TxnRecord& rec, FastDeadline deadline);
+    // but no other validation has been performed.
+    // The response is one of the dto::K23SIStatus statuses. The action was successful iff result.is2xxOK()
+    seastar::future<Status> _inProgressPIP(TxnRecord& rec);
+    seastar::future<Status> _inProgress(TxnRecord& rec);
+    seastar::future<Status> _forceAbortedPIP(TxnRecord& rec);
+    seastar::future<Status> _forceAborted(TxnRecord& rec);
+    seastar::future<Status> _endPIP(TxnRecord& rec);
+    seastar::future<Status> _end(TxnRecord& rec);
+    seastar::future<Status> _finalizedPIP(TxnRecord& rec);
 
-    TxnRecord& _createRecord(dto::TxnId txnId);
+    // Helper method which finalizes a transaction
+    seastar::future<Status> _finalizeTransaction(TxnRecord& rec, FastDeadline deadline);
 
-    // add a function to the list of background tasks to monitor
+    // helper handler for retries of endTxn requests
+    seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
+    _endTxnRetry(TxnRecord& rec, dto::K23SITxnEndRequest&& request);
+
+    // add a function to the list of background tasks. The function will run when the current chain
+    // of background tasks completes.
     template<typename Func>
     void _addBgTask(TxnRecord& rec, Func&& func);
 
-    // chain an existing future to the list of background tasks to monitor
-    void _addBgTaskFuture(TxnRecord& rec, seastar::future<>&& fut);
-
 private: // fields
-    friend class K23SIPartitionModule;
 
     // Expiry lists. The order in the list is ascending so that the oldest item would be in the front
     TxnRecord::RWList _rwlist;
@@ -188,7 +199,6 @@ private: // fields
     CPOClient _cpo;
 
     std::shared_ptr<Persistence> _persistence;
-
 }; // class TxnManager
 
 }  // namespace k2

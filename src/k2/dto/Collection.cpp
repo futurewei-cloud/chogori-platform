@@ -65,7 +65,7 @@ bool Key::operator!=(const Key& o) const noexcept {
     return compare(o) != 0;
 }
 size_t Key::hash() const noexcept {
-    return std::hash<k2::String>()(schemaName) + std::hash<k2::String>()(partitionKey) + std::hash<k2::String>()(rangeKey);
+    return hash_combine(schemaName, partitionKey, rangeKey);
 }
 size_t Key::partitionHash() const noexcept {
     uint32_t c32c = crc32c::Crc32c(partitionKey.c_str(), partitionKey.size());
@@ -133,7 +133,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
             // case 1: if get partiton in the reverse direction, and the key is empty: return the last partition;
             //         empty key in the forward direction can be well treated by upper_bound (case 3).
             // case 2: if exclusiveKey is true, use lower_bound to get partition;
-            //         forward direction with true_exclusiveKey and empry_key is not allow, throw exception.
+            //         forward direction with true_exclusiveKey and empty_key is not allow, throw exception.
             // case 3: if exclusiveKey is false, use upper_bound to get partition.
             std::vector<RangeMapElement>::iterator it;
             if (reverse && key.partitionKey == "") {
@@ -143,7 +143,7 @@ PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(cons
                 // so we return the partition before the one that obtained by lower_bound.
                 it = std::lower_bound(_rangePartitionMap.begin(), _rangePartitionMap.end(), to_find);
                 if (it == _rangePartitionMap.begin()) {
-                    throw std::runtime_error("forward direction with empry_key and true_exclusiveKey is not allowed!");
+                    throw std::runtime_error("forward direction with empty_key and true_exclusiveKey is not allowed!");
                 }
             } else {
                 // We are comparing against the start keys and upper_bound gives the first start key

@@ -276,7 +276,7 @@ int App::start(int argc, char** argv) {
         })
         .handle_exception([](auto exc) {
             K2LOG_W_EXC(log::appbase, exc, "Startup sequence failed");
-            throw exc;
+            return seastar::make_exception_future<>(exc);
         });
     });
     K2LOG_I(log::appbase, "Shutdown was successful!");

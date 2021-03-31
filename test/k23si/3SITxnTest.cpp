@@ -2664,7 +2664,8 @@ seastar::future<> testScenario07() {
                 .then([&](auto&& response)  {
                     auto& [status, val] = response;
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
-                    K2EXPECT(log::k23si, val.winnerMTR, mtr6);
+                    K2EXPECT(log::k23si, val.allowChallengerRetry, true);
+                    K2EXPECT(log::k23si, val.incumbentFinalization, dto::EndAction::Abort);
                 })
                 .then([&] {
                     return seastar::when_all(doInspectTxn(k1, mtr5, collname), doInspectTxn(k1, mtr6, collname))

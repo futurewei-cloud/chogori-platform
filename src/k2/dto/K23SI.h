@@ -167,12 +167,16 @@ struct CommittedRecord {
 
 
 K2_DEF_ENUM(TxnRecordState,
-        Created,      // The state in which all new TxnRecords are put when first created in memory
-        InProgress,   // The txn is active and we're persisting this fact
-        ForceAborted, // The txn has been force-aborted (e.g. due to PUSH)
-        Aborted,      // The txn has been successfully aborted by the client
-        Committed,    // The txn has been successfully committed by the client
-        Deleted
+        Created,         // The state in which all new TxnRecords are put when first created in memory
+        InProgressPIP,   // The txn is InProgress and we're persisting the txn record
+        InProgress,      // The txn InProgress has persisted
+        ForceAbortedPIP, // The txn has been ForceAborted and we're persisting the txn record
+        ForceAborted,    // The txn ForceAbort has been persisted
+        AbortedPIP,      // The txn has been Aborted and we're persisting the txn record
+        Aborted,         // The txn Abort has been persisted
+        CommittedPIP,    // The txn has been Committed and we're persisting the txn record
+        Committed,       // The txn Commit has been persisted
+        FinalizedPIP     // The txn has been Finalized and we're persisting the txn record
 );
 
 // The main READ DTO.
@@ -211,6 +215,7 @@ struct K23SIStatus {
     static const inline Status BadParameter=k2::Statuses::S422_Unprocessable_Entity;
     static const inline Status BadFilterExpression=k2::Statuses::S406_Not_Acceptable;
     static const inline Status InternalError=k2::Statuses::S500_Internal_Server_Error;
+    static const inline Status ServiceUnavailable=k2::Statuses::S503_Service_Unavailable;
 };
 
 struct K23SIWriteRequest {
@@ -342,21 +347,20 @@ struct K23SITxnPushRequest {
     K2_DEF_FMT(K23SITxnPushRequest, pvid, collectionName, key, incumbentMTR, challengerMTR);
 };
 
+K2_DEF_ENUM(EndAction,
+    Abort,
+    Commit,
+    None);
+
 // Response for PUSH operation
 struct K23SITxnPushResponse {
     // the mtr of the winning transaction
-    K23SI_MTR winnerMTR;
-    TxnRecordState incumbentState = TxnRecordState::Created;
+    EndAction incumbentFinalization = EndAction::None;
     bool allowChallengerRetry = false;
 
-    K2_PAYLOAD_FIELDS(winnerMTR, incumbentState, allowChallengerRetry);
-    K2_DEF_FMT(K23SITxnPushResponse, winnerMTR, incumbentState, allowChallengerRetry);
+    K2_PAYLOAD_FIELDS(incumbentFinalization, allowChallengerRetry);
+    K2_DEF_FMT(K23SITxnPushResponse, incumbentFinalization, allowChallengerRetry);
 };
-
-K2_DEF_ENUM(EndAction,
-    Abort,
-    Commit
-);
 
 struct K23SITxnEndRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
