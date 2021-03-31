@@ -398,7 +398,7 @@ SCENARIO("test copy to payload") {
     src.copyToPayload<double>(dst);
     src.copyToPayload<bool>(dst);
     src.read(h);
-    src.copyToPayload(dst, i);
+    src.copyToPayload<std::decimal::decimal128>(dst);
     src.seek(0);
     dst.seek(0);
     String acopy;
