@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 #include <k2/appbase/AppEssentials.h>
+#include <k2/common/Timer.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
 #include "Config.h"
@@ -32,6 +33,9 @@ namespace k2 {
 class Persistence {
 public:
     Persistence();
+
+    // start the persistence subsystem
+    seastar::future<> start();
 
     // flush all pending writes and prevent further writes
     seastar::future<> stop();
@@ -77,6 +81,7 @@ private:
     K23SIConfig _config;
     seastar::future<Status> _flushFut = seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
     seastar::future<Status> _chainResponse();
+    PeriodicTimer _flushTimer;
 };
 
 } // ns k2

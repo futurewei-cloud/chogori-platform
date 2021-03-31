@@ -29,14 +29,36 @@ Persistence::Persistence() {
     int id = seastar::this_shard_id();
     String endpoint = _config.persistenceEndpoint()[id % _config.persistenceEndpoint().size()];
     _remoteEndpoint = RPC().getTXEndpoint(endpoint);
+    _flushTimer.setCallback(
+        [this] {
+            return flush().then(
+                [](auto&& status) {
+                    if (!status.is2xxOK()) {
+                        K2LOG_E(log::skvsvr, "Persistence failure due to: {}", status);
+                        seastar::engine().exit(1);
+                    }
+                });
+        });
     K2LOG_I(log::skvsvr, "ctor with endpoint: {}", _remoteEndpoint->url);
+}
+
+seastar::future<> Persistence::start() {
+    _flushTimer.armPeriodic(_config.persistenceAutoflushInterval());
+    return seastar::make_ready_future();
 }
 
 seastar::future<> Persistence::stop() {
     _stopped = true;
     K2LOG_D(log::skvsvr, "Stopping");
 
-    return flush().then([this] (auto&&) mutable { return std::move(_flushFut);}).discard_result();
+    return _flushTimer.stop()
+        .then([this] {
+            return flush();
+        })
+        .then([this] (auto&&) mutable {
+            return std::move(_flushFut);
+        })
+        .discard_result();
 }
 
 seastar::future<Status> Persistence::flush() {

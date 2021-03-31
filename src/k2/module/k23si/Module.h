@@ -252,10 +252,7 @@ private:  // members
     dto::Timestamp _retentionTimestamp;
 
     // timer used to refresh the retention timestamp from the TSO
-    seastar::timer<> _retentionUpdateTimer;
-
-    // used to tell if there is a refresh in progress so that we don't stop() too early
-    seastar::future<> _retentionRefresh = seastar::make_ready_future();
+    PeriodicTimer _retentionUpdateTimer;
 
     std::shared_ptr<Persistence> _persistence;
 

@@ -33,14 +33,10 @@ void TxnManager::_addBgTask(TxnRecord& rec, Func&& func) {
         return;
     }
     // unlink if necessary
-    K2LOG_D(log::skvsvr, "c");
     rec.unlinkBG(_bgTasks);
-    K2LOG_D(log::skvsvr, "c");
     _bgTasks.push_back(rec);
 
-    K2LOG_D(log::skvsvr, "c");
     rec.bgTaskFut = rec.bgTaskFut.then(std::forward<Func>(func));
-    K2LOG_D(log::skvsvr, "c");
 }
 
 TxnManager::TxnManager():
@@ -83,61 +79,57 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
     // transaction's heartbeat expiry if it comes in before the first heartbeat timer callback
     CachedSteadyClock::now(true);
 
-    _hbTimer.set_callback([this] {
+    _hbTimer.setCallback([this] {
         K2LOG_D(log::skvsvr, "txn manager check hb");
-        _hbTask = _hbTask.then([this] {
-            // refresh the clock
-            auto now = CachedSteadyClock::now(true);
-            return seastar::do_until(
-                [this, now] {
-                    auto noHB = _hblist.empty() || _hblist.front().hbExpiry > now;
-                    auto noRW = _rwlist.empty() || _rwlist.front().rwExpiry.compareCertain(_retentionTs) > 0;
-                    return noHB && noRW;
-                },
-                [this, now] {
-                    if (!_hblist.empty() && _hblist.front().hbExpiry <= now) {
-                        auto& tr = _hblist.front();
-                        K2LOG_W(log::skvsvr, "heartbeat expired on: {}", tr);
-                        _hblist.pop_front();
-                        return _onAction(TxnRecord::Action::onHeartbeatExpire, tr)
-                            .then([](auto&& status) {
-                                if (!status.is2xxOK()) {
-                                    K2LOG_E(log::skvsvr, "Failed processing heartbeat: {}", status);
-                                }
+        // refresh the clock
+        auto now = CachedSteadyClock::now(true);
+        return seastar::do_until(
+            [this, now] {
+                auto noHB = _hblist.empty() || _hblist.front().hbExpiry > now;
+                auto noRW = _rwlist.empty() || _rwlist.front().rwExpiry.compareCertain(_retentionTs) > 0;
+                return noHB && noRW;
+            },
+            [this, now] {
+                if (!_hblist.empty() && _hblist.front().hbExpiry <= now) {
+                    auto& tr = _hblist.front();
+                    K2LOG_W(log::skvsvr, "heartbeat expired on: {}", tr);
+                    _hblist.pop_front();
+                    return _onAction(TxnRecord::Action::onHeartbeatExpire, tr)
+                        .then([](auto&& status) {
+                            if (!status.is2xxOK()) {
+                                K2LOG_E(log::skvsvr, "Failed processing heartbeat: {}", status);
+                            }
 
-                                // NB, it is possible that we modified the txn state here. It is not necessary
-                                // to ensure we persist this as it is a purely internal state change
-                                return seastar::make_ready_future();
-                            });
-                    }
-                    else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) <= 0) {
-                        auto& tr = _rwlist.front();
-                        K2LOG_W(log::skvsvr, "rw expired on: {}", tr);
-                        _rwlist.pop_front();
-                        return _onAction(TxnRecord::Action::onRetentionWindowExpire, tr)
-                            .then([](auto&& status) {
-                                if (!status.is2xxOK()) {
-                                    K2LOG_E(log::skvsvr, "Failed processing RWE: {}", status);
-                                }
+                            // NB, it is possible that we modified the txn state here. It is not necessary
+                            // to ensure we persist this as it is a purely internal state change
+                            return seastar::make_ready_future();
+                        });
+                }
+                else if (!_rwlist.empty() && _rwlist.front().rwExpiry.compareCertain(_retentionTs) <= 0) {
+                    auto& tr = _rwlist.front();
+                    K2LOG_W(log::skvsvr, "rw expired on: {}", tr);
+                    _rwlist.pop_front();
+                    return _onAction(TxnRecord::Action::onRetentionWindowExpire, tr)
+                        .then([](auto&& status) {
+                            if (!status.is2xxOK()) {
+                                K2LOG_E(log::skvsvr, "Failed processing RWE: {}", status);
+                            }
 
-                                // NB, it is possible that we modified the tn state here. it is not necessary
-                                // to ensure we persist this as it is a purely internal state change.
-                                // If we fail and we recover this txn, we would process an RWE on it upon recovery.
-                                return seastar::make_ready_future();
-                            });
-                    }
-                    K2LOG_E(log::skvsvr, "Heartbeat processing failure - expected to find either hb or rw expired item but none found");
-                    return seastar::make_ready_future();
-                })
-            .then([this] {
-                _hbTimer.arm(_hbDeadline);
+                            // NB, it is possible that we modified the tn state here. it is not necessary
+                            // to ensure we persist this as it is a purely internal state change.
+                            // If we fail and we recover this txn, we would process an RWE on it upon recovery.
+                            return seastar::make_ready_future();
+                        });
+                }
+                K2LOG_E(log::skvsvr, "Heartbeat processing failure - expected to find either hb or rw expired item but none found");
+                return seastar::make_ready_future();
             })
             .handle_exception([] (auto exc){
                 K2LOG_W_EXC(log::skvsvr, exc, "caught exception while checking hb/rw expiration");
+                return seastar::make_ready_future();
             });
-        });
     });
-    _hbTimer.arm(_hbDeadline);
+    _hbTimer.armPeriodic(_hbDeadline);
 
     return seastar::make_ready_future();
 }
@@ -145,21 +137,14 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
 seastar::future<> TxnManager::gracefulStop() {
     K2LOG_I(log::skvsvr, "stopping txn mgr for coll={}", _collectionName);
     _stopping = true;
-    _hbTimer.cancel();
-    return _hbTask
+    return _hbTimer.stop()
         .then([this] {
             K2LOG_I(log::skvsvr, "hb stopped. stopping {} bg tasks", _bgTasks.size());
             std::vector<seastar::future<>> bgFuts;
             for (auto& txn: _bgTasks) {
-                K2LOG_D(log::skvsvr, "c");
                 bgFuts.push_back(std::move(txn.bgTaskFut));
-                K2LOG_D(log::skvsvr, "c");
             }
-    K2LOG_D(log::skvsvr, "c");
-            return seastar::when_all_succeed(bgFuts.begin(), bgFuts.end()).discard_result().then([]{
-    K2LOG_D(log::skvsvr, "c");
-    return seastar::make_ready_future();
-            });
+            return seastar::when_all_succeed(bgFuts.begin(), bgFuts.end()).discard_result();
         })
         .then([] {
             K2LOG_I(log::skvsvr, "stopped");

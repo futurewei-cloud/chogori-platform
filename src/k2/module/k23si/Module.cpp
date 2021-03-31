@@ -163,20 +163,6 @@ Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest&
 K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
     _cmeta(std::move(cmeta)),
     _partition(std::move(partition), _cmeta.hashScheme),
-    _retentionUpdateTimer([this] {
-        K2LOG_D(log::skvsvr, "Partition {}, refreshing retention timestamp", _partition);
-        _retentionRefresh = _retentionRefresh.then([this]{
-            return getTimeNow();
-        })
-        .then([this](dto::Timestamp&& ts) {
-            // set the retention timestamp (the time of the oldest entry we should keep)
-            _retentionTimestamp = ts - _cmeta.retentionPeriod;
-            _txnMgr.updateRetentionTimestamp(_retentionTimestamp);
-        })
-        .finally([this]{
-            _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
-        });
-    }),
     _cpo(_config.cpoEndpoint()) {
     K2LOG_I(log::skvsvr, "ctor for cname={}, part={}", _cmeta.name, _partition);
 }
@@ -276,9 +262,22 @@ seastar::future<> K23SIPartitionModule::start() {
             K2LOG_D(log::skvsvr, "Cache watermark: {}, period={}", watermark, _cmeta.retentionPeriod);
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;
             _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
-            _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
+
+            _retentionUpdateTimer.setCallback([this] {
+                K2LOG_D(log::skvsvr, "Partition {}, refreshing retention timestamp", _partition);
+                return getTimeNow()
+                    .then([this](dto::Timestamp&& ts) {
+                        // set the retention timestamp (the time of the oldest entry we should keep)
+                        _retentionTimestamp = ts - _cmeta.retentionPeriod;
+                        _txnMgr.updateRetentionTimestamp(_retentionTimestamp);
+                    });
+            });
+            _retentionUpdateTimer.armPeriodic(_config.retentionTimestampUpdateInterval());
             _persistence = std::make_shared<Persistence>();
-            return _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline, _persistence)
+            return _persistence->start()
+                .then([this] {
+                    return _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline, _persistence);
+                })
                 .then([this] {
                     return _recovery();
                 })
@@ -294,10 +293,12 @@ K23SIPartitionModule::~K23SIPartitionModule() {
 
 seastar::future<> K23SIPartitionModule::gracefulStop() {
     K2LOG_I(log::skvsvr, "stop for cname={}, part={}", _cmeta.name, _partition);
-    _retentionUpdateTimer.cancel();
-    return _persistence->stop()
+    return _retentionUpdateTimer.stop()
         .then([this] {
-            return seastar::when_all_succeed(std::move(_retentionRefresh), _txnMgr.gracefulStop()).discard_result();
+            return _persistence->stop();
+        })
+        .then([this] {
+            return _txnMgr.gracefulStop();
         })
         .then([] {
             K2LOG_I(log::skvsvr, "stopped");

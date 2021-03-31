@@ -23,6 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
+#include <k2/common/Timer.h>
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/K23SIInspect.h>
@@ -178,8 +179,7 @@ private: // fields
     TxnRecord::BGList _bgTasks;
 
     // heartbeats checks are driven off single timer.
-    seastar::timer<> _hbTimer;
-    seastar::future<> _hbTask = seastar::make_ready_future();
+    PeriodicTimer _hbTimer;
 
     // the primary store for transaction records
     std::unordered_map<dto::TxnId, TxnRecord> _transactions;
