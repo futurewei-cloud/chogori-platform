@@ -240,15 +240,6 @@ bool Payload::copyFromPayload(Payload& src, size_t toCopy) {
     return true;
 }
 
-template <typename T>
-bool Payload::copyToPayload(Payload& dst) {
-    if (isPayloadCopyableType<T>() || isNumericType<T>()) {
-        return dst.copyFromPayload(*this, sizeof(T));
-    }
-    T value{};
-    return copyToPayload(dst, value);
-}
-
 bool Payload::copyToPayload(Payload& dst, String& s) {
     (void) s;
     _Size size;
@@ -557,5 +548,6 @@ bool Payload::read(Duration& dur) {
 void Payload::write(const Duration& dur) {
     write(dur.count());                 // write the tick count
 }
+
 
 } // namespace k2

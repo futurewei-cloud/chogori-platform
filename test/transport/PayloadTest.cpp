@@ -368,6 +368,57 @@ SCENARIO("test shareAll() and shareRegion()") {
         }
 }
 
+SCENARIO("test copy to payload") {
+    String a = "test copy to payload";
+    int16_t b = 11;
+    int32_t c = 12;
+    int64_t d = 13;
+    float e = 1.25;
+    double f = 10.25;
+    bool g = true;
+    std::decimal::decimal64 h(12.344);
+    std::decimal::decimal128 i(34.45356);
+    Payload src([] { return Binary(4096); });
+    Payload dst([] { return Binary(32); });
+    src.write(a);
+    src.write(b);
+    src.write(c);
+    src.write(d);
+    src.write(e);
+    src.write(f);
+    src.write(g);
+    src.write(h);
+    src.write(i);
+    src.seek(0);
+    src.copyToPayload<String>(dst);
+    src.read(b);
+    src.read(c);
+    src.copyToPayload<int64_t>(dst);
+    src.read(e);
+    src.copyToPayload<double>(dst);
+    src.copyToPayload<bool>(dst);
+    src.read(h);
+    src.copyToPayload(dst, i);
+    src.seek(0);
+    dst.seek(0);
+    String acopy;
+    dst.read(acopy);
+    REQUIRE(acopy == a);
+    int64_t dcopy;
+    dst.read(dcopy);
+    REQUIRE(dcopy == d);
+    double fcopy;
+    dst.read(fcopy);
+    REQUIRE(fcopy == f);
+    bool gcopy;
+    dst.read(gcopy);
+    REQUIRE(gcopy == g);
+    std::decimal::decimal128 icopy;
+    dst.read(icopy);
+    REQUIRE(icopy == i);
+    REQUIRE(dst.getDataRemaining() == 0);
+}
+
 
 /*
 SCENARIO("rpc parsing") {

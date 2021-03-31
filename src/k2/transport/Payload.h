@@ -330,7 +330,16 @@ public: // Write API
 
     // copy the type T data from the current payload to dst payload
     template <typename T>
-    bool copyToPayload(Payload& dst);
+    bool copyToPayload(Payload& dst) {
+        T value{};
+        return copyToPayload(dst, value);
+    }
+
+    template <typename T>
+    std::enable_if_t<isNumericType<T>(), bool> copyToPayload(Payload& dst, T& value) {
+        (void) value;
+        return dst.copyFromPayload(*this, sizeof(T));
+    }
 
     bool copyToPayload(Payload& dst, String& s);
 
