@@ -27,7 +27,7 @@ namespace k2 {
 
 template <typename Func>
 void TxnManager::_addBgTask(TxnRecord& rec, Func&& func) {
-    K2LOG_D(log::skvsvr, "c");
+    K2LOG_D(log::skvsvr, "Adding background task");
     if (_stopping) {
         K2LOG_W(log::skvsvr, "Attempting to add a background task during shutdown");
         return;
@@ -441,19 +441,20 @@ TxnManager::_endTxnRetry(TxnRecord& rec, dto::K23SITxnEndRequest&& request) {
     // Upon a retry, respond after the current bgtask queue has drained (potential in-flight retries)
     seastar::promise<std::tuple<Status, dto::K23SITxnEndResponse>> prom;
     auto fut = prom.get_future();
-    _addBgTask(rec, [prom=std::move(prom), this, txnId=rec.txnId, request=std::move(request)] () mutable {
-        // after previous bg tasks completed, see if we've finalized
-        auto it = _transactions.find(txnId);
-        if (it == _transactions.end()) {
-            // normally, we won't find a record in memory after the bg tasks have been done
-            prom.set_value(std::tuple(dto::K23SIStatus::OK("transaction retry ended"), dto::K23SITxnEndResponse{}));
-        }
-        else {
-            // tell the client to retry
-            prom.set_value(std::tuple(dto::K23SIStatus::ServiceUnavailable("unable to end transaction"), dto::K23SITxnEndResponse{}));
-        }
-        return seastar::make_ready_future();
-    });
+    _addBgTask(rec,
+        [prom=std::move(prom), this, txnId=rec.txnId, request=std::move(request)] () mutable {
+            // after previous bg tasks completed, see if we've finalized
+            auto it = _transactions.find(txnId);
+            if (it == _transactions.end()) {
+                // normally, we won't find a record in memory after the bg tasks have been done
+                prom.set_value(std::tuple(dto::K23SIStatus::OK("transaction retry ended"), dto::K23SITxnEndResponse{}));
+            }
+            else {
+                // tell the client to retry
+                prom.set_value(std::tuple(dto::K23SIStatus::ServiceUnavailable("unable to end transaction"), dto::K23SITxnEndResponse{}));
+            }
+            return seastar::make_ready_future();
+        });
     return fut;
 }
 
@@ -667,16 +668,19 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
 seastar::future<Status> TxnManager::_inProgressPIP(TxnRecord& rec) {
     K2LOG_D(log::skvsvr, "Setting status to InProgressPIP for {}", rec);
     rec.state = dto::TxnRecordState::InProgressPIP;
-    _addBgTask(rec, [this, &rec] { return _persistence->append_cont(rec)
-        .then([this, &rec] (auto&& status) {
-            K2LOG_D(log::skvsvr, "persist completed for InProgressPIP of {} with {}", rec, status);
-            if (!status.is2xxOK()) {
-                // flush didn't succeed
-                K2LOG_E(log::skvsvr, "persist failed for InProgressPIP of {} with {}", rec, status);
-                return _onAction(TxnRecord::Action::onPersistFail, rec);
-            }
-            return _onAction(TxnRecord::Action::onPersistSucceed, rec);
-        }).discard_result();});
+    _addBgTask(rec,
+        [this, &rec] {
+            return _persistence->append_cont(rec)
+            .then([this, &rec] (auto&& status) {
+                K2LOG_D(log::skvsvr, "persist completed for InProgressPIP of {} with {}", rec, status);
+                if (!status.is2xxOK()) {
+                    // flush didn't succeed
+                    K2LOG_E(log::skvsvr, "persist failed for InProgressPIP of {} with {}", rec, status);
+                    return _onAction(TxnRecord::Action::onPersistFail, rec);
+                }
+                return _onAction(TxnRecord::Action::onPersistSucceed, rec);
+            }).discard_result();
+        });
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
@@ -689,16 +693,19 @@ seastar::future<Status> TxnManager::_inProgress(TxnRecord& rec) {
 seastar::future<Status> TxnManager::_forceAbortedPIP(TxnRecord& rec) {
     K2LOG_D(log::skvsvr, "Setting status to ForceAbortedPIP for {}", rec);
     rec.state = dto::TxnRecordState::ForceAbortedPIP;
-    _addBgTask(rec, [this, &rec] { return _persistence->append_cont(rec)
-        .then([this, &rec] (auto&& status) {
-            K2LOG_D(log::skvsvr, "persist completed for ForceAbortedPIP of {} with {}", rec, status);
-            if (!status.is2xxOK()) {
-                // flush didn't succeed
-                K2LOG_E(log::skvsvr, "persist failed for ForceAbortedPIP of {} with {}", rec, status);
-                return _onAction(TxnRecord::Action::onPersistFail, rec);
-            }
-            return _onAction(TxnRecord::Action::onPersistSucceed, rec);
-        }).discard_result();});
+    _addBgTask(rec,
+        [this, &rec] {
+            return _persistence->append_cont(rec)
+            .then([this, &rec] (auto&& status) {
+                K2LOG_D(log::skvsvr, "persist completed for ForceAbortedPIP of {} with {}", rec, status);
+                if (!status.is2xxOK()) {
+                    // flush didn't succeed
+                    K2LOG_E(log::skvsvr, "persist failed for ForceAbortedPIP of {} with {}", rec, status);
+                    return _onAction(TxnRecord::Action::onPersistFail, rec);
+                }
+                return _onAction(TxnRecord::Action::onPersistSucceed, rec);
+            }).discard_result();
+        });
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
@@ -720,16 +727,19 @@ seastar::future<Status> TxnManager::_endPIP(TxnRecord& rec) {
     rec.unlinkRW(_rwlist);
 
     rec.state = rec.finalizeAction == dto::EndAction::Commit ? dto::TxnRecordState::CommittedPIP : dto::TxnRecordState::AbortedPIP;
-    _addBgTask(rec, [this, &rec] {return _persistence->append_cont(rec)
-        .then([this, &rec] (auto&& status) {
-            K2LOG_D(log::skvsvr, "persist completed for EndPIP of {} with {}", rec, status);
-            if (!status.is2xxOK()) {
-                // flush didn't succeed
-                K2LOG_E(log::skvsvr, "persist failed for EndPIP of {} with {}", rec, status);
-                return _onAction(TxnRecord::Action::onPersistFail, rec);
-            }
-            return _onAction(TxnRecord::Action::onPersistSucceed, rec);
-        }).discard_result();});
+    _addBgTask(rec,
+        [this, &rec] {
+            return _persistence->append_cont(rec)
+            .then([this, &rec] (auto&& status) {
+                K2LOG_D(log::skvsvr, "persist completed for EndPIP of {} with {}", rec, status);
+                if (!status.is2xxOK()) {
+                    // flush didn't succeed
+                    K2LOG_E(log::skvsvr, "persist failed for EndPIP of {} with {}", rec, status);
+                    return _onAction(TxnRecord::Action::onPersistFail, rec);
+                }
+                return _onAction(TxnRecord::Action::onPersistSucceed, rec);
+            }).discard_result();
+        });
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
@@ -745,16 +755,18 @@ seastar::future<Status> TxnManager::_end(TxnRecord& rec) {
 
     // we're doing async finalize. enqueue in background tasks
     _addBgTask(rec,
-        seastar::sleep(rec.timeToFinalize)
-        .then([this, &rec, timeout] {
-            return _finalizeTransaction(rec, FastDeadline(timeout));
-        }).
-        then([] (auto&& status) {
-            if (!status.is2xxOK()) {
-                K2LOG_E(log::skvsvr, "Failed to finalize transaction due to: {}", status);
-            }
-            return seastar::make_ready_future();
-        }).discard_result());
+        [this, &rec, timeout] {
+            return seastar::sleep(rec.timeToFinalize)
+                .then([this, &rec, timeout] {
+                    return _finalizeTransaction(rec, FastDeadline(timeout));
+                }).
+                then([] (auto&& status) {
+                    if (!status.is2xxOK()) {
+                        K2LOG_E(log::skvsvr, "Failed to finalize transaction due to: {}", status);
+                    }
+                    return seastar::make_ready_future();
+                }).discard_result();
+        });
 
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
@@ -768,28 +780,29 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
     // manage rw expiry
     rec.unlinkRW(_rwlist);
 
-    _addBgTaskFuture(rec,
+    _addBgTask(rec,
         [this, &rec] {
-        return _persistence->append_cont(rec)
-        .then([this, &rec](auto&& status) {
-            K2LOG_D(log::skvsvr, "persist completed for FinalizedPIP of {} with {}", rec, status);
-            if (!status.is2xxOK()) {
-                // flush didn't succeed
-                K2LOG_E(log::skvsvr, "persist failed for FinalizedPIP of {} with {}", rec, status);
-                // This is not a crash condition as we already have the end
-                // action in the WAL. Txn state should be consistent
-            }
+            return _persistence->append_cont(rec)
+                .then([this, &rec](auto&& status) {
+                    K2LOG_D(log::skvsvr, "persist completed for FinalizedPIP of {} with {}", rec, status);
+                    if (!status.is2xxOK()) {
+                        // flush didn't succeed
+                        K2LOG_E(log::skvsvr, "persist failed for FinalizedPIP of {} with {}", rec, status);
+                        // This is not a crash condition as we already have the end
+                        // action in the WAL. Txn state should be consistent
+                    }
 
-            K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
-            rec.unlinkBG(_bgTasks);
-            rec.unlinkRW(_rwlist);
-            rec.unlinkHB(_hblist);
-            auto fut = std::move(rec.bgTaskFut);
-            _transactions.erase(rec.txnId);
+                    K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
+                    rec.unlinkBG(_bgTasks);
+                    rec.unlinkRW(_rwlist);
+                    rec.unlinkHB(_hblist);
+                    auto fut = std::move(rec.bgTaskFut);
+                    _transactions.erase(rec.txnId);
 
-            return fut;
-        })
-        .discard_result());
+                    return fut;
+                })
+                .discard_result();
+        });
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
