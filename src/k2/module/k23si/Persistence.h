@@ -58,7 +58,8 @@ public:
         K2LOG_D(log::skvsvr, "appending new write");
 
         append(val);
-        return _chainResponse();
+        _pendingProms.emplace_back();
+        return _pendingProms.back().get_future();
     }
 
     // Append the given value to the persistence buffer. An explicit call to flush() is needed to send the data out
@@ -80,7 +81,8 @@ private:
     std::unique_ptr<TXEndpoint> _remoteEndpoint;
     K23SIConfig _config;
     seastar::future<Status> _flushFut = seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
-    seastar::future<Status> _chainResponse();
+    std::vector<seastar::promise<Status>> _pendingProms;
+    seastar::future<Status> _chainFlushResponse();
     PeriodicTimer _flushTimer;
 };
 

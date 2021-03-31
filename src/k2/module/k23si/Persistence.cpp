@@ -53,20 +53,19 @@ seastar::future<> Persistence::stop() {
 
     return _flushTimer.stop()
         .then([this] {
-            return flush();
+            return flush().discard_result();
         })
-        .then([this] (auto&&) mutable {
+        .then([this] () mutable {
             return std::move(_flushFut);
         })
         .discard_result();
 }
 
 seastar::future<Status> Persistence::flush() {
-    K2LOG_D(log::skvsvr, "flush with bs={}", (_buffer? _buffer->getSize() : 0));
-    seastar::promise<Status> prom;
-    auto resp = prom.get_future();
+    K2LOG_D(log::skvsvr, "flush with bs={}, proms={}", (_buffer? _buffer->getSize() : 0), _pendingProms.size());
     if (!_buffer) {
-        return _chainResponse();
+        K2ASSERT(log::skvsvr, _pendingProms.size() == 0, "There is no data to send but we have pending promises");
+        return _chainFlushResponse();
     }
 
     // move the buffered data into a single request and delete the buffer.
@@ -74,31 +73,38 @@ seastar::future<Status> Persistence::flush() {
     dto::K23SI_PersistenceRequest<Payload> request{};
     request.value.val = std::move(*_buffer);
     _buffer.reset(nullptr);
+    std::vector<seastar::promise<Status>> proms; // ditto for the pending promises
+    proms.swap(_pendingProms);
 
     _flushFut = _flushFut
        .then([this, request=std::move(request)] (auto&& status) mutable {
             if (!status.is2xxOK()) {
                 // previous flush did not succeed. just pass this along
+                K2LOG_D(log::skvsvr, "previous flush was unsuccessful with status {}", status);
                 return RPCResponse(std::move(status), dto::K23SI_PersistenceResponse{});
             }
+            K2LOG_D(log::skvsvr, "sending new flush");
+
             return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
             (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, _config.persistenceTimeout());
        })
-       .then([] (auto&& result) mutable {
+       .then([proms=std::move(proms)] (auto&& result) mutable {
             auto& [status, _] = result;
             // extract the RPC status and send it down the chain
-            K2LOG_D(log::skvsvr, "flushed with status: {}", status);
-
+            K2LOG_D(log::skvsvr, "flushed with status: {}. Notifying {} promises", status, proms.size());
+            for (auto& prom: proms) {
+                prom.set_value(status);
+            }
             return seastar::make_ready_future<Status>(std::move(status));
         });
 
-    return _chainResponse();
+    return _chainFlushResponse();
 }
 
-seastar::future<Status> Persistence::_chainResponse() {
+seastar::future<Status> Persistence::_chainFlushResponse() {
     seastar::promise<Status> prom;
     auto fut = prom.get_future();
-    _flushFut = _flushFut.then([prom=std::move(prom)] (auto&& status) mutable {
+    _flushFut = _flushFut.then([prom = std::move(prom)](auto&& status) mutable {
         // set status for the captured promise as well as chained futures
         prom.set_value(status);
         return seastar::make_ready_future<Status>(std::move(status));
