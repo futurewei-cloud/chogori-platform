@@ -55,8 +55,7 @@ struct TxnRecord {
     TimePoint hbExpiry;
     nsbi::list_member_hook<> hbLink;
 
-    // this link and future are used to track this transaction when it enters background processing(e.g. finalize or delete)
-    nsbi::list_member_hook<> bgTaskLink;
+    // future used to track this transaction's background processing(e.g. finalize or delete)
     seastar::future<> bgTaskFut = seastar::make_ready_future();
 
     bool syncFinalize = false;
@@ -90,11 +89,9 @@ struct TxnRecord {
 
     typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::rwLink>> RWList;
     typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::hbLink>> HBList;
-    typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::bgTaskLink>> BGList;
 
     void unlinkHB(HBList& hblist);
     void unlinkRW(RWList& hblist);
-    void unlinkBG(BGList& hblist);
 };  // class TxnRecord
 
 
@@ -174,9 +171,6 @@ private: // fields
     // Expiry lists. The order in the list is ascending so that the oldest item would be in the front
     TxnRecord::RWList _rwlist;
     TxnRecord::HBList _hblist;
-
-    // this list holds the transactions which are doing some background task.
-    TxnRecord::BGList _bgTasks;
 
     // heartbeats checks are driven off single timer.
     PeriodicTimer _hbTimer;

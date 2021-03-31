@@ -295,10 +295,10 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
     K2LOG_I(log::skvsvr, "stop for cname={}, part={}", _cmeta.name, _partition);
     return _retentionUpdateTimer.stop()
         .then([this] {
-            return _persistence->stop();
+            return _txnMgr.gracefulStop();
         })
         .then([this] {
-            return _txnMgr.gracefulStop();
+            return _persistence->stop();
         })
         .then([] {
             K2LOG_I(log::skvsvr, "stopped");

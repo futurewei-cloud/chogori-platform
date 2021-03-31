@@ -32,9 +32,6 @@ void TxnManager::_addBgTask(TxnRecord& rec, Func&& func) {
         K2LOG_W(log::skvsvr, "Attempting to add a background task during shutdown");
         return;
     }
-    // unlink if necessary
-    rec.unlinkBG(_bgTasks);
-    _bgTasks.push_back(rec);
 
     rec.bgTaskFut = rec.bgTaskFut.then(std::forward<Func>(func));
 }
@@ -53,17 +50,11 @@ void TxnRecord::unlinkRW(RWList& rwlist) {
         rwlist.erase(rwlist.iterator_to(*this));
     }
 }
-void TxnRecord::unlinkBG(BGList& bglist) {
-    if (bgTaskLink.is_linked()) {
-        bglist.erase(bglist.iterator_to(*this));
-    }
-}
 
 TxnManager::~TxnManager() {
     K2LOG_I(log::skvsvr, "dtor for cname={}", _collectionName);
     _hblist.clear();
     _rwlist.clear();
-    _bgTasks.clear();
     for (auto& [key, trec]: _transactions) {
         K2LOG_W(log::skvsvr, "Shutdown dropping transaction: {}", trec);
     }
@@ -139,14 +130,17 @@ seastar::future<> TxnManager::gracefulStop() {
     _stopping = true;
     return _hbTimer.stop()
         .then([this] {
-            K2LOG_I(log::skvsvr, "hb stopped. stopping {} bg tasks", _bgTasks.size());
+            K2LOG_I(log::skvsvr, "hb stopped. stopping with {} active transactions", _transactions.size());
             std::vector<seastar::future<>> bgFuts;
-            for (auto& txn: _bgTasks) {
+            for (auto& [_, txn]: _transactions) {
                 bgFuts.push_back(std::move(txn.bgTaskFut));
             }
             return seastar::when_all_succeed(bgFuts.begin(), bgFuts.end()).discard_result();
         })
-        .then([] {
+        .then_wrapped([] (auto&& fut) {
+            if (fut.failed()) {
+                K2LOG_W_EXC(log::skvsvr, fut.get_exception(), "txn failed background task");
+            }
             K2LOG_I(log::skvsvr, "stopped");
             return seastar::make_ready_future();
         });
@@ -395,6 +389,7 @@ TxnManager::endTxn(dto::K23SITxnEndRequest&& request) {
     if (rec.finalizeAction != dto::EndAction::None) {
         // the record indicates we've received an end request already (there is a finalize action)
         // this is only possible if there is a retry or some client bug
+        K2LOG_D(log::skvsvr, "TxnEnd retry - transaction already has a finalize action {}", rec)
         return _endTxnRetry(rec, std::move(request));
     }
     rec.writeKeys = std::move(request.writeKeys);
@@ -778,15 +773,12 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
                     }
 
                     K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
-                    rec.unlinkBG(_bgTasks);
                     rec.unlinkRW(_rwlist);
                     rec.unlinkHB(_hblist);
-                    auto fut = std::move(rec.bgTaskFut);
                     _transactions.erase(rec.txnId);
 
-                    return fut;
-                })
-                .discard_result();
+                    return seastar::make_ready_future();
+                });
         });
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
