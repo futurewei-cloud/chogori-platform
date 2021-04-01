@@ -348,7 +348,7 @@ struct K23SITxnPushRequest {
 };
 
 K2_DEF_ENUM(EndAction,
-    None
+    None,
     Abort,
     Commit);
 
