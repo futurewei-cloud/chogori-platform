@@ -502,11 +502,11 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 }
                 case TxnRecord::Action::onCommit: // happy case
                 case TxnRecord::Action::onAbort:
-                    return _end(rec);
+                    return _endPIP(rec);
                 case TxnRecord::Action::onForceAbort:             // asked to force-abort (e.g. on PUSH)
                 case TxnRecord::Action::onRetentionWindowExpire:  // we've had this transaction for too long
                 case TxnRecord::Action::onHeartbeatExpire:        // originator didn't hearbeat on time
-                    return _forceAborted(rec);
+                    return _forceAbortedPIP(rec);
                 default:
                     K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state: {}", rec.txnId, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
@@ -537,13 +537,13 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onRetentionWindowExpire:
                     return _finalizedPIP(rec);
                 case TxnRecord::Action::onCommit:
-                    return _end(rec)
+                    return _endPIP(rec)
                         .then([] (auto&&) {
                             // we respond with failure here anyway since we had to abort but were asked to commit
                             return seastar::make_ready_future<Status>(dto::K23SIStatus::OperationNotAllowed("cannot commit transaction since it has been force-aborted"));
                         });
                 case TxnRecord::Action::onAbort:
-                    return _end(rec);
+                    return _endPIP(rec);
                 case TxnRecord::Action::onHeartbeat: // signal client to abort
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("cannot heartbeat transaction since it has been force-aborted"));
                 case TxnRecord::Action::onFinalizeComplete:
@@ -591,7 +591,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
             switch (action) {
                 case TxnRecord::Action::onPersistFail: {
                     rec.finalizeAction = dto::EndAction::Abort;
-                    return _end(rec).then([] (auto&&){
+                    return _endPIP(rec).then([] (auto&&){
                         return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("Unable to commit transaction due to persistence failure. Aborting"));
                     });
                 }
@@ -830,7 +830,12 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
             }
         );
     })
-    .then([this, &rec] {
+    .then_wrapped([this, &rec] (auto&& fut) {
+        if (fut.failed()) {
+            auto exc = fut.get_exception();
+            K2LOG_W_EXC(log::skvsvr, exc, "Unable to finalize {}. Leaving in memory", rec);
+            return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("unable to finalize due to internal error"));
+        }
         K2LOG_D(log::skvsvr, "finalize completed for: {}", rec);
         return _onAction(TxnRecord::Action::onFinalizeComplete, rec);
     });

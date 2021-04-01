@@ -39,8 +39,8 @@ const Timestamp& max(const Timestamp& a, const Timestamp& b) {
 // ********************** Validators
 bool K23SIPartitionModule::_validateRetentionWindow(const dto::Timestamp& ts) const {
     bool result = ts.compareCertain(_retentionTimestamp) >= 0;
-    K2LOG_D(log::skvsvr, "Partition: {}, retention validation {}, {} vs {}",
-            _partition, (result ? "passed" : "failed"), _retentionTimestamp, ts);
+    K2LOG_D(log::skvsvr, "retention validation {}, {} vs {}",
+            (result ? "passed" : "failed"), _retentionTimestamp, ts);
     return result;
 }
 
@@ -55,7 +55,7 @@ bool K23SIPartitionModule::_validateRequestPartition(const RequestT& req) const 
     } else {
         result = result && _partition.owns(req.key);
     }
-    K2LOG_D(log::skvsvr, "Partition: {}, partition validation {}, for request={}", _partition, (result ? "passed" : "failed"), req);
+    K2LOG_D(log::skvsvr, "partition validation {}, for request={}", (result ? "passed" : "failed"), req);
     return result;
 }
 
@@ -69,7 +69,7 @@ Status K23SIPartitionModule::_validateStaleWrite(const RequestT& request, const 
     auto ts = _readCache->checkInterval(request.key, request.key);
     if (request.mtr.timestamp.compareCertain(ts) < 0) {
         // this key range was read more recently than this write
-        K2LOG_D(log::skvsvr, "Partition: {}, read cache validation failed for key: {}, transaction timestamp: {}, < readCache key timestamp: {}, readcache min_TimeStamp: {}", _partition, request.key, request.mtr.timestamp, ts, _readCache->min_TimeStamp());
+        K2LOG_D(log::skvsvr, "read cache validation failed for key: {}, transaction timestamp: {}, < readCache key timestamp: {}, readcache min_TimeStamp: {}", request.key, request.mtr.timestamp, ts, _readCache->min_TimeStamp());
         bool belowReadCacheWaterMark = (request.mtr.timestamp.compareCertain(_readCache->min_TimeStamp()) <= 0);
         if (belowReadCacheWaterMark) {
             return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as this transaction is too old (cache watermark).");
@@ -89,7 +89,7 @@ Status K23SIPartitionModule::_validateStaleWrite(const RequestT& request, const 
         request.mtr.timestamp.compareCertain(versionSet.committed[0].timestamp) <= 0) {
         // newest version is the latest committed and its newer than the request
         // or committed version from same transaction is found (e.g. bad retry on a write came through after commit)
-        K2LOG_D(log::skvsvr, "Partition: {}, failing write older than latest commit for key {}", _partition, request.key);
+        K2LOG_D(log::skvsvr, "failing write older than latest commit for key {}", request.key);
         return dto::K23SIStatus::AbortRequestTooOld("write request cannot be allowed as we have a newer committed write for this key from another transaction.");
     }
     // Note that we could also check the request id against the WI request id if it exists, and enforce
@@ -97,7 +97,7 @@ Status K23SIPartitionModule::_validateStaleWrite(const RequestT& request, const 
     // application code and the client does parallel writes to the same key. If the client wants to order
     // writes to the same key they must be done in serial.
 
-    K2LOG_D(log::skvsvr, "Partition: {}, stale write check passed for key {}", _partition, request.key);
+    K2LOG_D(log::skvsvr, "stale write check passed for key {}", request.key);
     return dto::K23SIStatus::OK;
 }
 
@@ -155,7 +155,6 @@ Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest&
         return dto::K23SIStatus::OperationNotAllowed("schema version does not exist");
     }
 
-    // in this situation, return AbortRequestTooOld error.
     return _validateStaleWrite(request, versions);
 }
 // ********************** Validators
@@ -525,8 +524,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         if (response.results.size() >= _config.queryPushLimit()) {
             break;
         }
-        K2LOG_D(log::skvsvr, "Partition {}, query from txn {}, updates read cache for key range {} - {}",
-                _partition, request.mtr, request.key, key_it->first);
+        K2LOG_D(log::skvsvr, "query from txn {}, updates read cache for key range {} - {}",
+                request.mtr, request.key, key_it->first);
 
         // Do a push but we need to save our place in the query
         // TODO we can test the filter condition against the WI and last committed version and possibly
@@ -561,8 +560,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         endInterval = key_it->first;
     }
 
-    K2LOG_D(log::skvsvr, "Partition {}, query from txn {}, updates read cache for key range {} - {}",
-                _partition, request.mtr, request.key, endInterval);
+    K2LOG_D(log::skvsvr, "query from txn {}, updates read cache for key range {} - {}",
+                request.mtr, request.key, endInterval);
     request.reverseDirection ?
         _readCache->insertInterval(endInterval, request.key, request.mtr.timestamp) :
         _readCache->insertInterval(request.key, endInterval, request.mtr.timestamp);
@@ -582,8 +581,8 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
         return RPCResponse(std::move(validateStatus), dto::K23SIReadResponse{});
     }
 
-    K2LOG_D(log::skvsvr, "Partition {}, read from txn {}, updates read cache for key {}",
-                _partition, request.mtr, request.key);
+    K2LOG_D(log::skvsvr, "read from txn {}, updates read cache for key {}",
+                request.mtr, request.key);
     // update the read cache to lock out any future writers which may attempt to modify the key range
     // before this read's timestamp
     _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
@@ -944,7 +943,7 @@ K23SIPartitionModule::_respondAfterFlush(std::tuple<Status, ResponseT>&& resp) {
 
 seastar::future<Status>
 K23SIPartitionModule::_designateTRH(dto::TxnId txnId) {
-    K2LOG_D(log::skvsvr, "Partition: {}, designating trh for {}", _partition, txnId);
+    K2LOG_D(log::skvsvr, "designating trh for {}", txnId);
     if (!_validateRetentionWindow(txnId.mtr.timestamp)) {
         return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortRequestTooOld("TRH create request is too old"));
     }
@@ -965,15 +964,15 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
             // tell client their collection partition is gone
             return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in write"), dto::K23SIWriteResponse());
         }
-        K2LOG_D(log::skvsvr, "Partition: {}, designating TRH in {}", _partition, request.mtr);
+        K2LOG_D(log::skvsvr, "designating TRH in {}", request.mtr);
         return _designateTRH({.trh=request.trh, .mtr=request.mtr})
             .then([this, request=std::move(request), deadline] (auto&& status) mutable {
                 if (!status.is2xxOK()) {
-                    K2LOG_D(log::skvsvr, "Partition: {}, failed creating TR for {}", _partition, request.mtr);
+                    K2LOG_D(log::skvsvr, "failed creating TR for {}", request.mtr);
                     return RPCResponse(std::move(status), dto::K23SIWriteResponse{});
                 }
 
-                K2LOG_D(log::skvsvr, "Partition: {}, succeeded creating TR. Processing write for {}", _partition, request.mtr);
+                K2LOG_D(log::skvsvr, "succeeded creating TR. Processing write for {}", request.mtr);
                 return _processWrite(std::move(request), deadline);
             });
     }
@@ -983,15 +982,16 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
 K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline) {
-    K2LOG_D(log::skvsvr, "Partition: {}, processing write: {}", _partition, request);
+    K2LOG_D(log::skvsvr, "processing write: {}", request);
     auto& vset = _indexer[request.key];
     Status validateStatus = _validateWriteRequest(request, vset);
-
+    K2LOG_D(log::skvsvr, "write for {} validated with status {}", request, validateStatus);
     if (!validateStatus.is2xxOK()) {
         if (vset.empty()) {
             // remove the key from indexer if there are no versions for it
             _indexer.erase(_indexer.find(request.key));
         }
+        K2LOG_D(log::skvsvr, "rejecting write {} due to {}", request, validateStatus);
         // we may come here after a TRH create. Make sure to flush that
         return RPCResponse(std::move(validateStatus), dto::K23SIWriteResponse{});
     }
@@ -1000,16 +1000,16 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
     if (vset.WI.has_value() && vset.WI->txnId.mtr != request.mtr) {
         // this is a write request finding a WI from a different transaction. Do a push with the remaining
         // deadline time.
-        K2LOG_D(log::skvsvr, "Partition: {}, different WI found for key {}", _partition, request.key);
+        K2LOG_D(log::skvsvr, "different WI found for key {}", request.key);
         return _doPush(request.collectionName, request.key, vset.WI->txnId, request.mtr, deadline)
             .then([this, request = std::move(request), deadline](auto&& retryChallenger) mutable {
                 if (!retryChallenger.is2xxOK()) {
                     // challenger must fail. Flush in case a TR was created during this call to handle write
-                    K2LOG_D(log::skvsvr, "Partition: {}, write push challenger lost for key {}", _partition, request.key);
+                    K2LOG_D(log::skvsvr, "write push challenger lost for key {}", request.key);
                     return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in write push"), dto::K23SIWriteResponse{});
                 }
 
-                K2LOG_D(log::skvsvr, "Partition: {}, write push retry for key {}", _partition, request.key);
+                K2LOG_D(log::skvsvr, "write push retry for key {}", request.key);
                 return _processWrite(std::move(request), deadline);
             });
     }
@@ -1018,6 +1018,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
     // and we should return OK
     if (vset.WI.has_value() && request.mtr == vset.WI->txnId.mtr &&
                                    request.request_id == vset.WI->request_id) {
+        K2LOG_D(log::skvsvr, "duplicate write encountered in request {}", request);
         return RPCResponse(dto::K23SIStatus::Created("wi was already created"), dto::K23SIWriteResponse{});
     }
 
@@ -1034,7 +1035,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         // If the condition passes (ie, there was no previous version and the insert succeeds) then
         // we do not need to insert into the read cache because the write intent will handle conflicts
         // and if the transaction aborts then any state it implicitly observes does not matter
-        K2LOG_D(log::skvsvr, "Partition {}, write from txn {}, updates read cache for key {}", _partition, request.mtr, request.key);
+        K2LOG_D(log::skvsvr, "write from txn {}, updates read cache for key {}", request.mtr, request.key);
         _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
 
         // The ConditionFailed status does not mean that the transaction must abort. It is up to the user
@@ -1045,11 +1046,12 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
     if (request.fieldsForPartialUpdate.size() > 0) {
         // parse the partial record to full record
         if (!head || head->isTombstone) {
+            K2LOG_D(log::skvsvr, "partial update request {} not accepted since there is no previous version to update", request);
             // cannot parse partial record without a version
             return RPCResponse(dto::K23SIStatus::KeyNotFound("can not partial update with no/deleted version"), dto::K23SIWriteResponse{});
         }
         if (!_parsePartialRecord(request, *head)) {
-            K2LOG_D(log::skvsvr, "Partition: {}, can not parse partial record for key {}", _partition, request.key);
+            K2LOG_D(log::skvsvr, "can not parse partial record for key {}", request.key);
             head->value.fieldData.seek(0);
             return RPCResponse(dto::K23SIStatus::BadParameter("missing fields or can not interpret partialUpdate"), dto::K23SIWriteResponse{});
         }
@@ -1057,7 +1059,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
 
     // all checks passed - we're ready to place this WI as the latest version
     return _createWI(std::move(request), vset).then([this]() mutable {
-        K2LOG_D(log::skvsvr, "Partition: {}, WI created", _partition);
+        K2LOG_D(log::skvsvr, "WI created");
         return RPCResponse(dto::K23SIStatus::Created("WI created"), dto::K23SIWriteResponse{});
     });
 }
@@ -1084,7 +1086,7 @@ K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
     K2LOG_D(log::skvsvr, "Partition: {}, transaction end: {}", _partition, request);
     if (!_validateRequestPartition(request)) {
         // tell client their collection partition is gone
-        K2LOG_D(log::skvsvr, "Partition: {}, transaction end too old for txn={}", _partition, request.mtr);
+        K2LOG_D(log::skvsvr, "transaction end too old for txn={}", request.mtr);
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in end"), dto::K23SITxnEndResponse{});
     }
 
@@ -1096,12 +1098,12 @@ K23SIPartitionModule::handleTxnHeartbeat(dto::K23SITxnHeartbeatRequest&& request
     K2LOG_D(log::skvsvr, "Partition: {}, transaction hb: {}", _partition, request);
     if (!_validateRequestPartition(request)) {
         // tell client their collection partition is gone
-        K2LOG_D(log::skvsvr, "Partition: {}, txn hb too old txn={}", _partition, request.mtr);
+        K2LOG_D(log::skvsvr, "txn hb too old txn={}", request.mtr);
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in hb"), dto::K23SITxnHeartbeatResponse{});
     }
     if (!_validateRetentionWindow(request.mtr.timestamp)) {
         // the request is outside the retention window
-        K2LOG_D(log::skvsvr, "Partition: {}, txn hb too old txn={}", _partition, request.mtr);
+        K2LOG_D(log::skvsvr, "txn hb too old txn={}", request.mtr);
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("txn too old in hb"), dto::K23SITxnHeartbeatResponse{});
     }
     return _txnMgr.heartbeat({.trh=std::move(request.key), .mtr=std::move(request.mtr)})
@@ -1112,7 +1114,7 @@ K23SIPartitionModule::handleTxnHeartbeat(dto::K23SITxnHeartbeatRequest&& request
 
 seastar::future<Status>
 K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline) {
-    K2LOG_D(log::skvsvr, "partition: {}, executing push against txnid={}, for mtr={}", _partition, incumbentTxnId, challengerMTR);
+    K2LOG_D(log::skvsvr, "executing push against txnid={}, for mtr={}", incumbentTxnId, challengerMTR);
     dto::K23SITxnPushRequest request{};
     request.collectionName = std::move(collectionName);
     request.incumbentMTR = std::move(incumbentTxnId.mtr);
@@ -1124,7 +1126,7 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
             auto& [status, response] = responsePair;
             K2LOG_D(log::skvsvr, "Push request completed with status={} and response={}", status, response);
             if (!status.is2xxOK()) {
-                K2LOG_E(log::skvsvr, "Partition: {}, txn push failed: {}", _partition, status);
+                K2LOG_E(log::skvsvr, "txn push failed: {}", status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
@@ -1162,7 +1164,7 @@ K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId in
 
 seastar::future<>
 K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, VersionSet& versions) {
-    K2LOG_D(log::skvsvr, "Partition: {}, Write Request creating WI: {}", _partition, request);
+    K2LOG_D(log::skvsvr, "Write Request creating WI: {}", request);
     dto::DataRecord rec;
     // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
     rec.value = request.value.copy();
@@ -1195,11 +1197,11 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         // we don't have a record from this transaction
         if (request.action == dto::EndAction::Abort) {
             // we don't have it but it was an abort anyway
-            K2LOG_D(log::skvsvr, "Partition: {}, abort for missing version {}, in txn {}", _partition, request.key, txnId);
+            K2LOG_D(log::skvsvr, "abort for missing version {}, in txn {}", request.key, txnId);
             return RPCResponse(dto::K23SIStatus::OK("finalize key missing in abort"), dto::K23SITxnFinalizeResponse());
         }
         // we can't allow the commit since we don't have the write intent and we don't have a committed version
-        K2LOG_D(log::skvsvr, "Partition: {}, rejecting commit for missing version {}, in txn {}", _partition, request.key, txnId);
+        K2LOG_D(log::skvsvr, "rejecting commit for missing version {}, in txn {}", request.key, txnId);
         return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"), dto::K23SITxnFinalizeResponse());
     }
 
@@ -1223,24 +1225,25 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
             }
         }
     }
+    K2LOG_D(log::skvsvr, "finalize in {}, found={}, isWI={}", request, found, isWI);
 
     switch (request.action) {
         case dto::EndAction::Abort:
             // Nothing to do, it was already aborted or never existed, but not an error
             if (!found) {
-                K2LOG_D(log::skvsvr, "Partition: {}, abort for missing version {}, in txn {}", _partition,
+                K2LOG_D(log::skvsvr, "abort for missing version {}, in txn {}",
                                      request.key, txnId);
                 return RPCResponse(dto::K23SIStatus::OK("finalize key missing in abort"),
                                     dto::K23SITxnFinalizeResponse());
             }
             // Normal abort case
             else if (found && isWI) {
-                K2LOG_D(log::skvsvr, "Partition: {}, aborting {}, in txn {}", _partition, request.key, txnId);
+                K2LOG_D(log::skvsvr, "aborting {}, in txn {}", request.key, txnId);
                 _removeWI(IndexerIt);
             }
             // Error case, trying to abort but it was already committed
             else {
-                K2LOG_D(log::skvsvr, "Partition: {}, cannot abort committed record", _partition);
+                K2LOG_D(log::skvsvr, "cannot abort committed record");
                 return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot abort committed record"),
                                     dto::K23SITxnFinalizeResponse());
             }
@@ -1248,20 +1251,19 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         case dto::EndAction::Commit:
             // Nothing to do, it was already committed, but not an error
             if (found && !isWI) {
-                K2LOG_D(log::skvsvr, "Partition: {}, committing an already committed record, in txn {}",
-                                        _partition, txnId);
+                K2LOG_D(log::skvsvr, "committing an already committed record, in txn {}", txnId);
                 return RPCResponse(dto::K23SIStatus::OK("Tried to commit a committed record"),
                                         dto::K23SITxnFinalizeResponse());
             }
             else if (isWI) {
-                K2LOG_D(log::skvsvr, "Partition: {}, committing {}, in txn {}", _partition, request.key, txnId);
+                K2LOG_D(log::skvsvr, "committing {}, in txn {}", request.key, txnId);
                 versions.committed.emplace_front(std::move(versions.WI->data), versions.WI->txnId.mtr.timestamp);
                 versions.WI.reset();
             }
             // Error case, it was aborted or never existed
             else {
-                K2LOG_D(log::skvsvr, "Partition: {}, rejecting commit for missing version {}, in txn {}",
-                                     _partition, request.key, txnId);
+                K2LOG_D(log::skvsvr, "rejecting commit for missing version {}, in txn {}",
+                                     request.key, txnId);
                 return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"),
                                    dto::K23SITxnFinalizeResponse());
             }
@@ -1269,8 +1271,8 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         // Error case, something wrong with the request
         default:
             K2LOG_D(log::skvsvr,
-                "Partition: {}, failing finalize due to action mismatch {}, in txn {}, asked={}",
-                _partition, request.key, txnId, request.action);
+                "failing finalize due to action mismatch {}, in txn {}, asked={}",
+                request.key, txnId, request.action);
             return RPCResponse(dto::K23SIStatus::OperationNotAllowed("request was not an abort or commit, likely memory corruption"),
                                     dto::K23SITxnFinalizeResponse());
     }
