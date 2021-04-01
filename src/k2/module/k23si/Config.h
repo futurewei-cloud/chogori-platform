@@ -67,7 +67,7 @@ struct K23SIConfig {
     // the endpoint for our persistence
     ConfigVar<std::vector<String>> persistenceEndpoint{"k23si_persistence_endpoints"};
     ConfigDuration persistenceTimeout{"k23si_persistence_timeout", 10s};
-    ConfigDuration persistenceAutoflushInterval{"k23si_autoflush_interval", 10s};
+    ConfigDuration persistenceAutoflushInterval{"k23si_autoflush_interval", 1s};
 
     // the endpoint for the CPO
     ConfigVar<String> cpoEndpoint{"k23si_cpo_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
