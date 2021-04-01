@@ -83,7 +83,7 @@ private:
     seastar::future<Status> _flushFut = seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
     std::vector<seastar::promise<Status>> _pendingProms;
     seastar::future<Status> _chainFlushResponse();
-    PeriodicTimer _flushTimer;
+    PeriodicTimer _flushTimer; // TODO consider also flushing based on accumulated data size
 };
 
 } // ns k2

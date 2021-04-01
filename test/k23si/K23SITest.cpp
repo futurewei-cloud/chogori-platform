@@ -500,7 +500,7 @@ seastar::future<> runScenario04() {
                 })
                 .then([&](auto&& result) {
                     auto& [status, resp] = result;
-                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::ServiceUnavailable);
 
                     return seastar::when_all(doRead(k1, m1, collname), doRead(k2, m2, collname));
                 })

@@ -16,6 +16,7 @@ cpo_child_pid=$!
 plog_child_pid=$!
 
 function finish {
+  rv=$?
   # cleanup code
   rm -rf ${CPODIR}
 
@@ -26,6 +27,7 @@ function finish {
   kill ${plog_child_pid}
   echo "Waiting for plog child pid: ${plog_child_pid}"
   wait ${plog_child_pid}
+  echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
 

@@ -15,7 +15,7 @@ TSO=tcp+k2rpc://0.0.0.0:13000
 cpo_child_pid=$!
 
 # start nodepool on 1 cores
-./build/src/k2/cmd/nodepool/nodepool -c1 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} &
+./build/src/k2/cmd/nodepool/nodepool --log_level INFO k2::skv_server=INFO -c1 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} >run.log&
 nodepool_child_pid=$!
 
 # start persistence on 1 cores
@@ -27,6 +27,7 @@ persistence_child_pid=$!
 tso_child_pid=$!
 
 function finish {
+  rv=$?
   # cleanup code
   rm -rf ${CPODIR}
 
@@ -45,6 +46,7 @@ function finish {
   kill ${tso_child_pid}
   echo "Waiting for tso child pid: ${tso_child_pid}"
   wait ${tso_child_pid}
+  echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
 

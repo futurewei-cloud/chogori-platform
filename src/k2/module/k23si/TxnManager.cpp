@@ -538,6 +538,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onRetentionWindowExpire:
                     return _finalizedPIP(rec);
                 case TxnRecord::Action::onCommit:
+                    rec.finalizeAction = dto::EndAction::Abort; // the finalization action must be an abort
                     return _endPIP(rec)
                         .then([] (auto&&) {
                             // we respond with failure here anyway since we had to abort but were asked to commit

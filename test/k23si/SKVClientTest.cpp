@@ -270,9 +270,8 @@ seastar::future<> runScenario02() {
                     // Need to wait to avoid errors in shutdown
                     return std::move(_writeFuture);
                 }).
-                handle_exception([this] (std::exception_ptr e) {
-                    (void) e;
-                    K2LOG_I(log::k23si, "Got expected exception in scenario 02");
+                handle_exception([this] (auto exc) {
+                    K2LOG_W_EXC(log::k23si, exc, "Got expected exception in scenario 02");
                     // Need to wait to avoid errors in shutdown
                     return std::move(_writeFuture);
                 });

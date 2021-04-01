@@ -933,7 +933,8 @@ K23SIPartitionModule::_respondAfterFlush(std::tuple<Status, ResponseT>&& resp) {
     return _persistence->flush()
         .then([resp=std::move(resp)] (auto&& flushStatus) mutable {
             if (!flushStatus.is2xxOK()) {
-                K2LOG_E(log::skvsvr, "Persistence failed with status {}", flushStatus)
+                K2LOG_E(log::skvsvr, "Persistence failed with status {}", flushStatus);
+                // TODO gracefully fail to aid in faster recovery.
                 seastar::engine().exit(1);
             }
 
