@@ -627,7 +627,6 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
         case dto::TxnRecordState::FinalizedPIP:
             switch (action) {
                 case TxnRecord::Action::onAbort:
-                    return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
                 case TxnRecord::Action::onCreate:
                 case TxnRecord::Action::onForceAbort:
                 case TxnRecord::Action::onHeartbeat:
@@ -776,7 +775,6 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
                     rec.unlinkRW(_rwlist);
                     rec.unlinkHB(_hblist);
                     _transactions.erase(rec.txnId);
-
                     return seastar::make_ready_future();
                 });
         });
