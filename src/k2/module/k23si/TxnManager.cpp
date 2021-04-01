@@ -215,25 +215,25 @@ seastar::future<Status> TxnManager::heartbeat(dto::TxnId&& txnId) {
     return _onAction(TxnRecord::Action::onHeartbeat, getTxnRecord(std::move(txnId)));
 }
 
-bool _shouldAbortIncumbentOnPush(TxnRecord& incumbent, dto::K23SI_MTR& challengerMTR) {
-    // Calculate if the incumbent would be potentially aborted based on conflict resolution
-    bool abortIncumbent = false;
+bool _couldIncumbentLoseChallenge(TxnRecord& incumbent, dto::K23SI_MTR& challengerMTR) {
+    // Calculate if the incumbent would lose the challenge based on conflict resolution
+    bool incumbentLoss = false;
     // #1 abort based on priority
     if (incumbent.txnId.mtr.priority > challengerMTR.priority) {  // bigger number means lower priority
-        K2LOG_D(log::skvsvr, "incumbent {} would lose push", incumbent.txnId);
-        abortIncumbent = true;
+        K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.txnId);
+        incumbentLoss = true;
     }
     // #2 if equal, pick the newer transaction
     else if (incumbent.txnId.mtr.priority == challengerMTR.priority) {
         auto cmpResult = incumbent.txnId.mtr.timestamp.compareCertain(challengerMTR.timestamp);
         if (cmpResult == dto::Timestamp::LT) {
-            K2LOG_D(log::skvsvr, "incumbent {} would lose push", incumbent.txnId);
-            abortIncumbent = true;
+            K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.txnId);
+            incumbentLoss = true;
         } else if (cmpResult == dto::Timestamp::EQ) {
             // #3 if same priority and timestamp, abort on tso ID which must be unique
             if (incumbent.txnId.mtr.timestamp.tsoId() < challengerMTR.timestamp.tsoId()) {
-                K2LOG_D(log::skvsvr, "incumbent {} would lose push", incumbent.txnId);
-                abortIncumbent = true;
+                K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.txnId);
+                incumbentLoss = true;
             } else {
                 // make sure we don't have a bug - the timestamps cannot be the same
                 K2ASSERT(log::skvsvr, incumbent.txnId.mtr.timestamp.tsoId() != challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
@@ -243,17 +243,17 @@ bool _shouldAbortIncumbentOnPush(TxnRecord& incumbent, dto::K23SI_MTR& challenge
     // #3 abort the challenger
     else {
         // this branch isn't needed as it is the fall-through option, but keeping it here for clarity
-        K2LOG_D(log::skvsvr, "challenger {} would lose push", challengerMTR);
-        abortIncumbent = false;
+        K2LOG_D(log::skvsvr, "challenger {} could lose push", challengerMTR);
+        incumbentLoss = false;
     }
 
-    return abortIncumbent;
+    return incumbentLoss;
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
 TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
     TxnRecord& incumbent = getTxnRecord(std::move(incumbentId));
-    bool abortIncumbent = _shouldAbortIncumbentOnPush(incumbent, challengerMTR);
+    bool incumbentLoss = _couldIncumbentLoseChallenge(incumbent, challengerMTR);
 
     switch (incumbent.state) {
         case dto::TxnRecordState::Created:
@@ -277,7 +277,7 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
                     });
                 });
         case dto::TxnRecordState::InProgressPIP: {
-            if (abortIncumbent) {
+            if (incumbentLoss) {
                 // redrive the push after persistence has flushed
                 return _persistence->flush()
                     .then([this, txnId=incumbent.txnId, challengerMTR=std::move(challengerMTR)] (auto&& fstatus) mutable {
@@ -294,7 +294,7 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
                                                          .allowChallengerRetry = false});
         }
         case dto::TxnRecordState::InProgress: {
-            if (abortIncumbent) {
+            if (incumbentLoss) {
                 return _onAction(TxnRecord::Action::onForceAbort, incumbent)
                     .then([this] (auto&& status) {
                         if (!status.is2xxOK()) {
@@ -349,20 +349,21 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
                     return push(std::move(txnId), std::move(challengerMTR));
                 });
         case dto::TxnRecordState::CommittedPIP:
-            // we expect commit to succeed so just tell the challenger to abort
+            // we expect commit to succeed. Challenger should retry if they would've won over an in-progress incumbent
             return RPCResponse(dto::K23SIStatus::OK("incumbent won in push"),
                                 dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::None,
-                                                          .allowChallengerRetry = false});
+                                                          .allowChallengerRetry = incumbentLoss});
         case dto::TxnRecordState::Committed:
+            // Challenger should retry if they would've won over an in-progress incumbent
             return RPCResponse(dto::K23SIStatus::OK("incumbent won in push"),
                                 dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::Commit,
-                                                          .allowChallengerRetry = false});
+                                                          .allowChallengerRetry = incumbentLoss});
         case dto::TxnRecordState::FinalizedPIP:
             // possible race condition - the incumbent has just finished finalizing and
             // is being removed from memory. The caller should not see this as a WI anymore
             return RPCResponse(dto::K23SIStatus::OK("incumbent finalized in push"),
                                 dto::K23SITxnPushResponse{.incumbentFinalization = incumbent.finalizeAction,
-                                                          .allowChallengerRetry = incumbent.finalizeAction == dto::EndAction::Abort});
+                                                          .allowChallengerRetry = incumbentLoss && incumbent.finalizeAction == dto::EndAction::Abort});
         default:
             K2ASSERT(log::skvsvr, false, "Invalid transaction state: {}", incumbent.state);
     }
@@ -699,7 +700,7 @@ seastar::future<Status> TxnManager::_forceAborted(TxnRecord& rec) {
 }
 
 seastar::future<Status> TxnManager::_endPIP(TxnRecord& rec) {
-    K2LOG_D(log::skvsvr, "Setting status EndPIP for {}", rec);
+    K2LOG_D(log::skvsvr, "Setting status to EndPIP for {}", rec);
     // manage hb expiry
     rec.unlinkHB(_hblist);
     // manage rw expiry
@@ -723,7 +724,7 @@ seastar::future<Status> TxnManager::_endPIP(TxnRecord& rec) {
 }
 
 seastar::future<Status> TxnManager::_end(TxnRecord& rec) {
-    K2LOG_D(log::skvsvr, "Setting state End for {}", rec);
+    K2LOG_D(log::skvsvr, "Setting status to End for {}", rec);
     rec.state = rec.finalizeAction == dto::EndAction::Commit ? dto::TxnRecordState::Committed : dto::TxnRecordState::Aborted;
 
     auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
