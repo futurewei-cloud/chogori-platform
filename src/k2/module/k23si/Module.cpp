@@ -965,7 +965,6 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
             // tell client their collection partition is gone
             return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in write"), dto::K23SIWriteResponse());
         }
-        K2LOG_D(log::skvsvr, "designating TRH in {}", request.mtr);
         return _designateTRH({.trh=request.trh, .mtr=request.mtr})
             .then([this, request=std::move(request), deadline] (auto&& status) mutable {
                 if (!status.is2xxOK()) {
@@ -1203,7 +1202,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
         }
         // we can't allow the commit since we don't have the write intent and we don't have a committed version
         K2LOG_D(log::skvsvr, "rejecting commit for missing version {}, in txn {}", request.key, txnId);
-        return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"), dto::K23SITxnFinalizeResponse());
+        return RPCResponse(dto::K23SIStatus::KeyNotFound("cannot commit missing key"), dto::K23SITxnFinalizeResponse());
     }
 
     VersionSet& versions = IndexerIt->second;
@@ -1265,7 +1264,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
             else {
                 K2LOG_D(log::skvsvr, "rejecting commit for missing version {}, in txn {}",
                                      request.key, txnId);
-                return RPCResponse(dto::K23SIStatus::OperationNotAllowed("cannot commit missing key"),
+                return RPCResponse(dto::K23SIStatus::KeyNotFound("cannot commit missing key"),
                                    dto::K23SITxnFinalizeResponse());
             }
             break;

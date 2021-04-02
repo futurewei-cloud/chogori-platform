@@ -749,14 +749,8 @@ seastar::future<Status> TxnManager::_end(TxnRecord& rec) {
         [this, &rec, timeout] {
             return seastar::sleep(rec.timeToFinalize)
                 .then([this, &rec, timeout] {
-                    return _finalizeTransaction(rec, FastDeadline(timeout));
-                }).
-                then([] (auto&& status) {
-                    if (!status.is2xxOK()) {
-                        K2LOG_E(log::skvsvr, "Failed to finalize transaction due to: {}", status);
-                    }
-                    return seastar::make_ready_future();
-                }).discard_result();
+                    return _finalizeTransaction(rec, FastDeadline(timeout)).discard_result();
+                });
         });
 
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
@@ -830,7 +824,12 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                             auto& [status, response] = responsePair;
                             if (!status.is2xxOK()) {
                                 K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
-                                return seastar::make_exception_future<>(std::runtime_error(fmt::format("finalize request failed after retrying due to {}", status)));
+                                if (status != dto::K23SIStatus::KeyNotFound) {
+                                    // errors other than KeyNotFound need to be retried.
+                                    // however KeyNotFound is acceptable since it may simply indicate
+                                    // that the client's transaction had a failed write
+                                    return seastar::make_exception_future<>(std::runtime_error(fmt::format("finalize request failed after retrying due to {}", status)));
+                                }
                             }
                             K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
                             return seastar::make_ready_future<>();
@@ -844,9 +843,8 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
     })
     .then_wrapped([this, &rec] (auto&& fut) {
         if (fut.failed()) {
-            auto exc = fut.get_exception();
-            K2LOG_W_EXC(log::skvsvr, exc, "Unable to finalize {}. Leaving in memory", rec);
-            return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("unable to finalize due to internal error"));
+            K2LOG_W_EXC(log::skvsvr, fut.get_exception(), "Unable to finalize txn {}. Leaving in memory", rec);
+            return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
         }
         K2LOG_D(log::skvsvr, "finalize completed for: {}", rec);
         return _onAction(TxnRecord::Action::onFinalizeComplete, rec);

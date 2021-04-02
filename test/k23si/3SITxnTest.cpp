@@ -746,7 +746,7 @@ seastar::future<> testScenario01() {
                     return doFinalize(trh, key, mtr, collname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
-                        K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed)
+                        K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound)
                     })
                     .then([this, &mtr, &key, &trh] {
                         return doFinalize(trh, key, mtr, collname, false, ErrorCaseOpt::NoInjection)
@@ -2135,7 +2135,7 @@ seastar::future<> testScenario06() {
                 return doFinalize(k1, k2, mtr, collname, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
-                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound);
                 });
             })
             .then([&] {
@@ -2158,7 +2158,7 @@ seastar::future<> testScenario06() {
                 return doFinalize(k3, k3, mtr, collname, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response)  {
                     auto& [status, val] = response;
-                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound);
                 });
             })
             .then([&] {
@@ -2224,11 +2224,10 @@ seastar::future<> testScenario06() {
                 });
             })
             .then([&] {
-                // this is sync finalize - it should not succeed due to k2 being committed but we're trying to abort
                 return doEnd(k1, mtr, collname, false, {k1, k2, k3}, Duration{0s}, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response)  {
                     auto& [status, val] = response;
-                    K2EXPECT(log::k23si, status, dto::K23SIStatus::InternalError);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
                 });
             })
             .then([&] {
@@ -2309,7 +2308,7 @@ seastar::future<> testScenario06() {
                     return doEnd(k4, mtr, collname, true, {k4, k5, k6}, Duration{0s}, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response)  {
                         auto& [status, val] = response;
-                        K2EXPECT(log::k23si, status, Statuses::S500_Internal_Server_Error);
+                        K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
                     });
                 })
                 .then([&] {
@@ -2394,7 +2393,7 @@ seastar::future<> testScenario06() {
             })
             .then([](auto&& response)  {
                 auto& [status, val] = response;
-                K2EXPECT(log::k23si, status, dto::K23SIStatus::OperationNotAllowed);
+                K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound);
             })
             .then([&] {
                 K2LOG_I(log::k23si, "------- SC06.case13 ( During async end_abort interval, finalize_commit those keys ) -------");
