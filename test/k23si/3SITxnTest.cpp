@@ -2193,8 +2193,8 @@ seastar::future<> testScenario06() {
     })
     .then([this](dto::Timestamp&& ts) {
         return seastar::do_with(
-            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
-            dto::K23SI_MTR {.txnid = txnids++, .timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.txnid = txnids++, .timestamp = ts, .priority = dto::TxnPriority::Medium},
             dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkek1_sec", .rangeKey = "rKey1_sec"},
             dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey2_sec", .rangeKey = "rKey2_sec"},
             dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey3_sec", .rangeKey = "rKey3_sec"},
@@ -2224,10 +2224,11 @@ seastar::future<> testScenario06() {
                 });
             })
             .then([&] {
+                // this is sync finalize - it should not succeed due to k2 being committed but we're trying to abort
                 return doEnd(k1, mtr, collname, false, {k1, k2, k3}, Duration{0s}, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response)  {
                     auto& [status, val] = response;
-                    K2EXPECT(log::k23si, status, Statuses::S500_Internal_Server_Error);
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::InternalError);
                 });
             })
             .then([&] {
