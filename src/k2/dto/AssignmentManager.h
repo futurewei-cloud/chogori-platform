@@ -45,6 +45,7 @@ struct AssignmentCreateResponse {
 // Request to offload a collection
 struct AssignmentOffloadRequest {
     String collectionName;
+    // TODO ID
     K2_PAYLOAD_FIELDS(collectionName);
 };
 

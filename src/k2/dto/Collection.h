@@ -140,6 +140,7 @@ K2_DEF_ENUM(StorageDriver,
 
 struct CollectionMetadata {
     String name;
+    // TODO ID
     HashScheme hashScheme;
     StorageDriver storageDriver;
     CollectionCapacity capacity;

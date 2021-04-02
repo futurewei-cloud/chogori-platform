@@ -77,6 +77,13 @@ seastar::future<> CPOService::start() {
         return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::CollectionDropRequest, dto::CollectionDropResponse>(dto::Verbs::CPO_COLLECTION_DROP, [this](dto::CollectionDropRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleCollectionDrop, std::move(request));
+    });
+    api_server.registerAPIObserver<dto::CollectionDropRequest, dto::CollectionDropResponse>("CollectionDrop", "CPO CollectionDrop", [this](dto::CollectionDropRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleCollectionDrop, std::move(request));
+    });
+
     RPC().registerRPCObserver<dto::PersistenceClusterCreateRequest, dto::PersistenceClusterCreateResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_CREATE, [this](dto::PersistenceClusterCreateRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handlePersistenceClusterCreate, std::move(request));
     });
@@ -222,13 +229,34 @@ CPOService::handleGet(dto::CollectionGetRequest&& request) {
     return RPCResponse(std::move(status), std::move(response));
 }
 
+seastar::future<std::tuple<Status, dto::CollectionDropResponse>>
+CPOService::handleCollectionDrop(dto::CollectionDropRequest&& request) {
+    K2LOG_I(log::cposvr, "Received collection drop request for {}", request.name);
+    auto [status, collection] = _getCollection(request.name);
+
+    dto::CollectionDropResponse response{};
+    if (!status.is2xxOK()) {
+        return RPCResponse(std::move(status), std::move(response));
+    }
+
+    return _offloadCollection(collection).then([this, name=request.name] () {
+        // TODO implement clean up of persistence data
+        schemas.erase(name);
+        String collPath = _getCollectionPath(name);
+        remove(collPath.c_str());
+        String schemaPath = _getSchemasPath(name);
+        remove(schemaPath.c_str());
+        return RPCResponse(Statuses::S200_OK("Offload successful"), dto::CollectionDropResponse());
+    });
+}
+
 seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collection, const dto::Schema& schema) {
     std::vector<seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>> pushFutures;
 
     for (const dto::Partition& part : collection.partitionMap.partitions) {
         auto endpoint = RPC().getTXEndpoint(*(part.endpoints.begin()));
         if (!endpoint) {
-            return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("Partition endpoint was null"));
+            return seastar::make_ready_future<Status>(Statuses::S422_Unprocessable_Entity("Partition endpoint was null"));
         }
 
         dto::K23SIPushSchemaRequest request { collection.metadata.name, schema };
@@ -381,6 +409,44 @@ void CPOService::_assignCollection(dto::Collection& collection) {
             _assignments.erase(name);
             return seastar::make_ready_future();
         }));
+}
+
+seastar::future<> CPOService::_offloadCollection(dto::Collection& collection) {
+    auto &name = collection.metadata.name;
+    K2LOG_I(log::cposvr, "Offload collection {}, from {} nodes", name, collection.partitionMap.partitions.size());
+    std::vector<seastar::future<>> futs;
+    for (auto& part : collection.partitionMap.partitions) {
+        if (part.endpoints.size() == 0) {
+            K2LOG_E(log::cposvr, "empty endpoint for partition assignment: {}", part);
+            continue;
+        }
+        auto ep = *part.endpoints.begin();
+        K2LOG_I(log::cposvr, "Offloading collection {}, to {}", name, part);
+        auto txep = RPC().getTXEndpoint(ep);
+        if (!txep) {
+            K2LOG_W(log::cposvr, "unable to obtain endpoint for {}", ep);
+            continue;
+        }
+        dto::AssignmentOffloadRequest request{.collectionName = collection.metadata.name};
+
+        futs.push_back(
+        RPC().callRPC<dto::AssignmentOffloadRequest, dto::AssignmentOffloadResponse>
+                (dto::K2_ASSIGNMENT_OFFLOAD, request, *txep, _assignTimeout())
+        .then([this, name, ep](auto&& result) {
+            auto& [status, resp] = result;
+            if (status.is2xxOK()) {
+                K2LOG_I(log::cposvr, "partition offload successful");
+            }
+            else {
+                K2LOG_W(log::cposvr, "offload for collection {} was refused by {}, due to: {}", name, ep, status);
+                // TODO integrate with cluster health monitoring when implemented and consider node dead
+            }
+            return seastar::make_ready_future();
+        })
+        );
+    }
+
+    return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
 void CPOService::_handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request) {
