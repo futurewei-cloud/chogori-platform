@@ -20,7 +20,7 @@ For this document:
 
 In general, users and the system should not think of schemas like tables. Schemas do not own their data like 
 tables do. They are merely a description of the data formats that can be stored on servers. So K23SI 
-operations do not operate over schemas; instead schema operations are CPO operations like create collection 
+operations do not operate over schemas; instead schema operations are CPO operations, like create collection. 
 We should think of schemas as a performance optimization over self-describing records.
 
 ## Design: truncateDataAndDropSchema
