@@ -54,6 +54,7 @@ public:  // application lifespan
 
 private:
     std::unique_ptr<K23SIPartitionModule> _pmodule;
+    String _collectionName;
 };  // class AssignmentManager
 
 } // namespace k2

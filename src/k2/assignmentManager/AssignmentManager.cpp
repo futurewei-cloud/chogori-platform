@@ -98,6 +98,7 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
         partition.endpoints.insert(rdma_ep->url);
     }
 
+    _collectionName = meta.name;
     _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);
     return _pmodule->start().then([partition = std::move(partition)] () mutable {
         if (partition.endpoints.size() > 0) {
@@ -119,11 +120,23 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
 
 seastar::future<std::tuple<Status, dto::AssignmentOffloadResponse>>
 AssignmentManager::handleOffload(dto::AssignmentOffloadRequest&& request) {
-    (void) request;
-    // TODO implement - here we should drop our assignment, cleaning up any resources we have
-    // allocated for our partition(s). We should be ready to receive new assignments after this.
-    K2LOG_I(log::amgr, "Received request to offload assignment for {}", request.collectionName);
-    return RPCResponse(Statuses::S501_Not_Implemented("offload has not been implemented"), dto::AssignmentOffloadResponse());
+    if (!_pmodule) {
+        return RPCResponse(Statuses::S404_Not_Found("No assignment to offload"), dto::AssignmentOffloadResponse{});
+    }
+
+    if (_collectionName != request.collectionName) {
+        return RPCResponse(Statuses::S403_Forbidden("offload not allowed, collection name does not match"), dto::AssignmentOffloadResponse{});
+    }
+
+    K2LOG_I(log::amgr, "Received request to offload assignment for {}, gracefully stopping the Module", request.collectionName);
+
+    return _pmodule->gracefulStop()
+    .then([this] () {
+        K2LOG_I(log::amgr, "Module stop complete, resetting _pmodule pointer");
+        _pmodule = nullptr;
+        K2LOG_I(log::amgr, "_pmodule pointer reset complete");
+        return RPCResponse(Statuses::S200_OK("partition offloaded"), dto::AssignmentOffloadResponse{});
+    });
 }
 
 }  // namespace k2
