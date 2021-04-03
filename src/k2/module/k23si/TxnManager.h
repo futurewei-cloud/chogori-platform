@@ -146,9 +146,7 @@ private:  // methods driving the state machine
     // The contract here is that the state transition has been validated (i.e. the state transition is an allowed one)
     // but no other validation has been performed.
     // The response is one of the dto::K23SIStatus statuses. The action was successful iff result.is2xxOK()
-    seastar::future<Status> _inProgressPIP(TxnRecord& rec);
     seastar::future<Status> _inProgress(TxnRecord& rec);
-    seastar::future<Status> _forceAbortedPIP(TxnRecord& rec);
     seastar::future<Status> _forceAborted(TxnRecord& rec);
     seastar::future<Status> _endPIP(TxnRecord& rec);
     seastar::future<Status> _end(TxnRecord& rec);

@@ -168,9 +168,7 @@ struct CommittedRecord {
 
 K2_DEF_ENUM(TxnRecordState,
         Created,         // The state in which all new TxnRecords are put when first created in memory
-        InProgressPIP,   // The txn is InProgress and we're persisting the txn record
         InProgress,      // The txn InProgress has persisted
-        ForceAbortedPIP, // The txn has been ForceAborted and we're persisting the txn record
         ForceAborted,    // The txn ForceAbort has been persisted
         AbortedPIP,      // The txn has been Aborted and we're persisting the txn record
         Aborted,         // The txn Abort has been persisted

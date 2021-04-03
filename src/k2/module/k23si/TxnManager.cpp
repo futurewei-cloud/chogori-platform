@@ -276,23 +276,6 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
                                                           .allowChallengerRetry = true});
                     });
                 });
-        case dto::TxnRecordState::InProgressPIP: {
-            if (_evaluateChallenge(incumbent, challengerMTR)) {
-                // redrive the push after persistence has flushed
-                return _persistence->flush()
-                    .then([this, txnId=incumbent.txnId, challengerMTR=std::move(challengerMTR)] (auto&& fstatus) mutable {
-                        if (!fstatus.is2xxOK()) {
-                            return RPCResponse(std::move(fstatus), dto::K23SITxnPushResponse{});
-                        }
-                        // redrive the push
-                        return push(std::move(txnId), std::move(challengerMTR));
-                    });
-            }
-            // challenger shouldn't touch our WI
-            return RPCResponse(dto::K23SIStatus::OK("incumbent won push"),
-                               dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::None,
-                                                         .allowChallengerRetry = false});
-        }
         case dto::TxnRecordState::InProgress: {
             if (_evaluateChallenge(incumbent, challengerMTR)) {
                 return _onAction(TxnRecord::Action::onForceAbort, incumbent)
@@ -335,22 +318,6 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
                                 dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::Abort,
                                                           .allowChallengerRetry = true}
             );
-        case dto::TxnRecordState::ForceAbortedPIP:
-            // chances are the challenger would win, but we can't finalize the WI just yet
-            // e.g. in the situation InProgress--(onFA due to push) -->ForceAbortedPIP
-            // if we fail and recover, the incumbent will be IPR and could successfully commit.
-            // redrive the push after persistence has flushed
-            return _persistence->flush()
-                .then([this, txnId=incumbent.txnId, challengerMTR=std::move(challengerMTR)](auto&& fstatus) mutable {
-                    if (!fstatus.is2xxOK()) {
-                        return RPCResponse(std::move(fstatus), dto::K23SITxnPushResponse{});
-                    }
-                    // redrive the push
-
-                    return RPCResponse(dto::K23SIStatus::OK("challenger won in push since incumbent was already aborted"),
-                                        dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::Abort,
-                                                                  .allowChallengerRetry = true});
-                });
         case dto::TxnRecordState::CommittedPIP:
             // we expect commit to succeed. Challenger should retry if they would've won over an in-progress incumbent
             return RPCResponse(dto::K23SIStatus::OK("incumbent won in push"),
@@ -450,16 +417,18 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
             // We did not have a transaction record and it was just created
             switch (action) {
                 case TxnRecord::Action::onCreate: // happy case
-                    return _inProgressPIP(rec);
+                    return _inProgress(rec);
                 case TxnRecord::Action::onForceAbort:
-                    return _forceAbortedPIP(rec);
+                    return _forceAborted(rec);
                 case TxnRecord::Action::onHeartbeat: // illegal - create a ForceAborted entry and wait for End
-                    return _forceAbortedPIP(rec)
+                    K2LOG_W(log::skvsvr, "Heartbeat received before txn start in txn {}", rec);
+                    return _forceAborted(rec)
                         .then([] (auto&&) {
                             // respond with failure since we had to force abort but were asked to heartbeat
                             return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("cannot heartbeat transaction since it doesn't exist"));
                         });
                 case TxnRecord::Action::onCommit:  // create an entry in Aborted state so that it can be finalized
+                    K2LOG_W(log::skvsvr, "Commit received before txn start in txn {}", rec);
                     rec.finalizeAction = dto::EndAction::Abort;
                     return _endPIP(rec)
                         .then([] (auto&&) {
@@ -467,35 +436,16 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                             return seastar::make_ready_future<Status>(dto::K23SIStatus::OperationNotAllowed("cannot commit transaction since it has been aborted"));
                         });
                 case TxnRecord::Action::onAbort:  // create an entry in Aborted state so that it can be finalized
+                    K2LOG_W(log::skvsvr, "Abort received before txn start in txn {}", rec);
                     return _endPIP(rec);
                 default: // anything else we just count as internal error
                     K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.txnId, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
             };
-        case dto::TxnRecordState::InProgressPIP:
-            switch (action) {
-                case TxnRecord::Action::onPersistFail:
-                    return _forceAbortedPIP(rec).then([](auto&&) {
-                        return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("Unable to start transaction due to persistence failure. Aborting..."));
-                    });
-                case TxnRecord::Action::onPersistSucceed: // happy case
-                    return _inProgress(rec);
-                case TxnRecord::Action::onCreate:
-                case TxnRecord::Action::onAbort:
-                case TxnRecord::Action::onCommit:
-                case TxnRecord::Action::onRetentionWindowExpire:
-                case TxnRecord::Action::onHeartbeatExpire:
-                case TxnRecord::Action::onHeartbeat:
-                    // we want the client to retry these. Return a retryable error
-                    return seastar::make_ready_future<Status>(dto::K23SIStatus::ServiceUnavailable("retry: persistence in progress"));
-                default:
-                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.txnId, state);
-                    return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
-            }
         case dto::TxnRecordState::InProgress:
             switch (action) {
                 case TxnRecord::Action::onCreate: // no-op - stay in same state
-                    return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<Status>(dto::K23SIStatus::Created);
                 case TxnRecord::Action::onHeartbeat: {
                     K2LOG_D(log::skvsvr, "Processing heartbeat for {}", rec);
 
@@ -510,28 +460,11 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onForceAbort:             // asked to force-abort (e.g. on PUSH)
                 case TxnRecord::Action::onRetentionWindowExpire:  // we've had this transaction for too long
                 case TxnRecord::Action::onHeartbeatExpire:        // originator didn't hearbeat on time
-                    return _forceAbortedPIP(rec);
+                    return _forceAborted(rec);
                 default:
                     K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state: {}", rec.txnId, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
             };
-        case dto::TxnRecordState::ForceAbortedPIP:
-            switch (action) {
-                case TxnRecord::Action::onPersistFail:
-                    return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("Unable to force-abort transaction due to persistence failure"));
-                case TxnRecord::Action::onPersistSucceed: // happy case
-                    return _forceAborted(rec);
-                case TxnRecord::Action::onCreate:
-                case TxnRecord::Action::onForceAbort:
-                case TxnRecord::Action::onAbort:
-                case TxnRecord::Action::onCommit:
-                case TxnRecord::Action::onHeartbeat:
-                    // we want the client to retry these. Return a retryable error
-                    return seastar::make_ready_future<Status>(dto::K23SIStatus::ServiceUnavailable("retry: persistence in progress"));
-                default:
-                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.txnId, state);
-                    return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
-            }
         case dto::TxnRecordState::ForceAborted:
             switch (action) {
                 case TxnRecord::Action::onCreate: // this has been aborted already. Signal the client to issue endAbort
@@ -649,47 +582,9 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
     }
 }
 
-seastar::future<Status> TxnManager::_inProgressPIP(TxnRecord& rec) {
-    K2LOG_D(log::skvsvr, "Setting status to InProgressPIP for {}", rec);
-    rec.state = dto::TxnRecordState::InProgressPIP;
-    _addBgTask(rec,
-        [this, &rec] {
-            return _persistence->append_cont(rec)
-            .then([this, &rec] (auto&& status) {
-                K2LOG_D(log::skvsvr, "persist completed for InProgressPIP of {} with {}", rec, status);
-                if (!status.is2xxOK()) {
-                    // flush didn't succeed
-                    K2LOG_E(log::skvsvr, "persist failed for InProgressPIP of {} with {}", rec, status);
-                    return _onAction(TxnRecord::Action::onPersistFail, rec);
-                }
-                return _onAction(TxnRecord::Action::onPersistSucceed, rec);
-            }).discard_result();
-        });
-    return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
-}
-
 seastar::future<Status> TxnManager::_inProgress(TxnRecord& rec) {
     K2LOG_D(log::skvsvr, "Setting status to inProgress for {}", rec);
     rec.state = dto::TxnRecordState::InProgress;
-    return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
-}
-
-seastar::future<Status> TxnManager::_forceAbortedPIP(TxnRecord& rec) {
-    K2LOG_D(log::skvsvr, "Setting status to ForceAbortedPIP for {}", rec);
-    rec.state = dto::TxnRecordState::ForceAbortedPIP;
-    _addBgTask(rec,
-        [this, &rec] {
-            return _persistence->append_cont(rec)
-            .then([this, &rec] (auto&& status) {
-                K2LOG_D(log::skvsvr, "persist completed for ForceAbortedPIP of {} with {}", rec, status);
-                if (!status.is2xxOK()) {
-                    // flush didn't succeed
-                    K2LOG_E(log::skvsvr, "persist failed for ForceAbortedPIP of {} with {}", rec, status);
-                    return _onAction(TxnRecord::Action::onPersistFail, rec);
-                }
-                return _onAction(TxnRecord::Action::onPersistSucceed, rec);
-            }).discard_result();
-        });
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
@@ -823,12 +718,15 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                         .then([&request](auto&& responsePair) {
                             auto& [status, response] = responsePair;
                             if (!status.is2xxOK()) {
-                                K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
                                 if (status != dto::K23SIStatus::KeyNotFound) {
+                                    K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
                                     // errors other than KeyNotFound need to be retried.
                                     // however KeyNotFound is acceptable since it may simply indicate
                                     // that the client's transaction had a failed write
                                     return seastar::make_exception_future<>(std::runtime_error(fmt::format("finalize request failed after retrying due to {}", status)));
+                                }
+                                else {
+                                    K2LOG_W(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
                                 }
                             }
                             K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
