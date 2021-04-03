@@ -84,6 +84,7 @@ private:
     std::vector<seastar::promise<Status>> _pendingProms;
     seastar::future<Status> _chainFlushResponse();
     PeriodicTimer _flushTimer; // TODO consider also flushing based on accumulated data size
+
 };
 
 } // ns k2
