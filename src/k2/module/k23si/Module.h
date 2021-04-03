@@ -251,6 +251,9 @@ private:  // members
     // the timestamp of the end of the retention window. We do not allow operations to occur before this timestamp
     dto::Timestamp _retentionTimestamp;
 
+    // the start time for this partition.
+    dto::Timestamp _startTs;
+
     // timer used to refresh the retention timestamp from the TSO
     PeriodicTimer _retentionUpdateTimer;
 

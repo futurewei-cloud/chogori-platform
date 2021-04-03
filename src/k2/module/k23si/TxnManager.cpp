@@ -265,16 +265,9 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
                         return RPCResponse(std::move(status), dto::K23SITxnPushResponse{});
                     }
                     K2LOG_D(log::skvsvr, "txn push challenger won against non-existent txn");
-                    // we can only respond with success to challenger after a successful flush to persistence
-                    // otherwise, it is possible for this partition to recover with incumbent in a good state
-                    return _persistence->flush().then([] (auto&& flushStatus) {
-                        if (!flushStatus.is2xxOK()) {
-                            return RPCResponse(std::move(flushStatus), dto::K23SITxnPushResponse{});
-                        }
-                        return RPCResponse(dto::K23SIStatus::OK("challenger won in push"),
-                                dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::Abort,
-                                                          .allowChallengerRetry = true});
-                    });
+                    return RPCResponse(dto::K23SIStatus::OK("challenger won in push"),
+                                       dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::Abort,
+                                                                 .allowChallengerRetry = true});
                 });
         case dto::TxnRecordState::InProgress: {
             if (_evaluateChallenge(incumbent, challengerMTR)) {
@@ -284,14 +277,9 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
                             K2LOG_W(log::skvsvr, "Unable to process force abort for in-progress txn due to {}", status);
                             return RPCResponse(std::move(status), dto::K23SITxnPushResponse{});
                         }
-                        return _persistence->flush().then([] (auto&& flushStatus) {
-                            if (!flushStatus.is2xxOK()) {
-                                return RPCResponse(std::move(flushStatus), dto::K23SITxnPushResponse{});
-                            }
-                            return RPCResponse(dto::K23SIStatus::OK("challenger won in push"),
+                        return RPCResponse(dto::K23SIStatus::OK("challenger won in push"),
                                             dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::Abort,
                                                                       .allowChallengerRetry = true});
-                            });
                     });
             } else {
                 return RPCResponse(dto::K23SIStatus::OK("incumbent won in push"),
@@ -617,15 +605,16 @@ seastar::future<Status> TxnManager::_endPIP(TxnRecord& rec) {
                 return _onAction(TxnRecord::Action::onPersistSucceed, rec);
             });
     if (rec.syncFinalize) {
-        return _persistence->flush()
-            .then([fut=std::move(finfut)] (auto&& status) mutable {
-                if (!status.is2xxOK()) {
-                    return seastar::make_ready_future<Status>(std::move(status));
-                }
-                return std::move(fut);
-            });
+        // flush manually here in order to complete the append operation above. Only then can we
+        // return the continuation of append
+        return _persistence->flush().then([finfut=std::move(finfut)] (auto&& flushStatus) mutable {
+            if (!flushStatus.is2xxOK()) {
+                return seastar::make_ready_future<Status>(std::move(flushStatus));
+            }
+            return std::move(finfut);
+        });
     }
-    _addBgTask(rec, [fut=std::move(finfut)] () mutable { return fut.discard_result();});
+    _addBgTask(rec, [finfut=std::move(finfut)] () mutable { return finfut.discard_result();});
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 

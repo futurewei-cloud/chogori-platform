@@ -189,8 +189,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
-        return handleTxnPush(std::move(request))
-            .then([this] (auto&& resp) { return _respondAfterFlush(std::move(resp));});
+        return handleTxnPush(std::move(request));
     });
 
     RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
@@ -260,6 +259,7 @@ seastar::future<> K23SIPartitionModule::start() {
         .then([this](dto::Timestamp&& watermark) {
             K2LOG_D(log::skvsvr, "Cache watermark: {}, period={}", watermark, _cmeta.retentionPeriod);
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;
+            _startTs = watermark;
             _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
 
             _retentionUpdateTimer.setCallback([this] {
@@ -930,6 +930,7 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
 template<typename ResponseT>
 seastar::future<std::tuple<Status, ResponseT>>
 K23SIPartitionModule::_respondAfterFlush(std::tuple<Status, ResponseT>&& resp) {
+    K2LOG_D(log::skvsvr, "Awaiting persistence flush before responding");
     return _persistence->flush()
         .then([resp=std::move(resp)] (auto&& flushStatus) mutable {
             if (!flushStatus.is2xxOK()) {
@@ -938,6 +939,7 @@ K23SIPartitionModule::_respondAfterFlush(std::tuple<Status, ResponseT>&& resp) {
                 seastar::engine().exit(1);
             }
 
+            K2LOG_D(log::skvsvr, "persistence flush succeeded. Sending response to client");
             return seastar::make_ready_future<std::tuple<Status, ResponseT>>(std::move(resp));
         });
 }
@@ -945,7 +947,7 @@ K23SIPartitionModule::_respondAfterFlush(std::tuple<Status, ResponseT>&& resp) {
 seastar::future<Status>
 K23SIPartitionModule::_designateTRH(dto::TxnId txnId) {
     K2LOG_D(log::skvsvr, "designating trh for {}", txnId);
-    if (!_validateRetentionWindow(txnId.mtr.timestamp)) {
+    if (!_validateRetentionWindow(txnId.mtr.timestamp) || _startTs.compareCertain(txnId.mtr.timestamp) == dto::Timestamp::GT) {
         return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortRequestTooOld("TRH create request is too old"));
     }
     if (txnId.trh.partitionKey.empty()) {
