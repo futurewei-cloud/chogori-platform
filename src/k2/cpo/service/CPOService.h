@@ -56,9 +56,13 @@ private:
     Status _loadSchemas(const String& collectionName);
     seastar::future<Status> _pushSchema(const dto::Collection& collection, const dto::Schema& schema);
     void _handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request);
+    Status _persistNextCollectionID();
+    Status _loadNextCollectionID();
 
-    // Collection name -> schemas
-    std::unordered_map<String, std::vector<dto::Schema>> schemas;
+    // Collection ID -> schemas
+    std::unordered_map<uint64_t, std::vector<dto::Schema>> schemas;
+    uint64_t _nextCollectionID = 0;
+    String _collectionIDFile = "collectionID/ID";
 
    public:  // application lifespan
     CPOService(DistGetter distGetter);

@@ -101,6 +101,7 @@ private:
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
     int exitcode = -1;
+    uint64_t collectionID = 0;
 
     seastar::future<> createCollection(){
         K2LOG_I(log::k23si, "create a collection with assignments");
@@ -149,6 +150,7 @@ private:
                 K2EXPECT(log::k23si, resp.collection.metadata.capacity.writeIOPs, 100000);
                 K2EXPECT(log::k23si, resp.collection.partitionMap.version, 1);
                 K2EXPECT(log::k23si, resp.collection.partitionMap.partitions.size(), 3);
+                collectionID = resp.collection.metadata.ID;
 
                 // how many partitions we have
                 uint64_t numparts = _k2ConfigEps().size();
@@ -195,13 +197,13 @@ seastar::future<> runScenario00() {
         schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
         schema.setRangeKeyFieldsByName(std::vector<String> {"FirstName"});
 
-        dto::CreateSchemaRequest request{ collname, std::move(schema) };
+        dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
-            dto::GetSchemasRequest request { collname };
+            dto::GetSchemasRequest request { collectionID };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([] (auto&& response) {
@@ -221,7 +223,7 @@ seastar::future<> runScenario01(){
     K2LOG_I(log::k23si, "+++++++ Schema Creation Test 01: Create a new version of an existing schema by renaming a (non-key) field +++++++");
 
     K2LOG_I(log::k23si, "STEP1: get an existing Schema");
-    dto::GetSchemasRequest request { collname };
+    dto::GetSchemasRequest request { collectionID };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this](auto&& response) {
         auto& [status, resp] = response;
@@ -235,13 +237,13 @@ seastar::future<> runScenario01(){
         K2EXPECT(log::k23si, schema.basicValidation(), Statuses::S200_OK);
         K2EXPECT(log::k23si, resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
 
-        dto::CreateSchemaRequest request{ collname, std::move(schema) };
+        dto::CreateSchemaRequest request{ colletionID, std::move(schema) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
-            dto::GetSchemasRequest request { collname };
+            dto::GetSchemasRequest request { collectionID };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([] (auto&& response) {
@@ -258,7 +260,7 @@ seastar::future<> runScenario02(){
     K2LOG_I(log::k23si, "+++++++ Schema Creation Test 02: Create a new version of an existing schema by adding a new field +++++++");
 
     K2LOG_I(log::k23si, "STEP1: get an existing Schema");
-    dto::GetSchemasRequest request { collname };
+    dto::GetSchemasRequest request { collectionID };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this](auto&& response) {
         auto& [status, resp] = response;
@@ -272,13 +274,13 @@ seastar::future<> runScenario02(){
         K2EXPECT(log::k23si, schema.basicValidation(), Statuses::S200_OK);
         K2EXPECT(log::k23si, resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
 
-        dto::CreateSchemaRequest request{ collname, std::move(schema) };
+        dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
-            dto::GetSchemasRequest request { collname };
+            dto::GetSchemasRequest request { collectionID };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([] (auto&& response) {
@@ -306,13 +308,13 @@ seastar::future<> runScenario03(){
     // set partitionKeyFields by index 1
     schema.partitionKeyFields.push_back(1);
 
-    dto::CreateSchemaRequest request{ collname, std::move(schema) };
+    dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(log::k23si, status, Statuses::S200_OK);
 
-        dto::GetSchemasRequest request { collname };
+        dto::GetSchemasRequest request { collectionID };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
@@ -339,13 +341,13 @@ seastar::future<> runScenario04(){
 
     schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
 
-    dto::CreateSchemaRequest request{ collname, std::move(schema) };
+    dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(log::k23si, status, Statuses::S400_Bad_Request);
 
-        dto::GetSchemasRequest request { collname };
+        dto::GetSchemasRequest request { collectionID };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
@@ -375,13 +377,13 @@ seastar::future<> runScenario05(){
     schema.setPartitionKeyFieldsByName(std::vector<String>{"School"});
     schema.partitionKeyFields.push_back(3);
 
-    dto::CreateSchemaRequest request{ collname, std::move(schema) };
+    dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(log::k23si, status, Statuses::S400_Bad_Request);
 
-        dto::GetSchemasRequest request { collname };
+        dto::GetSchemasRequest request { collectionID };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
@@ -413,13 +415,13 @@ seastar::future<> runScenario06(){
     schema.partitionKeyFields.push_back(1);
     schema.rangeKeyFields.push_back(2);
 
-    dto::CreateSchemaRequest request{ collname, std::move(schema) };
+    dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(log::k23si, status, Statuses::S400_Bad_Request);
 
-        dto::GetSchemasRequest request { collname };
+        dto::GetSchemasRequest request { collectionID };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
@@ -437,7 +439,7 @@ seastar::future<> runScenario06(){
 
 seastar::future<> runScenario07(){
     K2LOG_I(log::k23si, "+++++++ Schema Creation Test 07: Create a new version of an existing schema where a key field is renamed +++++++");
-    dto::GetSchemasRequest request { collname };
+    dto::GetSchemasRequest request { collectionID };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
@@ -446,13 +448,13 @@ seastar::future<> runScenario07(){
         schema.version = 4444;
         schema.fields[0].name = "Xing";
 
-        dto::CreateSchemaRequest request{ collname, std::move(schema) };
+        dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S409_Conflict);
 
-            dto::GetSchemasRequest request { collname };
+            dto::GetSchemasRequest request { collectionID };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([this] (auto&& response) {
@@ -472,7 +474,7 @@ seastar::future<> runScenario07(){
 seastar::future<> runScenario08(){
     K2LOG_I(log::k23si, "+++++++ Schema Creation Test 08: Create a new version of an existing schema where the type of a key field changes +++++++");
 
-    dto::GetSchemasRequest request { collname };
+    dto::GetSchemasRequest request { collectionID };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
@@ -487,13 +489,13 @@ seastar::future<> runScenario08(){
                 break;
             }
         }
-        dto::CreateSchemaRequest request{ collname, std::move(*sc) };
+        dto::CreateSchemaRequest request{ collectionID, std::move(*sc) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S409_Conflict);
 
-            dto::GetSchemasRequest request { collname };
+            dto::GetSchemasRequest request { collectionID };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([this] (auto&& response) {
@@ -512,7 +514,7 @@ seastar::future<> runScenario08(){
 seastar::future<> runScenario09(){
     K2LOG_I(log::k23si, "+++++++ Schema Creation Test 09: Create a new version of an existing schema where a key field is removed +++++++");
 
-    dto::GetSchemasRequest request { collname };
+    dto::GetSchemasRequest request { collectionID };
     return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
@@ -528,13 +530,13 @@ seastar::future<> runScenario09(){
                 break;
             }
         }
-        dto::CreateSchemaRequest request{ collname, std::move(*sc) };
+        dto::CreateSchemaRequest request{ collectionID, std::move(*sc) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S409_Conflict);
 
-            dto::GetSchemasRequest request { collname };
+            dto::GetSchemasRequest request { collectionID };
             return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
         })
         .then([this] (auto&& response) {

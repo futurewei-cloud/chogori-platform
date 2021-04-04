@@ -214,15 +214,15 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dt
     }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
+    if (_ongoing_ops != 0) {
+        return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() with ongoing ops"));
+    }
+
     if (!_valid) {
         return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() an invalid TxnHandle"));
     }
     // User is not allowed to call anything else on this TxnHandle after end()
     _valid = false;
-
-    if (_ongoing_ops != 0) {
-        return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() with ongoing ops"));
-    }
 
     if (!_write_set.size()) {
         _client->successful_txns++;
@@ -456,11 +456,28 @@ seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collec
             return CreateQueryResult{std::move(response.status), Query()};
         }
 
+        uint64_t collectionID;
+        auto it = _cpo_client->collectionNameToID.find(record.collectionName);
+        if (it != _cpo_client->collectionID.end()) {
+            collectionID = it->second;
+        } else {
+            return _cpo_client->GetAssignedPartitionWithRetry(_options.deadline, record.collectionName,
+                dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""})
+            .then([collection=std::move(collectionName), schema=std::move(schemaName)]
+                                        (Status&& status) mutable {
+                if (!status.is2xxOK()) {
+                    return CreateQueryResult(std::move(status));
+                } else {
+                    return createQuery(std::move(collection), std::move(schema));
+                }
+            });
+        }
+
         Query query;
         query.schema = response.schema;
         query.startScanRecord = SKVRecord(collectionName, query.schema);
         query.endScanRecord = SKVRecord(collectionName, query.schema);
-        query.request.collectionName = collectionName;
+        query.request.collectionID = collectionID;
         return CreateQueryResult{Statuses::S200_OK("Created query"), std::move(query)};
     });
 }

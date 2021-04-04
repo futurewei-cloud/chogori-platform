@@ -62,6 +62,16 @@ seastar::future<> CPOService::gracefulStop() {
 seastar::future<> CPOService::start() {
     APIServer& api_server = AppBase().getDist<APIServer>().local();
 
+    Status IDStatus = _loadNextCollectionID();
+    if (IDStatus == Statuses::S404_Not_Found) {
+        _nextCollectionID = 0;
+        IDStatus = _persistNextCollectionID();
+    }
+    if (!IDStatus.is2xxOK()) {
+        K2LOG_E(log::cposvr, "Failed to load or create _nextCollectionID");
+        seastar::engine().exit(1);
+    }
+
     K2LOG_I(log::cposvr, "Registering message handlers");
     RPC().registerRPCObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, [this](dto::CollectionCreateRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));
@@ -189,6 +199,12 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     // create a collection from the incoming request
     dto::Collection collection;
     collection.metadata = request.metadata;
+    collection.metadata.ID = _nextCollectionID;
+    ++_nextCollectionID;
+    Status IDStatus = _persistNextCollectionID();
+    if (!IDStatus.is2xxOK()) {
+        return RPCResponse(std::move(IDStatus), dto::CollectionCreateResponse());
+    }
 
     int err = 0;
     if (collection.metadata.hashScheme == dto::HashScheme::HashCRC32C) {
@@ -205,7 +221,7 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
         return RPCResponse(Statuses::S400_Bad_Request("Bad rangeEnds"), dto::CollectionCreateResponse());
     }
 
-    schemas[collection.metadata.name] = std::vector<dto::Schema>();
+    schemas[collection.metadata.ID] = std::vector<dto::Schema>();
 
     auto status = _saveCollection(collection);
     if (!status.is2xxOK()) {
@@ -354,6 +370,7 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 }
 
 String CPOService::_getCollectionPath(String name) {
+    // TODO we should sanatize the collection name
     return _dataDir() + "/" + name + ".collection";
 }
 
@@ -513,6 +530,29 @@ Status CPOService::_loadSchemas(const String& collectionName) {
     schemas[collectionName] = std::move(loadedSchemas);
 
     return Statuses::S200_OK("Schemas loaded");
+}
+
+Status CPOService::_persistNextCollectionID() {
+    auto cpath = _dataDir() + "/" + _collectionIDFile;
+    Payload p([] { return Binary(4096); });
+    p.write(_nextCollectionID);
+    if (!fileutil::writeFile(std::move(p), cpath)) {
+        K2LOG_E(log::cposvr, "failed to save _nextCollectionID");
+        return Statuses::S500_Internal_Server_Error("unable to write collection data");
+    }
+}
+
+Status CPO::Service_loadNextCollectionID() {
+    auto cpath = _dataDir() + "/" + _collectionIDFile;
+    Payload p;
+    if (!fileutil::readFile(p, cpath)) {
+        return Statuses::S404_Not_Found("collectionID file not found");
+    }
+    if (!p.read(&_nextCollectionID)) {
+        return Statuses::S500_Internal_Server_Error("unable to read _nextCollectionID");
+    };
+
+    return Statuses::S200_OK();
 }
 
 Status CPOService::_saveCollection(dto::Collection& collection) {

@@ -130,7 +130,7 @@ private: // methods
     // incumbent transaction state at the TRH will be updated to reflect the abort decision.
     // The incumbent transaction will discover upon commit that the txn has been aborted.
     seastar::future<bool>
-    _doPush(String collectionName, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
+    _doPush(uint64_t collectionID, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>

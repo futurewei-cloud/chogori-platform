@@ -77,10 +77,9 @@ struct CollectionGetResponse {
 };
 
 struct CollectionDropRequest {
-    String name;
-    // TODO ID
-    K2_PAYLOAD_FIELDS(name);
-    K2_DEF_FMT(CollectionDropRequest, name);
+    uint64_t ID;
+    K2_PAYLOAD_FIELDS(ID);
+    K2_DEF_FMT(CollectionDropRequest, ID);
 };
 
 struct CollectionDropResponse {
@@ -129,10 +128,10 @@ struct Schema {
 // Request to create a schema and attach it to a collection
 // If schemaName already exists, it creates a new version
 struct CreateSchemaRequest {
-    String collectionName;
+    uint64_t collectionID;
     Schema schema;
-    K2_PAYLOAD_FIELDS(collectionName, schema);
-    K2_DEF_FMT(CreateSchemaRequest, collectionName, schema);
+    K2_PAYLOAD_FIELDS(collectionID, schema);
+    K2_DEF_FMT(CreateSchemaRequest, collectionID, schema);
 };
 
 // Response to CreateSchemaRequest
@@ -143,9 +142,9 @@ struct CreateSchemaResponse {
 
 // Get all versions of all schemas associated with a collection
 struct GetSchemasRequest {
-    String collectionName;
-    K2_PAYLOAD_FIELDS(collectionName);
-    K2_DEF_FMT(GetSchemasRequest, collectionName);
+    uint64_t collectionID;
+    K2_PAYLOAD_FIELDS(collectionID);
+    K2_DEF_FMT(GetSchemasRequest, collectionID);
 };
 
 struct GetSchemasResponse {

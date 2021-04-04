@@ -38,10 +38,10 @@ namespace dto {
 struct K23SIInspectRecordsRequest {
     // These fields make the request compatible with the PartitionRequest wrapper
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName;
+    uint64_t collectionID;
     Key key; // the key to gather all records for
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key);
-    K2_DEF_FMT(K23SIInspectRecordsRequest, pvid, collectionName, key);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, key);
+    K2_DEF_FMT(K23SIInspectRecordsRequest, pvid, collectionID, key);
 };
 
 struct K23SIInspectRecordsResponse {
@@ -53,11 +53,11 @@ struct K23SIInspectRecordsResponse {
 struct K23SIInspectTxnRequest {
     // These fields make the request compatible with the PartitionRequest wrapper
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName;
+    uint64_t collectionID;
     Key key; // the key of the THR to request
     K23SI_MTR mtr;
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
-    K2_DEF_FMT(K23SIInspectTxnRequest, pvid, collectionName, key, mtr);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, key, mtr);
+    K2_DEF_FMT(K23SIInspectTxnRequest, pvid, collectionID, key, mtr);
 };
 
 // Contains the TRH data (struct TxnRecord) without the internal

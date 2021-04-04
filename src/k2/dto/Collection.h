@@ -140,7 +140,7 @@ K2_DEF_ENUM(StorageDriver,
 
 struct CollectionMetadata {
     String name;
-    // TODO ID
+    uint64_t ID{0}; // Vended by CPO to allow for safe deletion and recreation of a collection with the same name
     HashScheme hashScheme;
     StorageDriver storageDriver;
     CollectionCapacity capacity;

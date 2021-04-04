@@ -178,17 +178,17 @@ K2_DEF_ENUM(TxnRecordState,
 // The main READ DTO.
 struct K23SIReadRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName; // the name of the collection
+    uint64_t collectionID;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key to read
 
     K23SIReadRequest() = default;
-    K23SIReadRequest(Partition::PVID p, String cname, K23SI_MTR _mtr, Key _key) :
-        pvid(std::move(p)), collectionName(std::move(cname)), mtr(std::move(_mtr)), key(std::move(_key)) {}
+    K23SIReadRequest(Partition::PVID p, uint64_t cid, K23SI_MTR _mtr, Key _key) :
+        pvid(std::move(p)), collectionID(cid), mtr(std::move(_mtr)), key(std::move(_key)) {}
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key);
-    K2_DEF_FMT(K23SIReadRequest, pvid, collectionName, mtr, key);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, mtr, key);
+    K2_DEF_FMT(K23SIReadRequest, pvid, collectionID, mtr, key);
 };
 
 // The response for READs
@@ -215,7 +215,7 @@ struct K23SIStatus {
 
 struct K23SIWriteRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName; // the name of the collection
+    uint64_t collectionID;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
     // the first write (the write for which designateTRH was set to true)
@@ -236,15 +236,15 @@ struct K23SIWriteRequest {
     std::vector<uint32_t> fieldsForPartialUpdate; // if size() > 0 then this is a partial update
 
     K23SIWriteRequest() = default;
-    K23SIWriteRequest(Partition::PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, bool _isDelete,
+    K23SIWriteRequest(Partition::PVID _pvid, uint64_t cid, K23SI_MTR _mtr, Key _trh, bool _isDelete,
                       bool _designateTRH, bool _rejectIfExists, uint64_t id, Key _key, SKVRecord::Storage _value,
                       std::vector<uint32_t> _fields) :
-        pvid(std::move(_pvid)), collectionName(std::move(cname)), mtr(std::move(_mtr)), trh(std::move(_trh)),
+        pvid(std::move(_pvid)), collectionID(cid), mtr(std::move(_mtr)), trh(std::move(_trh)),
         isDelete(_isDelete), designateTRH(_designateTRH), rejectIfExists(_rejectIfExists), request_id(id),
         key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, request_id, key, value, fieldsForPartialUpdate);
-    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, isDelete, designateTRH, rejectIfExists, request_id, key, value, fieldsForPartialUpdate);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, mtr, trh, isDelete, designateTRH, rejectIfExists, request_id, key, value, fieldsForPartialUpdate);
+    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionID, mtr, trh, isDelete, designateTRH, rejectIfExists, request_id, key, value, fieldsForPartialUpdate);
 };
 
 struct K23SIWriteResponse {
@@ -254,7 +254,7 @@ struct K23SIWriteResponse {
 
 struct K23SIQueryRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName;
+    uint64_t collectionID;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // key for routing and will be interpreted as inclusive start key by the server
@@ -268,9 +268,9 @@ struct K23SIQueryRequest {
     expression::Expression filterExpression; // the filter expression for this query
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
+    K2_PAYLOAD_FIELDS(pvid, collectionID, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
                       reverseDirection, filterExpression, projection);
-    K2_DEF_FMT(K23SIQueryRequest, pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit,
+    K2_DEF_FMT(K23SIQueryRequest, pvid, collectionID, mtr, key, endKey, exclusiveKey, recordLimit,
         includeVersionMismatch, reverseDirection, filterExpression, projection);
 };
 
@@ -285,16 +285,15 @@ struct K23SIQueryResponse {
 struct K23SITxnHeartbeatRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    // the name of the collection
-    String collectionName;
+    uint64_t collectionID;
     // trh of the transaction we want to heartbeat.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
     // the MTR for the transaction we want to heartbeat
     K23SI_MTR mtr;
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
-    K2_DEF_FMT(K23SITxnHeartbeatRequest, pvid, collectionName, key, mtr);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, key, mtr);
+    K2_DEF_FMT(K23SITxnHeartbeatRequest, pvid, collectionID, key, mtr);
 };
 
 struct K23SITxnHeartbeatResponse {
@@ -328,8 +327,7 @@ struct K23SI_PersistencePartialUpdate {
 struct K23SITxnPushRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    // the name of the collection
-    String collectionName;
+    uint64_t collectionID;
     // trh of the incumbent.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
@@ -338,8 +336,8 @@ struct K23SITxnPushRequest {
     // the MTR for the challenger transaction
     K23SI_MTR challengerMTR;
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, incumbentMTR, challengerMTR);
-    K2_DEF_FMT(K23SITxnPushRequest, pvid, collectionName, key, incumbentMTR, challengerMTR);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, key, incumbentMTR, challengerMTR);
+    K2_DEF_FMT(K23SITxnPushRequest, pvid, collectionID, key, incumbentMTR, challengerMTR);
 };
 
 // Response for PUSH operation
@@ -361,8 +359,7 @@ K2_DEF_ENUM(EndAction,
 struct K23SITxnEndRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    // the name of the collection
-    String collectionName;
+    uint64_t collectionID;
     // trh of the transaction to end.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
@@ -382,8 +379,8 @@ struct K23SITxnEndRequest {
     // The interval from end to Finalize for a transaction
     Duration timeToFinalize{0};
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeKeys, syncFinalize, timeToFinalize);
-    K2_DEF_FMT(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, syncFinalize, timeToFinalize, writeKeys);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, key, mtr, action, writeKeys, syncFinalize, timeToFinalize);
+    K2_DEF_FMT(K23SITxnEndRequest, pvid, collectionID, key, mtr, action, syncFinalize, timeToFinalize, writeKeys);
 };
 
 struct K23SITxnEndResponse {
@@ -394,8 +391,7 @@ struct K23SITxnEndResponse {
 struct K23SITxnFinalizeRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    // the name of the collection
-    String collectionName;
+    uint64_t collectionID;
     // trh of the transaction
     Key trh;
     // the MTR for the transaction
@@ -405,8 +401,8 @@ struct K23SITxnFinalizeRequest {
     // should we abort or commit
     EndAction action;
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, trh, mtr, key, action);
-    K2_DEF_FMT(K23SITxnFinalizeRequest, pvid, collectionName, trh, mtr, key, action);
+    K2_PAYLOAD_FIELDS(pvid, collectionID, trh, mtr, key, action);
+    K2_DEF_FMT(K23SITxnFinalizeRequest, pvid, collectionID, trh, mtr, key, action);
 };
 
 struct K23SITxnFinalizeResponse {
@@ -415,10 +411,10 @@ struct K23SITxnFinalizeResponse {
 };
 
 struct K23SIPushSchemaRequest {
-    String collectionName;
+    uint64_t collectionID;
     Schema schema;
-    K2_PAYLOAD_FIELDS(collectionName, schema);
-    K2_DEF_FMT(K23SIPushSchemaRequest, collectionName, schema);
+    K2_PAYLOAD_FIELDS(collectionID, schema);
+    K2_DEF_FMT(K23SIPushSchemaRequest, collectionID, schema);
 };
 
 struct K23SIPushSchemaResponse {

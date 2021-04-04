@@ -213,6 +213,7 @@ seastar::future<> CPOTest::runTest5() {
             K2EXPECT(log::cpotest, resp.collection.metadata.capacity.writeIOPs, 100000);
             K2EXPECT(log::cpotest, resp.collection.partitionMap.version, 1);
             K2EXPECT(log::cpotest, resp.collection.partitionMap.partitions.size(), 3);
+            _collectionAssignID = resp.collection.metadata.ID;
 
             // how many partitions we have
             uint64_t numparts = _k2ConfigEps().size();
@@ -294,7 +295,7 @@ seastar::future<> CPOTest::runTest8() {
     K2LOG_I(log::cpotest, ">>> Test8: Drop an assigned collection");
 
 
-    dto::CollectionDropRequest request{"collectionAssign"};
+    dto::CollectionDropRequest request{_collectionAssignID};
 
     return RPC().callRPC<dto::CollectionDropRequest, dto::CollectionDropResponse>(dto::Verbs::CPO_COLLECTION_DROP, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
@@ -307,7 +308,7 @@ seastar::future<> CPOTest::runTest9() {
     K2LOG_I(log::cpotest, ">>> Test8: Try to drop a non-existing collection");
 
 
-    dto::CollectionDropRequest request{"DNE"};
+    dto::CollectionDropRequest request{777};
 
     return RPC().callRPC<dto::CollectionDropRequest, dto::CollectionDropResponse>(dto::Verbs::CPO_COLLECTION_DROP, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {

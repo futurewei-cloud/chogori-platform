@@ -143,6 +143,7 @@ public:
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
     seastar::future<CreateQueryResult> createQuery(const String& collectionName, const String& schemaName);
+    seastar::future<Status> getCollectionID(const String& collectionName);
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<String> _cpo{"cpo"};
@@ -180,20 +181,20 @@ private:
     void checkResponseStatus(Status& status);
 
     std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::Key& key,
-                                                           const String& collectionName) const;
+                                                           uint64_t collectionID) const;
     std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase,
-                                                             bool rejectIfExists);
+                                                             bool rejectIfExists, uint64_t collectionID);
 
     template <class T>
-    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const T& user_record) const {
+    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const T& user_record, uint64_t collectionID) const {
         dto::SKVRecord record(user_record.collectionName, user_record.schema);
         user_record.__writeFields(record);
 
-        return makeReadRequest(record.getKey(), record.collectionName);
+        return makeReadRequest(record.getKey(), collectionID);
     }
 
     std::unique_ptr<dto::K23SIWriteRequest> makePartialUpdateRequest(dto::SKVRecord& record,
-            std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key);
+            std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key, uint64_t collectionID);
 
     void prepareQueryRequest(Query& query);
 
@@ -220,7 +221,23 @@ public:
             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
         }
 
-        std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(record);
+        uint64_t collectionID;
+        auto it = _cpo_client->collectionNameToID.find(record.collectionName);
+        if (it != _cpo_client->collectionID.end()) {
+            collectionID = it->second;
+        } else {
+            return _cpo_client->GetAssignedPartitionWithRetry(_options.deadline, record.collectionName,
+                dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""})
+            .then([r=std::move(record)] (Status&& status) mutable {
+                if (!status.is2xxOK()) {
+                    return ReadResult<T>(std::move(status), T());
+                } else {
+                    return read<T>(std::move(r));
+                }
+            });
+        }
+
+        std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(record, collectionID);
 
         _client->read_ops++;
         _ongoing_ops++;
@@ -253,13 +270,29 @@ public:
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
 
+        uint64_t collectionID;
+        auto it = _cpo_client->collectionNameToID.find(record.collectionName);
+        if (it != _cpo_client->collectionID.end()) {
+            collectionID = it->second;
+        } else {
+            return _cpo_client->GetAssignedPartitionWithRetry(_options.deadline, record.collectionName,
+                dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""})
+            .then([r=std::move(record), erase, rejectIfExists] (Status&& status) mutable {
+                if (!status.is2xxOK()) {
+                    return WriteResult(std::move(status), K23SIWriteResponse());
+                } else {
+                    return write<T>(std::move(r), erase, rejectIfExists);
+                }
+            });
+        }
+
         std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
-            request = makeWriteRequest(record, erase, rejectIfExists);
+            request = makeWriteRequest(record, erase, rejectIfExists, collectionID);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = makeWriteRequest(skv_record, erase, rejectIfExists);
+            request = makeWriteRequest(skv_record, erase, rejectIfExists, collectionID);
         }
 
         _client->write_ops++;
@@ -317,7 +350,23 @@ public:
             return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status));
         }
         _client->write_ops++;
-        _ongoing_ops++;
+
+        uint64_t collectionID;
+        auto it = _cpo_client->collectionNameToID.find(record.collectionName);
+        if (it != _cpo_client->collectionID.end()) {
+            collectionID = it->second;
+        } else {
+            return _cpo_client->GetAssignedPartitionWithRetry(_options.deadline, record.collectionName,
+                dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""})
+            .then([r=std::move(record), fields=std::move(fieldsForPartialUpdate), k=std::move(key)]
+                                        (Status&& status) mutable {
+                if (!status.is2xxOK()) {
+                    return PartialUpdateResult(std::move(status));
+                } else {
+                    return partialUpdate<T1>(std::move(r), std::move(fields), std::move(k));
+                }
+            });
+        }
 
         std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
         if constexpr (std::is_same<T1, dto::SKVRecord>()) {
@@ -325,7 +374,7 @@ public:
                 key = record.getKey();
             }
 
-            request = makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key));
+            request = makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key), collectionID);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
@@ -333,13 +382,14 @@ public:
                 key = skv_record.getKey();
             }
 
-            request = makePartialUpdateRequest(skv_record, fieldsForPartialUpdate, std::move(key));
+            request = makePartialUpdateRequest(skv_record, fieldsForPartialUpdate, std::move(key), collectionID);
         }
         if (request == nullptr) {
             return seastar::make_ready_future<PartialUpdateResult> (
                     PartialUpdateResult(dto::K23SIStatus::BadParameter("error makePartialUpdateRequest()")) );
         }
 
+        _ongoing_ops++;
         return _cpo_client->PartitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
@@ -391,7 +441,7 @@ private:
     PeriodicTimer _heartbeat_timer;
     std::vector<dto::Key> _write_set;
     dto::Key _trh_key;
-    String _trh_collection;
+    uint64_t _trh_collection;
 };
 
 // Normal use-case read interface, where the key fields of the user's SKVRecord are

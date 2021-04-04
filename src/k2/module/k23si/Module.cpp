@@ -46,7 +46,7 @@ bool K23SIPartitionModule::_validateRetentionWindow(const dto::Timestamp& ts) co
 
 template<typename RequestT>
 bool K23SIPartitionModule::_validateRequestPartition(const RequestT& req) const {
-    auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid;
+    auto result = req.collectionID == _cmeta.ID && req.pvid == _partition().pvid;
     // validate partition owns the requests' key.
     // 1. common case assumes RequestT a Read request;
     // 2. now for the other cases, only Query request is implemented.
@@ -294,7 +294,7 @@ seastar::future<> K23SIPartitionModule::start() {
             _readCache = std::make_unique<ReadCache<dto::Key, dto::Timestamp>>(watermark, _config.readCacheSize());
             _retentionUpdateTimer.arm(_config.retentionTimestampUpdateInterval());
             _persistence = std::make_shared<Persistence>();
-            return _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline, _persistence)
+            return _txnMgr.start(_cmeta.ID, _retentionTimestamp, _cmeta.heartbeatDeadline, _persistence)
                 .then([this] {
                     return _recovery();
                 })
@@ -462,7 +462,7 @@ std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryReq
             "Schema version of found record does not exist"), false);
     }
 
-    dto::SKVRecord record(request.collectionName, versionIt->second, storage.share(), true);
+    dto::SKVRecord record(request.collectionID, versionIt->second, storage.share(), true);
     bool keep = false;
     Status status = dto::K23SIStatus::OK("");
 
@@ -554,7 +554,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
         K2LOG_D(log::skvsvr, "About to PUSH in query request");
         request.key = key_it->first; // if we retry, do so with the key we're currently iterating on
-        return _doPush(request.collectionName, key_it->first, versions.WI->txnId, request.mtr, deadline)
+        return _doPush(request.collectionID, key_it->first, versions.WI->txnId, request.mtr, deadline)
         .then([this, request=std::move(request),
                         resp=std::move(response), deadline](bool retryChallenger) mutable {
             if (!retryChallenger) {
@@ -621,7 +621,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
     }
 
     // record is still pending and isn't from same transaction.
-    return _doPush(request.collectionName, request.key, versions.WI->txnId, request.mtr, deadline)
+    return _doPush(request.collectionID, request.key, versions.WI->txnId, request.mtr, deadline)
         .then([this, request=std::move(request), deadline](bool retryChallenger) mutable {
             if (!retryChallenger) {
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse{});
@@ -1028,7 +1028,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         // this is a write request finding a WI from a different transaction. Do a push with the remaining
         // deadline time.
         K2LOG_D(log::skvsvr, "Partition: {}, different WI found for key {}", _partition, request.key);
-        return _doPush(request.collectionName, request.key, vset.WI->txnId, request.mtr, deadline)
+        return _doPush(request.collectionID, request.key, vset.WI->txnId, request.mtr, deadline)
             .then([this, request = std::move(request), deadline](auto&& retryChallenger) mutable {
                 if (!retryChallenger) {
                     // challenger must fail. Flush in case a TR was created during this call to handle write
@@ -1264,10 +1264,10 @@ K23SIPartitionModule::handleTxnHeartbeat(dto::K23SITxnHeartbeatRequest&& request
 }
 
 seastar::future<bool>
-K23SIPartitionModule::_doPush(String collectionName, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline) {
+K23SIPartitionModule::_doPush(uint64_t collectionID, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline) {
     K2LOG_D(log::skvsvr, "partition: {}, executing push against txnid={}, for mtr={}", _partition, incumbentTxnId, challengerMTR);
     dto::K23SITxnPushRequest request{};
-    request.collectionName = std::move(collectionName);
+    request.collectionID = std::move(collectionID);
     request.incumbentMTR = std::move(incumbentTxnId.mtr);
     request.key = std::move(incumbentTxnId.trh); // this is the routing key - should be the TRH key
     request.challengerMTR = std::move(challengerMTR);
@@ -1448,8 +1448,8 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
 seastar::future<std::tuple<Status, dto::K23SIPushSchemaResponse>>
 K23SIPartitionModule::handlePushSchema(dto::K23SIPushSchemaRequest&& request) {
     K2LOG_D(log::skvsvr, "handlePushSchema for schema: {}", request.schema.name);
-    if (_cmeta.name != request.collectionName) {
-        return RPCResponse(Statuses::S403_Forbidden("Collection names in partition and request do not match"), dto::K23SIPushSchemaResponse{});
+    if (_cmeta.ID != request.collectionID) {
+        return RPCResponse(Statuses::S403_Forbidden("Collection ID in partition and request do not match"), dto::K23SIPushSchemaResponse{});
     }
 
     _schemas[request.schema.name][request.schema.version] = std::make_shared<dto::Schema>(request.schema);
