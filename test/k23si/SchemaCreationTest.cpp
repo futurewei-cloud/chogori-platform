@@ -237,7 +237,7 @@ seastar::future<> runScenario01(){
         K2EXPECT(log::k23si, schema.basicValidation(), Statuses::S200_OK);
         K2EXPECT(log::k23si, resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
 
-        dto::CreateSchemaRequest request{ colletionID, std::move(schema) };
+        dto::CreateSchemaRequest request{ collectionID, std::move(schema) };
         return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
         .then([this] (auto&& response) {
             auto& [status, resp] = response;

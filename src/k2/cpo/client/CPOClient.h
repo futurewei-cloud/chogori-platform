@@ -123,14 +123,15 @@ public:
             K2LOG_D(log::cpoclient, "collection get response received with status={}, for name={}", status, name);
             if (status.is2xxOK()) {
                 auto it = collectionNameToID.find(name);
-                if (it != collectionNameToID.end() && it->second != coll_response.collection.ID) {
+                if (it != collectionNameToID.end() && it->second != coll_response.collection.metadata.ID) {
                     // This case means someone deleted the collection and recreated a new one with the same
                     // name. We need to die so that no operations continue that expect to be talking to the
                     // old collection.
                     K2LOG_E(log::cpoclient, "exiting because a collection has been deleted that was in use");
                     seastar::engine().exit(1);
                 } else {
-                    collectionNameToID[name] = coll_response.collection.ID;
+                    collectionNameToID[name] = coll_response.collection.metadata.ID;
+                    collectionIDToName[coll_response.collection.metadata.ID] = name;
                 }
 
                 collections[name] = dto::PartitionGetter(std::move(coll_response.collection));
@@ -186,22 +187,27 @@ public:
         K2LOG_D(log::cpoclient, "making partition request with deadline={}", deadline.getRemaining());
         // If collection is not in cache or partition is not assigned, get collection first
         seastar::future<Status> f = seastar::make_ready_future<Status>(Statuses::S200_OK("default cached response"));
-        auto it = collections.find(request.collectionID);
-        if (it == collections.end()) {
+        auto itID = collectionIDToName.find(request.collectionID);
+        auto it = collections.end();
+        if (itID != collectionIDToName.end()) {
+            it = collections.find(itID->second);
+        }
+
+        if (itID == collectionIDToName.end() || it == collections.end()) {
             K2LOG_D(log::cpoclient, "Collection not found");
-            f = GetAssignedPartitionWithRetry(deadline, request.collectionID, request.key, reverse, exclusiveKey);
+            f = GetAssignedPartitionWithRetry(deadline, itID->second, request.key, reverse, exclusiveKey);
         } else {
             K2LOG_D(log::cpoclient, "Collection found");
-            dto::Partition* partition = collections[request.collectionID].getPartitionForKey(request.key, reverse, exclusiveKey).partition;
+            dto::Partition* partition = collections[itID->second].getPartitionForKey(request.key, reverse, exclusiveKey).partition;
             if (!partition || partition->astate != dto::AssignmentState::Assigned) {
                 K2LOG_D(log::cpoclient, "Collection found but is in bad state");
-                f = GetAssignedPartitionWithRetry(deadline, request.collectionID, request.key, reverse, exclusiveKey);
+                f = GetAssignedPartitionWithRetry(deadline, itID->second, request.key, reverse, exclusiveKey);
             }
         }
 
-        return f.then([this, deadline, &request, reverse, exclusiveKey, retries](Status&& status) {
+        return f.then([this, deadline, &request, reverse, exclusiveKey, retries, name=itID->second](Status&& status) {
             K2LOG_D(log::cpoclient, "Collection get completed with status={}, request={} ", status, request);
-            auto it = collections.find(request.collectionID);
+            auto it = collections.find(name);
 
             if (it == collections.end()) {
                 // Failed to get collection, returning status from GetAssignedPartitionWithRetry
@@ -210,7 +216,7 @@ public:
             }
 
             // Try to get partition info
-            auto& partition = collections[request.collectionID].getPartitionForKey(request.key, reverse, exclusiveKey);
+            auto& partition = collections[name].getPartitionForKey(request.key, reverse, exclusiveKey);
             if (!partition.partition || partition.partition->astate != dto::AssignmentState::Assigned) {
                 // Partition is still not assigned after refresh attempts
                 K2LOG_D(log::cpoclient, "Failed to get assigned partition");
@@ -223,7 +229,7 @@ public:
 
             // Attempt the request RPC
             return RPC().callRPC<RequestT, ResponseT>(verb, request, *partition.preferredEndpoint, timeout).
-            then([this, &request, deadline, reverse, exclusiveKey, retries] (auto&& result) {
+            then([this, &request, deadline, reverse, exclusiveKey, retries, name] (auto&& result) {
                 auto& [status, k2response] = result;
                 K2LOG_D(log::cpoclient, "partition call completed with status={}", status);
 
@@ -244,7 +250,7 @@ public:
                 }
 
                 // S410_Gone (refresh partition map) or retryable error
-                return GetAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey, 1)
+                return GetAssignedPartitionWithRetry(deadline, name, request.key, reverse, exclusiveKey, 1)
                 .then([this, &request, deadline, reverse, exclusiveKey, retries] (Status&& status) {
                     K2LOG_D(log::cpoclient, "retrying partition call after status={}", status);
                     (void) status;
@@ -277,8 +283,9 @@ public:
     seastar::future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>> getSchemas(const String& collectionName);
 
     std::unique_ptr<TXEndpoint> cpo;
-    std::unordered_map<uint64_t, dto::PartitionGetter> collections;
+    std::unordered_map<String, dto::PartitionGetter> collections;
     std::unordered_map<String, uint64_t> collectionNameToID;
+    std::unordered_map<uint64_t, String> collectionIDToName;
 
     ConfigDuration partition_request_timeout{"partition_request_timeout", 100ms};
     ConfigDuration schema_request_timeout{"schema_request_timeout", 1s};

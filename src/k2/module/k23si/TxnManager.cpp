@@ -61,7 +61,7 @@ void TxnRecord::unlinkBG(BGList& bglist) {
 }
 
 TxnManager::~TxnManager() {
-    K2LOG_I(log::skvsvr, "dtor for cname={}", _collectionName);
+    K2LOG_I(log::skvsvr, "dtor for cid={}", _collectionID);
     _hblist.clear();
     _rwlist.clear();
     _bgTasks.clear();
@@ -70,9 +70,9 @@ TxnManager::~TxnManager() {
     }
 }
 
-seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence) {
+seastar::future<> TxnManager::start(uint64_t collectionID, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence) {
     K2LOG_D(log::skvsvr, "start");
-    _collectionName = collectionName;
+    _collectionID = collectionID;
     _hbDeadline = hbDeadline;
     _persistence= persistence;
     updateRetentionTimestamp(rts);
@@ -122,7 +122,7 @@ seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp
 }
 
 seastar::future<> TxnManager::gracefulStop() {
-    K2LOG_I(log::skvsvr, "stopping txn mgr for coll={}", _collectionName);
+    K2LOG_I(log::skvsvr, "stopping txn mgr for coll={}", _collectionID);
     _stopping = true;
     _hbTimer.cancel();
     return _hbTask.then([this] {
@@ -446,7 +446,7 @@ seastar::future<> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline 
                 return seastar::parallel_for_each(start, end, [&rec, this, deadline](dto::Key& key) {
                     dto::K23SITxnFinalizeRequest request{};
                     request.key = key;
-                    request.collectionName = _collectionName;
+                    request.collectionID = _collectionID;
                     request.mtr = rec.txnId.mtr;
                     request.trh = rec.txnId.trh;
                     request.action = rec.state == dto::TxnRecordState::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;

@@ -462,7 +462,7 @@ std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryReq
             "Schema version of found record does not exist"), false);
     }
 
-    dto::SKVRecord record(request.collectionID, versionIt->second, storage.share(), true);
+    dto::SKVRecord record(_cmeta.name, versionIt->second, storage.share(), true);
     bool keep = false;
     Status status = dto::K23SIStatus::OK("");
 

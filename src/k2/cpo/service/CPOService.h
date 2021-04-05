@@ -52,8 +52,8 @@ private:
     std::unordered_map<String, seastar::future<>> _assignments;
     std::tuple<Status, dto::Collection> _getCollection(String name);
     Status _saveCollection(dto::Collection& collection);
-    Status _saveSchemas(const String& collectionName);
-    Status _loadSchemas(const String& collectionName);
+    Status _saveSchemas(const String& collectionName, uint64_t ID);
+    Status _loadSchemas(const String& collectionName, uint64_t ID);
     seastar::future<Status> _pushSchema(const dto::Collection& collection, const dto::Schema& schema);
     void _handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request);
     Status _persistNextCollectionID();
@@ -61,6 +61,7 @@ private:
 
     // Collection ID -> schemas
     std::unordered_map<uint64_t, std::vector<dto::Schema>> schemas;
+    std::unordered_map<uint64_t, String> collectionIDToName;
     uint64_t _nextCollectionID = 0;
     String _collectionIDFile = "collectionID/ID";
 

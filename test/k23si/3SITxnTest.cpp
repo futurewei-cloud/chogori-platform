@@ -39,6 +39,7 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2{
 const uint64_t badCID = 777;
 const String collname = "3si_txn_collection";
+const String s02_collname = "3si_txn_collection2";
 dto::Schema _schema {
             .name = "schema",
             .version = 1,
@@ -152,6 +153,7 @@ private:
     int exitcode = -1;
     uint64_t txnids = 1029;
     uint64_t collectionID = 0;
+    uint64_t s02_collectionID = 0;
 
     dto::PartitionGetter _pgetter;
 
@@ -584,7 +586,7 @@ seastar::future<> testScenario01() {
         // setup: assigned node with no data
         auto request = dto::CollectionCreateRequest{
             .metadata{
-                .name = collectionID,
+                .name = collname,
                 .hashScheme = hashScheme,
                 .storageDriver = dto::StorageDriver::K23SI,
                 .capacity{
@@ -608,7 +610,7 @@ seastar::future<> testScenario01() {
         })
         .then([this] {
             // check to make sure the collection is assigned
-            auto request = dto::CollectionGetRequest{.name = collectionID};
+            auto request = dto::CollectionGetRequest{.name = collname};
             return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
                 (dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
         })
@@ -616,7 +618,7 @@ seastar::future<> testScenario01() {
             // check collection was assigned
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
-            collectionID = resp.collectiona.metadata.ID;
+            collectionID = resp.collection.metadata.ID;
             _pgetter = dto::PartitionGetter(std::move(resp.collection));
         })
         .then([this] () {
@@ -1282,7 +1284,7 @@ seastar::future<> testScenario02() {
     .then([this] {
         auto request = dto::CollectionCreateRequest{
             .metadata{
-                .name = s02_collectionID,
+                .name = s02_collname,
                 .hashScheme = dto::HashScheme::HashCRC32C,
                 .storageDriver = dto::StorageDriver::K23SI,
                 .capacity{
@@ -1306,7 +1308,7 @@ seastar::future<> testScenario02() {
         })
         .then([this] {
             // check to make sure the collection is assigned
-            auto request = dto::CollectionGetRequest{.name = s02_collectionID};
+            auto request = dto::CollectionGetRequest{.name = s02_collname};
             return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
                 (dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
         })
@@ -1317,6 +1319,7 @@ seastar::future<> testScenario02() {
             K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[0].astate, dto::AssignmentState::FailedAssignment);
             K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[1].astate, dto::AssignmentState::FailedAssignment);
             K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[2].astate, dto::AssignmentState::FailedAssignment);
+            s02_collectionID = resp.collection.metadata.ID;
         });
     })
     .then([] {

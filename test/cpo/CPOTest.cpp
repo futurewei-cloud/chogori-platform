@@ -249,13 +249,13 @@ seastar::future<> CPOTest::runTest6() {
     schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
     schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
 
-    dto::CreateSchemaRequest request{ "collectionAssign", std::move(schema) };
+    dto::CreateSchemaRequest request{ _collectionAssignID, std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(log::cpotest, status, Statuses::S200_OK);
 
-        dto::GetSchemasRequest request { "collectionAssign" };
+        dto::GetSchemasRequest request { _collectionAssignID };
         return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
     })
     .then([] (auto&& response) {
@@ -283,7 +283,7 @@ seastar::future<> CPOTest::runTest7() {
     // Invalid schema because we did not set any partition key fields
 
 
-    dto::CreateSchemaRequest request{ "collectionAssign", std::move(schema) };
+    dto::CreateSchemaRequest request{ _collectionAssignID, std::move(schema) };
     return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
     .then([this] (auto&& response) {
         auto& [status, resp] = response;
@@ -330,8 +330,6 @@ seastar::future<> CPOTest::runTest10() {
 
 seastar::future<> CPOTest::runTest11() {
     K2LOG_I(log::cpotest, ">>> Test11: recreate a previously deleted collection (rerun test5)");
-    return runTest5()
-    .then([this] () {
-    });
+    return runTest5();
 }
 

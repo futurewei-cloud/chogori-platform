@@ -45,7 +45,7 @@ struct DataRec {
     K2_DEF_FMT(DataRec, f1, f2);
 };
 
-const char* collectionID = "k23si_test_collection";
+const char* collname = "k23si_test_collection";
 
 class K23SITest {
 
@@ -189,12 +189,12 @@ private:
     doWrite(const dto::Key& key, const DataRec& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, uint64_t cid, bool isDelete, bool isTRH) {
         uint64_t id = 0;
 
-        SKVRecord record(cname, std::make_shared<k2::dto::Schema>(_schema));
+        SKVRecord record(collname, std::make_shared<k2::dto::Schema>(_schema));
         record.serializeNext<String>(key.partitionKey);
         record.serializeNext<String>(key.rangeKey);
         record.serializeNext<String>(data.f1);
         record.serializeNext<String>(data.f2);
-        K2LOG_D(log::k23si, "cname={}, key={}, phash={}", cname, key, key.partitionHash())
+        K2LOG_D(log::k23si, "cname={}, key={}, phash={}", collname, key, key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
         dto::K23SIWriteRequest request {
             .pvid = part.partition->pvid,
@@ -231,7 +231,7 @@ private:
                 return std::make_tuple(std::move(status), DataRec{});
             }
 
-            SKVRecord record(collectionID, std::make_shared<k2::dto::Schema>(_schema), std::move(resp.value), true);
+            SKVRecord record(collname, std::make_shared<k2::dto::Schema>(_schema), std::move(resp.value), true);
             record.seekField(2);
             DataRec rec = { *(record.deserializeNext<String>()), *(record.deserializeNext<String>()) };
             return std::make_tuple(std::move(status), std::move(rec));
@@ -303,7 +303,7 @@ seastar::future<> runScenario01() {
         });
     })
     .then([this] {
-        return doRead({"schema", "Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
+        return doRead({"schema", "Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, 777);
     })
     .then([](auto&& response) {
         auto& [status, resp] = response;
@@ -487,7 +487,7 @@ seastar::future<> runScenario04() {
                     K2EXPECT(log::k23si, status, Statuses::S200_OK);
                     K2EXPECT(log::k23si, k2response.state, k2::dto::TxnRecordState::InProgress);
 
-                    return seastar::when_all(doEnd(k1, m1, collectionID, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
+                    return seastar::when_all(doEnd(k1, m1, collectionID, true, {k1}), doEnd(k2, m2, collectionID, true, {k2}));
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;
@@ -504,7 +504,7 @@ seastar::future<> runScenario04() {
                     auto& [status, resp] = result;
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
 
-                    return seastar::when_all(doRead(k1, m1, collectionID), doRead(k2, m2, collname));
+                    return seastar::when_all(doRead(k1, m1, collectionID), doRead(k2, m2, collectionID));
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;
@@ -563,7 +563,7 @@ seastar::future<> runScenario05() {
                     K2EXPECT(log::k23si, status, Statuses::S200_OK);
                     K2EXPECT(log::k23si, k2response.state, k2::dto::TxnRecordState::InProgress);
 
-                    return seastar::when_all(doEnd(k1, m1, collectionID, true, {k1}), doEnd(k2, m2, collname, true, {k2}));
+                    return seastar::when_all(doEnd(k1, m1, collectionID, true, {k1}), doEnd(k2, m2, collectionID, true, {k2}));
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;
@@ -571,7 +571,7 @@ seastar::future<> runScenario05() {
                     auto [status2, result2] = r2.get0();
                     K2EXPECT(log::k23si, status1, dto::K23SIStatus::OK);
                     K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
-                    return seastar::when_all(doRead(k1, m1, collectionID), doRead(k2, m2, collname));
+                    return seastar::when_all(doRead(k1, m1, collectionID), doRead(k2, m2, collectionID));
                 })
                 .then([&](auto&& result) mutable {
                     auto& [r1, r2] = result;

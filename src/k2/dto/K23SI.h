@@ -178,7 +178,7 @@ K2_DEF_ENUM(TxnRecordState,
 // The main READ DTO.
 struct K23SIReadRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // the key to read
@@ -215,7 +215,7 @@ struct K23SIStatus {
 
 struct K23SIWriteRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
     // the first write (the write for which designateTRH was set to true)
@@ -254,7 +254,7 @@ struct K23SIWriteResponse {
 
 struct K23SIQueryRequest {
     Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // key for routing and will be interpreted as inclusive start key by the server
@@ -285,7 +285,7 @@ struct K23SIQueryResponse {
 struct K23SITxnHeartbeatRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     // trh of the transaction we want to heartbeat.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
@@ -327,7 +327,7 @@ struct K23SI_PersistencePartialUpdate {
 struct K23SITxnPushRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     // trh of the incumbent.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
@@ -359,7 +359,7 @@ K2_DEF_ENUM(EndAction,
 struct K23SITxnEndRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     // trh of the transaction to end.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
@@ -391,7 +391,7 @@ struct K23SITxnEndResponse {
 struct K23SITxnFinalizeRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     Partition::PVID pvid;
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     // trh of the transaction
     Key trh;
     // the MTR for the transaction
@@ -411,7 +411,7 @@ struct K23SITxnFinalizeResponse {
 };
 
 struct K23SIPushSchemaRequest {
-    uint64_t collectionID;
+    uint64_t collectionID = 0;
     Schema schema;
     K2_PAYLOAD_FIELDS(collectionID, schema);
     K2_DEF_FMT(K23SIPushSchemaRequest, collectionID, schema);

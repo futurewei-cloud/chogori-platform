@@ -96,7 +96,7 @@ seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, c
     QueryResult* result = new QueryResult(std::move(status));
 
     for (SKVRecord::Storage& storage : response.results) {
-        futures.push_back(client->getSchema(query.request.collectionName,
+        futures.push_back(client->getSchema(query.startScanRecord.collectionName,
                     query.schema->name, storage.schemaVersion)
         .then([&query, result, s=std::move(storage)] (GetSchemaResult&& get_response) mutable {
             if (!get_response.status.is2xxOK()) {
@@ -104,7 +104,7 @@ seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, c
                 return seastar::make_ready_future<>();
             }
 
-            SKVRecord record(query.request.collectionName, get_response.schema, std::move(s), query.keysProjected);
+            SKVRecord record(query.startScanRecord.collectionName, get_response.schema, std::move(s), query.keysProjected);
             result->records.emplace_back(std::move(record));
             return seastar::make_ready_future<>();
         }));

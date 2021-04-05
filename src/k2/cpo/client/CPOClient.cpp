@@ -43,7 +43,12 @@ void CPOClient::FulfillWaiters(const String& name, const Status& status) {
 }
 
 seastar::future<k2::Status> CPOClient::createSchema(const String& collectionName, k2::dto::Schema schema) {
-    k2::dto::CreateSchemaRequest request{ collectionName, std::move(schema) };
+    auto it = collectionNameToID.find(collectionName);
+    if (it == collectionNameToID.end()) {
+        return seastar::make_ready_future<k2::Status>(k2::Statuses::S404_Not_Found("collection name not found"));
+    }
+
+    k2::dto::CreateSchemaRequest request{ it->second, std::move(schema) };
     return k2::RPC().callRPC<k2::dto::CreateSchemaRequest, k2::dto::CreateSchemaResponse>(k2::dto::Verbs::CPO_SCHEMA_CREATE, request, *cpo, schema_request_timeout())
     .then([] (auto&& response) {
         auto& [status, r] = response;
@@ -52,7 +57,12 @@ seastar::future<k2::Status> CPOClient::createSchema(const String& collectionName
 }
 
 seastar::future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>> CPOClient::getSchemas(const String& collectionName) {
-    k2::dto::GetSchemasRequest request { collectionName };
+    auto it = collectionNameToID.find(collectionName);
+    if (it == collectionNameToID.end()) {
+        return seastar::make_ready_future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>>(std::make_tuple(k2::Statuses::S404_Not_Found("collection name not found"), std::vector<k2::dto::Schema>()));
+    }
+
+    k2::dto::GetSchemasRequest request { it->second };
     return k2::RPC().callRPC<k2::dto::GetSchemasRequest, k2::dto::GetSchemasResponse>(k2::dto::Verbs::CPO_SCHEMAS_GET, request, *cpo, schema_request_timeout())
     .then([] (auto && response) {
         auto& [status, r] = response;

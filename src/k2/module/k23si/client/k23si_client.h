@@ -223,12 +223,12 @@ public:
 
         uint64_t collectionID;
         auto it = _cpo_client->collectionNameToID.find(record.collectionName);
-        if (it != _cpo_client->collectionID.end()) {
+        if (it != _cpo_client->collectionNameToID.end()) {
             collectionID = it->second;
         } else {
             return _cpo_client->GetAssignedPartitionWithRetry(_options.deadline, record.collectionName,
                 dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""})
-            .then([r=std::move(record)] (Status&& status) mutable {
+            .then([this, r=std::move(record)] (Status&& status) mutable {
                 if (!status.is2xxOK()) {
                     return ReadResult<T>(std::move(status), T());
                 } else {
@@ -245,7 +245,7 @@ public:
         return _cpo_client->PartitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
-            then([this, request_schema=record.schema, &collName=request->collectionName] (auto&& response) {
+            then([this, request_schema=record.schema, collName=record.collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
@@ -272,16 +272,17 @@ public:
 
         uint64_t collectionID;
         auto it = _cpo_client->collectionNameToID.find(record.collectionName);
-        if (it != _cpo_client->collectionID.end()) {
+        if (it != _cpo_client->collectionNameToID.end()) {
             collectionID = it->second;
         } else {
             return _cpo_client->GetAssignedPartitionWithRetry(_options.deadline, record.collectionName,
                 dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""})
-            .then([r=std::move(record), erase, rejectIfExists] (Status&& status) mutable {
+            // TODO ok to caputre by ref?
+            .then([this, &record, erase, rejectIfExists] (Status&& status) mutable {
                 if (!status.is2xxOK()) {
                     return WriteResult(std::move(status), K23SIWriteResponse());
                 } else {
-                    return write<T>(std::move(r), erase, rejectIfExists);
+                    return write<T>(record, erase, rejectIfExists);
                 }
             });
         }
@@ -301,15 +302,15 @@ public:
         return _cpo_client->PartitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
-            then([this] (auto&& response) {
+            then([this, collectionName=record.collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
 
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
-                    K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
+                    K2ASSERT(log::skvclient, _cpo_client->collections.find(collectionName) != _cpo_client->collections.end(), "collection not present after successful write");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr);
-                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
+                    _heartbeat_interval = _cpo_client->collections[collectionName].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
@@ -353,12 +354,12 @@ public:
 
         uint64_t collectionID;
         auto it = _cpo_client->collectionNameToID.find(record.collectionName);
-        if (it != _cpo_client->collectionID.end()) {
+        if (it != _cpo_client->collectionNameToID.end()) {
             collectionID = it->second;
         } else {
             return _cpo_client->GetAssignedPartitionWithRetry(_options.deadline, record.collectionName,
                 dto::Key{.schemaName = "", .partitionKey = "", .rangeKey = ""})
-            .then([r=std::move(record), fields=std::move(fieldsForPartialUpdate), k=std::move(key)]
+            .then([this, r=std::move(record), fields=std::move(fieldsForPartialUpdate), k=std::move(key)]
                                         (Status&& status) mutable {
                 if (!status.is2xxOK()) {
                     return PartialUpdateResult(std::move(status));
@@ -393,15 +394,15 @@ public:
         return _cpo_client->PartitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
-            then([this] (auto&& response) {
+            then([this, collectionName=record.collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
                 checkResponseStatus(status);
                 _ongoing_ops--;
 
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
-                    K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
+                    K2ASSERT(log::skvclient, _cpo_client->collections.find(collectionName) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr)
-                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
+                    _heartbeat_interval = _cpo_client->collections[collectionName].collection.metadata.heartbeatDeadline / 2;
                     makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }

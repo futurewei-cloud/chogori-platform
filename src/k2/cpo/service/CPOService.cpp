@@ -205,6 +205,7 @@ CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
     if (!IDStatus.is2xxOK()) {
         return RPCResponse(std::move(IDStatus), dto::CollectionCreateResponse());
     }
+    collectionIDToName[collection.metadata.ID] = request.metadata.name;
 
     int err = 0;
     if (collection.metadata.hashScheme == dto::HashScheme::HashCRC32C) {
@@ -247,17 +248,23 @@ CPOService::handleGet(dto::CollectionGetRequest&& request) {
 
 seastar::future<std::tuple<Status, dto::CollectionDropResponse>>
 CPOService::handleCollectionDrop(dto::CollectionDropRequest&& request) {
-    K2LOG_I(log::cposvr, "Received collection drop request for {}", request.name);
-    auto [status, collection] = _getCollection(request.name);
+    auto it = collectionIDToName.find(request.ID);
+    if (it == collectionIDToName.end()) {
+        return RPCResponse(Statuses::S404_Not_Found("collection ID not found"), dto::CollectionDropResponse());
+    }
+
+    String& name = it->second;
+    K2LOG_I(log::cposvr, "Received collection drop request for {}", name);
+    auto [status, collection] = _getCollection(name);
 
     dto::CollectionDropResponse response{};
     if (!status.is2xxOK()) {
         return RPCResponse(std::move(status), std::move(response));
     }
 
-    return _offloadCollection(collection).then([this, name=request.name] () {
+    return _offloadCollection(collection).then([this, id=request.ID, name] () {
         // TODO implement clean up of persistence data
-        schemas.erase(name);
+        schemas.erase(id);
         String collPath = _getCollectionPath(name);
         remove(collPath.c_str());
         String schemaPath = _getSchemasPath(name);
@@ -275,7 +282,7 @@ seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collectio
             return seastar::make_ready_future<Status>(Statuses::S422_Unprocessable_Entity("Partition endpoint was null"));
         }
 
-        dto::K23SIPushSchemaRequest request { collection.metadata.name, schema };
+        dto::K23SIPushSchemaRequest request { collection.metadata.ID, schema };
 
         pushFutures.push_back(RPC().callRPC<dto::K23SIPushSchemaRequest, dto::K23SIPushSchemaResponse>
             (dto::Verbs::K23SI_PUSH_SCHEMA, request, *endpoint, 1s));
@@ -301,14 +308,19 @@ seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collectio
 
 seastar::future<std::tuple<Status, dto::GetSchemasResponse>>
 CPOService::handleSchemasGet(dto::GetSchemasRequest&& request) {
-    auto it = schemas.find(request.collectionName);
+    auto itName = collectionIDToName.find(request.collectionID);
+    if (itName == collectionIDToName.end()) {
+        return RPCResponse(Statuses::S404_Not_Found("collection ID not found"), dto::GetSchemasResponse());
+    }
+
+    auto it = schemas.find(request.collectionID);
     if (it == schemas.end()) {
-        auto [status, collection] = _getCollection(request.collectionName);
+        auto [status, collection] = _getCollection(itName->second);
         if (!status.is2xxOK()) {
             return RPCResponse(std::move(status), dto::GetSchemasResponse{});
         }
 
-        it = schemas.find(request.collectionName);
+        it = schemas.find(request.collectionID);
         K2ASSERT(log::cposvr, it != schemas.end(), "Schemas iterator is end after collection refresh");
     }
 
@@ -317,7 +329,12 @@ CPOService::handleSchemasGet(dto::GetSchemasRequest&& request) {
 
 seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
 CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
-    K2LOG_I(log::cposvr, "Received schema create request for {} : {}", request.collectionName, request.schema.name);
+    auto itName = collectionIDToName.find(request.collectionID);
+    if (itName == collectionIDToName.end()) {
+        return RPCResponse(Statuses::S404_Not_Found("collection ID not found"), dto::CreateSchemaResponse());
+    }
+
+    K2LOG_I(log::cposvr, "Received schema create request for {} : {}", request.collectionID, request.schema.name);
 
     // 1. Stateless validation of request
 
@@ -330,13 +347,13 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // getCollection to make sure in memory cache of schemas is up to date, and we need the
     // collection with partition map anyway to do the schema push
-    auto [status, collection] = _getCollection(request.collectionName);
+    auto [status, collection] = _getCollection(itName->second);
     if (!status.is2xxOK()) {
         return RPCResponse(std::move(status), dto::CreateSchemaResponse{});
     }
 
     bool validatedKeys = false;
-    for (const dto::Schema& otherSchema : schemas[request.collectionName]) {
+    for (const dto::Schema& otherSchema : schemas[request.collectionID]) {
         if (otherSchema.name == request.schema.name && otherSchema.version == request.schema.version) {
             return RPCResponse(Statuses::S403_Forbidden("Schema name and version already exist"), dto::CreateSchemaResponse{});
         }
@@ -354,16 +371,16 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
     }
 
     // 3. Save to disk
-    Status saved = _saveSchemas(request.collectionName);
+    Status saved = _saveSchemas(itName->second, request.collectionID);
     if (!saved.is2xxOK()) {
         return RPCResponse(std::move(saved), dto::CreateSchemaResponse{});
     }
 
     // 4. Update in memory
-    schemas[request.collectionName].push_back(std::move(request.schema));
+    schemas[request.collectionID].push_back(std::move(request.schema));
 
     // 5. Push to K2 nodes and respond to client
-    return _pushSchema(collection, schemas[request.collectionName].back())
+    return _pushSchema(collection, schemas[request.collectionID].back())
     .then([] (Status&& status) {
         return RPCResponse(std::move(status), dto::CreateSchemaResponse{});
     });
@@ -503,10 +520,13 @@ std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
     K2LOG_I(log::cposvr, "Found collection in: {}", cpath);
     std::get<0>(result) = Statuses::S200_OK("collection found");
 
+    uint64_t id = std::get<1>(result).metadata.ID;
+    collectionIDToName[id] = name;
+
     // Check to see if we need to load schemas from file too
-    auto it = schemas.find(name);
+    auto it = schemas.find(id);
     if (it == schemas.end()) {
-        Status schemaStatus = _loadSchemas(name);
+        Status schemaStatus = _loadSchemas(name, id);
         if (!schemaStatus.is2xxOK()) {
             std::get<0>(result) = Statuses::S500_Internal_Server_Error("unable to read schema data");
             return result;
@@ -516,7 +536,7 @@ std::tuple<Status, dto::Collection> CPOService::_getCollection(String name) {
     return result;
 }
 
-Status CPOService::_loadSchemas(const String& collectionName) {
+Status CPOService::_loadSchemas(const String& collectionName, uint64_t ID) {
     auto cpath = _getSchemasPath(collectionName);
     Payload p;
     std::vector<dto::Schema> loadedSchemas;
@@ -527,7 +547,7 @@ Status CPOService::_loadSchemas(const String& collectionName) {
         return Statuses::S500_Internal_Server_Error("unable to read schema data");
     }
 
-    schemas[collectionName] = std::move(loadedSchemas);
+    schemas[ID] = std::move(loadedSchemas);
 
     return Statuses::S200_OK("Schemas loaded");
 }
@@ -540,19 +560,21 @@ Status CPOService::_persistNextCollectionID() {
         K2LOG_E(log::cposvr, "failed to save _nextCollectionID");
         return Statuses::S500_Internal_Server_Error("unable to write collection data");
     }
+
+    return Statuses::S200_OK("");
 }
 
-Status CPO::Service_loadNextCollectionID() {
+Status CPOService::_loadNextCollectionID() {
     auto cpath = _dataDir() + "/" + _collectionIDFile;
     Payload p;
     if (!fileutil::readFile(p, cpath)) {
         return Statuses::S404_Not_Found("collectionID file not found");
     }
-    if (!p.read(&_nextCollectionID)) {
+    if (!p.read(_nextCollectionID)) {
         return Statuses::S500_Internal_Server_Error("unable to read _nextCollectionID");
     };
 
-    return Statuses::S200_OK();
+    return Statuses::S200_OK("");
 }
 
 Status CPOService::_saveCollection(dto::Collection& collection) {
@@ -564,13 +586,13 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
     }
 
     K2LOG_D(log::cposvr, "saved collection: {}", cpath);
-    return _saveSchemas(collection.metadata.name);
+    return _saveSchemas(collection.metadata.name, collection.metadata.ID);
 }
 
-Status CPOService::_saveSchemas(const String& collectionName) {
+Status CPOService::_saveSchemas(const String& collectionName, uint64_t ID) {
     auto cpath = _getSchemasPath(collectionName);
     Payload p([] { return Binary(4096); });
-    p.write(schemas[collectionName]);
+    p.write(schemas[ID]);
     if (!fileutil::writeFile(std::move(p), cpath)) {
         return Statuses::S500_Internal_Server_Error("unable to write schema data");
     }
