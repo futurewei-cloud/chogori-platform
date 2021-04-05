@@ -377,24 +377,9 @@ TxnManager::_endTxnRetry(TxnRecord& rec, dto::K23SITxnEndRequest&& request) {
         return RPCResponse(dto::K23SIStatus::BadParameter("end request retry does not match previous end request"),dto::K23SITxnEndResponse{});
     }
 
-    // Upon a retry, respond after the current bgtask queue has drained (potential in-flight retries)
-    seastar::promise<std::tuple<Status, dto::K23SITxnEndResponse>> prom;
-    auto fut = prom.get_future();
-    _addBgTask(rec,
-        [prom=std::move(prom), this, txnId=rec.txnId, request=std::move(request)] () mutable {
-            // after previous bg tasks completed, see if we've finalized
-            auto it = _transactions.find(txnId);
-            if (it == _transactions.end()) {
-                // normally, we won't find a record in memory after the bg tasks have been done
-                prom.set_value(std::tuple(dto::K23SIStatus::OK("transaction retry ended"), dto::K23SITxnEndResponse{}));
-            }
-            else {
-                // tell the client to retry
-                prom.set_value(std::tuple(dto::K23SIStatus::ServiceUnavailable("unable to end transaction"), dto::K23SITxnEndResponse{}));
-            }
-            return seastar::make_ready_future();
-        });
-    return fut;
+    // TODO Track the number of such occurrences and decide if we should do something about it.
+    // Current proposal is to at least keep an LRU of finalized txns so that we can respond to such retries.
+    return RPCResponse(dto::K23SIStatus::KeyNotFound("unable to end transaction"), dto::K23SITxnEndResponse{});
 }
 
 seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecord& rec) {
