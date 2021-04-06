@@ -31,19 +31,22 @@ Persistence::Persistence() {
     _remoteEndpoint = RPC().getTXEndpoint(endpoint);
     _flushTimer.setCallback(
         [this] {
-            return flush().then(
-                [](auto&& status) {
-                    if (!status.is2xxOK()) {
-                        K2LOG_E(log::skvsvr, "Persistence failure due to: {}", status);
-                        seastar::engine().exit(1);
-                    }
-                });
+            if (Clock::now() - _lastFlush > _config.persistenceAutoflushDeadline()) {
+                return flush().then(
+                    [](auto&& status) {
+                        if (!status.is2xxOK()) {
+                            K2LOG_E(log::skvsvr, "Persistence failure due to: {}", status);
+                            seastar::engine().exit(1);
+                        }
+                    });
+            }
+            return seastar::make_ready_future();
         });
     K2LOG_I(log::skvsvr, "ctor with endpoint: {}", _remoteEndpoint->url);
 }
 
 seastar::future<> Persistence::start() {
-    _flushTimer.armPeriodic(_config.persistenceAutoflushInterval());
+    _flushTimer.armPeriodic(_config.persistenceAutoflushDeadline());
     return seastar::make_ready_future();
 }
 
@@ -76,8 +79,9 @@ seastar::future<Status> Persistence::flush() {
     std::vector<seastar::promise<Status>> proms; // ditto for the pending promises
     proms.swap(_pendingProms);
 
+    _lastFlush = Clock::now();
     _flushFut = _flushFut
-       .then([this, request=std::move(request)] (auto&& status) mutable {
+    .then([this, request=std::move(request)] (auto&& status) mutable {
             if (!status.is2xxOK()) {
                 // previous flush did not succeed. just pass this along
                 K2LOG_D(log::skvsvr, "previous flush was unsuccessful with status {}", status);
@@ -87,17 +91,21 @@ seastar::future<Status> Persistence::flush() {
 
             return RPC().callRPC<dto::K23SI_PersistenceRequest<Payload>, dto::K23SI_PersistenceResponse>
             (dto::Verbs::K23SI_Persist, request, *_remoteEndpoint, _config.persistenceTimeout());
-       })
-       .then([proms=std::move(proms)] (auto&& result) mutable {
-            auto& [status, _] = result;
+    })
+    .then_wrapped([proms=std::move(proms)] (auto&& fut) mutable {
+            if (fut.failed()) {
+                auto exc = fut.get_exception();
+                K2LOG_W_EXC(log::skvsvr, exc, "flushed found exception");
+                for (auto& prom: proms) prom.set_exception(exc);
+                return seastar::make_exception_future<Status>(exc);
+            }
+
+            auto [status, _] = fut.get();
             // extract the RPC status and send it down the chain
             K2LOG_D(log::skvsvr, "flushed with status: {}. Notifying {} promises", status, proms.size());
-            for (auto& prom: proms) {
-                prom.set_value(status);
-            }
+            for (auto& prom: proms) prom.set_value(status);
             return seastar::make_ready_future<Status>(std::move(status));
         });
-
     return _chainFlushResponse();
 }
 

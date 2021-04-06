@@ -226,19 +226,14 @@ bool _evaluateChallenge(TxnRecord& incumbent, dto::K23SI_MTR& challengerMTR) {
     }
     // #2 if equal, pick the newer transaction
     else if (incumbent.txnId.mtr.priority == challengerMTR.priority) {
+        // Note that compareCertain will order timestamps based on tsoID in cases where raw times are equivalent,
+        // thus guaranteeing strict ordering for non-identical timestamps.
         auto cmpResult = incumbent.txnId.mtr.timestamp.compareCertain(challengerMTR.timestamp);
         if (cmpResult == dto::Timestamp::LT) {
             K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.txnId);
             incumbentLostConflict = true;
         } else if (cmpResult == dto::Timestamp::EQ) {
-            // #3 if same priority and timestamp, abort on tso ID which must be unique
-            if (incumbent.txnId.mtr.timestamp.tsoId() < challengerMTR.timestamp.tsoId()) {
-                K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.txnId);
-                incumbentLostConflict = true;
-            } else {
-                // make sure we don't have a bug - the timestamps cannot be the same
-                K2ASSERT(log::skvsvr, incumbent.txnId.mtr.timestamp.tsoId() != challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
-            }
+            K2ASSERT(log::skvsvr, incumbent.txnId.mtr.timestamp.tsoId() != challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
         }
     }
     // #3 abort the challenger
@@ -329,12 +324,6 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
 
 seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
 TxnManager::endTxn(dto::K23SITxnEndRequest&& request) {
-    if (request.mtr.timestamp.compareCertain(_retentionTs) < 0) {
-        // At this point this txn has gone outside RWE. All participants will self-finalize their WIs to Aborts
-        // The TR itself will be moved to FA and deleted by the TxnManager's RWE tracking
-        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request is outside retention window"), dto::K23SITxnEndResponse{});
-    }
-
     // this action always needs to be executed against the transaction to see what would happen.
     // If we can successfully execute the action, then it's a success response. Otherwise, the user
     // receives an error response which is telling them that the transaction has been aborted
@@ -351,6 +340,13 @@ TxnManager::endTxn(dto::K23SITxnEndRequest&& request) {
         K2LOG_D(log::skvsvr, "TxnEnd retry - transaction already has a finalize action {}", rec)
         return _endTxnRetry(rec, std::move(request));
     }
+
+    if (request.mtr.timestamp.compareCertain(_retentionTs) < 0) {
+        // At this point this txn has gone outside RWE. All participants will self-finalize their WIs to Aborts
+        // The TR itself will be moved to FA and deleted by the TxnManager's RWE tracking
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request is outside retention window"), dto::K23SITxnEndResponse{});
+    }
+
     rec.writeKeys = std::move(request.writeKeys);
     rec.syncFinalize = request.syncFinalize;
     rec.timeToFinalize = request.timeToFinalize;
@@ -402,15 +398,14 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                         });
                 case TxnRecord::Action::onCommit:  // create an entry in Aborted state so that it can be finalized
                     K2LOG_W(log::skvsvr, "Commit received before txn start in txn {}", rec);
-                    rec.finalizeAction = dto::EndAction::Abort;
-                    return _endPIP(rec)
+                    return _abortPIP(rec)
                         .then([] (auto&&) {
                             // respond with failure since we had to abort but were asked to commit
                             return seastar::make_ready_future<Status>(dto::K23SIStatus::OperationNotAllowed("cannot commit transaction since it has been aborted"));
                         });
                 case TxnRecord::Action::onAbort:  // create an entry in Aborted state so that it can be finalized
                     K2LOG_W(log::skvsvr, "Abort received before txn start in txn {}", rec);
-                    return _endPIP(rec);
+                    return _abortPIP(rec);
                 default: // anything else we just count as internal error
                     K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.txnId, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
@@ -428,8 +423,9 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
                 }
                 case TxnRecord::Action::onCommit: // happy case
+                    return _commitPIP(rec);
                 case TxnRecord::Action::onAbort:
-                    return _endPIP(rec);
+                    return _abortPIP(rec);
                 case TxnRecord::Action::onForceAbort:             // asked to force-abort (e.g. on PUSH)
                 case TxnRecord::Action::onRetentionWindowExpire:  // we've had this transaction for too long
                 case TxnRecord::Action::onHeartbeatExpire:        // originator didn't hearbeat on time
@@ -447,14 +443,13 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onRetentionWindowExpire:
                     return _finalizedPIP(rec);
                 case TxnRecord::Action::onCommit:
-                    rec.finalizeAction = dto::EndAction::Abort; // the finalization action must be an abort
-                    return _endPIP(rec)
+                    return _abortPIP(rec)
                         .then([] (auto&&) {
                             // we respond with failure here anyway since we had to abort but were asked to commit
                             return seastar::make_ready_future<Status>(dto::K23SIStatus::OperationNotAllowed("cannot commit transaction since it has been force-aborted"));
                         });
                 case TxnRecord::Action::onAbort:
-                    return _endPIP(rec);
+                    return _abortPIP(rec);
                 case TxnRecord::Action::onHeartbeat: // signal client to abort
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("cannot heartbeat transaction since it has been force-aborted"));
                 case TxnRecord::Action::onFinalizeComplete:
@@ -468,7 +463,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onPersistFail:
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("Unable to abort transaction due to persistence failure"));
                 case TxnRecord::Action::onPersistSucceed:
-                    return _end(rec);
+                    return _abort(rec);
                 case TxnRecord::Action::onForceAbort:  // no-op
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
                 case TxnRecord::Action::onAbort:
@@ -501,13 +496,12 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
         case dto::TxnRecordState::CommittedPIP:
             switch (action) {
                 case TxnRecord::Action::onPersistFail: {
-                    rec.finalizeAction = dto::EndAction::Abort;
-                    return _endPIP(rec).then([] (auto&&){
+                    return _abortPIP(rec).then([] (auto&&) {
                         return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("Unable to commit transaction due to persistence failure. Aborting"));
                     });
                 }
                 case TxnRecord::Action::onPersistSucceed:
-                    return _end(rec);
+                    return _commit(rec);
                 case TxnRecord::Action::onAbort:
                 case TxnRecord::Action::onCommit:
                 case TxnRecord::Action::onHeartbeat:
@@ -571,14 +565,27 @@ seastar::future<Status> TxnManager::_forceAborted(TxnRecord& rec) {
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
-seastar::future<Status> TxnManager::_endPIP(TxnRecord& rec) {
-    K2LOG_D(log::skvsvr, "Setting status to EndPIP for {}", rec);
+seastar::future<Status> TxnManager::_commitPIP(TxnRecord& rec) {
+    K2LOG_D(log::skvsvr, "Setting status to CommitPIP for {}", rec);
+    rec.finalizeAction = dto::EndAction::Commit;
+    rec.state = dto::TxnRecordState::CommittedPIP;
+    return _endPIPHelper(rec);
+}
+
+seastar::future<Status> TxnManager::_abortPIP(TxnRecord& rec) {
+    K2LOG_D(log::skvsvr, "Setting status to AbortPIP for {}", rec);
+    rec.finalizeAction = dto::EndAction::Abort;
+    rec.state = dto::TxnRecordState::AbortedPIP;
+    return _endPIPHelper(rec);
+}
+
+seastar::future<Status> TxnManager::_endPIPHelper(TxnRecord& rec) {
+    K2LOG_D(log::skvsvr, "EndPIP for {}", rec);
     // manage hb expiry
     rec.unlinkHB(_hblist);
     // manage rw expiry
     rec.unlinkRW(_rwlist);
 
-    rec.state = rec.finalizeAction == dto::EndAction::Commit ? dto::TxnRecordState::CommittedPIP : dto::TxnRecordState::AbortedPIP;
     auto finfut =  _persistence->append_cont(rec)
             .then([this, &rec] (auto&& status) {
                 K2LOG_D(log::skvsvr, "persist completed for EndPIP of {} with {}", rec, status);
@@ -603,9 +610,20 @@ seastar::future<Status> TxnManager::_endPIP(TxnRecord& rec) {
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
-seastar::future<Status> TxnManager::_end(TxnRecord& rec) {
-    K2LOG_D(log::skvsvr, "Setting status to End for {}", rec);
-    rec.state = rec.finalizeAction == dto::EndAction::Commit ? dto::TxnRecordState::Committed : dto::TxnRecordState::Aborted;
+seastar::future<Status> TxnManager::_commit(TxnRecord& rec) {
+    K2LOG_D(log::skvsvr, "Setting status to Commit for {}", rec);
+    rec.state = dto::TxnRecordState::Committed;
+    return _endHelper(rec);
+}
+
+seastar::future<Status> TxnManager::_abort(TxnRecord& rec) {
+    K2LOG_D(log::skvsvr, "Setting status to Abort for {}", rec);
+    rec.state = dto::TxnRecordState::Aborted;
+    return _endHelper(rec);
+}
+
+seastar::future<Status> TxnManager::_endHelper(TxnRecord& rec) {
+    K2LOG_D(log::skvsvr, "Processing END for {}", rec);
 
     auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
 

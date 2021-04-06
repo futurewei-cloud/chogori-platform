@@ -166,6 +166,9 @@ struct CommittedRecord {
 };
 
 
+// The transaction states for K23SI transactions.
+// All of the *PIP states are the states which can end up in persistence(WAL) and therefore
+// the *PIP states are the only states which can be encountered by replay
 K2_DEF_ENUM(TxnRecordState,
         Created,         // The state in which all new TxnRecords are put when first created in memory
         InProgress,      // The txn InProgress has persisted
@@ -345,6 +348,11 @@ struct K23SITxnPushRequest {
     K2_DEF_FMT(K23SITxnPushRequest, pvid, collectionName, key, incumbentMTR, challengerMTR);
 };
 
+// This is the end action to be taken on the transaction and its writes. Here are the current
+// use cases for this:
+// 1. Client library is ending a transaction(commit/abort)
+// 2. TRH is finalizing the transaction at a participant
+// 3. A PUSH response is signaling what action should be done to the WI which triggered the PUSH
 K2_DEF_ENUM(EndAction,
     None,
     Abort,

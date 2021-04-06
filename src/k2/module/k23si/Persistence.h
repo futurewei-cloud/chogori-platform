@@ -43,6 +43,8 @@ public:
     // flush all pending writes to persistence.
     seastar::future<Status> flush();
 
+    // TODO: Appending data may have to consider current plog allocation (plogID and current offset).
+    // TODO: We may also want to return the new plog allocation after successful append for future in-memory indexing
     // Appends are always asynchronous (buffered locally) until an explicit call to flush()
     // append_cont returns the status of the flush call
     template<typename ValueType>
@@ -84,6 +86,7 @@ private:
     std::vector<seastar::promise<Status>> _pendingProms;
     seastar::future<Status> _chainFlushResponse();
     PeriodicTimer _flushTimer; // TODO consider also flushing based on accumulated data size
+    TimePoint _lastFlush{Clock::now()};
 };
 
 } // ns k2

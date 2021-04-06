@@ -148,9 +148,15 @@ private:  // methods driving the state machine
     // The response is one of the dto::K23SIStatus statuses. The action was successful iff result.is2xxOK()
     seastar::future<Status> _inProgress(TxnRecord& rec);
     seastar::future<Status> _forceAborted(TxnRecord& rec);
-    seastar::future<Status> _endPIP(TxnRecord& rec);
-    seastar::future<Status> _end(TxnRecord& rec);
+    seastar::future<Status> _commitPIP(TxnRecord& rec);
+    seastar::future<Status> _abortPIP(TxnRecord& rec);
+    seastar::future<Status> _commit(TxnRecord& rec);
+    seastar::future<Status> _abort(TxnRecord& rec);
     seastar::future<Status> _finalizedPIP(TxnRecord& rec);
+
+    // helper used to end (Commit/Abort) a transaction
+    seastar::future<Status> _endPIPHelper(TxnRecord& rec);
+    seastar::future<Status> _endHelper(TxnRecord& rec);
 
     // Helper method which finalizes a transaction
     seastar::future<Status> _finalizeTransaction(TxnRecord& rec, FastDeadline deadline);
