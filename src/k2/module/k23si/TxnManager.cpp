@@ -351,7 +351,9 @@ TxnManager::endTxn(dto::K23SITxnEndRequest&& request) {
     rec.syncFinalize = request.syncFinalize;
     rec.timeToFinalize = request.timeToFinalize;
     rec.finalizeAction = request.action;
-    rec.hasAttemptedCommit = request.action == dto::EndAction::Commit;
+    if (request.action == dto::EndAction::Commit) {
+        rec.hasAttemptedCommit = true;
+    }
 
     // and just execute the transition
     return _onAction(action, rec)
@@ -441,7 +443,10 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onForceAbort:  // no-op
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
                 case TxnRecord::Action::onRetentionWindowExpire:
-                    return _finalizedPIP(rec);
+                    // manage rw expiry
+                    rec.unlinkRW(_rwlist);
+                    _transactions.erase(rec.txnId);
+                    return seastar::make_ready_future<Status>(dto::K23SIStatus::OK("Force abort exceeded RWE"));
                 case TxnRecord::Action::onCommit:
                     return _abortPIP(rec)
                         .then([] (auto&&) {
@@ -634,10 +639,14 @@ seastar::future<Status> TxnManager::_endHelper(TxnRecord& rec) {
     // we're doing async finalize. enqueue in background tasks
     _addBgTask(rec,
         [this, &rec, timeout] {
-            return seastar::sleep(rec.timeToFinalize)
-                .then([this, &rec, timeout] {
-                    return _finalizeTransaction(rec, FastDeadline(timeout)).discard_result();
-                });
+            // this is only used for extra delay during testing. It is a txn end option
+            if (nsec(rec.timeToFinalize).count() > 0) {
+                return seastar::sleep(rec.timeToFinalize)
+                    .then([this, &rec, timeout] {
+                        return _finalizeTransaction(rec, FastDeadline(timeout)).discard_result();
+                    });
+            }
+            return _finalizeTransaction(rec, FastDeadline(timeout)).discard_result();
         });
 
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
@@ -647,10 +656,6 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
     K2LOG_D(log::skvsvr, "Setting status to FinalizedPIP for {}", rec);
     // set state
     rec.state = dto::TxnRecordState::FinalizedPIP;
-    // manage hb expiry
-    rec.unlinkHB(_hblist);
-    // manage rw expiry
-    rec.unlinkRW(_rwlist);
 
     _addBgTask(rec,
         [this, &rec] {
@@ -665,8 +670,6 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
                     }
 
                     K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
-                    rec.unlinkRW(_rwlist);
-                    rec.unlinkHB(_hblist);
                     _transactions.erase(rec.txnId);
                     return seastar::make_ready_future();
                 });

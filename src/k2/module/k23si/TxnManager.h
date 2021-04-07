@@ -90,8 +90,13 @@ struct TxnRecord {
     typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::rwLink>> RWList;
     typedef nsbi::list<TxnRecord, nsbi::member_hook<TxnRecord, nsbi::list_member_hook<>, &TxnRecord::hbLink>> HBList;
 
+    // Records are linked in HB when created, and re-linked on each heartbeat from client.
+    // we remove from HB when asked to END the transaction or when the transaction is force-aborted
     void unlinkHB(HBList& hblist);
-    void unlinkRW(RWList& hblist);
+
+    // Records are linked in RW when created
+    // We remove from RW when asked to END, or when a force-abort reaches the end of retention window
+    void unlinkRW(RWList& rwlist);
 };  // class TxnRecord
 
 
