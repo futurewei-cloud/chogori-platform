@@ -43,7 +43,7 @@ struct SchematizedValue {
             // If a fieldName has been provided(meaning this is a reference value), and we can't find it in the incoming
             // schema, then we can't
             if (type == FieldType::NOT_KNOWN) {
-                throw NoFieldFoundException();
+                throw NoFieldFoundException("unable to create reference with FieldType::NOT_KNOWN");
             }
         }
     }
@@ -57,8 +57,7 @@ struct SchematizedValue {
     template <typename T>
     std::tuple<bool, std::optional<T>> get() {
         if (TToFieldType<T>() != type) {
-            auto msg = fmt::format("bad type in schematized value get: have {}, got {}", type, TToFieldType<T>());
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("bad type in schematized value get: have {}, got {}", type, TToFieldType<T>()));
         }
         if (!val.isReference()) {
             val.literal.seek(0);
@@ -66,7 +65,7 @@ struct SchematizedValue {
             if (val.literal.read(result)) {
                 return std::make_tuple(nullLast, std::move(result));
             }
-            throw DeserializationError();
+            throw DeserializationError(fmt::format("Unable to deserialize value literal of type {}", TToFieldType<T>()));
         }
         return std::make_tuple(nullLast, rec.deserializeField<T>(sfieldIndex));
     }
@@ -92,9 +91,7 @@ struct is_comparable<T1, T2,
 template <typename T1, typename T2>
 std::enable_if_t<!is_comparable<T1, T2>::value, int>
 compareOptionals(std::tuple<bool, std::optional<T1>>&, std::tuple<bool, std::optional<T2>>&) {
-    auto msg = fmt::format("non-comparable types: {}, {}", TToFieldType<T1>(), TToFieldType<T1>());
-
-    throw TypeMismatchException(msg);
+    throw TypeMismatchException(fmt::format("non-comparable types: {}, {}", TToFieldType<T1>(), TToFieldType<T1>()));
 }
 
 // template specialization comparing two optionals of comparable types
@@ -208,17 +205,17 @@ bool Expression::evaluate(SKVRecord& rec) {
                 // empty expression - allow it
                 return true;
             }
-            throw InvalidExpressionException();
+            throw InvalidExpressionException(fmt::format("UNKNOWN operation {} in expression", op));
         }
         default:
-            throw InvalidExpressionException();
+            throw InvalidExpressionException(fmt::format("non-supported operation {} in expression", op));
     }
 }
 
 bool Expression::EQ_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression EQ must have exactly 2 value children(have {}) and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
@@ -228,7 +225,7 @@ bool Expression::EQ_handler(SKVRecord& rec) {
 bool Expression::GT_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression GT must have exactly 2 value children(have {}) and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
@@ -238,7 +235,7 @@ bool Expression::GT_handler(SKVRecord& rec) {
 bool Expression::GTE_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression GTE must have exactly 2 value children(have {}) and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
@@ -248,7 +245,7 @@ bool Expression::GTE_handler(SKVRecord& rec) {
 bool Expression::LT_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression LT must have exactly 2 value children(have {}) and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
@@ -258,7 +255,7 @@ bool Expression::LT_handler(SKVRecord& rec) {
 bool Expression::LTE_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression LTE must have exactly 2 value children(have {}) and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
@@ -274,7 +271,7 @@ void _isNullTypedHelper(SchematizedValue& sv, bool& result) {
 bool Expression::IS_NULL_handler(SKVRecord& rec) {
     // this op evaluates exactly one reference leaf only. It cannot be composed with other children
     if (valueChildren.size() != 1 || expressionChildren.size() > 0 || !valueChildren[0].isReference()) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression IS_NULL must have exactly 1 value literal children(have {}) and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
 
     // There is just one value child and it is a reference.
@@ -289,7 +286,7 @@ bool Expression::IS_EXACT_TYPE_handler(SKVRecord& rec) {
     // this op evaluates a field reference againts a string literal(the type in question)
     if (valueChildren.size() != 2 || expressionChildren.size() > 0 ||
        !valueChildren[0].isReference() || valueChildren[1].isReference()) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression IS_EXACT_TYPE must have exactly 2 value children, where child0 is a literal and child1 is a reference(have {}) and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
 
     // There is just one value child and it is a reference.
@@ -304,13 +301,12 @@ bool Expression::IS_EXACT_TYPE_handler(SKVRecord& rec) {
 bool Expression::STARTS_WITH_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression STARTS_WITH must have exactly 2 value children and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
     if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
-        auto msg = fmt::format("STARTS_WITH handler non-string fields: {}, {}", aVal.type, bVal.type);
-        throw TypeMismatchException(msg);
+        throw TypeMismatchException(fmt::format("STARTS_WITH handler non-string fields: {}, {}", aVal.type, bVal.type));
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
@@ -325,13 +321,12 @@ bool Expression::STARTS_WITH_handler(SKVRecord& rec) {
 bool Expression::CONTAINS_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression CONTAINS must have exactly 2 value children and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
     if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
-        auto msg = fmt::format("CONTAINS handler non-string fields: {}, {}", aVal.type, bVal.type);
-        throw TypeMismatchException(msg);
+        throw TypeMismatchException(fmt::format("CONTAINS handler non-string fields: {}, {}", aVal.type, bVal.type));
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
@@ -344,13 +339,12 @@ bool Expression::CONTAINS_handler(SKVRecord& rec) {
 bool Expression::ENDS_WITH_handler(SKVRecord& rec) {
     // this op evaluates exactly two values only. It cannot be composed with other children
     if (valueChildren.size() != 2 || expressionChildren.size() > 0) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression ENDS_WITH must have exactly 2 value children and no expression children(have {})", valueChildren.size(), expressionChildren.size()));
     }
     SchematizedValue aVal(valueChildren[0], rec);
     SchematizedValue bVal(valueChildren[1], rec);
     if (aVal.type != FieldType::STRING || bVal.type != FieldType::STRING) {
-        auto msg = fmt::format("ENDS_WITH handler non-string fields: {}, {}", aVal.type, bVal.type);
-        throw TypeMismatchException(msg);
+        throw TypeMismatchException(fmt::format("ENDS_WITH handler non-string fields: {}, {}", aVal.type, bVal.type));
     }
     auto aOpt = std::get<1>(aVal.get<String>());
     auto bOpt = std::get<1>(bVal.get<String>());
@@ -365,15 +359,14 @@ bool Expression::ENDS_WITH_handler(SKVRecord& rec) {
 bool Expression::AND_handler(SKVRecord& rec) {
     // this op evaluates exactly two children only
     if (valueChildren.size() + expressionChildren.size() != 2) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression AND must have exactly 2 total children(have {} value and {} expression)", valueChildren.size(), expressionChildren.size()));
     }
     // case 1: 2 values
     if (valueChildren.size() == 2) {
         SchematizedValue aVal(valueChildren[0], rec);
         SchematizedValue bVal(valueChildren[1], rec);
         if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            auto msg = fmt::format("AND handler 2 values non-bool fields: {}, {}", aVal.type, bVal.type);
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("AND handler 2 values non-bool fields: {}, {}", aVal.type, bVal.type));
         }
         auto [nullA, aOpt] = aVal.get<bool>();
         auto [nullB, bOpt] = bVal.get<bool>();
@@ -382,8 +375,7 @@ bool Expression::AND_handler(SKVRecord& rec) {
     else if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            auto msg = fmt::format("AND handler single non-bool field: {}", aVal.type);
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("AND handler single non-bool field: {}", aVal.type));
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
         // make sure to always evaluate in order to trigger type exceptions if any
@@ -399,15 +391,14 @@ bool Expression::AND_handler(SKVRecord& rec) {
 bool Expression::OR_handler(SKVRecord& rec) {
     // this op evaluates exactly two children only
     if (valueChildren.size() + expressionChildren.size() != 2) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression OR must have exactly 2 total children(have {} value and {} expression)", valueChildren.size(), expressionChildren.size()));
     }
     // case 1: 2 values
     if (valueChildren.size() == 2) {
         SchematizedValue aVal(valueChildren[0], rec);
         SchematizedValue bVal(valueChildren[1], rec);
         if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            auto msg = fmt::format("OR handler two non-bool fields: {}, {}", aVal.type, bVal.type);
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("OR handler two non-bool fields: {}, {}", aVal.type, bVal.type));
         }
         auto [nullA, aOpt] = aVal.get<bool>();
         auto [nullB, bOpt] = bVal.get<bool>();
@@ -415,8 +406,7 @@ bool Expression::OR_handler(SKVRecord& rec) {
     } else if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            auto msg = fmt::format("OR handler single non-bool field: {}", aVal.type);
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("OR handler single non-bool field: {}", aVal.type));
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
         // make sure to always evaluate in order to trigger type exceptions if any
@@ -433,15 +423,14 @@ bool Expression::OR_handler(SKVRecord& rec) {
 bool Expression::XOR_handler(SKVRecord& rec) {
     // this op evaluates exactly two children only
     if (valueChildren.size() + expressionChildren.size() != 2) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression XOR must have exactly 2 total children(have {} value and {} expression)", valueChildren.size(), expressionChildren.size()));
     }
     // case 1: 2 values
     if (valueChildren.size() == 2) {
         SchematizedValue aVal(valueChildren[0], rec);
         SchematizedValue bVal(valueChildren[1], rec);
         if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            auto msg = fmt::format("XOR handler two non-bool fields: {}, {}", aVal.type, bVal.type);
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("XOR handler two non-bool fields: {}, {}", aVal.type, bVal.type));
         }
         auto [nullA, aOpt] = aVal.get<bool>();
         auto [nullB, bOpt] = bVal.get<bool>();
@@ -449,8 +438,7 @@ bool Expression::XOR_handler(SKVRecord& rec) {
     } else if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            auto msg = fmt::format("XOR handler single non-bool field: {}", aVal.type);
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("XOR handler single non-bool field: {}", aVal.type));
         }
         auto [nullLast, aOpt] = aVal.get<bool>();
         // make sure to always evaluate in order to trigger type exceptions if any
@@ -467,13 +455,12 @@ bool Expression::XOR_handler(SKVRecord& rec) {
 bool Expression::NOT_handler(SKVRecord& rec) {
     // this op evaluates exactly 1 child only
     if (valueChildren.size() + expressionChildren.size() != 1) {
-        throw InvalidExpressionException();
+        throw InvalidExpressionException(fmt::format("expression NOT must have exactly 1 total children(have {} value and {} expression)", valueChildren.size(), expressionChildren.size()));
     }
     if (valueChildren.size() == 1) {
         SchematizedValue aVal(valueChildren[0], rec);
         if (aVal.type != FieldType::BOOL) {
-            auto msg = fmt::format("NOT handler single non-bool field: {}", aVal.type);
-            throw TypeMismatchException(msg);
+            throw TypeMismatchException(fmt::format("NOT handler single non-bool field: {}", aVal.type));
         }
         auto [nullA, aOpt] = aVal.get<bool>();
 

@@ -39,7 +39,10 @@ namespace dto {
 
 // Thrown if the expression is found to be semantically invalid
 struct InvalidExpressionException : public std::exception {
-    virtual const char* what() const noexcept override{ return "InvalidExpression";}
+    InvalidExpressionException(String msg): _msg(std::move(msg)){}
+    virtual const char* what() const noexcept override{ return _msg.c_str();}
+private:
+    String _msg;
 };
 
 namespace expression {

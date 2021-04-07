@@ -78,9 +78,7 @@ Timestamp Timestamp::operator+(const Duration d) const {
 }
 
 size_t Timestamp::hash() const {
-    return std::hash<decltype(_tEndTSECount)>{}(_tEndTSECount) +
-           std::hash<decltype(_tStartDelta)>{}(_tStartDelta) +
-           std::hash<decltype(_tsoId)>{}(_tsoId);
+    return hash_combine(_tEndTSECount, _tStartDelta, _tsoId);
 }
 
 } // ns dto

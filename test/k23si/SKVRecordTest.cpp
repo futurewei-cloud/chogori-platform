@@ -32,7 +32,7 @@ void Test1Visitor(std::optional<T> value, const k2::String& fieldName, int tmp) 
     (void) value;
     (void) fieldName;
     (void) tmp;
-    throw std::runtime_error("Encountered unexpcted type in test visitor");
+    throw std::runtime_error("Encountered unexpected type in test visitor");
 }
 
 template <>

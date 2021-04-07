@@ -90,3 +90,12 @@ public:
 
 } // ns dto
 } // ns k2
+
+namespace std {
+template <>
+struct hash<k2::dto::Timestamp> {
+    size_t operator()(const k2::dto::Timestamp& ts) const {
+        return ts.hash();
+   }
+}; // hash
+} // ns std
