@@ -84,6 +84,7 @@ public:  // application lifespan
             .then([this] { return runScenario06(); })
             .then([this] { return runScenario07(); })
             .then([this] { return runScenario08(); })
+            .then([this] { return runScenario09(); })
             .then([this] {
                 K2LOG_I(log::k23si, "======= All tests passed ========");
                 exitcode = 0;
@@ -1104,6 +1105,71 @@ seastar::future<> runScenario08() {
                 })
                 .then([](auto&& response) {
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([&txnHandle] () {
+                    return txnHandle.end(true);
+                })
+                .then([] (auto&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<>();
+                });
+            }); // end do_with
+        });
+}
+
+// Read-your-erase
+seastar::future<> runScenario09() {
+    K2LOG_I(log::k23si, "Scenario 09");
+    K2TxnOptions options{};
+    options.syncFinalize = true;
+    return _client.beginTxn(options)
+    .then([this] (K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn), std::shared_ptr<dto::Schema>(),
+            [this] (K2TxnHandle& txnHandle, std::shared_ptr<dto::Schema>& my_schema) {
+                return _client.getSchema(collname, "schema", 1)
+                .then([this, &txnHandle, &my_schema] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(log::k23si, status.is2xxOK(), true);
+
+                    dto::SKVRecord record(collname, schemaPtr);
+                    record.serializeNext<String>("partkey09");
+                    record.serializeNext<String>("rangekey09");
+                    record.serializeNext<String>("data1");
+                    record.serializeNext<String>("data2");
+                    my_schema = schemaPtr;
+
+                    return txnHandle.write<dto::SKVRecord>(record);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txnHandle, &my_schema] () {
+                    dto::SKVRecord record(collname, my_schema);
+                    record.serializeNext<String>("partkey09");
+                    record.serializeNext<String>("rangekey09");
+                    record.serializeNull();
+                    record.serializeNull();
+
+                    return txnHandle.erase(record);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txnHandle, &my_schema] () {
+                    dto::SKVRecord record(collname, my_schema);
+                    record.serializeNext<String>("partkey09");
+                    record.serializeNext<String>("rangekey09");
+                    record.serializeNull();
+                    record.serializeNull();
+
+                    return txnHandle.read<dto::SKVRecord>(std::move(record));
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::KeyNotFound);
                     return seastar::make_ready_future<>();
                 })
                 .then([&txnHandle] () {
