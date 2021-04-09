@@ -145,8 +145,11 @@ struct CollectionMetadata {
     CollectionCapacity capacity;
     Duration retentionPeriod{0};
     Duration heartbeatDeadline{0}; // set by the CPO
-    K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
-    K2_DEF_FMT(CollectionMetadata, name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline);
+    // This is used by the CPO only. If deleted is true the CPO will not return the collection
+    // for getCollection RPCs, but the user can try to offload it again.
+    bool deleted{false};
+    K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline, deleted);
+    K2_DEF_FMT(CollectionMetadata, name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline, deleted);
 };
 
 
