@@ -28,10 +28,10 @@ Operations:
 3. Client: Request sent to CPO
 4. CPO: drops schema locally (will no longer be returned by getSchema requests)
 5. CPO: sends truncateDataAndDropSchema to all partitions
-6. Partition: remove schema locally (no longer accepts requests for that schema)
+6. Partition: remove schema locally in-memory (no longer accepts requests for that schema)
 7. Partition: responds to CPO
-8. CPO: after receiving responses from all partitions, responds to client. At this point the user may recreate a schema with the same name
-9. Partition (async): scan and truncate all records and all MVCC versions matching the schema. No persistence or tombstones are needed.
+8. CPO: after receiving responses from all partitions, responds to client. If there are failures in the partition requests after retries, then the partitions must be considered dead and re-assigned which will remove the schema. At this point the user may recreate a schema with the same name
+9. Partition (async): scan and truncate all records and all MVCC versions matching the schema. No persistence or tombstones are needed. If the in-memory data is saved in PLOG matching format then the truncation must wait until WAL cleanup.
 10. CPO (async): Cleanup of WAL data. Some notes on this are below.
 
 The current design will change so that schema communication with servers uses a schema ID instead of the schema name. The schema ID is vended by the CPO at schema creation time and will be unique within a collection. The user-level SKV API will still use schema names and the client library will translate the names to the ID when communicating with the cluster. This change lets the user safely recreate a schema with the same name.
