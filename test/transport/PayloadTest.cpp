@@ -368,6 +368,41 @@ SCENARIO("test shareAll() and shareRegion()") {
         }
 }
 
+SCENARIO("test skip method") {
+    float f = 12.34;
+    std::vector<String> vec{
+        "test",
+        "skip",
+        "method"
+    };
+    bool b = true;
+    std::map<int64_t, String> map{
+            {0, "test"},
+            {1, "skip"},
+            {2, "method"}
+    };
+    String s = "test skip method";
+    Payload payload([] { return Binary(32); });
+    payload.write(f);
+    payload.write(vec);
+    payload.write(b);
+    payload.write(map);
+    payload.write(s);
+    payload.seek(0);
+    float fcopy;
+    payload.read(fcopy);
+    REQUIRE(fcopy == f);
+    payload.skip<std::vector<String>>();
+    bool bcopy;
+    payload.read(bcopy);
+    REQUIRE(bcopy == b);
+    payload.skip<std::map<int64_t, String>>();
+    String scopy;
+    payload.read(scopy);
+    REQUIRE(scopy == s);
+    REQUIRE(payload.getDataRemaining() == 0);
+}
+
 SCENARIO("test copy to payload") {
     String a = "test copy to payload";
     int16_t b = 11;
@@ -391,13 +426,13 @@ SCENARIO("test copy to payload") {
     src.write(i);
     src.seek(0);
     src.copyToPayload<String>(dst);
-    src.read(b);
-    src.read(c);
+    src.skip<int16_t>();
+    src.skip<int32_t>();
     src.copyToPayload<int64_t>(dst);
-    src.read(e);
+    src.skip<float>();
     src.copyToPayload<double>(dst);
     src.copyToPayload<bool>(dst);
-    src.read(h);
+    src.skip<std::decimal::decimal64>();
     src.copyToPayload<std::decimal::decimal128>(dst);
     src.seek(0);
     dst.seek(0);
