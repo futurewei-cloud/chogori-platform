@@ -263,6 +263,23 @@ void Payload::skip(size_t advance) {
     _advancePosition(advance);
 }
 
+void Payload::_skip(String& s) {
+    (void) s;
+    _Size size;
+    read(size);
+    skip(size);
+}
+
+void Payload::_skip(std::decimal::decimal64& value) {
+    (void) value;
+    skip(sizeof(std::decimal::decimal64::__decfloat64));
+}
+
+void Payload::_skip(std::decimal::decimal128& value) {
+    (void) value;
+    skip(sizeof(std::decimal::decimal128::__decfloat128));
+}
+
 void Payload::truncateToCurrent() {
     if (_size == 0) return; // nothing to do
     _size = _currentPosition.offset;

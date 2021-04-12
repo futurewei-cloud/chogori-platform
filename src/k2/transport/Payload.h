@@ -355,6 +355,74 @@ public: // Write API
     // this method skips the given number of bytes as if a write of that size occurred
     void skip(size_t advance);
 
+    // skip the size of type T data
+    template <typename T>
+    void skip() {
+        T value{};
+        _skip(value);
+    }
+
+    // for those primitive types with fixed size, such as int32_t, float, bool etc.,
+    // just call skip to finish the work
+    template <typename T>
+    std::enable_if_t<isNumericType<T>(), void> _skip(T& value) {
+        (void) value;
+        return skip(sizeof(T));
+    }
+
+    // skip a String data
+    void _skip(String& s);
+
+    // skip a decimal64 data
+    void _skip(std::decimal::decimal64& value);
+
+    // skip a decimal128 data
+    void _skip(std::decimal::decimal128& value);
+
+    // skip a map
+    template <typename KeyT, typename ValueT>
+    void _skip(std::map<KeyT, ValueT>& m) {
+        (void) m;
+        _Size size;
+        read(size);
+        for (_Size i = 0; i < size; i++) {
+            skip<KeyT>();
+            skip<ValueT>();
+        }
+    }
+
+    // skip an unordered-map
+    template <typename KeyT, typename ValueT>
+    void _skip(std::unordered_map<KeyT, ValueT>& m) {
+        (void) m;
+        skip<std::map<KeyT, ValueT>>();
+    }
+
+    // skip a vector
+    template <typename ValueT>
+    void _skip(std::vector<ValueT>& vec) {
+        (void) vec;
+        _Size size;
+        read(size);
+        for (_Size i = 0; i < size; i++) {
+            skip<ValueT>();
+        }
+    }
+
+    // skip a set
+    template <typename T>
+    void _skip(std::set<T>& s) {
+        (void) s;
+        skip<std::vector<T>>();
+    }
+
+    // skip an unordered set
+    template <typename T>
+    void _skip(std::unordered_set<T>& s) {
+        (void) s;
+        skip<std::vector<T>>();
+    }
+
     // Truncates this payload to the current cursor position, dropping the remaining data
     void truncateToCurrent();
 
