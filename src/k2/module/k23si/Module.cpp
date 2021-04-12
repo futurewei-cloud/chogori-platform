@@ -665,8 +665,8 @@ std::size_t K23SIPartitionModule::_findField(const dto::Schema schema, k2::Strin
 template <typename T>
 void _advancePayloadPosition(const dto::SchemaField& field, Payload& payload, bool& success) {
     (void) field;
-    T value{};
-    success = payload.read(value);
+    payload.skip<T>();
+    success = true;
 }
 
 template <typename T>
