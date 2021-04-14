@@ -91,10 +91,11 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
     }
 }
 
-// We expose a shared payload in case the user wants to write it to file or otherwise
-// store it on their own. For normal K23SI operations the user does not need to touch this
-Payload SKVRecord::getSharedPayload() {
-    return storage.fieldData.shareAll();
+// We expose the storage in case the user wants to write it to file or otherwise
+// store it on their own. For normal K23SI operations the user does not need to touch this.
+// The user can later use the Storage-based constructor of the SKVRecord recreate a usable record.
+const SKVRecord::Storage& SKVRecord::getStorage() {
+    return storage;
 }
 
 // The constructor for an SKVRecord that a user of the SKV client would use to create a request
@@ -248,6 +249,45 @@ SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_pt
     }
 
     return SKVRecord(collection, other_schema, storage.share(), keyValuesAvailable);
+}
+
+template <typename T>
+void skipFieldDataHelper(SchemaField fieldInfo, Payload& fieldData) {
+    (void) fieldInfo;
+    // TODO change this to payload skip when available
+    T tmp{};
+    fieldData.read(tmp);
+}
+
+// This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
+SKVRecord SKVRecord::getSKVKeyRecord() {
+    if (!keyValuesAvailable) {
+        throw KeyNotAvailableError("Cannot create an SKVKeyRecord from record without key values");
+    }
+
+    size_t num_keys = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
+    SKVRecord::Storage key_storage = storage.share();
+
+    if (key_storage.excludedFields.size() == 0) {
+        key_storage.excludedFields.resize(schema->fields.size());
+        for (size_t i = 0; i < num_keys; ++i) {
+            key_storage.excludedFields[i] = false;
+        }
+    }
+
+    for (size_t i = num_keys; i < key_storage.excludedFields.size(); ++i) {
+        key_storage.excludedFields[i] = true;
+    }
+
+    for (size_t i = 0; i < num_keys; ++i) {
+        if (!key_storage.excludedFields[i]) {
+            K2_DTO_CAST_APPLY_FIELD_VALUE(skipFieldDataHelper, schema->fields[i], key_storage.fieldData);
+        }
+    }
+    key_storage.fieldData.truncateToCurrent();
+    key_storage.fieldData.seek(0);
+
+    return SKVRecord(collectionName, schema, std::move(key_storage), true);
 }
 
 // deepCopies an SKVRecord including copying (not sharing) the storage payload

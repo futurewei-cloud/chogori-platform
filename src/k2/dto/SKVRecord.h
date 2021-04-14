@@ -172,10 +172,6 @@ public:
     // no-arg version to satisfy the template expansion above in the terminal case
     void readMany() {}
 
-    // We expose a shared payload in case the user wants to write it to file or otherwise
-    // store it on their own. For normal K23SI operations the user does not need to touch this
-    Payload getSharedPayload();
-
     uint32_t getFieldCursor() const;
 
     // These fields are used by the client to build a request but are not serialized on the wire
@@ -201,6 +197,11 @@ public:
         K2_DEF_FMT(Storage, excludedFields, schemaVersion);
     };
 
+    // We expose the storage in case the user wants to write it to file or otherwise
+    // store it on their own. For normal K23SI operations the user does not need to touch this.
+    // The user can later use the Storage-based constructor of the SKVRecord recreate a usable record.
+    const Storage& getStorage();
+
     SKVRecord() = default;
     // The constructor for an SKVRecord that a user of the SKV client would use to create a request
     SKVRecord(const String& collection, std::shared_ptr<Schema> s);
@@ -211,6 +212,9 @@ public:
     SKVRecord cloneToOtherSchema(const String& collection, std::shared_ptr<Schema> other_schema);
     // deepCopies an SKVRecord including copying (not sharing) the storage payload
     SKVRecord deepCopy();
+
+    // This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
+    SKVRecord getSKVKeyRecord();
 
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
         return os << fmt::format(
