@@ -47,6 +47,7 @@ private:
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);
     void _assignCollection(dto::Collection& collection);
+    seastar::future<bool> _offloadCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
     ConfigDuration _collectionHeartbeatDeadline{"heartbeat_deadline", 100ms};
     std::unordered_map<String, seastar::future<>> _assignments;
@@ -74,6 +75,9 @@ private:
 
     seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
     handleGet(dto::CollectionGetRequest&& request);
+
+    seastar::future<std::tuple<Status, dto::CollectionDropResponse>>
+    handleCollectionDrop(dto::CollectionDropRequest&& request);
 
     seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
     handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request);

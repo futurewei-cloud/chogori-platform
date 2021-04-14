@@ -122,14 +122,14 @@ public:
 private: // methods
     // this method executes a push operation at the TRH for the given incumbentTxnID in order to
     // determine if the challengerMTR should be allowed to proceed.
-    // It returns true iff the challenger should be allowed to proceed. If not allowed, the client
+    // It returns 2xxOK iff the challenger should be allowed to proceed. If not allowed, the client
     // who issued the request must be notified to abort their transaction.
     // This method also has the side-effect of handling the cleanup of the WI which triggered
     // the push operation.
     // In cases where this push operation caused the incumbent transaction to be aborted, the
     // incumbent transaction state at the TRH will be updated to reflect the abort decision.
     // The incumbent transaction will discover upon commit that the txn has been aborted.
-    seastar::future<bool>
+    seastar::future<Status>
     _doPush(String collectionName, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
 
     // validate requests are coming to the correct partition. return true if request is valid
@@ -214,8 +214,8 @@ private: // methods
     seastar::future<> _registerVerbs();
 
     // Helper method which generates an RPCResponce chained after a successful persistence flush
-    template<typename ResponseT>
-    seastar::future<std::tuple<Status, ResponseT>> _respondAfterFlush(Status&& status, ResponseT&& response);
+    template <typename ResponseT>
+    seastar::future<std::tuple<Status, ResponseT>> _respondAfterFlush(std::tuple<Status, ResponseT>&& tuple);
 
     // helper used to process the designate TRH part of a write request
     seastar::future<Status> _designateTRH(dto::TxnId txnId);
@@ -223,6 +223,8 @@ private: // methods
     // helper used to process the write part of a write request
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
+
+    void _unregisterVerbs();
 
 private:  // members
     // the metadata of our collection
@@ -251,13 +253,12 @@ private:  // members
     // the timestamp of the end of the retention window. We do not allow operations to occur before this timestamp
     dto::Timestamp _retentionTimestamp;
 
+    // the start time for this partition.
+    dto::Timestamp _startTs;
+
     // timer used to refresh the retention timestamp from the TSO
-    seastar::timer<> _retentionUpdateTimer;
+    PeriodicTimer _retentionUpdateTimer;
 
-    // used to tell if there is a refresh in progress so that we don't stop() too early
-    seastar::future<> _retentionRefresh = seastar::make_ready_future();
-
-    // TODO persistence
     std::shared_ptr<Persistence> _persistence;
 
     CPOClient _cpo;

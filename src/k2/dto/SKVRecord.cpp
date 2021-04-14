@@ -156,7 +156,7 @@ void SKVRecord::constructKeyStrings() {
 
 String SKVRecord::getPartitionKey() {
     if (!keyValuesAvailable) {
-        throw KeyNotAvailableError("Cannot get a key from this SKVRecord");
+        throw KeyNotAvailableError("Cannot get a partition key from this SKVRecord");
     }
     if (!keyStringsConstructed) {
         constructKeyStrings();
@@ -185,7 +185,7 @@ String SKVRecord::getPartitionKey() {
 
 String SKVRecord::getRangeKey() {
     if (!keyValuesAvailable) {
-        throw KeyNotAvailableError("Cannot get a key from this SKVRecord");
+        throw KeyNotAvailableError("Cannot get a range key from this SKVRecord");
     }
     if (!keyStringsConstructed) {
         constructKeyStrings();
@@ -239,11 +239,11 @@ SKVRecord::Storage SKVRecord::Storage::copy() {
 SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_ptr<Schema> other_schema) {
     // Check schema compatibility (same number of fields and same types in order)
     if (other_schema->fields.size() != schema->fields.size()) {
-        throw TypeMismatchException("Schemas do not match for SKVRecord cloneToOtherSchema");
+        throw TypeMismatchException("Schemas do not match for SKVRecord cloneToOtherSchema: size mismatch");
     }
     for (size_t i = 0; i < schema->fields.size(); ++i) {
         if (schema->fields[i].type != other_schema->fields[i].type) {
-            throw TypeMismatchException("Schemas do not match for SKVRecord cloneToOtherSchema");
+            throw TypeMismatchException(fmt::format("Schemas do not match for SKVRecord cloneToOtherSchema - type mismatch on field {}: have({}) vs other({})", schema->fields[i].name, schema->fields[i].type, other_schema->fields[i].type));
         }
     }
 

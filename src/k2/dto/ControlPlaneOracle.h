@@ -76,6 +76,17 @@ struct CollectionGetResponse {
     K2_DEF_FMT(CollectionGetResponse, collection);
 };
 
+struct CollectionDropRequest {
+    String name;
+    K2_PAYLOAD_FIELDS(name);
+    K2_DEF_FMT(CollectionDropRequest, name);
+};
+
+struct CollectionDropResponse {
+    K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(CollectionDropResponse);
+};
+
 struct SchemaField {
     FieldType type;
     String name;

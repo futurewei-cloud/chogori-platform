@@ -218,7 +218,7 @@ public:
                 K2LOG_D(log::cpoclient, "partition call completed with status={}", status);
 
                 // Success or unrecoverable error
-                if (status != Statuses::S410_Gone("") && !status.is5xxRetryable()) {
+                if (status != Statuses::S410_Gone && !status.is5xxRetryable()) {
                     return RPCResponse(std::move(status), std::move(k2response));
                 }
 

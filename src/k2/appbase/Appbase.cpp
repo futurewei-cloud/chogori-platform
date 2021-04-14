@@ -182,6 +182,7 @@ int App::start(int argc, char** argv) {
                     .then([] { K2LOG_I(log::appbase, "graceful stopped"); })
                     .handle_exception([](auto exc) {
                         K2LOG_W_EXC(log::appbase, exc, "caught exception in graceful stop");
+                        return seastar::make_ready_future();
                     });
             });
             return seastar::make_ready_future();
@@ -276,7 +277,7 @@ int App::start(int argc, char** argv) {
         })
         .handle_exception([](auto exc) {
             K2LOG_W_EXC(log::appbase, exc, "Startup sequence failed");
-            throw exc;
+            return seastar::make_exception_future<>(exc);
         });
     });
     K2LOG_I(log::appbase, "Shutdown was successful!");

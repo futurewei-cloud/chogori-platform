@@ -93,6 +93,7 @@ public:
         }));
     }
 
+    void deregisterAPIObserver(String pathSuffix);
 
 private:
     // API server will listen on the IP in _tcp_endpoints (by core ID) on the same port + the offset

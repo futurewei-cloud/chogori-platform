@@ -193,79 +193,79 @@ TEST_CASE("Invalid expressions") {
         .expr = {k2e::makeExpression(k2e::Operation::CONTAINS, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "ENDS_WITH with no args",
         .expr = {k2e::makeExpression(k2e::Operation::ENDS_WITH, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "STARTS_WITH with no args",
         .expr = {k2e::makeExpression(k2e::Operation::STARTS_WITH, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "EQ op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::EQ, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "GT op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::GT, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "GTE op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::GTE, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "LT op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::LT, {}, {})},
         .rec = {},
          .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "LTE op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::LTE, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "NOT op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::NOT, {}, {})},
         .rec = {},
          .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "AND op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::AND, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "OR op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::OR, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "IS_EXACT_TYPE op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::IS_EXACT_TYPE, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "IS_NULL op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::IS_NULL, {}, {})},
         .rec = {},
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "UNKNOWN op with no args",
         .expr = {k2e::makeExpression(k2e::Operation::UNKNOWN, {}, {})},
@@ -279,79 +279,79 @@ TEST_CASE("Invalid expressions") {
         .expr = {k2e::makeExpression(k2e::Operation::CONTAINS, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "ENDS_WITH with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::ENDS_WITH, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "STARTS_WITH with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::STARTS_WITH, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "EQ op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::EQ, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "GT op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::GT, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "GTE op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::GTE, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "LT op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::LT, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "LTE op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::LTE, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "NOT op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::NOT, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "AND op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::AND, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "OR op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::OR, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "IS_EXACT_TYPE op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::IS_EXACT_TYPE, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "IS_NULL op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::IS_NULL, {}, {})},
         .rec = makeRec(),
         .expectedResult = std::nullopt,
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "UNKNOWN op with no args and record",
         .expr = {k2e::makeExpression(k2e::Operation::UNKNOWN, {}, {})},
@@ -370,19 +370,19 @@ TEST_CASE("Test CONTAINS") {
         .expr = {k2e::makeExpression(k2e::Operation::CONTAINS, {}, k2::make_vec<K2Exp>(K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "contains with 2 expressions",
         .expr = {k2e::makeExpression(k2e::Operation::CONTAINS, {}, k2::make_vec<K2Exp>(K2Exp{}, K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "contains with expression and value",
         .expr = {k2e::makeExpression(k2e::Operation::CONTAINS, k2::make_vec<K2Val>(K2Val{}), k2::make_vec<K2Exp>(K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     // 2 values but types aren't as expected
     cases.push_back(TestCase{
         .name = "contains: 2 values wrong type",
@@ -493,19 +493,19 @@ TEST_CASE("Test STARTS_WITH") {
         .expr = {k2e::makeExpression(k2e::Operation::STARTS_WITH, {}, k2::make_vec<K2Exp>(K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "starts_with: with 2 expressions",
         .expr = {k2e::makeExpression(k2e::Operation::STARTS_WITH, {}, k2::make_vec<K2Exp>(K2Exp{}, K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "starts_with: with expression and value",
         .expr = {k2e::makeExpression(k2e::Operation::STARTS_WITH, k2::make_vec<K2Val>(K2Val{}), k2::make_vec<K2Exp>(K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     // 2 values but types aren't as expected
     cases.push_back(TestCase{
         .name = "starts_with: 2 values wrong type",
@@ -614,19 +614,19 @@ TEST_CASE("Test ENDS_WITH") {
         .expr = {k2e::makeExpression(k2e::Operation::ENDS_WITH, {}, k2::make_vec<K2Exp>(K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "ends_with: with 2 expressions",
         .expr = {k2e::makeExpression(k2e::Operation::ENDS_WITH, {}, k2::make_vec<K2Exp>(K2Exp{}, K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "ends_with: with expression and value",
         .expr = {k2e::makeExpression(k2e::Operation::ENDS_WITH, k2::make_vec<K2Val>(K2Val{}), k2::make_vec<K2Exp>(K2Exp{}))},
         .rec = {},
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     // 2 values but types aren't as expected
     cases.push_back(TestCase{
         .name = "ends_with: 2 values wrong type",
@@ -1210,7 +1210,7 @@ TEST_CASE("Test AND") {
         ))},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "and: 1 expr",
         .expr = {k2e::makeExpression(k2e::Operation::AND, {}, k2::make_vec<K2Exp>(
@@ -1223,7 +1223,7 @@ TEST_CASE("Test AND") {
         ))},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "and: 1 value",
         .expr = {k2e::makeExpression(k2e::Operation::AND,
@@ -1232,7 +1232,7 @@ TEST_CASE("Test AND") {
         )},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "and: bool A expr true, B wrong type value",
         .expr = {k2e::makeExpression(k2e::Operation::AND,
@@ -1497,7 +1497,7 @@ TEST_CASE("Test OR") {
         ))},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "or: 1 expr",
         .expr = {k2e::makeExpression(k2e::Operation::OR, {}, k2::make_vec<K2Exp>(
@@ -1510,7 +1510,7 @@ TEST_CASE("Test OR") {
         ))},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "or: 1 value",
         .expr = {k2e::makeExpression(k2e::Operation::OR,
@@ -1519,7 +1519,7 @@ TEST_CASE("Test OR") {
         )},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "or: bool A expr true, B wrong type value",
         .expr = {k2e::makeExpression(k2e::Operation::OR,
@@ -1784,7 +1784,7 @@ TEST_CASE("Test XOR") {
         ))},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "xor: 1 expr",
         .expr = {k2e::makeExpression(k2e::Operation::XOR, {}, k2::make_vec<K2Exp>(
@@ -1797,7 +1797,7 @@ TEST_CASE("Test XOR") {
         ))},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "xor: 1 value",
         .expr = {k2e::makeExpression(k2e::Operation::XOR,
@@ -1806,7 +1806,7 @@ TEST_CASE("Test XOR") {
         )},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "xor: bool A expr true, B wrong type value",
         .expr = {k2e::makeExpression(k2e::Operation::XOR,
@@ -1980,7 +1980,7 @@ TEST_CASE("Test IS_NULL") {
         )},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "is_null: ref not null",
         .expr = {k2e::makeExpression(k2e::Operation::IS_NULL,
@@ -2018,7 +2018,7 @@ TEST_CASE("Test IS_NULL") {
         )},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     runner(cases);
 }
 
@@ -2083,7 +2083,7 @@ TEST_CASE("Test IS_EXACT_TYPE") {
         )},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     cases.push_back(TestCase{
         .name = "is_exact_type: second type not a literal",
         .expr = {k2e::makeExpression(k2e::Operation::IS_EXACT_TYPE,
@@ -2095,6 +2095,6 @@ TEST_CASE("Test IS_EXACT_TYPE") {
         )},
         .rec = makeRec(),
         .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException())}});
+        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
     runner(cases);
 }

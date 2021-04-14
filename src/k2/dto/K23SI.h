@@ -166,13 +166,18 @@ struct CommittedRecord {
 };
 
 
+// The transaction states for K23SI transactions.
+// All of the *PIP states are the states which can end up in persistence(WAL) and therefore
+// the *PIP states are the only states which can be encountered by replay
 K2_DEF_ENUM(TxnRecordState,
-        Created,      // The state in which all new TxnRecords are put when first created in memory
-        InProgress,   // The txn is active and we're persisting this fact
-        ForceAborted, // The txn has been force-aborted (e.g. due to PUSH)
-        Aborted,      // The txn has been successfully aborted by the client
-        Committed,    // The txn has been successfully committed by the client
-        Deleted
+        Created,         // The state in which all new TxnRecords are put when first created in memory
+        InProgress,      // The txn InProgress has persisted
+        ForceAborted,    // The txn ForceAbort has been persisted
+        AbortedPIP,      // The txn has been Aborted and we're persisting the txn record
+        Aborted,         // The txn Abort has been persisted
+        CommittedPIP,    // The txn has been Committed and we're persisting the txn record
+        Committed,       // The txn Commit has been persisted
+        FinalizedPIP     // The txn has been Finalized and we're persisting the txn record
 );
 
 // The main READ DTO.
@@ -211,6 +216,7 @@ struct K23SIStatus {
     static const inline Status BadParameter=k2::Statuses::S422_Unprocessable_Entity;
     static const inline Status BadFilterExpression=k2::Statuses::S406_Not_Acceptable;
     static const inline Status InternalError=k2::Statuses::S500_Internal_Server_Error;
+    static const inline Status ServiceUnavailable=k2::Statuses::S503_Service_Unavailable;
 };
 
 struct K23SIWriteRequest {
@@ -342,21 +348,25 @@ struct K23SITxnPushRequest {
     K2_DEF_FMT(K23SITxnPushRequest, pvid, collectionName, key, incumbentMTR, challengerMTR);
 };
 
+// This is the end action to be taken on the transaction and its writes. Here are the current
+// use cases for this:
+// 1. Client library is ending a transaction(commit/abort)
+// 2. TRH is finalizing the transaction at a participant
+// 3. A PUSH response is signaling what action should be done to the WI which triggered the PUSH
+K2_DEF_ENUM(EndAction,
+    None,
+    Abort,
+    Commit);
+
 // Response for PUSH operation
 struct K23SITxnPushResponse {
     // the mtr of the winning transaction
-    K23SI_MTR winnerMTR;
-    TxnRecordState incumbentState = TxnRecordState::Created;
+    EndAction incumbentFinalization = EndAction::None;
     bool allowChallengerRetry = false;
 
-    K2_PAYLOAD_FIELDS(winnerMTR, incumbentState, allowChallengerRetry);
-    K2_DEF_FMT(K23SITxnPushResponse, winnerMTR, incumbentState, allowChallengerRetry);
+    K2_PAYLOAD_FIELDS(incumbentFinalization, allowChallengerRetry);
+    K2_DEF_FMT(K23SITxnPushResponse, incumbentFinalization, allowChallengerRetry);
 };
-
-K2_DEF_ENUM(EndAction,
-    Abort,
-    Commit
-);
 
 struct K23SITxnEndRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map

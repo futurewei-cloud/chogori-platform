@@ -40,11 +40,13 @@ enum Verbs : k2::Verb {
     CPO_PERSISTENCE_CLUSTER_GET,
     PERSISTENCE_CLUSTER_CREATE,
     PERSISTENCE_CLUSTER_GET,
-    
-    CPO_SCHEMA_CREATE,
-    CPO_SCHEMAS_GET,
     CPO_METADATA_PERSIST,
     CPO_METADATA_GET,
+
+    CPO_SCHEMA_CREATE,
+    CPO_SCHEMAS_GET,
+    CPO_COLLECTION_DROP,
+
     /************ Assignment *****************/
     // K2Assignment: CPO asks K2 to assign a partition
     K2_ASSIGNMENT_CREATE = 20,
@@ -80,14 +82,14 @@ enum Verbs : k2::Verb {
     K23SI_INSPECT_WIS,
     K23SI_INSPECT_ALL_TXNS,
     K23SI_INSPECT_ALL_KEYS,
-    
+
     /************* TSO *******************/
     // API from TSO client to any TSO server to get all healthy TSO server URLs in the TSO server cluster
-    GET_TSO_SERVER_URLS    = 100,  
+    GET_TSO_SERVER_URLS    = 100,
     // API from TSO client to TSO server to get URLs of its nodes (i.e. service end points at worker CPU core)
-    GET_TSO_SERVICE_NODE_URLS,       
-    // API from TSO client to get timestamp batch from any TSO worker cores          
-    GET_TSO_TIMESTAMP_BATCH,             
+    GET_TSO_SERVICE_NODE_URLS,
+    // API from TSO client to get timestamp batch from any TSO worker cores
+    GET_TSO_TIMESTAMP_BATCH,
 
     /************ END OF RESERVED BLOCK *****************/
     END=200

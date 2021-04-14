@@ -29,6 +29,7 @@ nodepool_child_pid=$!
 
 
 function finish {
+  rv=$?
   # cleanup code
   rm -rf ${CPODIR}
 
@@ -47,6 +48,8 @@ function finish {
   kill ${tso_child_pid}
   echo "Waiting for tso child pid: ${tso_child_pid}"
   wait ${tso_child_pid}
+
+  echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
 
