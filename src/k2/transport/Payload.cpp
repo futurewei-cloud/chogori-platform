@@ -240,44 +240,9 @@ bool Payload::copyFromPayload(Payload& src, size_t toCopy) {
     return true;
 }
 
-bool Payload::copyToPayload(Payload& dst, String& s) {
-    (void) s;
-    _Size size;
-    if (!read(size)) return false;
-    dst.write(size);
-    return dst.copyFromPayload(*this, size);
-}
-
-bool Payload::copyToPayload(Payload& dst, std::decimal::decimal64& value) {
-    (void) value;
-    return dst.copyFromPayload(*this, sizeof(std::decimal::decimal64::__decfloat64));
-}
-
-bool Payload::copyToPayload(Payload& dst, std::decimal::decimal128& value) {
-    (void) value;
-    return dst.copyFromPayload(*this, sizeof(std::decimal::decimal128::__decfloat128));
-}
-
 void Payload::skip(size_t advance) {
     ensureCapacity(_currentPosition.offset + advance);
     _advancePosition(advance);
-}
-
-void Payload::_skip(String& s) {
-    (void) s;
-    _Size size;
-    read(size);
-    skip(size);
-}
-
-void Payload::_skip(std::decimal::decimal64& value) {
-    (void) value;
-    skip(sizeof(std::decimal::decimal64::__decfloat64));
-}
-
-void Payload::_skip(std::decimal::decimal128& value) {
-    (void) value;
-    skip(sizeof(std::decimal::decimal128::__decfloat128));
 }
 
 void Payload::truncateToCurrent() {
@@ -361,6 +326,10 @@ void Payload::write(const Payload& other) {
 
 void Payload::writeMany() {
     // this is needed for the base case of the recursive template version
+}
+
+size_t Payload::getFieldsSize() {
+    return 0;
 }
 
 bool Payload::_allocateBuffer() {

@@ -36,6 +36,8 @@ Copyright(c) 2020 Futurewei Cloud
     }                                                                      \
     bool __readFields(k2::Payload& ___payload_local_macro_var___) {        \
         return ___payload_local_macro_var___.readMany(__VA_ARGS__);        \
+    size_t __getFieldsSize(k2::Payload& ___payload_local_macro_var___) {   \
+        return ___payload_local_macro_var___.getFieldsSize(__VA_ARGS__);   \
     }
 
 // This is a macro which can be put on structures which are directly copyable
