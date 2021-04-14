@@ -268,17 +268,17 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
     size_t num_keys = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
     SKVRecord::Storage key_storage = storage.share();
 
+    // If size() == 0 then all fields were included, so resize the key_storage excluded fields
     if (key_storage.excludedFields.size() == 0) {
-        key_storage.excludedFields.resize(schema->fields.size());
-        for (size_t i = 0; i < num_keys; ++i) {
-            key_storage.excludedFields[i] = false;
-        }
+        key_storage.excludedFields.resize(schema->fields.size(), false);
     }
 
+    // Exclude all value fields
     for (size_t i = num_keys; i < key_storage.excludedFields.size(); ++i) {
         key_storage.excludedFields[i] = true;
     }
 
+    // Skipping key fields in fieldData so we can truncate the remaining value data in the payload
     for (size_t i = 0; i < num_keys; ++i) {
         if (!key_storage.excludedFields[i]) {
             K2_DTO_CAST_APPLY_FIELD_VALUE(skipFieldDataHelper, schema->fields[i], key_storage.fieldData);
