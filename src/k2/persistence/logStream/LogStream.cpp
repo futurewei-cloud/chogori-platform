@@ -227,14 +227,14 @@ seastar::future<std::vector<Payload> >
 LogStreamBase::read(String start_plogId, uint32_t start_offset, uint32_t size){
     auto it = _usedPlogInfo.find(start_plogId);
     if (it == _usedPlogInfo.end()) {
-        throw k2::dto::LogStreamBaseReadError("unable to find start plogId");
+        return seastar::make_exception_future<std::vector<Payload> >(std::runtime_error("unable to find start plogId"));
     }
 
     std::vector<MetadataElement> metadataInfo;
     uint32_t index = it->second.index;
     while (size != 0){
         if (index >= _usedPlogIdVector.size()){
-            throw k2::dto::LogStreamBaseReadError("request read size overflow");
+            return seastar::make_exception_future<std::vector<Payload> >(std::runtime_error("request read size overflow"));
         }
         PlogInfo& targetPlogInfo = _usedPlogInfo[_usedPlogIdVector[index]];
         MetadataElement log_entry{.plogId=_usedPlogIdVector[index], .start_offset=start_offset, .size=0};

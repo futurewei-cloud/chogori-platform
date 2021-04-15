@@ -79,8 +79,8 @@ public:
     // write data to the the current plog with the start offset, return the latest Plog ID and latest offset
     seastar::future<std::pair<String, uint32_t> > append(Payload payload, String plogId, uint32_t offset);
 
-    // read all the data from this log stream
-    seastar::future<std::vector<Payload> > read(String start_plogId, uint32_t start_offset, uint32_t size);
+    // read the data from the log stream
+    seastar::future<Payload > read(String start_plogId, uint32_t start_offset, uint32_t size);
 
     // reload the _usedPlogIdVector and _usedPlogInfo for replay purpose
     seastar::future<Status> reload(std::vector<dto::MetadataRecord> plogsOfTheStream);
@@ -93,6 +93,8 @@ private:
     constexpr static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
     // how many redundant plogs it will create in advance 
     constexpr static uint32_t PLOG_POOL_SIZE = 1;
+    // the maximun bytes a read command could read
+    constexpr statis uint32_t PLOG_MAX_READ_SIZE = 2*1024*1024;
 
     // whether this log stream base has been created 
     bool _create = false; 

@@ -70,12 +70,30 @@ public:  // application lifespan
 
         // let start() finish and then run the tests
         _testTimer.set_callback([this] {
-            _testFuture = runTest1()
-            .then([this] { return runTest2(); })
-            .then([this] { return runTest3(); })
-            .then([this] { return runTest4(); })
-            .then([this] { return runTest5(); })
-            .then([this] { return runTest6(); })
+            _testFuture = seastar::make_ready_future()
+            .then([this] {
+                // Create a persistence cluster
+                dto::PersistenceGroup group1{.name="Group1", .plogServerEndpoints = _plogConfigEps()};
+                dto::PersistenceCluster cluster1;
+                cluster1.name="Persistence_Cluster_1";
+                cluster1.persistenceGroupVector.push_back(group1);
+
+                auto request = dto::PersistenceClusterCreateRequest{.cluster=std::move(cluster1)};
+                return RPC().callRPC<dto::PersistenceClusterCreateRequest, dto::PersistenceClusterCreateResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_CREATE, request, *_cpoEndpoint, 1s);
+            })
+            .then([this] (auto&& response) {
+                // Init and create a logstream
+                auto& [status, resp] = response;
+                K2EXPECT(log::ltest, status, Statuses::S201_Created);
+
+                ConfigVar<String> configEp("cpo_url");
+                String cpo_url = configEp();
+
+                return _mmgr.init(cpo_url, "Partition-1", "Persistence_Cluster_1", false);
+            })
+            .then([this] { return runTest1();})
+            .then([this] { return runTest2();})
+            .then([this] { return runTest3();})
             .then([this] {
                 K2LOG_I(log::ltest, "======= All tests passed ========");
                 exitcode = 0;
@@ -100,49 +118,20 @@ public:  // application lifespan
         return seastar::make_ready_future<>();
     }
 
-
     seastar::future<> runTest1() {
-        K2LOG_I(log::ltest, ">>> Test1: create a persistence cluster");
-        dto::PersistenceGroup group1{.name="Group1", .plogServerEndpoints = _plogConfigEps()};
-        dto::PersistenceCluster cluster1;
-        cluster1.name="Persistence_Cluster_1";
-        cluster1.persistenceGroupVector.push_back(group1);
-
-        auto request = dto::PersistenceClusterCreateRequest{.cluster=std::move(cluster1)};
-        return RPC()
-        .callRPC<dto::PersistenceClusterCreateRequest, dto::PersistenceClusterCreateResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_CREATE, request, *_cpoEndpoint, 1s)
-        .then([](auto&& response) {
-            auto& [status, resp] = response;
-            K2EXPECT(log::ltest, status, Statuses::S201_Created);
-        });
-    }
-
-    seastar::future<> runTest2() {
-        K2LOG_I(log::ltest, ">>> Test2: init and create a logstream");
-        ConfigVar<String> configEp("cpo_url");
-        String cpo_url = configEp();
-
-        return _mmgr.init(cpo_url, "Partition-1", "Persistence_Cluster_1", false)
-        .then([this] (){
-            return seastar::make_ready_future<>();
-        });
-    }
-
-    seastar::future<> runTest3() {
-        K2LOG_I(log::ltest, ">>> Test3: Write and Read a Value from log stream");
+        K2LOG_I(log::ltest, ">>> Test1: Write and Read a Value from/to one log stream");
         _logStream = _mmgr.obtainLogStream(LogStreamType::WAL);
-        String header;
-        for (uint32_t i = 0; i < 10000; ++i){
-            header = header + "0";
-        }
+        String header("0", 10000);
         Payload payload([] { return Binary(20000); });
         payload.write(header);
+        // write a string to the first log stream
         return _logStream->append(std::move(payload))
         .then([this, header] (auto&& response){
             auto& [plogId, appended_offset] = response;
             _initPlogId = plogId;
             return _logStream->read(plogId, 0, appended_offset);
         })
+        // read the string that we wrote before, check whether they are the same
         .then([this, header] (auto&& payloads){
             String str;
             for (auto& payload:payloads){
@@ -154,29 +143,35 @@ public:  // application lifespan
         });
     }
 
-    seastar::future<> runTest4() {
-        K2LOG_I(log::ltest, ">>> Test4: Write and read huge data");
-        String header;
-        for (uint32_t i = 0; i < 10000; ++i){
-            header = header + "0";
-        }
+    seastar::future<> runTest2() {
+        K2LOG_I(log::ltest, ">>> Test2: Write and read huge data");
+         _logStream = _mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+        // write 1000 Strings to the second log stream, these writes will trigger a plog switch
+        String header("0", 10000);
         std::vector<seastar::future<std::pair<String, uint32_t>> > writeFutures;
         for (uint32_t i = 0; i < 2000; ++i){
             Payload payload([] { return Binary(20000); });
             payload.write(header);
             writeFutures.push_back(_logStream->append(std::move(payload)));
         }
+        // read all the Strings that we wrote before, check whether they are the same
         return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end())
         .then([this, header] (std::vector<std::pair<String, uint32_t> >&& responses){
+            bool first_plog = false;
             for (auto& response:responses){
                 auto& [plogId, appended_offset] = response;
+                if (!first_plog){
+                    first_plog = true;
+                    _initPlogId = plogId;
+                }
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
-            K2LOG_I(log::ltest, ">>> Test4.1: Write Done");
-            return _logStream->read(_initPlogId, 0, 2001*10005);
+            K2LOG_I(log::ltest, ">>> Test2.1: Write Done");
+            return _logStream->read(_initPlogId, 0, 2000*10005);
         })
+        // write another 1000 Strings to the same log stream, these writes will trigger a plog switch as well
         .then([this, header] (auto&& payloads){
-            K2LOG_I(log::ltest, ">>> Test4.2: Read Done");
+            K2LOG_I(log::ltest, ">>> Test2.2: Read Done");
             String str;
             uint32_t count = 0;
             for (auto& payload:payloads){
@@ -187,7 +182,7 @@ public:  // application lifespan
                     ++count;
                 }
             }
-            K2EXPECT(log::ltest, count, 2001);
+            K2EXPECT(log::ltest, count, 2000);
             std::vector<seastar::future<std::pair<String, uint32_t>> > writeFutures;
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
@@ -196,16 +191,17 @@ public:  // application lifespan
             }
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
+        // read all the Strings that we wrote before, check whether they are the same
         .then([this, header] (std::vector<std::pair<String, uint32_t> >&& responses){
             for (auto& response:responses){
                 auto& [plogId, appended_offset] = response;
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
-            K2LOG_I(log::ltest, ">>> Test4.3: Write Done");
-            return _logStream->read(_initPlogId, 0, 4001*10005);
+            K2LOG_I(log::ltest, ">>> Test2.3: Write Done");
+            return _logStream->read(_initPlogId, 0, 4000*10005);
         })
         .then([this, header] (auto&& payloads){
-            K2LOG_I(log::ltest, ">>> Test4.4: Read Done");
+            K2LOG_I(log::ltest, ">>> Test2.4: Read Done");
             String str;
             uint32_t count = 0;
             for (auto& payload:payloads){
@@ -216,33 +212,29 @@ public:  // application lifespan
                     ++count;
                 }
             }
-            K2EXPECT(log::ltest, count, 4001);
+            K2EXPECT(log::ltest, count, 4000);
             return seastar::make_ready_future<>();
         });
     }
 
-    seastar::future<> runTest5() {
-        K2LOG_I(log::ltest, ">>> Test5: replay the metadata manager");
+    seastar::future<> runTest3() {
+        K2LOG_I(log::ltest, ">>> Test3: replay the metadata manager and read/write data from/to a specific log stream");
         ConfigVar<String> configEp("cpo_url");
         String cpo_url = configEp();
+        String header("0", 10000);
 
+        // Replay the entire metadata manager
         return _reload_mmgr.replay(cpo_url, "Partition-1", "Persistence_Cluster_1")
+        // Read all the data from reloaded log stream and check weather they are the same
         .then([this] (auto&& response){
             auto& status  = response;
             K2LOG_D(log::ltest, "{}", status);
-            _reload_logStream = _reload_mmgr.obtainLogStream(LogStreamType::WAL);
-            return seastar::make_ready_future<>();
-        });
-    }
+            K2LOG_I(log::ltest, ">>> Test3.1: Replay Done");
 
-
-    seastar::future<> runTest6() {
-        K2LOG_I(log::ltest, ">>> Test6: Read and write data from reloaded WAL");
-        String header;
-        for (uint32_t i = 0; i < 10000; ++i){
-            header = header + "0";
-        }
-        return _reload_logStream->read(_initPlogId, 0, 4001*10005)
+            _reload_logStream = _reload_mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+            return _reload_logStream->read(_initPlogId, 0, 4000*10005);
+        })
+        // Write data to the reloaded log stream
         .then([this, header] (auto&& payloads){
             String str;
             uint32_t count = 0;
@@ -254,7 +246,9 @@ public:  // application lifespan
                     ++count;
                 }
             }
-            K2EXPECT(log::ltest, count, 4001);
+            K2EXPECT(log::ltest, count, 4000);
+            K2LOG_I(log::ltest, ">>> Test3.2: Read Done");
+
             std::vector<seastar::future<std::pair<String, uint32_t>> > writeFutures;
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
@@ -263,16 +257,17 @@ public:  // application lifespan
             }
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
+        // Read all the data from reloaded log stream and check weather they are the same
         .then([this, header] (std::vector<std::pair<String, uint32_t> >&& responses){
             for (auto& response:responses){
                 auto& [plogId, appended_offset] = response;
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
-            K2LOG_I(log::ltest, ">>> Test6.2: Write Done");
-            return _reload_logStream->read(_initPlogId, 0, 6001*10005);
+            K2LOG_I(log::ltest, ">>> Test3.3: Write Done");
+            return _reload_logStream->read(_initPlogId, 0, 6000*10005);
         })
         .then([this, header] (auto&& payloads){
-            K2LOG_I(log::ltest, ">>> Test6.3: Read Done");
+            K2LOG_I(log::ltest, ">>> Test3.4: Read Done");
             String str;
             uint32_t count = 0;
             for (auto& payload:payloads){
@@ -283,7 +278,7 @@ public:  // application lifespan
                     ++count;
                 }
             }
-            K2EXPECT(log::ltest, count, 6001);
+            K2EXPECT(log::ltest, count, 6000);
             return seastar::make_ready_future<>();
         });
     }
