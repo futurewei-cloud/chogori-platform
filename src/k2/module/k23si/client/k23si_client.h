@@ -285,8 +285,8 @@ public:
             }).finally([r = std::move(request)] () { (void) r; });
     }
 
-    template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record, std::vector<k2::String> fieldsName,
+    template <typename T>
+    seastar::future<PartialUpdateResult> partialUpdate(T& record, std::vector<k2::String> fieldsName,
                                                        dto::Key key=dto::Key()) {
         std::vector<uint32_t> fieldsForPartialUpdate;
         bool find = false;
@@ -306,8 +306,8 @@ public:
         return partialUpdate(record, std::move(fieldsForPartialUpdate), std::move(key));
     }
 
-    template <typename T1>
-    seastar::future<PartialUpdateResult> partialUpdate(T1& record,
+    template <typename T>
+    seastar::future<PartialUpdateResult> partialUpdate(T& record,
                                                        std::vector<uint32_t> fieldsForPartialUpdate,
                                                        dto::Key key=dto::Key()) {
         if (!_valid) {
@@ -320,7 +320,7 @@ public:
         _ongoing_ops++;
 
         std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
-        if constexpr (std::is_same<T1, dto::SKVRecord>()) {
+        if constexpr (std::is_same<T, dto::SKVRecord>()) {
             if (key.partitionKey == "") {
                 key = record.getKey();
             }
