@@ -61,6 +61,7 @@ LogStreamBase::_preallocatePlogs(){
         throw k2::dto::LogStreamBaseExistError("Log stream already created");
     }
     _switched = false;
+    _stopped = true;
 
     // create metadata plogs in advance
     std::vector<seastar::future<std::tuple<Status, String> > > createFutures;
@@ -85,12 +86,13 @@ seastar::future<>
 LogStreamBase::_activeAndPersistTheFirstPlog(){
     String plogId = _preallocatedPlogPool.back();
     _preallocatedPlogPool.pop_back();
-    _usedPlogIdVector.push_back(plogId);
-    PlogInfo info{.currentOffset=0, .sealed=false, .index=(uint32_t)_usedPlogIdVector.size()-1};
+    PlogInfo info{.currentOffset=0, .sealed=false, .next_plogId=""};
+    _first_plogId = plogId;
+    _current_plogId = plogId;
     _usedPlogInfo[std::move(plogId)] = std::move(info);
     
     // persist this used plog info
-    return _addNewPlog(0, _usedPlogIdVector.back())
+    return _addNewPlog(0, _current_plogId)
     .then([this] (auto&& response){
         if (!response.is2xxOK()) {
             throw k2::dto::LogStreamBasePersistError("unable to persist metadata");
@@ -104,7 +106,7 @@ LogStreamBase::append(Payload payload, String plogId, uint32_t offset){
     if (!_create){
         throw k2::dto::LogStreamBaseExistError("LogStreamBase does not created");
     }
-    if (_usedPlogIdVector.back() != plogId || _usedPlogInfo[_usedPlogIdVector.back()].sealed || _usedPlogInfo[_usedPlogIdVector.back()].currentOffset != offset){
+    if (_current_plogId != plogId || _usedPlogInfo[_current_plogId].sealed || _usedPlogInfo[_current_plogId].currentOffset != offset){
         throw k2::dto::LogStreamBaseExistError("LogStreamBase append request information inconsistent");
     }
     return append(std::move(payload));
@@ -116,7 +118,7 @@ LogStreamBase::append(Payload payload){
     if (!_create){
         throw k2::dto::LogStreamBaseExistError("LogStreamBase does not created");
     }
-    String plogId = _usedPlogIdVector.back();
+    String plogId = _current_plogId;
 
     if (_usedPlogInfo[plogId].currentOffset + payload.getSize() > PLOG_MAX_SIZE){
         // switch to a new plog
@@ -154,18 +156,19 @@ LogStreamBase::_switchPlogAndAppend(Payload payload){
     if (_preallocatedPlogPool.size() == 0){
         throw k2::dto::LogStreamBaseRedundantPlogError("no available redundant plog");
     }
-    String sealed_plogId = _usedPlogIdVector.back();
+    String sealed_plogId = _current_plogId;
     PlogInfo& targetPlogInfo = _usedPlogInfo[sealed_plogId];
     uint32_t sealed_offest = targetPlogInfo.currentOffset;
     
     String new_plogId = _preallocatedPlogPool.back();
     _preallocatedPlogPool.pop_back();
-    _usedPlogIdVector.push_back(new_plogId);
-    PlogInfo info{.currentOffset=0, .sealed=false, .index=(uint32_t)_usedPlogIdVector.size()-1};
+    PlogInfo info{.currentOffset=0, .sealed=false, .next_plogId=""};
     _usedPlogInfo[new_plogId] = std::move(info);
+    _usedPlogInfo[sealed_plogId].next_plogId = new_plogId;
     
     _switched = true;
     _usedPlogInfo[new_plogId].currentOffset += payload.getSize();
+    _current_plogId = new_plogId;
 
     uint32_t expect_appended_offset =  _usedPlogInfo[new_plogId].currentOffset;
 
@@ -223,6 +226,7 @@ LogStreamBase::_switchPlogAndAppend(Payload payload){
     });
 }
 
+
 seastar::future<std::vector<Payload> > 
 LogStreamBase::read(String start_plogId, uint32_t start_offset, uint32_t size){
     auto it = _usedPlogInfo.find(start_plogId);
@@ -231,27 +235,71 @@ LogStreamBase::read(String start_plogId, uint32_t start_offset, uint32_t size){
     }
 
     std::vector<MetadataElement> metadataInfo;
-    uint32_t index = it->second.index;
+    String plogId = start_plogId;
     while (size != 0){
-        if (index >= _usedPlogIdVector.size()){
+        if (plogId == ""){
             return seastar::make_exception_future<std::vector<Payload> >(std::runtime_error("request read size overflow"));
         }
-        PlogInfo& targetPlogInfo = _usedPlogInfo[_usedPlogIdVector[index]];
-        MetadataElement log_entry{.plogId=_usedPlogIdVector[index], .start_offset=start_offset, .size=0};
+        PlogInfo& targetPlogInfo = _usedPlogInfo[plogId];
+        MetadataElement log_entry{.plogId=plogId, .start_offset=start_offset, .size=0};
         if (targetPlogInfo.currentOffset - start_offset >= size){
             log_entry.size = size;
             size = 0;
+
         }
         else{
             log_entry.size = targetPlogInfo.currentOffset;
             size -= targetPlogInfo.currentOffset - start_offset;
             start_offset = 0;
         }
+        log_entry.size += log_entry.start_offset;
         metadataInfo.push_back(std::move(log_entry));
-        ++index;
+        plogId = _usedPlogInfo[plogId].next_plogId;
     }
 
-    std::vector<seastar::future<std::tuple<Status, Payload> > > readFutures;
+    _stopped = false;
+    uint32_t current_offset = metadataInfo[0].start_offset;
+    uint32_t index = 0;
+    std::vector<Payload> payload_list;
+
+    return seastar::do_with(std::move(payload_list), std::move(index), std::move(current_offset), std::move(metadataInfo), [&] (auto& payload_list, auto& index, auto& current_offset, auto& metadataInfo){
+        return seastar::do_until(
+            [this] { return _stopped; },
+            [&] {
+                String plogId = metadataInfo[index].plogId;
+                uint32_t start_offset = current_offset;
+                uint32_t request_size;
+                
+                if (current_offset + PLOG_MAX_READ_SIZE < metadataInfo[index].size){
+                    request_size = PLOG_MAX_READ_SIZE;
+                    current_offset += request_size;
+                }
+                else{
+                    request_size = metadataInfo[index].size - current_offset;
+                    ++index;
+                    if (index >= metadataInfo.size()){
+                        _stopped = true;
+                    }
+                    else{
+                        current_offset = metadataInfo[index].start_offset;
+                    }
+                }
+                return _client.read(plogId, start_offset, request_size)
+                .then([&] (auto&& response){
+                    auto& [status, payload] = response;
+                    if (!status.is2xxOK()){
+                        throw k2::dto::PlogReadError("unable to read a plog");
+                    }
+                    payload_list.push_back(std::move(payload));
+                    return seastar::make_ready_future<>();
+                });
+            }
+        )
+        .then([&] (){
+            return seastar::make_ready_future<std::vector<Payload> >(std::move(payload_list));
+        });
+    });
+    /*std::vector<seastar::future<std::tuple<Status, Payload> > > readFutures;
     for (auto& log_entry: metadataInfo){
         readFutures.push_back(_client.read(log_entry.plogId, log_entry.start_offset, log_entry.size));
     }
@@ -267,7 +315,7 @@ LogStreamBase::read(String start_plogId, uint32_t start_offset, uint32_t size){
             outputPayloads.push_back(std::move(resp));
         }
         return seastar::make_ready_future<std::vector<Payload> >(std::move(outputPayloads));
-    });
+    });*/
 }
 
 
@@ -278,12 +326,21 @@ LogStreamBase::reload(std::vector<dto::MetadataRecord> plogsOfTheStream){
         throw k2::dto::LogStreamBaseExistError("Log stream already created");
     }
     _switched = false;
+    
+    String previous_plogId = "";
     for (auto& record: plogsOfTheStream){
-        _usedPlogIdVector.push_back(record.plogId);
-        PlogInfo info{.currentOffset=record.sealed_offset, .sealed=true, .index=(uint32_t)_usedPlogIdVector.size()-1};
-        _usedPlogInfo[std::move(record.plogId)] = std::move(info);
+        PlogInfo info{.currentOffset=record.sealed_offset, .sealed=true, .next_plogId=""};
+        _usedPlogInfo[record.plogId] = std::move(info);
+        if (previous_plogId == ""){
+            _first_plogId = record.plogId;
+        }
+        else{
+            _usedPlogInfo[previous_plogId].next_plogId = record.plogId;
+        }
+        _current_plogId = record.plogId;
+        previous_plogId = std::move(record.plogId);
     }
-    _usedPlogInfo[_usedPlogIdVector.back()].sealed=false;
+    _usedPlogInfo[_current_plogId].sealed=false;
 
     return _preallocatePlogs()
     .then([this] (){

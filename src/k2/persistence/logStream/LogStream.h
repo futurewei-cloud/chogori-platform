@@ -61,7 +61,7 @@ private:
     struct PlogInfo {
         uint32_t currentOffset;
         bool sealed;
-        uint32_t index;
+        String next_plogId;
     };
 
     struct MetadataElement{
@@ -80,7 +80,9 @@ public:
     seastar::future<std::pair<String, uint32_t> > append(Payload payload, String plogId, uint32_t offset);
 
     // read the data from the log stream
-    seastar::future<Payload > read(String start_plogId, uint32_t start_offset, uint32_t size);
+    seastar::future<std::vector<Payload> > read(String start_plogId, uint32_t start_offset, uint32_t size);
+
+    //seastar::future<ContinuationToken, payload> read(ContinuationToken, size);
 
     // reload the _usedPlogIdVector and _usedPlogInfo for replay purpose
     seastar::future<Status> reload(std::vector<dto::MetadataRecord> plogsOfTheStream);
@@ -88,25 +90,30 @@ public:
     // obtain the target plog status
     seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> get_plog_status(String plogId);
 private:
+
+    String _first_plogId, _current_plogId;
+
     PlogClient _client;
     // the maximum size of each plog
     constexpr static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
     // how many redundant plogs it will create in advance 
     constexpr static uint32_t PLOG_POOL_SIZE = 1;
     // the maximun bytes a read command could read
-    constexpr statis uint32_t PLOG_MAX_READ_SIZE = 2*1024*1024;
+    constexpr static uint32_t PLOG_MAX_READ_SIZE = 10005*100*2;
 
     // whether this log stream base has been created 
     bool _create = false; 
 
+    bool _stopped;
+
     // The vector to store the redundant plog Id
     std::vector<String> _preallocatedPlogPool;
-    // The vector to store the used plog Id
-    std::vector<String> _usedPlogIdVector;
+
     // The map to store the used plog information
     std::unordered_map<String, PlogInfo> _usedPlogInfo;
     // whether the logstream is switching the plog 
     bool _switched;
+
     std::vector<seastar::promise<>> _switchRequestWaiters;
 
     // a virtual API that used to persist the Plog Id and sealed offset of each used plog
@@ -168,3 +175,4 @@ private:
 };
 
 } // k2
+
