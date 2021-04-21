@@ -56,20 +56,20 @@ PlogClient::init(String clusterName, String cpo_url){
 seastar::future<>
 PlogClient::_getPlogServerEndpoints() {
     for(auto& v : _persistenceCluster.persistenceGroupVector){
-        K2LOG_I(log::plogcl, "Persistence Group: {}", v.name);
+        K2LOG_D(log::plogcl, "Persistence Group: {}", v.name);
         _persistenceNameMap[v.name] = _persistenceNameList.size();
         _persistenceNameList.push_back(v.name);
 
         std::vector<std::unique_ptr<TXEndpoint>> endpoints;
         for (auto& url: v.plogServerEndpoints){
-            K2LOG_I(log::plogcl, "Plog Server Url: {}", url);
+            K2LOG_D(log::plogcl, "Plog Server Url: {}", url);
             auto ep = RPC().getTXEndpoint(url);
             if (ep){
                 endpoints.push_back(std::move(ep));
             }
         }
         if (endpoints.size() == 0){
-            K2LOG_I(log::plogcl, "Failed to obtain the Endpoint of Plog Servers");
+            K2LOG_D(log::plogcl, "Failed to obtain the Endpoint of Plog Servers");
             return seastar::make_exception_future<>(std::runtime_error("Failed to obtain the Endpoint of Plog Servers"));
         }
         _persistenceMapEndpoints[std::move(v.name)] = std::move(endpoints);

@@ -607,7 +607,7 @@ CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& requ
         return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster data"), dto::PersistenceClusterGetResponse());
     };
 
-    K2LOG_I(log::cposvr, "Found persistence cluster in: {}", cpath);
+    K2LOG_D(log::cposvr, "Found persistence cluster in: {}", cpath);
     dto::PersistenceClusterGetResponse response{.cluster=std::move(persistenceCluster)};
     return RPCResponse(Statuses::S200_OK("persistence cluster found"), std::move(response));
 }

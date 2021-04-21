@@ -49,6 +49,10 @@ enum LogStreamType : Verb {
     LogStreamTypeEnd
 };
 
+struct ContinuationToken{
+    String plogId;
+    uint32_t offset;
+};
 
 class LogStreamBase;
 class LogStream;
@@ -63,12 +67,6 @@ private:
         bool sealed;
         String next_plogId;
     };
-
-    struct MetadataElement{
-        String plogId;
-        uint32_t start_offset;
-        uint32_t size;
-    };
 public:
     LogStreamBase();
     ~LogStreamBase();
@@ -80,9 +78,10 @@ public:
     seastar::future<std::pair<String, uint32_t> > append(Payload payload, String plogId, uint32_t offset);
 
     // read the data from the log stream
-    seastar::future<std::vector<Payload> > read(String start_plogId, uint32_t start_offset, uint32_t size);
+    seastar::future<std::pair<ContinuationToken, Payload> > read(String start_plogId, uint32_t start_offset, uint32_t size);
 
-    //seastar::future<ContinuationToken, payload> read(ContinuationToken, size);
+
+    seastar::future<std::pair<ContinuationToken, Payload> > read(ContinuationToken token, uint32_t size);
 
     // reload the _usedPlogIdVector and _usedPlogInfo for replay purpose
     seastar::future<Status> reload(std::vector<dto::MetadataRecord> plogsOfTheStream);
@@ -99,13 +98,11 @@ private:
     // how many redundant plogs it will create in advance 
     constexpr static uint32_t PLOG_POOL_SIZE = 1;
     // the maximun bytes a read command could read
-    constexpr static uint32_t PLOG_MAX_READ_SIZE = 10005*100*2;
+    constexpr static uint32_t PLOG_MAX_READ_SIZE = 2*1024*1024;
 
     // whether this log stream base has been created 
     bool _create = false; 
-
-    bool _stopped;
-
+    
     // The vector to store the redundant plog Id
     std::vector<String> _preallocatedPlogPool;
 

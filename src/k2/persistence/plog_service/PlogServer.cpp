@@ -167,7 +167,7 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
 
 seastar::future<std::tuple<Status, dto::PlogStatusResponse>>
 PlogServer::_handleGetStatus(dto::PlogStatusRequest&& request){
-    K2LOG_I(log::plogsvr, "Received GetStatus request for {}", request);
+    K2LOG_D(log::plogsvr, "Received GetStatus request for {}", request);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
         return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogStatusResponse());
