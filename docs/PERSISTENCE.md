@@ -2,7 +2,7 @@
 
 
 # Plog
-The persistence data model provided/used by Chogori Project is called Plog. It is an interface for file-append-like storage services, such as PLOG or Azure AppendBlock. In our current design, this Plog is an append-only struct. The only operation that allowed to change the Plog is to append new data after the current blocks. 
+The persistence data model provided/used by Chogori Project is called Plog. It is an interface for file-append-like storage services, such as PLOG or Azure AppendBlock. In our current design, this Plog is an append-only struct. The interface does not allow random offset data modifications. Instead, it provides a single mutating operation: append(), which can only append new data.
 
 ## Term
 - Plog Client: Process all the operation requests regarding the Plog. It communicates with Plog Servers. It supports 4 operations: create, append, read, and seal.
