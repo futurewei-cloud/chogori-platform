@@ -127,12 +127,18 @@ public:  // application lifespan
         // write a string to the first log stream
         return _logStream->append(std::move(payload))
         .then([this, header] (auto&& response){
-            auto& [plogId, appended_offset] = response;
+            auto& [status, plogId, appended_offset] = response;
+            if (!status.is2xxOK()){
+                throw std::runtime_error("cannot append data!");
+            }
             _initPlogId = plogId;
             return _logStream->read(plogId, 0, appended_offset);
         })
         .then([this, header] (auto&& response){
-            auto& [continuation_token, payload] = response;
+            auto& [status, continuation_token, payload] = response;
+            if (!status.is2xxOK()){
+                throw std::runtime_error("cannot read data!");
+            }
             K2EXPECT(log::ltest, payload.getSize(), 10005);
             String str;
             payload.seek(0);
@@ -147,7 +153,7 @@ public:  // application lifespan
          _logStream = _mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
         // write 1000 Strings to the second log stream, these writes will trigger a plog switch
         String header("0", 10000);
-        std::vector<seastar::future<std::pair<String, uint32_t>> > writeFutures;
+        std::vector<seastar::future<std::tuple<Status, String, uint32_t>> > writeFutures;
         for (uint32_t i = 0; i < 2000; ++i){
             Payload payload([] { return Binary(20000); });
             payload.write(header);
@@ -155,10 +161,13 @@ public:  // application lifespan
         }
         // read all the Strings that we wrote before, check whether they are the same
         return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end())
-        .then([this, header] (std::vector<std::pair<String, uint32_t> >&& responses){
+        .then([this, header] (std::vector<std::tuple<Status, String, uint32_t> >&& responses){
             bool first_plog = false;
             for (auto& response:responses){
-                auto& [plogId, appended_offset] = response;
+                auto& [status, plogId, appended_offset] = response;
+                if (!status.is2xxOK()){
+                    throw std::runtime_error("cannot append data!");
+                }
                 if (!first_plog){
                     first_plog = true;
                     _initPlogId = plogId;
@@ -171,8 +180,10 @@ public:  // application lifespan
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 2000*10005;
-            auto& [continuation_token, payload] = response;
-        
+            auto& [status, continuation_token, payload] = response;
+            if (!status.is2xxOK()){
+                throw std::runtime_error("cannot read data!");
+            }
             request_size -= payload.getSize();
             Payload read_payload;
             for (auto& b: payload.shareAll().release()) {
@@ -185,7 +196,10 @@ public:  // application lifespan
                     [&] {
                         return _logStream->read(continuation_token, request_size)
                         .then([&] (auto&& response){
-                            auto& [token, payload] = response;
+                            auto& [status, token, payload] = response;
+                            if (!status.is2xxOK()){
+                                throw std::runtime_error("cannot read data!");
+                            }
                             request_size -= payload.getSize();
                             continuation_token = std::move(token);
                             for (auto& b: payload.shareAll().release()) {
@@ -212,7 +226,7 @@ public:  // application lifespan
                 ++count;
             }
             K2EXPECT(log::ltest, count, 2000);
-            std::vector<seastar::future<std::pair<String, uint32_t>> > writeFutures;
+            std::vector<seastar::future<std::tuple<Status, String, uint32_t>> > writeFutures;
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
                 payload.write(header);
@@ -221,9 +235,12 @@ public:  // application lifespan
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
         // read all the Strings that we wrote before, check whether they are the same
-        .then([this, header] (std::vector<std::pair<String, uint32_t> >&& responses){
+        .then([this, header] (std::vector<std::tuple<Status, String, uint32_t> >&& responses){
             for (auto& response:responses){
-                auto& [plogId, appended_offset] = response;
+                auto& [status, plogId, appended_offset] = response;
+                if (!status.is2xxOK()){
+                    throw std::runtime_error("cannot append data!");
+                }
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
             K2LOG_I(log::ltest, ">>> Test2.3: Write Done");
@@ -232,8 +249,10 @@ public:  // application lifespan
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 4000*10005;
-            auto& [continuation_token, payload] = response;
-        
+            auto& [status, continuation_token, payload] = response;
+            if (!status.is2xxOK()){
+                throw std::runtime_error("cannot read data!");
+            }
             request_size -= payload.getSize();
             Payload read_payload;
             for (auto& b: payload.shareAll().release()) {
@@ -246,7 +265,10 @@ public:  // application lifespan
                     [&] {
                         return _logStream->read(continuation_token, request_size)
                         .then([&] (auto&& response){
-                            auto& [token, payload] = response;
+                            auto& [status, token, payload] = response;
+                            if (!status.is2xxOK()){
+                                throw std::runtime_error("cannot read data!");
+                            }
                             request_size -= payload.getSize();
                             continuation_token = std::move(token);
                             for (auto& b: payload.shareAll().release()) {
@@ -297,8 +319,10 @@ public:  // application lifespan
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 4000*10005;
-            auto& [continuation_token, payload] = response;
-        
+            auto& [status, continuation_token, payload] = response;
+            if (!status.is2xxOK()){
+                throw std::runtime_error("cannot read data!");
+            }
             request_size -= payload.getSize();
             Payload read_payload;
             for (auto& b: payload.shareAll().release()) {
@@ -311,7 +335,10 @@ public:  // application lifespan
                     [&] {
                         return _reload_logStream->read(continuation_token, request_size)
                         .then([&] (auto&& response){
-                            auto& [token, payload] = response;
+                            auto& [status, token, payload] = response;
+                            if (!status.is2xxOK()){
+                                throw std::runtime_error("cannot read data!");
+                            }
                             request_size -= payload.getSize();
                             continuation_token = std::move(token);
                             for (auto& b: payload.shareAll().release()) {
@@ -339,7 +366,7 @@ public:  // application lifespan
             K2EXPECT(log::ltest, count, 4000);
             K2LOG_I(log::ltest, ">>> Test3.2: Read Done");
 
-            std::vector<seastar::future<std::pair<String, uint32_t>> > writeFutures;
+            std::vector<seastar::future<std::tuple<Status, String, uint32_t>> > writeFutures;
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
                 payload.write(header);
@@ -348,9 +375,12 @@ public:  // application lifespan
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
         // Read all the data from reloaded log stream
-        .then([this, header] (std::vector<std::pair<String, uint32_t> >&& responses){
+        .then([this, header] (std::vector<std::tuple<Status, String, uint32_t> >&& responses){
             for (auto& response:responses){
-                auto& [plogId, appended_offset] = response;
+                auto& [status, plogId, appended_offset] = response;
+                if (!status.is2xxOK()){
+                    throw std::runtime_error("cannot append data!");
+                }
                 K2LOG_D(log::ltest, "{}, {}", plogId, appended_offset);
             }
             K2LOG_I(log::ltest, ">>> Test3.3: Write Done");
@@ -359,8 +389,10 @@ public:  // application lifespan
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 6000*10005;
-            auto& [continuation_token, payload] = response;
-        
+            auto& [status, continuation_token, payload] = response;
+            if (!status.is2xxOK()){
+                throw std::runtime_error("cannot read data!");
+            }
             request_size -= payload.getSize();
             Payload read_payload;
             for (auto& b: payload.shareAll().release()) {
@@ -373,7 +405,10 @@ public:  // application lifespan
                     [&] {
                         return _reload_logStream->read(continuation_token, request_size)
                         .then([&] (auto&& response){
-                            auto& [token, payload] = response;
+                            auto& [status, token, payload] = response;
+                            if (!status.is2xxOK()){
+                                throw std::runtime_error("cannot read data!");
+                            }
                             request_size -= payload.getSize();
                             continuation_token = std::move(token);
                             for (auto& b: payload.shareAll().release()) {

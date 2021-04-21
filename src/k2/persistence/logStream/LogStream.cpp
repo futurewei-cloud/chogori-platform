@@ -100,22 +100,22 @@ LogStreamBase::_activeAndPersistTheFirstPlog(){
         return seastar::make_ready_future<>();
     });
 }
-seastar::future<std::pair<String, uint32_t> > 
+seastar::future<std::tuple<Status, String, uint32_t> > 
 LogStreamBase::append(Payload payload, String plogId, uint32_t offset){
     if (!_create){
-        throw k2::dto::LogStreamBaseExistError("LogStreamBase does not created");
+        return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S404_Not_Found("LogStreamBase does not created"), "", 0));
     }
     if (_current_plogId != plogId || _usedPlogInfo[_current_plogId].sealed || _usedPlogInfo[_current_plogId].currentOffset != offset){
-        throw k2::dto::LogStreamBaseExistError("LogStreamBase append request information inconsistent");
+        return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S403_Forbidden("LogStreamBase append request information inconsistent"), "", 0));
     }
     return append(std::move(payload));
 };
 
 
-seastar::future<std::pair<String, uint32_t> > 
+seastar::future<std::tuple<Status, String, uint32_t> > 
 LogStreamBase::append(Payload payload){
     if (!_create){
-        throw k2::dto::LogStreamBaseExistError("LogStreamBase does not created");
+        return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S404_Not_Found("LogStreamBase does not created"), "", 0));
     }
     String plogId = _current_plogId;
 
@@ -132,7 +132,7 @@ LogStreamBase::append(Payload payload){
             auto& [status, appended_offset] = response;
 
             if (!status.is2xxOK() || expect_appended_offset != appended_offset) {
-                throw k2::dto::PlogAppendError("unable to append a plog");
+                return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S500_Internal_Server_Error("unable to append a plog"), "", 0));
             }
             // Check weather there is a sealed request that did not receive the response
             if (_switched){
@@ -140,20 +140,20 @@ LogStreamBase::append(Payload payload){
                 // if there is a flying sealed request, we should not notify the client until we receive the response of that sealed request
                 return _switchRequestWaiters.back().get_future().
                 then([plogId, appended_offset] (){
-                    return seastar::make_ready_future<std::pair<String, uint32_t> >(std::make_pair(std::move(plogId), appended_offset));
+                    return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S200_OK("append scuccess"), std::move(plogId), appended_offset));
                 });
             }
             else{
-                return seastar::make_ready_future<std::pair<String, uint32_t> >(std::make_pair(std::move(plogId), appended_offset));
+                return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S200_OK("append scuccess"), std::move(plogId), appended_offset));
             }
         });
     }
 };
 
-seastar::future<std::pair<String, uint32_t> > 
+seastar::future<std::tuple<Status, String, uint32_t> > 
 LogStreamBase::_switchPlogAndAppend(Payload payload){
     if (_preallocatedPlogPool.size() == 0){
-        throw k2::dto::LogStreamBaseRedundantPlogError("no available redundant plog");
+        return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S507_Insufficient_Storage("no available redundant plog"), "", 0));
     }
     String sealed_plogId = _current_plogId;
     PlogInfo& targetPlogInfo = _usedPlogInfo[sealed_plogId];
@@ -171,78 +171,85 @@ LogStreamBase::_switchPlogAndAppend(Payload payload){
     uint32_t expect_appended_offset =  _usedPlogInfo[new_plogId].currentOffset;
 
     // The following process could be asynchronous 
-    std::vector<seastar::future<>> waitFutures;
+    std::vector<seastar::future<Status>> waitFutures;
     // Append to the new Plog
     waitFutures.push_back(_client.append(new_plogId, 0, std::move(payload))
     .then([expect_appended_offset] (auto&& response){
         auto& [status, appended_offset] = response;
         if (!status.is2xxOK() || expect_appended_offset != appended_offset) {
-            throw k2::dto::PlogAppendError("unable to append a plog");
+            return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("unable to append a plog"));
         }
-        return seastar::make_ready_future<>();
+        return seastar::make_ready_future<Status>(Statuses::S200_OK("append scuccess"));
     }));
     // Seal the old Plog
     waitFutures.push_back(_client.seal(sealed_plogId, sealed_offest)
     .then([this, sealed_plogId] (auto&& response){
         auto& [status, resp] = response;
         if (!status.is2xxOK()) {
-            throw k2::dto::PlogAppendError("unable to seal a plog");
+            return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("unable to seal a plog"));
         }
         _usedPlogInfo[sealed_plogId].sealed = true;
-        return seastar::make_ready_future<>();
+        return seastar::make_ready_future<Status>(Statuses::S200_OK("seal scuccess"));
     }));
     // Preallocated a new plog
     waitFutures.push_back(_client.create()
     .then([this] (auto&& response){
         auto& [status, plogId] = response;
         if (!status.is2xxOK()){
-            throw k2::dto::PlogCreateError("unable to create plog for Logstream Base");
+            return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("unable to create plog for Logstream Base"));
         }
         _preallocatedPlogPool.push_back(std::move(plogId));
-        return seastar::make_ready_future<>();
+        return seastar::make_ready_future<Status>(Statuses::S200_OK("create plog scuccess"));
     }));
     // Persist the metadata of sealed Plog's Offset and new PlogId
     waitFutures.push_back(_addNewPlog(sealed_offest, new_plogId)
     .then([this] (auto&& response){
         auto& status = response;
         if (!status.is2xxOK()){
-            throw k2::dto::PlogCreateError("unable to create plog for Logstream Base");
+            return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("unable to persist metadata"));
         }
-        return seastar::make_ready_future<>();
+        return seastar::make_ready_future<Status>(Statuses::S200_OK("persist metadata scuccess"));
     }));
 
     // Clear the switchRequestWaiters
     return seastar::when_all_succeed(waitFutures.begin(), waitFutures.end())
-    .then([this, new_plogId, expect_appended_offset] (){
+    .then([this, new_plogId, expect_appended_offset] (auto&& responses){
         _switched = false;
         // send all the pending response to client 
         for (auto& request: _switchRequestWaiters){
             request.set_value();
         }
         _switchRequestWaiters.clear();
-        return seastar::make_ready_future<std::pair<String, uint32_t> >(std::make_pair(std::move(new_plogId), expect_appended_offset));
+
+        for (auto& status: responses){
+            if (!status.is2xxOK()){
+                return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(std::move(status), "", 0));
+            }
+        }
+        return seastar::make_ready_future<std::tuple<Status, String, uint32_t> >(std::tuple<Status, String, uint32_t>(Statuses::S200_OK("append scuccess"), std::move(new_plogId), expect_appended_offset));
     });
 }
 
 
-seastar::future<std::pair<ContinuationToken, Payload> > 
+seastar::future<std::tuple<Status, ContinuationToken, Payload> > 
 LogStreamBase::read(ContinuationToken token, uint32_t size){
     return read(token.plogId, token.offset, size);
 }
 
 
-seastar::future<std::pair<ContinuationToken, Payload> > 
+seastar::future<std::tuple<Status, ContinuationToken, Payload> > 
 LogStreamBase::read(String start_plogId, uint32_t start_offset, uint32_t size){
     auto it = _usedPlogInfo.find(start_plogId);
-   
+    ContinuationToken token;
+
     if (it == _usedPlogInfo.end()) {
-        return seastar::make_exception_future<std::pair<ContinuationToken, Payload> >(std::runtime_error("unable to find start plogId"));
+        return seastar::make_ready_future<std::tuple<Status, ContinuationToken, Payload> >(std::tuple<Status, ContinuationToken, Payload>(Statuses::S404_Not_Found("unable to find start plogId"), std::move(token), Payload()));
     }
 
     if (PLOG_MAX_READ_SIZE < size)
         size = PLOG_MAX_READ_SIZE;
     uint32_t read_size;
-    ContinuationToken token;
+    
     if (start_offset+size <= it->second.currentOffset){
         read_size = size;
         token.plogId = start_plogId;
@@ -257,9 +264,9 @@ LogStreamBase::read(String start_plogId, uint32_t start_offset, uint32_t size){
     .then([this, start_plogId, start_offset, read_size, token] (auto&& response){
         auto& [status, payload] = response;
         if (!status.is2xxOK()){
-            throw k2::dto::PlogReadError("unable to read a plog");
+            return seastar::make_ready_future<std::tuple<Status, ContinuationToken, Payload> >(std::tuple<Status, ContinuationToken, Payload>(std::move(status), std::move(token), Payload()));
         }
-        return seastar::make_ready_future<std::pair<ContinuationToken, Payload>>(std::make_pair(std::move(token), std::move(payload)));
+        return seastar::make_ready_future<std::tuple<Status, ContinuationToken, Payload> >(std::tuple<Status, ContinuationToken, Payload>(std::move(status), std::move(token), std::move(payload)));
     });
 }
 
@@ -398,11 +405,12 @@ MetadataMgr::addNewPLogIntoLogStream(Verb name, uint32_t sealed_offset, String n
     temp_payload.write(std::move(new_plogId));
     return append(std::move(temp_payload))
     .then([this] (auto&& response){
-        auto& [plogId, appended_offset] = response;
+        auto& [status, plogId, appended_offset] = response;
         K2LOG_D(log::lgbase, "{}, {}", plogId, appended_offset);
-        return seastar::make_ready_future<Status>(Statuses::S200_OK("successfully persist metadata"));
+        return seastar::make_ready_future<Status>(std::move(status));
     });
 }
+
 
 seastar::future<Status> 
 MetadataMgr::replay(String cpo_url, String partitionName, String persistenceClusterName){
@@ -443,8 +451,10 @@ MetadataMgr::replay(String cpo_url, String partitionName, String persistenceClus
             // read with continuation
             .then([&] (auto&& response){
                 uint32_t request_size = read_size;
-                auto& [continuation_token, payload] = response;
-
+                auto& [status, continuation_token, payload] = response;
+                if (!status.is2xxOK()) {
+                    throw k2::dto::LogStreamBaseReload("unable to read the metadata");
+                }
                 request_size -= payload.getSize();
                 Payload read_payload;
                 for (auto& b: payload.shareAll().release()) {
@@ -457,7 +467,10 @@ MetadataMgr::replay(String cpo_url, String partitionName, String persistenceClus
                         [&] {
                             return read(continuation_token, request_size)
                             .then([&] (auto&& response){
-                                auto& [token, payload] = response;
+                                auto& [status, token, payload] = response;
+                                if (!status.is2xxOK()) {
+                                    throw k2::dto::LogStreamBaseReload("unable to read the metadata");
+                                }
                                 request_size -= payload.getSize();
                                 continuation_token = std::move(token);
                                 for (auto& b: payload.shareAll().release()) {

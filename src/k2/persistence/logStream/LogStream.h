@@ -72,16 +72,16 @@ public:
     ~LogStreamBase();
 
     // write data to the the current plog, return the latest Plog ID and latest offset
-    seastar::future<std::pair<String, uint32_t> > append(Payload payload);
+    seastar::future<std::tuple<Status, String, uint32_t> > append(Payload payload);
 
     // write data to the the current plog with the start offset, return the latest Plog ID and latest offset
-    seastar::future<std::pair<String, uint32_t> > append(Payload payload, String plogId, uint32_t offset);
+    seastar::future<std::tuple<Status, String, uint32_t> > append(Payload payload, String plogId, uint32_t offset);
 
     // read the data from the log stream
-    seastar::future<std::pair<ContinuationToken, Payload> > read(String start_plogId, uint32_t start_offset, uint32_t size);
+    seastar::future<std::tuple<Status, ContinuationToken, Payload> > read(String start_plogId, uint32_t start_offset, uint32_t size);
 
-
-    seastar::future<std::pair<ContinuationToken, Payload> > read(ContinuationToken token, uint32_t size);
+    // read with continuation
+    seastar::future<std::tuple<Status, ContinuationToken, Payload> > read(ContinuationToken token, uint32_t size);
 
     // reload the _usedPlogIdVector and _usedPlogInfo for replay purpose
     seastar::future<Status> reload(std::vector<dto::MetadataRecord> plogsOfTheStream);
@@ -117,7 +117,7 @@ private:
     virtual seastar::future<Status> _addNewPlog(uint32_t sealed_offset, String new_plogId)=0;
 
     // when exceed the size limit of current plog, we need to seal the current plog, write the sealed offset to metadata, and write the contents to the new plog
-    seastar::future<std::pair<String, uint32_t> > _switchPlogAndAppend(Payload payload);
+    seastar::future<std::tuple<Status, String, uint32_t> > _switchPlogAndAppend(Payload payload);
 
 protected:
      // create a log stream base
