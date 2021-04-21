@@ -5,7 +5,7 @@
 The persistence data model provided/used by Chogori Project is called Plog. It is an interface for file-append-like storage services, such as PLOG or Azure AppendBlock. In our current design, this Plog is an append-only struct. The interface does not allow random offset data modifications. Instead, it provides a single mutating operation: append(), which can only append new data.
 
 ## Term
-- Plog Client: Process all the operation requests regarding the Plog. It communicates with Plog Servers. It supports 4 operations: create, append, read, and seal.
+- Plog Client:  Provides an implementation of the PLOG interface. It communicates with Plog Servers. It supports 4 operations: create, append, read, and seal.
 - Plog Server: Communicate with Plog Client and process all the requests. It reads/appends data from/to the storage media.
 - Persistence Group: A Persistence Group consists of 3 Plog Servers. When a Plog Client will create/append/seal a plog, it will always communicate with all the Plog Servers in the same Persistence Group simultaneously in order to provide redundancy.
 - Persistence Cluster: A Persistence Cluster consists of several Persistence Groups. Each Persistence Clusters is store in the CPO with a Persistence Cluster Name. When a client initializes, it will request one Persistence Cluster from the CPO with a given Persistence Cluster Name. The client can select different Persistence Groups in this Persistence Cluster in order to provide load balance.
