@@ -52,6 +52,6 @@ The metadata manager supports 3 operations: init, write, and read_all.
 
 # TODO
 Currently, we only implement this persistence part for testing the performance of our system. So there are several points we would like to implement later
-- Handle the failure cases: Currently we only plan to implement the log stream for the happy cases. If there are some unexpected errors happen, we will not handle it, but only throw a LogStreamException. Later, we will implement handling the failures in the log stream.
+- Handle the failure cases: Currently we only plan to implement the log stream for the happy cases. If there are any unexpected errors, we will not handle them, but only throw a LogStreamException. Later, we will implement handling of the failures in the log stream.
 - Currently our test case cannot test the scenario that a Metadata Manager create multiple plogs to store metadata since we used a fixed plog size limit for now. We only write the plog id and offset to the metadata plog. The size of each plog id is less than 100 bytes, while the size of offset is 4 bytes. If the size of each plog is 16MB, then each metadata plog can store the metadata of more than 100k data services' plogs. Currently our testcase cannot create such large amount of plogs due to memory limit. Therefore we cannot test this scenario. We plan to add this testcase later if we can support variable size of plogs.
 - Support Chunked
