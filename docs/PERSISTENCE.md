@@ -8,7 +8,7 @@ The persistence data model provided/used by Chogori Project is called Plog. It i
 - Plog Client:  Provides an implementation of the PLOG interface. It communicates with Plog Servers. It supports 4 operations: create, append, read, and seal.
 - Plog Server: Process the Plog Client requests. It reads/appends data from/to the storage media.
 - Persistence Group: A Persistence Group consists of 3 Plog Servers. When a Plog Client creates/appends/seals a plog, it will always communicate with all the Plog Servers in the same Persistence Group simultaneously in order to provide redundancy.
-- Persistence Cluster: A Persistence Cluster consists of several Persistence Groups. Each Persistence Clusters is store in the CPO with a Persistence Cluster Name. When a client initializes, it will request one Persistence Cluster from the CPO with a given Persistence Cluster Name. The client can select different Persistence Groups in this Persistence Cluster in order to provide load balance.
+- Persistence Cluster: A Persistence Cluster consists of several Persistence Groups. Each Persistence Cluster is registered in the CPO with a Persistence Cluster Name. When a client initializes, it will request one Persistence Cluster from the CPO with a given Persistence Cluster Name. The client can select different Persistence Groups in this Persistence Cluster in order to provide load balance.
 
 ## Plog Id
 A Plog Id is a unique identifier for a Plog. This is a small tuple that conveys `(Persistence Cluster Name, Persistence Group Name, Random Identifier)`. From this tuple, the client can locate the Plog Servers that stored that Plog.
