@@ -49,8 +49,8 @@ PlogClient::~PlogClient() {
 
 
 seastar::future<>
-PlogClient::init(String clusterName, String cpo_url){
-    return _getPersistenceCluster(clusterName, cpo_url);
+PlogClient::init(String clusterName, String cpoUrl){
+    return _getPersistenceCluster(clusterName, cpoUrl);
 }
 
 seastar::future<>
@@ -78,8 +78,8 @@ PlogClient::_getPlogServerEndpoints() {
 }
 
 seastar::future<>
-PlogClient::_getPersistenceCluster(String clusterName, String cpo_url){
-    _cpo = CPOClient(cpo_url);
+PlogClient::_getPersistenceCluster(String clusterName, String cpoUrl){
+    _cpo = CPOClient(cpoUrl);
     return _cpo.GetPersistenceCluster(Deadline<>(_cpo_timeout()), std::move(clusterName)).
     then([this] (auto&& result) {
         auto& [status, response] = result;
@@ -102,7 +102,7 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
     dto::PlogCreateRequest request{.plogId = plogId};
     std::vector<seastar::future<std::tuple<Status, dto::PlogCreateResponse> > > createFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
-        createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, _plog_timeout()));
+        createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PLOG_CREATE, request, *ep, _plog_timeout()));
     }
     return seastar::when_all_succeed(createFutures.begin(), createFutures.end())
         .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
@@ -128,7 +128,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
 
     std::vector<seastar::future<std::tuple<Status, dto::PlogAppendResponse> > > appendFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
-        appendFutures.push_back(RPC().callRPC<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::PERSISTENT_APPEND, request, *ep, _plog_timeout()));
+        appendFutures.push_back(RPC().callRPC<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::PLOG_APPEND, request, *ep, _plog_timeout()));
     }
 
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
@@ -152,7 +152,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
 seastar::future<std::tuple<Status, Payload>> PlogClient::read(String plogId, uint32_t offset, uint32_t size){
     dto::PlogReadRequest request{.plogId = std::move(plogId), .offset=offset, .size=size};
 
-    return RPC().callRPC<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::PERSISTENT_READ, request, *_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]][0], _plog_timeout()).
+    return RPC().callRPC<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::PLOG_READ, request, *_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]][0], _plog_timeout()).
         then([this] (auto&& result) {
             auto& [status, response] = result;
 
@@ -165,7 +165,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
 
     std::vector<seastar::future<std::tuple<Status, dto::PlogSealResponse> > > sealFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
-        sealFutures.push_back(RPC().callRPC<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PERSISTENT_SEAL, request, *ep, _plog_timeout()));
+        sealFutures.push_back(RPC().callRPC<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PLOG_SEAL, request, *ep, _plog_timeout()));
     }
 
     return seastar::when_all_succeed(sealFutures.begin(), sealFutures.end())
@@ -184,15 +184,15 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
 }
 
 seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getPlogStatus(String plogId){
-    dto::PlogStatusRequest request{.plogId = std::move(plogId)};
+    dto::PlogGetStatusRequest request{.plogId = std::move(plogId)};
 
-    std::vector<seastar::future<std::tuple<Status, dto::PlogStatusResponse> > > statusFutures;
+    std::vector<seastar::future<std::tuple<Status, dto::PlogGetStatusResponse> > > statusFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
-        statusFutures.push_back(RPC().callRPC<dto::PlogStatusRequest, dto::PlogStatusResponse>(dto::Verbs::PERSISTENT_STATUS, request, *ep, _plog_timeout()));
+        statusFutures.push_back(RPC().callRPC<dto::PlogGetStatusRequest, dto::PlogGetStatusResponse>(dto::Verbs::PLOG_GET_STATUS, request, *ep, _plog_timeout()));
     }
 
     return seastar::when_all_succeed(statusFutures.begin(), statusFutures.end())
-        .then([this](std::vector<std::tuple<Status, dto::PlogStatusResponse> >&& results) { 
+        .then([this](std::vector<std::tuple<Status, dto::PlogGetStatusResponse> >&& results) { 
             Status return_status;
             uint32_t current_offset=UINT_MAX;
             bool sealed=false;
@@ -200,6 +200,7 @@ seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getP
                 auto& [status, response] = result;
                 return_status = std::move(status);
                 if (current_offset > response.currentOffset){
+                    K2LOG_D(log::plogcl, "Plog Offset Inconsistent");
                     current_offset = response.currentOffset;
                 }
                 if (response.sealed){

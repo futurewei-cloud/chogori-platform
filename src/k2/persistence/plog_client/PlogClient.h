@@ -47,7 +47,7 @@ public:
     ~PlogClient();
 
     // obtain the persistence cluster for a given name from the cpo and obtain the endpoints of the plog server
-    seastar::future<> init(String clusterName, String cpo_url);
+    seastar::future<> init(String clusterName, String cpoUrl);
 
     // allow users to select a specific persistence group by its name
     bool selectPersistenceGroup(String name);
@@ -85,7 +85,7 @@ private:
     seastar::future<> _getPlogServerEndpoints(); 
 
     // obtain the persistence cluster for a given name from the cpo
-    seastar::future<> _getPersistenceCluster(String clusterName, String cpo_url); 
+    seastar::future<> _getPersistenceCluster(String clusterName, String cpoUrl); 
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 1s};

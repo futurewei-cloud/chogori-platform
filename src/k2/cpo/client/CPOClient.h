@@ -264,19 +264,19 @@ public:
     }
 
     template<typename ClockT=Clock>
-    seastar::future<std::tuple<Status, dto::MetadataPersistResponse>> PersistMetadata(Deadline<ClockT> deadline, String partitionName, uint32_t sealed_offset, String new_plogId) {
-        dto::MetadataPersistRequest request{.partitionName = std::move(partitionName), .sealed_offset=std::move(sealed_offset), .new_plogId=std::move(new_plogId)};
+    seastar::future<std::tuple<Status, dto::MetadataPutResponse>> PutPartitionMetadata(Deadline<ClockT> deadline, String partitionName, uint32_t sealed_offset, String new_plogId) {
+        dto::MetadataPutRequest request{.partitionName = std::move(partitionName), .sealed_offset=std::move(sealed_offset), .new_plogId=std::move(new_plogId)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        return RPC().callRPC<dto::MetadataPersistRequest, dto::MetadataPersistResponse>(dto::Verbs::CPO_METADATA_PERSIST, request, *cpo, timeout);
+        return RPC().callRPC<dto::MetadataPutRequest, dto::MetadataPutResponse>(dto::Verbs::CPO_PARTITION_METADATA_PUT, request, *cpo, timeout);
     }
 
     template<typename ClockT=Clock>
-    seastar::future<std::tuple<Status, dto::MetadataGetResponse>> GetMetadata(Deadline<ClockT> deadline, String partitionName) {
+    seastar::future<std::tuple<Status, dto::MetadataGetResponse>> GetPartitionMetadata(Deadline<ClockT> deadline, String partitionName) {
         dto::MetadataGetRequest request{.partitionName = std::move(partitionName)};
 
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
-        return RPC().callRPC<dto::MetadataGetRequest, dto::MetadataGetResponse>(dto::Verbs::CPO_METADATA_GET, request, *cpo, timeout);
+        return RPC().callRPC<dto::MetadataGetRequest, dto::MetadataGetResponse>(dto::Verbs::CPO_PARTITION_METADATA_GET, request, *cpo, timeout);
     }
 
     seastar::future<k2::Status> createSchema(const String& collectionName, k2::dto::Schema schema);

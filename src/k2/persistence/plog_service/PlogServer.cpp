@@ -54,23 +54,23 @@ seastar::future<> PlogServer::gracefulStop() {
 
 seastar::future<> PlogServer::start() {
     K2LOG_I(log::plogsvr, "Registering message handlers");
-    RPC().registerRPCObserver<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, [this](dto::PlogCreateRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PLOG_CREATE, [this](dto::PlogCreateRequest&& request) {
         return _handleCreate(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::PERSISTENT_APPEND, [this](dto::PlogAppendRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogAppendRequest, dto::PlogAppendResponse>(dto::Verbs::PLOG_APPEND, [this](dto::PlogAppendRequest&& request) {
         return _handleAppend(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::PERSISTENT_READ, [this](dto::PlogReadRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::PLOG_READ, [this](dto::PlogReadRequest&& request) {
         return _handleRead(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PERSISTENT_SEAL, [this](dto::PlogSealRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PLOG_SEAL, [this](dto::PlogSealRequest&& request) {
         return _handleSeal(std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::PlogStatusRequest, dto::PlogStatusResponse>(dto::Verbs::PERSISTENT_STATUS, [this](dto::PlogStatusRequest&& request) {
+    RPC().registerRPCObserver<dto::PlogGetStatusRequest, dto::PlogGetStatusResponse>(dto::Verbs::PLOG_GET_STATUS, [this](dto::PlogGetStatusRequest&& request) {
         return _handleGetStatus(std::move(request));
     });
     _plogMap.clear();
@@ -165,15 +165,15 @@ PlogServer::_handleSeal(dto::PlogSealRequest&& request){
     return RPCResponse(Statuses::S200_OK("sealed success"), std::move(response));
 };
 
-seastar::future<std::tuple<Status, dto::PlogStatusResponse>>
-PlogServer::_handleGetStatus(dto::PlogStatusRequest&& request){
+seastar::future<std::tuple<Status, dto::PlogGetStatusResponse>>
+PlogServer::_handleGetStatus(dto::PlogGetStatusRequest&& request){
     K2LOG_D(log::plogsvr, "Received GetStatus request for {}", request);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogStatusResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogGetStatusResponse());
     }
     
-    dto::PlogStatusResponse response{.currentOffset=iter->second.offset, .sealed=iter->second.sealed};
+    dto::PlogGetStatusResponse response{.currentOffset=iter->second.offset, .sealed=iter->second.sealed};
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
 

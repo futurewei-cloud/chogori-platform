@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright(c) 2020 Futurewei Cloud
+Copyright(c) 2021 Futurewei Cloud
 
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
@@ -87,9 +87,9 @@ public:  // application lifespan
                 K2EXPECT(log::ltest, status, Statuses::S201_Created);
 
                 ConfigVar<String> configEp("cpo_url");
-                String cpo_url = configEp();
+                String cpoUrl = configEp();
 
-                return _mmgr.init(cpo_url, "Partition-1", "Persistence_Cluster_1", false);
+                return _mmgr.init(cpoUrl, "Partition-1", "Persistence_Cluster_1", false);
             })
             .then([this] { return runTest1();})
             .then([this] { return runTest2();})
@@ -121,7 +121,7 @@ public:  // application lifespan
     seastar::future<> runTest1() {
         K2LOG_I(log::ltest, ">>> Test1: Write and Read a Value from/to one log stream");
         _logStream = _mmgr.obtainLogStream(LogStreamType::WAL);
-        String header("0", 10000);
+        String header(10000, '0');
         Payload payload([] { return Binary(20000); });
         payload.write(header);
         // write a string to the first log stream
@@ -152,7 +152,7 @@ public:  // application lifespan
         K2LOG_I(log::ltest, ">>> Test2: Write and read huge data");
          _logStream = _mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
         // write 1000 Strings to the second log stream, these writes will trigger a plog switch
-        String header("0", 10000);
+        String header(10000, '0');
         std::vector<seastar::future<std::tuple<Status, String, uint32_t>> > writeFutures;
         for (uint32_t i = 0; i < 2000; ++i){
             Payload payload([] { return Binary(20000); });
@@ -302,11 +302,11 @@ public:  // application lifespan
     seastar::future<> runTest3() {
         K2LOG_I(log::ltest, ">>> Test3: replay the metadata manager and read/write data from/to a specific log stream");
         ConfigVar<String> configEp("cpo_url");
-        String cpo_url = configEp();
-        String header("0", 10000);
+        String cpoUrl = configEp();
+        String header(10000, '0');
 
         // Replay the entire metadata manager
-        return _reload_mmgr.replay(cpo_url, "Partition-1", "Persistence_Cluster_1")
+        return _reload_mmgr.replay(cpoUrl, "Partition-1", "Persistence_Cluster_1")
         // Read all the data from reloaded log stream and check weather they are the same
         .then([this] (auto&& response){
             auto& status  = response;

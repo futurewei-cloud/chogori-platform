@@ -77,17 +77,17 @@ struct PlogSealResponse {
     K2_DEF_FMT(PlogSealResponse, sealedOffset);
 };
 
-struct PlogStatusRequest {
+struct PlogGetStatusRequest {
     String plogId;
     K2_PAYLOAD_FIELDS(plogId);
-    K2_DEF_FMT(PlogStatusRequest, plogId);
+    K2_DEF_FMT(PlogGetStatusRequest, plogId);
 };
 
-struct PlogStatusResponse {
+struct PlogGetStatusResponse {
     uint32_t currentOffset;
     bool sealed;
     K2_PAYLOAD_FIELDS(currentOffset, sealed);
-    K2_DEF_FMT(PlogStatusResponse, currentOffset, sealed);
+    K2_DEF_FMT(PlogGetStatusResponse, currentOffset, sealed);
 };
 
 struct PlogCreateError : public std::exception {

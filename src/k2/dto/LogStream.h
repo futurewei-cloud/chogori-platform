@@ -25,25 +25,25 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
-struct MetadataRecord{
+struct PartitionMetdataRecord{
     String plogId;
     uint32_t sealed_offset;
     K2_PAYLOAD_FIELDS(plogId, sealed_offset);
-    K2_DEF_FMT(MetadataRecord, plogId, sealed_offset);
+    K2_DEF_FMT(PartitionMetdataRecord, plogId, sealed_offset);
 };
 
 // Request to create a Metadata Log Stream Record 
-struct MetadataPersistRequest {
+struct MetadataPutRequest {
     String partitionName;
     uint32_t sealed_offset;
     String new_plogId;
     K2_PAYLOAD_FIELDS(partitionName, sealed_offset, new_plogId);
-    K2_DEF_FMT(MetadataPersistRequest, partitionName, sealed_offset, new_plogId);
+    K2_DEF_FMT(MetadataPutRequest, partitionName, sealed_offset, new_plogId);
 };
 
-struct MetadataPersistResponse {
+struct MetadataPutResponse {
     K2_PAYLOAD_EMPTY;
-    K2_DEF_FMT(MetadataPersistResponse);
+    K2_DEF_FMT(MetadataPutResponse);
 };
 
 struct MetadataGetRequest {
@@ -53,9 +53,16 @@ struct MetadataGetRequest {
 };
 
 struct MetadataGetResponse {
-    std::vector<MetadataRecord> records;
+    std::vector<PartitionMetdataRecord> records;
     K2_PAYLOAD_FIELDS(records);
     K2_DEF_FMT(MetadataGetResponse, records);
+};
+
+struct ContinuationToken{
+    String plogId;
+    uint32_t offset;
+    K2_PAYLOAD_FIELDS(plogId, offset);
+    K2_DEF_FMT(ContinuationToken, plogId, offset);
 };
 
 

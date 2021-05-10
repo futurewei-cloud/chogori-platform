@@ -81,8 +81,8 @@ private:
     _handleSeal(dto::PlogSealRequest&& request);
 
     //handle the seal request
-    seastar::future<std::tuple<Status, dto::PlogStatusResponse>>
-    _handleGetStatus(dto::PlogStatusRequest&& request);
+    seastar::future<std::tuple<Status, dto::PlogGetStatusResponse>>
+    _handleGetStatus(dto::PlogGetStatusRequest&& request);
     
 public:
      PlogServer();

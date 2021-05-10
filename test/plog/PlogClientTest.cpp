@@ -138,7 +138,7 @@ public:  // application lifespan
             std::vector<String> plogServerEndpoints = _plogConfigEps();
             auto ep = RPC().getTXEndpoint(plogServerEndpoints[0]);
             
-            return RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PERSISTENT_CREATE, request, *ep, 1s);
+            return RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PLOG_CREATE, request, *ep, 1s);
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.3: append a plog");
