@@ -48,8 +48,10 @@ inline thread_local k2::logging::Logger cpoclient("k2::cpo_client");
 
 class CPOClient {
 public:
-    CPOClient(String cpo_url);
-    CPOClient() = default;
+    CPOClient();
+    ~CPOClient();
+
+    void init(String cpo_url);
 
     // Creates a collection and waits for it to be assigned. If the collection already exisits,
     // the future is still completed successfully
@@ -83,7 +85,7 @@ public:
     seastar::future<Status> GetAssignedPartitionWithRetry(Deadline<ClockT> deadline, const String& name, const dto::Key& key,
                                     bool reverse = false, bool excludedKey = false, uint8_t retries = 1) {
         // Check if request is already issued, if so add to waiters and return
-        K2LOG_D(log::cpoclient, "time remaining={}, for coll={}", deadline.getRemaining(), name);
+        K2LOG_D(log::cpoclient, "time remaining={}, for coll={}, key={}, reverse={}, excludedKey={}, retries={}", deadline.getRemaining(), name, key, reverse, excludedKey, retries);
         auto it = requestWaiters.find(name);
         if (it != requestWaiters.end()) {
             K2LOG_D(log::cpoclient, "found existing waiter");
@@ -132,34 +134,45 @@ public:
             } else if (status.is5xxRetryable()) {
                 retry = true;
             } else {
+                K2LOG_D(log::cpoclient, "non-retryable error");
                 FulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (!retry) {
+                K2LOG_D(log::cpoclient, "retry not needed");
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (status.is2xxOK() && retry && !retries) {
+                K2LOG_D(log::cpoclient, "not all partitions have been assigned in cpo yet");
                 status = Statuses::S503_Service_Unavailable("not all partitions assigned in cpo");
                 FulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (deadline.isOver()) {
+                K2LOG_D(log::cpoclient, "deadline reached");
                 status = Statuses::S408_Request_Timeout("cpo deadline exceeded");
                 FulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (!retries) {
+                K2LOG_D(log::cpoclient, "all retries have been exhausted");
                 FulfillWaiters(name, status);
                 status = Statuses::S408_Request_Timeout("cpo retries exceeded");
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
+            K2LOG_D(log::cpoclient, "will retry after {}", s);
             return seastar::sleep(s).then([this, name, key, deadline, reverse, excludedKey, retries]() -> seastar::future<Status> {
+                // kill the waiters queue if it is empty so that the recursive call can be processed as the only
+                // in-progress call
+                if (auto it = requestWaiters.find(name); it != requestWaiters.end() && it->second.empty()) {
+                    requestWaiters.erase(it);
+                }
                 return GetAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), reverse, excludedKey, retries - 1);
             });
         });

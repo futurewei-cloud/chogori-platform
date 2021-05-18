@@ -313,7 +313,7 @@ seastar::future<> K23SIClient::start() {
         _k2endpoints.push_back(String(*it));
     }
     K2LOG_I(log::skvclient, "_cpo={}", _cpo());
-    cpo_client = CPOClient(String(_cpo()));
+    cpo_client.init(_cpo());
 
     return seastar::make_ready_future<>();
 }

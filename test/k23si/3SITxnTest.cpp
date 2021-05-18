@@ -758,7 +758,7 @@ seastar::future<> testScenario01() {
                         return doFinalize(key, mtr, collname, false, ErrorCaseOpt::NoInjection)
                         .then([](auto&& response) {
                             auto& [status, resp] = response;
-                            K2EXPECT(log::k23si, status, dto::K23SIStatus::OK)
+                            K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound)
                         });
                     });
                 });

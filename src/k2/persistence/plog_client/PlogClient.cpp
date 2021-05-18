@@ -39,7 +39,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-PlogClient::PlogClient() {
+PlogClient::PlogClient()
+{
     K2LOG_I(log::plogcl, "dtor");
 }
 
@@ -50,6 +51,7 @@ PlogClient::~PlogClient() {
 
 seastar::future<>
 PlogClient::init(String clusterName){
+    _cpo.init(_cpo_url());
     return _getPersistenceCluster(clusterName);
 }
 
@@ -79,7 +81,6 @@ PlogClient::_getPlogServerEndpoints() {
 
 seastar::future<>
 PlogClient::_getPersistenceCluster(String clusterName){
-    _cpo = CPOClient(String(_cpo_url()));
     return _cpo.GetPersistenceCluster(Deadline<>(_cpo_timeout()), std::move(clusterName)).
     then([this] (auto&& result) {
         auto& [status, response] = result;

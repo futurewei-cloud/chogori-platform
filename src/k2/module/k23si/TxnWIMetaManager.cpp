@@ -21,6 +21,7 @@ Copyright(c) 2021 Futurewei Cloud
     SOFTWARE.
 */
 #include "TxnWIMetaManager.h"
+#include <k2/dto/K23SIInspect.h>
 
 namespace k2 {
 
@@ -53,6 +54,10 @@ void TxnWIMetaManager::_addBgTask(TxnWIMeta& rec, Func&& func) {
     rec.bgTaskFut = rec.bgTaskFut.then(std::forward<Func>(func));
 }
 
+TxnWIMetaManager::TxnWIMetaManager() {
+    K2LOG_D(log::skvsvr, "ctor");
+}
+
 TxnWIMetaManager::~TxnWIMetaManager() {
     K2LOG_D(log::skvsvr, "dtor");
     _rwlist.clear();
@@ -70,6 +75,7 @@ TxnWIMeta* TxnWIMetaManager::getTxnWIMeta(dto::Timestamp ts) {
 
 seastar::future<> TxnWIMetaManager::start(dto::Timestamp rts, std::shared_ptr<Persistence> persistence) {
     K2LOG_D(log::skvsvr, "starting");
+    _cpo.init(_config.cpoEndpoint());
     _persistence = persistence;
     updateRetentionTimestamp(rts);
 
@@ -244,9 +250,11 @@ Status TxnWIMetaManager::_onAction(Action action, TxnWIMeta& twim) {
             case Action::onRetentionWindowExpire: {
                 return _finalizing(twim);
             }
+            case Action::onCommit: {
+                return _committed(twim);
+            }
             case Action::onFinalized:
             case Action::onCreate:
-            case Action::onCommit:
             case Action::onAbort:
             case Action::onPersistSucceed:
             case Action::onPersistFail:
@@ -259,9 +267,11 @@ Status TxnWIMetaManager::_onAction(Action action, TxnWIMeta& twim) {
             case Action::onRetentionWindowExpire: {
                 return _finalizing(twim);
             }
+            case Action::onAbort: {
+                return _aborted(twim);
+            }
             case Action::onCreate:
             case Action::onCommit:
-            case Action::onAbort:
             case Action::onFinalized:
             case Action::onPersistSucceed:
             case Action::onPersistFail:
@@ -290,10 +300,12 @@ Status TxnWIMetaManager::_onAction(Action action, TxnWIMeta& twim) {
             case Action::onFinalized: {
                 return _finalizedPIP(twim);
             }
+            case Action::onFinalize: {
+                return _finalizing(twim);
+            }
             case Action::onCreate:
             case Action::onCommit:
             case Action::onAbort:
-            case Action::onFinalize:
             case Action::onRetentionWindowExpire:
             case Action::onPersistSucceed:
             case Action::onPersistFail:
@@ -325,13 +337,6 @@ Status TxnWIMetaManager::_onAction(Action action, TxnWIMeta& twim) {
     }
 }
 
-Status TxnWIMetaManager::_inProgress(TxnWIMeta& twim) {
-    auto newState = dto::TxnWIMetaState::InProgress;
-    K2LOG_D(log::skvsvr, "Entering state: {}", newState);
-    twim.state = newState;
-    return Statuses::S200_OK("processed state transition");
-}
-
 Status TxnWIMetaManager::_inProgressPIP(TxnWIMeta& twim) {
     auto newState = dto::TxnWIMetaState::InProgressPIP;
     K2LOG_D(log::skvsvr, "Entering state: {}", newState);
@@ -340,19 +345,26 @@ Status TxnWIMetaManager::_inProgressPIP(TxnWIMeta& twim) {
     if (!isRetry) {
         K2LOG_D(log::skvsvr, "State transition: {} for twim {}", newState, twim);
         auto fut = _persistence->append_cont(twim)
-                       .then([this, &twim](auto&& status) {
-                           K2LOG_D(log::skvsvr, "persist completed for InProgressPIP of {} with {}", twim, status);
-                           if (!status.is2xxOK()) {
-                               // flush didn't succeed
-                               K2LOG_E(log::skvsvr, "persist failed for InProgressPIP of {} with {}", twim, status);
-                               return seastar::make_ready_future<Status>(_onAction(Action::onPersistFail, twim));
-                           }
-                           return seastar::make_ready_future<Status>(_onAction(Action::onPersistSucceed, twim));
-                       });
+            .then([this, &twim] (auto&& status) {
+                K2LOG_D(log::skvsvr, "persist completed for InProgressPIP of {} with {}", twim, status);
+                if (!status.is2xxOK()) {
+                    // flush didn't succeed
+                    K2LOG_E(log::skvsvr, "persist failed for InProgressPIP of {} with {}", twim, status);
+                    return seastar::make_ready_future<Status>(_onAction(Action::onPersistFail, twim));
+                }
+                return seastar::make_ready_future<Status>(_onAction(Action::onPersistSucceed, twim));
+            });
         _addBgTask(twim, [fut = std::move(fut)]() mutable { return fut.discard_result(); });
     }
     // NB: We rely on Module::persistAfterFlush() to queue-up a retry
     return Statuses::S201_Created("created twim");
+}
+
+Status TxnWIMetaManager::_inProgress(TxnWIMeta& twim) {
+    auto newState = dto::TxnWIMetaState::InProgress;
+    K2LOG_D(log::skvsvr, "Entering state: {}", newState);
+    twim.state = newState;
+    return Statuses::S200_OK("processed state transition");
 }
 
 Status TxnWIMetaManager::_committed(TxnWIMeta& twim) {
@@ -375,6 +387,24 @@ Status TxnWIMetaManager::_forceFinalize(TxnWIMeta& twim) {
     auto newState = dto::TxnWIMetaState::ForceFinalize;
     K2LOG_D(log::skvsvr, "Entering state: {}", newState);
     twim.state = newState;
+    K2LOG_D(log::skvsvr, "Reaching out to TRH to finalize twim {}", twim);
+    auto request= std::make_unique<dto::K23SIInspectTxnRequest>(
+        dto::K23SIInspectTxnRequest{
+            dto::PVID{}, // Will be filled in by PartitionRequest
+            twim.trhCollection,
+            twim.trh,
+            twim.mtr.timestamp});
+
+    auto fut = _cpo.PartitionRequest<dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse, dto::Verbs::K23SI_INSPECT_TXN>(Deadline(_config.readTimeout()), *request)
+        .then([this, &twim, request=std::move(request)] (auto&& result) {
+            (void)request; // to be deleted by unique_ptr
+            auto& [status, resp] = result;
+            if (status.is2xxOK() && resp.finalizeAction == dto::EndAction::Commit) {
+                return seastar::make_ready_future<Status>(_onAction(Action::onCommit, twim));
+            }
+            return seastar::make_ready_future<Status>(_onAction(Action::onAbort, twim));
+        });
+    _addBgTask(twim, [fut=std::move(fut)]() mutable { return fut.discard_result(); });
     return Statuses::S200_OK("processed state transition");
 }
 

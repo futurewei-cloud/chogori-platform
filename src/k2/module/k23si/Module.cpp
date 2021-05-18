@@ -161,8 +161,7 @@ Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest&
 
 K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
     _cmeta(std::move(cmeta)),
-    _partition(std::move(partition), _cmeta.hashScheme),
-    _cpo(_config.cpoEndpoint()) {
+    _partition(std::move(partition), _cmeta.hashScheme) {
     K2LOG_I(log::skvsvr, "ctor for cname={}, part={}", _cmeta.name, _partition);
 }
 
@@ -267,6 +266,7 @@ void K23SIPartitionModule::_unregisterVerbs() {
 }
 
 seastar::future<> K23SIPartitionModule::start() {
+    _cpo.init(_config.cpoEndpoint());
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
         K2LOG_W(log::skvsvr,
             "Requested retention({}) is lower than minimum({}). Extending retention to minimum",

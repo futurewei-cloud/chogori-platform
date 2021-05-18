@@ -21,12 +21,14 @@ Copyright(c) 2021 Futurewei Cloud
     SOFTWARE.
 */
 #pragma once
+#include <k2/cpo/client/CPOClient.h>
 #include <k2/dto/K23SI.h>
-#include <vector>
-#include <unordered_set>
 
-#include "Persistence.h"
+#include <unordered_set>
+#include <vector>
+
 #include "Config.h"
+#include "Persistence.h"
 
 namespace k2 {
 namespace nsbi = boost::intrusive;
@@ -60,6 +62,7 @@ struct TxnWIMeta {
 
 class TxnWIMetaManager {
 public:
+    TxnWIMetaManager();
     ~TxnWIMetaManager();
 
     // Returns the TxnWIMeta for the given id, or null if no such record exists
@@ -125,6 +128,9 @@ public:
 
     // keep track of records we need to handle at Retention Window Expiry
     TxnWIMeta::RWList _rwlist;
+
+    // used to call other K2 nodes(e.g. the TRH for a txn)
+    CPOClient _cpo;
 
 private:
     // process the given action against the given metadata record

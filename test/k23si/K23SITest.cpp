@@ -73,7 +73,7 @@ public:  // application lifespan
             _k2Endpoints.push_back(RPC().getTXEndpoint(ep));
         }
 
-        _cpo_client = CPOClient(_cpoConfigEp());
+        _cpo_client.init(_cpoConfigEp());
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
             _testFuture = seastar::make_ready_future()

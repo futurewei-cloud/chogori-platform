@@ -83,8 +83,10 @@ struct K23SIInspectTxnResponse {
 
     TxnRecordState state;
 
-    K2_PAYLOAD_FIELDS(mtr, trh, trhCollection, writeRanges, rwExpiry, state);
-    K2_DEF_FMT(K23SIInspectTxnResponse, mtr, trh, trhCollection, writeRanges, rwExpiry, state);
+    dto::EndAction finalizeAction;
+
+    K2_PAYLOAD_FIELDS(mtr, trh, trhCollection, writeRanges, rwExpiry, state, finalizeAction);
+    K2_DEF_FMT(K23SIInspectTxnResponse, mtr, trh, trhCollection, writeRanges, rwExpiry, state, finalizeAction);
 };
 
 // Requests all WIs on a node for all keys
