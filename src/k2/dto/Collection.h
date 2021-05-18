@@ -76,41 +76,64 @@ K2_DEF_ENUM(AssignmentState,
     FailedAssignment
 );
 
-// Partition in a K2 Collection. By default, the key-range type is String (for range-based partitioning)
-// but it can also be an integral type for hash-based partitioning
-struct Partition {
-    // the partition version
-    struct PVID {
-        // the partition id
-        uint64_t id = 0;
-        // version incremented each time we change the range that this partition owns
-        uint64_t rangeVersion = 0;
-        // version incremented each time we assign the partition to different K2 node
-        uint64_t assignmentVersion = 0;
-        K2_DEF_FMT(PVID, id, rangeVersion, assignmentVersion);
+// the partition version - used to validate the targeted partition in client requests, by
+// ensuring that the client and server have the same understanding of the currently hosted
+// partition at a particular K2 node
+struct PVID {
+    // the partition id
+    uint64_t id = 0;
+    // version incremented each time we change the range that this partition owns
+    uint64_t rangeVersion = 0;
+    // version incremented each time we assign the partition to different K2 node
+    uint64_t assignmentVersion = 0;
+    K2_DEF_FMT(PVID, id, rangeVersion, assignmentVersion);
 
-        K2_PAYLOAD_COPYABLE;
+    K2_PAYLOAD_COPYABLE;
 
-        // operators
-        bool operator==(const PVID& o) const;
-        bool operator!=(const PVID& o) const;
-    } pvid;
+    size_t hash() const noexcept;
 
+    // operators
+    bool operator==(const PVID& o) const noexcept;
+    bool operator!=(const PVID& o) const noexcept;
+};
+
+// A descriptor for the key range of a partition
+struct KeyRangeVersion {
     // the starting key for the partition
     String startKey;
     // the ending key for the partition
     String endKey;
+    // the partition version
+    PVID pvid;
+
+    // hash value
+    size_t hash() const noexcept;
+
+    // comparison for unordered containers
+    bool operator==(const KeyRangeVersion& o) const noexcept;
+    bool operator!=(const KeyRangeVersion& o) const noexcept;
+    bool operator<(const KeyRangeVersion& o) const noexcept;
+
+    K2_PAYLOAD_FIELDS(startKey, endKey, pvid);
+    K2_DEF_FMT(KeyRangeVersion, startKey, endKey, pvid);
+};
+
+// Partition in a K2 Collection. By default, the key-range type is String (for range-based partitioning)
+// but it can also be an integral type for hash-based partitioning
+struct Partition {
+    // the key range version
+    KeyRangeVersion keyRangeV;
     // the endpoints for the node which is currently assigned to this partition(version)
     std::set<String> endpoints;
     // the current assignment state of the partition
     AssignmentState astate = AssignmentState::NotAssigned;
 
-    K2_PAYLOAD_FIELDS(pvid, startKey, endKey, endpoints, astate);
-    K2_DEF_FMT(Partition, pvid, startKey, endKey, endpoints, astate);
+    K2_PAYLOAD_FIELDS(keyRangeV, endpoints, astate);
+    K2_DEF_FMT(Partition, keyRangeV, endpoints, astate);
 
     // Partitions are ordered based on the ordering of their start keys
     bool operator<(const Partition& other) const noexcept {
-        return startKey < other.startKey;
+        return keyRangeV < other.keyRangeV;
     }
 };
 
@@ -193,7 +216,9 @@ public:
 
     // Returns the partition and preferred endpointfor the given key.
     // Hashes key if hashScheme is not range
-    PartitionWithEndpoint& getPartitionForKey(const Key& key, bool reverse=false, bool exclusiveKey=false);
+    PartitionWithEndpoint& getPartitionForKey(const Key& key, bool reverse = false, bool exclusiveKey = false);
+
+    const std::vector<Partition>& getAllPartitions() const;
 
     Collection collection;
 
@@ -243,7 +268,7 @@ private:
 
 } // namespace k2::dto
 
-// Define std::hash for Keys so that we can use them in hash maps/sets
+// Define std::hash so that we can use them in hash maps/sets
 namespace std {
 template <>
 struct hash<k2::dto::Key> {
@@ -251,4 +276,11 @@ struct hash<k2::dto::Key> {
         return key.hash();
    }
 }; // hash
+
+template <>
+struct hash<k2::dto::KeyRangeVersion> {
+    size_t operator()(const k2::dto::KeyRangeVersion& range) const {
+        return range.hash();
+    }
+};  // hash
 } // ns std

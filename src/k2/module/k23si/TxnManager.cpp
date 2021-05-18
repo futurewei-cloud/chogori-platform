@@ -23,6 +23,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "TxnManager.h"
 
+#include <boost/range/irange.hpp>
+
 namespace k2 {
 
 template <typename Func>
@@ -158,11 +160,13 @@ TxnManager::inspectTxns() {
 
     for (auto &[_,txn]: _transactions) {
         dto::K23SIInspectTxnResponse resp{
-            txn.txnId,
-            txn.writeKeys,
-            txn.rwExpiry,
-            txn.syncFinalize,
-            txn.state};
+            .mtr=txn.mtr,
+            .trh=txn.trh,
+            .trhCollection=_collectionName,
+            .writeRanges=txn.writeRanges,
+            .rwExpiry=txn.rwExpiry,
+            .syncFinalize=txn.syncFinalize,
+            .state=txn.state};
 
         txns.push_back(std::move(resp));
     }
@@ -171,34 +175,37 @@ TxnManager::inspectTxns() {
     return RPCResponse(dto::K23SIStatus::OK("Inspect all txns success"), std::move(response));
 }
 
-seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>> TxnManager::inspectTxn(dto::TxnId&& txnId) {
-    auto it = _transactions.find(txnId);
+seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>> TxnManager::inspectTxn(dto::Timestamp txnTimestamp) {
+    auto it = _transactions.find(txnTimestamp);
     if (it == _transactions.end()) {
         return RPCResponse(dto::K23SIStatus::KeyNotFound("TRH not found"), dto::K23SIInspectTxnResponse{});
     }
 
     dto::K23SIInspectTxnResponse response{
-        it->second.txnId,
-        it->second.writeKeys,
-        it->second.rwExpiry,
-        it->second.syncFinalize,
-        it->second.state};
+        .mtr=it->second.mtr,
+        .trh=it->second.trh,
+        .trhCollection=_collectionName,
+        .writeRanges=it->second.writeRanges,
+        .rwExpiry=it->second.rwExpiry,
+        .syncFinalize=it->second.syncFinalize,
+        .state=it->second.state};
     return RPCResponse(dto::K23SIStatus::OK("Inspect txn success"), std::move(response));
 }
 
-TxnRecord& TxnManager::getTxnRecord(dto::TxnId&& txnId) {
+TxnRecord& TxnManager::getTxnRecord(dto::K23SI_MTR&& mtr, dto::Key trhKey) {
     // we don't persist the record on create. If we have a sudden failure, we'd
     // just abort the transaction when it comes to commit.
-    auto it = _transactions.insert({std::move(txnId), TxnRecord{}});
+    auto it = _transactions.insert({mtr.timestamp, TxnRecord{}});
     if (it.second) {
         TxnRecord& rec = it.first->second;
-        rec.txnId = it.first->first;
-        rec.state = dto::TxnRecordState::Created;
-        rec.rwExpiry = txnId.mtr.timestamp;
-        rec.hbExpiry = CachedSteadyClock::now() + 2*_hbDeadline;
-
+        rec.mtr=mtr;
+        rec.trh=std::move(trhKey);
+        rec.rwExpiry=mtr.timestamp;
+        rec.hbExpiry=CachedSteadyClock::now() + 2*_hbDeadline;
         _hblist.push_back(rec);
         _rwlist.push_back(rec);
+        rec.state=dto::TxnRecordState::Created;
+
         K2LOG_D(log::skvsvr, "created new txn record: {}", it.first->second);
     }
     else {
@@ -207,12 +214,12 @@ TxnRecord& TxnManager::getTxnRecord(dto::TxnId&& txnId) {
     return it.first->second;
 }
 
-seastar::future<Status> TxnManager::createTxn(dto::TxnId&& txnId) {
-    return _onAction(TxnRecord::Action::onCreate, getTxnRecord(std::move(txnId)));
+seastar::future<Status> TxnManager::createTxn(dto::K23SI_MTR&& mtr, dto::Key trhKey) {
+    return _onAction(TxnRecord::Action::onCreate, getTxnRecord(std::move(mtr), std::move(trhKey)));
 }
 
-seastar::future<Status> TxnManager::heartbeat(dto::TxnId&& txnId) {
-    return _onAction(TxnRecord::Action::onHeartbeat, getTxnRecord(std::move(txnId)));
+seastar::future<Status> TxnManager::heartbeat(dto::K23SI_MTR&& mtr, dto::Key trhKey) {
+    return _onAction(TxnRecord::Action::onHeartbeat, getTxnRecord(std::move(mtr), std::move(trhKey)));
 }
 
 // return true if the challenge was successful (challenger wins over incumbent)
@@ -220,20 +227,20 @@ bool _evaluateChallenge(TxnRecord& incumbent, dto::K23SI_MTR& challengerMTR) {
     // Calculate if the incumbent would lose the challenge based on conflict resolution
     bool incumbentLostConflict = false;
     // #1 abort based on priority
-    if (incumbent.txnId.mtr.priority > challengerMTR.priority) {  // bigger number means lower priority
-        K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.txnId);
+    if (incumbent.mtr.priority > challengerMTR.priority) {  // bigger number means lower priority
+        K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.mtr);
         incumbentLostConflict = true;
     }
     // #2 if equal, pick the newer transaction
-    else if (incumbent.txnId.mtr.priority == challengerMTR.priority) {
+    else if (incumbent.mtr.priority == challengerMTR.priority) {
         // Note that compareCertain will order timestamps based on tsoID in cases where raw times are equivalent,
         // thus guaranteeing strict ordering for non-identical timestamps.
-        auto cmpResult = incumbent.txnId.mtr.timestamp.compareCertain(challengerMTR.timestamp);
+        auto cmpResult = incumbent.mtr.timestamp.compareCertain(challengerMTR.timestamp);
         if (cmpResult == dto::Timestamp::LT) {
-            K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.txnId);
+            K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.mtr);
             incumbentLostConflict = true;
         } else if (cmpResult == dto::Timestamp::EQ) {
-            K2ASSERT(log::skvsvr, incumbent.txnId.mtr.timestamp.tsoId() != challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
+            K2ASSERT(log::skvsvr, incumbent.mtr.timestamp.tsoId() != challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
         }
     }
     // #3 abort the challenger
@@ -247,8 +254,8 @@ bool _evaluateChallenge(TxnRecord& incumbent, dto::K23SI_MTR& challengerMTR) {
 }
 
 seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
-TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
-    TxnRecord& incumbent = getTxnRecord(std::move(incumbentId));
+TxnManager::push(dto::K23SI_MTR&& incumbentMTR, dto::K23SI_MTR&& challengerMTR, dto::Key trhKey) {
+    TxnRecord& incumbent = getTxnRecord(std::move(incumbentMTR), std::move(trhKey));
 
     switch (incumbent.state) {
         case dto::TxnRecordState::Created:
@@ -305,7 +312,7 @@ TxnManager::push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR) {
             // we expect commit to succeed. Challenger should retry if they would've won over an in-progress incumbent
             return RPCResponse(dto::K23SIStatus::OK("incumbent won in push"),
                                dto::K23SITxnPushResponse{.incumbentFinalization = dto::EndAction::None,
-                                                         .allowChallengerRetry = challengerMTR.timestamp.compareCertain(incumbent.txnId.mtr.timestamp) == dto::Timestamp::GT});
+                                                         .allowChallengerRetry = challengerMTR.timestamp.compareCertain(incumbent.mtr.timestamp) == dto::Timestamp::GT});
         case dto::TxnRecordState::Committed:
             // Challenger should retry if they are newer than the committed value
             return RPCResponse(dto::K23SIStatus::OK("incumbent won in push"),
@@ -333,7 +340,7 @@ TxnManager::endTxn(dto::K23SITxnEndRequest&& request) {
         return RPCResponse(dto::K23SIStatus::BadParameter("cannot end transaction with `None` end action"), dto::K23SITxnEndResponse{});
     }
     // store the write keys into the txnrecord
-    TxnRecord& rec = getTxnRecord(dto::TxnId{.trh = std::move(request.key), .mtr = std::move(request.mtr)});
+    TxnRecord& rec = getTxnRecord(std::move(request.mtr), std::move(request.key));
     if (rec.finalizeAction != dto::EndAction::None) {
         // the record indicates we've received an end request already (there is a finalize action)
         // this is only possible if there is a retry or some client bug
@@ -341,13 +348,13 @@ TxnManager::endTxn(dto::K23SITxnEndRequest&& request) {
         return _endTxnRetry(rec, std::move(request));
     }
 
-    if (request.mtr.timestamp.compareCertain(_retentionTs) < 0) {
+    if (rec.mtr.timestamp.compareCertain(_retentionTs) < 0) {
         // At this point this txn has gone outside RWE. All participants will self-finalize their WIs to Aborts
         // The TR itself will be moved to FA and deleted by the TxnManager's RWE tracking
         return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("request is outside retention window"), dto::K23SITxnEndResponse{});
     }
 
-    rec.writeKeys = std::move(request.writeKeys);
+    rec.writeRanges = std::move(request.writeRanges);
     rec.syncFinalize = request.syncFinalize;
     rec.timeToFinalize = request.timeToFinalize;
     rec.finalizeAction = request.action;
@@ -369,8 +376,7 @@ TxnManager::endTxn(dto::K23SITxnEndRequest&& request) {
 seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
 TxnManager::_endTxnRetry(TxnRecord& rec, dto::K23SITxnEndRequest&& request) {
     K2LOG_D(log::skvsvr, "duplicate end request {}, have= {}", request, rec);
-    if (rec.finalizeAction != request.action ||
-        rec.writeKeys != request.writeKeys) { // TODO add keyHash computed by client and compare here to verify contents
+    if (rec.finalizeAction != request.action) {
         K2LOG_D(log::skvsvr, "invalid txn end retry request: rec={}, request={}", rec, request);
         return RPCResponse(dto::K23SIStatus::BadParameter("end request retry does not match previous end request"),dto::K23SITxnEndResponse{});
     }
@@ -409,7 +415,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                     K2LOG_W(log::skvsvr, "Abort received before txn start in txn {}", rec);
                     return _abortPIP(rec);
                 default: // anything else we just count as internal error
-                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.txnId, state);
+                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.mtr, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
             };
         case dto::TxnRecordState::InProgress:
@@ -433,7 +439,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onHeartbeatExpire:        // originator didn't hearbeat on time
                     return _forceAborted(rec);
                 default:
-                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state: {}", rec.txnId, state);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}, in state: {}", rec.mtr, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::InternalError("invalid transition"));
             };
         case dto::TxnRecordState::ForceAborted:
@@ -445,7 +451,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onRetentionWindowExpire:
                     // manage rw expiry
                     rec.unlinkRW(_rwlist);
-                    _transactions.erase(rec.txnId);
+                    _transactions.erase(rec.mtr.timestamp);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK("Force abort exceeded RWE"));
                 case TxnRecord::Action::onCommit:
                     return _abortPIP(rec)
@@ -460,7 +466,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onFinalizeComplete:
                 case TxnRecord::Action::onHeartbeatExpire:
                 default:
-                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.txnId);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.mtr);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("invalid transition"));
             };
         case dto::TxnRecordState::AbortedPIP:
@@ -477,7 +483,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                     // we want the client to retry these. Return a retryable error
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::ServiceUnavailable("retry: persistence in progress"));
                 default:
-                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.txnId, state);
+                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.mtr, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::OperationNotAllowed("invalid transition"));
             }
         case dto::TxnRecordState::Aborted:
@@ -495,7 +501,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onHeartbeatExpire:
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:
-                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.txnId);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.mtr);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("invalid transition"));
             };
         case dto::TxnRecordState::CommittedPIP:
@@ -513,7 +519,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                     // we want the client to retry these. Return a retryable error
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::ServiceUnavailable("retry: persistence in progress"));
                 default:
-                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.txnId, state);
+                    K2LOG_E(log::skvsvr, "Invalid transition {} for txnid: {}, in state {}", action, rec.mtr, state);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::OperationNotAllowed("invalid transition"));
             }
         case dto::TxnRecordState::Committed:
@@ -531,7 +537,7 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onHeartbeatExpire:
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:
-                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.txnId);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.mtr);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("invalid transition"));
             };
         case dto::TxnRecordState::FinalizedPIP:
@@ -545,11 +551,11 @@ seastar::future<Status> TxnManager::_onAction(TxnRecord::Action action, TxnRecor
                 case TxnRecord::Action::onHeartbeatExpire:
                 case TxnRecord::Action::onRetentionWindowExpire:
                 default:
-                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.txnId);
+                    K2LOG_E(log::skvsvr, "Invalid transition for txnid: {}", rec.mtr);
                     return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("invalid transition"));
             };
         default:
-            K2LOG_E(log::skvsvr, "Invalid record state ({}), for action: {}, in txnid: {}", state, action, rec.txnId);
+            K2LOG_E(log::skvsvr, "Invalid record state ({}), for action: {}, in txnid: {}", state, action, rec.mtr);
             return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("invalid record state"));
     }
 }
@@ -630,7 +636,7 @@ seastar::future<Status> TxnManager::_abort(TxnRecord& rec) {
 seastar::future<Status> TxnManager::_endHelper(TxnRecord& rec) {
     K2LOG_D(log::skvsvr, "Processing END for {}", rec);
 
-    auto timeout = (10s + _config.writeTimeout() * rec.writeKeys.size()) / _config.finalizeBatchSize();
+    auto timeout = (10s + _config.writeTimeout() * rec.writeRanges.size()) / _config.finalizeBatchSize();
 
     if (rec.syncFinalize) {
         return _finalizeTransaction(rec, FastDeadline(timeout));
@@ -670,69 +676,109 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
                     }
 
                     K2LOG_D(log::skvsvr, "Erasing txn record: {}", rec);
-                    _transactions.erase(rec.txnId);
+                    _transactions.erase(rec.mtr.timestamp);
                     return seastar::make_ready_future();
                 });
         });
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
+auto _genFinalizeRequests(TxnRecord& rec) {
+    std::vector<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>> requests;
+    const auto endAction = rec.state == dto::TxnRecordState::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
+    for (auto& [coll, rangeSet]: rec.writeRanges) {
+        for (auto& krv: rangeSet) {
+            requests.emplace_back(
+            dto::K23SITxnFinalizeRequest{
+                .pvid{}, // leave empty - this is computed by PartitionRequest
+                .collectionName=coll,
+                .key{.schemaName{}, .partitionKey=krv.startKey, .rangeKey{}},
+                .txnTimestamp=rec.mtr.timestamp,
+                .action=endAction
+            },
+            std::move(krv));
+        }
+    }
+    return requests;
+    rec.writeRanges.clear();
+}
+
+void TxnManager::_genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest& failedReq,
+    std::vector<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>>& requests,
+    dto::KeyRangeVersion& krv) {
+    //            |.......|
+    // |....| |....| |...||....| |....|
+    // figure out any additional ranges
+    // generate and queue up requests for all additional ranges
+    bool firstMatch = false;
+    for (auto& part: _cpo.collections[failedReq.collectionName].getAllPartitions()) {
+        if (krv.startKey > part.keyRangeV.endKey) continue;
+        if (krv.endKey < part.keyRangeV.startKey) break; // done
+        if (!firstMatch) {
+            // we have found the first matching partition (the one which holds the start key)
+            // skip it since we already sent a request there (the failedReq)
+            firstMatch = true;
+            continue;
+        }
+        K2LOG_D(log::skvsvr, "Remapped partition: {} --> {}", krv, part.keyRangeV);
+        requests.emplace_back(
+            dto::K23SITxnFinalizeRequest{
+                .pvid{},  // leave empty - this is computed by PartitionRequest
+                .collectionName = failedReq.collectionName,
+                .key{.schemaName{}, .partitionKey = part.keyRangeV.startKey, .rangeKey{}},
+                .txnTimestamp = failedReq.txnTimestamp,
+                .action = failedReq.action},
+            part.keyRangeV);
+    }
+}
+
 seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline deadline) {
     K2LOG_D(log::skvsvr, "Finalizing {}", rec);
     //TODO we need to keep trying to finalize in cases of failures.
     // this needs to be done in a rate-limited fashion. For now, we just try some configurable number of times and give up
-    return seastar::do_with((uint64_t)0, [this, &rec, deadline] (auto& batchStart) {
+    return seastar::do_with((uint64_t)0, _genFinalizeRequests(rec),
+        [this, &rec, deadline] (auto& batchStart, auto& requests) {
         return seastar::do_until(
-            [this, &rec, &batchStart] { return batchStart >= rec.writeKeys.size(); },
-            [this, &rec, &batchStart, deadline] {
-                auto start = rec.writeKeys.begin() + batchStart;
-                batchStart += std::min(_config.finalizeBatchSize(), rec.writeKeys.size() - batchStart);
-                auto end = rec.writeKeys.begin() + batchStart;
-                return seastar::parallel_for_each(start, end, [&rec, this, deadline](dto::Key& key) {
-                    dto::K23SITxnFinalizeRequest request{};
-                    request.key = key;
-                    request.collectionName = _collectionName;
-                    request.mtr = rec.txnId.mtr;
-                    request.trh = rec.txnId.trh;
-                    if (rec.state == dto::TxnRecordState::Committed) {
-                        request.action = dto::EndAction::Commit;
-                    }
-                    else if (rec.state == dto::TxnRecordState::Aborted) {
-                        request.action = dto::EndAction::Abort;
-                    }
-                    else {
-                        K2LOG_E(log::skvsvr, "invalid txn record state during finalization: {}", rec);
-                        return seastar::make_exception_future<>(std::runtime_error("Invalid internal transaction state during finalization"));
-                    }
+            [this, &requests, &batchStart] { return batchStart >= requests.size(); },
+            [this, &rec, &batchStart, deadline, &requests] {
+                auto batchEnd = batchStart + std::min(_config.finalizeBatchSize(), requests.size() - batchStart);
+                K2LOG_D(log::skvsvr, "Finalizing batch {}-{}/{}", batchStart, batchEnd, requests.size());
+                return seastar::parallel_for_each(boost::irange(batchStart, batchEnd),
+                [this, &rec, deadline, &requests] (auto idx) {
+                    auto& [request, krv] = requests[idx];
                     K2LOG_D(log::skvsvr, "Finalizing req={}", request);
-                    return seastar::do_with(std::move(request), [&rec, this, deadline](auto& request) {
-                        return _cpo.PartitionRequest<dto::K23SITxnFinalizeRequest,
-                                                    dto::K23SITxnFinalizeResponse,
-                                                    dto::Verbs::K23SI_TXN_FINALIZE>
-                        (deadline, request, _config.finalizeRetries())
-                        .then([&request](auto&& responsePair) {
-                            auto& [status, response] = responsePair;
-                            if (!status.is2xxOK()) {
-                                if (status != dto::K23SIStatus::KeyNotFound) {
-                                    K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
-                                    // errors other than KeyNotFound need to be retried.
-                                    // however KeyNotFound is acceptable since it may simply indicate
-                                    // that the client's transaction had a failed write
-                                    return seastar::make_exception_future<>(std::runtime_error(fmt::format("finalize request failed after retrying due to {}", status)));
-                                }
-                                else {
-                                    K2LOG_W(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
-                                }
+                    return _cpo.PartitionRequest<dto::K23SITxnFinalizeRequest,
+                                                dto::K23SITxnFinalizeResponse,
+                                                dto::Verbs::K23SI_TXN_FINALIZE>
+                    (deadline, request, _config.finalizeRetries())
+                    .then([this, &request, &krv, &requests](auto&& responsePair) {
+                        auto& [status, response] = responsePair;
+
+                        if (krv.pvid != _cpo.collections[request.collectionName].getPartitionForKey(request.key).partition->keyRangeV.pvid) {
+                            K2LOG_D(log::skvsvr, "Detected partition remapping for range {}", krv);
+                            _genFinalizeReqsAfterPMAPUpdate(request, requests, krv);
+                        }
+
+                        if (!status.is2xxOK()) {
+                            if (status != dto::K23SIStatus::KeyNotFound) {
+                                K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
+                                // errors other than KeyNotFound need to be retried.
+                                // however KeyNotFound is acceptable since it may simply indicate
+                                // that the client's transaction had a failed write
+                                return seastar::make_exception_future<>(std::runtime_error(fmt::format("finalize request failed after retrying due to {}", status)));
                             }
-                            K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
-                            return seastar::make_ready_future<>();
-                        }).finally([]{ K2LOG_D(log::skvsvr, "finalize call finished");});
+                            else {
+                                K2LOG_W(log::skvsvr, "Finalize request did not find txn for {}, status={}. Assume this is a retry and skip range", request, status);
+                            }
+                        }
+                        K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
+                        return seastar::make_ready_future<>();
                     });
-                }).then([&batchStart, &rec]{
-                    K2LOG_D(log::skvsvr, "Batch done, now at: {}, in {}", batchStart, rec);
-                });
-            }
-        );
+                })
+                .finally([&batchStart, batchEnd] {
+                    batchStart = batchEnd + 1;
+                }); // parallel_for_each
+            }); // do_until
     })
     .then_wrapped([this, &rec] (auto&& fut) {
         if (fut.failed()) {

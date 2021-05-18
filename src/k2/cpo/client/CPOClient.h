@@ -207,7 +207,7 @@ public:
             }
 
             Duration timeout = std::min(deadline.getRemaining(), partition_request_timeout());
-            request.pvid = partition.partition->pvid;
+            request.pvid = partition.partition->keyRangeV.pvid;
             K2LOG_D(log::cpoclient, "making partition call to url={}, with timeout={}", partition.preferredEndpoint->url, timeout);
 
             // Attempt the request RPC

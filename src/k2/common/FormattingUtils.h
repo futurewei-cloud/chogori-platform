@@ -22,6 +22,8 @@ Copyright(c) 2021 Futurewei Cloud
 */
 #pragma once
 #include <fmt/format.h>
+#include <fmt/ostream.h>
+#include <fmt/ranges.h>
 
 #include <stdexcept>
 #include <type_traits>
@@ -48,10 +50,10 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
     friend OStream_T& operator<<(OStream_T& os, const _K2_CTYPE_ARG& o) {                         \
         if constexpr (std::is_same<OStream_T, std::ostream>::value) {                             \
             fmt::print(os,                                                                        \
-                       FMT_STRING("{{" _K2_MKLIST(__VA_ARGS__) "}}") _K2_MKVARS(__VA_ARGS__));      \
+                       FMT_STRING("{{" _K2_MKLIST(__VA_ARGS__) "}}") _K2_MKVARS(__VA_ARGS__));    \
         } else {                                                                                  \
             fmt::format_to(os.out(),                                                              \
-                           FMT_COMPILE("{{" _K2_MKLIST(__VA_ARGS__) "}}") _K2_MKVARS(__VA_ARGS__)); \
+                         FMT_COMPILE("{{" _K2_MKLIST(__VA_ARGS__) "}}") _K2_MKVARS(__VA_ARGS__)); \
         }                                                                                         \
         return os;                                                                                \
     }                                                                                             \
