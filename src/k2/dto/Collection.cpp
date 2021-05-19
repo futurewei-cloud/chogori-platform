@@ -77,7 +77,7 @@ size_t Key::partitionHash() const noexcept {
 
 // hash value
 size_t KeyRangeVersion::hash() const noexcept {
-    return hash_combine(startKey, endKey);
+    return hash_combine(startKey, endKey, pvid);
 }
 
 // comparison for unordered containers

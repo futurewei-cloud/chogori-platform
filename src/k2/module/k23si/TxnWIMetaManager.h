@@ -95,7 +95,7 @@ public:
     // Set the state to finalized
     Status finalizedTxn(dto::Timestamp txnId);
 
-   private:
+private:
     // timer to check for retention window expiry
     PeriodicTimer _rwTimer;
 

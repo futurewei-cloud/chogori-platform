@@ -209,7 +209,7 @@ private:
                 _write_ranges[request.collectionName].insert(krv);
             }
             else {
-                K2ASSERT(log::skvclient, false, "collection {} does not exist after handling with status {}", request.collectionName, status);
+                K2LOG_W(log::skvclient, "collection {} does not exist after handling with status {}", request.collectionName, status);
             }
         }
         else {

@@ -686,7 +686,7 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
 }
 
 auto _genFinalizeRequests(TxnRecord& rec) {
-    std::vector<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>> requests;
+    std::deque<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>> requests;
     const auto endAction = rec.state == dto::TxnRecordState::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
     for (auto& [coll, rangeSet]: rec.writeRanges) {
         for (auto& krv: rangeSet) {
@@ -706,7 +706,7 @@ auto _genFinalizeRequests(TxnRecord& rec) {
 }
 
 void TxnManager::_genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest& failedReq,
-    std::vector<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>>& requests,
+    std::deque<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>>& requests,
     dto::KeyRangeVersion& krv) {
     //            |.......|
     // |....| |....| |...||....| |....|

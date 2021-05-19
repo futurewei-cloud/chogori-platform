@@ -278,6 +278,13 @@ struct hash<k2::dto::Key> {
 }; // hash
 
 template <>
+struct hash<k2::dto::PVID> {
+    size_t operator()(const k2::dto::PVID& pvid) const {
+        return pvid.hash();
+    }
+}; // hash
+
+template <>
 struct hash<k2::dto::KeyRangeVersion> {
     size_t operator()(const k2::dto::KeyRangeVersion& range) const {
         return range.hash();
