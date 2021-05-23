@@ -214,9 +214,12 @@ public:
     PartitionGetter(Collection&& collection);
     PartitionGetter() = default;
 
-    // Returns the partition and preferred endpointfor the given key.
+    // Returns the partition and preferred endpoint for the given key.
     // Hashes key if hashScheme is not range
     PartitionWithEndpoint& getPartitionForKey(const Key& key, bool reverse = false, bool exclusiveKey = false);
+
+    // Returns the partition and preferred endpoint for the given PVID, or nullptr if no such partition exists
+    PartitionWithEndpoint* getPartitionForPVID(const PVID& pvid);
 
     const std::vector<Partition>& getAllPartitions() const;
 

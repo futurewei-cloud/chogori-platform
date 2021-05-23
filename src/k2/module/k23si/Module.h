@@ -222,7 +222,7 @@ private: // methods
     // get timeNow Timestamp from TSO
     seastar::future<dto::Timestamp> getTimeNow() {
         TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
-        return tsoClient.GetTimestampFromTSO(Clock::now());
+        return tsoClient.getTimestampFromTSO(Clock::now());
     }
 
     seastar::future<> _registerVerbs();

@@ -80,26 +80,31 @@ seastar::future<> TxnWIMetaManager::start(dto::Timestamp rts, std::shared_ptr<Pe
     updateRetentionTimestamp(rts);
 
     _rwTimer.setCallback([this] {
-        K2LOG_D(log::skvsvr, "twim manager check rwe");
-        // refresh the clock
-        auto now = CachedSteadyClock::now(true);
-        return seastar::do_until(
-            [this, now] {
-                return _rwlist.empty() || _rwlist.front().mtr.timestamp.compareCertain(_retentionTs) > 0;
-            },
-            [this, now] {
-                if (_rwlist.empty()) {
+        // swap the rwList for processing. This allows new twims to be added to the list for future processing
+        // without changing what we're currently working over.
+        return seastar::do_with(std::move(_rwlist), [this](auto& currentList) {
+            K2LOG_D(log::skvsvr, "twim manager check rwe on {} twims", _rwlist.size());
+            _rwlist.clear();  // we just moved it into currentList. clear it here just in case;
+            // refresh the clock
+            auto now = CachedSteadyClock::now(true);
+            return seastar::do_until(
+                [this, now, &currentList] {
+                    return currentList.empty() || currentList.front().mtr.timestamp.compareCertain(_retentionTs) > 0;
+                },
+                [this, now, &currentList] {
+                    if (currentList.empty()) {
+                        return seastar::make_ready_future();
+                    }
+                    auto& twim = currentList.front();
+                    currentList.pop_front();
+                    K2LOG_W(log::skvsvr, "rw expired on: {}", twim);
+                    auto status = _onAction(TxnWIMetaManager::Action::onRetentionWindowExpire, twim);
+                    if (!status.is2xxOK()) {
+                        K2LOG_E(log::skvsvr, "Failed processing twim {} RWE due to: {}", twim, status);
+                    }
                     return seastar::make_ready_future();
-                }
-                auto& twim = _rwlist.front();
-                _rwlist.pop_front();
-                K2LOG_W(log::skvsvr, "rw expired on: {}", twim);
-                auto status = _onAction(TxnWIMetaManager::Action::onRetentionWindowExpire, twim);
-                if (!status.is2xxOK()) {
-                    K2LOG_E(log::skvsvr, "Failed processing twim {} RWE due to: {}", twim, status);
-                }
-                return seastar::make_ready_future();
-            });
+                });
+        });
     });
     _rwTimer.armPeriodic(_config.minimumRetentionPeriod());
 
@@ -126,6 +131,7 @@ void TxnWIMetaManager::updateRetentionTimestamp(dto::Timestamp rts) {
 }
 
 Status TxnWIMetaManager::addWrite(dto::K23SI_MTR mtr, dto::Key key, dto::Key trh, String trhCollection) {
+    K2LOG_D(log::skvsvr, "Adding write for mtr={}, key={}, trh={}, trhCollection={}", mtr, key, trh, trhCollection);
     auto& rec = _twims[mtr.timestamp];
     if (rec.state == dto::TxnWIMetaState::Created) {
         rec.mtr = std::move(mtr);
@@ -395,14 +401,23 @@ Status TxnWIMetaManager::_forceFinalize(TxnWIMeta& twim) {
             twim.trh,
             twim.mtr.timestamp});
 
-    auto fut = _cpo.PartitionRequest<dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse, dto::Verbs::K23SI_INSPECT_TXN>(Deadline(_config.readTimeout()), *request)
+    auto fut = _cpo.partitionRequest<dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse, dto::Verbs::K23SI_INSPECT_TXN>(Deadline(_config.readTimeout()), *request)
         .then([this, &twim, request=std::move(request)] (auto&& result) {
             (void)request; // to be deleted by unique_ptr
             auto& [status, resp] = result;
-            if (status.is2xxOK() && resp.finalizeAction == dto::EndAction::Commit) {
-                return seastar::make_ready_future<Status>(_onAction(Action::onCommit, twim));
+            K2LOG_D(log::skvsvr, "inspect for twim {}, received response status={}, resp={}", twim, status, resp);
+            // only trigger action if the TRH gives a response. Otherwise we have to retry
+            // for all 3 cases below, we just rely on the RWE timer to trigger the next transition
+            twim.unlinkRW(_rwlist);
+            _rwlist.push_back(twim);
+            if (status.is2xxOK()) {
+                return seastar::make_ready_future<Status>(_onAction(resp.finalizeAction == dto::EndAction::Commit ? Action::onCommit : Action::onAbort, twim));
             }
-            return seastar::make_ready_future<Status>(_onAction(Action::onAbort, twim));
+            else if (status == dto::K23SIStatus::KeyNotFound) {
+                return seastar::make_ready_future<Status>(_onAction(Action::onAbort, twim));
+            }
+            K2LOG_W(log::skvsvr, "Unable to communicate with TRH for {} after RWE", twim);
+            return seastar::make_ready_future<Status>(status);
         });
     _addBgTask(twim, [fut=std::move(fut)]() mutable { return fut.discard_result(); });
     return Statuses::S200_OK("processed state transition");

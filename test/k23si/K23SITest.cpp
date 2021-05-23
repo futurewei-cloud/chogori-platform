@@ -265,7 +265,7 @@ private:
             std::move(key)
         };
 
-        return _cpo_client.PartitionRequest
+        return _cpo_client.partitionRequest
             <dto::K23SIInspectRecordsRequest, dto::K23SIInspectRecordsResponse, dto::Verbs::K23SI_INSPECT_RECORDS>
             (Deadline<>(1s), *request).
             finally([request] () { delete request; });
@@ -280,7 +280,7 @@ private:
             mtr.timestamp
         };
 
-        return _cpo_client.PartitionRequest
+        return _cpo_client.partitionRequest
             <dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse, dto::Verbs::K23SI_INSPECT_TXN>
             (Deadline<>(1s), *request).
             finally([request] () { delete request; });

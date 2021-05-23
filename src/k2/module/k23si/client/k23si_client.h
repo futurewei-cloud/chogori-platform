@@ -205,7 +205,7 @@ private:
             // we're handling this after successfully finding a collection's partition and receiving some
             // response from it. The cpo client's collections map must have this collection
             if (auto it=_cpo_client->collections.find(request.collectionName); it != _cpo_client->collections.end()) {
-                auto& krv = it->second.getPartitionForKey(request.key).partition->keyRangeV;
+                auto& krv = it->second->getPartitionForKey(request.key).partition->keyRangeV;
                 _write_ranges[request.collectionName].insert(krv);
             }
             else {
@@ -245,7 +245,7 @@ public:
         _client->read_ops++;
         _ongoing_ops++;
 
-        return _cpo_client->PartitionRequest
+        return _cpo_client->partitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
             then([this, request_schema=record.schema, &collName=request->collectionName] (auto&& response) {
@@ -285,7 +285,7 @@ public:
         _client->write_ops++;
         _ongoing_ops++;
 
-        return _cpo_client->PartitionRequest
+        return _cpo_client->partitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
             then([this, request=std::move(request)] (auto&& response) {
@@ -299,7 +299,7 @@ public:
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr);
-                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
+                    _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
                     _makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
@@ -363,7 +363,7 @@ public:
                     PartialUpdateResult(dto::K23SIStatus::BadParameter("error _makePartialUpdateRequest()")) );
         }
 
-        return _cpo_client->PartitionRequest
+        return _cpo_client->partitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
             then([this, request=std::move(request)] (auto&& response) {
@@ -377,7 +377,7 @@ public:
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr)
-                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
+                    _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
                     _makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }

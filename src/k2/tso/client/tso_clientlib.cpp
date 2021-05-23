@@ -43,7 +43,7 @@ seastar::future<> TSO_ClientLib::start()
 
     _tSOServerURLs.emplace_back(TSOServerURL());
     // for now we use the first server URL only, in the future, allow to check other server in case first one is not available
-    return DiscoverServiceNodes(_tSOServerURLs[0]);
+    return _discoverServiceNodes(_tSOServerURLs[0]);
 }
 
 seastar::future<> TSO_ClientLib::gracefulStop() {
@@ -67,7 +67,7 @@ seastar::future<> TSO_ClientLib::gracefulStop() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<> TSO_ClientLib::DiscoverServiceNodes(const k2::String& serverURL)
+seastar::future<> TSO_ClientLib::_discoverServiceNodes(const k2::String& serverURL)
 {
     auto myRemote = k2::RPC().getTXEndpoint(serverURL);
     if (!myRemote) {
@@ -97,7 +97,7 @@ seastar::future<> TSO_ClientLib::DiscoverServiceNodes(const k2::String& serverUR
             if (!status.is2xxOK())
             {
                 K2LOG_E(log::tsoclient, "Error during get TSO node URLs, status:{}", status);
-                // currently, it is not expected 
+                // currently, it is not expected
                 return seastar::make_exception_future<>(std::runtime_error(status.message));
             }
 
@@ -156,7 +156,7 @@ seastar::future<> TSO_ClientLib::DiscoverServiceNodes(const k2::String& serverUR
     });
 }
 
-seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& requestLocalTime)
+seastar::future<Timestamp> TSO_ClientLib::getTimestampFromTSO(const TimePoint& requestLocalTime)
 {
     if (_stopped)
     {
@@ -171,7 +171,7 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
         K2LOG_W(log::tsoclient, "TSO Timestamp requested when not ready to serve, request pending...");
         _promiseReadyToServe.emplace_back();
         return _promiseReadyToServe.back().get_future()
-            .then([this, triggeredTime = requestLocalTime] { return GetTimestampFromTSO(triggeredTime); });
+            .then([this, triggeredTime = requestLocalTime] { return getTimestampFromTSO(triggeredTime); });
     }
 
 
@@ -202,15 +202,15 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
             K2ASSERT(log::tsoclient, headBatch._usedCount < headBatch._batch.TSCount, "We should not kept used-up batches.");
 
             // if obsolete, remove it and retry issuing timestamp from next batch at front.
-            if (headBatch.ExpirationTime() < requestLocalTime)
+            if (headBatch.expirationTime() < requestLocalTime)
             {
-                K2LOG_W(log::tsoclient, "Detected and discarded existing obsolete batch when issuing TS. headBatch.ExpirationTime() < requestLocalTime.");
+                K2LOG_W(log::tsoclient, "Detected and discarded existing obsolete batch when issuing TS. headBatch.expirationTime() < requestLocalTime.");
                 _timestampBatchQue.pop_front();
                 continue;
             }
 
             // we are here means that the headBatch has timestamp ready to issue
-            Timestamp result = TimestampBatch::GenerateTimeStampFromBatch(headBatch._batch, headBatch._usedCount);
+            Timestamp result = TimestampBatch::generateTimeStampFromBatch(headBatch._batch, headBatch._usedCount);
             headBatch._usedCount++;
             K2LOG_D(log::tsoclient, "Issued TS from existing batch.");
             // update _lastIssuedBatchTriggeredTime
@@ -296,9 +296,9 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
     newBatchRequest._expectedTTL = 8000;    // in nanosecond, TODO: use config value instead.
     _timestampBatchQue.emplace_back(std::move(newBatchRequest));
 
-    (void) GetTimestampBatch(batchSizeToRequest)
+    (void) _getTimestampBatch(batchSizeToRequest)
         .then([this, triggeredTime = requestLocalTime](TimestampBatch&& newBatch) {
-            ProcessReturnedBatch(std::move(newBatch), triggeredTime);
+            _processReturnedBatch(std::move(newBatch), triggeredTime);
         }).handle_exception([this] (auto exc) {
             // Set exception for all pending client requests
             for (auto&& clientRequest : _pendingClientRequests)
@@ -317,7 +317,7 @@ seastar::future<Timestamp> TSO_ClientLib::GetTimestampFromTSO(const TimePoint& r
     return _pendingClientRequests.back()._promise->get_future();
 }
 
-void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTriggeredTime)
+void TSO_ClientLib::_processReturnedBatch(TimestampBatch batch, TimePoint batchTriggeredTime)
 {
     if (_stopped)
     {
@@ -356,7 +356,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
     // remove case a)
     while (ite != _timestampBatchQue.end() &&
         ite->_isAvailable &&
-        ite->ExpirationTime() < minTimePointBar)
+        ite->expirationTime() < minTimePointBar)
     {
         K2ASSERT(log::tsoclient, ite->_usedCount < ite->_batch.TSCount, "we should not have used-up batch still kept around!");
         K2LOG_D(log::tsoclient, "Discard existing obosolete available Front batch.");
@@ -412,12 +412,12 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
         // fulfill as much pending client request as possible, while delete fulfilled pending request
         while (batchInfo._usedCount < batchInfo._batch.TSCount && !_pendingClientRequests.empty())
         {
-            if(batchInfo.ExpirationTime() < _pendingClientRequests.front()._requestTime) {
+            if(batchInfo.expirationTime() < _pendingClientRequests.front()._requestTime) {
                 K2LOG_D(log::tsoclient, "Skipping an existing obsolete batch.");
                 break;
             }
 
-            _pendingClientRequests.front()._promise->set_value(TimestampBatch::GenerateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
+            _pendingClientRequests.front()._promise->set_value(TimestampBatch::generateTimeStampFromBatch(batchInfo._batch, batchInfo._usedCount));
             _pendingClientRequests.pop_front();
             batchInfo._usedCount++;
         }
@@ -456,9 +456,9 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
             newBatchRequest._isTriggeredByReplacement = true;  // this is a replacement
             _timestampBatchQue.emplace_back(std::move(newBatchRequest));
 
-            (void) GetTimestampBatch(batchSizeToRequest)
+            (void) _getTimestampBatch(batchSizeToRequest)
                 .then([this, triggeredTime = curTime](TimestampBatch newBatch) {
-                    ProcessReturnedBatch(newBatch, triggeredTime);
+                    _processReturnedBatch(newBatch, triggeredTime);
             }).handle_exception([this] (auto exc) {
                 // Set exception for all pending client requests
                 for (auto&& clientRequest : _pendingClientRequests)
@@ -473,7 +473,7 @@ void TSO_ClientLib::ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTr
     }
 }
 
-seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchSize)
+seastar::future<TimestampBatch> TSO_ClientLib::_getTimestampBatch(uint16_t batchSize)
 {
     auto retryStrategy = k2::ExponentialBackoffStrategy();
     //TODO: need to find out if the TSO is local or remote and get the timeout config accordingly
@@ -492,7 +492,7 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
 
             K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "we should have workers");
             // pick next worker (effecitvely random one, as _curTSOServiceNodes is shuffled already when it is populated)
-            if (retriesLeft != 2) {_curWorkerIdx++;}  // if this is not first try, it means we had error and are retrying, thus change to a new service node. 
+            if (retriesLeft != 2) {_curWorkerIdx++;}  // if this is not first try, it means we had error and are retrying, thus change to a new service node.
             int randNode = _curWorkerIdx %  _curTSOServiceNodes.size();
             auto& myRemote = _curTSOServiceNodes[randNode];
 

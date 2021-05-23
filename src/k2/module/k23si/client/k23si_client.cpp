@@ -64,7 +64,7 @@ void K2TxnHandle::_makeHeartbeatTimer() {
 
         K2LOG_D(log::skvclient, "send hb for mtr={}", _mtr);
 
-        return _cpo_client->PartitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request)
+        return _cpo_client->partitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request)
         .then([this] (auto&& response) {
             auto& [status, k2response] = response;
             _checkResponseStatus(status);
@@ -121,7 +121,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
     _client->read_ops++;
     _ongoing_ops++;
 
-    return _cpo_client->PartitionRequest
+    return _cpo_client->partitionRequest
         <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
         (_options.deadline, *request).
         then([this, schemaName=std::move(key.schemaName), &collName=request->collectionName] (auto&& response) {
@@ -252,7 +252,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     K2LOG_D(log::skvclient, "Cancel hb for {}", _mtr);
     _heartbeat_timer.cancel();
 
-    return _cpo_client->PartitionRequest
+    return _cpo_client->partitionRequest
         <dto::K23SITxnEndRequest, dto::K23SITxnEndResponse, dto::Verbs::K23SI_TXN_END>
         (Deadline<>(_txn_end_deadline), *request).
         then([this, shouldCommit] (auto&& response) {
@@ -338,12 +338,12 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection, st
 }
 
 seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& metadata, std::vector<String>&& endpoints, std::vector<String>&& rangeEnds) {
-    return cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
+    return cpo_client.createAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
     auto start_time = Clock::now();
-    return _tsoClient.GetTimestampFromTSO(start_time)
+    return _tsoClient.getTimestampFromTSO(start_time)
     .then([this, start_time, options] (auto&& timestamp) {
         dto::K23SI_MTR mtr{
             .timestamp=std::move(timestamp),
@@ -561,7 +561,7 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
     _client->query_ops++;
     _ongoing_ops++;
 
-    return _cpo_client->PartitionRequest
+    return _cpo_client->partitionRequest
         <dto::K23SIQueryRequest, dto::K23SIQueryResponse, dto::Verbs::K23SI_QUERY>
         (_options.deadline, query.request, query.request.reverseDirection, query.request.exclusiveKey)
     .then([this, &query] (auto&& response) {

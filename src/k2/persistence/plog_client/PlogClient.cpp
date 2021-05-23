@@ -81,7 +81,7 @@ PlogClient::_getPlogServerEndpoints() {
 
 seastar::future<>
 PlogClient::_getPersistenceCluster(String clusterName){
-    return _cpo.GetPersistenceCluster(Deadline<>(_cpo_timeout()), std::move(clusterName)).
+    return _cpo.getPersistenceCluster(Deadline<>(_cpo_timeout()), std::move(clusterName)).
     then([this] (auto&& result) {
         auto& [status, response] = result;
 

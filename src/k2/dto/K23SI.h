@@ -370,15 +370,13 @@ struct K23SITxnFinalizeRequest {
     PVID pvid;
     // the name of the collection
     String collectionName;
-    // Routing key for this request
-    Key key;
     // the transaction to finalize
     Timestamp txnTimestamp;
     // should we abort or commit
     EndAction action;
 
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, txnTimestamp, action);
-    K2_DEF_FMT(K23SITxnFinalizeRequest, pvid, collectionName, key, txnTimestamp, action);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, txnTimestamp, action);
+    K2_DEF_FMT(K23SITxnFinalizeRequest, pvid, collectionName, txnTimestamp, action);
 };
 
 struct K23SITxnFinalizeResponse {

@@ -44,6 +44,12 @@ bool K23SIPartitionModule::_validateRetentionWindow(const dto::Timestamp& ts) co
     return result;
 }
 
+
+template <typename T, typename = void>
+struct has_key_field : std::false_type {};
+template <typename T>
+struct has_key_field<T, std::void_t<decltype(T::key)>>: std::true_type {};
+
 template<typename RequestT>
 bool K23SIPartitionModule::_validateRequestPartition(const RequestT& req) const {
     auto result = req.collectionName == _cmeta.name && req.pvid == _partition().keyRangeV.pvid;
@@ -52,8 +58,11 @@ bool K23SIPartitionModule::_validateRequestPartition(const RequestT& req) const 
     // 2. now for the other cases, only Query request is implemented.
     if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
         result = result && _partition.owns(req.key, req.reverseDirection);
-    } else {
+    } else if constexpr(has_key_field<RequestT>::value) {
         result = result && _partition.owns(req.key);
+    }
+    else {
+        result = result && _partition().keyRangeV.pvid == req.pvid;
     }
     K2LOG_D(log::skvsvr, "partition validation {}, for request={}", (result ? "passed" : "failed"), req);
     return result;
@@ -108,7 +117,8 @@ bool K23SIPartitionModule::_validateRequestPartitionKey(const RequestT& req) con
     if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
         // Query is allowed to have empty partition key which means start or end of schema set
         return true;
-    } else {
+    }
+    else {
         return !req.key.partitionKey.empty();
     }
 }
@@ -1167,16 +1177,16 @@ K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23
     request.incumbentMTR = incumbent->mtr;
     request.key = incumbent->trh; // this is the routing key - should be the TRH key
     request.challengerMTR = std::move(challengerMTR);
-    return seastar::do_with(std::move(request), std::move(key), incumbent->isAborted(), incumbent->isCommitted(), [this, deadline] (auto& request, auto& key, auto& isAborted, auto& isCommitted) {
+    return seastar::do_with(std::move(request), std::move(key), [this, deadline, &incumbent] (auto& request, auto& key) {
         auto fut = seastar::make_ready_future<std::tuple<Status, dto::K23SITxnPushResponse>>();
-        if (isAborted) {
+        if (incumbent->isAborted()) {
             fut = fut.then([] (auto&&) {
                 return RPCResponse(dto::K23SIStatus::OK("challenger won in push since incumbent was already aborted"),
                               dto::K23SITxnPushResponse{ .incumbentFinalization = dto::EndAction::Abort,
                                                          .allowChallengerRetry = true});
             });
         }
-        else if (isCommitted) {
+        else if (incumbent->isCommitted()) {
             // Challenger should retry if they are newer than the committed value
             fut = fut.then([] (auto&&) {
                 return RPCResponse(dto::K23SIStatus::OK("incumbent won in push since incumbent was already committed"),
@@ -1187,7 +1197,7 @@ K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23
         else {
             // we don't know locally what's going on with this txn. Make a remote call to find out
             fut = fut.then([this, &request, deadline] (auto&&) {
-                return _cpo.PartitionRequest<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse, dto::Verbs::K23SI_TXN_PUSH>(deadline, request);
+                return _cpo.partitionRequest<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse, dto::Verbs::K23SI_TXN_PUSH>(deadline, request);
             });
         }
         return fut.then([this, &key, &request](auto&& responsePair) {
@@ -1246,10 +1256,6 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     if (!_validateRequestPartition(request)) {
         // tell client their collection partition is gone
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in finalize"), dto::K23SITxnFinalizeResponse{});
-    }
-    if (!_validateRequestPartitionKey(request)){
-        // do not allow empty partition key
-        return RPCResponse(dto::K23SIStatus::BadParameter("missing partition key in finalize"), dto::K23SITxnFinalizeResponse{});
     }
 
     if (auto status = _twimMgr.endTxn(request.txnTimestamp, request.action); !status.is2xxOK()) {

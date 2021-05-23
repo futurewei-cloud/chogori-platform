@@ -55,20 +55,20 @@ public:
     seastar::future<> gracefulStop();
 
     // get the timestamp from TSO (distributed from TSOClient Timestamp batch)
-    seastar::future<Timestamp> GetTimestampFromTSO(const TimePoint& requestLocalTime);
+    seastar::future<Timestamp> getTimestampFromTSO(const TimePoint& requestLocalTime);
     // get the timestamp with MTL(Minimum Transaction Latency) - alternatively instead of this new API, consider put MTL inside timestamp.
     // seastar::future<std::tuple<Timestamp, Duration>> GetTimeStampWithMTLFromTSO(const TimePoint& requestLocalTime);
 
 private:
 
-    // discover TSO service end points by a node/server url, as each TSO server/node in general has multiple service end points(each worker CPU core have one), 
+    // discover TSO service end points by a node/server url, as each TSO server/node in general has multiple service end points(each worker CPU core have one),
     // to populate _curTSOServiceNodes, during start() and server change.
-    seastar::future<> DiscoverServiceNodes(const k2::String& serverURL);
+    seastar::future<> _discoverServiceNodes(const k2::String& serverURL);
 
-    seastar::future<TimestampBatch> GetTimestampBatch(uint16_t batchSize);
+    seastar::future<TimestampBatch> _getTimestampBatch(uint16_t batchSize);
 
     // process returned batch from TSO server
-    void ProcessReturnedBatch(TimestampBatch batch, TimePoint batchTriggeredTime);
+    void _processReturnedBatch(TimestampBatch batch, TimePoint batchTriggeredTime);
 
     ConfigVar<k2::String> TSOServerURL{"tso_endpoint"};
 
@@ -86,7 +86,7 @@ private:
     // all URLs of workers of current TSO server
     std::vector<std::unique_ptr<k2::TXEndpoint>> _curTSOServiceNodes;
     // Try to use the same endpoint untill there is an error to minimize connection usage
-    size_t _curWorkerIdx{0};  
+    size_t _curWorkerIdx{0};
 
     // For debugging and verification purpose, as we are processing request with steady clock, use this to verify
     // the requet we see are always coming in with bigger value steady clock.
@@ -117,7 +117,7 @@ private:
         uint16_t    _expectedTTL{0};       // in nanosecond, estimated TTL in triggered/not returned batch request. The TSO server control the value, returned in _batch.
         bool _isTriggeredByReplacement{false};   // when timestamp batch request was triggerred by replacment for the TSBatch that is returned out of order and discarded
 
-        const TimePoint ExpirationTime()
+        const TimePoint expirationTime()
         {
             K2ASSERT(log::tsoclient, _isAvailable, "Doesn't support ExpirationTime on unavailable TimestampBatch as true TTL from server is not available.");
 
@@ -126,7 +126,7 @@ private:
             return _triggeredTime + TTL;
         }
 
-        const TimePoint ExpectedExpirationTime()
+        const TimePoint expectedExpirationTime()
         {
             std::chrono::nanoseconds TTL(_expectedTTL);
 

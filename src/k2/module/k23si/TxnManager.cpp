@@ -685,6 +685,7 @@ seastar::future<Status> TxnManager::_finalizedPIP(TxnRecord& rec) {
     return seastar::make_ready_future<Status>(dto::K23SIStatus::OK);
 }
 
+// This helper generates the finalization requests for the given txn record
 auto _genFinalizeRequests(TxnRecord& rec) {
     std::deque<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>> requests;
     const auto endAction = rec.state == dto::TxnRecordState::Committed ? dto::EndAction::Commit : dto::EndAction::Abort;
@@ -692,9 +693,8 @@ auto _genFinalizeRequests(TxnRecord& rec) {
         for (auto& krv: rangeSet) {
             requests.emplace_back(
             dto::K23SITxnFinalizeRequest{
-                .pvid{}, // leave empty - this is computed by PartitionRequest
+                .pvid=krv.pvid,
                 .collectionName=coll,
-                .key{.schemaName{}, .partitionKey=krv.startKey, .rangeKey{}},
                 .txnTimestamp=rec.mtr.timestamp,
                 .action=endAction
             },
@@ -705,29 +705,24 @@ auto _genFinalizeRequests(TxnRecord& rec) {
     return requests;
 }
 
-void TxnManager::_genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest& failedReq,
+void TxnManager::_genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest&& failedReq,
     std::deque<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>>& requests,
-    dto::KeyRangeVersion& krv) {
-    //            |.......|
-    // |....| |....| |...||....| |....|
-    // figure out any additional ranges
-    // generate and queue up requests for all additional ranges
-    bool firstMatch = false;
-    for (auto& part: _cpo.collections[failedReq.collectionName].getAllPartitions()) {
+    dto::KeyRangeVersion&& krv) {
+    // generate and queue up requests for all ranges
+    auto it = _cpo.collections.find(failedReq.collectionName);
+    if (it == _cpo.collections.end()) {
+        K2LOG_W(log::skvsvr, "Collection not found: {}", failedReq.collectionName);
+        requests.emplace_back(std::move(failedReq), std::move(krv));
+        return;
+    }
+    for (auto& part: it->second->getAllPartitions()) {
         if (krv.startKey > part.keyRangeV.endKey) continue;
         if (krv.endKey < part.keyRangeV.startKey) break; // done
-        if (!firstMatch) {
-            // we have found the first matching partition (the one which holds the start key)
-            // skip it since we already sent a request there (the failedReq)
-            firstMatch = true;
-            continue;
-        }
         K2LOG_D(log::skvsvr, "Remapped partition: {} --> {}", krv, part.keyRangeV);
         requests.emplace_back(
             dto::K23SITxnFinalizeRequest{
-                .pvid{},  // leave empty - this is computed by PartitionRequest
+                .pvid=part.keyRangeV.pvid,
                 .collectionName = failedReq.collectionName,
-                .key{.schemaName{}, .partitionKey = part.keyRangeV.startKey, .rangeKey{}},
                 .txnTimestamp = failedReq.txnTimestamp,
                 .action = failedReq.action},
             part.keyRangeV);
@@ -737,7 +732,8 @@ void TxnManager::_genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest& f
 seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDeadline deadline) {
     K2LOG_D(log::skvsvr, "Finalizing {}", rec);
     //TODO we need to keep trying to finalize in cases of failures.
-    // this needs to be done in a rate-limited fashion. For now, we just try some configurable number of times and give up
+    // this needs to be done in a rate-limited fashion.
+    // For now, we just try some configurable number of times and give up
     return seastar::do_with((uint64_t)0, _genFinalizeRequests(rec),
         [this, &rec, deadline] (auto& batchStart, auto& requests) {
         return seastar::do_until(
@@ -749,39 +745,37 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                 [this, &rec, deadline, &requests] (auto idx) {
                     auto& [request, krv] = requests[idx];
                     K2LOG_D(log::skvsvr, "Finalizing req={}", request);
-                    return _cpo.PartitionRequest<dto::K23SITxnFinalizeRequest,
+                    return _cpo.partitionRequestByPVID<dto::K23SITxnFinalizeRequest,
                                                 dto::K23SITxnFinalizeResponse,
                                                 dto::Verbs::K23SI_TXN_FINALIZE>
                     (deadline, request, _config.finalizeRetries())
                     .then([this, idx, &requests](auto&& responsePair) {
                         auto& [status, response] = responsePair;
-                        {
-                            auto& [request, krv] = requests[idx];
+                        auto& [request, krv] = requests[idx];
 
-                            K2LOG_D(log::skvsvr, "Request {} completed with status {}, in krv {}", request, status, krv);
-
-                            if (krv.pvid != _cpo.collections[request.collectionName].getPartitionForKey(request.key).partition->keyRangeV.pvid) {
-                                K2LOG_D(log::skvsvr, "Detected partition remapping for range {} in request: {}", krv, request);
-                                _genFinalizeReqsAfterPMAPUpdate(request, requests, krv);
-                            }
-                        }
-                        {
-                            auto& [request, krv] = requests[idx];
-                            if (!status.is2xxOK()) {
-                                if (status != dto::K23SIStatus::KeyNotFound) {
-                                    K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
-                                    // errors other than KeyNotFound need to be retried.
-                                    // however KeyNotFound is acceptable since it may simply indicate
-                                    // that the client's transaction had a failed write
-                                    return seastar::make_exception_future<>(std::runtime_error(fmt::format("finalize request failed after retrying due to {}", status)));
-                                }
-                                else {
-                                    K2LOG_W(log::skvsvr, "Finalize request did not find txn for {}, status={}. Assume this is a retry and skip range", request, status);
-                                }
-                            }
-                            K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
+                        K2LOG_D(log::skvsvr, "Request {} completed with status {}, in krv {}", request, status, krv);
+                        if (status == Statuses::S410_Gone) {
+                            K2LOG_D(log::skvsvr, "Detected partition remapping for range {} in request: {}", krv, request);
+                            // generate new requests and try again
+                            _genFinalizeReqsAfterPMAPUpdate(std::move(request), requests, std::move(krv));
                             return seastar::make_ready_future<>();
                         }
+                        if (!status.is2xxOK()) {
+                            if (status != dto::K23SIStatus::KeyNotFound) {
+                                K2LOG_E(log::skvsvr, "Finalize request did not succeed for {}, status={}", request, status);
+                                // errors other than KeyNotFound need to be retried.
+                                // however KeyNotFound is acceptable since it may simply indicate
+                                // that the client's transaction had a failed write
+                                return seastar::make_exception_future<>(std::runtime_error(fmt::format("finalize request failed after retrying due to {}", status)));
+                            }
+                            else {
+                                K2LOG_W(log::skvsvr, "Finalize request did not find txn for {}, status={}. Assume this is a retry and skip range", request, status);
+                                return seastar::make_ready_future<>();
+                            }
+                        }
+
+                        K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
+                        return seastar::make_ready_future<>();
                     });
                 })
                 .finally([&batchStart, batchEnd] {

@@ -40,7 +40,7 @@ CPOClient::~CPOClient() {
     K2LOG_D(log::cpoclient, "dtor");
 }
 
-void CPOClient::FulfillWaiters(const String& name, const Status& status) {
+void CPOClient::_fulfillWaiters(const String& name, const Status& status) {
     auto& waiters = requestWaiters[name];
 
     for (auto it = waiters.begin(); it != waiters.end(); ++it) {

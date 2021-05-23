@@ -148,6 +148,29 @@ const std::vector<Partition>& PartitionGetter::getAllPartitions() const {
     return collection.partitionMap.partitions;
 }
 
+PartitionGetter::PartitionWithEndpoint* PartitionGetter::getPartitionForPVID(const PVID& pvid) {
+    switch (collection.metadata.hashScheme) {
+        case HashScheme::Range: {
+            for (auto& el: _rangePartitionMap) {
+                if (el.partition.partition->keyRangeV.pvid == pvid) {
+                    return &el.partition;
+                }
+            }
+            return nullptr;
+        }
+        case HashScheme::HashCRC32C: {
+            for (auto& el: _hashPartitionMap) {
+                if (el.partition.partition->keyRangeV.pvid == pvid) {
+                    return &el.partition;
+                }
+            }
+            return nullptr;
+        }
+        default:
+            throw std::runtime_error("Unknown hash scheme for collection");
+    }
+}
+
 PartitionGetter::PartitionWithEndpoint& PartitionGetter::getPartitionForKey(const Key& key, bool reverse, bool exclusiveKey) {
     K2LOG_D(log::dto, "hashScheme={}, key={}, reverse={}, exclusiveKey={}",
         collection.metadata.hashScheme, key, reverse, exclusiveKey);

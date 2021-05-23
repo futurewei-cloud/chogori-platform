@@ -187,9 +187,9 @@ private:  // methods driving the state machine
     // a pmap update is detected during finalization of a particular range
     // failedReq is the request on which we detected the pmap change
     // requests is the deque we'll append new requests into.
-    void _genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest& failedReq,
+    void _genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest&& failedReq,
         std::deque<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>>& requests,
-        dto::KeyRangeVersion& krv);
+        dto::KeyRangeVersion&& krv);
 
 private: // fields
 

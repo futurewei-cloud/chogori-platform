@@ -46,7 +46,7 @@ struct TimestampBatch
 
     // static helper to get  Timestamp from batch
     // caller is responsible to verify usedCount < TSCount and to increment usedCount after call
-    static const Timestamp GenerateTimeStampFromBatch(const TimestampBatch& batch, uint8_t usedCount)
+    static const Timestamp generateTimeStampFromBatch(const TimestampBatch& batch, uint8_t usedCount)
     {
         K2ASSERT(log::dto, usedCount < batch.TSCount, "requested timestamp count too large.");
 
