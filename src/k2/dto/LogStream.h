@@ -25,6 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 namespace dto {
 
+
 struct PartitionMetdataRecord{
     String plogId;
     uint32_t sealed_offset;
@@ -33,6 +34,7 @@ struct PartitionMetdataRecord{
 };
 
 // Request to create a Metadata Log Stream Record 
+
 struct MetadataPutRequest {
     String partitionName;
     uint32_t sealed_offset;
@@ -65,29 +67,47 @@ struct ContinuationToken{
     K2_DEF_FMT(ContinuationToken, plogId, offset);
 };
 
-
-struct LogStreamBaseExistError : public std::exception {
-    String what_str;
-    LogStreamBaseExistError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
+struct AppendRequest{
+    Payload payload;
+    K2_PAYLOAD_FIELDS(payload);
+    K2_DEF_FMT(AppendRequest);
 };
 
-struct LogStreamBasePersistError : public std::exception {
-    String what_str;
-    LogStreamBasePersistError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
+struct AppendWithIdAndOffsetRequest{
+    Payload payload;
+    String plogId;
+    uint32_t offset;
+    K2_PAYLOAD_FIELDS(payload, plogId, offset);
+    K2_DEF_FMT(AppendWithIdAndOffsetRequest, plogId, offset);
 };
 
-struct LogStreamBaseRedundantPlogError : public std::exception {
-    String what_str;
-    LogStreamBaseRedundantPlogError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
+struct AppendResponse{
+    String plogId;
+    uint32_t current_offset;
+    K2_PAYLOAD_FIELDS(plogId, current_offset);
+    K2_DEF_FMT(AppendResponse, plogId, current_offset);
 };
 
-struct LogStreamBaseReadError : public std::exception {
-    String what_str;
-    LogStreamBaseReadError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
+struct ReadRequest{
+    String start_plogId;
+    uint32_t start_offset;
+    uint32_t size;
+    K2_PAYLOAD_FIELDS(start_plogId, start_offset, size);
+    K2_DEF_FMT(ReadRequest, start_plogId, start_offset, size);
+};
+
+struct ReadWithTokenRequest{
+    ContinuationToken token;
+    uint32_t size;
+    K2_PAYLOAD_FIELDS(token, size);
+    K2_DEF_FMT(ReadWithTokenRequest, token, size);
+};
+
+struct ReadResponse{
+    ContinuationToken token;
+    Payload payload;
+    K2_PAYLOAD_FIELDS(token, payload);
+    K2_DEF_FMT(ReadResponse, token);
 };
 
 struct LogStreamRetrieveError : public std::exception {
@@ -96,23 +116,6 @@ struct LogStreamRetrieveError : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
-struct MetadataPersistError : public std::exception {
-    String what_str;
-    MetadataPersistError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct MetadataGetError : public std::exception {
-    String what_str;
-    MetadataGetError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct LogStreamBaseReload : public std::exception {
-    String what_str;
-    LogStreamBaseReload(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
 
 }  // namespace dto
 }  // namespace k2

@@ -59,7 +59,10 @@ public:
     // append a payload into a plog at the given offset 
     seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);
 
-    // read a payload 
+    // read the given size bytes from the PLOG with the given plogId, starting to read at the given offset
+    // The result is returned as a single Payload containing the requested number of bytes
+    // what happens if there are not enough bytes available?
+    // pagination/continuation?
     seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset, uint32_t size);
 
     // seal a payload
@@ -85,7 +88,7 @@ private:
     seastar::future<> _getPlogServerEndpoints(); 
 
     // obtain the persistence cluster for a given name from the cpo
-    seastar::future<> _getPersistenceCluster(String clusterName, String cpoUrl); 
+    seastar::future<> _getPersistenceCluster(String clusterName); 
 
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 1s};

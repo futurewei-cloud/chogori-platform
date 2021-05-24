@@ -612,6 +612,8 @@ CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& requ
     return RPCResponse(Statuses::S200_OK("persistence cluster found"), std::move(response));
 }
 
+// When the metadata manager seals the old plog and use a new plod to persist metadata, this will be called
+// persist the old plog sealed offest and the new plog id
 seastar::future<std::tuple<Status, dto::MetadataPutResponse>>
 CPOService::handleMetadataPut(dto::MetadataPutRequest&& request){
     K2LOG_D(log::cposvr, "Received metadata persist request for partition {}", request.partitionName);
@@ -628,7 +630,7 @@ CPOService::handleMetadataPut(dto::MetadataPutRequest&& request){
         records->second.push_back(std::move(element));
     }
     
-    return RPCResponse(Statuses::S201_Created("metadata log updates successfully"), dto::MetadataPutResponse());
+    return RPCResponse(Statuses::S201_Created("metadata log updates successfully"), dto::MetadataPutResponse{});
 }
 
 seastar::future<std::tuple<Status, dto::MetadataGetResponse>>
@@ -636,7 +638,7 @@ CPOService::handleMetadataGet(dto::MetadataGetRequest&& request){
     K2LOG_D(log::cposvr, "Received metadata get request for partition {}", request.partitionName);
     auto records = _metadataRecords.find(request.partitionName);
     if (records == _metadataRecords.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("request parition's metadata does not exist"), dto::MetadataGetResponse());
+        return RPCResponse(Statuses::S404_Not_Found("request parition's metadata does not exist"), dto::MetadataGetResponse{});
     }
 
     dto::MetadataGetResponse response{.records=records->second};

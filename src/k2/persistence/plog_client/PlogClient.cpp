@@ -50,7 +50,8 @@ PlogClient::~PlogClient() {
 
 seastar::future<>
 PlogClient::init(String clusterName, String cpoUrl){
-    return _getPersistenceCluster(clusterName, cpoUrl);
+    _cpo = CPOClient(cpoUrl);
+    return _getPersistenceCluster(clusterName);
 }
 
 seastar::future<>
@@ -67,6 +68,9 @@ PlogClient::_getPlogServerEndpoints() {
             if (ep){
                 endpoints.push_back(std::move(ep));
             }
+            else{
+                K2LOG_D(log::plogcl, "Cannot obtain endpoint from URL: {}", url);
+            }
         }
         if (endpoints.size() == 0){
             K2LOG_D(log::plogcl, "Failed to obtain the Endpoint of Plog Servers");
@@ -78,8 +82,7 @@ PlogClient::_getPlogServerEndpoints() {
 }
 
 seastar::future<>
-PlogClient::_getPersistenceCluster(String clusterName, String cpoUrl){
-    _cpo = CPOClient(cpoUrl);
+PlogClient::_getPersistenceCluster(String clusterName){
     return _cpo.GetPersistenceCluster(Deadline<>(_cpo_timeout()), std::move(clusterName)).
     then([this] (auto&& result) {
         auto& [status, response] = result;
@@ -123,7 +126,6 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
 seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, uint32_t offset, Payload payload){
     uint32_t expected_offset = offset + payload.getSize();
     uint32_t appended_offset = payload.getSize();
-    //K2LOG_I(log::plogcl, "a:{}, b:{}, c:{}", offset, payload.getSize(), offset+payload.getSize());
     dto::PlogAppendRequest request{.plogId = std::move(plogId), .offset=offset, .payload=std::move(payload)};
 
     std::vector<seastar::future<std::tuple<Status, dto::PlogAppendResponse> > > appendFutures;
@@ -200,7 +202,9 @@ seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getP
                 auto& [status, response] = result;
                 return_status = std::move(status);
                 if (current_offset > response.currentOffset){
-                    K2LOG_D(log::plogcl, "Plog Offset Inconsistent");
+                    if (current_offset != UINT_MAX){
+                        K2LOG_W(log::plogcl, "Plog Offset Inconsistent");
+                    }
                     current_offset = response.currentOffset;
                 }
                 if (response.sealed){

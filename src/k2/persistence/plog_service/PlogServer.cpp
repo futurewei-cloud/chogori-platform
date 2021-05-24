@@ -113,7 +113,7 @@ PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
     // We want to use copy in order to prevent memory fragmentation. If we use shareAll() instead of copy, the payload we obtained will occupy a entire 8K block
     iter->second.payload.copyFromPayload(request.payload, request.payload.getSize());
     
-    return RPCResponse(Statuses::S200_OK("append scuccess"), std::move(response));
+    return RPCResponse(Statuses::S200_OK("append success"), std::move(response));
 };
 
 
