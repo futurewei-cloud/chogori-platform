@@ -74,7 +74,7 @@ public:  // application lifespan
             K2LOG_I(log::rpcsvc, "Received put for key: {}", request.key);
             _cache[request.key] = request.value;
             PUT_Response response{.key=std::move(request.key)};
-            return RPCResponse(Statuses::S200_OK("put accepted"), std::move(response));
+            return RPCResponse(Statuses::S201_Created("put accepted"), std::move(response));
         });
 
         RPC().registerRPCObserver<GET_Request, GET_Response>(MessageVerbs::GET, [this](GET_Request&& request) {
@@ -84,6 +84,9 @@ public:  // application lifespan
             auto iter = _cache.find(request.key);
             if (iter != _cache.end()) {
                 response.value = iter->second;
+            }
+            else {
+                return RPCResponse(Statuses::S404_Not_Found("key not found"), std::move(response));      
             }
             return RPCResponse(Statuses::S200_OK("get accepted"), std::move(response));
         });
@@ -108,15 +111,24 @@ public:
             K2LOG_I(log::rpcsvc, "found endpoint: {}", ep->url);
             return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, request, *ep, 1s);
         })
-        .then([](auto&& resp) {
+        .then([](auto&& resp) { 
             K2LOG_I(log::rpcsvc, "Received PUT response with status: {}", std::get<0>(resp));
 
             K2LOG_I(log::rpcsvc, "getting record");
             GET_Request request{.key = "Key1"};
-            return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, request, *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s);
+            return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, request,
+                            *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s);
         })
         .then([](auto&& resp) {
             K2LOG_I(log::rpcsvc, "Received GET response with status: {}, value={}", std::get<0>(resp), std::get<1>(resp).value);
+            
+            K2LOG_I(log::rpcsvc, "record should not found");
+            GET_Request request{.key = "Key2"};
+            return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, request,
+                            *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s);
+        })
+        .then([](auto&& resp) {
+            K2LOG_I(log::rpcsvc, "Received GET response with status: {}", std::get<0>(resp));
         });
     }
 };
