@@ -61,8 +61,6 @@ public:
 
     // read the given size bytes from the PLOG with the given plogId, starting to read at the given offset
     // The result is returned as a single Payload containing the requested number of bytes
-    // what happens if there are not enough bytes available?
-    // pagination/continuation?
     seastar::future<std::tuple<Status, Payload>> read(String plogId, uint32_t offset, uint32_t size);
 
     // seal a payload
