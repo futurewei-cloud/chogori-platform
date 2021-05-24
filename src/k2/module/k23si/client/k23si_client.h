@@ -23,7 +23,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <crc32c/crc32c.h>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/common/Common.h>

@@ -698,7 +698,7 @@ auto _genFinalizeRequests(TxnRecord& rec) {
                 .txnTimestamp=rec.mtr.timestamp,
                 .action=endAction
             },
-            std::move(krv));
+            krv);
         }
     }
     rec.writeRanges.clear();
