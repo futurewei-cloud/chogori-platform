@@ -277,8 +277,8 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             return _heartbeat_timer.stop().then([this, s=std::move(status)] () {
                 // TODO get min transaction time from TSO client
                 auto time_spent = Clock::now() - _start_time;
-                if (time_spent < 10us) {
-                    auto sleep = 10us - time_spent;
+                if (time_spent < 50us) {
+                    auto sleep = 50us - time_spent;
                     return seastar::sleep(sleep).then([s=std::move(s)] () {
                         return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
                     });
