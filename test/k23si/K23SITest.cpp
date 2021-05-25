@@ -73,7 +73,7 @@ public:  // application lifespan
             _k2Endpoints.push_back(RPC().getTXEndpoint(ep));
         }
 
-        _cpo_client = CPOClient(_cpoConfigEp());
+        _cpo_client.init(_cpoConfigEp());
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
             _testFuture = seastar::make_ready_future()
@@ -181,7 +181,6 @@ private:
     CPOClient _cpo_client;
     dto::PartitionGetter _pgetter;
     dto::Schema _schema;
-    uint64_t txnids = 10000;
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     doWrite(const dto::Key& key, const DataRec& data, const dto::K23SI_MTR& mtr, const dto::Key& trh, const String& cname, bool isDelete, bool isTRH) {
@@ -195,10 +194,11 @@ private:
         K2LOG_D(log::k23si, "cname={}, key={}, phash={}", cname, key, key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
         dto::K23SIWriteRequest request {
-            .pvid = part.partition->pvid,
+            .pvid = part.partition->keyRangeV.pvid,
             .collectionName = cname,
             .mtr = mtr,
             .trh = trh,
+            .trhCollection = cname,
             .isDelete = isDelete,
             .designateTRH = isTRH,
             .rejectIfExists = false,
@@ -215,7 +215,7 @@ private:
         K2LOG_D(log::k23si, "key={}, phash={}", key, key.partitionHash())
         auto& part = _pgetter.getPartitionForKey(key);
         dto::K23SIReadRequest request {
-            .pvid = part.partition->pvid,
+            .pvid = part.partition->keyRangeV.pvid,
             .collectionName = cname,
             .mtr =mtr,
             .key=key
@@ -237,16 +237,22 @@ private:
     }
 
     seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
-    doEnd(dto::Key trh, dto::K23SI_MTR mtr, const String& cname, bool isCommit, std::vector<dto::Key> wkeys) {
+    doEnd(dto::Key trh, dto::K23SI_MTR mtr, const String& cname, bool isCommit, std::vector<dto::Key> writeKeys) {
         K2LOG_D(log::k23si, "key={}, phash={}", trh, trh.partitionHash())
         auto& part = _pgetter.getPartitionForKey(trh);
+        std::unordered_map<String, std::unordered_set<dto::KeyRangeVersion>> writeRanges;
+
+        for (auto& key: writeKeys) {
+            auto& krv = _pgetter.getPartitionForKey(key).partition->keyRangeV;
+            writeRanges[cname].insert(krv);
+        }
         dto::K23SITxnEndRequest request;
-        request.pvid = part.partition->pvid;
+        request.pvid = part.partition->keyRangeV.pvid;
         request.collectionName = cname;
         request.mtr = mtr;
         request.key = trh;
         request.action = isCommit ? dto::EndAction::Commit : dto::EndAction::Abort;
-        request.writeKeys = wkeys;
+        request.writeRanges = std::move(writeRanges);
         return RPC().callRPC<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(dto::Verbs::K23SI_TXN_END, request, *part.preferredEndpoint, 100ms);
     }
 
@@ -254,12 +260,12 @@ private:
     seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
     doRequestRecords(dto::Key key) {
         auto* request = new dto::K23SIInspectRecordsRequest {
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            dto::PVID{}, // Will be filled in by PartitionRequest
             k2::String(collname),
             std::move(key)
         };
 
-        return _cpo_client.PartitionRequest
+        return _cpo_client.partitionRequest
             <dto::K23SIInspectRecordsRequest, dto::K23SIInspectRecordsResponse, dto::Verbs::K23SI_INSPECT_RECORDS>
             (Deadline<>(1s), *request).
             finally([request] () { delete request; });
@@ -268,13 +274,13 @@ private:
     seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>>
     doRequestTRH(dto::Key trh, dto::K23SI_MTR mtr) {
         auto* request = new dto::K23SIInspectTxnRequest {
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            dto::PVID{}, // Will be filled in by PartitionRequest
             k2::String(collname),
             std::move(trh),
-            std::move(mtr)
+            mtr.timestamp
         };
 
-        return _cpo_client.PartitionRequest
+        return _cpo_client.partitionRequest
             <dto::K23SIInspectTxnRequest, dto::K23SIInspectTxnResponse, dto::Verbs::K23SI_INSPECT_TXN>
             (Deadline<>(1s), *request).
             finally([request] () { delete request; });
@@ -301,7 +307,7 @@ seastar::future<> runScenario01() {
         });
     })
     .then([this] {
-        return doRead({"schema", "Key1","rKey1"},{txnids++,dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
+        return doRead({"schema", "Key1","rKey1"},{dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
     })
     .then([](auto&& response) {
         auto& [status, resp] = response;
@@ -383,7 +389,6 @@ cases requiring client to refresh collection pmap
     .then([this] (dto::Timestamp&& ts) {
         return seastar::do_with(
             dto::K23SI_MTR{
-                .txnid = txnids++,
                 .timestamp = std::move(ts),
                 .priority = dto::TxnPriority::Medium},
             dto::Key{.schemaName = "schema", .partitionKey = "Key1", .rangeKey = "rKey1"},
@@ -447,7 +452,6 @@ seastar::future<> runScenario04() {
         [this](auto& m1, auto& k1, auto& m2, auto& k2) {
             return getTimeNow()
                 .then([&](dto::Timestamp&& ts) {
-                    m1.txnid = txnids++;
                     m1.timestamp = ts;
                     m1.priority = dto::TxnPriority::Medium;
                     return doWrite(k1, {"fk1", "f2"}, m1, k1, collname, false, true);
@@ -458,7 +462,6 @@ seastar::future<> runScenario04() {
                     return getTimeNow();
                 })
                 .then([&](dto::Timestamp&& ts) {
-                    m2.txnid = txnids++;
                     m2.timestamp = ts;
                     m2.priority = dto::TxnPriority::Medium;
                     return doWrite(k2, {"fk2", "f2"}, m2, k2, collname, false, true);
@@ -526,7 +529,6 @@ seastar::future<> runScenario05() {
         [this](auto& m1, auto& k1, auto& m2, auto& k2) {
             return getTimeNow()
                 .then([&](dto::Timestamp&& ts) {
-                    m1.txnid = txnids++;
                     m1.timestamp = ts;
                     m1.priority = dto::TxnPriority::Medium;
                     return doWrite(k1, {"fk1","f2"}, m1, k1, collname, false, true);
@@ -537,7 +539,6 @@ seastar::future<> runScenario05() {
                     return getTimeNow();
                 })
                 .then([&](dto::Timestamp&& ts) {
-                    m2.txnid = txnids++;
                     m2.timestamp = ts;
                     m2.priority = dto::TxnPriority::Medium;
                     return doWrite(k2, {"fk2", "f2"}, m2, k2, collname, false, true);

@@ -68,6 +68,10 @@ public:
     // just wants some consistent(to any observer) ordering among all timestamps even from different TSOs
     CompareResult compareCertain(const Timestamp& other) const;
 
+    // (in)equality comparison
+    bool operator==(const Timestamp& other) const noexcept;
+    bool operator!=(const Timestamp& other) const noexcept;
+
     // returns a timestamp shifted with the given duration
     Timestamp operator-(const Duration d) const;
     Timestamp operator+(const Duration d) const;

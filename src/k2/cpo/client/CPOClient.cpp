@@ -27,12 +27,20 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-CPOClient::CPOClient(String cpo_url) {
+CPOClient::CPOClient() {
+    K2LOG_D(log::cpoclient, "ctor");
+}
+
+void CPOClient::init(String cpo_url) {
     cpo = RPC().getTXEndpoint(cpo_url);
     K2ASSERT(log::cpoclient, cpo, "unable to get endpoint for url {}", cpo_url);
 }
 
-void CPOClient::FulfillWaiters(const String& name, const Status& status) {
+CPOClient::~CPOClient() {
+    K2LOG_D(log::cpoclient, "dtor");
+}
+
+void CPOClient::_fulfillWaiters(const String& name, const Status& status) {
     auto& waiters = requestWaiters[name];
 
     for (auto it = waiters.begin(); it != waiters.end(); ++it) {

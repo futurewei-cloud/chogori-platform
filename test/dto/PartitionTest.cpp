@@ -123,56 +123,56 @@ seastar::future<> runScenario01() {
 
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "d", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
-        K2LOG_D(log::ptest, "startkey: {}, endKey: {}, endpoint: {}, TxEndpoint:{}", part.partition->startKey, part.partition->endKey, *(part.partition->endpoints.begin()), (*part.preferredEndpoint));
-        K2EXPECT(log::ptest, part.partition->startKey, "c");
+        K2LOG_D(log::ptest, "partition: {}", *part.partition);
+        K2EXPECT(log::ptest, part.partition->keyRangeV.startKey, "c");
     })
     .then([this] {
         K2LOG_I(log::ptest, "case2: using an empty key to get Partition with default reverse and exclusiveKey flag");
 
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key);
-        K2LOG_D(log::ptest, "startkey: {}, endKey: {}, endpoint: {}, TxEndpoint:{}", part.partition->startKey, part.partition->endKey, *(part.partition->endpoints.begin()), (*part.preferredEndpoint));
-        K2EXPECT(log::ptest, part.partition->startKey, "");
+        K2LOG_D(log::ptest, "partition: {}", *part.partition);
+        K2EXPECT(log::ptest, part.partition->keyRangeV.startKey, "");
     })
     .then([this] {
         K2LOG_I(log::ptest, "case3: get Partition for key with reverse flag set to be TRUE and default exclusiveKey flag");
 
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "c", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true);
-        K2LOG_D(log::ptest, "startkey: {}, endKey: {}, endpoint: {}, TxEndpoint:{}", part.partition->startKey, part.partition->endKey, *(part.partition->endpoints.begin()), (*part.preferredEndpoint));
-        K2EXPECT(log::ptest, part.partition->startKey, "c");
+        K2LOG_D(log::ptest, "partition: {}", *part.partition);
+        K2EXPECT(log::ptest, part.partition->keyRangeV.startKey, "c");
     })
     .then([this] {
         K2LOG_I(log::ptest, "case4: get Partition for EMPTY key with reverse flag set to be TRUE and default exclusiveKey flag");
 
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true);
-        K2LOG_D(log::ptest, "startkey: {}, endKey: {}, endpoint: {}, TxEndpoint:{}", part.partition->startKey, part.partition->endKey, *(part.partition->endpoints.begin()), (*part.preferredEndpoint));
-        K2EXPECT(log::ptest, part.partition->startKey, "e");
+        K2LOG_D(log::ptest, "partition: {}", *part.partition);
+        K2EXPECT(log::ptest, part.partition->keyRangeV.startKey, "e");
     })
     .then([this] {
         K2LOG_I(log::ptest, "case5: get Partition for key with reverse and exclusiveKey flag set to be TRUE. the key is NOT the Start key of any partitions.");
 
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "a", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true, true);
-        K2LOG_D(log::ptest, "startkey: {}, endKey: {}, endpoint: {}, TxEndpoint:{}", part.partition->startKey, part.partition->endKey, *(part.partition->endpoints.begin()), (*part.preferredEndpoint));
-        K2EXPECT(log::ptest, part.partition->startKey, "");
+        K2LOG_D(log::ptest, "partition: {}", *part.partition);
+        K2EXPECT(log::ptest, part.partition->keyRangeV.startKey, "");
     })
     .then([this] {
         K2LOG_I(log::ptest, "case6: get Partition for key with reverse and exclusiveKey flag set to be TRUE. the key is the Start key of a partition.");
 
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "e", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true, true);
-        K2LOG_D(log::ptest, "startkey: {}, endKey: {}, endpoint: {}, TxEndpoint:{}", part.partition->startKey, part.partition->endKey, *(part.partition->endpoints.begin()), (*part.preferredEndpoint));
-        K2EXPECT(log::ptest, part.partition->startKey, "c");
+        K2LOG_D(log::ptest, "partition: {}", *part.partition);
+        K2EXPECT(log::ptest, part.partition->keyRangeV.startKey, "c");
     })
     .then([this] {
         K2LOG_I(log::ptest, "case7: using an empty key to get Partition with reverse and exclusiveKey flag set to be TRUE.");
 
         k2::dto::Key key{.schemaName = "schema", .partitionKey = "", .rangeKey = ""};
         k2::dto::PartitionGetter::PartitionWithEndpoint& part = _pgetter.getPartitionForKey(key, true, true);
-        K2LOG_D(log::ptest, "startkey: {}, endKey: {}, endpoint: {}, TxEndpoint:{}", part.partition->startKey, part.partition->endKey, *(part.partition->endpoints.begin()), (*part.preferredEndpoint));
-        K2EXPECT(log::ptest, part.partition->startKey, "e");
+        K2LOG_D(log::ptest, "partition: {}", *part.partition);
+        K2EXPECT(log::ptest, part.partition->keyRangeV.startKey, "e");
     });
 }
 

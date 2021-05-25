@@ -22,6 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
+#include <deque>
 
 #include <k2/common/Timer.h>
 #include <k2/cpo/client/CPOClient.h>
@@ -41,11 +42,15 @@ namespace nsbi = boost::intrusive;
 
 // A Transaction record
 struct TxnRecord {
-    dto::TxnId txnId;
+    dto::K23SI_MTR mtr;
 
-    // the keys to which this transaction wrote. These are delivered as part of the End request and we have to ensure
+    // the ranges which have to be finalized. These are delivered as part of the End request and we have to ensure
     // that the corresponding write intents are converted appropriately
-    std::vector<dto::Key> writeKeys;
+    std::unordered_map<String, std::unordered_set<dto::KeyRangeVersion>> writeRanges;
+
+    // The TRH key for this record. This is a routing key (think partition key) and we need this here
+    // so that txn records can be correctly split/merged when a partition split/merge occurs
+    dto::Key trh;
 
     // Expiry time point for retention window - these are driven off each TSO clock update
     dto::Timestamp rwExpiry;
@@ -58,10 +63,16 @@ struct TxnRecord {
     // future used to track this transaction's background processing(e.g. finalize or delete)
     seastar::future<> bgTaskFut = seastar::make_ready_future();
 
+    // flag which can be specified on txn options. If set, we wait for all participants to finalize their
+    // write intents before responding to the client that their txn has been committed
+    // This is useful for example in scenarios which write a lot of data before
+    // running a benchmark. Without sync finalize, the benchmark may trigger too many PUSH conflicts
+    // due to non-finalized WIs still being present in the system.
     bool syncFinalize = false;
-    // The interval from end to Finalize for a transaction
+    // Artificial wait interval used in testing to delay the time between transitioning from End to Finalize
     Duration timeToFinalize{0};
 
+    // the transaction state
     dto::TxnRecordState state = dto::TxnRecordState::Created;
 
     // to tell what end action was used to finalize
@@ -70,8 +81,8 @@ struct TxnRecord {
     // if this transaction ever attempts to commit, we set this flag.
     bool hasAttemptedCommit{false};
 
-    K2_PAYLOAD_FIELDS(txnId, writeKeys, syncFinalize, state, finalizeAction, hasAttemptedCommit);
-    K2_DEF_FMT(TxnRecord, txnId, writeKeys, rwExpiry, hbExpiry, syncFinalize, timeToFinalize, state, finalizeAction, hasAttemptedCommit);
+    K2_PAYLOAD_FIELDS(mtr, writeRanges, trh, syncFinalize, state, finalizeAction, hasAttemptedCommit);
+    K2_DEF_FMT(TxnRecord, mtr, writeRanges, trh, rwExpiry, hbExpiry, syncFinalize, timeToFinalize, state, finalizeAction, hasAttemptedCommit);
 
     // The last action on this TR (the action that put us into the above state)
     K2_DEF_ENUM_IC(Action,
@@ -118,21 +129,18 @@ public: // lifecycle
     // We cache this value and use it to expire transactions when they are outside retention window.
     void updateRetentionTimestamp(dto::Timestamp rts);
 
-    // Returns the record for an id, or nullptr if one does not exist
-    TxnRecord* getTxnRecordNoCreate(dto::TxnId&& txnId);
-
     // returns the record for an id. Creates a new record in Created state if one does not exist
-    TxnRecord& getTxnRecord(dto::TxnId&& txnId);
+    TxnRecord& getTxnRecord(dto::K23SI_MTR&& mtr, dto::Key trhKey);
 
     // creates a new transaction. Returns 2xx code on success or other codes on failure
-    seastar::future<Status> createTxn(dto::TxnId&& txnId);
+    seastar::future<Status> createTxn(dto::K23SI_MTR&& mtr, dto::Key incumbentTRHKey);
 
     // process a heartbeat for the given transaction. Returns 2xx code on success or other codes on failure
-    seastar::future<Status> heartbeat(dto::TxnId&& txnId);
+    seastar::future<Status> heartbeat(dto::K23SI_MTR&& mtr, dto::Key incumbentTRHKey);
 
     // executes a push of the given challenger against the given incumbent.
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
-    push(dto::TxnId&& incumbentId, dto::K23SI_MTR&& challengerMTR);
+    push(dto::K23SI_MTR&& incumbentMTR, dto::K23SI_MTR&& challengerMTR, dto::Key incumbentTRHKey);
 
     // process a client's request to end a transaction
     seastar::future<std::tuple<Status, dto::K23SITxnEndResponse>>
@@ -140,7 +148,7 @@ public: // lifecycle
 
     // inspect transactions
     seastar::future<std::tuple<Status, dto::K23SIInspectAllTxnsResponse>> inspectTxns();
-    seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>> inspectTxn(dto::TxnId&& txnId);
+    seastar::future<std::tuple<Status, dto::K23SIInspectTxnResponse>> inspectTxn(dto::Timestamp txnTimestamp);
 
 private:  // methods driving the state machine
     // delivers the given action for the given transaction and returns the status of executing the action
@@ -175,6 +183,14 @@ private:  // methods driving the state machine
     template<typename Func>
     void _addBgTask(TxnRecord& rec, Func&& func);
 
+    // this helper is used to generate additional finalization requests after
+    // a pmap update is detected during finalization of a particular range
+    // failedReq is the request on which we detected the pmap change
+    // requests is the deque we'll append new requests into.
+    void _genFinalizeReqsAfterPMAPUpdate(dto::K23SITxnFinalizeRequest&& failedReq,
+        std::deque<std::tuple<dto::K23SITxnFinalizeRequest, dto::KeyRangeVersion>>& requests,
+        dto::KeyRangeVersion&& krv);
+
 private: // fields
 
     // Expiry lists. The order in the list is ascending so that the oldest item would be in the front
@@ -185,7 +201,7 @@ private: // fields
     PeriodicTimer _hbTimer;
 
     // the primary store for transaction records
-    std::unordered_map<dto::TxnId, TxnRecord> _transactions;
+    std::unordered_map<dto::Timestamp, TxnRecord> _transactions;
 
     // the configuration for the k23si module
     K23SIConfig _config;

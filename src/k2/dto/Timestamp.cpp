@@ -81,5 +81,14 @@ size_t Timestamp::hash() const {
     return hash_combine(_tEndTSECount, _tStartDelta, _tsoId);
 }
 
+bool Timestamp::operator==(const Timestamp& other) const noexcept {
+    // certain and uncertain have the same behavior when the timestamps are equal
+    return compareUncertain(other) == Timestamp::EQ;
+}
+
+bool Timestamp::operator!=(const Timestamp& other) const noexcept {
+    return !operator==(other);
+}
+
 } // ns dto
 } // ns k2

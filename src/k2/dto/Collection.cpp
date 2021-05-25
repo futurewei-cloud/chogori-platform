@@ -75,15 +75,38 @@ size_t Key::partitionHash() const noexcept {
     return hash;
 }
 
-bool Partition::PVID::operator==(const Partition::PVID& o) const {
-    return id == o.id && rangeVersion == o.rangeVersion && assignmentVersion == o.assignmentVersion;
+// hash value
+size_t KeyRangeVersion::hash() const noexcept {
+    return hash_combine(startKey, endKey, pvid);
 }
 
-bool Partition::PVID::operator!=(const Partition::PVID& o) const {
+// comparison for unordered containers
+bool KeyRangeVersion::operator==(const KeyRangeVersion& o) const noexcept {
+    return startKey == o.startKey && endKey == o.endKey && pvid == o.pvid;
+}
+
+bool KeyRangeVersion::operator!=(const KeyRangeVersion& o) const noexcept {
     return !operator==(o);
 }
 
-PartitionGetter::PartitionWithEndpoint PartitionGetter::GetPartitionWithEndpoint(Partition* p) {
+bool KeyRangeVersion::operator<(const KeyRangeVersion& o) const noexcept {
+    return startKey < o.startKey;
+}
+
+bool PVID::operator==(const PVID& o) const noexcept {
+    return id == o.id && rangeVersion == o.rangeVersion && assignmentVersion == o.assignmentVersion;
+}
+
+bool PVID::operator!=(const PVID& o) const noexcept {
+    return !operator==(o);
+}
+
+// hash value
+size_t PVID::hash() const noexcept {
+    return hash_combine(id, rangeVersion, assignmentVersion);
+}
+
+PartitionGetter::PartitionWithEndpoint PartitionGetter::_getPartitionWithEndpoint(Partition* p) {
     PartitionWithEndpoint partition{};
     partition.partition = p;
     partition.preferredEndpoint = Discovery::selectBestEndpoint(p->endpoints);
@@ -100,7 +123,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
                   ++it) {
             // For range partitioning, we need to use the startKey because the last
             // range end key will be an empty string ("") and wouldn't be sorted correctly
-            RangeMapElement e(it->startKey, GetPartitionWithEndpoint(&(*it)));
+            RangeMapElement e(it->keyRangeV.startKey, _getPartitionWithEndpoint(&(*it)));
             _rangePartitionMap.push_back(std::move(e));
         }
 
@@ -113,11 +136,38 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            HashMapElement e{.hvalue = std::stoull(it->endKey), .partition = GetPartitionWithEndpoint(&(*it))};
+            HashMapElement e{.hvalue = std::stoull(it->keyRangeV.endKey), .partition = _getPartitionWithEndpoint(&(*it))};
             _hashPartitionMap.push_back(std::move(e));
         }
 
         std::sort(_hashPartitionMap.begin(), _hashPartitionMap.end());
+    }
+}
+
+const std::vector<Partition>& PartitionGetter::getAllPartitions() const {
+    return collection.partitionMap.partitions;
+}
+
+PartitionGetter::PartitionWithEndpoint* PartitionGetter::getPartitionForPVID(const PVID& pvid) {
+    switch (collection.metadata.hashScheme) {
+        case HashScheme::Range: {
+            for (auto& el: _rangePartitionMap) {
+                if (el.partition.partition->keyRangeV.pvid == pvid) {
+                    return &el.partition;
+                }
+            }
+            return nullptr;
+        }
+        case HashScheme::HashCRC32C: {
+            for (auto& el: _hashPartitionMap) {
+                if (el.partition.partition->keyRangeV.pvid == pvid) {
+                    return &el.partition;
+                }
+            }
+            return nullptr;
+        }
+        default:
+            throw std::runtime_error("Unknown hash scheme for collection");
     }
 }
 
@@ -179,8 +229,8 @@ OwnerPartition::OwnerPartition(Partition&& part, HashScheme scheme) :
     _scheme(scheme) {
 
     if (_scheme == HashScheme::HashCRC32C) {
-        _hstart = std::stoull(_partition.startKey);
-        _hend = std::stoull(_partition.endKey);
+        _hstart = std::stoull(_partition.keyRangeV.startKey);
+        _hend = std::stoull(_partition.keyRangeV.endKey);
     }
 }
 
@@ -188,17 +238,20 @@ bool OwnerPartition::owns(const Key& key, const bool reverse) const {
     switch (_scheme) {
         case HashScheme::Range:
             if (!reverse) {
-                if (_partition.endKey == "") {
-                    return _partition.startKey.compare(key.partitionKey) <= 0;
+                if (_partition.keyRangeV.endKey == "") {
+                    return _partition.keyRangeV.startKey.compare(key.partitionKey) <= 0;
                 }
 
-                return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) < 0;
+                return _partition.keyRangeV.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.keyRangeV.endKey) < 0;
             } else {
-                if (key.partitionKey == "" && _partition.endKey == "") return true;
-                else if (key.partitionKey == "" && _partition.endKey != "") return false;
-                else if (_partition.endKey == "") return _partition.startKey.compare(key.partitionKey) <= 0;
+                if (key.partitionKey == "" && _partition.keyRangeV.endKey == "")
+                    return true;
+                else if (key.partitionKey == "" && _partition.keyRangeV.endKey != "")
+                    return false;
+                else if (_partition.keyRangeV.endKey == "")
+                    return _partition.keyRangeV.startKey.compare(key.partitionKey) <= 0;
 
-                return _partition.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.endKey) <= 0;
+                return _partition.keyRangeV.startKey.compare(key.partitionKey) <= 0 && key.partitionKey.compare(_partition.keyRangeV.endKey) <= 0;
             }
         case HashScheme::HashCRC32C: {
             auto phash = key.partitionHash();

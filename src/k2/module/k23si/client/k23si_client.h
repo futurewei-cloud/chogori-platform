@@ -23,27 +23,27 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <random>
-#include <vector>
-
-#include <seastar/core/future.hh>
-#include <seastar/core/future-util.hh>
-
-#include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
-#include <k2/common/Log.h>
+#include <k2/appbase/Appbase.h>
 #include <k2/common/Common.h>
+#include <k2/common/Log.h>
+#include <k2/common/Timer.h>
 #include <k2/cpo/client/CPOClient.h>
+#include <k2/dto/Collection.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
-#include <k2/dto/Collection.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
 #include <k2/tso/client/tso_clientlib.h>
-#include <k2/common/Timer.h>
 
-#include "query.h"
+#include <random>
+#include <seastar/core/future-util.hh>
+#include <seastar/core/future.hh>
+#include <seastar/core/shared_ptr.hh>
+#include <vector>
+
 #include "Log.h"
+#include "query.h"
 
 namespace k2 {
 
@@ -168,34 +168,57 @@ private:
     seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh = true);
 
     sm::metric_groups _metric_groups;
-    std::mt19937 _gen;
-    std::uniform_int_distribution<uint64_t> _rnd;
     std::vector<String> _k2endpoints;
 };
 
 
 class K2TxnHandle {
 private:
-    void makeHeartbeatTimer();
-    void checkResponseStatus(Status& status);
+    void _makeHeartbeatTimer();
+    void _checkResponseStatus(Status& status);
 
-    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const dto::Key& key,
+    std::unique_ptr<dto::K23SIReadRequest> _makeReadRequest(const dto::Key& key,
                                                            const String& collectionName) const;
-    std::unique_ptr<dto::K23SIWriteRequest> makeWriteRequest(dto::SKVRecord& record, bool erase,
+    std::unique_ptr<dto::K23SIWriteRequest> _makeWriteRequest(dto::SKVRecord& record, bool erase,
                                                              bool rejectIfExists);
 
     template <class T>
-    std::unique_ptr<dto::K23SIReadRequest> makeReadRequest(const T& user_record) const {
+    std::unique_ptr<dto::K23SIReadRequest> _makeReadRequest(const T& user_record) const {
         dto::SKVRecord record(user_record.collectionName, user_record.schema);
         user_record.__writeFields(record);
 
-        return makeReadRequest(record.getKey(), record.collectionName);
+        return _makeReadRequest(record.getKey(), record.collectionName);
     }
 
-    std::unique_ptr<dto::K23SIWriteRequest> makePartialUpdateRequest(dto::SKVRecord& record,
+    std::unique_ptr<dto::K23SIWriteRequest> _makePartialUpdateRequest(dto::SKVRecord& record,
             std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key);
 
-    void prepareQueryRequest(Query& query);
+    void _prepareQueryRequest(Query& query);
+
+    // Utility method used to register the range for a given write request, after we receive a response for it.
+    // We track these ranges so that we can tell the TRH to finalize WIs in them when the transaction ends.
+    template <class T>
+    void _registerRangeForWrite(Status& status, T& request) {
+        // we only want to register a range for finalization in the happy case, and most error cases (e.g. Timeout)
+        // in particular, we don't want to register a range if the error is one of the following:
+        if (status != dto::K23SIStatus::AbortConflict && // there was a conflict and this write was told to abort
+            status != dto::K23SIStatus::AbortRequestTooOld && // this write was rejected because it was too old
+            status != dto::K23SIStatus::BadParameter && // the write was rejected due to a bad request parameter
+            status != dto::K23SIStatus::ConditionFailed) { // the write was rejected since it specified rejectIfExists and there was an existing record
+            // we're handling this after successfully finding a collection's partition and receiving some
+            // response from it. The cpo client's collections map must have this collection
+            if (auto it=_cpo_client->collections.find(request.collectionName); it != _cpo_client->collections.end()) {
+                auto& krv = it->second->getPartitionForKey(request.key).partition->keyRangeV;
+                _write_ranges[request.collectionName].insert(krv);
+            }
+            else {
+                K2LOG_W(log::skvclient, "collection {} does not exist after handling with status {}", request.collectionName, status);
+            }
+        }
+        else {
+            K2LOG_D(log::skvclient, "Not registering write for key {} after response with status {}", request.key, status);
+        }
+    }
 
 public:
     K2TxnHandle() = default;
@@ -220,17 +243,17 @@ public:
             return seastar::make_ready_future<ReadResult<T>>(ReadResult<T>(_failed_status, T()));
         }
 
-        std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(record);
+        std::unique_ptr<dto::K23SIReadRequest> request = _makeReadRequest(record);
 
         _client->read_ops++;
         _ongoing_ops++;
 
-        return _cpo_client->PartitionRequest
+        return _cpo_client->partitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
             (_options.deadline, *request).
             then([this, request_schema=record.schema, &collName=request->collectionName] (auto&& response) {
                 auto& [status, k2response] = response;
-                checkResponseStatus(status);
+                _checkResponseStatus(status);
                 _ongoing_ops--;
 
                 T userResponseRecord{};
@@ -253,36 +276,39 @@ public:
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
 
-        std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
+        std::unique_ptr<dto::K23SIWriteRequest> request;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
-            request = makeWriteRequest(record, erase, rejectIfExists);
+            request = _makeWriteRequest(record, erase, rejectIfExists);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = makeWriteRequest(skv_record, erase, rejectIfExists);
+            request = _makeWriteRequest(skv_record, erase, rejectIfExists);
         }
 
         _client->write_ops++;
         _ongoing_ops++;
 
-        return _cpo_client->PartitionRequest
+        return _cpo_client->partitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
-            then([this] (auto&& response) {
+            then([this, request=std::move(request)] (auto&& response) {
                 auto& [status, k2response] = response;
-                checkResponseStatus(status);
+
+                _registerRangeForWrite(status, *request);
+
+                _checkResponseStatus(status);
                 _ongoing_ops--;
 
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr);
-                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
-                    makeHeartbeatTimer();
+                    _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
+                    _makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
-            }).finally([r = std::move(request)] () { (void) r; });
+            });
     }
 
     template <typename T>
@@ -319,13 +345,13 @@ public:
         _client->write_ops++;
         _ongoing_ops++;
 
-        std::unique_ptr<dto::K23SIWriteRequest> request = nullptr;
+        std::unique_ptr<dto::K23SIWriteRequest> request;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
             if (key.partitionKey == "") {
                 key = record.getKey();
             }
 
-            request = makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key));
+            request = _makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key));
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
@@ -333,31 +359,34 @@ public:
                 key = skv_record.getKey();
             }
 
-            request = makePartialUpdateRequest(skv_record, fieldsForPartialUpdate, std::move(key));
+            request = _makePartialUpdateRequest(skv_record, fieldsForPartialUpdate, std::move(key));
         }
-        if (request == nullptr) {
+        if (!request) {
             return seastar::make_ready_future<PartialUpdateResult> (
-                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error makePartialUpdateRequest()")) );
+                    PartialUpdateResult(dto::K23SIStatus::BadParameter("error _makePartialUpdateRequest()")) );
         }
 
-        return _cpo_client->PartitionRequest
+        return _cpo_client->partitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
-            then([this] (auto&& response) {
+            then([this, request=std::move(request)] (auto&& response) {
                 auto& [status, k2response] = response;
-                checkResponseStatus(status);
+
+                _registerRangeForWrite(status, *request);
+
+                _checkResponseStatus(status);
                 _ongoing_ops--;
 
                 if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr)
-                    _heartbeat_interval = _cpo_client->collections[_trh_collection].collection.metadata.heartbeatDeadline / 2;
-                    makeHeartbeatTimer();
+                    _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
+                    _makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
 
                 return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
-            }).finally([r = std::move(request)] () { (void) r; });
+            });
     }
 
     seastar::future<WriteResult> erase(SKVRecord& record);
@@ -389,8 +418,12 @@ private:
 
     Duration _heartbeat_interval;
     PeriodicTimer _heartbeat_timer;
-    std::vector<dto::Key> _write_set;
-    dto::Key _trh_key;
+
+    // affected write ranges per collection
+    std::unordered_map<String, std::unordered_set<dto::KeyRangeVersion>> _write_ranges;
+
+    // the trh key and home collection for this transaction
+    std::optional<dto::Key> _trh_key;
     String _trh_collection;
 };
 

@@ -158,12 +158,12 @@ private:
 
                 for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
                     auto& p = resp.collection.partitionMap.partitions[i];
-                    K2EXPECT(log::k23si, p.pvid.rangeVersion, 1);
+                    K2EXPECT(log::k23si, p.keyRangeV.pvid.rangeVersion, 1);
                     K2EXPECT(log::k23si, p.astate, dto::AssignmentState::Assigned);
-                    K2EXPECT(log::k23si, p.pvid.assignmentVersion, 1);
-                    K2EXPECT(log::k23si, p.pvid.id, i);
-                    K2EXPECT(log::k23si, p.startKey, std::to_string(i * partSize));
-                    K2EXPECT(log::k23si, p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
+                    K2EXPECT(log::k23si, p.keyRangeV.pvid.assignmentVersion, 1);
+                    K2EXPECT(log::k23si, p.keyRangeV.pvid.id, i);
+                    K2EXPECT(log::k23si, p.keyRangeV.startKey, std::to_string(i * partSize));
+                    K2EXPECT(log::k23si, p.keyRangeV.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
                     K2EXPECT(log::k23si, *p.endpoints.begin(), _k2ConfigEps()[i]);
                 }
             });

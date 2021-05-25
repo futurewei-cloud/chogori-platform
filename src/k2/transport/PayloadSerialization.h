@@ -29,13 +29,13 @@ Copyright(c) 2020 Futurewei Cloud
 // You have to pass your fields here in order for them to be (de)serialized. This macro works for any
 // field types (both primitive/simple as well as nested/complex) but it does the (de)serialization
 // on a field-by-field basis so it may be less efficient than the one-shot macro below
-#define K2_PAYLOAD_FIELDS(...)                     \
-    struct __K2PayloadSerializableTraitTag__ {};   \
-    void __writeFields(k2::Payload& ___payload_local_macro_var___) const {   \
-        ___payload_local_macro_var___.writeMany(__VA_ARGS__);            \
-    }                                              \
-    bool __readFields(k2::Payload& ___payload_local_macro_var___) {          \
-        return ___payload_local_macro_var___.readMany(__VA_ARGS__);      \
+#define K2_PAYLOAD_FIELDS(...)                                             \
+    struct __K2PayloadSerializableTraitTag__ {};                           \
+    void __writeFields(k2::Payload& ___payload_local_macro_var___) const { \
+        ___payload_local_macro_var___.writeMany(__VA_ARGS__);              \
+    }                                                                      \
+    bool __readFields(k2::Payload& ___payload_local_macro_var___) {        \
+        return ___payload_local_macro_var___.readMany(__VA_ARGS__);        \
     }
 
 // This is a macro which can be put on structures which are directly copyable
