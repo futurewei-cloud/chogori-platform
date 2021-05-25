@@ -82,6 +82,7 @@ size_t Timestamp::hash() const {
 }
 
 bool Timestamp::operator==(const Timestamp& other) const noexcept {
+    // certain and uncertain have the same behavior when the timestamps are equal
     return compareUncertain(other) == Timestamp::EQ;
 }
 

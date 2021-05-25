@@ -141,7 +141,7 @@ K2_DEF_ENUM(TxnWIMetaState,
         Aborted,         // The txn has been aborted
         Committed,       // The txn has been committed
         ForceFinalize,   // We must actively reach out to the TRH to determine how to finalize
-        Finalizing,      // In the process of finalizing the WIs
+        FinalizingWIs,   // In the process of finalizing the WIs
         FinalizedPIP     // The txn has been finalized and we're persisting the txn record
 );
 

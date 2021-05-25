@@ -79,7 +79,7 @@ public:
 
     // Add the given write to the twim identified by the given mtr.
     // If the twim does not exist, a new one is created with the given trh key+collection
-    Status addWrite(dto::K23SI_MTR mtr, dto::Key key, dto::Key trh, String trhCollection);
+    Status addWrite(dto::K23SI_MTR&& mtr, dto::Key&& key, dto::Key&& trh, String&& trhCollection);
 
     // Set the local txn state to abort/commit and stop tracking the given key.
     // Used to perform local optimizations after PUSH operations
@@ -89,8 +89,8 @@ public:
     // Set the state to commit/abort for the given txn
     Status endTxn(dto::Timestamp txnId, dto::EndAction action);
 
-    // Set the state to finalizing
-    Status finalizingTxn(dto::Timestamp txnId);
+    // Set the state to finalizingWIs
+    Status finalizingWIs(dto::Timestamp txnId);
 
     // Set the state to finalized
     Status finalizedTxn(dto::Timestamp txnId);

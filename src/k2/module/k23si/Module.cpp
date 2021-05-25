@@ -1264,7 +1264,7 @@ K23SIPartitionModule::handleTxnFinalize(dto::K23SITxnFinalizeRequest&& request) 
     }
 
     // Put the twim in Finalizing state
-    if (auto status=_twimMgr.finalizingTxn(request.txnTimestamp); !status.is2xxOK()) {
+    if (auto status=_twimMgr.finalizingWIs(request.txnTimestamp); !status.is2xxOK()) {
         K2LOG_W(log::skvsvr, "Unable to start finalizing in transaction {} with local txn metadata due to {}", request.txnTimestamp, status);
         return RPCResponse(std::move(status), dto::K23SITxnFinalizeResponse{});
     };

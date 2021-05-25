@@ -195,12 +195,16 @@ private:
 
     void _prepareQueryRequest(Query& query);
 
+    // Utility method used to register the range for a given write request, after we receive a response for it.
+    // We track these ranges so that we can tell the TRH to finalize WIs in them when the transaction ends.
     template <class T>
-    void _registerWrite(Status& status, T& request) {
-        if (status != dto::K23SIStatus::AbortConflict &&
-            status != dto::K23SIStatus::AbortRequestTooOld &&
-            status != dto::K23SIStatus::BadParameter &&
-            status != dto::K23SIStatus::ConditionFailed) {
+    void _registerRangeForWrite(Status& status, T& request) {
+        // we only want to register a range for finalization in the happy case, and most error cases (e.g. Timeout)
+        // in particular, we don't want to register a range if the error is one of the following:
+        if (status != dto::K23SIStatus::AbortConflict && // there was a conflict and this write was told to abort
+            status != dto::K23SIStatus::AbortRequestTooOld && // this write was rejected because it was too old
+            status != dto::K23SIStatus::BadParameter && // the write was rejected due to a bad request parameter
+            status != dto::K23SIStatus::ConditionFailed) { // the write was rejected since it specified rejectIfExists and there was an existing record
             // we're handling this after successfully finding a collection's partition and receiving some
             // response from it. The cpo client's collections map must have this collection
             if (auto it=_cpo_client->collections.find(request.collectionName); it != _cpo_client->collections.end()) {
@@ -290,7 +294,7 @@ public:
             then([this, request=std::move(request)] (auto&& response) {
                 auto& [status, k2response] = response;
 
-                _registerWrite(status, *request);
+                _registerRangeForWrite(status, *request);
 
                 _checkResponseStatus(status);
                 _ongoing_ops--;
@@ -368,7 +372,7 @@ public:
             then([this, request=std::move(request)] (auto&& response) {
                 auto& [status, k2response] = response;
 
-                _registerWrite(status, *request);
+                _registerRangeForWrite(status, *request);
 
                 _checkResponseStatus(status);
                 _ongoing_ops--;

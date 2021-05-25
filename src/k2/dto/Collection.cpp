@@ -106,7 +106,7 @@ size_t PVID::hash() const noexcept {
     return hash_combine(id, rangeVersion, assignmentVersion);
 }
 
-PartitionGetter::PartitionWithEndpoint PartitionGetter::GetPartitionWithEndpoint(Partition* p) {
+PartitionGetter::PartitionWithEndpoint PartitionGetter::_getPartitionWithEndpoint(Partition* p) {
     PartitionWithEndpoint partition{};
     partition.partition = p;
     partition.preferredEndpoint = Discovery::selectBestEndpoint(p->endpoints);
@@ -123,7 +123,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
                   ++it) {
             // For range partitioning, we need to use the startKey because the last
             // range end key will be an empty string ("") and wouldn't be sorted correctly
-            RangeMapElement e(it->keyRangeV.startKey, GetPartitionWithEndpoint(&(*it)));
+            RangeMapElement e(it->keyRangeV.startKey, _getPartitionWithEndpoint(&(*it)));
             _rangePartitionMap.push_back(std::move(e));
         }
 
@@ -136,7 +136,7 @@ PartitionGetter::PartitionGetter(Collection&& col) : collection(std::move(col)) 
         for (auto it = collection.partitionMap.partitions.begin();
                   it != collection.partitionMap.partitions.end();
                   ++it) {
-            HashMapElement e{.hvalue = std::stoull(it->keyRangeV.endKey), .partition = GetPartitionWithEndpoint(&(*it))};
+            HashMapElement e{.hvalue = std::stoull(it->keyRangeV.endKey), .partition = _getPartitionWithEndpoint(&(*it))};
             _hashPartitionMap.push_back(std::move(e));
         }
 

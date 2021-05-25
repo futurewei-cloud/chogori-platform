@@ -79,6 +79,7 @@ K2_DEF_ENUM(AssignmentState,
 // the partition version - used to validate the targeted partition in client requests, by
 // ensuring that the client and server have the same understanding of the currently hosted
 // partition at a particular K2 node
+// This is sent on each and every request to the cluster and so we'd like to keep it as tight as possible
 struct PVID {
     // the partition id
     uint64_t id = 0;
@@ -226,7 +227,7 @@ public:
     Collection collection;
 
 private:
-    static PartitionWithEndpoint GetPartitionWithEndpoint(Partition* p);
+    static PartitionWithEndpoint _getPartitionWithEndpoint(Partition* p);
 
     struct RangeMapElement {
         RangeMapElement(const String& k, PartitionWithEndpoint part) : key(k), partition(std::move(part)) {}

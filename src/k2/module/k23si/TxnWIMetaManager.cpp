@@ -130,7 +130,7 @@ void TxnWIMetaManager::updateRetentionTimestamp(dto::Timestamp rts) {
     _retentionTs = rts;
 }
 
-Status TxnWIMetaManager::addWrite(dto::K23SI_MTR mtr, dto::Key key, dto::Key trh, String trhCollection) {
+Status TxnWIMetaManager::addWrite(dto::K23SI_MTR&& mtr, dto::Key&& key, dto::Key&& trh, String&& trhCollection) {
     K2LOG_D(log::skvsvr, "Adding write for mtr={}, key={}, trh={}, trhCollection={}", mtr, key, trh, trhCollection);
     auto& rec = _twims[mtr.timestamp];
     if (rec.state == dto::TxnWIMetaState::Created) {
@@ -177,7 +177,7 @@ Status TxnWIMetaManager::endTxn(dto::Timestamp txnId, dto::EndAction action) {
     return _onAction(action == dto::EndAction::Commit ? Action::onCommit : Action::onAbort, it->second);
 }
 
-Status TxnWIMetaManager::finalizingTxn(dto::Timestamp txnId) {
+Status TxnWIMetaManager::finalizingWIs(dto::Timestamp txnId) {
     auto it = _twims.find(txnId);
     if (it == _twims.end()) {
         return Statuses::S404_Not_Found(fmt::format("transaction ID {} not found in finalizing", txnId));
@@ -302,7 +302,7 @@ Status TxnWIMetaManager::_onAction(Action action, TxnWIMeta& twim) {
                 return Statuses::S500_Internal_Server_Error(fmt::format("Action {} not supported in state {}", action, twim.state));
             }
         }
-        case dto::TxnWIMetaState::Finalizing: switch (action) {
+        case dto::TxnWIMetaState::FinalizingWIs: switch (action) {
             case Action::onFinalized: {
                 return _finalizedPIP(twim);
             }
@@ -424,7 +424,7 @@ Status TxnWIMetaManager::_forceFinalize(TxnWIMeta& twim) {
 }
 
 Status TxnWIMetaManager::_finalizing(TxnWIMeta& twim) {
-    auto newState = dto::TxnWIMetaState::Finalizing;
+    auto newState = dto::TxnWIMetaState::FinalizingWIs;
     K2LOG_D(log::skvsvr, "Entering state: {}", newState);
     twim.state = newState;
     twim.unlinkRW(_rwlist);
