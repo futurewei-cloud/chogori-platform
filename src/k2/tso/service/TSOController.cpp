@@ -21,18 +21,17 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <algorithm>    // std::min/max
-#include <tuple>
-
-#include <boost/range/irange.hpp>
-
-#include "seastar/core/sleep.hh"
-
+#include <k2/common/Chrono.h>
 #include <k2/common/Log.h>
 #include <k2/config/Config.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 
+#include <algorithm>  // std::min/max
+#include <boost/range/irange.hpp>
+#include <tuple>
+
 #include "TSOService.h"
+#include "seastar/core/sleep.hh"
 
 namespace k2
 {
@@ -96,18 +95,18 @@ seastar::future<> TSOService::TSOController::InitializeInternal()
 
 void TSOService::TSOController::InitWorkerControlInfo()
 {
-    
+    uint16_t tbWindow = std::min((uint16_t)nsec(_defaultTBWindowSize()).count(), (uint16_t)(1 << 16));
     // initialize TSOWorkerControlInfo
     _lastSentControlInfo.IgnoreThreshold =  _ignoreReservedTimeThreshold();
-    _lastSentControlInfo.TBENanoSecStep =   seastar::smp::count - 1;            // same as number of worker cores
-    _lastSentControlInfo.TsDelta =          _defaultTBWindowSize().count();     // uncertain window size of timestamp from the batch is also default _defaultTBWindowSize
-    _lastSentControlInfo.BatchTTL =         _defaultTBWindowSize().count();     // batch's TTL is also _defaultTBWindowSize
+    _lastSentControlInfo.TBENanoSecStep =   seastar::smp::count - 1; // same as number of worker cores
+    _lastSentControlInfo.TsDelta = tbWindow; // uncertain window size of timestamp from the batch is also default _defaultTBWindowSize
+    _lastSentControlInfo.BatchTTL = tbWindow; // batch's TTL is also _defaultTBWindowSize
 
     _controlInfoToSend.IgnoreThreshold =    _ignoreReservedTimeThreshold();
     K2LOG_I(log::tsoserver, "InitWorkerControlInfo, IgnoreThreshold:{}", _controlInfoToSend.IgnoreThreshold);
     _controlInfoToSend.TBENanoSecStep =     seastar::smp::count - 1;
-    _controlInfoToSend.TsDelta =            _defaultTBWindowSize().count();
-    _controlInfoToSend.BatchTTL =           _defaultTBWindowSize().count();
+    _controlInfoToSend.TsDelta = tbWindow;
+    _controlInfoToSend.BatchTTL = tbWindow;
 }
 
 seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
@@ -144,12 +143,12 @@ seastar::future<> TSOService::TSOController::GetAllWorkerURLs()
    GET_TSO_SERVER_URLS
 
    TSO server pool are a group of independent TSO servers/nodes connected to its own TimeAuthority/AtomicClock.
-   This API allow client to get all currently live TSO servers/nodes from any one of them. 
-   TSO client is expected to start with a cmd option prividing a subset of TSO servers and update the list later. 
+   This API allow client to get all currently live TSO servers/nodes from any one of them.
+   TSO client is expected to start with a cmd option prividing a subset of TSO servers and update the list later.
    TODO:
       1. implement client side logic of updating the server list by calling this API.
-      2. TSO servers could form a gossip cluster, to discovery each other and more rarely to detect if anyone's 
-         TimeAuthority/AtomicClock is out of band. 
+      2. TSO servers could form a gossip cluster, to discovery each other and more rarely to detect if anyone's
+         TimeAuthority/AtomicClock is out of band.
 */
 seastar::future<std::tuple<Status, dto::GetTSOServerURLsResponse>>
 TSOService::TSOController::handleGetTSOServerURLs(dto::GetTSOServerURLsRequest&& request)
