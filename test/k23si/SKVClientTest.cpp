@@ -28,7 +28,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sleep.hh>
 using namespace k2;
 #include "Log.h"
-const char* collname = "k23si_test_collection";
+const char* collname1 = "k23si_test_collection1";
+const char* collname2 = "k23si_test_collection2";
+const char* collname3 = "k23si_test_collection3";
 
 class SKVClientTest {
 
@@ -51,27 +53,96 @@ public:  // application lifespan
                 return _client.start();
             })
             .then([this] {
-                K2LOG_I(log::k23si, "Creating test collection...");
-                return _client.makeCollection(collname);
+                auto eps = ConfigVar<std::vector<String>>("tcp_remotes");
+                K2LOG_I(log::k23si, "Creating test collection with eps {}", eps());
+
+                dto::CollectionMetadata md1{
+                    .name = collname1,
+                    .hashScheme = dto::HashScheme::HashCRC32C,
+                    .storageDriver = dto::StorageDriver::K23SI,
+                    .capacity = {},
+                    .retentionPeriod = 2h
+                };
+                dto::CollectionMetadata md2{
+                    .name = collname2,
+                    .hashScheme = dto::HashScheme::HashCRC32C,
+                    .storageDriver = dto::StorageDriver::K23SI,
+                    .capacity = {},
+                    .retentionPeriod = 2h
+                };
+                dto::CollectionMetadata md3{
+                    .name = collname3,
+                    .hashScheme = dto::HashScheme::HashCRC32C,
+                    .storageDriver = dto::StorageDriver::K23SI,
+                    .capacity = {},
+                    .retentionPeriod = 2h
+                };
+                return seastar::when_all_succeed(
+                    _client.makeCollection(std::move(md1), {eps()[0]}),
+                    _client.makeCollection(std::move(md2), {eps()[1]}),
+                    _client.makeCollection(std::move(md3), {eps()[2]}),
+                    seastar::sleep(1s)
+                );
             })
-            .then([](auto&& status) {
-                K2EXPECT(log::k23si, status.is2xxOK(), true);
+            .then([](auto&& statuses) {
+                auto& [status1, status2, status3] = statuses;
+                K2ASSERT(log::k23si, status1.is2xxOK(), "bad status: {}", status1);
+                K2ASSERT(log::k23si, status2.is2xxOK(), "bad status: {}", status2);
+                K2ASSERT(log::k23si, status3.is2xxOK(), "bad status: {}", status3);
             })
             .then([this] () {
                 dto::Schema schema;
-                schema.name = "schema";
+                schema.name = "1_schema";
                 schema.version = 1;
                 schema.fields = std::vector<dto::SchemaField> {
-                        {dto::FieldType::STRING, "partition", false, false},
-                        {dto::FieldType::STRING, "range", false, false},
-                        {dto::FieldType::STRING, "f1", false, false},
-                        {dto::FieldType::STRING, "f2", false, false},
+                        {dto::FieldType::STRING, "1_partition", false, false},
+                        {dto::FieldType::STRING, "1_range", false, false},
+                        {dto::FieldType::STRING, "1_f1", false, false},
+                        {dto::FieldType::STRING, "1_f2", false, false},
                 };
 
-                schema.setPartitionKeyFieldsByName(std::vector<String>{"partition"});
-                schema.setRangeKeyFieldsByName(std::vector<String> {"range"});
+                schema.setPartitionKeyFieldsByName(std::vector<String>{"1_partition"});
+                schema.setRangeKeyFieldsByName(std::vector<String> {"1_range"});
 
-                return _client.createSchema(collname, std::move(schema));
+                return _client.createSchema(collname1, std::move(schema));
+            })
+            .then([] (auto&& result) {
+                K2EXPECT(log::k23si, result.status.is2xxOK(), true);
+            })
+            .then([this] () {
+                dto::Schema schema;
+                schema.name = "2_schema";
+                schema.version = 2;
+                schema.fields = std::vector<dto::SchemaField> {
+                        {dto::FieldType::INT32T, "2_partition", false, false},
+                        {dto::FieldType::STRING, "2_range", false, false},
+                        {dto::FieldType::STRING, "f2_1", false, false},
+                        {dto::FieldType::STRING, "f2_2", false, false},
+                };
+
+                schema.setPartitionKeyFieldsByName(std::vector<String>{"2_partition"});
+                schema.setRangeKeyFieldsByName(std::vector<String> {"2_range"});
+
+                return _client.createSchema(collname2, std::move(schema));
+            })
+            .then([] (auto&& result) {
+                K2EXPECT(log::k23si, result.status.is2xxOK(), true);
+            })
+            .then([this] () {
+                dto::Schema schema;
+                schema.name = "3_schema";
+                schema.version = 3;
+                schema.fields = std::vector<dto::SchemaField> {
+                        {dto::FieldType::INT32T, "3_partition", false, false},
+                        {dto::FieldType::BOOL, "3_range", false, false},
+                        {dto::FieldType::STRING, "f3_1", false, false},
+                        {dto::FieldType::STRING, "f3_2", false, false},
+                };
+
+                schema.setPartitionKeyFieldsByName(std::vector<String>{"3_partition"});
+                schema.setRangeKeyFieldsByName(std::vector<String> {"3_range"});
+
+                return _client.createSchema(collname3, std::move(schema));
             })
             .then([] (auto&& result) {
                 K2EXPECT(log::k23si, result.status.is2xxOK(), true);
@@ -85,6 +156,7 @@ public:  // application lifespan
             .then([this] { return runScenario07(); })
             .then([this] { return runScenario08(); })
             .then([this] { return runScenario09(); })
+            .then([this] { return runScenario10(); })
             .then([this] {
                 K2LOG_I(log::k23si, "======= All tests passed ========");
                 exitcode = 0;
@@ -133,12 +205,12 @@ seastar::future<> runScenario01() {
         return seastar::do_with(
             std::move(txn),
             [this] (K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey");
                     record.serializeNext<String>("rangekey");
                     record.serializeNext<String>("data1");
@@ -151,13 +223,13 @@ seastar::future<> runScenario01() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this] () {
-                    return _client.getSchema(collname, "schema", K23SIClient::ANY_VERSION);
+                    return _client.getSchema(collname1, "1_schema", K23SIClient::ANY_VERSION);
                 })
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey");
                     record.serializeNext<String>("rangekey");
 
@@ -196,12 +268,12 @@ seastar::future<> runScenario01() {
         return seastar::do_with(
             std::move(txn),
             [this] (K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey");
                     record.serializeNext<String>("rangekey");
                     record.serializeNext<String>("data1-2");
@@ -214,13 +286,13 @@ seastar::future<> runScenario01() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this] () {
-                    return _client.getSchema(collname, "schema", 1);
+                    return _client.getSchema(collname1, "1_schema", 1);
                 })
                 .then([&txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey");
                     record.serializeNext<String>("rangekey");
                     record.serializeNext<String>("data1-3");
@@ -251,12 +323,12 @@ seastar::future<> runScenario02() {
         return seastar::do_with(
             std::move(txn),
             [this] (K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey_02");
                     record.serializeNext<String>("rangekey_02");
                     record.serializeNext<String>("data1");
@@ -288,12 +360,12 @@ seastar::future<> runScenario03() {
         return seastar::do_with(
             std::move(txn),
             [this] (K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey_s03");
                     record.serializeNext<String>("rangekey_s03");
                     record.serializeNext<String>("data1");
@@ -310,13 +382,13 @@ seastar::future<> runScenario03() {
                 })
                 .then([this](auto&& response) {
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
-                    return _client.getSchema(collname, "schema", 1);
+                    return _client.getSchema(collname1, "1_schema", 1);
                 })
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey_s03_2");
                     record.serializeNext<String>("rangekey_s03_2");
                     record.serializeNext<String>("data1");
@@ -348,41 +420,41 @@ seastar::future<> runScenario04() {
         return seastar::do_with(
             std::move(txn),
             [this] (K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
                     // records for read
-                    dto::SKVRecord rdrecord3(collname, schemaPtr);
+                    dto::SKVRecord rdrecord3(collname1, schemaPtr);
                     rdrecord3.serializeNext<String>("partkey_s04");
                     rdrecord3.serializeNext<String>("rangekey_s04");
-                    dto::SKVRecord rdrecord4(collname, schemaPtr);
+                    dto::SKVRecord rdrecord4(collname1, schemaPtr);
                     rdrecord4.serializeNext<String>("partkey_s04");
                     rdrecord4.serializeNext<String>("rangekey_s04");
-                    dto::SKVRecord rdrecord5(collname, schemaPtr);
+                    dto::SKVRecord rdrecord5(collname1, schemaPtr);
                     rdrecord5.serializeNext<String>("partkey_s04");
                     rdrecord5.serializeNext<String>("rangekey_s04");
-                    dto::SKVRecord rdrecord6(collname, schemaPtr);
+                    dto::SKVRecord rdrecord6(collname1, schemaPtr);
                     rdrecord6.serializeNext<String>("partkey_s04");
                     rdrecord6.serializeNext<String>("rangekey_s04");
-                    dto::SKVRecord rdrecord7(collname, schemaPtr);
+                    dto::SKVRecord rdrecord7(collname1, schemaPtr);
                     rdrecord7.serializeNext<String>("partkey_s04");
                     rdrecord7.serializeNext<String>("rangekey_s04");
-                    dto::SKVRecord rdrecord8(collname, schemaPtr);
+                    dto::SKVRecord rdrecord8(collname1, schemaPtr);
                     rdrecord8.serializeNext<String>("partkey_s04");
                     rdrecord8.serializeNext<String>("rangekey_s04");
 
                     // records for partial update
-                    dto::SKVRecord record0(collname, schemaPtr);
-                    dto::SKVRecord record1(collname, schemaPtr);
-                    dto::SKVRecord record2(collname, schemaPtr);
-                    dto::SKVRecord record3(collname, schemaPtr);
-                    dto::SKVRecord record4(collname, schemaPtr);
-                    dto::SKVRecord record5(collname, schemaPtr);
-                    dto::SKVRecord record6(collname, schemaPtr);
-                    dto::SKVRecord record7(collname, schemaPtr);
-                    dto::SKVRecord record8(collname, schemaPtr);
+                    dto::SKVRecord record0(collname1, schemaPtr);
+                    dto::SKVRecord record1(collname1, schemaPtr);
+                    dto::SKVRecord record2(collname1, schemaPtr);
+                    dto::SKVRecord record3(collname1, schemaPtr);
+                    dto::SKVRecord record4(collname1, schemaPtr);
+                    dto::SKVRecord record5(collname1, schemaPtr);
+                    dto::SKVRecord record6(collname1, schemaPtr);
+                    dto::SKVRecord record7(collname1, schemaPtr);
+                    dto::SKVRecord record8(collname1, schemaPtr);
 
                     // initialization
                     record0.serializeNext<String>("partkey_s04");
@@ -494,7 +566,7 @@ seastar::future<> runScenario04() {
                         })
                         .then([&] {
                             // case 4
-                            return txnHandle.partialUpdate<dto::SKVRecord>(rec4, (std::vector<String>){"f2"})
+                            return txnHandle.partialUpdate<dto::SKVRecord>(rec4, (std::vector<String>){"1_f2"})
                             .then([](auto&& response) {
                                 K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
                                 return seastar::make_ready_future<>();
@@ -544,7 +616,7 @@ seastar::future<> runScenario04() {
                         })
                         .then([&] {
                             // case 6
-                            return txnHandle.partialUpdate<dto::SKVRecord>(rec6, (std::vector<String>){"f1"})
+                            return txnHandle.partialUpdate<dto::SKVRecord>(rec6, (std::vector<String>){"1_f1"})
                             .then([](auto&& response) {
                                 K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
                                 return seastar::make_ready_future<>();
@@ -569,7 +641,7 @@ seastar::future<> runScenario04() {
                         })
                         .then([&] {
                             // case 7
-                            return txnHandle.partialUpdate<dto::SKVRecord>(rec7, (std::vector<String>){"f1"})
+                            return txnHandle.partialUpdate<dto::SKVRecord>(rec7, (std::vector<String>){"1_f1"})
                             .then([](auto&& response) {
                                 K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
                                 return seastar::make_ready_future<>();
@@ -611,12 +683,12 @@ seastar::future<> runScenario04() {
         return seastar::do_with(
             std::move(txn),
             [this] (K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([&txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey_s04");
                     record.serializeNext<String>("rangekey_s04");
                     record.serializeNull();
@@ -649,35 +721,35 @@ seastar::future<> runScenario05() {
     return seastar::make_ready_future<>()
     .then([this] {
         dto::Schema schema2, schema3;
-        schema2.name = "schema";
+        schema2.name = "1_schema";
         schema2.version = 2;
         schema2.fields = std::vector<dto::SchemaField> {
-                {dto::FieldType::STRING, "partition", false, false},
-                {dto::FieldType::STRING, "range", false, false},
-                {dto::FieldType::STRING, "f2", false, false},
-                {dto::FieldType::STRING, "f1", false, false},
+                {dto::FieldType::STRING, "1_partition", false, false},
+                {dto::FieldType::STRING, "1_range", false, false},
+                {dto::FieldType::STRING, "1_f2", false, false},
+                {dto::FieldType::STRING, "1_f1", false, false},
         };
-        schema2.setPartitionKeyFieldsByName(std::vector<String>{"partition"});
-        schema2.setRangeKeyFieldsByName(std::vector<String> {"range"});
+        schema2.setPartitionKeyFieldsByName(std::vector<String>{"1_partition"});
+        schema2.setRangeKeyFieldsByName(std::vector<String>{"1_range"});
 
-        schema3.name = "schema";
+        schema3.name = "1_schema";
         schema3.version = 3;
-        schema3.fields = std::vector<dto::SchemaField> {
-                {dto::FieldType::STRING,  "partition", false, false},
-                {dto::FieldType::STRING,  "range", false, false},
-                {dto::FieldType::INT64T, "f3", false, false},
-                {dto::FieldType::INT32T, "f2", false, false},
-                {dto::FieldType::STRING,  "f1", false, false},
+        schema3.fields = std::vector<dto::SchemaField>{
+            {dto::FieldType::STRING, "1_partition", false, false},
+            {dto::FieldType::STRING, "1_range", false, false},
+            {dto::FieldType::INT64T, "1_f3", false, false},
+            {dto::FieldType::INT32T, "1_f2", false, false},
+            {dto::FieldType::STRING, "1_f1", false, false},
         };
-        schema3.setPartitionKeyFieldsByName(std::vector<String>{"partition"});
-        schema3.setRangeKeyFieldsByName(std::vector<String> {"range"});
+        schema3.setPartitionKeyFieldsByName(std::vector<String>{"1_partition"});
+        schema3.setRangeKeyFieldsByName(std::vector<String>{"1_range"});
 
-        return seastar::when_all( _client.createSchema(collname, std::move(schema2)), _client.createSchema(collname, std::move(schema3)) );
+        return seastar::when_all_succeed(
+            _client.createSchema(collname1, std::move(schema2)),
+            _client.createSchema(collname1, std::move(schema3)));
     })
-    .then([] (auto&& response) mutable {
-        auto& [result1, result2] = response;
-        auto status1 = result1.get0();
-        auto status2 = result2.get0();
+    .then([] (auto&& responses) mutable {
+        auto& [status1, status2] = responses;
         K2EXPECT(log::k23si, status1.status.is2xxOK(), true);
         K2EXPECT(log::k23si, status2.status.is2xxOK(), true);
     })
@@ -687,12 +759,12 @@ seastar::future<> runScenario05() {
             return seastar::do_with(
                 std::move(txn),
                 [this](K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record0(collname, schemaPtr);
+                    dto::SKVRecord record0(collname1, schemaPtr);
                     // initialization
                     record0.serializeNext<String>("partkey_s05");
                     record0.serializeNext<String>("rangekey_s05");
@@ -706,13 +778,13 @@ seastar::future<> runScenario05() {
                 })
                 // case 1: same fields but different orders
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 2);
+                    return _client.getSchema(collname1, "1_schema", 2);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record1(collname, schemaPtr);
+                    dto::SKVRecord record1(collname1, schemaPtr);
                     record1.serializeNext<String>("partkey_s05");
                     record1.serializeNext<String>("rangekey_s05");
                     record1.serializeNext<String>("data2_v2");
@@ -724,13 +796,13 @@ seastar::future<> runScenario05() {
                     });
                 })
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 2);
+                    return _client.getSchema(collname1, "1_schema", 2);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord read1(collname, schemaPtr);
+                    dto::SKVRecord read1(collname1, schemaPtr);
                     read1.serializeNext<String>("partkey_s05");
                     read1.serializeNext<String>("rangekey_s05");
 
@@ -751,13 +823,13 @@ seastar::future<> runScenario05() {
                 })
                 // case 2: missing a field with same field name but different field type
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 3);
+                    return _client.getSchema(collname1, "1_schema", 3);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record2(collname, schemaPtr);
+                    dto::SKVRecord record2(collname1, schemaPtr);
                     record2.serializeNext<String>("partkey_s05");
                     record2.serializeNext<String>("rangekey_s05");
                     record2.serializeNext<int64_t>(64001234);
@@ -771,50 +843,50 @@ seastar::future<> runScenario05() {
                 })
                 // case 3: add some fields, but leaving them empty
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 3);
+                    return _client.getSchema(collname1, "1_schema", 3);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record3(collname, schemaPtr);
+                    dto::SKVRecord record3(collname1, schemaPtr);
                     record3.serializeNext<String>("partkey_s05");
                     record3.serializeNext<String>("rangekey_s05");
                     record3.serializeNull();
                     record3.serializeNext<int32_t>(32001234);
                     record3.serializeNext<String>("data1_v3");
-                    return txnHandle.partialUpdate<dto::SKVRecord>(record3, (std::vector<String>){"f1", "f2"})
+                    return txnHandle.partialUpdate<dto::SKVRecord>(record3, (std::vector<String>){"1_f1", "1_f2"})
                     .then([](auto&& response) {
                         K2EXPECT(log::k23si, response.status, dto::K23SIStatus::BadParameter);
                     });
                 })
                 // case 4: add some fields, do not contain some of the pre-existing fields
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 3);
+                    return _client.getSchema(collname1, "1_schema", 3);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record4(collname, schemaPtr);
+                    dto::SKVRecord record4(collname1, schemaPtr);
                     record4.serializeNext<String>("partkey_s05");
                     record4.serializeNext<String>("rangekey_s05");
                     record4.serializeNext<int64_t>(64001234);
                     record4.serializeNext<int32_t>(32001234);
                     record4.serializeNull();
-                    return txnHandle.partialUpdate<dto::SKVRecord>(record4, (std::vector<String>){"f3", "f2"})
+                    return txnHandle.partialUpdate<dto::SKVRecord>(record4, (std::vector<String>){"1_f3", "1_f2"})
                     .then([](auto&& response) {
                         K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
                     });
                 })
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 3);
+                    return _client.getSchema(collname1, "1_schema", 3);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord read4(collname, schemaPtr);
+                    dto::SKVRecord read4(collname1, schemaPtr);
                     read4.serializeNext<String>("partkey_s05");
                     read4.serializeNext<String>("rangekey_s05");
 
@@ -837,30 +909,30 @@ seastar::future<> runScenario05() {
                 })
                 // case 5: decrease some fields, and update value-fields to null-fields
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 2);
+                    return _client.getSchema(collname1, "1_schema", 2);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record5(collname, schemaPtr);
+                    dto::SKVRecord record5(collname1, schemaPtr);
                     record5.serializeNext<String>("partkey_s05");
                     record5.serializeNext<String>("rangekey_s05");
                     record5.serializeNull();
                     record5.serializeNull();
-                    return txnHandle.partialUpdate<dto::SKVRecord>(record5, (std::vector<String>){"f2", "f1"})
+                    return txnHandle.partialUpdate<dto::SKVRecord>(record5, (std::vector<String>){"1_f2", "1_f1"})
                     .then([](auto&& response) {
                         K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
                     });
                 })
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 2);
+                    return _client.getSchema(collname1, "1_schema", 2);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord read5(collname, schemaPtr);
+                    dto::SKVRecord read5(collname1, schemaPtr);
                     read5.serializeNext<String>("partkey_s05");
                     read5.serializeNext<String>("rangekey_s05");
 
@@ -881,13 +953,13 @@ seastar::future<> runScenario05() {
                 })
                 // case 6: update fields from null to null
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 1);
+                    return _client.getSchema(collname1, "1_schema", 1);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record6(collname, schemaPtr);
+                    dto::SKVRecord record6(collname1, schemaPtr);
                     record6.serializeNext<String>("partkey_s05");
                     record6.serializeNext<String>("rangekey_s05");
                     record6.serializeNull();
@@ -898,13 +970,13 @@ seastar::future<> runScenario05() {
                     });
                 })
                 .then([&] {
-                    return _client.getSchema(collname, "schema", 1);
+                    return _client.getSchema(collname1, "1_schema", 1);
                 })
                 .then([&](auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord read6(collname, schemaPtr);
+                    dto::SKVRecord read6(collname1, schemaPtr);
                     read6.serializeNext<String>("partkey_s05");
                     read6.serializeNext<String>("rangekey_s05");
 
@@ -938,12 +1010,12 @@ seastar::future<> runScenario06() {
         return seastar::do_with(
             std::move(txn),
             [this] (K2TxnHandle& txnHandle) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey");
                     // not specifying range key record.serializeNext<String>("rangekey");
 
@@ -973,12 +1045,12 @@ seastar::future<> runScenario07() {
         return seastar::do_with(
             std::move(txn), dto::Key(), std::shared_ptr<dto::Schema>(),
             [this] (K2TxnHandle& txnHandle, dto::Key& key, std::shared_ptr<dto::Schema>& my_schema) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle, &key, &my_schema] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey07");
                     record.serializeNext<String>("rangekey07");
                     record.serializeNext<String>("data1");
@@ -994,7 +1066,7 @@ seastar::future<> runScenario07() {
                 })
                 .then([this, &txnHandle, &key, &my_schema] () {
                     // Partial update without needing to serialize key
-                    dto::SKVRecord record(collname, my_schema);
+                    dto::SKVRecord record(collname1, my_schema);
                     record.serializeNull();
                     record.serializeNull();
                     record.serializeNext<String>("partialupdate");
@@ -1009,7 +1081,7 @@ seastar::future<> runScenario07() {
                 })
                 .then([&txnHandle, &key, &my_schema] () {
                     // Read without needing to serialize key again
-                    return txnHandle.read(key, collname);
+                    return txnHandle.read(key, collname1);
                 })
                 .then([](ReadResult<dto::SKVRecord>&& response) {
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
@@ -1047,12 +1119,12 @@ seastar::future<> runScenario08() {
         return seastar::do_with(
             std::move(txn), std::shared_ptr<dto::Schema>(),
             [this] (K2TxnHandle& txnHandle, std::shared_ptr<dto::Schema>& my_schema) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle, &my_schema] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey08");
                     record.serializeNext<String>("rangekey08");
                     record.serializeNext<String>("data1");
@@ -1066,7 +1138,7 @@ seastar::future<> runScenario08() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this, &txnHandle, &my_schema] () {
-                    dto::SKVRecord record(collname, my_schema);
+                    dto::SKVRecord record(collname1, my_schema);
                     record.serializeNext<String>("partkey08");
                     record.serializeNext<String>("rangekey08");
                     record.serializeNext<String>("data1*");
@@ -1080,7 +1152,7 @@ seastar::future<> runScenario08() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this, &txnHandle, &my_schema] () {
-                    dto::SKVRecord record(collname, my_schema);
+                    dto::SKVRecord record(collname1, my_schema);
                     record.serializeNext<String>("partkey08");
                     record.serializeNext<String>("rangekey08");
                     record.serializeNull();
@@ -1094,7 +1166,7 @@ seastar::future<> runScenario08() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this, &txnHandle, &my_schema] () {
-                    dto::SKVRecord record(collname, my_schema);
+                    dto::SKVRecord record(collname1, my_schema);
                     record.serializeNext<String>("partkey08");
                     record.serializeNext<String>("rangekey08");
                     record.serializeNext<String>("data1*");
@@ -1128,12 +1200,12 @@ seastar::future<> runScenario09() {
         return seastar::do_with(
             std::move(txn), std::shared_ptr<dto::Schema>(),
             [this] (K2TxnHandle& txnHandle, std::shared_ptr<dto::Schema>& my_schema) {
-                return _client.getSchema(collname, "schema", 1)
+                return _client.getSchema(collname1, "1_schema", 1)
                 .then([this, &txnHandle, &my_schema] (auto&& response) {
                     auto& [status, schemaPtr] = response;
                     K2EXPECT(log::k23si, status.is2xxOK(), true);
 
-                    dto::SKVRecord record(collname, schemaPtr);
+                    dto::SKVRecord record(collname1, schemaPtr);
                     record.serializeNext<String>("partkey09");
                     record.serializeNext<String>("rangekey09");
                     record.serializeNext<String>("data1");
@@ -1147,7 +1219,7 @@ seastar::future<> runScenario09() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this, &txnHandle, &my_schema] () {
-                    dto::SKVRecord record(collname, my_schema);
+                    dto::SKVRecord record(collname1, my_schema);
                     record.serializeNext<String>("partkey09");
                     record.serializeNext<String>("rangekey09");
                     record.serializeNull();
@@ -1160,7 +1232,7 @@ seastar::future<> runScenario09() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this, &txnHandle, &my_schema] () {
-                    dto::SKVRecord record(collname, my_schema);
+                    dto::SKVRecord record(collname1, my_schema);
                     record.serializeNext<String>("partkey09");
                     record.serializeNext<String>("rangekey09");
                     record.serializeNull();
@@ -1176,6 +1248,130 @@ seastar::future<> runScenario09() {
                     return txnHandle.end(true);
                 })
                 .then([] (auto&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<>();
+                });
+            }); // end do_with
+        });
+}
+
+
+// Cross-collection txn
+seastar::future<> runScenario10() {
+    K2LOG_I(log::k23si, "Scenario 10");
+    K2TxnOptions options{};
+    options.syncFinalize = true;
+    return _client.beginTxn(options)
+    .then([this] (K2TxnHandle&& txn) {
+        return seastar::do_with(
+            std::move(txn), std::shared_ptr<dto::Schema>(), std::shared_ptr<dto::Schema>(), std::shared_ptr<dto::Schema>(),
+            [this] (K2TxnHandle& txn, auto& sc1, auto& sc2, auto& sc3) {
+                K2LOG_D(log::k23si, "reading schemas");
+                return seastar::when_all_succeed(
+                    _client.getSchema(collname1, "1_schema", 1),
+                    _client.getSchema(collname2, "2_schema", 2),
+                    _client.getSchema(collname3, "3_schema", 3))
+                .then([&] (auto&& responses) {
+                    K2LOG_D(log::k23si, "schemas read");
+                    auto& [sr1, sr2, sr3] = responses;
+                    auto& [status1, schemaPtr1] = sr1;
+                    auto& [status2, schemaPtr2] = sr2;
+                    auto& [status3, schemaPtr3] = sr3;
+                    K2ASSERT(log::k23si, status1.is2xxOK(), "Unable to obtains schema due to {}", status1);
+                    K2ASSERT(log::k23si, status2.is2xxOK(), "Unable to obtains schema due to {}", status2);
+                    K2ASSERT(log::k23si, status3.is2xxOK(), "Unable to obtains schema due to {}", status3);
+                    sc1 = schemaPtr1;
+                    sc2 = schemaPtr2;
+                    sc3 = schemaPtr3;
+
+                    K2LOG_D(log::k23si, "serialize r1");
+                    dto::SKVRecord r1(collname1, sc1);
+                    r1.serializeNext<String>("partkey10");
+                    r1.serializeNext<String>("rangekey10");
+                    r1.serializeNext<String>("1_data1");
+                    r1.serializeNext<String>("1_data2");
+
+                    K2LOG_D(log::k23si, "serialize r2");
+                    dto::SKVRecord r2(collname2, sc2);
+                    r2.serializeNext<int32_t>(10);
+                    r2.serializeNext<String>("rangekey10");
+                    r2.serializeNext<String>("2_data1");
+                    r2.serializeNext<String>("2_data2");
+
+                    K2LOG_D(log::k23si, "serialize r3");
+                    dto::SKVRecord r3(collname3, sc3);
+                    r3.serializeNext<int32_t>(10);
+                    r3.serializeNext<bool>(true);
+                    r3.serializeNext<String>("3_data1");
+                    r3.serializeNext<String>("3_data2");
+
+                    K2LOG_D(log::k23si, "writing data");
+                    return seastar::when_all_succeed(
+                        txn.write<dto::SKVRecord>(r1),
+                        txn.write<dto::SKVRecord>(r2),
+                        txn.write<dto::SKVRecord>(r3));
+                })
+                .then([](auto&& responses) {
+                    K2LOG_D(log::k23si, "data written");
+                    auto& [r1, r2, r3] = responses;
+                    K2EXPECT(log::k23si, r1.status, dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, r2.status, dto::K23SIStatus::Created);
+                    K2EXPECT(log::k23si, r3.status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txn, &sc1] () {
+                    dto::SKVRecord record(collname1, sc1);
+                    record.serializeNext<String>("partkey10");
+                    record.serializeNext<String>("rangekey10");
+                    record.serializeNull();
+                    record.serializeNull();
+                    K2LOG_D(log::k23si, "erasing record");
+
+                    return txn.erase(record);
+                })
+                .then([](auto&& response) {
+                    K2LOG_D(log::k23si, "record erased");
+
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this, &txn, &sc1, &sc2, &sc3] () {
+                    dto::SKVRecord r1(collname1, sc1);
+                    r1.serializeNext<String>("partkey10");
+                    r1.serializeNext<String>("rangekey10");
+                    r1.serializeNull();
+                    r1.serializeNull();
+                    dto::SKVRecord r2(collname2, sc2);
+                    r2.serializeNext<int32_t>(10);
+                    r2.serializeNext<String>("rangekey10");
+                    r2.serializeNull();
+                    r2.serializeNull();
+                    dto::SKVRecord r3(collname3, sc3);
+                    r3.serializeNext<int32_t>(10);
+                    r3.serializeNext<bool>(true);
+                    r3.serializeNull();
+                    r3.serializeNull();
+
+                    K2LOG_D(log::k23si, "reading data");
+                    return seastar::when_all_succeed(
+                        txn.read<dto::SKVRecord>(std::move(r1)),
+                        txn.read<dto::SKVRecord>(std::move(r2)),
+                        txn.read<dto::SKVRecord>(std::move(r3)));
+                })
+                .then([](auto&& responses) {
+                    K2LOG_D(log::k23si, "data read");
+                    auto& [s1, s2, s3] = responses;
+                    K2EXPECT(log::k23si, s1.status, dto::K23SIStatus::KeyNotFound);
+                    K2EXPECT(log::k23si, s2.status, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, s3.status, dto::K23SIStatus::OK);
+                    return seastar::make_ready_future<>();
+                })
+                .then([&txn] () {
+                    K2LOG_D(log::k23si, "ending txn");
+                    return txn.end(true);
+                })
+                .then([] (auto&& response) {
+                    K2LOG_D(log::k23si, "txn ended");
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
                     return seastar::make_ready_future<>();
                 });
