@@ -26,7 +26,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/collectionMetadataCache/CollectionMetadataCache.h>
 #include <k2/infrastructure/APIServer.h>
 #include <k2/nodePoolMonitor/NodePoolMonitor.h>
-#include <k2/partitionManager/PartitionManager.h>
 #include <k2/tso/client/tso_clientlib.h>
 
 int main(int argc, char** argv) {
@@ -47,7 +46,6 @@ int main(int argc, char** argv) {
     app.addApplet<k2::CollectionMetadataCache>();
     app.addApplet<k2::NodePoolMonitor>();
     app.addApplet<k2::AssignmentManager>();
-    app.addApplet<k2::PartitionManager>();
 
     return app.start(argc, argv);
 }

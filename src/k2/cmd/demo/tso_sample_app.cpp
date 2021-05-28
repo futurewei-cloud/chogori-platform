@@ -84,7 +84,7 @@ public:
             char timeBuffer[100];
             TimePointToStream(nsec_count(curSteadyTime), timeBuffer);
             K2LOG_I(log::tsoapp, "Issuing first 100us apart TS at local request time: {}", timeBuffer);
-            (void) AppBase().getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
+            (void) AppBase().getDist<k2::TSO_ClientLib>().local().getTimestampFromTSO(curSteadyTime)
                 .then([this](auto&& timestamp)
                 {
                     char timeBufferS[100];
@@ -99,7 +99,7 @@ public:
                         char timeBuffer[100];
                         TimePointToStream(nsec_count(curSteadyTime), timeBuffer);
                         K2LOG_I(log::tsoapp, "Issuing second 100us apart TS at local request time: {}", timeBuffer);
-                        (void) AppBase().getDist<k2::TSO_ClientLib>().local().GetTimestampFromTSO(curSteadyTime)
+                        (void) AppBase().getDist<k2::TSO_ClientLib>().local().getTimestampFromTSO(curSteadyTime)
                         .then([](auto&& ts)
                         {
                             char timeBufferS[100];

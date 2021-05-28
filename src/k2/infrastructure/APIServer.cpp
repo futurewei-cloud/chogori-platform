@@ -103,4 +103,24 @@ String APIServer::get_current_routes() {
     return routes;
 }
 
+void APIServer::deregisterAPIObserver(String pathSuffix) {
+    bool found = false;
+    auto it = _registered_routes.begin();
+    for (; it != _registered_routes.end(); ++it) {
+        auto& [path, descrip] = *it;
+        if (path == pathSuffix) {
+            _registered_routes.erase(it);
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        return;
+    }
+
+    auto handler =  _server._routes.drop(seastar::httpd::POST, "/api/" + pathSuffix);
+    delete handler;
+}
+
 }// namespace k2

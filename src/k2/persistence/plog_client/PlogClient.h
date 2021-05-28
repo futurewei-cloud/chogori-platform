@@ -72,8 +72,6 @@ private:
     std::vector<String> _persistenceNameList; // a list to store all the names of persistence groups in current persistence cluster
     uint32_t _persistenceMapPointer; // indicate the current used persistence group
 
-    CPOClient _cpo;
-
     // generate the plog id
     // TODO: change the method to generate the random plog id later
     String _generatePlogId();
@@ -87,7 +85,7 @@ private:
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 100ms};
     ConfigVar<String> _cpo_url{"cpo_url", ""};
-
+    CPOClient _cpo;
 };
 
 } // k2

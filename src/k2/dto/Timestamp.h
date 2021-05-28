@@ -68,6 +68,10 @@ public:
     // just wants some consistent(to any observer) ordering among all timestamps even from different TSOs
     CompareResult compareCertain(const Timestamp& other) const;
 
+    // (in)equality comparison
+    bool operator==(const Timestamp& other) const noexcept;
+    bool operator!=(const Timestamp& other) const noexcept;
+
     // returns a timestamp shifted with the given duration
     Timestamp operator-(const Duration d) const;
     Timestamp operator+(const Duration d) const;
@@ -90,3 +94,12 @@ public:
 
 } // ns dto
 } // ns k2
+
+namespace std {
+template <>
+struct hash<k2::dto::Timestamp> {
+    size_t operator()(const k2::dto::Timestamp& ts) const {
+        return ts.hash();
+   }
+}; // hash
+} // ns std

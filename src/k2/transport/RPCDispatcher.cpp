@@ -46,7 +46,7 @@ RPCDispatcher::registerProtocol(seastar::reference_wrapper<RPCProtocolFactory::D
     K2LOG_D(log::tx, "registering protocol: {}", proto->supportedProtocol());
     auto emplace_pair = _protocols.try_emplace(proto->supportedProtocol(), proto);
     if (!emplace_pair.second) {
-        throw DuplicateRegistrationException();
+        return seastar::make_exception_future<>(DuplicateRegistrationException());
     }
 
     // set ourselves to handle all messages from this protocol

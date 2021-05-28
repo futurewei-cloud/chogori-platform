@@ -91,9 +91,7 @@ template<> String FieldToKeyString<bool>(const bool&);
 // all other types are not supported as key fields
 template <typename T>
 String FieldToKeyString(const T&) {
-    std::ostringstream msg;
-    msg << "Key encoding for " << TToFieldType<T>() << " not implemented yet";
-    throw FieldNotSupportedAsKeyException(msg.str().c_str());
+    throw FieldNotSupportedAsKeyException(fmt::format("Key encoding for {} not implemented yet", TToFieldType<T>()));
 }
 
 String NullFirstToKeyString();

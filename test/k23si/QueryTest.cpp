@@ -93,6 +93,7 @@ public:  // application lifespan
         .then([this] { return runScenario04(); })
         .then([this] { return runScenario05(); })
         .then([this] { return runScenario06(); })
+        .then([this] { return runScenario07(); })
         .then([this] {
             K2LOG_I(log::k23si, "======= All tests passed ========");
             exitcode = 0;
@@ -621,6 +622,61 @@ seastar::future<> runScenario06() {
     .then([] (auto&& response) {
         K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::OperationNotAllowed);
         return seastar::make_ready_future<>();
+    });
+}
+
+// Read an erased record via query
+seastar::future<> runScenario07() {
+    K2LOG_I(log::k23si, "runScenario07");
+
+    K2LOG_I(log::k23si, "Read an erased record via query");
+    k2::K2TxnOptions options{};
+    options.syncFinalize = true;
+    return _client.beginTxn(options)
+    .then([this] (k2::K2TxnHandle&& t) {
+        writeTxn = std::move(t);
+        return seastar::make_ready_future<>();
+    })
+    .then([this] () {
+        return _client.getSchema(collname, "schema", 1);
+    })
+    .then([this] (auto&& response) {
+        auto& [status, schemaPtr] = response;
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
+
+        k2::dto::SKVRecord record(collname, schemaPtr);
+        record.serializeNext<k2::String>("default");
+        record.serializeNext<k2::String>("scenario07");
+        record.serializeNext<k2::String>("");
+        return writeTxn.write<k2::dto::SKVRecord>(record);
+    })
+    .then([this] (auto&& response) {
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
+        return _client.getSchema(collname, "schema", 1);
+    })
+    .then([this] (auto&& response) {
+        auto& [status, schemaPtr] = response;
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
+
+        k2::dto::SKVRecord record(collname, schemaPtr);
+        record.serializeNext<k2::String>("default");
+        record.serializeNext<k2::String>("scenario07");
+        record.serializeNext<k2::String>("");
+        return writeTxn.erase(record);
+    })
+    .then([this] (auto&& response) {
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
+        return seastar::make_ready_future<>();
+    })
+    .then([this] () {
+        return writeTxn.end(true);
+    })
+    .then([] (auto&& response) {
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::OK);
+        return seastar::make_ready_future<>();
+    })
+    .then([this] () {
+        return doQuery("scenario07", "scenario07", -1, false, 0, 1).discard_result();
     });
 }
 

@@ -32,7 +32,7 @@ void Test1Visitor(std::optional<T> value, const k2::String& fieldName, int tmp) 
     (void) value;
     (void) fieldName;
     (void) tmp;
-    throw std::runtime_error("Encountered unexpcted type in test visitor");
+    throw std::runtime_error("Encountered unexpected type in test visitor");
 }
 
 template <>
@@ -213,4 +213,42 @@ TEST_CASE("Test3: clone to other schema") {
                                     std::make_shared<k2::dto::Schema>(noncompatible_schema));
         REQUIRE(false);
     } catch (...) {}
+}
+
+TEST_CASE("Test4: getSKVKeyRecord test") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::STRING, "LastName", false, false},
+            {k2::dto::FieldType::STRING, "FirstName", false, false},
+            {k2::dto::FieldType::INT32T, "Balance", false, false}
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
+    schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
+
+    k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
+    doc.serializeNull();
+    doc.serializeNext<k2::String>("b");
+    doc.serializeNext<int32_t>(12);
+
+    // Testing a typical use-case of getSKVKeyRecord where the storage is serialized
+    // to payload and then read back later
+    k2::dto::SKVRecord key_record = doc.getSKVKeyRecord();
+    const k2::dto::SKVRecord::Storage& storage = key_record.getStorage();
+    k2::Payload payload(k2::Payload::DefaultAllocator);
+    payload.write(storage);
+    k2::dto::SKVRecord::Storage read_storage{};
+    payload.seek(0);
+    payload.read(read_storage);
+    k2::dto::SKVRecord reconstructed("collection", std::make_shared<k2::dto::Schema>(schema),
+                                     std::move(read_storage), true);
+
+    std::optional<k2::String> last = reconstructed.deserializeNext<k2::String>();
+    REQUIRE(!last.has_value());
+    std::optional<k2::String> first = reconstructed.deserializeNext<k2::String>();
+    REQUIRE(first.has_value());
+    REQUIRE(first == "b");
+    std::optional<int32_t> balance = reconstructed.deserializeNext<int32_t>();
+    REQUIRE(!balance.has_value());
 }

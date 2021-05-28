@@ -57,6 +57,10 @@ seastar::future<> CPOTest::start() {
         .then([this] { return runTest5(); })
         .then([this] { return runTest6(); })
         .then([this] { return runTest7(); })
+        .then([this] { return runTest8(); })
+        .then([this] { return runTest9(); })
+        .then([this] { return runTest10(); })
+        .then([this] { return runTest11(); })
         .then([this] {
             K2LOG_I(log::cpotest, "======= All tests passed ========");
             exitcode = 0;
@@ -218,12 +222,12 @@ seastar::future<> CPOTest::runTest5() {
 
             for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
                 auto& p = resp.collection.partitionMap.partitions[i];
-                K2EXPECT(log::cpotest, p.pvid.rangeVersion, 1);
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.rangeVersion, 1);
                 K2EXPECT(log::cpotest, p.astate, dto::AssignmentState::Assigned);
-                K2EXPECT(log::cpotest, p.pvid.assignmentVersion, 1);
-                K2EXPECT(log::cpotest, p.pvid.id, i);
-                K2EXPECT(log::cpotest, p.startKey, std::to_string(i * partSize));
-                K2EXPECT(log::cpotest, p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.assignmentVersion, 1);
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.id, i);
+                K2EXPECT(log::cpotest, p.keyRangeV.startKey, std::to_string(i * partSize));
+                K2EXPECT(log::cpotest, p.keyRangeV.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
                 K2EXPECT(log::cpotest, *p.endpoints.begin(), _k2ConfigEps()[i]);
             }
         });
@@ -285,3 +289,48 @@ seastar::future<> CPOTest::runTest7() {
         K2EXPECT(log::cpotest, status.is2xxOK(), false);
     });
 }
+
+seastar::future<> CPOTest::runTest8() {
+    K2LOG_I(log::cpotest, ">>> Test8: Drop an assigned collection");
+
+
+    dto::CollectionDropRequest request{"collectionAssign"};
+
+    return RPC().callRPC<dto::CollectionDropRequest, dto::CollectionDropResponse>(dto::Verbs::CPO_COLLECTION_DROP, request, *_cpoEndpoint, 1s)
+    .then([this] (auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(log::cpotest, status.is2xxOK(), true);
+    });
+}
+
+seastar::future<> CPOTest::runTest9() {
+    K2LOG_I(log::cpotest, ">>> Test8: Try to drop a non-existing collection");
+
+
+    dto::CollectionDropRequest request{"DNE"};
+
+    return RPC().callRPC<dto::CollectionDropRequest, dto::CollectionDropResponse>(dto::Verbs::CPO_COLLECTION_DROP, request, *_cpoEndpoint, 1s)
+    .then([this] (auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(log::cpotest, status, Statuses::S404_Not_Found);
+    });
+}
+
+seastar::future<> CPOTest::runTest10() {
+    K2LOG_I(log::cpotest, ">>> Test10: get a deleted collection");
+    auto request = dto::CollectionGetRequest{.name="collectionAssign"};
+    return RPC()
+    .callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms)
+    .then([](auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(log::cpotest, status, Statuses::S404_Not_Found);
+    });
+}
+
+seastar::future<> CPOTest::runTest11() {
+    K2LOG_I(log::cpotest, ">>> Test11: recreate a previously deleted collection (rerun test5)");
+    return runTest5()
+    .then([this] () {
+    });
+}
+

@@ -78,9 +78,16 @@ Timestamp Timestamp::operator+(const Duration d) const {
 }
 
 size_t Timestamp::hash() const {
-    return std::hash<decltype(_tEndTSECount)>{}(_tEndTSECount) +
-           std::hash<decltype(_tStartDelta)>{}(_tStartDelta) +
-           std::hash<decltype(_tsoId)>{}(_tsoId);
+    return hash_combine(_tEndTSECount, _tStartDelta, _tsoId);
+}
+
+bool Timestamp::operator==(const Timestamp& other) const noexcept {
+    // certain and uncertain have the same behavior when the timestamps are equal
+    return compareUncertain(other) == Timestamp::EQ;
+}
+
+bool Timestamp::operator!=(const Timestamp& other) const noexcept {
+    return !operator==(other);
 }
 
 } // ns dto

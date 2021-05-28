@@ -37,6 +37,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "ReadCache.h"
 #include "TxnManager.h"
+#include "TxnWIMetaManager.h"
 #include "Config.h"
 #include "Persistence.h"
 #include "Log.h"
@@ -44,10 +45,32 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 
 
-// the type holding multiple versions of a key
+// the type holding multiple committed versions of a key
 typedef std::deque<dto::DataRecord> VersionsT;
+
+struct VersionSet {
+    // If there is a WI, that means that we also have a TxnWIMeta with the twimMgr.
+    // The invariant we maintain is
+    // if there is a WI set, then: the local twim's state is in InProgress (use isInProgress() to check)
+    // The implementation logic then just has to look for the presense of this WI to determine if a push is needed.
+    // After a PUSH operation, if we determine that the incumbent should be finalized(committed/aborted), we
+    // just take care of the WI which triggered the PUSH. This is needed to make room for a new WI in cases of
+    // Write-Write PUSH. We still rely on the TRH to take care of the full finalization for the rest of the WIs.
+    //
+    // For optimization purposes, if we determine that the incumbent should be finalized, we update its state.
+    // Future PUSH operations for this txn (from other WIs on this node) will be determined locally.
+    // This allows us to
+    // - perform finalization in a rate-limited fashion (i.e. have only some WIs finalized for a txn)
+    // - finalize out WIs which actively trigger a conflict, without requiring finalization for the entire txn.
+    std::optional<WriteIntent> WI;
+    VersionsT committed;
+    bool empty() const {
+        return !WI.has_value() && committed.empty();
+    }
+};
+
 // the type holding versions for all keys, i.e. the indexer
-typedef std::map<dto::Key, VersionsT> IndexerT;
+typedef std::map<dto::Key, VersionSet> IndexerT;
 typedef IndexerT::iterator IndexerIterator;
 
 class K23SIPartitionModule {
@@ -58,7 +81,10 @@ public: // lifecycle
     seastar::future<> start();
     seastar::future<> gracefulStop();
 
-   public:
+    // recover data upon startup
+    seastar::future<> _recovery();
+
+public:
     // verb handlers
     // Read is called when we either get a new read, or after we perform a push operation
     // on behalf of an incoming read (recursively). We only perform the recursive attempt
@@ -108,91 +134,42 @@ public: // lifecycle
     handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& request);
 
 private: // methods
-    // this method executes a push operation at the TRH for the given incumbentTxnID in order to
+    // this method executes a push operation at the TRH for the given incumbent in order to
     // determine if the challengerMTR should be allowed to proceed.
-    // It returns true iff the challenger should be allowed to proceed. If not allowed, the client
+    // It returns 2xxOK iff the challenger should be allowed to proceed. If not allowed, the client
     // who issued the request must be notified to abort their transaction.
     // This method also has the side-effect of handling the cleanup of the WI which triggered
     // the push operation.
     // In cases where this push operation caused the incumbent transaction to be aborted, the
     // incumbent transaction state at the TRH will be updated to reflect the abort decision.
     // The incumbent transaction will discover upon commit that the txn has been aborted.
-    seastar::future<bool>
-    _doPush(String collectionName, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
+    seastar::future<Status>
+    _doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
-    bool _validateRequestPartition(const RequestT& req) const {
-        auto result = req.collectionName == _cmeta.name && req.pvid == _partition().pvid;
-        // validate partition owns the requests' key.
-        // 1. common case assumes RequestT a Read request;
-        // 2. now for the other cases, only Query request is implemented.
-        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            result =  result && _partition.owns(req.key, req.reverseDirection);
-        } else {
-            result = result && _partition.owns(req.key);
-        }
-        K2LOG_D(log::skvsvr, "Partition: {}, partition validation {}, for request={}", _partition, (result ? "passed" : "failed"), req);
-        return result;
-    }
+    bool _validateRequestPartition(const RequestT& req) const;
 
-    // validate requests are within the retention window for the collection. return true if request is valid
-    template <typename RequestT>
-    bool _validateRetentionWindow(const RequestT& req) const {
-        auto result = req.mtr.timestamp.compareCertain(_retentionTimestamp) >= 0;
-        K2LOG_D(log::skvsvr, "Partition: {}, retention validation {}, have={}, for request={}", _partition, (result ? "passed" : "failed"), _retentionTimestamp, req);
-        return result;
-    }
-
-    // validate challengerMTR in PUSH requests is within the retention window for the collection. return true if request is valid
-    bool _validatePushRetention(const dto::K23SITxnPushRequest& req) const {
-        bool result = req.challengerMTR.timestamp.compareCertain(_retentionTimestamp) >= 0;
-        K2LOG_D(log::skvsvr, "Partition: {}, retention validation {}, have={}, for request={}", _partition, (result ? "passed" : "failed"), _retentionTimestamp, req);
-        return result;
-    }
+    // return true iff the given timestamp is within the retention window for the collection.
+    bool _validateRetentionWindow(const dto::Timestamp& ts) const;
 
     // validate keys in the requests must include non-empty partitionKey. return true if request parameter is valid
     template <typename RequestT>
-    bool _validateRequestPartitionKey(const RequestT& req) const {
-        K2LOG_D(log::skvsvr, "Request: {}", req);
-
-        if constexpr (std::is_same<RequestT, dto::K23SIQueryRequest>::value) {
-            // Query is allowed to have empty partition key which means start or end of schema set
-            return true;
-        } else {
-            return !req.key.partitionKey.empty();
-        }
-    }
+    bool _validateRequestPartitionKey(const RequestT& req) const;
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
     template <typename RequestT>
-    Status _validateStaleWrite(const RequestT& req, VersionsT& versions);
+    Status _validateStaleWrite(const RequestT& req, const VersionSet& versions);
+
+    // validate an incoming write request
+    Status _validateWriteRequest(const dto::K23SIWriteRequest& request, const VersionSet& versions);
 
     template <class RequestT>
-    Status _validateReadRequest(const RequestT& request) const {
-        if (!_validateRequestPartition(request)) {
-            // tell client their collection partition is gone
-            return dto::K23SIStatus::RefreshCollection("collection refresh needed in read-type request");
-        }
-        if (!_validateRequestPartitionKey(request)){
-            // do not allow empty partition key
-            return dto::K23SIStatus::BadParameter("missing partition key in read-type request");
-        }
-        if (!_validateRetentionWindow(request)) {
-            // the request is outside the retention window
-            return dto::K23SIStatus::AbortRequestTooOld("request too old in read-type request");
-        }
-        if (_schemas.find(request.key.schemaName) == _schemas.end()) {
-            // server does not have schema
-            return dto::K23SIStatus::OperationNotAllowed("schema does not exist in read-type request");
-        }
-
-        return dto::K23SIStatus::OK("");
-    }
+    Status _validateReadRequest(const RequestT& request) const;
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, VersionsT& versions, FastDeadline deadline);
+    Status _createWI(dto::K23SIWriteRequest&& request, VersionSet& versions);
 
     // helper method used to make a projection SKVRecord payload
     bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
@@ -202,17 +179,15 @@ private: // methods
 
     // make every fields for a partial update request in the condition of same schema and same version
     bool _makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
+
     // make every fields for a partial update request in the condition of same schema and different versions
     bool _makeFieldsForDiffVersion(dto::Schema& schema, dto::Schema& baseSchema, dto::K23SIWriteRequest& request, dto::DataRecord& version);
 
-    // find field number matches to 'fieldName'and'fieldtype' in schema, return -1 if do not find
+    // find field number matches to 'fieldName' and 'fieldtype' in schema, return -1 if do not find
     std::size_t _findField(const dto::Schema schema, k2::String fieldName ,dto::FieldType fieldtype);
 
     // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate).
     bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
-
-    // recover data upon startup
-    seastar::future<> _recovery();
 
     // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
     // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must
@@ -232,31 +207,59 @@ private: // methods
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
 
-private: // members
+    // the the data record in the version set which is not newer than the given timestsamp
+    // The returned pointer is invalid if any modifications are made to the indexer. Will also
+    // return the current WI if it matches exactly the given timestamp. In other words, it
+    // returns a record that is valid to return for to a read request for the given timestamp.
+    dto::DataRecord* _getDataRecordForRead(VersionSet& versions, dto::Timestamp& timestamp);
+
+    // For a given challenger timestamp and key, check if a push is needed against a WI
+    bool _checkPushForRead(const VersionSet& versions, const dto::Timestamp& timestamp);
+
+    // Helper to remove a WI and delete the key from the indexer of there are no committed records
+    void _removeWI(IndexerIterator it);
+
+    // get timeNow Timestamp from TSO
+    seastar::future<dto::Timestamp> getTimeNow() {
+        TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
+        return tsoClient.getTimestampFromTSO(Clock::now());
+    }
+
+    seastar::future<> _registerVerbs();
+
+    // Helper method which generates an RPCResponce chained after a successful persistence flush
+    template <typename ResponseT>
+    seastar::future<std::tuple<Status, ResponseT>> _respondAfterFlush(std::tuple<Status, ResponseT>&& tuple);
+
+    // helper used to process the designate TRH part of a write request
+    seastar::future<Status> _designateTRH(dto::K23SI_MTR mtr, dto::Key trhKey);
+
+    // helper used to process the write part of a write request
+    seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
+    _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
+
+    void _unregisterVerbs();
+
+    // helper used to finalize all local WIs for a give transaction
+    Status _finalizeTxnWIs(dto::Timestamp txnts, dto::EndAction action);
+
+private:  // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
 
     // the partition we're assigned
     dto::OwnerPartition _partition;
 
-    // get the data record iterator from the given versions which is not newer than the given timestamp
-    // The returned iterator is invalid if any modifications are made to the indexer;
-    VersionsT::iterator _getVersion(VersionsT& versions, const dto::Timestamp& timestamp);
-
-    // the the data record with the given key which is not newer than the given timestsamp
-    // The returned pointer is invalid if any modifications are made to the indexer;
-    dto::DataRecord* _getDataRecord(const dto::Key& key, const dto::Timestamp& timestamp);
-
-    // utility method used to update the indexer when removing a record
-    void _removeRecord(dto::DataRecord& rec);
-
     // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
     // (newest item is at front of the deque)
     // Duplicates are not allowed
     IndexerT _indexer;
 
-    // to store transactions
+    // manage transaction records as a coordinator
     TxnManager _txnMgr;
+
+    // manage write intent metadata records as a participant
+    TxnWIMetaManager _twimMgr;
 
     // read cache for keeping track of latest reads
     std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;
@@ -270,22 +273,15 @@ private: // members
     // the timestamp of the end of the retention window. We do not allow operations to occur before this timestamp
     dto::Timestamp _retentionTimestamp;
 
+    // the start time for this partition.
+    dto::Timestamp _startTs;
+
     // timer used to refresh the retention timestamp from the TSO
-    seastar::timer<> _retentionUpdateTimer;
+    PeriodicTimer _retentionUpdateTimer;
 
-    // used to tell if there is a refresh in progress so that we don't stop() too early
-    seastar::future<> _retentionRefresh = seastar::make_ready_future();
-
-    // TODO persistence
-    Persistence _persistence;
+    std::shared_ptr<Persistence> _persistence;
 
     CPOClient _cpo;
-
-    // get timeNow Timestamp from TSO
-    seastar::future<dto::Timestamp> getTimeNow() {
-        thread_local TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
-        return tsoClient.GetTimestampFromTSO(Clock::now());
-    }
 };
 
 } // ns k2

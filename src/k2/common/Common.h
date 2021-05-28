@@ -197,6 +197,28 @@ public:
         return decode(str.data(), str.size());
     }
 };
+
+// base case recursion call
+inline void hash_combine_seed(size_t&) {
+}
+
+// hash-combine hashes for multiple objects over a seed
+// this is using boost-like hash combination
+// https://stackoverflow.com/questions/35985960/c-why-is-boosthash-combine-the-best-way-to-combine-hash-values
+template <typename T, typename... Rest>
+inline void hash_combine_seed(size_t& seed, const T& v, Rest&&... rest) {
+    seed ^= std::hash<T>{}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    hash_combine_seed(seed, std::forward<Rest>(rest)...);
+}
+
+// hash-combine multiple objects
+template <typename T, typename... Rest>
+inline size_t hash_combine(const T& v, Rest&&... rest) {
+    size_t seed = 0;
+    hash_combine_seed(seed, v, std::forward<Rest>(rest)...);
+    return seed;
+}
+
 }  //  namespace k2
 
 template <> // json (de)serialization support
