@@ -87,42 +87,37 @@ seastar::future<> TSO_ClientLib::DiscoverServiceNodes(const k2::String& serverUR
             return seastar::make_exception_future<>(TSOClientLibShutdownException());
         }
 
-        return k2::RPC().sendRequest(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, myRemote->newPayload(), *myRemote, timeout)
-        .then([this](std::unique_ptr<k2::Payload> payload) {
+        GetTSOServiceNodeURLsRequest request;  // empty request param
+
+        return k2::RPC().callRPC<dto::GetTSOServiceNodeURLsRequest, dto::GetTSOServiceNodeURLsResponse>(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, request, *myRemote, timeout)
+        .then([this](auto&& response) {
             if (_stopped) return seastar::make_ready_future<>();
 
-            if (!payload || payload->getSize() == 0)
+            auto& [status, r] = response;
+            if (!status.is2xxOK())
             {
-                K2LOG_E(log::tsoclient, "Remote end did not provide a data endpoint. Giving up");
-                return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
+                K2LOG_E(log::tsoclient, "Error during get TSO node URLs, status:{}", status);
+                // currently, it is not expected 
+                return seastar::make_exception_future<>(std::runtime_error(status.message));
             }
 
-            std::vector<std::vector<k2::String>> nodeURLs;
-            payload->read(nodeURLs);
-            K2ASSERT(log::tsoclient, !nodeURLs.empty(), "TSO server should have workers");
+            auto& nodeURLs = r.serviceNodeURLs;
+            if (nodeURLs.empty())
+            {
+                K2LOG_E(log::tsoclient, "Remote end did not provide node URLs. Giving up");
+                return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
+            }
+            else
+            {
+                K2LOG_I(log::tsoclient, "received node URLs:{}", nodeURLs);
+            }
 
             _curTSOServiceNodes.clear();
             // each node may have mulitple endPoints URLs, we only pick the fastest supported one, currently RDMA, if no RDMA, pick TCPIP
             for (auto& singleNodeURLs : nodeURLs)
             {
-                k2::TXEndpoint endPointToAdd;
-                for (auto& url : singleNodeURLs)
-                {
-                    auto tempEndPoint = *(k2::RPC().getTXEndpoint(url));
-                    K2LOG_I(log::tsoclient, "Found remote data endpoint: {}", url);
-                    if (tempEndPoint.protocol == RRDMARPCProtocol::proto)
-                    {
-                        // if found RDMA, use it and break out
-                        endPointToAdd = tempEndPoint;
-                        break;
-                    }
-                    else if (tempEndPoint.protocol == TCPRPCProtocol::proto)
-                    {
-                        // keep it to enPointToAdd, maybe replaced by RDMA endpoint later
-                        endPointToAdd = tempEndPoint;
-                    }
-                }
-                _curTSOServiceNodes.emplace_back(endPointToAdd);
+                _curTSOServiceNodes.push_back( Discovery::selectBestEndpoint(singleNodeURLs));
+                K2LOG_I(log::tsoclient, "Selected node endpoint:{}", _curTSOServiceNodes.back()->url);
             }
 
             K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "nodes should property configured and not empty!")
@@ -497,33 +492,32 @@ seastar::future<TimestampBatch> TSO_ClientLib::GetTimestampBatch(uint16_t batchS
 
             K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "we should have workers");
             // pick next worker (effecitvely random one, as _curTSOServiceNodes is shuffled already when it is populated)
-            int randNode = (_curWorkerIdx++) %  _curTSOServiceNodes.size();
+            if (retriesLeft != 2) {_curWorkerIdx++;}  // if this is not first try, it means we had error and are retrying, thus change to a new service node. 
+            int randNode = _curWorkerIdx %  _curTSOServiceNodes.size();
+            auto& myRemote = _curTSOServiceNodes[randNode];
 
-            auto myRemote = _curTSOServiceNodes[randNode];
-            std::unique_ptr<Payload> payload = myRemote.newPayload();
-            payload->write(batchSize);
+            GetTimeStampBatchRequest request{.batchSizeRequested = batchSize};
+            K2LOG_D(log::tsoclient, "Requesting timestampBatch of batchsize:{} with retriesLeft:{} and timeout:{} to node:{}", batchSize, retriesLeft, timeout, randNode);
 
-            (void) retriesLeft;
-            // K2LOG_I(log::tsoclient, "Requesting timestampBatch with retriesLeft=" << retriesLeft << ", and timeout=" << k2::usec(timeout).count()
-            //        << "us, with worker " << randNode);
-
-            return k2::RPC().sendRequest(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, std::move(payload), myRemote, timeout)
-            .then([this, &batch](std::unique_ptr<k2::Payload> replyPayload) mutable {
+            return k2::RPC().callRPC<dto::GetTimeStampBatchRequest, dto::GetTimeStampBatchResponse>(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, request, *myRemote, timeout)
+            .then([this, &batch](auto&& response) {
                 if (_stopped)
                 {
                     K2LOG_I(log::tsoclient, "Stopping retry since we were stopped");
                     return seastar::make_exception_future<>(TSOClientLibShutdownException());
                 }
 
-                if (!replyPayload || replyPayload->getSize() == 0)
+                auto& [status, r] = response;
+                if (!status.is2xxOK())
                 {
-                    K2LOG_E(log::tsoclient, "TSO worker remote end did not provide a data. Giving up");
-                    return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
+                    K2LOG_E(log::tsoclient, "Error during get timestampBatch, status:{}", status);
+                    // currently, we should only have 5xx retryable error, assert to confirm here to make sure future other error status added is handled.
+                    K2ASSERT(log::tsoclient, status.is5xxRetryable(), "GetTimeStampBatch error should be 5xxRetryable.");
+                    return seastar::make_exception_future<>(std::runtime_error(status.message));
                 }
 
-                TimestampBatch result;
-                replyPayload->read(result);
-                batch = std::move(result);
+                K2LOG_V(log::tsoclient, "got timestampBatch:{}", r.timeStampBatch);
+                batch = r.timeStampBatch;
                 return seastar::make_ready_future();
             });
         })

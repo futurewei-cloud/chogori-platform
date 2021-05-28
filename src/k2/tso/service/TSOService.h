@@ -41,16 +41,6 @@ namespace k2
 
 using namespace dto;
 
-// TSO (controller) internal API verbs to Paxos for heart beat etc. and to Atomic/GPS clock for accurate time
-enum TSOInternalVerbs : k2::Verb {
-    GET_PAXOS_LEADER_URL    = 110,  // API from TSO controller to any Paxos instance to get leader instance URL
-    UPDATE_PAXOS            = 111,  // API from TSO controller to Paxos leader to send heart beat(conditional write with read) and other updates(compete for master, etc)
-    ACK_PAXOS               = 112,  // ACK from PAXOS to TSO
-    GET_ATOMIC_CLOCK_TIME   = 115,  // API from TSO controller to its atomic clock to get current time
-    GET_GPS_CLOCK_TIME      = 116,  // API from TSO client to get timestamp batch from any TSO worker cores
-    ACK_TIME                = 117   // ACK to TSO client for above APIs
-};
-
 // TSOService is reponsible to provide batches of K2 TimeStamps to TSO client upon request.
 class TSOService
 {
@@ -178,8 +168,11 @@ class TSOService::TSOController
 
     // APIs registration
     // APIs to TSO clients
-    void RegisterGetTSOServerURLs();
-    void RegisterGetTSOServiceNodeURLs();
+    seastar::future<std::tuple<Status, dto::GetTSOServerURLsResponse>>
+    handleGetTSOServerURLs(dto::GetTSOServerURLsRequest&& request);
+
+    seastar::future<std::tuple<Status, dto::GetTSOServiceNodeURLsResponse>>
+    handleGetTSOServiceNodeURLs(dto::GetTSOServiceNodeURLsRequest&& request);
 
     // TimeSync timer call back fn.
     void TimeSync();
@@ -307,7 +300,8 @@ class TSOService::TSOWorker
     // TODO: statistics structure
 
     // APIs to TSO clients
-    void RegisterGetTSOTimestampBatch();
+    seastar::future<std::tuple<Status, dto::GetTimeStampBatchResponse>>
+    handleGetTSOTimestampBatch(dto::GetTimeStampBatchRequest&& request);
 
     // the main API for TSO client to get timestamp in batch
     // batchSizeRequested may be partically fulfilled based on server side timestamp availability
@@ -327,22 +321,22 @@ class TSONotEnoughCoreException : public std::exception {
 public:
     TSONotEnoughCoreException(uint16_t coreCount) : _coreCount(coreCount) {};
 
-private:
-    virtual const char* what() const noexcept override { return "TSONotEnoughCoreException: Need at least two cores. core counts" + _coreCount; }
+    virtual const char* what() const noexcept override { return "TSONotEnoughCoreException: Need at least two cores. core counts provided:" + _coreCount; }
 
+private:
     uint16_t _coreCount {0};
 };
 
 // TSO server not ready yet to issue timestamp(batch)
 // TODO: add more detail error info.
 class TSONotReadyException : public std::exception {
-    private:
+public:
     virtual const char* what() const noexcept override { return "Server not ready to issue timestamp, please retry later."; }
 };
 
 // operations invalid during server shutdown
 class TSOShutdownException : public std::exception {
-    private:
+public:
     virtual const char* what() const noexcept override { return "TSO Server shuts down."; }
 };
 

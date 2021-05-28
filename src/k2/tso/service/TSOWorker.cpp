@@ -40,7 +40,10 @@ seastar::future<> TSOService::TSOWorker::start()
 {
     _tsoId = _outer.TSOId();
 
-    RegisterGetTSOTimestampBatch();
+    RPC().registerRPCObserver<dto::GetTimeStampBatchRequest, dto::GetTimeStampBatchResponse>
+    (dto::Verbs::GET_TSO_TIMESTAMP_BATCH, [this](dto::GetTimeStampBatchRequest&& request) {
+        return handleGetTSOTimestampBatch(std::move(request));
+    });
     return seastar::make_ready_future<>();
 }
 
@@ -51,27 +54,29 @@ seastar::future<> TSOService::TSOWorker::gracefulStop()
     return seastar::make_ready_future<>();
 }
 
-void TSOService::TSOWorker::RegisterGetTSOTimestampBatch()
+seastar::future<std::tuple<Status, dto::GetTimeStampBatchResponse>>
+TSOService::TSOWorker::handleGetTSOTimestampBatch(dto::GetTimeStampBatchRequest&& request)
 {
-    k2::RPC().registerMessageObserver(dto::Verbs::GET_TSO_TIMESTAMP_BATCH, [this](k2::Request&& request) mutable
-    {
-        if (request.payload)
-        {
-            uint16_t batchSize;
-            request.payload->read((void*)&batchSize, sizeof(batchSize));
+    K2LOG_D(log::tsoserver, "request batchsize: {}", request);
+    K2ASSERT(log::tsoserver, request.batchSizeRequested > 0, "request batch size must be greater than 0.");
 
-            // TODO: handle exceptions
-            auto response = request.endpoint.newPayload();
-            auto timestampBatch = GetTimestampFromTSO(batchSize);
-            response->write(timestampBatch);
-            return k2::RPC().sendReply(std::move(response), request);
-        }
-        else
-        {
-            K2LOG_E(log::tsoserver, "GetTSOTimestampBatch comes in without request payload.");
-        }
-        return seastar::make_ready_future();
-    });
+    try
+    {
+        auto timestampBatchGot = GetTimestampFromTSO(request.batchSizeRequested);
+        GetTimeStampBatchResponse response{.timeStampBatch = timestampBatchGot};
+        K2LOG_D(log::tsoserver, "returned timeStampBatch: {}", timestampBatchGot);
+        return RPCResponse(Statuses::S200_OK("OK"), std::move(response));
+    }
+    catch(const TSONotReadyException& e)
+    {
+        K2LOG_E(log::tsoserver, "TSO Not Ready:{}", e.what());
+        return RPCResponse(Statuses::S503_Service_Unavailable(e.what()), GetTimeStampBatchResponse());
+    }
+    catch(const std::exception& e)
+    {
+        K2LOG_E(log::tsoserver, "Unknown Error:{}", e.what());
+        return RPCResponse(Statuses::S500_Internal_Server_Error(e.what()), GetTimeStampBatchResponse());
+    }
 }
 
 void TSOService::TSOWorker::UpdateWorkerControlInfo(const TSOWorkerControlInfo& controlInfo)
