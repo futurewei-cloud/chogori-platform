@@ -151,7 +151,7 @@ public:  // application lifespan
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.4: append a plog");
-            auto& [status, offset] = response;
+            auto& [status, offset, return_payload] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             K2EXPECT(log::ptest, offset, 15);
 
@@ -161,7 +161,7 @@ public:  // application lifespan
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.5: append a plog");
-            auto& [status, offset] = response;
+            auto& [status, offset, return_payload] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             K2EXPECT(log::ptest, offset, 30);
 
@@ -171,7 +171,7 @@ public:  // application lifespan
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.6: append a plog with wrong offset");
-            auto& [status, offset] = response;
+            auto& [status, offset, return_payload] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             K2EXPECT(log::ptest, offset, 45);
 
@@ -181,7 +181,7 @@ public:  // application lifespan
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.7: read a plog");
-            auto& [status, offset] = response;
+            auto& [status, offset, return_payload] = response;
             K2EXPECT(log::ptest, status, Statuses::S403_Forbidden);
             return _client.read(_plogId, 0, 15);
         })
@@ -246,7 +246,7 @@ public:  // application lifespan
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.14: get the information of a plog");
-            auto& [status, offset] = response;
+            auto& [status, offset, return_payload] = response;
             K2EXPECT(log::ptest, status, Statuses::S409_Conflict);
             K2EXPECT(log::ptest, status.message, "plog is sealed");
 

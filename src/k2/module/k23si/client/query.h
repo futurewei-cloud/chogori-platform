@@ -43,7 +43,7 @@ public:
     void addProjection(const String& fieldName);
     void addProjection(const std::vector<String>& fieldNames);
 
-    bool isDone(); // If false, more results may be availableunasc
+    bool isDone(); // If false, more results may be available
 
     // Recursively copies the payloads if the expression's values and children. This is used so that the
     // memory of the payloads will be allocated in the context of the current thread.

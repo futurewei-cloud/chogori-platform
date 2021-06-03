@@ -38,8 +38,6 @@ enum Verbs : k2::Verb {
     CPO_PERSISTENCE_CLUSTER_CREATE,
     // ControlPlaneOracle: asked to return a collection of persistence servers
     CPO_PERSISTENCE_CLUSTER_GET,
-    PERSISTENCE_CLUSTER_CREATE,
-    PERSISTENCE_CLUSTER_GET,
     CPO_PARTITION_METADATA_PUT,
     CPO_PARTITION_METADATA_GET,
 

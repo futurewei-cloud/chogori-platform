@@ -47,7 +47,9 @@ struct PlogAppendRequest {
 
 struct PlogAppendResponse {
     uint32_t newOffset;
-    K2_PAYLOAD_FIELDS(newOffset);
+    Payload return_payload;
+    K2_PAYLOAD_FIELDS(newOffset, return_payload);
+    K2_DEF_FMT(PlogAppendResponse, newOffset);
 };
 
 struct PlogReadRequest {

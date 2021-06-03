@@ -57,7 +57,8 @@ public:
     seastar::future<std::tuple<Status, String>> create(uint8_t retries = 1);
 
     // append a payload into a plog at the given offset 
-    seastar::future<std::tuple<Status, uint32_t>> append(String plogId, uint32_t offset, Payload payload);
+    // if the return status is not 2xx, then return the received payload back to the logstream
+    seastar::future<std::tuple<Status, uint32_t, Payload>> append(String plogId, uint32_t offset, Payload payload);
 
     // read the given size bytes from the PLOG with the given plogId, starting to read at the given offset
     // The result is returned as a single Payload containing the requested number of bytes

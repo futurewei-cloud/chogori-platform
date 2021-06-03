@@ -614,6 +614,11 @@ CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& requ
 
 // When the metadata manager seals the old plog and use a new plod to persist metadata, this will be called
 // persist the old plog sealed offest and the new plog id
+// For the first put request, it will receive old_plog_sealed=0, new_plogId = id1 since it has no previous plogs
+// For the second put request, it will receive old_plog_sealed=100, new_plogId = id2
+// For the third put request, it will receive old_plog_sealed=200, new_plogId = id3
+// Then the plog chain will be ([plog_id, sealed_offset]):
+// [id1, 100], [id2, 200], [id3, 0]
 seastar::future<std::tuple<Status, dto::MetadataPutResponse>>
 CPOService::handleMetadataPut(dto::MetadataPutRequest&& request){
     K2LOG_D(log::cposvr, "Received metadata persist request for partition {}", request.partitionName);

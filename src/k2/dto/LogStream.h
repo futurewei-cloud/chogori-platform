@@ -60,11 +60,11 @@ struct MetadataGetResponse {
     K2_DEF_FMT(MetadataGetResponse, records);
 };
 
-struct ContinuationToken{
+struct LogStreamReadContinuationToken{
     String plogId;
     uint32_t offset;
     K2_PAYLOAD_FIELDS(plogId, offset);
-    K2_DEF_FMT(ContinuationToken, plogId, offset);
+    K2_DEF_FMT(LogStreamReadContinuationToken, plogId, offset);
 };
 
 struct AppendRequest{
@@ -97,14 +97,14 @@ struct ReadRequest{
 };
 
 struct ReadWithTokenRequest{
-    ContinuationToken token;
+    LogStreamReadContinuationToken token;
     uint32_t size;
     K2_PAYLOAD_FIELDS(token, size);
     K2_DEF_FMT(ReadWithTokenRequest, token, size);
 };
 
 struct ReadResponse{
-    ContinuationToken token;
+    LogStreamReadContinuationToken token;
     Payload payload;
     K2_PAYLOAD_FIELDS(token, payload);
     K2_DEF_FMT(ReadResponse, token);

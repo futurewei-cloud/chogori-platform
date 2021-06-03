@@ -123,7 +123,7 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
         });
 }
 
-seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, uint32_t offset, Payload payload){
+seastar::future<std::tuple<Status, uint32_t, Payload>> PlogClient::append(String plogId, uint32_t offset, Payload payload){
     uint32_t expected_offset = offset + payload.getSize();
     uint32_t appended_offset = payload.getSize();
     dto::PlogAppendRequest request{.plogId = std::move(plogId), .offset=offset, .payload=std::move(payload)};
@@ -136,9 +136,11 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
         .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) { 
             Status return_status;
+            Payload return_payload;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
+                return_payload = std::move(response.return_payload);
                 if (!return_status.is2xxOK()) 
                     break;
                 if (response.newOffset != expected_offset){
@@ -146,7 +148,7 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::append(String plogId, 
                     break;
                 }
             }
-            return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(expected_offset)));
+            return seastar::make_ready_future<std::tuple<Status, uint32_t, Payload> >(std::tuple<Status, uint32_t, Payload>(std::move(return_status), std::move(expected_offset), std::move(return_payload)));
         });
 }
 

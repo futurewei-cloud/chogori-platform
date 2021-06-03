@@ -94,16 +94,16 @@ PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
     K2LOG_D(log::plogsvr, "Received append request {}", request);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogAppendResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogAppendResponse{.newOffset=0, .return_payload = std::move(request.payload)});
     }
     if (iter->second.sealed){
-         return RPCResponse(Statuses::S409_Conflict("plog is sealed"), dto::PlogAppendResponse());
+         return RPCResponse(Statuses::S409_Conflict("plog is sealed"), dto::PlogAppendResponse{.newOffset=0, .return_payload = std::move(request.payload)});
     }
     if (iter->second.offset != request.offset){
-        return RPCResponse(Statuses::S403_Forbidden("offset inconsistent"), dto::PlogAppendResponse());
+        return RPCResponse(Statuses::S403_Forbidden("offset inconsistent"), dto::PlogAppendResponse{.newOffset=0, .return_payload = std::move(request.payload)});
     }
     if (iter->second.offset + request.payload.getSize() > PLOG_MAX_SIZE){
-         return RPCResponse(Statuses::S413_Payload_Too_Large("exceeds pLog limit"), dto::PlogAppendResponse());
+         return RPCResponse(Statuses::S413_Payload_Too_Large("exceeds pLog limit"), dto::PlogAppendResponse{.newOffset=0, .return_payload = std::move(request.payload)});
     }
 
     dto::PlogAppendResponse response;

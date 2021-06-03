@@ -121,16 +121,16 @@ public:  // application lifespan
     seastar::future<> runTest1() {
         K2LOG_I(log::ltest, ">>> Test1: Write and Read a Value from/to one log stream");
         _logStream = _mmgr.obtainLogStream(LogStreamType::WAL);
-        String data_to_append(10000, '0');
+        String data_to_append(10000, '2');
         Payload payload([] { return Binary(20000); });
         payload.write(data_to_append);
         // write a string to the first log stream
-        return _logStream->append(dto::AppendRequest{.payload=std::move(payload)})
+        return _logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)})
         .then([this, data_to_append] (auto&& response){
             auto& [status, append_response] = response;
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot append data!");
             _initPlogId = append_response.plogId;
-            return _logStream->read(dto::ReadRequest{.start_plogId=append_response.plogId, .start_offset=0, .size=append_response.current_offset});
+            return _logStream->read_data_from_plogs(dto::ReadRequest{.start_plogId=append_response.plogId, .start_offset=0, .size=append_response.current_offset});
         })
         .then([this, data_to_append] (auto&& response){
             auto& [status, read_response] = response;
@@ -148,12 +148,12 @@ public:  // application lifespan
         K2LOG_I(log::ltest, ">>> Test2: Write and read huge data");
          _logStream = _mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
         // write 1000 Strings to the second log stream, these writes will trigger a plog switch
-        String data_to_append(10000, '0');
+        String data_to_append(10000, '3');
         std::vector<seastar::future<std::tuple<Status, dto::AppendResponse>> > writeFutures;
         for (uint32_t i = 0; i < 2000; ++i){
             Payload payload([] { return Binary(20000); });
             payload.write(data_to_append);
-            writeFutures.push_back(_logStream->append(dto::AppendRequest{.payload=std::move(payload)}));
+            writeFutures.push_back(_logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)}));
         }
         // read all the Strings that we wrote before, check whether they are the same
         return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end())
@@ -169,12 +169,12 @@ public:  // application lifespan
                 K2LOG_D(log::ltest, "{}, {}", append_response.plogId, append_response.current_offset);
             }
             K2LOG_I(log::ltest, ">>> Test2.1: Write Done");
-            return _logStream->read(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=2000*10005});
+            return _logStream->read_data_from_plogs(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=2000*10005});
         })
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 2000*10005;
-            dto::ContinuationToken continuation_token;
+            dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
             
@@ -189,7 +189,7 @@ public:  // application lifespan
                 return seastar::do_until(
                     [&] { return request_size == 0; },
                     [&] {
-                        return _logStream->read(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
+                        return _logStream->read_data_from_plogs(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
                         .then([&] (auto&& response){
                             auto& [status, read_response] = response;
                             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
@@ -223,7 +223,7 @@ public:  // application lifespan
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
                 payload.write(data_to_append);
-                writeFutures.push_back(_logStream->append(dto::AppendRequest{.payload=std::move(payload)}));
+                writeFutures.push_back(_logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)}));
             }
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
@@ -235,12 +235,12 @@ public:  // application lifespan
                 K2LOG_D(log::ltest, "{}, {}", append_response.plogId, append_response.current_offset);
             }
             K2LOG_I(log::ltest, ">>> Test2.3: Write Done");
-            return _logStream->read(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=4000*10005});
+            return _logStream->read_data_from_plogs(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=4000*10005});
         })
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 4000*10005;
-            dto::ContinuationToken continuation_token;
+            dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
             
@@ -255,7 +255,7 @@ public:  // application lifespan
                 return seastar::do_until(
                     [&] { return request_size == 0; },
                     [&] {
-                        return _logStream->read(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
+                        return _logStream->read_data_from_plogs(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
                         .then([&] (auto&& response){
                             auto& [status, read_response] = response;
                             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
@@ -293,7 +293,7 @@ public:  // application lifespan
         K2LOG_I(log::ltest, ">>> Test3: replay the metadata manager and read/write data from/to a specific log stream");
         ConfigVar<String> configEp("cpo_url");
         String cpoUrl = configEp();
-        String data_to_append(10000, '0');
+        String data_to_append(10000, '3');
 
         // Replay the entire metadata manager
         return _reload_mmgr.replay(cpoUrl, "Partition-1", "Persistence_Cluster_1")
@@ -303,12 +303,12 @@ public:  // application lifespan
             K2LOG_I(log::ltest, ">>> Test3.1: Replay Done");
             
             _reload_logStream = _reload_mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
-            return _reload_logStream->read(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=4000*10005});
+            return _reload_logStream->read_data_from_plogs(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=4000*10005});
         })
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 4000*10005;
-            dto::ContinuationToken continuation_token;
+            dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
             
@@ -323,7 +323,7 @@ public:  // application lifespan
                 return seastar::do_until(
                     [&] { return request_size == 0; },
                     [&] {
-                        return _reload_logStream->read(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
+                        return _reload_logStream->read_data_from_plogs(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
                         .then([&] (auto&& response){
                             auto& [status, read_response] = response;
                             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
@@ -358,7 +358,7 @@ public:  // application lifespan
             for (uint32_t i = 0; i < 2000; ++i){
                 Payload payload([] { return Binary(20000); });
                 payload.write(data_to_append);
-                writeFutures.push_back(_reload_logStream->append(dto::AppendRequest{.payload=std::move(payload)}));
+                writeFutures.push_back(_reload_logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)}));
             }
             return seastar::when_all_succeed(writeFutures.begin(), writeFutures.end());
         })
@@ -370,12 +370,12 @@ public:  // application lifespan
                 K2LOG_D(log::ltest, "{}, {}", append_response.plogId, append_response.current_offset);
             }
             K2LOG_I(log::ltest, ">>> Test3.3: Write Done");
-            return _reload_logStream->read(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=6000*10005});
+            return _reload_logStream->read_data_from_plogs(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=6000*10005});
         })
         // read with continuation
         .then([this] (auto&& response){
             uint32_t request_size = 6000*10005;
-            dto::ContinuationToken continuation_token;
+            dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
             
@@ -390,7 +390,7 @@ public:  // application lifespan
                 return seastar::do_until(
                     [&] { return request_size == 0; },
                     [&] {
-                        return _reload_logStream->read(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
+                        return _reload_logStream->read_data_from_plogs(dto::ReadWithTokenRequest{.token=continuation_token, .size=request_size})
                         .then([&] (auto&& response){
                             auto& [status, read_response] = response;
                             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
