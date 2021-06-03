@@ -40,9 +40,9 @@ class LogStreamTest {
 private:
     int exitcode = -1;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
-    k2::MetadataMgr _mmgr;
+    k2::PartitionMetadataMgr _mmgr;
     k2::LogStream* _logStream;
-    k2::MetadataMgr _reload_mmgr;
+    k2::PartitionMetadataMgr _reload_mmgr;
     k2::LogStream* _reload_logStream;
     String _initPlogId;
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};

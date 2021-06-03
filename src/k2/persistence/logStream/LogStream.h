@@ -61,7 +61,7 @@ class LogStream;
 // provided unique operations for metadata manager
 // A metadata manager manages all the logstreams in a partition, and persist the metadata of all these logstreams
 // When a metadata manager persist its own metadata, it will persist these information to CPO
-class MetadataMgr;
+class PartitionMetadataMgr;
 
 // a base class that provide operations to handle the plogs. it will be used by both log stream and metadata manager
 class LogStreamBase{
@@ -155,13 +155,13 @@ public:
     ~LogStream();
 
     // set the name of this log stream and the meta data manager pointer
-    seastar::future<Status> init(LogStreamType name, MetadataMgr* metadataMgr, String cpoUrl, String persistenceClusterName, bool reload);
+    seastar::future<Status> init(LogStreamType name, PartitionMetadataMgr* metadataMgr, String cpoUrl, String persistenceClusterName, bool reload);
 private:
     // the name of this log stream, such as "WAL", "IndexerSnapshot", "Aux", etc
     LogStreamType _name;
 
     // the pointer to the metadata manager
-    MetadataMgr* _metadataMgr;
+    PartitionMetadataMgr* _metadataMgr;
 
     // persist metadata to Metadata Manager
     virtual seastar::future<Status> _addNewPlog(uint32_t sealedOffset, String newPlogId);
@@ -171,11 +171,11 @@ private:
 // A metadata manager manages all the logstreams in a partition, and persist the metadata of all these logstreams
 // When a metadata manager persist its own metadata, it will persist these information to CPO
 // TODO: Test the performance of the Inheritance
-class MetadataMgr:public LogStreamBase{
+class PartitionMetadataMgr:public LogStreamBase{
 
 public:
-    MetadataMgr();
-    ~MetadataMgr();
+    PartitionMetadataMgr();
+    ~PartitionMetadataMgr();
     
     // set the partition name, initialize all the log streams this metadata mgr used
     seastar::future<Status> init(String cpoUrl, String partitionName, String persistenceClusterName, bool reload);

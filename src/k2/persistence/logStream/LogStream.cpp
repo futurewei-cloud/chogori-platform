@@ -332,7 +332,7 @@ LogStream::~LogStream() {
 }
 
 seastar::future<Status> 
-LogStream::init(LogStreamType name, MetadataMgr* metadataMgr, String cpoUrl, String persistenceClusterName, bool reload){
+LogStream::init(LogStreamType name, PartitionMetadataMgr* metadataMgr, String cpoUrl, String persistenceClusterName, bool reload){
     _name = name;
     _metadataMgr = metadataMgr;
     return _initPlogClient(persistenceClusterName, cpoUrl)
@@ -358,16 +358,16 @@ LogStream::_addNewPlog(uint32_t sealedOffset, String newPlogId){
 }
 
 
-MetadataMgr::MetadataMgr() {
+PartitionMetadataMgr::PartitionMetadataMgr() {
     K2LOG_D(log::lgbase, "ctor");
 }
 
-MetadataMgr::~MetadataMgr() {
+PartitionMetadataMgr::~PartitionMetadataMgr() {
     K2LOG_D(log::lgbase, "ctor");
 }
 
 seastar::future<Status> 
-MetadataMgr::init(String cpoUrl, String partitionName, String persistenceClusterName, bool reload){
+PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persistenceClusterName, bool reload){
     _cpo = CPOClient(cpoUrl);
     _partitionName = std::move(partitionName);
     return _initPlogClient(persistenceClusterName, cpoUrl)
@@ -410,7 +410,7 @@ MetadataMgr::init(String cpoUrl, String partitionName, String persistenceCluster
 }
 
 seastar::future<Status>
-MetadataMgr::_addNewPlog(uint32_t sealedOffset, String newPlogId){
+PartitionMetadataMgr::_addNewPlog(uint32_t sealedOffset, String newPlogId){
     return _cpo.PutPartitionMetadata(Deadline<>(_cpo_timeout()), _partitionName, sealedOffset, std::move(newPlogId)).
     then([this] (auto&& response){
         auto& [status, resp] = response;
@@ -421,7 +421,7 @@ MetadataMgr::_addNewPlog(uint32_t sealedOffset, String newPlogId){
     });
 }
 
-LogStream* MetadataMgr::obtainLogStream(LogStreamType log_stream_name){
+LogStream* PartitionMetadataMgr::obtainLogStream(LogStreamType log_stream_name){
     auto it = _logStreamMap.find(log_stream_name);
     if (it == _logStreamMap.end()) {
         throw k2::dto::LogStreamRetrieveError("unable to retrieve the target logstream");
@@ -431,7 +431,7 @@ LogStream* MetadataMgr::obtainLogStream(LogStreamType log_stream_name){
 
 
 seastar::future<Status> 
-MetadataMgr::addNewPLogIntoLogStream(LogStreamType name, uint32_t sealed_offset, String new_plogId){
+PartitionMetadataMgr::addNewPLogIntoLogStream(LogStreamType name, uint32_t sealed_offset, String new_plogId){
     Payload temp_payload(Payload::DefaultAllocator);
     temp_payload.write(name);
     temp_payload.write(sealed_offset);
@@ -446,12 +446,14 @@ MetadataMgr::addNewPLogIntoLogStream(LogStreamType name, uint32_t sealed_offset,
 
 
 seastar::future<Status> 
-MetadataMgr::replay(String cpoUrl, String partitionName, String persistenceClusterName){
+PartitionMetadataMgr::replay(String cpoUrl, String partitionName, String persistenceClusterName){
+    // 1.initialize this metadata manager
     return init(cpoUrl, partitionName, persistenceClusterName, true).
     then([&] (auto&& status){
         if (!status.is2xxOK()) {
             return seastar::make_ready_future<Status>(std::move(status));
         }
+        // 2.retrive the metadata of the metadata manager from CPO
         return _cpo.GetPartitionMetadata(Deadline<>(_cpo_timeout()), _partitionName)
         .then([&] (auto&& response){
             auto& [status, resp] = response;
@@ -459,6 +461,7 @@ MetadataMgr::replay(String cpoUrl, String partitionName, String persistenceClust
                 return seastar::make_ready_future<Status>(std::move(status));
             }
             return seastar::do_with(std::move(resp.records), [&] (auto& records){
+                // since this records will not contain the last plog's offset, we will retreive this information from Plog Servers
                 return _getPlogStatus(records.back().plogId)
                 .then([&] (auto&& response){
                     auto& [status, resp] = response;
@@ -466,6 +469,7 @@ MetadataMgr::replay(String cpoUrl, String partitionName, String persistenceClust
                         return seastar::make_ready_future<Status>(std::move(status));
                     }
                     records.back().sealed_offset = std::get<0>(resp);
+                    // 3. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for metadata manager itself
                     return _reload(records);
                 })
                 .then([&] (auto&& response){
@@ -484,8 +488,9 @@ MetadataMgr::replay(String cpoUrl, String partitionName, String persistenceClust
     });
 }
 
+// 4. retrive the metadata of all the logstreams from metadata plogs
 seastar::future<Status> 
-MetadataMgr::_readMetadataPlogs(std::vector<dto::PartitionMetdataRecord> records, uint32_t read_size){
+PartitionMetadataMgr::_readMetadataPlogs(std::vector<dto::PartitionMetdataRecord> records, uint32_t read_size){
     return read_data_from_plogs(dto::ReadRequest{.start_plogId=records[0].plogId, .start_offset=0, .size=read_size})
     .then([&, read_size] (auto&& response){
         uint32_t request_size = read_size;
@@ -540,8 +545,9 @@ MetadataMgr::_readMetadataPlogs(std::vector<dto::PartitionMetdataRecord> records
     });
 }
 
+// 5. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for all the logstreams
 seastar::future<Status> 
-MetadataMgr::_reloadLogStreams(Payload payload){
+PartitionMetadataMgr::_reloadLogStreams(Payload payload){
     std::unordered_map<LogStreamType, std::vector<dto::PartitionMetdataRecord> > logStreamRecords;
     LogStreamType logStreamName;
     uint32_t offset;
