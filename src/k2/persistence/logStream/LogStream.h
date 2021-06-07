@@ -184,7 +184,7 @@ public:
     seastar::future<Status> addNewPLogIntoLogStream(LogStreamType name, uint32_t sealed_offset, String new_plogId);
 
     // return the request logstream pointer
-    LogStream* obtainLogStream(LogStreamType log_stream_name);
+    std::tuple<Status, LogStream*> obtainLogStream(LogStreamType log_stream_name);
 
     // replay the entire Metadata Manager
     // When we do replay, we need to to the following steps:

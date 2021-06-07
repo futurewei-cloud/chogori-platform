@@ -120,7 +120,15 @@ public:  // application lifespan
 
     seastar::future<> runTest1() {
         K2LOG_I(log::ltest, ">>> Test1: Write and Read a Value from/to one log stream");
-        _logStream = _mmgr.obtainLogStream(LogStreamType::WAL);
+        auto response = _mmgr.obtainLogStream(LogStreamType::WAL);
+        auto status = std::get<0>(response);
+        auto logStream = std::get<1>(response);
+        if (!status.is2xxOK()){
+            throw std::runtime_error("cannot obtain LogStream");
+        }
+        else{
+            _logStream = logStream;
+        }
         String data_to_append(10000, '2');
         Payload payload([] { return Binary(20000); });
         payload.write(data_to_append);
@@ -146,7 +154,15 @@ public:  // application lifespan
 
     seastar::future<> runTest2() {
         K2LOG_I(log::ltest, ">>> Test2: Write and read huge data");
-         _logStream = _mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+        auto response = _mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+        auto status = std::get<0>(response);
+        auto logStream = std::get<1>(response);
+        if (!status.is2xxOK()){
+            throw std::runtime_error("cannot obtain LogStream");
+        }
+        else{
+            _logStream = logStream;
+        }
         // write 1000 Strings to the second log stream, these writes will trigger a plog switch
         String data_to_append(10000, '3');
         std::vector<seastar::future<std::tuple<Status, dto::AppendResponse>> > writeFutures;
@@ -302,7 +318,15 @@ public:  // application lifespan
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot replay metadata manager!");
             K2LOG_I(log::ltest, ">>> Test3.1: Replay Done");
             
-            _reload_logStream = _reload_mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+            auto response = _reload_mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+            auto return_status = std::get<0>(response);
+            auto logStream = std::get<1>(response);
+            if (!return_status.is2xxOK()){
+                throw std::runtime_error("cannot obtain LogStream");
+            }
+            else{
+                _reload_logStream = logStream;
+            }
             return _reload_logStream->read_data_from_plogs(dto::ReadRequest{.start_plogId=_initPlogId, .start_offset=0, .size=4000*10005});
         })
         // read with continuation

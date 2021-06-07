@@ -421,12 +421,12 @@ PartitionMetadataMgr::_addNewPlog(uint32_t sealedOffset, String newPlogId){
     });
 }
 
-LogStream* PartitionMetadataMgr::obtainLogStream(LogStreamType log_stream_name){
+std::tuple<Status, LogStream*> PartitionMetadataMgr::obtainLogStream(LogStreamType log_stream_name){
     auto it = _logStreamMap.find(log_stream_name);
     if (it == _logStreamMap.end()) {
-        throw k2::dto::LogStreamRetrieveError("unable to retrieve the target logstream");
+        return std::tuple<Status, LogStream*>(std::tuple<Status, LogStream*>(Statuses::S404_Not_Found("unable to retrieve the target logstream"), NULL));
     }
-    return it->second;
+    return std::tuple<Status, LogStream*>(std::tuple<Status, LogStream*>(Statuses::S200_OK("successfully obtain logstream"), it->second));
 }
 
 
