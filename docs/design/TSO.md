@@ -1,5 +1,3 @@
-[-UP-](./TXN.md)
-
 # K2 Timestamp and TSO
 ## 1.  Design goals
 K2 TimeStamp is a specific designed data structure for timeStamp used for marking transactions' time in order to provide transaction isolation and consistency.  TSO(TimeStampOracle) is a service for providing K2 TimeStamps to K2 client clusters/data servers managing transactions.

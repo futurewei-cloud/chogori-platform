@@ -3,33 +3,83 @@
 -->
 
 # K2 Coding Style
+Rule: Try to match the rest of the codebase!
 ## Short demo of the concepts below
 ``` c++
-//<!--
-//    (C)opyright Futurewei Technologies, inc, 2019
-//-->
+/*
+MIT License
 
+Copyright(c) 2021 Futurewei Cloud
+
+    Permission is hereby granted,
+    free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
+
+    The above copyright notice and this permission notice shall be included in all copies
+    or
+    substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS",
+    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER
+    LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
+
+#pragma once
+
+// system headers
 #include <string>
 #include <vector>
 
-// to build an RPC server
+// external lib headers
+#include <json/json.hpp>
+
+// project-internal headers
 #include <k2/transport/RPCDispatcher.h>
-// to handle incoming tcp traffic
 #include <k2/transport/TCPListener.h>
 
-namespace service {
+// local folder headers
+#include "MySupportClass.h"
+
+namespace dto::service {
+namespace log {
+inline thread_local k2::logging::Logger mysvc("k2::my_service");
+}
 
 // This class describes the Master RPC service.
 // It implements the RPC handlers
 class MyClass {
-private:
-    // our RPC dispatcher
-    shared_ptr<RPCDispatcher> _dispatcher;
-
 public:
     MyClass(shared_ptr<RPCDispatcher> dispatcher):
         _dispatcher(dispatcher) {
     }
+
+    // must have comments
+    seastar::future<> publicAPIMethod1();
+
+    // must have comments
+    auto publicAPIMethod2(const String& cname) {
+        // prefer implementation in the cpp file as much as possible
+        if (auto it = _conns.find(); it != _conns.end()) {
+            it->invoke();
+        } else {
+            K2LOG_D(log::mysvc, "Unable to find connection name {}", cname);
+        }
+        return seastar::make_ready_future();
+    }
+
+private: // methods
+    // helper to help us do things
+    void _helperMethod();
+
+// for classes with lots of things going on, separate methods from fields
+private: // fields
+    // our RPC dispatcher
+    shared_ptr<RPCDispatcher> _dispatcher;
 
 }; // class MyClass
 
@@ -38,9 +88,28 @@ public:
 
 ## Copyright and Licence block
 ``` c++
-//<!--
-//    (C)opyright Futurewei Technologies, inc, 2019
-//-->
+/*
+MIT License
+
+Copyright(c) 2021 Futurewei Cloud
+
+    Permission is hereby granted,
+    free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
+
+    The above copyright notice and this permission notice shall be included in all copies
+    or
+    substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS",
+    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER
+    LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
 ```
 
 ## Folders/Modules
@@ -83,6 +152,7 @@ public:
         - `class IModule`
 - Class members (variables, functions), local variables:
     - Named using `camelCase` - starts with lower case letter
+    - private class members start with underscore and also use camel case: `_camelCase`
 
 ## Whitespace
 - Use 4 spaces only; NEVER tabs.
@@ -92,7 +162,7 @@ public:
     ```c++
     #include <k2/transport/Listener.h>
     ```
-- In any private file, to include a private header file (one in the `src` directory), use an absolute path with `""` like this:
+- In any private file, to include a private header file (one in the same folder), use an absolute path with `""` like this:
     ```c++
     #include "Listener.h"
     ```
@@ -102,8 +172,7 @@ public:
 - [Preferred] All nested scopes are braced, even when the language allows omitting the braces (such as an if-statement), this makes patches simpler and is more consistent.
 - [Preferred] Class and function brace should start with new line. Within the function, brace location is flexible. Body is indented.
     ```c++
-    void Function()
-    {
+    void Function() {
         if (some condition) {
             stmt;
         } else {
@@ -164,7 +233,4 @@ If a line becomes excessively long (>160 characters), or is just complicated, br
 Of course, long lines or complex conditions may indicate that refactoring is in order.
 
 ## Line Ending Character
-Use \n(lf)
-
-
-
+Use \n(lf). Make sure there is a new line at the end of your file
