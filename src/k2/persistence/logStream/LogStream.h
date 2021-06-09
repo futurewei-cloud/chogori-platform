@@ -176,18 +176,6 @@ public:
     // return the request logstream pointer
     std::tuple<Status, LogStream*> obtainLogStream(LogStreamType log_stream_name);
 
-    // replay the entire Metadata Manager
-    // When we do replay, we need to to the following steps:
-    // 1. initialize this metadata manager
-    // 2. retrive the metadata of the metadata manager from CPO
-    // 3. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for metadata manager itself
-    // 4. retrive the metadata of all the logstreams from metadata plogs
-    // 5. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for all the logstreams
-    // we have two helpers functions for some steps.
-    // step 1-3 are implemented in this function
-    // step 4 is implemented in _readMetadataPlogs
-    // step 5 is implemented _reloadLogStreams
-    seastar::future<Status> replay(std::vector<dto::PartitionMetdataRecord> records);
 private:
     // a map to store all the log streams managed by this metadata manager
     // instead of raw pointer, using shared pointer
@@ -198,6 +186,17 @@ private:
 
     // persist metadata to CPO
     virtual seastar::future<Status> _addNewPlog(uint32_t sealeOffset, String newPlogId);
+
+    // replay the entire Metadata Manager
+    // When we do replay, we need to to the following steps:
+    // 1. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for metadata manager itself
+    // 2. retrive the metadata of all the logstreams from metadata plogs
+    // 3. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for all the logstreams
+    // we have two helpers functions for some steps.
+    // step 1 is implemented in this function
+    // step 2 is implemented in _readMetadataPlogs
+    // step 3 is implemented _reloadLogStreams
+    seastar::future<Status> _replay(std::vector<dto::PartitionMetdataRecord> records);
 
     // helper method for replay
     // retrive the metadata of all the logstreams from metadata plogs

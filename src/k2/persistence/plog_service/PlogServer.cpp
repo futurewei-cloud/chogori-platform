@@ -83,10 +83,10 @@ PlogServer::_handleCreate(dto::PlogCreateRequest&& request){
     K2LOG_D(log::plogsvr, "Received create request for {}", request.plogId);
     auto iter = _plogMap.find(request.plogId);
     if (iter != _plogMap.end()) {
-        return RPCResponse(Statuses::S409_Conflict("plog id already exists"), dto::PlogCreateResponse());
+        return RPCResponse(Statuses::S409_Conflict("plog id already exists"), dto::PlogCreateResponse{});
     }
     _plogMap.insert(std::pair<String,InternalPlog >(std::move(request.plogId), InternalPlog()));
-    return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse());
+    return RPCResponse(Statuses::S201_Created("plog created"), dto::PlogCreateResponse{});
 };
 
 seastar::future<std::tuple<Status, dto::PlogAppendResponse>>
@@ -112,7 +112,7 @@ PlogServer::_handleAppend(dto::PlogAppendRequest&& request){
     iter->second.offset += request.payload.getSize();
     // We want to use copy in order to prevent memory fragmentation. If we use shareAll() instead of copy, the payload we obtained will occupy a entire 8K block
     iter->second.payload.copyFromPayload(request.payload, request.payload.getSize());
-    
+
     return RPCResponse(Statuses::S200_OK("append success"), std::move(response));
 };
 
@@ -122,12 +122,15 @@ PlogServer::_handleRead(dto::PlogReadRequest&& request){
     K2LOG_D(log::plogsvr, "Received read request for {}", request);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogReadResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogReadResponse{});
+    }
+    if (iter->second.offset < request.offset){
+        return RPCResponse(Statuses::S413_Payload_Too_Large("exceed the maximun length"), dto::PlogReadResponse{});
     }
     if (iter->second.offset < request.offset + request.size){
-         return RPCResponse(Statuses::S413_Payload_Too_Large("exceed the maximun length"), dto::PlogReadResponse());
+        return RPCResponse(Statuses::S413_Payload_Too_Large("exceed the maximun length"), dto::PlogReadResponse{.payload=iter->second.payload.shareRegion(request.offset, iter->second.offset-request.offset)});
     }
-    
+
     dto::PlogReadResponse response{.payload=iter->second.payload.shareRegion(request.offset, request.size)};
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };
@@ -170,9 +173,9 @@ PlogServer::_handleGetStatus(dto::PlogGetStatusRequest&& request){
     K2LOG_D(log::plogsvr, "Received GetStatus request for {}", request);
     auto iter = _plogMap.find(request.plogId);
     if (iter == _plogMap.end()) {
-        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogGetStatusResponse());
+        return RPCResponse(Statuses::S404_Not_Found("plog does not exist"), dto::PlogGetStatusResponse{});
     }
-    
+
     dto::PlogGetStatusResponse response{.currentOffset=iter->second.offset, .sealed=iter->second.sealed};
     return RPCResponse(Statuses::S200_OK("read success"), std::move(response));
 };

@@ -429,7 +429,7 @@ PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persisten
                         return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
                     }
                     else{
-                        return replay(std::move(records));
+                        return _replay(std::move(records));
                     }
                 });
             });
@@ -474,7 +474,7 @@ PartitionMetadataMgr::addNewPLogIntoLogStream(LogStreamType name, uint32_t seale
 
 
 seastar::future<Status>
-PartitionMetadataMgr::replay(std::vector<dto::PartitionMetdataRecord> records){
+PartitionMetadataMgr::_replay(std::vector<dto::PartitionMetdataRecord> records){
     return seastar::do_with(std::move(records), [&] (auto& records){
         // since this records will not contain the last plog's offset, we will retreive this information from Plog Servers
         return _getPlogStatus(dto::PlogGetStatusRequest{.plogId=records.back().plogId})
