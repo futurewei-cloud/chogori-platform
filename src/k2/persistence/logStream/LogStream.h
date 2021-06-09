@@ -81,7 +81,7 @@ public:
 
     // obtain the target plog status
     // TODO: This function will only be called internally, will move to protected later
-    seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> _getPlogStatus(String plogId);
+    seastar::future<std::tuple<Status, dto::PlogGetStatusResponse>> _getPlogStatus(dto::PlogGetStatusRequest request);
 private:
     // Record the fisrt Plog Id and the current used Plog Id of a Logstream
     String _firstPlogId, _currentPlogId, _preallocatedPlogId;

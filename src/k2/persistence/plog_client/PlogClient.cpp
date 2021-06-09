@@ -123,10 +123,9 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
         });
 }
 
-seastar::future<std::tuple<Status, uint32_t, Payload>> PlogClient::append(String plogId, uint32_t offset, Payload payload){
-    uint32_t expected_offset = offset + payload.getSize();
-    uint32_t appended_offset = payload.getSize();
-    dto::PlogAppendRequest request{.plogId = std::move(plogId), .offset=offset, .payload=std::move(payload)};
+seastar::future<std::tuple<Status, dto::PlogAppendResponse>> PlogClient::append(dto::PlogAppendRequest request){
+    uint32_t expected_offset = request.offset + request.payload.getSize();
+    uint32_t appended_offset = request.payload.getSize();
 
     std::vector<seastar::future<std::tuple<Status, dto::PlogAppendResponse> > > appendFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
@@ -136,11 +135,11 @@ seastar::future<std::tuple<Status, uint32_t, Payload>> PlogClient::append(String
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
         .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) {
             Status return_status;
-            Payload return_payload;
+            dto::PlogAppendResponse return_response;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
-                return_payload = std::move(response.return_payload);
+                return_response = std::move(response);
                 if (!return_status.is2xxOK())
                     break;
                 if (response.newOffset != expected_offset){
@@ -148,25 +147,21 @@ seastar::future<std::tuple<Status, uint32_t, Payload>> PlogClient::append(String
                     break;
                 }
             }
-            return seastar::make_ready_future<std::tuple<Status, uint32_t, Payload> >(std::tuple<Status, uint32_t, Payload>(std::move(return_status), std::move(expected_offset), std::move(return_payload)));
+            return seastar::make_ready_future<std::tuple<Status, dto::PlogAppendResponse> >(std::tuple<Status, dto::PlogAppendResponse>(std::move(return_status), std::move(return_response)));
         });
 }
 
 
-seastar::future<std::tuple<Status, Payload>> PlogClient::read(String plogId, uint32_t offset, uint32_t size){
-    dto::PlogReadRequest request{.plogId = std::move(plogId), .offset=offset, .size=size};
-
+seastar::future<std::tuple<Status, dto::PlogReadResponse>> PlogClient::read(dto::PlogReadRequest request){
     return RPC().callRPC<dto::PlogReadRequest, dto::PlogReadResponse>(dto::Verbs::PLOG_READ, request, *_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]][0], _plog_timeout()).
         then([this] (auto&& result) {
             auto& [status, response] = result;
 
-            return seastar::make_ready_future<std::tuple<Status, Payload> >(std::tuple<Status, Payload>(std::move(status), std::move(response.payload)));
+            return seastar::make_ready_future<std::tuple<Status, dto::PlogReadResponse> >(std::tuple<Status, dto::PlogReadResponse>(std::move(status), std::move(response)));
         });
 }
 
-seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, uint32_t offset){
-    dto::PlogSealRequest request{.plogId = std::move(plogId), .truncateOffset=offset};
-
+seastar::future<std::tuple<Status, dto::PlogSealResponse>> PlogClient::seal(dto::PlogSealRequest request){
     std::vector<seastar::future<std::tuple<Status, dto::PlogSealResponse> > > sealFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
         sealFutures.push_back(RPC().callRPC<dto::PlogSealRequest, dto::PlogSealResponse>(dto::Verbs::PLOG_SEAL, request, *ep, _plog_timeout()));
@@ -175,21 +170,19 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
     return seastar::when_all_succeed(sealFutures.begin(), sealFutures.end())
         .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) {
             Status return_status;
-            uint32_t sealed_offset;
+            dto::PlogSealResponse return_response;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
-                sealed_offset = response.sealedOffset;
+                return_response = std::move(response);
                 if (!return_status.is2xxOK())
                     break;
             }
-            return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(sealed_offset)));
+            return seastar::make_ready_future<std::tuple<Status, dto::PlogSealResponse> >(std::tuple<Status, dto::PlogSealResponse>(std::move(return_status), std::move(return_response)));
         });
 }
 
-seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getPlogStatus(String plogId){
-    dto::PlogGetStatusRequest request{.plogId = std::move(plogId)};
-
+seastar::future<std::tuple<Status, dto::PlogGetStatusResponse>> PlogClient::getPlogStatus(dto::PlogGetStatusRequest request){
     std::vector<seastar::future<std::tuple<Status, dto::PlogGetStatusResponse> > > statusFutures;
     for (auto& ep:_persistenceMapEndpoints[_persistenceNameList[_persistenceMapPointer]]){
         statusFutures.push_back(RPC().callRPC<dto::PlogGetStatusRequest, dto::PlogGetStatusResponse>(dto::Verbs::PLOG_GET_STATUS, request, *ep, _plog_timeout()));
@@ -215,7 +208,7 @@ seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getP
                 if (!return_status.is2xxOK())
                     break;
             }
-            return seastar::make_ready_future<std::tuple<Status, std::tuple<uint32_t, bool>> >(std::tuple<Status, std::tuple<uint32_t, bool>>(std::move(return_status), std::make_tuple(std::move(current_offset), std::move(sealed))));
+            return seastar::make_ready_future<std::tuple<Status, dto::PlogGetStatusResponse> >(std::tuple<Status, dto::PlogGetStatusResponse>(std::move(return_status), dto::PlogGetStatusResponse{.currentOffset=current_offset, .sealed=sealed}));
         });
 }
 

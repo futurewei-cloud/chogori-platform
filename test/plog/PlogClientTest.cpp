@@ -43,7 +43,7 @@ private:
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
-    
+
     k2::String _plogId;
 
 public:  // application lifespan
@@ -133,130 +133,130 @@ public:  // application lifespan
             auto& [status, resp] = response;
             K2EXPECT(log::ptest, status, Statuses::S201_Created);
             _plogId = resp;
-            
+
             dto::PlogCreateRequest request{.plogId = _plogId};
             std::vector<String> plogServerEndpoints = _plogConfigEps();
             auto ep = RPC().getTXEndpoint(plogServerEndpoints[0]);
-            
+
             return RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PLOG_CREATE, request, *ep, 1s);
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.3: append a plog");
             auto& [status, resp] = response;
             K2EXPECT(log::ptest, status, Statuses::S409_Conflict);
-            
+
             Payload payload([] { return Binary(4096); });
             payload.write("1234567890");
-            return _client.append(_plogId, 0, std::move(payload));
+            return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=0, .payload=std::move(payload)});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.4: append a plog");
-            auto& [status, offset, return_payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
-            K2EXPECT(log::ptest, offset, 15);
+            K2EXPECT(log::ptest, return_response.newOffset, 15);
 
             Payload payload([] { return Binary(4096); });
             payload.write("0987654321");
-            return _client.append(_plogId, 15, std::move(payload));
+            return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=15, .payload=std::move(payload)});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.5: append a plog");
-            auto& [status, offset, return_payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
-            K2EXPECT(log::ptest, offset, 30);
+            K2EXPECT(log::ptest, return_response.newOffset, 30);
 
             Payload payload([] { return Binary(4096); });
             payload.write("2333333333");
-            return _client.append(_plogId, 30, std::move(payload));
+            return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=30, .payload=std::move(payload)});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.6: append a plog with wrong offset");
-            auto& [status, offset, return_payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
-            K2EXPECT(log::ptest, offset, 45);
+            K2EXPECT(log::ptest, return_response.newOffset, 45);
 
             Payload payload([] { return Binary(4096); });
             payload.write("1234567890");
-            return _client.append(_plogId, 100, std::move(payload));
+            return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=100, .payload=std::move(payload)});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.7: read a plog");
-            auto& [status, offset, return_payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S403_Forbidden);
-            return _client.read(_plogId, 0, 15);
+            return _client.read(dto::PlogReadRequest{.plogId=_plogId, .offset=0, .size=15});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.8: read a plog");
-            auto& [status, payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             String str;
-            payload.seek(0);
-            payload.read(str);
+            return_response.payload.seek(0);
+            return_response.payload.read(str);
             K2EXPECT(log::ptest, str, "1234567890");
-            return _client.read(_plogId, 15, 15);
+            return _client.read(dto::PlogReadRequest{.plogId=_plogId, .offset=15, .size=15});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.9: read a plog");
-            auto& [status, payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             String str;
-            payload.seek(0);
-            payload.read(str);
+            return_response.payload.seek(0);
+            return_response.payload.read(str);
             K2EXPECT(log::ptest, str, "0987654321");
-            return _client.read(_plogId, 30, 15);
+            return _client.read(dto::PlogReadRequest{.plogId=_plogId, .offset=30, .size=15});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.10: read multiple payloads");
-            auto& [status, payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             String str;
-            payload.seek(0);
-            payload.read(str);
+            return_response.payload.seek(0);
+            return_response.payload.read(str);
             K2EXPECT(log::ptest, str, "2333333333");
-            return _client.read(_plogId, 0, 30);
+            return _client.read(dto::PlogReadRequest{.plogId=_plogId, .offset=0, .size=30});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.11: seal a plog");
-            auto& [status, payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             String str, str2;
-            payload.seek(0);
-            payload.read(str);
+            return_response.payload.seek(0);
+            return_response.payload.read(str);
             K2EXPECT(log::ptest, str, "1234567890");
-            payload.read(str2);
+            return_response.payload.read(str2);
             K2EXPECT(log::ptest, str2, "0987654321");
-            return _client.seal(_plogId, 45);
+            return _client.seal(dto::PlogSealRequest{.plogId=_plogId, .truncateOffset=45});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.12: seal a sealed plog");
-            auto& [status, offset] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
-            K2EXPECT(log::ptest, offset, 45);
-            return _client.seal(_plogId, 15);
+            K2EXPECT(log::ptest, return_response.sealedOffset, 45);
+            return _client.seal(dto::PlogSealRequest{.plogId=_plogId, .truncateOffset=15});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.13: append a sealed plog");
-            auto& [status, offset] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S409_Conflict);
-            K2EXPECT(log::ptest, offset, 45);
-            
+            K2EXPECT(log::ptest, return_response.sealedOffset, 45);
+
             Payload payload([] { return Binary(4096); });
             payload.write("1234567890");
-            return _client.append(_plogId, 45, std::move(payload));
+            return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=45, .payload=std::move(payload)});
         })
         .then([this] (auto&& response){
             K2LOG_I(log::ptest, "Test3.14: get the information of a plog");
-            auto& [status, offset, return_payload] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S409_Conflict);
             K2EXPECT(log::ptest, status.message, "plog is sealed");
 
-            return _client.getPlogStatus(_plogId);
+            return _client.getPlogStatus(dto::PlogGetStatusRequest{.plogId=_plogId});
         })
         .then([this] (auto&& response){
-            auto& [status, plogStatus] = response;
+            auto& [status, return_response] = response;
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
-            K2EXPECT(log::ptest, std::get<0>(plogStatus), 45);
-            K2EXPECT(log::ptest, std::get<1>(plogStatus), true);
+            K2EXPECT(log::ptest, return_response.currentOffset, 45);
+            K2EXPECT(log::ptest, return_response.sealed, true);
 
             return seastar::make_ready_future<>();
         });

@@ -140,14 +140,15 @@ LogStreamBase::append_data_to_plogs(dto::AppendRequest request){
         currentPlogInfo.currentOffset += request.payload.getSize();
         uint32_t expect_appended_offset = currentPlogInfo.currentOffset;
 
-        return _client.append(plogId, current_offset, std::move(request.payload)).
+        return _client.append(dto::PlogAppendRequest{.plogId=plogId, .offset=current_offset, .payload=std::move(request.payload)}).
         then([this, plogId, current_offset, expect_appended_offset] (auto&& response){
-            auto& [status, appended_offset, return_payload] = response;
+            auto& [status, return_response] = response;
 
+            uint32_t appended_offset = return_response.newOffset;
             // If this append failed, we will switch to a new plog and append the data
             if (!status.is2xxOK() || expect_appended_offset != appended_offset) {
                 _usedPlogInfo[plogId].currentOffset = current_offset;
-                return _switchPlogAndAppend(std::move(return_payload));
+                return _switchPlogAndAppend(std::move(return_response.return_payload));
             }
             // Check weather there is a sealed request that did not receive the response
             if (_switchingInProgress){
@@ -188,18 +189,19 @@ LogStreamBase::_switchPlogAndAppend(Payload payload){
     // The following process could be asynchronous
     std::vector<seastar::future<Status>> waitFutures;
     // Append to the new Plog
-    waitFutures.push_back(_client.append(new_plogId, 0, std::move(payload))
+    waitFutures.push_back(_client.append(dto::PlogAppendRequest{.plogId=new_plogId, .offset=0, .payload=std::move(payload)})
     .then([expect_appended_offset] (auto&& response){
-        auto& [status, appended_offset, return_payload] = response;
-        if (!status.is2xxOK() || expect_appended_offset != appended_offset) {
+        auto& [status, return_response] = response;
+        if (!status.is2xxOK() || expect_appended_offset != return_response.newOffset) {
             return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("unable to append a plog"));
         }
         return seastar::make_ready_future<Status>(Statuses::S201_Created("append success"));
     }));
     // Seal the old Plog
-    waitFutures.push_back(_client.seal(sealed_plogId, sealed_offest)
+
+    waitFutures.push_back(_client.seal(dto::PlogSealRequest{.plogId=sealed_plogId, .truncateOffset=sealed_offest})
     .then([this, sealed_plogId] (auto&& response){
-        auto& [status, resp] = response;
+        auto& [status, return_response] = response;
         if (!status.is2xxOK()) {
             return seastar::make_ready_future<Status>(Statuses::S500_Internal_Server_Error("unable to seal a plog"));
         }
@@ -275,13 +277,14 @@ LogStreamBase::read_data_from_plogs(dto::ReadRequest request){
         token.plogId = it->second.nextPlogId;
         token.offset = 0;
     }
-    return _client.read(request.start_plogId, request.start_offset, read_size)
+
+    return _client.read(dto::PlogReadRequest{.plogId=request.start_plogId, .offset=request.start_offset, .size=read_size})
     .then([this, token] (auto&& response){
-        auto& [status, payload] = response;
+        auto& [status, return_response] = response;
         if (!status.is2xxOK()){
             return seastar::make_ready_future<std::tuple<Status, dto::ReadResponse> >(std::tuple<Status, dto::ReadResponse>(std::move(status), dto::ReadResponse{}));
         }
-        return seastar::make_ready_future<std::tuple<Status, dto::ReadResponse> >(std::tuple<Status, dto::ReadResponse>(std::move(status), dto::ReadResponse{.token=std::move(token), .payload=std::move(payload)}));
+        return seastar::make_ready_future<std::tuple<Status, dto::ReadResponse> >(std::tuple<Status, dto::ReadResponse>(std::move(status), dto::ReadResponse{.token=std::move(token), .payload=std::move(return_response.payload)}));
     });
 }
 
@@ -320,9 +323,9 @@ LogStreamBase::_reload(std::vector<dto::PartitionMetdataRecord> plogsOfTheStream
     });
 }
 
-seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>>
-LogStreamBase::_getPlogStatus(String plogId){
-    return _client.getPlogStatus(std::move(plogId));
+seastar::future<std::tuple<Status, dto::PlogGetStatusResponse>>
+LogStreamBase::_getPlogStatus(dto::PlogGetStatusRequest request){
+    return _client.getPlogStatus(std::move(request));
 }
 LogStream::LogStream() {
     K2LOG_D(log::lgbase, "ctor");
@@ -388,7 +391,6 @@ PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persisten
         }
 
         return seastar::do_with(std::move(resp.records), std::move(reload), std::move(cpoUrl), std::move(persistenceClusterName), [&] (auto& records, auto& reload, auto&& cpoUrl, auto&&persistenceClusterName){
-            K2LOG_I(log::lgbase, "CPO URL: {}, PersistenceClusterName: {}", cpoUrl, persistenceClusterName);
             return _initPlogClient(persistenceClusterName, cpoUrl)
             .then([this] (){
                 return _preallocatePlog();
@@ -475,13 +477,13 @@ seastar::future<Status>
 PartitionMetadataMgr::replay(std::vector<dto::PartitionMetdataRecord> records){
     return seastar::do_with(std::move(records), [&] (auto& records){
         // since this records will not contain the last plog's offset, we will retreive this information from Plog Servers
-        return _getPlogStatus(records.back().plogId)
+        return _getPlogStatus(dto::PlogGetStatusRequest{.plogId=records.back().plogId})
         .then([&] (auto&& response){
-            auto& [status, resp] = response;
+            auto& [status, return_response] = response;
             if (!status.is2xxOK()) {
                 return seastar::make_ready_future<Status>(std::move(status));
             }
-            records.back().sealed_offset = std::get<0>(resp);
+            records.back().sealed_offset = return_response.currentOffset;
             // 3. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for metadata manager itself
             return _reload(records);
         })
@@ -583,11 +585,11 @@ PartitionMetadataMgr::_reloadLogStreams(Payload payload){
     }
 
     return seastar::do_with(std::move(logStreamRecords), [&] (auto& logStreamRecords){
-        std::vector<seastar::future<std::tuple<Status, std::tuple<uint32_t, bool> > > > getStatusFutures;
+        std::vector<seastar::future<std::tuple<Status, dto::PlogGetStatusResponse > > > getStatusFutures;
         LogStreamType logstreamName;
         for (auto& name:LogStreamTypeNames){
             logstreamName = LogStreamTypeFromStr(name);
-            getStatusFutures.push_back(_logStreamMap[logstreamName]->_getPlogStatus(logStreamRecords[logstreamName].back().plogId));
+            getStatusFutures.push_back(_logStreamMap[logstreamName]->_getPlogStatus(dto::PlogGetStatusRequest{.plogId=logStreamRecords[logstreamName].back().plogId}));
         }
         return seastar::when_all_succeed(getStatusFutures.begin(), getStatusFutures.end())
         .then([&] (auto&& responses){
@@ -595,13 +597,13 @@ PartitionMetadataMgr::_reloadLogStreams(Payload payload){
             int count = 0;
             std::vector<seastar::future<Status> > reloadFutures;
             for (auto& response: responses){
-                auto& [status, resp] = response;
+                auto& [status, return_response] = response;
                 if (!status.is2xxOK()) {
                     return seastar::make_ready_future<std::vector<Status> >(std::vector{std::move(status)});
                 }
                 logstreamName = LogStreamTypeFromStr(LogStreamTypeNames[count]);
                 ++count;
-                logStreamRecords[logstreamName].back().sealed_offset = std::get<0>(resp);
+                logStreamRecords[logstreamName].back().sealed_offset = return_response.currentOffset;
 
                 reloadFutures.push_back(_logStreamMap[logstreamName]->_reload(std::move(logStreamRecords[logstreamName])));
             }
