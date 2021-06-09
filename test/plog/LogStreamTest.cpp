@@ -48,7 +48,7 @@ private:
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
-    
+
 public:  // application lifespan
     LogStreamTest() {
         K2LOG_D(log::ltest, "dtor");
@@ -89,7 +89,7 @@ public:  // application lifespan
                 ConfigVar<String> configEp("cpo_url");
                 String cpoUrl = configEp();
 
-                return _mmgr.init(cpoUrl, "Partition-1", "Persistence_Cluster_1", false).discard_result();
+                return _mmgr.init(cpoUrl, "Partition-1", "Persistence_Cluster_1").discard_result();
             })
             .then([this] { return runTest1();})
             .then([this] { return runTest2();})
@@ -193,14 +193,14 @@ public:  // application lifespan
             dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
-            
+
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
             request_size -= read_response.payload.getSize();
             Payload read_payload;
             for (auto& b: read_response.payload.shareAll().release()) {
                 read_payload.appendBinary(std::move(b));
             }
-            
+
             return seastar::do_with(std::move(read_payload), std::move(request_size), std::move(continuation_token), [&] (auto& read_payload, auto& request_size, auto& continuation_token){
                 return seastar::do_until(
                     [&] { return request_size == 0; },
@@ -259,14 +259,14 @@ public:  // application lifespan
             dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
-            
+
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
             request_size -= read_response.payload.getSize();
             Payload read_payload;
             for (auto& b: read_response.payload.shareAll().release()) {
                 read_payload.appendBinary(std::move(b));
             }
-            
+
             return seastar::do_with(std::move(read_payload), std::move(request_size), std::move(continuation_token), [&] (auto& read_payload, auto& request_size, auto& continuation_token){
                 return seastar::do_until(
                     [&] { return request_size == 0; },
@@ -312,12 +312,12 @@ public:  // application lifespan
         String data_to_append(10000, '3');
 
         // Replay the entire metadata manager
-        return _reload_mmgr.replay(cpoUrl, "Partition-1", "Persistence_Cluster_1")
+        return _reload_mmgr.init(cpoUrl, "Partition-1", "Persistence_Cluster_1")
         // Read all the data from reloaded log stream and check weather they are the same
         .then([this] (auto&& status){
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot replay metadata manager!");
             K2LOG_I(log::ltest, ">>> Test3.1: Replay Done");
-            
+
             auto response = _reload_mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
             auto return_status = std::get<0>(response);
             auto logStream = std::get<1>(response);
@@ -335,14 +335,14 @@ public:  // application lifespan
             dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
-            
+
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
             request_size -= read_response.payload.getSize();
             Payload read_payload;
             for (auto& b: read_response.payload.shareAll().release()) {
                 read_payload.appendBinary(std::move(b));
             }
-            
+
             return seastar::do_with(std::move(read_payload), std::move(request_size), std::move(continuation_token), [&] (auto& read_payload, auto& request_size, auto& continuation_token){
                 return seastar::do_until(
                     [&] { return request_size == 0; },
@@ -402,14 +402,14 @@ public:  // application lifespan
             dto::LogStreamReadContinuationToken continuation_token;
             auto& [status, read_response] = response;
             continuation_token = std::move(read_response.token);
-            
+
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot read data!");
             request_size -= read_response.payload.getSize();
             Payload read_payload;
             for (auto& b: read_response.payload.shareAll().release()) {
                 read_payload.appendBinary(std::move(b));
             }
-            
+
             return seastar::do_with(std::move(read_payload), std::move(request_size), std::move(continuation_token), [&] (auto& read_payload, auto& request_size, auto& continuation_token){
                 return seastar::do_until(
                     [&] { return request_size == 0; },

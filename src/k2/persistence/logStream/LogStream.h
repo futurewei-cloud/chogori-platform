@@ -46,7 +46,7 @@ K2_DEF_ENUM(LogStreamType,
     IndexerSnapshot,
     Aux);
 
-// This is a base class that provide common plog operations for both logstream and metadata manager. 
+// This is a base class that provide common plog operations for both logstream and metadata manager.
 // Provide public APIs: append_data_to_plogs, read_data_from_plogs
 // Store the used plog informations of a log stream
 // This class is a base class, it should not be used by users
@@ -95,13 +95,13 @@ private:
     // the maximun bytes a read command could read
     constexpr static uint32_t PLOG_MAX_READ_SIZE = 2*1024*1024;
 
-    // whether this log stream base has been _initialized 
-    bool _initialized = false; 
+    // whether this log stream base has been _initialized
+    bool _initialized = false;
 
     // The map to store the used plog information
     std::unordered_map<String, _PlogInfo> _usedPlogInfo;
 
-    // whether the logstream is switching the plog 
+    // whether the logstream is switching the plog
     bool _switchingInProgress;
 
     std::vector<seastar::promise<>> _switchRequestWaiters;
@@ -111,7 +111,7 @@ private:
     // For Logstream: persist these information to Metadata Manager
     virtual seastar::future<Status> _addNewPlog(uint32_t sealedOffset, String newPlogId)=0;
 
-    // when exceed the size limit of current plog, we need to 
+    // when exceed the size limit of current plog, we need to
     // 1. seal the current plog
     // 2. write the contents to the new plog
     // 3. persist the sealed offset of the old plog and the new Plog Id
@@ -128,12 +128,12 @@ protected:
 
     // create a plog as the current used plog, and persist its PlogId
     seastar::future<Status> _activeAndPersistTheFirstPlog();
-    
+
 };
 
 class PartitionMetadataMgr;
 
-// provided unique operations for logstream. 
+// provided unique operations for logstream.
 // A logstream class owns a pointer to the metadata manager
 // When a logstream persist its own metadata, it will persist these information to metadata manager
 // TODO: Test the performance of the Inheritance
@@ -143,6 +143,7 @@ public:
     ~LogStream();
 
     // set the name of this log stream and the meta data manager pointer
+    // Should only be called by PartitionMetadataMgr
     seastar::future<Status> init(LogStreamType name, PartitionMetadataMgr* metadataMgr, String cpoUrl, String persistenceClusterName, bool reload);
 private:
     // the name of this log stream, such as "WAL", "IndexerSnapshot", "Aux", etc
@@ -165,9 +166,9 @@ class PartitionMetadataMgr:public LogStreamBase{
 public:
     PartitionMetadataMgr();
     ~PartitionMetadataMgr();
-    
+
     // set the partition name, initialize all the log streams this metadata mgr used
-    seastar::future<Status> init(String cpoUrl, String partitionName, String persistenceClusterName, bool reload);
+    seastar::future<Status> init(String cpoUrl, String partitionName, String persistenceClusterName);
 
     // handle the persistence requests from all the logstreams it manages
     seastar::future<Status> addNewPLogIntoLogStream(LogStreamType name, uint32_t sealed_offset, String new_plogId);
@@ -186,7 +187,7 @@ public:
     // step 1-3 are implemented in this function
     // step 4 is implemented in _readMetadataPlogs
     // step 5 is implemented _reloadLogStreams
-    seastar::future<Status> replay(String cpoUrl, String partitionName, String persistenceClusterName);
+    seastar::future<Status> replay(std::vector<dto::PartitionMetdataRecord> records);
 private:
     // a map to store all the log streams managed by this metadata manager
     // instead of raw pointer, using shared pointer
@@ -197,7 +198,7 @@ private:
 
     // persist metadata to CPO
     virtual seastar::future<Status> _addNewPlog(uint32_t sealeOffset, String newPlogId);
-   
+
     // helper method for replay
     // retrive the metadata of all the logstreams from metadata plogs
     seastar::future<Status> _readMetadataPlogs(std::vector<dto::PartitionMetdataRecord> records, uint32_t read_size);
@@ -208,4 +209,3 @@ private:
 };
 
 } // k2
-

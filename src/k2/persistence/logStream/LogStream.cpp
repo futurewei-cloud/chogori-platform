@@ -128,7 +128,7 @@ LogStreamBase::append_data_to_plogs(dto::AppendRequest request){
     }
     String plogId = _currentPlogId;
     _PlogInfo& currentPlogInfo = _usedPlogInfo[plogId];
-    if (_usedPlogInfo[plogId].currentOffset + request.payload.getSize() > PLOG_MAX_SIZE){
+    if (currentPlogInfo.currentOffset + request.payload.getSize() > PLOG_MAX_SIZE){
         // switch to a new plog, and append the data
         return _switchPlogAndAppend(std::move(request.payload));
     }
@@ -136,9 +136,9 @@ LogStreamBase::append_data_to_plogs(dto::AppendRequest request){
         //The passed-in payload is appended into current active Plog.
         //But currently there may be a plog switch in progress(i.e. _switched is set), and if that is case,
         // we delay the response to this append request till switch is successfully done in the future.
-        uint32_t current_offset = _usedPlogInfo[plogId].currentOffset;
-        _usedPlogInfo[plogId].currentOffset += request.payload.getSize();
-        uint32_t expect_appended_offset = _usedPlogInfo[plogId].currentOffset;
+        uint32_t current_offset = currentPlogInfo.currentOffset;
+        currentPlogInfo.currentOffset += request.payload.getSize();
+        uint32_t expect_appended_offset = currentPlogInfo.currentOffset;
 
         return _client.append(plogId, current_offset, std::move(request.payload)).
         then([this, plogId, current_offset, expect_appended_offset] (auto&& response){
@@ -368,44 +368,69 @@ PartitionMetadataMgr::~PartitionMetadataMgr() {
 }
 
 seastar::future<Status>
-PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persistenceClusterName, bool reload){
+PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persistenceClusterName){
     _cpo = CPOClient(cpoUrl);
     _partitionName = std::move(partitionName);
-    return _initPlogClient(persistenceClusterName, cpoUrl)
-    .then([this] (){
-        return _preallocatePlog();
-    })
-    .then([this, reload] (auto&& status){
-        if (!status.is2xxOK()) {
-            return seastar::make_ready_future<Status>(std::move(status));
-        }
-        if (!reload){
-            return _activeAndPersistTheFirstPlog();
+    return _cpo.GetPartitionMetadata(Deadline<>(_cpo_timeout()), _partitionName)
+    .then([&, cpoUrl, persistenceClusterName] (auto&& response){
+        auto& [status, resp] = response;
+        bool reload;
+        if (status.is2xxOK()) {
+            reload = true;
         }
         else{
-            return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
+            if (status == Statuses::S404_Not_Found){
+                reload = false;
+            }
+            else{
+                return seastar::make_ready_future<Status>(std::move(status));
+            }
         }
-    })
-    .then([this, cpoUrl, persistenceClusterName, reload] (auto&& status){
-        if (!status.is2xxOK()) {
-            return seastar::make_ready_future<Status>(std::move(status));
-        }
-        std::vector<seastar::future<Status> > initFutures;
-        LogStreamType logstreamName;
-        for (auto& name:LogStreamTypeNames){
-            logstreamName = LogStreamTypeFromStr(name);
-            LogStream* _logstream = new LogStream();
-            _logStreamMap[logstreamName] = _logstream;
-            initFutures.push_back(_logStreamMap[logstreamName]->init(logstreamName, this, cpoUrl, persistenceClusterName, reload));
-        }
-        return seastar::when_all_succeed(initFutures.begin(), initFutures.end()).
-        then([this] (auto&& responses){
-            for (auto& status: responses){
+
+        return seastar::do_with(std::move(resp.records), std::move(reload), std::move(cpoUrl), std::move(persistenceClusterName), [&] (auto& records, auto& reload, auto&& cpoUrl, auto&&persistenceClusterName){
+            K2LOG_I(log::lgbase, "CPO URL: {}, PersistenceClusterName: {}", cpoUrl, persistenceClusterName);
+            return _initPlogClient(persistenceClusterName, cpoUrl)
+            .then([this] (){
+                return _preallocatePlog();
+            })
+            .then([this, reload] (auto&& status){
                 if (!status.is2xxOK()) {
                     return seastar::make_ready_future<Status>(std::move(status));
                 }
-            }
-            return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
+                if (!reload){
+                    return _activeAndPersistTheFirstPlog();
+                }
+                else{
+                    return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
+                }
+            })
+            .then([this, cpoUrl, persistenceClusterName, reload, records] (auto&& status){
+                if (!status.is2xxOK()) {
+                    return seastar::make_ready_future<Status>(std::move(status));
+                }
+                std::vector<seastar::future<Status> > initFutures;
+                LogStreamType logstreamName;
+                for (auto& name:LogStreamTypeNames){
+                    logstreamName = LogStreamTypeFromStr(name);
+                    LogStream* _logstream = new LogStream();
+                    _logStreamMap[logstreamName] = _logstream;
+                    initFutures.push_back(_logStreamMap[logstreamName]->init(logstreamName, this, cpoUrl, persistenceClusterName, reload));
+                }
+                return seastar::when_all_succeed(initFutures.begin(), initFutures.end()).
+                then([this, reload, records] (auto&& responses){
+                    for (auto& status: responses){
+                        if (!status.is2xxOK()) {
+                            return seastar::make_ready_future<Status>(std::move(status));
+                        }
+                    }
+                    if (!reload){
+                        return seastar::make_ready_future<Status>(Statuses::S200_OK(""));
+                    }
+                    else{
+                        return replay(std::move(records));
+                    }
+                });
+            });
         });
     });
 }
@@ -447,44 +472,29 @@ PartitionMetadataMgr::addNewPLogIntoLogStream(LogStreamType name, uint32_t seale
 
 
 seastar::future<Status>
-PartitionMetadataMgr::replay(String cpoUrl, String partitionName, String persistenceClusterName){
-    // 1.initialize this metadata manager
-    return init(cpoUrl, partitionName, persistenceClusterName, true).
-    then([&] (auto&& status){
-        if (!status.is2xxOK()) {
-            return seastar::make_ready_future<Status>(std::move(status));
-        }
-        // 2.retrive the metadata of the metadata manager from CPO
-        return _cpo.GetPartitionMetadata(Deadline<>(_cpo_timeout()), _partitionName)
+PartitionMetadataMgr::replay(std::vector<dto::PartitionMetdataRecord> records){
+    return seastar::do_with(std::move(records), [&] (auto& records){
+        // since this records will not contain the last plog's offset, we will retreive this information from Plog Servers
+        return _getPlogStatus(records.back().plogId)
         .then([&] (auto&& response){
             auto& [status, resp] = response;
             if (!status.is2xxOK()) {
                 return seastar::make_ready_future<Status>(std::move(status));
             }
-            return seastar::do_with(std::move(resp.records), [&] (auto& records){
-                // since this records will not contain the last plog's offset, we will retreive this information from Plog Servers
-                return _getPlogStatus(records.back().plogId)
-                .then([&] (auto&& response){
-                    auto& [status, resp] = response;
-                    if (!status.is2xxOK()) {
-                        return seastar::make_ready_future<Status>(std::move(status));
-                    }
-                    records.back().sealed_offset = std::get<0>(resp);
-                    // 3. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for metadata manager itself
-                    return _reload(records);
-                })
-                .then([&] (auto&& response){
-                    auto& status = response;
-                    if (!status.is2xxOK()) {
-                        return seastar::make_ready_future<Status>(std::move(status));
-                    }
-                    uint32_t read_size = 0;
-                    for (auto& record: records){
-                        read_size += record.sealed_offset;
-                    }
-                    return _readMetadataPlogs(std::move(records), read_size);
-                });
-            });
+            records.back().sealed_offset = std::get<0>(resp);
+            // 3. reload the _usedPlogInfo, _firstPlogId, _currentPlogId for metadata manager itself
+            return _reload(records);
+        })
+        .then([&] (auto&& response){
+            auto& status = response;
+            if (!status.is2xxOK()) {
+                return seastar::make_ready_future<Status>(std::move(status));
+            }
+            uint32_t read_size = 0;
+            for (auto& record: records){
+                read_size += record.sealed_offset;
+            }
+            return _readMetadataPlogs(std::move(records), read_size);
         });
     });
 }
