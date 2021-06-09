@@ -92,42 +92,5 @@ struct PlogGetStatusResponse {
     K2_DEF_FMT(PlogGetStatusResponse, currentOffset, sealed);
 };
 
-struct PlogCreateError : public std::exception {
-    String what_str;
-    PlogCreateError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct PlogStatusError : public std::exception {
-    String what_str;
-    PlogStatusError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct PlogReadError : public std::exception {
-    String what_str;
-    PlogReadError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct PlogAppendError : public std::exception {
-    String what_str;
-    PlogAppendError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct PlogSealError : public std::exception {
-    String what_str;
-    PlogSealError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-struct PlogGetStatusError : public std::exception {
-    String what_str;
-    PlogGetStatusError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-
 }  // namespace dto
 }  // namespace k2

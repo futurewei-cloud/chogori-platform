@@ -50,25 +50,11 @@ K2_DEF_ENUM(LogStreamType,
 // Provide public APIs: append_data_to_plogs, read_data_from_plogs
 // Store the used plog informations of a log stream
 // This class is a base class, it should not be used by users
-class LogStreamBase;
-
-
-// provided unique operations for logstream. 
-// A logstream class owns a pointer to the metadata manager
-// When a logstream persist its own metadata, it will persist these information to metadata manager
-class LogStream;
-
-// provided unique operations for metadata manager
-// A metadata manager manages all the logstreams in a partition, and persist the metadata of all these logstreams
-// When a metadata manager persist its own metadata, it will persist these information to CPO
-class PartitionMetadataMgr;
-
-// a base class that provide operations to handle the plogs. it will be used by both log stream and metadata manager
 class LogStreamBase{
 private:
     // to store the information of each plog id used by the log stream
     // only used internally
-    struct PlogInfo {
+    struct _PlogInfo {
         uint32_t currentOffset;
         bool sealed;
         String nextPlogId;
@@ -113,7 +99,7 @@ private:
     bool _initialized = false; 
 
     // The map to store the used plog information
-    std::unordered_map<String, PlogInfo> _usedPlogInfo;
+    std::unordered_map<String, _PlogInfo> _usedPlogInfo;
 
     // whether the logstream is switching the plog 
     bool _switchingInProgress;
@@ -145,6 +131,8 @@ protected:
     
 };
 
+class PartitionMetadataMgr;
+
 // provided unique operations for logstream. 
 // A logstream class owns a pointer to the metadata manager
 // When a logstream persist its own metadata, it will persist these information to metadata manager
@@ -161,6 +149,7 @@ private:
     LogStreamType _name;
 
     // the pointer to the metadata manager
+    // instead of raw pointer, using shared pointer
     PartitionMetadataMgr* _metadataMgr;
 
     // persist metadata to Metadata Manager
@@ -200,6 +189,7 @@ public:
     seastar::future<Status> replay(String cpoUrl, String partitionName, String persistenceClusterName);
 private:
     // a map to store all the log streams managed by this metadata manager
+    // instead of raw pointer, using shared pointer
     std::unordered_map<LogStreamType, LogStream*> _logStreamMap;
     CPOClient _cpo;
     String _partitionName;

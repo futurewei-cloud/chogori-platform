@@ -110,12 +110,5 @@ struct ReadResponse{
     K2_DEF_FMT(ReadResponse, token);
 };
 
-struct LogStreamRetrieveError : public std::exception {
-    String what_str;
-    LogStreamRetrieveError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
-
 }  // namespace dto
 }  // namespace k2

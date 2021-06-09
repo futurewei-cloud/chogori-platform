@@ -108,12 +108,12 @@ seastar::future<std::tuple<Status, String>> PlogClient::create(uint8_t retries){
         createFutures.push_back(RPC().callRPC<dto::PlogCreateRequest, dto::PlogCreateResponse>(dto::Verbs::PLOG_CREATE, request, *ep, _plog_timeout()));
     }
     return seastar::when_all_succeed(createFutures.begin(), createFutures.end())
-        .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) { 
+        .then([this, plogId, retries](std::vector<std::tuple<Status, dto::PlogCreateResponse> >&& results) {
             Status return_status;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
-                if (!return_status.is2xxOK()) 
+                if (!return_status.is2xxOK())
                     break;
             }
             if (return_status.code == 409 && retries > 0){
@@ -134,14 +134,14 @@ seastar::future<std::tuple<Status, uint32_t, Payload>> PlogClient::append(String
     }
 
     return seastar::when_all_succeed(appendFutures.begin(), appendFutures.end())
-        .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) { 
+        .then([this, expected_offset, appended_offset](std::vector<std::tuple<Status, dto::PlogAppendResponse> >&& results) {
             Status return_status;
             Payload return_payload;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
                 return_payload = std::move(response.return_payload);
-                if (!return_status.is2xxOK()) 
+                if (!return_status.is2xxOK())
                     break;
                 if (response.newOffset != expected_offset){
                     return_status = Statuses::S500_Internal_Server_Error("offset inconsistent");
@@ -173,14 +173,14 @@ seastar::future<std::tuple<Status, uint32_t>> PlogClient::seal(String plogId, ui
     }
 
     return seastar::when_all_succeed(sealFutures.begin(), sealFutures.end())
-        .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) { 
+        .then([this](std::vector<std::tuple<Status, dto::PlogSealResponse> >&& results) {
             Status return_status;
             uint32_t sealed_offset;
             for (auto& result: results){
                 auto& [status, response] = result;
                 return_status = std::move(status);
                 sealed_offset = response.sealedOffset;
-                if (!return_status.is2xxOK()) 
+                if (!return_status.is2xxOK())
                     break;
             }
             return seastar::make_ready_future<std::tuple<Status, uint32_t> >(std::tuple<Status, uint32_t>(std::move(return_status), std::move(sealed_offset)));
@@ -196,7 +196,7 @@ seastar::future<std::tuple<Status, std::tuple<uint32_t, bool>>> PlogClient::getP
     }
 
     return seastar::when_all_succeed(statusFutures.begin(), statusFutures.end())
-        .then([this](std::vector<std::tuple<Status, dto::PlogGetStatusResponse> >&& results) { 
+        .then([this](std::vector<std::tuple<Status, dto::PlogGetStatusResponse> >&& results) {
             Status return_status;
             uint32_t current_offset=UINT_MAX;
             bool sealed=false;
