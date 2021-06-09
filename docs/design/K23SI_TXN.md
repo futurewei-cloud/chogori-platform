@@ -1,7 +1,7 @@
 # Introduction
 This document describes the K23SI transaction protocol and implementation. It also covers some necessary background like overall K2 architecture and other components (e.g. CPO, TSO), but details for these are provided in other documents
 
-## Guiding principles
+## Guiding design assumptions
 These are not limits of the system, but we design the system to operate under these conditions:
 - High-throughput/low-latency networks are becoming widely available while their costs are going down. Availability of a 40Gbit or better, RDMA/RoCEv2 compatible network for in-datacenter communication is a reasonable assumption
 - The system we are designing should be usable for both direct end-users, but more importantly as a storage platform for higher-order systems
@@ -66,30 +66,27 @@ Other timestamp API:
 >int64 endTime(): // strictly-increasing TimeValue - the end time of the timestamp window
 >int64 tsoid(); // identity of the TSO service
 
-Due to the fact that a timestamp incorporates a unique count within a unique TSO instance, K2Timestamps are actually GUIDs. Therefore we've adopted them as the unique identifiers for transactions(i.e. a transaction's timestamp is the same as the transaction ID)
+Due to the fact that a timestamp incorporates a unique count within a unique TSO instance, K2Timestamps are actually globally unique and allow for strict ordering. Therefore we've adopted them as the unique identifiers for transactions(i.e. a transaction's timestamp is the same as the transaction ID)
+
+>*NOTE:* All timestamp comparisons(applies to all cases where we talk about *earlier/later/before/after*) are performed based on `timestamp.end` field. This is the field which guarantees strictly-increasing sequence for all causally-related transactions, even across global TSOs. In cases where we have potentially overlapping timestamps due to uncertainty, we can safely order them based on `timestamp.end` as these timestamps can only be from parallel transactions - the timestamp/TSO restrictions guarantee that causal transactions necessarily have strictly-increasing timestamps even when allowing for uncertainty. In the case of ties, we break the tie by ordering based on TSO ID. Note that this can only happen for non-causally related transactions.
 
 ### TSO (TimeStampOracle)
 TSO is a separate service whose job is to provide Timestamps. The design and scalability of this component is addressed in a [separate document](./TSO.md). For our purposes here, it is sufficient to understand that the TSO service:
 - syncs itself to UniversalTime and can emit Timestamps as described above
 - guarantees strictly increasing endTime in timestamps, which is important to efficiently sequence TSO-local events (that is events which use the same TSO for their clock source)
 - Can provide throughput of 20MM ts/sec, with latency of 10usec.
-- TSOs scale out infinitely by adding more instances with attached atomic clock.
+- TSOs scale out infinitely by adding more instances with attached atomic clocks.
 - TXN clients reach out to their closest TSO to obtain a txn timestamp.
 
-The reference architecture is designed so that we can take advantage of fast(single-digit usec latency) communication in datacenters, making a synchronous DC-local TSO a viable option. This allows TSO-local transactions to execute sequentially, without risk of serialization violations due to time uncertainty. Cross-datacenter (or global) operations are simply handled by our decentralized TSO architecture with safety guard of wait at end of transaction for cases which execute extremely fast (faster than our typical error bound of 5usec). This allows for much simplified handling of operations in the system by simply consulting the embedded timestamp sequence in each timestamp:
-- ops from same TSO are guaranteed to be sequential and reflect the actual order of execution
-- ops from mixed TSOs are guaranteed to be serialized in consistent order, and our error bound safety wait ensures that if there is an external-causal relationship, the timestamp sequence numbers will reflect that accordingly.
+#### Requirement for potential wait at end of transaction
+The TSO service scales simply by adding additional instances. Each instance has its own atomic clock and therefore has its own error bound. We still have to provide a causal consistency in this environment, a bit more formally:
+- if there is a causal relationship between two transactions T1,T2, then `T2 is a causal successor of T1` implies that `T2.timestamp is strictly greater than T1.timestamp`. As a shorthand: `T1->T2 ==> T1.ts < T2.ts`.
 
-#### Additional requirement:
-In order to satisfy some use cases (e.g guaranteed read-only snapshot reads in the past), we require that if a cluster mixes multiple TSOs, then the TSOs are sufficiently far from each other so that the time of flight of a message from TSO1 to TSO2 is greater than any possible error either of the TSOs can observe from its true source.
+This is trivially true if T1 and T2 come through the same TSO. However, if T1 and T2 come via different TSOs, we need the guarantee that if T2 is a successor (i.e. it observed the effect of T1), then T2's timestamp is strictly ordered after T1's timestamp.
 
-A bit more formally, this restriction guarantees that if there is a causal relationship between two transactions T1,T2, then `T2 is a causal successor of T1` implies that `T2.timestamp is strictly greater than T1.timestamp`. As a shorthand: `T1->T2 ==> T1.ts < T2.ts`.
+If time-of-flight between the TSOs is greater than the error in the timestamp, then we know that by the time T2 wants to generate a timestamp for its transaction the time at T2's TSO has advanced past the error window in T1's timestamp and therefore T2's timestamp will be greater than T1's timestamp. On the other hand, if the client is too quick, then it is possible to obtain a timestamp T2 which is uncertain wrt T1.
 
-This is trivially true if T1 and T2 come through the same TSO. However, if T1 and T2 come via different TSOs, we need the guarantee that if T2 is a successor (i.e. it observed the effect of T1), then T2's timestamp is strictly ordered after T1's timestamp. If time-of-flight between the TSOs is greater than the error in the timestamp, then we know that by the time T2 wants to generate a timestamp for its transaction the time at T2's TSO has advanced past the error window in T1's timestamp and therefore T2's timestamp will be greater than T1's timestamp.
-
-In order to deal with the potential for error, all TSO providers which can participate in transactions are registered with the global configuration service(CPO), which allows all transactional clients to learn the max error across all TSOs. At the end of each transaction, we may perform an artificial wait in order to ensure that the transaction has not been acknowledged before we're outside the max error bound over all potential TSO instances. With commercially available rack-mountable atomic clocks (~$7000), we can achieve ~3usec error at the TSO instance, which is on the order of 1 network round trip. In our testing the wait safety net does not execute since our transactions require at least 2 round trips. Our benchmarks confirm this result.
-
-Our [reference deployment architecture](#Architecture) uses geo-local TSO with atomic clock access and synchronous timestamp generation over fast RDMA network.
+In order to deal with the potential for error, all TSO providers which can participate in transactions are registered with the global configuration service(CPO), which allows all transactional clients to learn the max error across all TSOs. At the end of each transaction, we may perform an artificial wait in order to ensure that the transaction has not been acknowledged before we're outside the max error bound over all potential TSO instances. With commercially available rack-mountable atomic clocks (~$7000), we can achieve ~3usec error at the TSO instance, which is on the order of 1 network round trip. Our benchmarks confirm that the wait safety net does not execute since our transactions require at least 2 round trips.
 
 ## Operations
 An application which wants to use K2 has to use our client library. All operations are executed in the context of a transaction (using the TxnHandle returned by begin() method of the client library). The operations are generally either constant(e.g. read-only) or mutating(e.g. writes). The operations are not limited to simple KV read/write and can be extended to allow any advanced single-node operations such as atomic ops(e.g. CAS) or even stored procedures. For simplified explanations, we use constant<->read and mutating<->write interchangeably in this document.
@@ -141,7 +138,7 @@ The application initiates a transaction by calling the begin() client library AP
     - this is a crucial step since proper timestamp generation is what guarantees serializability of the transactions in the system.
     - Timestamps are tuples (start, end, tso_id), which express an uncertainty window. That is, the TSO produces timestamps that cover the potential error of time between the TSO and UniversalTime.
     - This timestamp is used to stamp the entire transaction. That is, the commit time for all writes in this transaction will be recorded to occur at this timestamp, and all MVCC snapshot reads will be attempted at this timestamp.
-    - The timestamp is used as the transaction ID as it is a GUID.
+    - The timestamp is used as the transaction ID as it is globally unique.
 1. Assigns a priority to the transaction based on either priority class (LOW/MED/HIGH), or particular priority within the class. Priority classes map to particular priorities (e.g. Low=10, Med=20, High=30). When a transaction is started it usually picks a class. In cases when transactions are aborted due to conflicts, they can specify a higher priority value. The priority is used server side to deterministically pick a winner in transaction conflict cases.
 
 Further operations, including commit/abort have to be issued using the returned transaction handle. The Client Library keeps track of the MTR, TRH, and every write participant.
@@ -153,7 +150,6 @@ Further operations, including commit/abort have to be issued using the returned 
 - The participant who receives a write creates a WI and a TWIM record which tracks all of the WIs on that participant. The TWIM record contains the TRH key so if another txn creates a conflict, we can consult with the TRH to determine a transaction to abort.
 - The TWIM record can also produce a list of the WIs created on behalf of a transaction locally so that it can convert WIs when the TRH comes to finalize a transaction (i.e. after the application commits/aborts).
 - The TWIMs also help cleanup txns should they become abandoned.
->*NOTE:* All timestamp comparisons(applies to all cases where we talk about *earlier/later/before/after*) are performed based on `timestamp.end` field. This is the field which guarantees strictly-increasing sequence for all causally-related transactions, even across global TSOs. In cases where we have potentially overlapping timestamps due to uncertainty, we can safely order them based on `timestamp.end` as these timestamps can only be from parallel transactions - the timestamp/TSO restrictions guarantee that causal transactions necessarily have strictly-increasing timestamps even when allowing for uncertainty. In the case of ties, we break the tie by ordering based on TSO ID. Note that this can only happen for non-causally related transactions.
 
 ### Reads
 ![Read](../images/TxnRead.png)
@@ -334,14 +330,9 @@ This is the complete set of possible transaction states. The states `*PIP` (PIP 
 In K23SI, transactions can only be committed if they did not have any failures, and the client chose to commit. On the other hand, transactions can be aborted either by the client, or internally by the K23SI cluster in cases of conflict.
 
 The following sections show the state transitions for the expected scenarios of transaction handling
-### Committed transaction
+### Typical committed transaction
 ![TxnStates_Commit](../images/TxnStates_Commit.png)
 In this flow, the transaction is processed with no fatal errors to the client an the state remains `InProgress` until the client issues a commit. The client remembers all partition ranges to which it has issued a write, and sends those ranges as the `writeRanges` set in the commit message. The commit transition causes a write to the WAL of the TR with state=`CommittedPIP`.
-
-#### Replay rules
-- Upon replay, in the happy case we'll discover `CommittedPIP | FinalizedPIP` entries in the WAL. This indicates the txn was committed and then finalized and so we do not have to perform any more work for this txn.
-- Failure 1: Committed but not finalized. In this case, we'll find `CommittedPIP` after replay. We create the record in CommittedPIP state and issue a finalization transition in order to redo the WI finalizations. The txn would transition to `FinalizedPIP` from there
-- Failure 2: Attempt to commit timed out and we converted to Abort. The persisted states are `CommittedPIP | AbortedPIP`. We finalize the transaction as aborted in this case
 
 #### Finalization
 The transaction is finalized by the TRH by sending a message to the current owner for each of the write ranges in the transaction. There could be more than one owner for a particular range (e.g. if the range was split), in which case the TRH ensures that a finalize message is sent to every potential owner of data in the range. Once each participant performs the finalization, the TRH can mark the transaction as finalized, writing `finalizedPIP` in the WAL and then cleaning up the in-memory record.
@@ -350,14 +341,23 @@ It is possible to get a race scenario where a write encounters a WI and does a P
 - If the record is still a WI, we convert it to aborted and proceed as if we found an aborted record in the first place. Note that the scenario "find WI -> perform PUSH -> find no TR -> forceAbort -> find WI" cannot be racing with a fast "commit TR -> finalize TR -> delete TR" scenario since if there was a successful finalization performed while we were trying to push, then by the time we get back the record cannot be in WI state. Therefore it is safe to simply abort the WI.
 - If the record is committed/aborted, proceed as if we found a committed/aborted record in the first place
 
-### Happy transaction is aborted by client
+#### Replay rules
+- Upon replay, in the happy case we'll discover `CommittedPIP | FinalizedPIP` entries in the WAL. This indicates the txn was committed and then finalized and so we do not have to perform any more work for this txn.
+- Failure 1: Committed but not finalized. In this case, we'll find `CommittedPIP` after replay. We create the record in CommittedPIP state and issue a finalization transition in order to redo the WI finalizations. The txn would transition to `FinalizedPIP` from there
+- Failure 2: Attempt to commit timed out and we converted to Abort. The persisted states are `CommittedPIP | AbortedPIP`. We finalize the transaction as aborted in this case
+
+### Client-triggered aborted transaction
 ![TxnStates_Abort](../images/TxnStates_Abort.png)
 
 #### Replay rules
-An aborted transaction records `AbortedPIP` followed by `FinalizePIP`. If finalized, then we don't have to perform any more work. If not, we will issue finalization requests as above
+An aborted transaction records `AbortedPIP` followed by `FinalizePIP`.
+- If finalized, then we don't have to perform any more work
+- If we ony find `AbortedPIP` state in the WAL, then we will have to redo the WI finalization steps as described in the commit handling above
 
 ### Transaction is abandoned by client
-We detect this situation by the lack of heartbeat and we trigger the ForceAbort path. The transaction is placed in ForceAborted state where we wait for the client to come and tell us what ranges it touched in their txn (via a commit or abort msg).
+This is expected to occur when there is a client-side crash or some long-lasting network event. We detect this situation by the lack of heartbeat and we trigger the ForceAbort path. The transaction is placed in ForceAborted state where it waits until the end of the retention window.
+- it is possible that the client detects this situation and comes in to end their transaction. In that case, we can trigger the onAbort transition and cleanup the transaction before retention window end.
+
 ![TxnStates_RetentionWindow](../images/TxnStates_RetentionWindow.png)
 
 #### Replay rules
@@ -404,6 +404,8 @@ NOTE:
 In the current design and implementation, when a write is issued to a participant, we have to await an ACK from persistence (WAL write), before we can ACK to the client. It is possible however to ACK to client before the ACK to persistence, thus allowing the client to issue sequential write requests faster without waiting on each one to flush to the WAL.
 
 We have to make sure the TRH is aware of these pending writes because it can allow a Commit to succeed only if all writes have been written to the WAL first.
+
+In the extreme case, it is possible to execute a transaction comprised of an entire batch of writes, in a single round trip from the client by issuing the writes along with a commit message in parallel. The TRH would await persistence confirmation for each WI in the batch, and record the commit before responding to client.
 
 # TWIM (TransactionWriteIntentMetadata) Record Management
 TWIMs are the records which we keep at each participant for each transaction that wrote some data there:
@@ -466,7 +468,7 @@ And the full state machine:
 
 ## TWIM scenarios
 
-### Happy case commit
+### Commit finalization
 This is the situation for most transactions. We create the TWIM when we first receive a write, and track all the writes until the TRH comes to finalize. At this point we convert all WIs to committed values in the indexer, and persist the FinalizedPIP state so that we can now stop tracking this transaction and acknowledge to the TRH that we're done.
 
 ![TWIM_commit](../images/TWIM_commit.png)
@@ -474,10 +476,10 @@ This is the situation for most transactions. We create the TWIM when we first re
 #### Replay logic
 In the happy case, we will observe a TWIM in the state `FinalizedPIP` in the WAL, which indicates that all WIs seen in the WAL replay can be safely converted to the `finalizeAction` in the TWIM record.
 
-If the transaction never receives a finalization from the TRH, or for some reason we're not able to complete the finalization (e.g. not able to talk to persistence), we will observer the TWIM in state `InProgressPIP`. In this case we process the same as [Abandoned_transaction](#Abandoned_transaction) below
+If the transaction never receives a finalization from the TRH, or for some reason we're not able to complete the finalization (e.g. not able to talk to persistence), we will observe the TWIM in state `InProgressPIP`. In this case we process the same as [Abandoned_transaction](#Abandoned_transaction) below
 
-### Happy case abort
-This is processed in the same way as happy case commit, except with an abort action and removal of WIs from the indexer.
+### Abort finalization
+This is processed in the same way as commit, except with an abort action and removal of WIs from the indexer.
 ![TWIM_abort](../images/TWIM_abort.png)
 
 #### Replay logic
@@ -498,7 +500,6 @@ In the TWIM management, if we recover a transaction in an in-progress state, we 
 
 # Other ideas
 - It may be helpful to allow applications to execute operations in batches so that we can group operations to the same node into single message
-- Allow WI to be placed at any point in the history as long as they don't conflict with the read cache.
 - Consider using separate WAL for intents. Potentially cheaper to GC since we can just maintain a watermarm and drop the tail past the watermark once WIs are finalized. May cause write amplification though
 - provide atomic higher-level operations (sinfonia style):
     - swap
@@ -508,14 +509,6 @@ In the TWIM management, if we recover a transaction in an in-progress state, we 
     - acquire_lease_many
     - update_if_lease_held
 - We might achieve better throughput under standard benchmark if we consider allowing for a HOLD in cases of conflict resolution(PUSH operation). If we have a Candidate/Pusher which we think will succeed if we knew the outcome of an intent, we can hold onto the candidate operation for short period of time to allow for the intent to commit. For a better implementation, it maybe best to implement a solution which does a transparent hold - a hold that doesn't require special handling at the client (e.g. additional notification and heartbeating). THis could be achieved simply by re-queueing an incoming task once with a delay of potential 999 network round-trip latency (e.g. 10-20usecs).
-
-## Pipelined operations
-It is possible to reduce the total transaction execution time by as much as 50% in cases where transactions execute non-sequential operations (e.g. batched writes). The reduction is achieved by sending all operations and the commit to their participants in parallel. The writers send confirmations to the TRH when the writes are durable (i.e. written in the WAL), and the TRH responds to client to ACK the commit. There are a few implications to this approach which make the protocol more complex:
-1. For the duration of time where there are in-progress writes and a pending commit, the state of the transaction at TRH is state=PENDING. This is a new state
-1. A transaction is now considered committed if all of the writers successfully record the operations in their WAL. Previously, a txn is committed only if the TRH record has state = COMMITTED.
-1. A txn record which is in state PENDING, must have a list of all participants in the transaction. Previously, we did not require this list until the state was to be flipped to COMMITTED
-1. When performing a PUSH, we can encounter a transaction in PENDING state. When we encounter this state, it is possible that the transaction is either in progress, or there was some message timeout/failure. If the txn is still live (within heartbeat window), it may be best to just wait for the TXN to move to COMMITTED state and thus hold the PUSH operation. Otherwise, we now have to go to all of the participants in the transaction and validate the writes. If all writes succeeded, then the TXN can be moved to COMMITTED and the PUSH can be resolved. If any writer failed, then the TXN is aborted and the PUSH can be resolved.
-1. Similarly, when recovering a node, if we recover a txn record in state PENDING, we must go to each participant and verify if all writes succeeded or not, converting the TXN to either COMMITTED or ABORTED respectively.
 
 # Related work
 - [UW YCSB-T repo - requires account](https://syslab.cs.washington.edu/research/transtorm/)
