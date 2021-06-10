@@ -30,7 +30,7 @@ K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* 
     K2LOG_D(log::skvclient, "ctor, mtr={}", _mtr);
 }
 
-void K2TxnHandle::checkResponseStatus(Status& status) {
+void K2TxnHandle::_checkResponseStatus(Status& status) {
     if (status == dto::K23SIStatus::AbortConflict ||
         status == dto::K23SIStatus::AbortRequestTooOld ||
         status == dto::K23SIStatus::InternalError ||
@@ -49,24 +49,25 @@ void K2TxnHandle::checkResponseStatus(Status& status) {
     }
 }
 
-void K2TxnHandle::makeHeartbeatTimer() {
+void K2TxnHandle::_makeHeartbeatTimer() {
     K2LOG_D(log::skvclient, "makehb, mtr={}", _mtr);
     _heartbeat_timer.setCallback([this] {
         _client->heartbeats++;
 
-        auto request = std::make_unique<dto::K23SITxnHeartbeatRequest>(dto::K23SITxnHeartbeatRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
-            _trh_collection,
-            _trh_key,
-            _mtr
-        });
+        auto request = std::make_unique<dto::K23SITxnHeartbeatRequest>(
+            dto::K23SITxnHeartbeatRequest {
+                .pvid{}, // will be filled by PartitionRequest
+                .collectionName=_trh_collection,
+                .key=_trh_key.value(),
+                .mtr=_mtr
+            });
 
         K2LOG_D(log::skvclient, "send hb for mtr={}", _mtr);
 
-        return _cpo_client->PartitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request)
+        return _cpo_client->partitionRequest<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse, dto::Verbs::K23SI_TXN_HEARTBEAT>(Deadline(_heartbeat_interval), *request)
         .then([this] (auto&& response) {
             auto& [status, k2response] = response;
-            checkResponseStatus(status);
+            _checkResponseStatus(status);
             if (_failed) {
                 K2LOG_D(log::skvclient, "txn failed: cancelling hb in mtr={}", _mtr);
                 _heartbeat_timer.cancel();
@@ -78,10 +79,10 @@ void K2TxnHandle::makeHeartbeatTimer() {
     });
 }
 
-std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::makeReadRequest(
+std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::_makeReadRequest(
                         const dto::Key& key, const String& collection) const {
     return std::make_unique<dto::K23SIReadRequest>(
-        dto::Partition::PVID(), // Will be filled in by PartitionRequest
+        dto::PVID{}, // Will be filled in by PartitionRequest
         collection,
         _mtr,
         key
@@ -115,17 +116,17 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
     }
 
     K2LOG_D(log::skvclient, "making request for: schema={}, collection={}", key.schemaName, collection);
-    std::unique_ptr<dto::K23SIReadRequest> request = makeReadRequest(key, collection);
+    std::unique_ptr<dto::K23SIReadRequest> request = _makeReadRequest(key, collection);
 
     _client->read_ops++;
     _ongoing_ops++;
 
-    return _cpo_client->PartitionRequest
+    return _cpo_client->partitionRequest
         <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
         (_options.deadline, *request).
         then([this, schemaName=std::move(key.schemaName), &collName=request->collectionName] (auto&& response) {
             auto& [status, k2response] = response;
-            checkResponseStatus(status);
+            _checkResponseStatus(status);
             _ongoing_ops--;
 
             K2LOG_D(log::skvclient, "got status={}", status);
@@ -154,7 +155,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
 }
 
 
-std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRecord& record, bool erase,
+std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makeWriteRequest(dto::SKVRecord& record, bool erase,
                                                                       bool rejectIfExists) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
@@ -169,19 +170,19 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
 
     dto::Key key = record.getKey();
 
-    if (!_write_set.size()) {
+    bool isTRH = !_trh_key.has_value();
+    if (isTRH) {
         _trh_key = key;
         _trh_collection = record.collectionName;
     }
-    _write_set.push_back(key);
-
     return std::make_unique<dto::K23SIWriteRequest>(
-        dto::Partition::PVID(), // Will be filled in by PartitionRequest
+        dto::PVID{}, // Will be filled in by PartitionRequest
         record.collectionName,
         _mtr,
-        _trh_key,
+        _trh_key.value(),
+        _trh_collection,
         erase,
-        _write_set.size() == 1,
+        isTRH,
         rejectIfExists,
         _client->write_ops,
         key,
@@ -190,21 +191,22 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makeWriteRequest(dto::SKVRe
     );
 }
 
-std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::makePartialUpdateRequest(dto::SKVRecord& record,
+std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(dto::SKVRecord& record,
                     std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key) {
-        if (!_write_set.size()) {
+        bool isTRH = !_trh_key.has_value();
+        if (isTRH) {
             _trh_key = key;
             _trh_collection = record.collectionName;
         }
-        _write_set.push_back(key);
 
         return std::make_unique<dto::K23SIWriteRequest>(dto::K23SIWriteRequest{
-            dto::Partition::PVID(), // Will be filled in by PartitionRequest
+            dto::PVID{}, // Will be filled in by PartitionRequest
             record.collectionName,
             _mtr,
-            _trh_key,
+            _trh_key.value(),
+            _trh_collection,
             false, // Partial update cannot be a delete
-            _write_set.size() == 1,
+            isTRH,
             false, // Partial update must be applied on existing record
             _client->write_ops,
             std::move(key),
@@ -224,7 +226,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
         return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() with ongoing ops"));
     }
 
-    if (!_write_set.size()) {
+    if (_write_ranges.empty()) {
         _client->successful_txns++;
 
         if (_failed && shouldCommit) {
@@ -238,19 +240,19 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     }
 
     auto* request  = new dto::K23SITxnEndRequest {
-        dto::Partition::PVID(), // Will be filled in by PartitionRequest
+        dto::PVID{}, // Will be filled in by PartitionRequest
         _trh_collection,
-        _trh_key,
+        _trh_key.value(),
         _mtr,
         shouldCommit && !_failed ? dto::EndAction::Commit : dto::EndAction::Abort,
-        std::move(_write_set),
+        std::move(_write_ranges),
         _options.syncFinalize
     };
 
     K2LOG_D(log::skvclient, "Cancel hb for {}", _mtr);
     _heartbeat_timer.cancel();
 
-    return _cpo_client->PartitionRequest
+    return _cpo_client->partitionRequest
         <dto::K23SITxnEndRequest, dto::K23SITxnEndResponse, dto::Verbs::K23SI_TXN_END>
         (Deadline<>(_txn_end_deadline), *request).
         then([this, shouldCommit] (auto&& response) {
@@ -275,8 +277,8 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             return _heartbeat_timer.stop().then([this, s=std::move(status)] () {
                 // TODO get min transaction time from TSO client
                 auto time_spent = Clock::now() - _start_time;
-                if (time_spent < 10us) {
-                    auto sleep = 10us - time_spent;
+                if (time_spent < 50us) {
+                    auto sleep = 50us - time_spent;
                     return seastar::sleep(sleep).then([s=std::move(s)] () {
                         return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
                     });
@@ -292,7 +294,7 @@ seastar::future<WriteResult> K2TxnHandle::erase(SKVRecord& record) {
 }
 
 K23SIClient::K23SIClient(const K23SIClientConfig &) :
-        _tsoClient(AppBase().getDist<TSO_ClientLib>().local()), _gen(std::random_device()()) {
+        _tsoClient(AppBase().getDist<TSO_ClientLib>().local()) {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
     _metric_groups.add_group("K23SI_client", {
@@ -311,7 +313,7 @@ seastar::future<> K23SIClient::start() {
         _k2endpoints.push_back(String(*it));
     }
     K2LOG_I(log::skvclient, "_cpo={}", _cpo());
-    cpo_client = CPOClient(String(_cpo()));
+    cpo_client.init(_cpo());
 
     return seastar::make_ready_future<>();
 }
@@ -336,17 +338,16 @@ seastar::future<Status> K23SIClient::makeCollection(const String& collection, st
 }
 
 seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& metadata, std::vector<String>&& endpoints, std::vector<String>&& rangeEnds) {
-    return cpo_client.CreateAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
+    return cpo_client.createAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
     auto start_time = Clock::now();
-    return _tsoClient.GetTimestampFromTSO(start_time)
+    return _tsoClient.getTimestampFromTSO(start_time)
     .then([this, start_time, options] (auto&& timestamp) {
         dto::K23SI_MTR mtr{
-            _rnd(_gen),
-            std::move(timestamp),
-            options.priority
+            .timestamp=std::move(timestamp),
+            .priority=options.priority
         };
 
         total_txns++;
@@ -466,7 +467,7 @@ seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collec
 }
 
 // Called the first time a Query object is used to validate and setup the request object
-void K2TxnHandle::prepareQueryRequest(Query& query) {
+void K2TxnHandle::_prepareQueryRequest(Query& query) {
     // Start and end records need to be at least a prefix of key fields. If they are a proper prefix,
     // then we need to pad either the start or end (depending on if it is a forward or reverse scan)
     // with null last in the unspecified fields so that the full prefix gets scanned by the query.
@@ -554,18 +555,18 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
         return seastar::make_exception_future<QueryResult>(K23SIClientException("Tried to use Query that is done"));
     }
     if (!query.inprogress) {
-        prepareQueryRequest(query);
+        _prepareQueryRequest(query);
     }
 
     _client->query_ops++;
     _ongoing_ops++;
 
-    return _cpo_client->PartitionRequest
+    return _cpo_client->partitionRequest
         <dto::K23SIQueryRequest, dto::K23SIQueryResponse, dto::Verbs::K23SI_QUERY>
         (_options.deadline, query.request, query.request.reverseDirection, query.request.exclusiveKey)
     .then([this, &query] (auto&& response) {
         auto& [status, k2response] = response;
-        checkResponseStatus(status);
+        _checkResponseStatus(status);
         _ongoing_ops--;
 
         if (!status.is2xxOK()) {

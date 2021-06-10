@@ -37,7 +37,7 @@ namespace dto {
 // without affecting transaction state
 struct K23SIInspectRecordsRequest {
     // These fields make the request compatible with the PartitionRequest wrapper
-    Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName;
     Key key; // the key to gather all records for
     K2_PAYLOAD_FIELDS(pvid, collectionName, key);
@@ -52,22 +52,29 @@ struct K23SIInspectRecordsResponse {
 // Requests the TRH of a transaction without affecting transaction state
 struct K23SIInspectTxnRequest {
     // These fields make the request compatible with the PartitionRequest wrapper
-    Partition::PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName;
     Key key; // the key of the THR to request
-    K23SI_MTR mtr;
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
-    K2_DEF_FMT(K23SIInspectTxnRequest, pvid, collectionName, key, mtr);
+    Timestamp timestamp;
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, timestamp);
+    K2_DEF_FMT(K23SIInspectTxnRequest, pvid, collectionName, key, timestamp);
 };
 
 // Contains the TRH data (struct TxnRecord) without the internal
 // management members such as intrusive list hooks
 struct K23SIInspectTxnResponse {
-    TxnId txnId;
+    // the MTR for the txn
+    K23SI_MTR mtr;
 
-    // the keys to which this transaction wrote. These are delivered as part of the End request and we have to ensure
+    // the trh key for this txn
+    Key trh;
+
+    // the collection for the TR
+    String trhCollection;
+
+    // the ranges to which this transaction wrote. These are delivered as part of the End request and we have to ensure
     // that the corresponding write intents are converted appropriately
-    std::vector<dto::Key> writeKeys;
+    std::unordered_map<String, std::unordered_set<KeyRangeVersion>> writeRanges;
 
     // Expiry time point for retention window - these are driven off each TSO clock update
     dto::Timestamp rwExpiry;
@@ -76,8 +83,10 @@ struct K23SIInspectTxnResponse {
 
     TxnRecordState state;
 
-    K2_PAYLOAD_FIELDS(txnId, writeKeys, rwExpiry, state);
-    K2_DEF_FMT(K23SIInspectTxnResponse, txnId, writeKeys, rwExpiry, state);
+    dto::EndAction finalizeAction;
+
+    K2_PAYLOAD_FIELDS(mtr, trh, trhCollection, writeRanges, rwExpiry, state, finalizeAction);
+    K2_DEF_FMT(K23SIInspectTxnResponse, mtr, trh, trhCollection, writeRanges, rwExpiry, state, finalizeAction);
 };
 
 // Requests all WIs on a node for all keys

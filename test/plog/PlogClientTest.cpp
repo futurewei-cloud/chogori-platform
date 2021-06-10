@@ -121,9 +121,8 @@ public:  // application lifespan
     }
 
     seastar::future<> runTest3() {
-        ConfigVar<String> configEp("cpo_url");
         K2LOG_I(log::ptest, ">>> Test3: read the persistence group we created in test2");
-        return _client.init("Persistence_Cluster_1", configEp())
+        return _client.init("Persistence_Cluster_1")
         .then([this] () {
             K2LOG_I(log::ptest, "Test3.1: create a plog");
             return _client.create();

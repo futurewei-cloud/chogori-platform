@@ -41,12 +41,12 @@ namespace k2
 
 using namespace dto;
 
-// TSOService is reponsible to provide batches of K2 TimeStamps to TSO client upon request.
+// TSOService is responsible to provide batches of K2 TimeStamps to TSO client upon request.
 class TSOService
 {
 public: // types
 
-    // the control infor from Controller setting to all workers
+    // the control info from Controller setting to all workers
     // all ticks are in nanoseconds
    struct TSOWorkerControlInfo
     {
@@ -86,7 +86,7 @@ public :  // application lifespan
 private:
     // types
 
-    // forward delclaration of controller and worker roles
+    // forward declaration of controller and worker roles
     // Each core in TSOServerice takes one role, core 0 take controller role and the rest of cores takes worker roles.
     // worker core is responsible to take requests from TSO client to issue timestamp(batch)
     // controller core is responsible to manage this process instance(participate master election, etc),
@@ -159,7 +159,7 @@ class TSOService::TSOController
     {
         K2LOG_I(log::tsoserver, "JoinServerCluster");
         // fake join cluster
-        // currently just put myself into the cluster. 
+        // currently just put myself into the cluster.
         _TSOServerURLs.push_back(k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto)->url);
         K2LOG_I(log::tsoserver, "TSO Server TCP endpoints are: {}", _TSOServerURLs);
         _inSyncWithCluster = true;
@@ -198,7 +198,7 @@ class TSOService::TSOController
     void CollectAndReportStats();
     seastar::future<> DoCollectAndReportStats();
 
-    // (in nanosec counts) Current TA time + drifting allowarnce (in term of mulitple, default 10, times of timeSync interval). 
+    // (in nanosec counts) Current TA time + drifting allowance (in term of multiple, default 10, times of timeSync interval).
     inline uint64_t GenNewReservedTimeThreshold() {return TimeAuthorityNow() + _timeSyncTimerInterval().count() * _timeDriftingAllowanceMulitple();};
 
     // outer TSOService object
@@ -210,7 +210,7 @@ class TSOService::TSOController
     // tcp URLs of all current live TSO server instances in the TSO server cluster
     std::vector<k2::String> _TSOServerURLs;
 
-    // worker cores' URLs, each worker can have mulitple urls
+    // worker cores' URLs, each worker can have multiple urls
     std::vector<std::vector<k2::String>> _workersURLs;
 
     // The difference between the TA(Time Authority) and local time (local steady clock as it is strictly increasing).
@@ -239,7 +239,7 @@ class TSOService::TSOController
     ConfigDuration _timeSyncTimerInterval{"tso.ctrol_time_sync_interval", 10ms};
     seastar::future<> _timeSyncFuture = seastar::make_ready_future<>();  // need to keep track of timeSync task future for proper shutdown
 
-    // local cyrstal clock drifting allowance, in term of mulitple of _timeSyncTimerInterval
+    // local crystal clock drifting allowance, in terms of multiple of _timeSyncTimerInterval
     // Picking 10 as the local crystal clock drifting allowance is at less than 10 ms per second level, i.e. new threshold is less than 1 second away in the future is ok.
     ConfigVar<uint32_t> _timeDriftingAllowanceMulitple{"tso.control_time_drifting_allowance_multiple", 10u};
 
@@ -254,7 +254,8 @@ class TSOService::TSOController
     // this is the batch uncertainty windows size, should be less than MTL(minimal transaction latency),
     // this is also used at the TSO client side as batch's TTL(Time To Live)
     // TODO: consider derive this value from MTL configuration.
-    ConfigDuration _defaultTBWindowSize{"tso.ctrol_ts_batch_win_size", 8ms};
+    // NB: this is placed into an uint16t so max value is 65usec
+    ConfigDuration _defaultTBWindowSize{"tso.ctrol_ts_batch_win_size", 40us};
 
     seastar::timer<> _statsUpdateTimer;
     ConfigDuration _statsUpdateTimerInterval{"tso.ctrol_stats_update_interval", 1s};

@@ -144,13 +144,15 @@ int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>
 
     for (uint64_t i = 0; i < eps.size(); ++i) {
         dto::Partition part {
-            .pvid{
-                .id = i,
-                .rangeVersion=1,
-                .assignmentVersion=1
+            .keyRangeV{
+                .startKey=lastEnd,
+                .endKey=rangeEnds[i],
+                .pvid{
+                    .id = i,
+                    .rangeVersion=1,
+                    .assignmentVersion=1
+                },
             },
-            .startKey=lastEnd,
-            .endKey=rangeEnds[i],
             .endpoints={eps[i]},
             .astate=dto::AssignmentState::PendingAssignment
         };
@@ -172,13 +174,15 @@ void makeHashPartitionMap(dto::Collection& collection, const std::vector<String>
         uint64_t end = (i == eps.size() -1) ? (max) : ((i+1)*partSize - 1);
 
         dto::Partition part{
-            .pvid{
-                .id = i,
-                .rangeVersion=1,
-                .assignmentVersion=1
+            .keyRangeV{
+                .startKey=std::to_string(start),
+                .endKey=std::to_string(end),
+                .pvid{
+                    .id = i,
+                    .rangeVersion=1,
+                    .assignmentVersion=1
+                },
             },
-            .startKey=std::to_string(start),
-            .endKey=std::to_string(end),
             .endpoints={eps[i]},
             .astate=dto::AssignmentState::PendingAssignment
         };
@@ -493,11 +497,7 @@ void CPOService::_handleCompletedAssignment(const String& cname, dto::Assignment
         return;
     }
     for (auto& part: haveCollection.partitionMap.partitions) {
-        if (part.startKey == request.assignedPartition.startKey &&
-            part.endKey == request.assignedPartition.endKey &&
-            part.pvid.id == request.assignedPartition.pvid.id &&
-            part.pvid.assignmentVersion == request.assignedPartition.pvid.assignmentVersion &&
-            part.pvid.rangeVersion == request.assignedPartition.pvid.rangeVersion) {
+        if (part.keyRangeV == request.assignedPartition.keyRangeV) {
                 K2LOG_I(log::cposvr, "Assignment received for active partition {}", request.assignedPartition);
                 part.astate = request.assignedPartition.astate;
                 part.endpoints = std::move(request.assignedPartition.endpoints);

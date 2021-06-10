@@ -50,8 +50,8 @@ LogStreamBase::~LogStreamBase() {
 }
 
 seastar::future<>
-LogStreamBase::_initPlogClient(String persistenceClusterName, String cpoUrl){
-    return _client.init(persistenceClusterName, cpoUrl);
+LogStreamBase::_initPlogClient(String persistenceClusterName){
+    return _client.init(persistenceClusterName);
 }
 
 seastar::future<Status>
@@ -336,10 +336,10 @@ LogStream::~LogStream() {
 }
 
 seastar::future<Status>
-LogStream::init(LogStreamType name, PartitionMetadataMgr* metadataMgr, String cpoUrl, String persistenceClusterName, bool reload){
+LogStream::init(LogStreamType name, std::shared_ptr<PartitionMetadataMgr> metadataMgr, String persistenceClusterName, bool reload){
     _name = name;
     _metadataMgr = metadataMgr;
-    return _initPlogClient(persistenceClusterName, cpoUrl)
+    return _initPlogClient(persistenceClusterName)
     .then([this] (){
         return _preallocatePlog();
     })
@@ -372,7 +372,7 @@ PartitionMetadataMgr::~PartitionMetadataMgr() {
 
 seastar::future<Status>
 PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persistenceClusterName){
-    _cpo = CPOClient(cpoUrl);
+    _cpo.init(cpoUrl);
     _partitionName = std::move(partitionName);
     return _cpo.GetPartitionMetadata(Deadline<>(_cpo_timeout()), _partitionName)
     .then([&, cpoUrl, persistenceClusterName] (auto&& response){
@@ -391,7 +391,7 @@ PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persisten
         }
 
         return seastar::do_with(std::move(resp.records), std::move(reload), std::move(cpoUrl), std::move(persistenceClusterName), [&] (auto& records, auto& reload, auto&& cpoUrl, auto&&persistenceClusterName){
-            return _initPlogClient(persistenceClusterName, cpoUrl)
+            return _initPlogClient(persistenceClusterName)
             .then([this] (){
                 return _preallocatePlog();
             })
@@ -414,9 +414,9 @@ PartitionMetadataMgr::init(String cpoUrl, String partitionName, String persisten
                 LogStreamType logstreamName;
                 for (auto& name:LogStreamTypeNames){
                     logstreamName = LogStreamTypeFromStr(name);
-                    LogStream* _logstream = new LogStream();
+                    std::shared_ptr<LogStream> _logstream = std::make_shared<LogStream>();
                     _logStreamMap[logstreamName] = _logstream;
-                    initFutures.push_back(_logStreamMap[logstreamName]->init(logstreamName, this, cpoUrl, persistenceClusterName, reload));
+                    initFutures.push_back(_logStreamMap[logstreamName]->init(logstreamName, shared_from_this(), persistenceClusterName, reload));
                 }
                 return seastar::when_all_succeed(initFutures.begin(), initFutures.end()).
                 then([this, reload, records] (auto&& responses){
@@ -449,12 +449,12 @@ PartitionMetadataMgr::_addNewPlog(uint32_t sealedOffset, String newPlogId){
     });
 }
 
-std::tuple<Status, LogStream*> PartitionMetadataMgr::obtainLogStream(LogStreamType log_stream_name){
+std::tuple<Status, std::shared_ptr<LogStream>> PartitionMetadataMgr::obtainLogStream(LogStreamType log_stream_name){
     auto it = _logStreamMap.find(log_stream_name);
     if (it == _logStreamMap.end()) {
-        return std::tuple<Status, LogStream*>(std::tuple<Status, LogStream*>(Statuses::S404_Not_Found("unable to retrieve the target logstream"), NULL));
+        return std::tuple<Status, std::shared_ptr<LogStream>>(std::tuple<Status, std::shared_ptr<LogStream>>(Statuses::S404_Not_Found("unable to retrieve the target logstream"), NULL));
     }
-    return std::tuple<Status, LogStream*>(std::tuple<Status, LogStream*>(Statuses::S200_OK("successfully obtain logstream"), it->second));
+    return std::tuple<Status, std::shared_ptr<LogStream>>(std::tuple<Status, std::shared_ptr<LogStream>>(Statuses::S200_OK("successfully obtain logstream"), it->second));
 }
 
 

@@ -40,10 +40,10 @@ class LogStreamTest {
 private:
     int exitcode = -1;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
-    k2::PartitionMetadataMgr _mmgr;
-    k2::LogStream* _logStream;
-    k2::PartitionMetadataMgr _reload_mmgr;
-    k2::LogStream* _reload_logStream;
+    std::shared_ptr<k2::PartitionMetadataMgr> _mmgr;
+    std::shared_ptr<k2::LogStream> _logStream;
+    std::shared_ptr<k2::PartitionMetadataMgr> _reload_mmgr;
+    std::shared_ptr<k2::LogStream> _reload_logStream;
     String _initPlogId;
     k2::ConfigVar<std::vector<k2::String>> _plogConfigEps{"plog_server_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
@@ -88,8 +88,8 @@ public:  // application lifespan
 
                 ConfigVar<String> configEp("cpo_url");
                 String cpoUrl = configEp();
-
-                return _mmgr.init(cpoUrl, "Partition-1", "Persistence_Cluster_1").discard_result();
+                _mmgr = std::make_shared<k2::PartitionMetadataMgr>();
+                return _mmgr->init(cpoUrl, "Partition-1", "Persistence_Cluster_1").discard_result();
             })
             .then([this] { return runTest1();})
             .then([this] { return runTest2();})
@@ -120,7 +120,7 @@ public:  // application lifespan
 
     seastar::future<> runTest1() {
         K2LOG_I(log::ltest, ">>> Test1: Write and Read a Value from/to one log stream");
-        auto response = _mmgr.obtainLogStream(LogStreamType::WAL);
+        auto response = _mmgr->obtainLogStream(LogStreamType::WAL);
         auto status = std::get<0>(response);
         auto logStream = std::get<1>(response);
         if (!status.is2xxOK()){
@@ -154,7 +154,7 @@ public:  // application lifespan
 
     seastar::future<> runTest2() {
         K2LOG_I(log::ltest, ">>> Test2: Write and read huge data");
-        auto response = _mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+        auto response = _mmgr->obtainLogStream(LogStreamType::IndexerSnapshot);
         auto status = std::get<0>(response);
         auto logStream = std::get<1>(response);
         if (!status.is2xxOK()){
@@ -312,13 +312,14 @@ public:  // application lifespan
         String data_to_append(10000, '3');
 
         // Replay the entire metadata manager
-        return _reload_mmgr.init(cpoUrl, "Partition-1", "Persistence_Cluster_1")
+        _reload_mmgr = std::make_shared<k2::PartitionMetadataMgr>();
+        return _reload_mmgr->init(cpoUrl, "Partition-1", "Persistence_Cluster_1")
         // Read all the data from reloaded log stream and check weather they are the same
         .then([this] (auto&& status){
             K2ASSERT(log::ltest, status.is2xxOK(), "cannot replay metadata manager!");
             K2LOG_I(log::ltest, ">>> Test3.1: Replay Done");
 
-            auto response = _reload_mmgr.obtainLogStream(LogStreamType::IndexerSnapshot);
+            auto response = _reload_mmgr->obtainLogStream(LogStreamType::IndexerSnapshot);
             auto return_status = std::get<0>(response);
             auto logStream = std::get<1>(response);
             if (!return_status.is2xxOK()){

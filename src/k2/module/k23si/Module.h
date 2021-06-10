@@ -37,6 +37,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "ReadCache.h"
 #include "TxnManager.h"
+#include "TxnWIMetaManager.h"
 #include "Config.h"
 #include "Persistence.h"
 #include "Log.h"
@@ -45,9 +46,22 @@ namespace k2 {
 
 
 // the type holding multiple committed versions of a key
-typedef std::deque<dto::CommittedRecord> VersionsT;
+typedef std::deque<dto::DataRecord> VersionsT;
 
 struct VersionSet {
+    // If there is a WI, that means that we also have a TxnWIMeta with the twimMgr.
+    // The invariant we maintain is
+    // if there is a WI set, then: the local twim's state is in InProgress (use isInProgress() to check)
+    // The implementation logic then just has to look for the presense of this WI to determine if a push is needed.
+    // After a PUSH operation, if we determine that the incumbent should be finalized(committed/aborted), we
+    // just take care of the WI which triggered the PUSH. This is needed to make room for a new WI in cases of
+    // Write-Write PUSH. We still rely on the TRH to take care of the full finalization for the rest of the WIs.
+    //
+    // For optimization purposes, if we determine that the incumbent should be finalized, we update its state.
+    // Future PUSH operations for this txn (from other WIs on this node) will be determined locally.
+    // This allows us to
+    // - perform finalization in a rate-limited fashion (i.e. have only some WIs finalized for a txn)
+    // - finalize out WIs which actively trigger a conflict, without requiring finalization for the entire txn.
     std::optional<WriteIntent> WI;
     VersionsT committed;
     bool empty() const {
@@ -120,7 +134,7 @@ public:
     handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& request);
 
 private: // methods
-    // this method executes a push operation at the TRH for the given incumbentTxnID in order to
+    // this method executes a push operation at the TRH for the given incumbent in order to
     // determine if the challengerMTR should be allowed to proceed.
     // It returns 2xxOK iff the challenger should be allowed to proceed. If not allowed, the client
     // who issued the request must be notified to abort their transaction.
@@ -130,7 +144,7 @@ private: // methods
     // incumbent transaction state at the TRH will be updated to reflect the abort decision.
     // The incumbent transaction will discover upon commit that the txn has been aborted.
     seastar::future<Status>
-    _doPush(String collectionName, dto::Key key, dto::TxnId incumbentTxnId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
+    _doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
@@ -155,7 +169,7 @@ private: // methods
     Status _validateReadRequest(const RequestT& request) const;
 
     // helper method used to create and persist a WriteIntent
-    seastar::future<> _createWI(dto::K23SIWriteRequest&& request, VersionSet& versions);
+    Status _createWI(dto::K23SIWriteRequest&& request, VersionSet& versions);
 
     // helper method used to make a projection SKVRecord payload
     bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
@@ -208,7 +222,7 @@ private: // methods
     // get timeNow Timestamp from TSO
     seastar::future<dto::Timestamp> getTimeNow() {
         TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
-        return tsoClient.GetTimestampFromTSO(Clock::now());
+        return tsoClient.getTimestampFromTSO(Clock::now());
     }
 
     seastar::future<> _registerVerbs();
@@ -218,13 +232,16 @@ private: // methods
     seastar::future<std::tuple<Status, ResponseT>> _respondAfterFlush(std::tuple<Status, ResponseT>&& tuple);
 
     // helper used to process the designate TRH part of a write request
-    seastar::future<Status> _designateTRH(dto::TxnId txnId);
+    seastar::future<Status> _designateTRH(dto::K23SI_MTR mtr, dto::Key trhKey);
 
     // helper used to process the write part of a write request
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
 
     void _unregisterVerbs();
+
+    // helper used to finalize all local WIs for a give transaction
+    Status _finalizeTxnWIs(dto::Timestamp txnts, dto::EndAction action);
 
 private:  // members
     // the metadata of our collection
@@ -238,8 +255,11 @@ private:  // members
     // Duplicates are not allowed
     IndexerT _indexer;
 
-    // to store transactions
+    // manage transaction records as a coordinator
     TxnManager _txnMgr;
+
+    // manage write intent metadata records as a participant
+    TxnWIMetaManager _twimMgr;
 
     // read cache for keeping track of latest reads
     std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;

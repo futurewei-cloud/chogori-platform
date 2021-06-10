@@ -222,12 +222,12 @@ seastar::future<> CPOTest::runTest5() {
 
             for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
                 auto& p = resp.collection.partitionMap.partitions[i];
-                K2EXPECT(log::cpotest, p.pvid.rangeVersion, 1);
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.rangeVersion, 1);
                 K2EXPECT(log::cpotest, p.astate, dto::AssignmentState::Assigned);
-                K2EXPECT(log::cpotest, p.pvid.assignmentVersion, 1);
-                K2EXPECT(log::cpotest, p.pvid.id, i);
-                K2EXPECT(log::cpotest, p.startKey, std::to_string(i * partSize));
-                K2EXPECT(log::cpotest, p.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.assignmentVersion, 1);
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.id, i);
+                K2EXPECT(log::cpotest, p.keyRangeV.startKey, std::to_string(i * partSize));
+                K2EXPECT(log::cpotest, p.keyRangeV.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
                 K2EXPECT(log::cpotest, *p.endpoints.begin(), _k2ConfigEps()[i]);
             }
         });

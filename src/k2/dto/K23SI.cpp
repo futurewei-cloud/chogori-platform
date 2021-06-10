@@ -26,14 +26,14 @@ namespace k2 {
 namespace dto {
 
 bool K23SI_MTR::operator==(const K23SI_MTR& o) const {
-    return txnid == o.txnid && timestamp.compareUncertain(o.timestamp) == Timestamp::EQ && priority == o.priority;
+    return timestamp == o.timestamp && priority == o.priority;
 }
 bool K23SI_MTR::operator!=(const K23SI_MTR& o) const {
     return !(operator==(o));
 }
 
 size_t K23SI_MTR::hash() const {
-    return hash_combine(txnid, priority, timestamp);
+    return hash_combine(timestamp, priority);
 }
 
 } // ns dto
