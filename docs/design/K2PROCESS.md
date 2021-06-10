@@ -5,7 +5,8 @@ This document describes the architecture for a K2 process.
 
 We use Seastar to manage our processes. When our process is started, we create N reactor instances - each instance pinned to a particular core. The number of instances and their core assignment is driven via command line configuration.
 
-The user code is packaged in Applets. An applet is simply any class which has a start and stop methods (see many examples under k2/src/cmd/demo)
+We have a class used to help create K2 applications, called `K2::App`. It creates all of the necessary subsystems, and allows the user to add their custom code.
+The user code is packaged in `Applets`. An `applet` is simply any class which has a start and stop methods (see many examples under k2/src/cmd/demo). The `K2::App` class allows the `applet` to be registered, and the `K2::App` will ensure that there is exactly one instance of the `applet` created and running on each core onto which the process is configured to run.
 
 Underlying services are initialized by the K2 Appbase, to provide access to infrastructure such as:
 - RPC/Messaging

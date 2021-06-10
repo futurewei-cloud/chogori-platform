@@ -114,7 +114,7 @@ This is an overview of how data is organized in K2. Details on each part are fol
 
 ## Cluster, nodes, nodepool
 A recap from the K2PROCESS.md document:
-A cluster is a set of machines used to deploy data which is managed as a single unit. Wd do not have a notion of cluster in code - it is just how we may refer in documentation to a set of machines which are used to deploy a `Collection`(see below). The data lives in partitions, each deployed to a single CPU Core with some particular fixed memory available to it (4-12GB). We call this a `node` and is what messages in the system are send to. We start these on a given machine as individual threads in a process which we call the `nodepool`. Currently we deploy nodepools one per CPU socket, so a 2-socket machine (each socket with say 20cores) would get 2 nodepools, each running 20 threads for a total of 40 nodes available for deployment on this machine.
+A cluster is a set of machines used to deploy data which is managed as a single unit. We do not have a notion of cluster in code - it is just how we may refer in documentation to a set of machines which are used to deploy a `Collection`(see below). The data lives in partitions, each deployed to a single CPU Core with some particular fixed memory available to it (4-12GB). We call this a `node` and is what messages in the system are sent to. We start these on a given machine as individual threads in a process which we call the `nodepool`. Currently we deploy nodepools one per CPU socket, so a 2-socket machine (each socket with say 20cores) would get 2 nodepools, each running 20 threads for a total of 40 nodes available for deployment on this machine.
 
 ## Collection
 Collections in K2 is how data is deployed on a set of nodes. Thus to work with data, a collection must already exist:
@@ -131,7 +131,7 @@ A Schema is what we use to describe the data in a data record. In particular, it
 - which fields comprise the partitionKey
 - which fields comprise the rangeKey
 
-Schemas have names and are versioned, and is akin to a `table` in the SQL world. All of the data in a particular schema is supposed to be part of a single data set (e.g. `Users`, or `Orders`). Via versioning, the users can perform schema migration, though we do not support changes to the key fields (partition/range).
+Schemas have names and are versioned. They are akin to `tables` in the SQL world; see [SchemaDesign](./SKV.md). All of the data in a particular schema is supposed to be part of a single data set (e.g. `Users`, or `Orders`). Via versioning, the users can perform schema migration, though we do not support changes to the key fields (partition/range).
 
 - Schemas are created and are therefore scoped inside a particular collection.
 - When reading data, the user has to specify from which schema they are reading
@@ -139,7 +139,7 @@ Schemas have names and are versioned, and is akin to a `table` in the SQL world.
 ## SKVRecord
 In our API, keys and data are not specified explicitly. Instead, the user specifies a set of fields with a schema. The combination of these two is an `SKVRecord`.
 
-The SKVRecord designates a set of fields as the `partitionKey`, and a set of fields as the `rangeKey`. Data will be placed on a given partition based on the `partitionKey` of the record. The `rangeKey` allows records with identical `partitionKey` to be placed adjacent in memory on the same partiiton in order to allow for very efficient bulk retrieval (see reading multiple records below).
+The `schema` associated with an `SKVRecord` designates a subset of the fields as the `partitionKey`, and a subset of fields as the `rangeKey`. Data will be placed on a given partition based on the `partitionKey` of the record. The `rangeKey` allows records with identical `partitionKey` to be placed adjacent in memory on the same partition in order to allow for very efficient bulk retrieval (see reading multiple records below).
 
 ### Reading single record
 In order to read data, you need to specify enough of the SKVRecord to identify the record in the system. That means that you have to supply values for all fields of both the `partitionKey` and the `rangeKey`.

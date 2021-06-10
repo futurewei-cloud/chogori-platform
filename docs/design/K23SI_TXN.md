@@ -161,7 +161,7 @@ In order to prevent various anomalies and achieve SerializableSI, we maintain a 
 - When a read is received for a transaction `T`, we remember that the given key was observed at timestamp `T.timestamp`. If we've previously observed a read for the same key, we update the cache to reflect the max such value and the latest transaction to observe it.
 - The implementation of the read key cache is an interval tree. We require an interval tree to also remember key range reads.
 - The cache is consulted at write time to determine if a write should be aborted. The reason we need to do this is that if we try to write an item with timestamp <= lastSVTimeTheKeyWasRead, then we are breaking a promise to whoever read the item - they saw some item version when they read at their snapshot time, and now we're trying to insert a newer version into their snapshot. This write should therefore be aborted.
-- Entries are removed from the cache in an LRU fashion. We maintain a minSVTimestamp watermark for the entire cache, which tells us how old is the oldest entry in the cache. Any write before this timestamp (for any key) is aborted as we assume there may have been a read for it.
+- Entries are removed from the cache in a FIFO fashion. We maintain a minSVTimestamp watermark for the entire cache, which tells us how old is the oldest entry in the cache. Any write before this timestamp (for any key) is aborted as we assume there may have been a read for it.
 - Note that even though we call this data structure a cache, it is critical to keep in mind that it is a sliding window. We cannot afford to miss any reads that happen in this window - all reads MUST be recorded in the window. We can only afford to shrink this window as needed for performance reasons.
 - We do not require persistence for this data. Upon failure, we obtain a fresh timestamp from a local TSO and assume it to be the cache's watermark thus failing any in-progress writes which may want to modify data on the failed node.
 
@@ -310,7 +310,7 @@ Note that the client is responsible for some of these fields:
 - `writeRanges`: As the CL issues write operations during the txn execution, it remembers the partition ranges to which it wrote. This is needed at commit/abort time so that the cluster can contact the partition owners for these ranges, and ask them to convert the WIs they might have on behalf of this transaction. Note that since we support cross-collection transactions, this field has a set of ranges per collection.
 - `trh`: this is the TRH key set by the CL when it first does a write. It is used to determine which partition node currently owns the TR record and is the key of the first write done in the txn
 - `syncFinalize`: this is a txn option which the client can set. It makes sure that a commit/abort isn't acknowledged until all WIs in the cluster have been finalized. This is normally not needed, but it is useful in cases where the client knows that conflicting transactions will be starting next (e.g. doing a large initial data load)
-- `timeToFinalize`: works in conjunction with syncFinalize and specifies an artificial wait to be performed before issuing the finalization call to participants.
+- `timeToFinalize`(for testing): works in conjunction with syncFinalize and specifies an artificial wait to be performed before issuing the finalization call to participants.
 
 ## States
 This is the complete set of possible transaction states. The states `*PIP` (PIP stands for Persistence-In-Progress) are the ones which are persisted in the WAL and therefore are the only states which can ever be seen during WAL replay:
@@ -500,7 +500,7 @@ In the TWIM management, if we recover a transaction in an in-progress state, we 
 
 # Other ideas
 - It may be helpful to allow applications to execute operations in batches so that we can group operations to the same node into single message
-- Consider using separate WAL for intents. Potentially cheaper to GC since we can just maintain a watermarm and drop the tail past the watermark once WIs are finalized. May cause write amplification though
+- Consider using separate WAL for intents. Potentially cheaper to GC since we can just maintain a watermark and drop the tail past the watermark once WIs are finalized. May cause write amplification though
 - provide atomic higher-level operations (sinfonia style):
     - swap
     - cas
@@ -508,7 +508,7 @@ In the TWIM management, if we recover a transaction in an in-progress state, we 
     - acquire_lease
     - acquire_lease_many
     - update_if_lease_held
-- We might achieve better throughput under standard benchmark if we consider allowing for a HOLD in cases of conflict resolution(PUSH operation). If we have a Candidate/Pusher which we think will succeed if we knew the outcome of an intent, we can hold onto the candidate operation for short period of time to allow for the intent to commit. For a better implementation, it maybe best to implement a solution which does a transparent hold - a hold that doesn't require special handling at the client (e.g. additional notification and heartbeating). THis could be achieved simply by re-queueing an incoming task once with a delay of potential 999 network round-trip latency (e.g. 10-20usecs).
+- We might achieve better throughput under standard benchmark if we consider allowing for a HOLD in cases of conflict resolution(PUSH operation). If we have a Candidate/Pusher which we think will succeed if we knew the outcome of an intent, we can hold onto the candidate operation for short period of time to allow for the intent to commit. For a better implementation, it maybe best to implement a solution which does a transparent hold - a hold that doesn't require special handling at the client (e.g. additional notification and heartbeating). This could be achieved simply by re-queueing an incoming task once with a delay of potential 999 network round-trip latency (e.g. 10-20usecs).
 
 # Related work
 - [UW YCSB-T repo - requires account](https://syslab.cs.washington.edu/research/transtorm/)
