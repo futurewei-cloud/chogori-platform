@@ -357,7 +357,7 @@ Compare with High Time Acuracy TSO system which can have mulitiple active TSOs a
 #### 4.2.2 Multiple active TSO server clusters
 In above Low Time Accuracy design, the reason we can have only one active TSO server per region(data center) is that we can't guarantee the difference of TEnds of timestamps from different TSO server must fall within a small window defined with batch TTL(extended uncertainty window size). But if we have reliable time internal sync algorithm or NIC based hardware applied to TSO servers, then we can control and reduce this difference of TEnds of timestamp from different TSOs to less than batch TTL. Please note, it is not control or reduce the uncertainty window which can be at tens of millisecond level.
 
-With such internal sycn algorithm applied to the system, we can expand Low Time Accuracy TSO system to have mulitple active TSO servers on the same geo region (data center) as well. This will significantly improve the system scalability and availability as analyzed in 4.2.1. ![TSO Low Mutli](../images/TSO-Low-Multi.png)
+With such internal sycn algorithm applied to the system, we can expand Low Time Accuracy TSO system to have mulitple active TSO servers on the same geo region (data center) as well. This will significantly improve the system scalability and availability as analyzed in 4.2.1. ![TSO Low Mutli](../images/TSO-Low-multi.png)
 
 
 ## 5 More Design analysis and reasoning
