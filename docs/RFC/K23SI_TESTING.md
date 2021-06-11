@@ -1,6 +1,6 @@
 This document describes test scenarios for the K23SI transaction.
 # Background
-The K23SI transaction is described in detail in the [design doc here](../K2-3SI-TXN.md)
+The K23SI transaction is described in detail in the [design doc here](../design/K23SI_TXN.md)
 
 The test cases currently are constructed in a form of an integration test. The tests are in the test runner `chogori-platform/test/k23si/K23SITest.cpp`, which is a stand-alone application that can send/receive messages against a K2 cluster. The tests are currently executed via the integration tester `chogori-platform/test/integration/test_k23si.sh`
 
@@ -82,7 +82,7 @@ Notes:
 
 ## Scenario 03 - read cache usage tests (read/write observed history)
 
-- 
+-
 ## Scenario 04 - read your writes(a txn can see its own pending writes) and read-committed isolation(pending writes are not shown to other transactions)
 
 ### Test setup
@@ -96,7 +96,7 @@ Notes:
 
 ### Test cases
 
-- The test logic is shown below: 
+- The test logic is shown below:
 
   ![Scenario04-Test-Logic](../images/K23SI-Testing Scenario-04.png)
 
@@ -137,7 +137,7 @@ Notes:
 
 ### Test setup
 
-- start a cluster and assign collection. 
+- start a cluster and assign collection.
 - Start a transaction that have not been End().
 
 ### Test cases
@@ -163,7 +163,7 @@ Notes:
 
 ### Test setup
 
-- start a cluster and assign collection. 
+- start a cluster and assign collection.
 - Get multiple old and new timestamps to make Minimum Txn Records.
 
 ### Test cases
@@ -184,7 +184,7 @@ Notes:
 
 ### Test setup
 
-- start a cluster and assign collection. 
+- start a cluster and assign collection.
 
 - write the following data, and keep the records in the given state
 

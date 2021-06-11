@@ -126,7 +126,7 @@ To remain correct, we allow the users to specify the `data retention window` on 
 Normally a transaction has to start and finish within the retention window. It is usually not an issue for OLTP transactions which are typically short running. For long running OLAP (especially read-only) transactions, such retention window may not provide long enough time.
 
 # K23SI Transaction Details
-We've chosen a modified Serializable Snapshot Isolation approach, modified to execute in a NO-WAIT fashion - that is, we abort transactions as soon as possible in cases of potential conflict. Roughly, we use MVCC to achieve snapshot isolation, and we enhance the server-side handling and book-keeping to make it serializable, as described in the paper by [Serializable SI - CockroachDB](https://www.cockroachlabs.com/blog/serializable-lockless-distributed-isolation-cockroachdb/) and  [Serializable Isolation for Snapshot Databases](./papers/SerializableSnapshotIsolation-fekete-sigmod2008.pdf). External Causality is guaranteed by our approach to timestamp generation (see TSO above). The following sections dive in each aspect of performing transactions.
+We've chosen a modified Serializable Snapshot Isolation approach, modified to execute in a NO-WAIT fashion - that is, we abort transactions as soon as possible in cases of potential conflict. Roughly, we use MVCC to achieve snapshot isolation, and we enhance the server-side handling and book-keeping to make it serializable, as described in the paper by [Serializable SI - CockroachDB](https://www.cockroachlabs.com/blog/serializable-lockless-distributed-isolation-cockroachdb/) and  [Serializable Isolation for Snapshot Databases](../papers/SerializableSnapshotIsolation-fekete-sigmod2008.pdf). External Causality is guaranteed by our approach to timestamp generation (see TSO above). The following sections dive in each aspect of performing transactions.
 
 For a typical K23SI distributed transaction, there is a Transaction Record(TR) that is managed at the TRH (designated Transaction Record Holder partition) and TransactionWriteIntentMetadata(TWIM) Records that are managed at participant partitions - the partitions to which the transaction wrote data. TR and TWIMs are managed in memory and persisted in WAL. Of course, each transaction's write-set, i.e. the SKV record(s) written/updated in the transaction, are in the WAL as well, appearing as Write-Intent record(with data). When finalized, at each participant we write a single message to denote that the entire txn (and therefore all of its WIs) are now finalized: committed or aborted.
 
@@ -512,5 +512,5 @@ In the TWIM management, if we recover a transaction in an in-progress state, we 
 
 # Related work
 - [UW YCSB-T repo - requires account](https://syslab.cs.washington.edu/research/transtorm/)
-- [UW YCSB-T paper](./papers/YCSB+T.pdf)
-- [Harding's](./papers/harding.pdf)
+- [UW YCSB-T paper](../papers/YCSB+T.pdf)
+- [Harding's](../papers/harding.pdf)
