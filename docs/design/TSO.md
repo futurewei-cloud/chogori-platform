@@ -92,10 +92,10 @@ From above discussion of high accurate atomic clock timestamps, MTL essentially 
 
 So, the conclusion of this section and whole part 2 is that depends on how accurate we can have our time authority, i.e. the time uncertainty window size, we can design TSO in two different way.
 ##### High Time Accuracy TSO system
- When the time accuracy is hgih (with atomic clock/GPS), we can defined teh syatem as an group of all active TSO server cluster in each geo region. all TSO server can issue out timestamp/batch concurrently. ![TSO High](./images/TSO-High.png)
+ When the time accuracy is hgih (with atomic clock/GPS), we can defined teh syatem as an group of all active TSO server cluster in each geo region. all TSO server can issue out timestamp/batch concurrently. ![TSO High](../images/TSO-High.png)
 
 ##### Low Time Accuracy TSO system
- When the time accuracy is low(with pure software NTP service), we can define the system as a TSO cluster in each geo region. The TSO cluster is composed of a leader TSO and one or more stand-by TSO and they are based on a Paxos cluster for leader selection and health monintoring. Only leader TSO issues out timestamp/batch. ![TSO Low](./images/TSO-Low.png)
+ When the time accuracy is low(with pure software NTP service), we can define the system as a TSO cluster in each geo region. The TSO cluster is composed of a leader TSO and one or more stand-by TSO and they are based on a Paxos cluster for leader selection and health monintoring. Only leader TSO issues out timestamp/batch. ![TSO Low](../images/TSO-Low.png)
 
 The difference between these two design is that, besides what is visible from pictures above (where K2 data server cluster are ignored), is that the K2 data server will need to handle timestamp overlap in low time accuracy situation. The handling logic is same as transaction conflict. Some optimization can be done but not discussed in detail here. The K2 TSO client and K2 TSO server internal are all the same in two design. In next section, we will discuss these two designs in detail, with common design first, then the high accuracy design as it is main target design to be used and last low accuracy design.
 
@@ -357,7 +357,7 @@ Compare with High Time Acuracy TSO system which can have mulitiple active TSOs a
 #### 4.2.2 Multiple active TSO server clusters
 In above Low Time Accuracy design, the reason we can have only one active TSO server per region(data center) is that we can't guarantee the difference of TEnds of timestamps from different TSO server must fall within a small window defined with batch TTL(extended uncertainty window size). But if we have reliable time internal sync algorithm or NIC based hardware applied to TSO servers, then we can control and reduce this difference of TEnds of timestamp from different TSOs to less than batch TTL. Please note, it is not control or reduce the uncertainty window which can be at tens of millisecond level.
 
-With such internal sycn algorithm applied to the system, we can expand Low Time Accuracy TSO system to have mulitple active TSO servers on the same geo region (data center) as well. This will significantly improve the system scalability and availability as analyzed in 4.2.1. ![TSO Low Mutli](./images/TSO-Low-Multi.png)
+With such internal sycn algorithm applied to the system, we can expand Low Time Accuracy TSO system to have mulitple active TSO servers on the same geo region (data center) as well. This will significantly improve the system scalability and availability as analyzed in 4.2.1. ![TSO Low Mutli](../images/TSO-Low-Multi.png)
 
 
 ## 5 More Design analysis and reasoning
