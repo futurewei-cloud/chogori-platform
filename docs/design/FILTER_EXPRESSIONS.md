@@ -5,18 +5,18 @@ Filter expressions are boolean expressions applied on records at runtime. Users 
 ```
 Filter := Expression
 Expression := Operator, Operand+
-Operator := EQ | GT | GTE | LT | LTE | IS_NULL | IS_TYPE | STARTS_WITH | CONTAINS | ENDS_WITH | AND | OR | XOR | NOT
+Operator := EQ | GT | GTE | LT | LTE | IS_NULL | IS_EXACT_TYPE | STARTS_WITH | CONTAINS | ENDS_WITH | AND | OR | XOR | NOT
 Operand := Value | Expression
 Value := Reference | Literal
 Literal := FieldType, CPPBuiltInValueOfType
-FieldType := "INT32_T" | "INT64_T" | "UINT32_T" | "UINT64_T" | "STRING" | "BOOL" | "FLOAT" | "DOUBLE"
-CPPBuiltInValueOfType := int32_t, int64_t, uint32_t, uint64_t, bool, string, float, double, null
+FieldType := "INT16T" | "INT32T" | "INT64_T" | "FLOAT" | "DOUBLE" | "BOOL" | "STRING" | "DECIMAL64" | "DECIMAL128" | "FIELD_TYPE" | "NULL_T"
+CPPBuiltInValueOfType := int16_t | int32_t | int64_t | float | double | bool | string | std::decimal::decimal64 | std::decimal::decimal128 | k2::dto::FieldType | null
 Reference := FieldName
 FieldName := string
 ```
 * All fields are typed and can be `NULL`.
-* `NULL` values are typed i.e. `NULL` string != `NULL` int
-* References are not typed. They refer to a field by name, and take on the type of the found field for any particular record.
+* `NULL` values are typed i.e. Literal("STRING", null) != Literal("INT16_T", null)
+* References are not typed. They refer to a field by name and will take on the type of the found field for any particular record.
 * Type conversion is applied during filtering following C++ rules, notably, if type conversion was attempted but no comparable promotion was available, the entire expression fails
 * Type conversion is not applied during SKV field deserialization. E.g. if there is a field `{"age": int32}` in the schema, an attempt to deserialize field `{"age": int64}` will fail (throw)
 * To aid with schema migration, the IS_TYPE operator provides the capability to select records with exact type.
