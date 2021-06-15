@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #define CATCH_CONFIG_MAIN
 // std
 #include <k2/transport/Payload.h>
+#include <k2/transport/Payload.cpp>
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
 // catch
@@ -366,6 +367,78 @@ SCENARIO("test shareAll() and shareRegion()") {
                 REQUIRE(cmplx == d.w.val);
             }
         }
+}
+
+SCENARIO("test getSerializedSizeOf method") {
+    Payload src([] { return Binary(32); } );
+    char a = 'a';
+    String b = "test getSerializedSizeOf method";
+    std::decimal::decimal64 c(323.435);
+    std::set<int16_t> d{
+        1, 2, 3, 4, 5
+    };
+    std::map<int16_t, String> e{
+            {1, "test"},
+            {2, "getSerializedSizeOf"},
+            {3, "method"}
+    };
+    SerializeAsPayload<String> f{
+        "test getSerializedSizeOf method"
+    };
+    embeddedSimple g{
+        16,
+        'g',
+        111
+    };
+    embeddedComplex h{
+        "test getSerializedSizeOf method",
+        213,
+        'h'
+    };
+    std::unordered_map<int16_t, std::vector<int16_t>> i{
+            {1, {1}},
+            {2, {2, 3}},
+            {3, {3, 4, 5}},
+    };
+    Payload j([] { return Binary(32); });
+    j.write(b);
+
+    src.write(a);
+    src.write(b);
+    src.write(c);
+    src.write(d);
+    src.write(e);
+    src.write(f);
+    src.write(g);
+    src.write(h);
+    src.write(i);
+    src.write(j);
+    src.seek(0);
+    REQUIRE(src.getSerializedSizeOf<char>() == sizeof(char));
+    src.skip<char>();
+    REQUIRE(src.getSerializedSizeOf<String>() == sizeof(uint32_t) + b.size() + 1);
+    src.skip<String>();
+    REQUIRE(src.getSerializedSizeOf<std::decimal::decimal64>() == sizeof(std::decimal::decimal64::__decfloat64));
+    src.skip<std::decimal::decimal64>();
+    REQUIRE(src.getSerializedSizeOf<std::set<int16_t>>() == sizeof(uint32_t) + d.size() * sizeof(int16_t));
+    src.skip<std::set<int16_t>>();
+    REQUIRE(src.getSerializedSizeOf<std::map<int16_t, String>>() == sizeof(uint32_t) + 2 + 9 + 2 + 24 + 2 + 11);
+    src.skip<std::map<int16_t, String>>();
+    REQUIRE(src.getSerializedSizeOf<SerializeAsPayload<String>>() == sizeof(uint64_t) + 36);
+    src.skip<SerializeAsPayload<String>>();
+    REQUIRE(src.getSerializedSizeOf<embeddedSimple>() == sizeof(embeddedSimple));
+    src.skip<embeddedSimple>();
+    REQUIRE(src.getSerializedSizeOf<embeddedComplex>() == 36 + sizeof(int) + sizeof(char));
+    src.skip<embeddedComplex>();
+    REQUIRE(src.getSerializedSizeOf<std::unordered_map<int16_t, std::vector<int16_t>>>()
+            == sizeof(uint32_t)
+                + sizeof(int16_t) + sizeof(uint32_t) + sizeof(int16_t)
+                + sizeof(int16_t) + sizeof(uint32_t) + 2 * sizeof(int16_t)
+                + sizeof(int16_t) + sizeof(uint32_t) + 3 * sizeof(int16_t));
+    src.skip<std::unordered_map<int16_t, std::vector<int16_t>>>();
+    REQUIRE(src.getSerializedSizeOf<Payload>() == sizeof(size_t) + j.getSize());
+    src.skip<Payload>();
+    REQUIRE(src.getDataRemaining() == 0);
 }
 
 

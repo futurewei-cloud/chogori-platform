@@ -328,6 +328,10 @@ void Payload::writeMany() {
     // this is needed for the base case of the recursive template version
 }
 
+size_t Payload::getFieldsSize() {
+    return 0;
+}
+
 bool Payload::_allocateBuffer() {
     K2ASSERT(log::tx, _allocator, "cannot allocate buffer without allocator");
     Binary buf = _allocator();
