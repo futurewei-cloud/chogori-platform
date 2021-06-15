@@ -130,7 +130,7 @@ std::unique_ptr<Payload> TXEndpoint::newPayload() {
     K2ASSERT(log::tx, _allocator != nullptr, "asked to create payload from non-allocating endpoint");
     auto result = std::make_unique<Payload>(_allocator);
     // rewind enough bytes to write out a header when we're sending
-    result->skip(txconstants::MAX_HEADER_SIZE);
+    result->reserve(txconstants::MAX_HEADER_SIZE);
     return result;
 }
 

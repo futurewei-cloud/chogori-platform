@@ -109,7 +109,7 @@ void Payload::seek(size_t offset) {
         // Just start at 0 and go up
         _currentPosition = PayloadPosition();
     }
-    _advancePosition(offset - _currentPosition.offset);
+    skip(offset - _currentPosition.offset);
 }
 
 void Payload::seek(PayloadPosition position) {
@@ -141,7 +141,7 @@ bool Payload::read(void* data, size_t size) {
         std::memcpy(data, buffer.get() + _currentPosition.bufferOffset, needToCopySize);
         size -= needToCopySize;
         data = (void*)((char*)data + needToCopySize);
-        _advancePosition(needToCopySize);
+        skip(needToCopySize);
     }
 
     return true;
@@ -160,7 +160,7 @@ bool Payload::read(Binary& binary, size_t size) {
 
     // the read is inside a single binary - we can just share in no-copy way
     binary = buffer.share(_currentPosition.bufferOffset, size);
-    _advancePosition(size);
+    skip(size);
     return true;
 }
 
@@ -168,7 +168,7 @@ bool Payload::read(char& b) {
     if (getDataRemaining() == 0) return false;
 
     b = _buffers[_currentPosition.bufferIndex][_currentPosition.bufferOffset];
-    _advancePosition(1);
+    skip(1);
     return true;
 }
 
@@ -212,7 +212,7 @@ bool Payload::read(Payload& other) {
         shared.trim(trimSize);
         other._buffers.push_back(std::move(shared));
         size -= trimSize;
-        _advancePosition(trimSize);
+        skip(trimSize);
     }
     return true;
 }
@@ -233,16 +233,16 @@ bool Payload::copyFromPayload(Payload& src, size_t toCopy) {
         size_t needToCopySize = std::min(toCopy, currentBufferRemaining);
 
         write(buffer.get() + src._currentPosition.bufferOffset, needToCopySize);
-        src._advancePosition(needToCopySize);
+        src.skip(needToCopySize);
         toCopy -= needToCopySize;
     }
 
     return true;
 }
 
-void Payload::skip(size_t advance) {
+void Payload::reserve(size_t advance) {
     ensureCapacity(_currentPosition.offset + advance);
-    _advancePosition(advance);
+    skip(advance);
 }
 
 void Payload::truncateToCurrent() {
@@ -267,7 +267,7 @@ void Payload::truncateToCurrent() {
 void Payload::write(char b) {
     ensureCapacity(_currentPosition.offset + 1);
     _buffers[_currentPosition.bufferIndex].get_write()[_currentPosition.bufferOffset] = b;
-    _advancePosition(1);
+    skip(1);
 }
 
 void Payload::write(const void* data, size_t size) {
@@ -279,7 +279,7 @@ void Payload::write(const void* data, size_t size) {
         size_t needToCopySize = std::min(size, currentBufferRemaining);
 
         std::memcpy(buffer.get_write() + _currentPosition.bufferOffset, data, needToCopySize);
-        _advancePosition(needToCopySize);
+        skip(needToCopySize);
         data = (void*)((char*)data + needToCopySize);
         size -= needToCopySize;
     }
@@ -320,7 +320,7 @@ void Payload::write(const Payload& other) {
         _buffers.push_back(std::move(buf));
         _size += sz;
         _capacity += sz;
-        _advancePosition(sz);
+        skip(sz);
     }
 }
 
@@ -347,8 +347,8 @@ bool Payload::_allocateBuffer() {
     return true;
 }
 
-void Payload::_advancePosition(size_t advance) {
-    auto newOffset = advance + _currentPosition.offset;
+void Payload::skip(size_t numBytes) {
+    auto newOffset = numBytes + _currentPosition.offset;
     K2ASSERT(log::tx, newOffset <= _capacity, "offset must be within the existing payload");
 
     _size = std::max(_size, newOffset);
@@ -362,8 +362,8 @@ void Payload::_advancePosition(size_t advance) {
     }
 
     // the newoffset should now be within the existing memory. Find where it falls
-    while (advance > 0) {
-        auto canAdvance = std::min(advance,
+    while (numBytes > 0) {
+        auto canAdvance = std::min(numBytes,
                                    _buffers[_currentPosition.bufferIndex].size() - _currentPosition.bufferOffset);
         _currentPosition.offset += canAdvance;
         _currentPosition.bufferOffset += canAdvance;
@@ -372,7 +372,7 @@ void Payload::_advancePosition(size_t advance) {
             _currentPosition.bufferOffset = 0;
             ++_currentPosition.bufferIndex;
         }
-        advance -= canAdvance;
+        numBytes -= canAdvance;
     }
 }
 
@@ -391,7 +391,7 @@ uint32_t Payload::computeCrc32c() {
         checksum = crc32c::Extend(checksum, reinterpret_cast<const uint8_t*>(buffer.get() + _currentPosition.bufferOffset), needToCopySize);
 
         size -= needToCopySize;
-        _advancePosition(needToCopySize);
+        skip(needToCopySize);
     }
 
     // put the cursor back where it was before we started
