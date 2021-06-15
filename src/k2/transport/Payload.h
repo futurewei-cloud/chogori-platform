@@ -633,11 +633,15 @@ public: // getSerializedSizeOf api
     size_t getFieldsSize();
 
 public: // skip api
+    // reserves the given number of bytes as if a write of that size occurred, allocating if needed
+    void reserve(size_t numBytes);
 
-    // this method skips the given number of bytes as if a write of that size occurred
-    void skip(size_t advance);
+    // skips the current position by the given number of bytes. Requires that the new position is within the
+    // existing payload capacity
+    void skip(size_t numBytes);
 
-    // skip the size of type T data
+    // skips the current position by the size of type T data. Requires that the new position is within the
+    // existing payload capacity
     template <typename T>
     void skip() {
         size_t size = getSerializedSizeOf<T>();
@@ -645,7 +649,6 @@ public: // skip api
     }
 
 public:  // copy to payload api
-
     // copy size bytes from the given payload into this payload
     bool copyFromPayload(Payload& src, size_t toCopy);
 
@@ -667,9 +670,6 @@ private:  // types and fields
 private: // helper methods
     // used to allocate additional space
     bool _allocateBuffer();
-
-    // advances the current position by the given number
-    void _advancePosition(size_t advance);
 
 private: // deleted
     Payload(const Payload&) = delete;
