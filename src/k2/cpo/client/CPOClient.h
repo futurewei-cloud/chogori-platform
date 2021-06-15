@@ -40,6 +40,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/TXEndpoint.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
+#include <k2/dto/LogStream.h>
 
 namespace k2 {
 namespace log {
@@ -185,6 +186,22 @@ public:
 
     std::unique_ptr<TXEndpoint> cpo;
     std::unordered_map<String, seastar::lw_shared_ptr<dto::PartitionGetter>> collections;
+
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::MetadataPutResponse>> PutPartitionMetadata(Deadline<ClockT> deadline, String partitionName, uint32_t sealed_offset, String new_plogId) {
+        dto::MetadataPutRequest request{.partitionName = std::move(partitionName), .sealed_offset=std::move(sealed_offset), .new_plogId=std::move(new_plogId)};
+
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::MetadataPutRequest, dto::MetadataPutResponse>(dto::Verbs::CPO_PARTITION_METADATA_PUT, request, *cpo, timeout);
+    }
+
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, dto::MetadataGetResponse>> GetPartitionMetadata(Deadline<ClockT> deadline, String partitionName) {
+        dto::MetadataGetRequest request{.partitionName = std::move(partitionName)};
+
+        Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
+        return RPC().callRPC<dto::MetadataGetRequest, dto::MetadataGetResponse>(dto::Verbs::CPO_PARTITION_METADATA_GET, request, *cpo, timeout);
+    }
 
     ConfigDuration partition_request_timeout{"partition_request_timeout", 100ms};
     ConfigDuration schema_request_timeout{"schema_request_timeout", 1s};

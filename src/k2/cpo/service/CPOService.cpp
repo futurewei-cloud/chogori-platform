@@ -32,6 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/AssignmentManager.h> // our DTO
 #include <k2/dto/MessageVerbs.h> // our DTO
 #include <k2/dto/K23SI.h> // our DTO
+#include <k2/dto/LogStream.h>
 #include <k2/transport/PayloadFileUtil.h>
 
 #include <fcntl.h>
@@ -103,6 +104,15 @@ seastar::future<> CPOService::start() {
     [this] (dto::GetSchemasRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
     });
+
+    RPC().registerRPCObserver<dto::MetadataPutRequest, dto::MetadataPutResponse>(dto::Verbs::CPO_PARTITION_METADATA_PUT, [this](dto::MetadataPutRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleMetadataPut, std::move(request));
+    });
+
+    RPC().registerRPCObserver<dto::MetadataGetRequest, dto::MetadataGetResponse>(dto::Verbs::CPO_PARTITION_METADATA_GET, [this](dto::MetadataGetRequest&& request) {
+        return _dist().invoke_on(0, &CPOService::handleMetadataGet, std::move(request));
+    });
+
     api_server.registerAPIObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>("GetSchemas", "CPO get all schemas for a collection",
     [this] (dto::GetSchemasRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
@@ -568,7 +578,7 @@ Status CPOService::_saveSchemas(const String& collectionName) {
 
 seastar::future<std::tuple<Status, dto::PersistenceClusterCreateResponse>>
 CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&& request){
-    K2LOG_I(log::cposvr, "Received persistence cluster create request for {}", request.cluster.name);
+    K2LOG_D(log::cposvr, "Received persistence cluster create request for {}", request.cluster.name);
     auto cpath = _getPersistenceClusterPath(request.cluster.name);
     dto::PersistenceCluster persistenceCluster;
     Payload p;
@@ -586,7 +596,7 @@ CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&
 
 seastar::future<std::tuple<Status, dto::PersistenceClusterGetResponse>>
 CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& request) {
-    K2LOG_I(log::cposvr, "Received persistence cluster get request with name {}", request.name);
+    K2LOG_D(log::cposvr, "Received persistence cluster get request with name {}", request.name);
     auto cpath = _getPersistenceClusterPath(request.name);
     dto::PersistenceCluster persistenceCluster;
     Payload p;
@@ -597,9 +607,48 @@ CPOService::handlePersistenceClusterGet(dto::PersistenceClusterGetRequest&& requ
         return RPCResponse(Statuses::S500_Internal_Server_Error("unable to read persistence cluster data"), dto::PersistenceClusterGetResponse());
     };
 
-    K2LOG_I(log::cposvr, "Found persistence cluster in: {}", cpath);
+    K2LOG_D(log::cposvr, "Found persistence cluster in: {}", cpath);
     dto::PersistenceClusterGetResponse response{.cluster=std::move(persistenceCluster)};
     return RPCResponse(Statuses::S200_OK("persistence cluster found"), std::move(response));
 }
+
+// When the metadata manager seals the old plog and use a new plod to persist metadata, this will be called
+// persist the old plog sealed offest and the new plog id
+// For the first put request, it will receive old_plog_sealed=0, new_plogId = id1 since it has no previous plogs
+// For the second put request, it will receive old_plog_sealed=100, new_plogId = id2
+// For the third put request, it will receive old_plog_sealed=200, new_plogId = id3
+// Then the plog chain will be ([plog_id, sealed_offset]):
+// [id1, 100], [id2, 200], [id3, 0]
+seastar::future<std::tuple<Status, dto::MetadataPutResponse>>
+CPOService::handleMetadataPut(dto::MetadataPutRequest&& request){
+    K2LOG_D(log::cposvr, "Received metadata persist request for partition {}", request.partitionName);
+    auto records = _metadataRecords.find(request.partitionName);
+    if (records == _metadataRecords.end()) {
+        std::vector<dto::PartitionMetdataRecord> metadataRecords;
+        dto::PartitionMetdataRecord element{.plogId=std::move(request.new_plogId), .sealed_offset=0};
+        metadataRecords.push_back(std::move(element));
+        _metadataRecords[std::move(request.partitionName)] = std::move(metadataRecords);
+    }
+    else{
+        records->second.back().sealed_offset = request.sealed_offset;
+        dto::PartitionMetdataRecord element{.plogId=std::move(request.new_plogId), .sealed_offset=0};
+        records->second.push_back(std::move(element));
+    }
+    
+    return RPCResponse(Statuses::S201_Created("metadata log updates successfully"), dto::MetadataPutResponse{});
+}
+
+seastar::future<std::tuple<Status, dto::MetadataGetResponse>>
+CPOService::handleMetadataGet(dto::MetadataGetRequest&& request){
+    K2LOG_D(log::cposvr, "Received metadata get request for partition {}", request.partitionName);
+    auto records = _metadataRecords.find(request.partitionName);
+    if (records == _metadataRecords.end()) {
+        return RPCResponse(Statuses::S404_Not_Found("request parition's metadata does not exist"), dto::MetadataGetResponse{});
+    }
+
+    dto::MetadataGetResponse response{.records=records->second};
+    return RPCResponse(Statuses::S200_OK(""), std::move(response));
+}
+
 
 } // namespace k2

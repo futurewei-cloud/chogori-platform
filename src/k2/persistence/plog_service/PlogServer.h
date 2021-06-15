@@ -41,27 +41,28 @@ namespace k2
 namespace log {
 inline thread_local k2::logging::Logger plogsvr("k2::plog_server");
 }
-// each PlogPage is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
-struct PlogPage {
-    PlogPage(){
-        sealed=false;
-        offset=0;
-        payload = Payload(([] { return Binary(2 * 1024 * 1024); }));
-    }
-
-    bool sealed;
-    uint32_t offset;
-    Payload payload;
-};
 
 class PlogServer
 {
 private:
     // the maximum size of each plog
-    const uint32_t PLOG_MAX_SIZE = 2 * 1024 * 1024;
+    constexpr static uint32_t PLOG_MAX_SIZE = 16 * 1024 * 1024;
+
+    // each InternalPlog is a plog. It uses payload to store the data, and contains the sealed and offest as metadata
+    struct InternalPlog {
+        InternalPlog(){
+            sealed=false;
+            offset=0;
+            payload = Payload(([] { return Binary(PLOG_MAX_SIZE); }));
+        }
+
+        bool sealed;
+        uint32_t offset;
+        Payload payload; 
+    };
 
     // a map to store all the plogs based on plog id
-    std::unordered_map<String, PlogPage> _plogMap;
+    std::unordered_map<String, InternalPlog> _plogMap;
 
     //handle the create request
     seastar::future<std::tuple<Status, dto::PlogCreateResponse>>
@@ -79,6 +80,10 @@ private:
     seastar::future<std::tuple<Status, dto::PlogSealResponse>>
     _handleSeal(dto::PlogSealRequest&& request);
 
+    //handle the seal request
+    seastar::future<std::tuple<Status, dto::PlogGetStatusResponse>>
+    _handleGetStatus(dto::PlogGetStatusRequest&& request);
+    
 public:
      PlogServer();
     ~PlogServer();

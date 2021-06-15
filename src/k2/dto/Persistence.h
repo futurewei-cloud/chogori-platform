@@ -47,7 +47,9 @@ struct PlogAppendRequest {
 
 struct PlogAppendResponse {
     uint32_t newOffset;
-    K2_PAYLOAD_FIELDS(newOffset);
+    Payload return_payload;
+    K2_PAYLOAD_FIELDS(newOffset, return_payload);
+    K2_DEF_FMT(PlogAppendResponse, newOffset);
 };
 
 struct PlogReadRequest {
@@ -75,6 +77,19 @@ struct PlogSealResponse {
     uint32_t sealedOffset;
     K2_PAYLOAD_FIELDS(sealedOffset);
     K2_DEF_FMT(PlogSealResponse, sealedOffset);
+};
+
+struct PlogGetStatusRequest {
+    String plogId;
+    K2_PAYLOAD_FIELDS(plogId);
+    K2_DEF_FMT(PlogGetStatusRequest, plogId);
+};
+
+struct PlogGetStatusResponse {
+    uint32_t currentOffset;
+    bool sealed;
+    K2_PAYLOAD_FIELDS(currentOffset, sealed);
+    K2_DEF_FMT(PlogGetStatusResponse, currentOffset, sealed);
 };
 
 }  // namespace dto
