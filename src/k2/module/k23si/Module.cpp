@@ -390,7 +390,12 @@ IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, boo
     // ELSE IF lower_bound returns a key bigger than start, find the first key not bigger than start;
     if (reverse) {
         if (start.partitionKey == "" || key_it == _indexer.end()) {
-            key_it = (++_indexer.rbegin()).base();
+            if(!_indexer.empty()){ // handle empty records
+                key_it = (++_indexer.rbegin()).base();
+            }
+            else{
+                key_it = _indexer.end();
+            }
         } else if (key_it->first == start && exclusiveKey) {
             _scanAdvance(key_it, reverse, start.schemaName);
         } else if (key_it->first > start) {

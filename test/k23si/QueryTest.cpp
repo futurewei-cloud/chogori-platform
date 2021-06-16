@@ -86,6 +86,7 @@ public:  // application lifespan
         .then([] (auto&& result) {
             K2EXPECT(log::k23si, result.status.is2xxOK(), true);
         })
+        .then([this] { return runEmptyScenario(); })
         .then([this] { return runSetup(); })
         .then([this] { return runScenario01(); })
         .then([this] { return runScenario02(); })
@@ -312,6 +313,13 @@ seastar::future<> runScenario01() {
         K2LOG_I(log::k23si, "Multi partition full scan");
         return doQuery("", "", -1, false, 8, 5).discard_result();
     });
+}
+
+// Simple reverse scan query for empty records.
+seastar::future<> runEmptyScenario(){
+    K2LOG_I(log::k23si, "runEmptyScenario");    
+    K2LOG_I(log::k23si, "Single partition empty records no result");
+    return doQuery("c", "a", 1, true, 0, 1).discard_result();
 }
 
 // Simple reverse scan queries with no filter or projection
