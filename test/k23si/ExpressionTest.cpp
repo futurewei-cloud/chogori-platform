@@ -163,10 +163,42 @@ void runner(std::vector<TestCase>& tcases) {
             catch(k2d::InvalidExpressionException&) {}
             catch(...){ REQUIRE(false); }
         }
+        catch (k2d::NaNError&) {
+            REQUIRE(tcase.expectedException);
+            try{ std::rethrow_exception(tcase.expectedException); }
+            catch(k2d::NaNError&) {}
+            catch(...){ REQUIRE(false); }
+        }
         catch (...) {
             REQUIRE(false);
         }
     }
+}
+
+TEST_CASE("NaN expressions"){
+    try{
+        k2e::makeValueLiteral<double>(nan("1"));
+        REQUIRE(false);
+    }catch(k2d::NaNError &){
+        std::cout << "Expression with NaN literal cannot be made." << std::endl;
+    }
+}
+
+TEST_CASE("Float expressions"){
+    std::vector<TestCase> cases;
+    cases.push_back(TestCase{
+        .name = "gt: two floats gt",
+        .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<float>(2.0), k2e::makeValueLiteral<float>(1.1)), {})},
+        .rec = makeRec(),
+        .expectedResult = {true},
+        .expectedException = {}});
+    cases.push_back(TestCase{
+        .name = "gt: two floats not gt",
+        .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<float>(0.5), k2e::makeValueLiteral<float>(1.1)), {})},
+        .rec = makeRec(),
+        .expectedResult = {false},
+        .expectedException = {}});    
+    runner(cases);
 }
 
 TEST_CASE("Empty expressions") {

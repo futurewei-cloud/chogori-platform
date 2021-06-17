@@ -51,6 +51,12 @@ struct DeserializationError : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
+struct NaNError : public std::exception {
+    String what_str;
+    NaNError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
 // Thrown when getKey is called but the record does not have the values to construct it
 // e.g. a returned record without the key fields projected
 struct KeyNotAvailableError : public std::exception {
@@ -69,6 +75,12 @@ public:
             throw TypeMismatchException("Schema not followed in record serialization");
         }
 
+        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> )  { // to handle NaN
+            if (std::isnan(field)) {
+                throw NaNError("NaN type in serialization");
+            }
+        }
+        
         for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
             if (schema->partitionKeyFields[i] == fieldCursor) {
                 partitionKeys[i] = FieldToKeyString<T>(field);
@@ -83,6 +95,7 @@ public:
 
         storage.fieldData.write(field);
         ++fieldCursor;
+        
     }
 
     // Serializing a Null value on the next field, for optional fields or partial updates

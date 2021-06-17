@@ -428,3 +428,51 @@ TEST_CASE("Test10: Deserialize a field that has not been serialized for the docu
         std::cout << "Test10: Deserialize a field which has not been serialized." << std::endl;
     }
 }
+
+TEST_CASE("Test11: serialize NaN field") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::STRING, "LastName", false, false},
+            {k2::dto::FieldType::STRING, "FirstName", false, true},
+            {k2::dto::FieldType::DOUBLE, "Balance", false, false},
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
+
+    k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
+
+    doc.serializeNext<k2::String>("Baggins");
+    doc.serializeNext<k2::String>("Bilbo");
+    try{
+        doc.serializeNext<double>(nan("1"));
+        REQUIRE(false);
+    }catch(k2::dto::NaNError &){
+        std::cout << "Test11: Tried to serialize NaN field" << std::endl;
+    }
+}
+
+
+TEST_CASE("Test12: serialiaze float and double fields") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::STRING, "LastName", false, false},
+            {k2::dto::FieldType::STRING, "FirstName", false, true},
+            {k2::dto::FieldType::DOUBLE, "Balance", false, false},
+            {k2::dto::FieldType::FLOAT, "Salary", false, false},
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
+
+    k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
+
+    doc.serializeNext<k2::String>("Baggins");
+    doc.serializeNext<k2::String>("Bilbo");
+    doc.serializeNext<double>(1000.1);
+    doc.serializeNext<float>(100.2);
+    
+    std::cout << "Test12: Serialize float and double fields." << std::endl;
+}
