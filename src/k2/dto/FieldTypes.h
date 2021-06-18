@@ -97,6 +97,30 @@ String FieldToKeyString(const T&) {
 String NullFirstToKeyString();
 String NullLastToKeyString();
 
+// To prevent NaN in fields
+template <typename T>
+bool isNan(const T& field){
+    if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> )  { // handle NaN float and double
+        if (std::isnan(field)) {
+            return true;
+        }
+    }
+
+    if constexpr (std::is_same_v<T, std::decimal::decimal64>)  { // handle NaN decimal
+        if (std::isnan(std::decimal::decimal64_to_float(field))) {
+            return true;
+        }
+    }
+
+    if constexpr (std::is_same_v<T, std::decimal::decimal128> )  { // handle NaN decimal
+        if (std::isnan(std::decimal::decimal128_to_float(field))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 } // ns dto
 } // ns k2
 
