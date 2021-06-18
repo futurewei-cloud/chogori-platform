@@ -163,12 +163,6 @@ void runner(std::vector<TestCase>& tcases) {
             catch(k2d::InvalidExpressionException&) {}
             catch(...){ REQUIRE(false); }
         }
-        catch (k2d::NaNError&) {
-            REQUIRE(tcase.expectedException);
-            try{ std::rethrow_exception(tcase.expectedException); }
-            catch(k2d::NaNError&) {}
-            catch(...){ REQUIRE(false); }
-        }
         catch (...) {
             REQUIRE(false);
         }
@@ -181,6 +175,22 @@ TEST_CASE("NaN expressions"){
         REQUIRE(false);
     }catch(k2d::NaNError &){
         std::cout << "Expression with NaN literal cannot be made." << std::endl;
+    }
+
+    try{
+        std::decimal::decimal64 y(nan("1"));
+        k2e::makeValueLiteral<std::decimal::decimal64>(std::move(y));
+        REQUIRE(false);
+    }catch(k2d::NaNError &){
+        std::cout << "Expression with NaN decimal64 literal cannot be made." << std::endl;
+    }
+
+    try{
+        std::decimal::decimal128 y(nan("1"));
+        k2e::makeValueLiteral<std::decimal::decimal128>(std::move(y));
+        REQUIRE(false);
+    }catch(k2d::NaNError &){
+        std::cout << "Expression with NaN decimal128 literal cannot be made." << std::endl;
     }
 }
 
@@ -197,7 +207,26 @@ TEST_CASE("Float expressions"){
         .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<float>(0.5), k2e::makeValueLiteral<float>(1.1)), {})},
         .rec = makeRec(),
         .expectedResult = {false},
-        .expectedException = {}});    
+        .expectedException = {}});   
+
+    std::decimal::decimal64 v1(101.5001);
+    std::decimal::decimal64 v2(101.5002);
+    cases.push_back(TestCase{
+        .name = "gt: two decimals not gt",
+        .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<std::decimal::decimal64>(std::move(v1)), k2e::makeValueLiteral<std::decimal::decimal64>(std::move(v2))), {})},
+        .rec = makeRec(),
+        .expectedResult = {false},
+        .expectedException = {}});  
+
+    std::decimal::decimal128 x1(101.5002);
+    std::decimal::decimal128 x2(101.5001);
+    cases.push_back(TestCase{
+        .name = "gt: two decimals gt",
+        .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<std::decimal::decimal128>(std::move(x1)), k2e::makeValueLiteral<std::decimal::decimal128>(std::move(x2))), {})},
+        .rec = makeRec(),
+        .expectedResult = {true},
+        .expectedException = {}}); 
+
     runner(cases);
 }
 

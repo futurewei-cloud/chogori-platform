@@ -65,20 +65,40 @@ struct KeyNotAvailableError : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
+template <typename T>
+bool isNan(const T& field){
+    if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> )  { // handle NaN float and double
+        if (std::isnan(field)) {
+            return true;
+        }
+    }
+
+    if constexpr (std::is_same_v<T, std::decimal::decimal64>)  { // handle NaN decimal
+        if (std::isnan(std::decimal::decimal64_to_float(field))) {
+            return true;
+        }
+    }
+
+    if constexpr (std::is_same_v<T, std::decimal::decimal128> )  { // handle NaN decimal
+        if (std::isnan(std::decimal::decimal128_to_float(field))) {
+            return true;
+        }
+    }
+
+    return false;
+}
 class SKVRecord {
 public:
     // The record must be serialized in order. Schema will be enforced
     template <typename T>
     void serializeNext(T field) {
+        if(isNan<T>(field)){
+            throw NaNError("NaN type in serialization");
+        }
+
         FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema->fields.size() || ft != schema->fields[fieldCursor].type) {
             throw TypeMismatchException("Schema not followed in record serialization");
-        }
-
-        if constexpr (std::is_same_v<T, float> || std::is_same_v<T, double> )  { // to handle NaN
-            if (std::isnan(field)) {
-                throw NaNError("NaN type in serialization");
-            }
         }
         
         for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
