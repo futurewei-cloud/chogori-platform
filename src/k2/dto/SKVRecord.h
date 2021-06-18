@@ -51,6 +51,12 @@ struct DeserializationError : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
+struct NaNError : public std::exception {
+    String what_str;
+    NaNError(String s="") : what_str(std::move(s)) {}
+    virtual const char* what() const noexcept override { return what_str.c_str(); }
+};
+
 // Thrown when getKey is called but the record does not have the values to construct it
 // e.g. a returned record without the key fields projected
 struct KeyNotAvailableError : public std::exception {
@@ -64,6 +70,10 @@ public:
     // The record must be serialized in order. Schema will be enforced
     template <typename T>
     void serializeNext(T field) {
+        if(isNan<T>(field)){
+            throw NaNError("NaN type in serialization");
+        }
+
         FieldType ft = TToFieldType<T>();
         if (fieldCursor >= schema->fields.size() || ft != schema->fields[fieldCursor].type) {
             throw TypeMismatchException("Schema not followed in record serialization");
