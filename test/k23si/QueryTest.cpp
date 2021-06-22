@@ -317,7 +317,7 @@ seastar::future<> runScenario01() {
 
 // Simple reverse scan query for empty records.
 seastar::future<> runEmptyScenario(){
-    K2LOG_I(log::k23si, "runEmptyScenario");    
+    K2LOG_I(log::k23si, "runEmptyScenario");
     K2LOG_I(log::k23si, "Single partition empty records no result");
     return doQuery("c", "a", 1, true, 0, 1).discard_result();
 }
@@ -670,7 +670,7 @@ seastar::future<> runScenario07() {
         record.serializeNext<k2::String>("default");
         record.serializeNext<k2::String>("scenario07");
         record.serializeNext<k2::String>("");
-        return writeTxn.erase(record);
+        return writeTxn.write(record, true /* isDelete */);
     })
     .then([this] (auto&& response) {
         K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);

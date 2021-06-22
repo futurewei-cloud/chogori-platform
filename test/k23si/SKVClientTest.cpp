@@ -157,6 +157,7 @@ public:  // application lifespan
             .then([this] { return runScenario08(); })
             .then([this] { return runScenario09(); })
             .then([this] { return runScenario10(); })
+            .then([this] { return runScenario11(); })
             .then([this] {
                 K2LOG_I(log::k23si, "======= All tests passed ========");
                 exitcode = 0;
@@ -188,6 +189,10 @@ private:
     seastar::timer<> _testTimer;
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::future<> _writeFuture = seastar::make_ready_future();
+
+    K2TxnHandle _txn1;
+    K2TxnHandle _txn2;
+    std::shared_ptr<dto::Schema> _schema;
 
     K23SIClient _client;
     uint64_t txnids = 10000;
@@ -529,14 +534,14 @@ seastar::future<> runScenario04() {
                             // case 1
                             return txnHandle.partialUpdate<dto::SKVRecord>(rec1, {0,1,2,3} )
                             .then([](auto&& response) {
-                                K2EXPECT(log::k23si, response.status, dto::K23SIStatus::KeyNotFound); // because of the serialization added fields
+                                K2EXPECT(log::k23si, response.status, dto::K23SIStatus::ConditionFailed); // No previous record
                             });
                         })
                         .then([&] {
                             // case 2
                             return txnHandle.partialUpdate<dto::SKVRecord>(rec2, {2,3} )
                             .then([](auto&& response) {
-                                K2EXPECT(log::k23si, response.status, dto::K23SIStatus::KeyNotFound);
+                                K2EXPECT(log::k23si, response.status, dto::K23SIStatus::ConditionFailed);
                             });
                         })
                         .then([&] {
@@ -838,7 +843,7 @@ seastar::future<> runScenario05() {
                     return txnHandle.partialUpdate<dto::SKVRecord>(record2, {2,4})
 
                     .then([](auto&& response) {
-                        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::BadParameter);
+                        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::ConditionFailed);
                     });
                 })
                 // case 3: add some fields, but leaving them empty
@@ -857,7 +862,7 @@ seastar::future<> runScenario05() {
                     record3.serializeNext<String>("data1_v3");
                     return txnHandle.partialUpdate<dto::SKVRecord>(record3, (std::vector<String>){"1_f1", "1_f2"})
                     .then([](auto&& response) {
-                        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::BadParameter);
+                        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::ConditionFailed);
                     });
                 })
                 // case 4: add some fields, do not contain some of the pre-existing fields
@@ -1109,7 +1114,7 @@ seastar::future<> runScenario07() {
         });
 }
 
-// Tests for rejectIfExists flag
+// Tests for NotExists precondition flag
 seastar::future<> runScenario08() {
     K2LOG_I(log::k23si, "Scenario 08");
     K2TxnOptions options{};
@@ -1144,8 +1149,8 @@ seastar::future<> runScenario08() {
                     record.serializeNext<String>("data1*");
                     record.serializeNext<String>("data2*");
 
-                    // rejectIfExists = true, we expect write to fail
-                    return txnHandle.write(record, false, true);
+                    // NotExists precondition, we expect write to fail
+                    return txnHandle.write(record, false, dto::ExistencePrecondition::NotExists);
                 })
                 .then([](auto&& response) {
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::ConditionFailed);
@@ -1172,8 +1177,8 @@ seastar::future<> runScenario08() {
                     record.serializeNext<String>("data1*");
                     record.serializeNext<String>("data2*");
 
-                    // rejectIfExists = true, we expect it to succeed after the erase
-                    return txnHandle.write(record, false, true);
+                    // NotExists precondition, we expect it to succeed after the erase
+                    return txnHandle.write(record, false, dto::ExistencePrecondition::NotExists);
                 })
                 .then([](auto&& response) {
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
@@ -1225,7 +1230,7 @@ seastar::future<> runScenario09() {
                     record.serializeNull();
                     record.serializeNull();
 
-                    return txnHandle.erase(record);
+                    return txnHandle.write(record, true);
                 })
                 .then([](auto&& response) {
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
@@ -1327,7 +1332,7 @@ seastar::future<> runScenario10() {
                     record.serializeNull();
                     K2LOG_D(log::k23si, "erasing record");
 
-                    return txn.erase(record);
+                    return txn.write(record, true);
                 })
                 .then([](auto&& response) {
                     K2LOG_D(log::k23si, "record erased");
@@ -1377,6 +1382,86 @@ seastar::future<> runScenario10() {
                 });
             }); // end do_with
         });
+}
+
+// Tests related to conditional writes and their failure modes (partial updates and EXISTENCE_PRECONDITION)
+seastar::future<> runScenario11() {
+    K2LOG_I(log::k23si, "Scenario 11");
+    return _client.beginTxn(K2TxnOptions())
+    .then([this] (K2TxnHandle&& txn) {
+        _txn1 = std::move(txn);
+        return _client.getSchema(collname1, "1_schema", 1);
+    })
+    .then([this] (auto&& response) {
+        auto& [status, schemaPtr] = response;
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
+        _schema = schemaPtr;
+
+        dto::SKVRecord record(collname1, _schema);
+        record.serializeNext<String>("partkey_s11");
+        record.serializeNext<String>("rangekey_s11");
+        record.serializeNext<String>("data1");
+        record.serializeNext<String>("data2");
+
+        // This will fail for no previous record. We should be able to continue our txn
+        return _txn1.partialUpdate<dto::SKVRecord>(record, {2,3} );
+    })
+    .then([this](auto&& response) {
+        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::ConditionFailed);
+
+        dto::SKVRecord record(collname1, _schema);
+        record.serializeNext<String>("partkey_s11");
+        record.serializeNext<String>("rangekey_s11");
+        record.serializeNext<String>("data1");
+        record.serializeNext<String>("data2");
+        return _txn1.write(record);
+    })
+    .then([this] (auto&& response) {
+        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
+        return _txn1.end(true);
+    })
+    .then([this](auto&& response) {
+        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
+        return seastar::make_ready_future<>();
+    })
+    .then([this]() {
+        return _client.beginTxn(K2TxnOptions());
+    })
+    .then([this] (K2TxnHandle&& txn) {
+        _txn1 = std::move(txn);
+        return _client.beginTxn(K2TxnOptions());
+    })
+    .then([this] (K2TxnHandle&& txn) {
+        _txn2 = std::move(txn);
+
+        dto::SKVRecord record(collname1, _schema);
+        record.serializeNext<String>("partkey_s11_2");
+        record.serializeNext<String>("rangekey_s11_2");
+        record.serializeNext<String>("data1");
+        record.serializeNext<String>("data2");
+
+        // This will fail for no previous record. It should prevent history changes that would have
+        // allowed it to succeed
+        return _txn2.partialUpdate<dto::SKVRecord>(record, {2,3} );
+    })
+    .then([this](auto&& response) {
+        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::ConditionFailed);
+
+        dto::SKVRecord record(collname1, _schema);
+        record.serializeNext<String>("partkey_s11_2");
+        record.serializeNext<String>("rangekey_s11_2");
+        record.serializeNext<String>("data1");
+        record.serializeNext<String>("data2");
+        return _txn1.write(record);
+    })
+    .then([this] (auto&& response) {
+        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::AbortRequestTooOld);
+        return _txn1.end(false);
+    })
+    .then([this](auto&& response) {
+        K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
+        return seastar::make_ready_future<>();
+    });
 }
 
 };  // class SKVClientTest
