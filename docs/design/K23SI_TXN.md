@@ -495,6 +495,19 @@ If a transaction is abandoned, a few things happen in the cluster
 
 In the TWIM management, if we recover a transaction in an in-progress state, we transition it to the `ForceFinalize` state, where we actively reach out to the TRH to discover the current state of the transaction. Note that it is possible that the transaction is either committed or aborted. Once we find out which one, we apply that transition, moving the txn to `Committed|Aborted` state. At that point we either continue finalizing if we're outside of retention window, or wait for TRH to come-in to finalize things.
 
+#### Replay logic
+When we replay an abandoned transaction, we will discover `InProgressPIP` state in the WAL, followed by `FinalizedPIP` state with `Abort` endAction. This is sufficient to convert all WIs to aborted (i.e. removing them from indexer). In case of partial persistence failure, we will find only `InProgressPIP` in the WAL, and therefore treat the txn as abandoned. The twim then goes through the state machine transitions as described in Abandoned Transaction above.
+
+### TWIM gets aborted during a PUSH operation while in `InProgressPIP`
+In this scenario, we have two concurrent, conflicting transactions. The first transaction(T1) just got to the node for the first time and still hasn't finished persisting the TWIM in the state `InProgressPIP`, when the second transaction(T2) comes in to generate a conflict. When T2 wins over T1, it aborts the transaction at T1's TRH, and back at the conflict node, it also aborts the TWIM for T1. Since in this particular scenario, T1's TWIM is in state `InProgressPIP`, we enter a state `InProgressPIPAborted` where we understand that the transaction has been aborted and we await the outcome of persistence for the `InProgressPIP` state before we can move forward.
+
+The state is functionally equivalent to an Abort state in the sense that any other writes from T1 will be signaled back as conflicting so that T1 can issue an abort with its TRH.
+
+![TWIM_InProgressPIPAbort](../images/TWIM_iprpip_abort.png)
+
+#### Replay logic
+Replay will discover `InProgressPIP` state in the WAL followed by `FinalizedPIP` state with Abort action. The replay results in all WIs correctly aborted. In the case of partial failure, we will discover `InProgressPIP` state in the WAL and we will process the replay as in Abandoned Transaction above.
+
 # Recovery process
 <mark>TODO</mark> describe handling of failures of TRH, Read participant, Write participant
 
