@@ -156,8 +156,12 @@ Status TxnWIMetaManager::abortWrite(dto::Timestamp txnId, dto::Key key) {
     if (it == _twims.end()) {
         return Statuses::S404_Not_Found(fmt::format("transaction ID {} not found in abort for key {}", txnId, key));
     }
-    it->second.writeKeys.erase(key);
-    return _onAction(Action::onAbort, it->second);
+
+    auto status = _onAction(Action::onAbort, it->second);
+    if (status.is2xxOK()) {
+        it->second.writeKeys.erase(key);
+    }
+    return status;
 }
 
 Status TxnWIMetaManager::commitWrite(dto::Timestamp txnId, dto::Key key) {
@@ -165,8 +169,12 @@ Status TxnWIMetaManager::commitWrite(dto::Timestamp txnId, dto::Key key) {
     if (it == _twims.end()) {
         return Statuses::S404_Not_Found(fmt::format("transaction ID {} not found in commit for key {}", txnId, key));
     }
-    it->second.writeKeys.erase(key);
-    return _onAction(Action::onCommit, it->second);
+
+    auto status = _onAction(Action::onCommit, it->second);
+    if (status.is2xxOK()) {
+        it->second.writeKeys.erase(key);
+    }
+    return status;
 }
 
 Status TxnWIMetaManager::endTxn(dto::Timestamp txnId, dto::EndAction action) {
@@ -219,10 +227,29 @@ Status TxnWIMetaManager::_onAction(Action action, TxnWIMeta& twim) {
                 return _inProgress(twim);
             }
             case Action::onPersistFail: {
-                return _finalized(twim, false);
+                return _aborted(twim);
+            }
+            case Action::onAbort: {
+                return _inProgressPIPAborted(twim);
             }
             case Action::onCommit:
-            case Action::onAbort:
+            case Action::onFinalize:
+            case Action::onFinalized:
+            case Action::onRetentionWindowExpire:
+            default: {
+                return Statuses::S500_Internal_Server_Error(fmt::format("Action {} not supported in state {}", action, twim.state));
+            }
+        }
+        case dto::TxnWIMetaState::InProgressPIPAborted: switch (action) {
+            case Action::onPersistSucceed:
+            case Action::onPersistFail: {
+                return _aborted(twim);
+            }
+            case Action::onAbort: {
+                return _inProgressPIPAborted(twim);
+            }
+            case Action::onCreate:
+            case Action::onCommit:
             case Action::onFinalize:
             case Action::onFinalized:
             case Action::onRetentionWindowExpire:
@@ -364,6 +391,14 @@ Status TxnWIMetaManager::_inProgressPIP(TxnWIMeta& twim) {
     }
     // NB: We rely on Module::persistAfterFlush() to queue-up a retry
     return Statuses::S201_Created("created twim");
+}
+
+Status TxnWIMetaManager::_inProgressPIPAborted(TxnWIMeta& twim) {
+    auto newState = dto::TxnWIMetaState::InProgressPIPAborted;
+    K2LOG_D(log::skvsvr, "Entering state: {}", newState);
+    twim.state = newState;
+    twim.finalizeAction = dto::EndAction::Abort;
+    return Statuses::S200_OK("processed state transition");
 }
 
 Status TxnWIMetaManager::_inProgress(TxnWIMeta& twim) {

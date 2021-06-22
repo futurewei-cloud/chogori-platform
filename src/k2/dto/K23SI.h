@@ -137,6 +137,7 @@ K2_DEF_ENUM(TxnRecordState,
 K2_DEF_ENUM(TxnWIMetaState,
         Created,         // The state in which all new TxnWIMeta records are put when first created in memory
         InProgressPIP,   // The txn is InProgress and we're persisting the record
+        InProgressPIPAborted, // The txn is awaiting result of persistence of InProgressPIP, but has been aborted
         InProgress,      // The txn InProgress has been persisted
         Aborted,         // The txn has been aborted
         Committed,       // The txn has been committed

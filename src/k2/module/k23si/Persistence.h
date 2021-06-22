@@ -61,7 +61,10 @@ public:
 
         append(val);
         _pendingProms.emplace_back();
-        return _pendingProms.back().get_future();
+        return _pendingProms.back().get_future().then([fid=_flushId] (auto&& status) {
+            K2LOG_D(log::skvsvr, "Notifying promise from fid={}", fid);
+            return seastar::make_ready_future<Status>(std::move(status));
+        });
     }
 
     // Append the given value to the persistence buffer. An explicit call to flush() is needed to send the data out
@@ -87,6 +90,7 @@ private:
     seastar::future<Status> _chainFlushResponse();
     PeriodicTimer _flushTimer; // TODO consider also flushing based on accumulated data size
     TimePoint _lastFlush{Clock::now()};
+    uint64_t _flushId{0};
 };
 
 } // ns k2

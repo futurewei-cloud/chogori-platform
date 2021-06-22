@@ -165,6 +165,15 @@ Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest&
         return dto::K23SIStatus::OperationNotAllowed("schema version does not exist");
     }
 
+    if (auto* twim = _twimMgr.getTxnWIMeta(request.mtr.timestamp); twim != nullptr) {
+        if (twim->isAborted()) {
+            return dto::K23SIStatus::AbortConflict("The transaction has been aborted");
+        }
+        else if (twim->isCommitted()) {
+            return dto::K23SIStatus::BadParameter("The transaction has been committed");
+        }
+    }
+
     return _validateStaleWrite(request, versions);
 }
 // ********************** Validators
@@ -1108,13 +1117,15 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, VersionSet& ve
     // we need to copy this data into a new memory block so that we don't hold onto and fragment the transport memory
     dto::DataRecord rec{.value=request.value.copy(), .timestamp=request.mtr.timestamp, .isTombstone=request.isDelete};
 
-    versions.WI.emplace(std::move(rec), request.request_id);
-
     auto status = _twimMgr.addWrite(std::move(request.mtr), std::move(request.key), std::move(request.trh), std::move(request.trhCollection));
 
     if (!status.is2xxOK()) {
         return status;
     }
+
+    // the TWIM accepted the write. Add it as a WI now
+    versions.WI.emplace(std::move(rec), request.request_id);
+
     _persistence->append(versions.WI->data);
     return Statuses::S201_Created("WI created");
 }
