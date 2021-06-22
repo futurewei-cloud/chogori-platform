@@ -139,6 +139,7 @@ private:
     // helper handlers for individual states
     Status _inProgress(TxnWIMeta& twim);
     Status _inProgressPIP(TxnWIMeta& twim);
+    Status _inProgressPIPAborted(TxnWIMeta& twim);
     Status _committed(TxnWIMeta& twim);
     Status _aborted(TxnWIMeta& twim);
     Status _forceFinalize(TxnWIMeta& twim);
