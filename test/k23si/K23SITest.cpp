@@ -201,7 +201,7 @@ private:
             .trhCollection = cname,
             .isDelete = isDelete,
             .designateTRH = isTRH,
-            .rejectIfExists = false,
+            .precondition = dto::ExistencePrecondition::None,
             .request_id = id++,
             .key = key,
             .value = std::move(record.storage),

@@ -156,7 +156,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
 
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makeWriteRequest(dto::SKVRecord& record, bool erase,
-                                                                      bool rejectIfExists) {
+                                                                    dto::ExistencePrecondition precondition) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
             throw K23SIClientException("Partition key field not set for write request");
@@ -183,7 +183,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makeWriteRequest(dto::SKVR
         _trh_collection,
         erase,
         isTRH,
-        rejectIfExists,
+        precondition,
         _client->write_ops,
         key,
         record.storage.share(),
@@ -207,7 +207,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(d
             _trh_collection,
             false, // Partial update cannot be a delete
             isTRH,
-            false, // Partial update must be applied on existing record
+            dto::ExistencePrecondition::Exists, // Partial update must be applied on existing record
             _client->write_ops,
             std::move(key),
             record.storage.share(),
@@ -287,10 +287,6 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
                 return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
             });
         }).finally([request] () { delete request; });
-}
-
-seastar::future<WriteResult> K2TxnHandle::erase(SKVRecord& record) {
-    return write(record, true);
 }
 
 K23SIClient::K23SIClient(const K23SIClientConfig &) :

@@ -1077,7 +1077,15 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         head = &(vset.committed[0]);
     }
 
-    if (request.rejectIfExists && head && !head->isTombstone) {
+    // Exists precondition can be set by the user (e.g. with a delete to know if a record was actually
+    // delete) and it is set for partial updates
+    if (request.precondition == ExistencePrecondition::Exists && (!head || head->isTombstone)) {
+        K2LOG_D(log::skvsvr, "Request {} not accepted since Exists precondition failed", request);
+        _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
+        return RPCResponse(dto::K23SIStatus::ConditionFailed("Exists precondition failed"), dto::K23SIWriteResponse{});
+    }
+
+    if (request.precondition == ExistencePrecondition::NotExists && head && !head->isTombstone) {
         // Need to add to read cache to prevent an erase coming in before this requests timestamp
         // If the condition passes (ie, there was no previous version and the insert succeeds) then
         // we do not need to insert into the read cache because the write intent will handle conflicts
@@ -1092,15 +1100,11 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
 
     if (request.fieldsForPartialUpdate.size() > 0) {
         // parse the partial record to full record
-        if (!head || head->isTombstone) {
-            K2LOG_D(log::skvsvr, "partial update request {} not accepted since there is no previous version to update", request);
-            // cannot parse partial record without a version
-            return RPCResponse(dto::K23SIStatus::KeyNotFound("can not partial update with no/deleted version"), dto::K23SIWriteResponse{});
-        }
         if (!_parsePartialRecord(request, *head)) {
             K2LOG_D(log::skvsvr, "can not parse partial record for key {}", request.key);
             head->value.fieldData.seek(0);
-            return RPCResponse(dto::K23SIStatus::BadParameter("missing fields or can not interpret partialUpdate"), dto::K23SIWriteResponse{});
+            _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
+            return RPCResponse(dto::K23SIStatus::ConditionFailed("missing fields or can not interpret partialUpdate"), dto::K23SIWriteResponse{});
         }
     }
 
