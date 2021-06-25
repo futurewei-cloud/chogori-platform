@@ -45,6 +45,15 @@ static const String tpccCollectionName = "TPCC";
     } \
     while (0) \
 
+#define CHECK_READ_STATUS_TYPE(read_result,type) \
+    do { \
+        if (!((read_result).status.is2xxOK())) { \
+            K2LOG_D(log::tpcc, "TPC-C failed to read rows: {}", (read_result).status); \
+            return make_exception_future<type>(std::runtime_error(String("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
+        } \
+    } \
+    while (0) \
+
 template<typename ValueType>
 seastar::future<WriteResult> writeRow(ValueType& row, K2TxnHandle& txn, bool erase = false)
 {
@@ -498,7 +507,7 @@ public:
         Amount = 0;
     }
 
-    OrderLine(int16_t w_id, int16_t d_id, int64_t o_id, int32_t line_number) : 
+    OrderLine(int16_t w_id, int16_t d_id, int64_t o_id, int32_t line_number) :
         WarehouseID(w_id), DistrictID(d_id), OrderID(o_id), OrderLineNumber(line_number) {}
 
     OrderLine() = default;
