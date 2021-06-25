@@ -257,8 +257,7 @@ private:
                     curTxn = (TPCCTxn*) new DeliveryT(_random, _client, w_id, batch_size);
                 } else if (txn_type > 55) {
                     curTxn = (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
-                }
-                else {
+                } else {
                     curTxn = (TPCCTxn*) new StockLevelT(_random, _client, w_id, d_id);
                 }
 
@@ -282,10 +281,14 @@ private:
                     } else if (txn_type <= 51) {
                         _deliveryTxns++;
                         _deliveryLatency.add(dur);
-                    } else {
+                    } else if (txn_type > 55) {
                         _newOrderTxns++;
                         _newOrderLatency.add(dur);
+                    } else {
+                        _stockLevelTxns++;
+                        _stockLevelLatency.add(dur);
                     }
+
                 })
                 .finally([curTxn] () {
                     delete curTxn;
@@ -354,11 +357,13 @@ private:
     k2::ExponentialHistogram _paymentLatency;
     k2::ExponentialHistogram _orderStatusLatency;
     k2::ExponentialHistogram _deliveryLatency;
+    k2::ExponentialHistogram _stockLevelLatency;
     uint64_t _completedTxns{0};
     uint64_t _newOrderTxns{0};
     uint64_t _paymentTxns{0};
     uint64_t _orderStatusTxns{0};
     uint64_t _deliveryTxns{0};
+    uint64_t _stockLevelTxns{0};
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
 }; // class Client

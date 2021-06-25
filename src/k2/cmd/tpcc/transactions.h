@@ -1204,9 +1204,11 @@ private:
     future<bool> runWithTxn() {
         return getNextOrder()
         .then([this] (int64_t d_next_order_id) {
+            K2LOG_D(log::tpcc, "StockLevel txn got next order no = {}", d_next_order_id);
             return getItemIDs(d_next_order_id);
         })
         .then([this] (std::set<int32_t> && item_ids){
+            K2LOG_D(log::tpcc, "StockLevel txn got item_ids - no of items = {}", item_ids.size());
             return getStockQuantity(std::move(item_ids)).discard_result();
         })
         // commit txn
@@ -1218,7 +1220,7 @@ private:
             }
 
             fut.ignore_ready_future();
-            K2LOG_D(log::tpcc, "StockLevel txn finished");
+            K2LOG_D(log::tpcc, "StockLevel txn finished with lowstock = {}",_low_stock);
 
             return _txn.end(true);
         }).then_wrapped([this] (auto&& fut) {
@@ -1264,7 +1266,6 @@ private:
             _query_orderline.setLimit(-1);
             _query_orderline.setReverseDirection(false);
 
-
             std::vector<String> projection{"ItemID"}; // make projection
             _query_orderline.addProjection(projection);
             dto::expression::Expression filter{};   // make filter Expression
@@ -1289,7 +1290,7 @@ private:
                     std::set<int32_t> item_ids;
                     for (std::vector<dto::SKVRecord>& set : result_set) {
                         for (dto::SKVRecord& rec : set) {
-                            std::optional<int32_t> itemId = rec.deserializeField<int64_t>("ItemID");
+                            std::optional<int32_t> itemId = rec.deserializeField<int32_t>("ItemID");
                             item_ids.insert(*itemId);
                         }
                     }
