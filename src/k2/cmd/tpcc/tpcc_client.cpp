@@ -245,7 +245,6 @@ private:
                 uint32_t txn_type = _random.UniformRandom(1, 100);
                 uint32_t w_id = (seastar::this_shard_id() % _max_warehouses()) + 1;
                 uint32_t d_id = (seastar::this_shard_id() % _districts_per_warehouse()) + 1;
-                //uint32_t d_id = _random.UniformRandom(1, _districts_per_warehouse());
                 TPCCTxn* curTxn;
                 if (txn_type <= 43) {
                     curTxn = (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses());
