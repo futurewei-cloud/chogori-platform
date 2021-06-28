@@ -1208,8 +1208,8 @@ private:
             return getItemIDs(d_next_order_id);
         })
         .then([this] (std::set<int32_t> && item_ids){
-            K2LOG_D(log::tpcc, "StockLevel txn got item_ids - no of items = {}", item_ids.size());
-            return getStockQuantity(std::move(item_ids)).discard_result();
+            K2LOG_D(log::tpcc, "StockLevel txn got item_ids");
+            return getStockQuantity(std::move(item_ids));
         })
         // commit txn
         .then_wrapped([this] (auto&& fut) {
@@ -1271,7 +1271,6 @@ private:
             dto::expression::Expression filter{};   // make filter Expression
             _query_orderline.setFilterExpression(std::move(filter));
 
-            // todo: add provision for query to return multiple times (see this file for ex)
             return do_with(std::vector<std::vector<dto::SKVRecord>>(), false,
             [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done) {
                 return do_until(
@@ -1311,7 +1310,7 @@ private:
                     _low_stock++;
                 }
                 return make_ready_future();
-            }).discard_result();
+            });
         });
     }
 
