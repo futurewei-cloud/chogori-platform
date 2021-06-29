@@ -1175,3 +1175,156 @@ private:
     std::vector<int32_t> _O_C_ID = std::vector<int32_t>(10, -1); // ORDER table info: customer ID
     std::vector<std::decimal::decimal64> _OL_SUM_AMOUNT = std::vector<std::decimal::decimal64>(10, -1); // ORDER-LINE table info: sum of all amount
 };
+
+class StockLevelT : public TPCCTxn
+{
+public:
+    StockLevelT(RandomContext& random, K23SIClient& client, int16_t w_id, int16_t d_id) :
+                        _random(random), _client(client), _w_id(w_id), _d_id(d_id) {
+        _threshold = _random.UniformRandom(10, 20);
+        _low_stock = 0;
+
+        _failed = false;
+    }
+
+    future<bool> run() override {
+        K2TxnOptions options{};
+        options.deadline = Deadline(5s);
+        return _client.beginTxn(options)
+        .then([this] (K2TxnHandle&& txn) {
+            _txn = std::move(txn);
+            return runWithTxn();
+        }).handle_exception([] (auto exc) {
+            K2LOG_W_EXC(log::tpcc, exc, "Failed to start txn");
+            return make_ready_future<bool>(false);
+        });
+    }
+
+private:
+    future<bool> runWithTxn() {
+        return getNextOrder()
+        .then([this] (int64_t d_next_order_id) {
+            K2LOG_D(log::tpcc, "StockLevel txn got next order no = {}", d_next_order_id);
+            return getItemIDs(d_next_order_id);
+        })
+        .then([this] (std::set<int32_t> && item_ids){
+            K2LOG_D(log::tpcc, "StockLevel txn got item_ids");
+            return getStockQuantity(std::move(item_ids));
+        })
+        // commit txn
+        .then_wrapped([this] (auto&& fut) {
+            if (fut.failed()) {
+                _failed = true;
+                fut.ignore_ready_future();
+                return _txn.end(false);
+            }
+
+            fut.ignore_ready_future();
+            K2LOG_D(log::tpcc, "StockLevel txn finished with lowstock = {}",_low_stock);
+
+            return _txn.end(true);
+        }).then_wrapped([this] (auto&& fut) {
+            if (fut.failed()) {
+                _failed = true;
+                fut.ignore_ready_future();
+                return make_ready_future<bool>(false);
+            }
+
+            EndResult result = fut.get0();
+            if (result.status.is2xxOK() && !_failed) {
+                return make_ready_future<bool>(true);
+            }
+
+            return make_ready_future<bool>(false);
+        });
+    }
+
+    // Get Next order id from District
+    future< int64_t > getNextOrder() {
+        return _txn.read<District>(District(_w_id,_d_id))
+        .then([this] (auto&& result) {
+            CHECK_READ_STATUS_TYPE(result,int64_t);
+            int64_t d_next_order_id = *(result.value.NextOrderID);
+            return make_ready_future<int64_t>(d_next_order_id);
+        });
+    }
+
+    // get all itemids from Orderline with _w_id, _d_id, order id in [_d_next_order_id-20,_d_next_order_id-1]
+    future< std::set<int32_t> > getItemIDs(int64_t d_next_order_id) {
+        return _client.createQuery(tpccCollectionName, "orderline")
+        .then([this, &d_next_order_id](auto&& response) mutable {
+            CHECK_READ_STATUS_TYPE(response, std::set<int32_t>);
+            // make Query request and set query rules
+            // range: [(_w_id, _d_id, _d_next_order_id-20, 0), (_w_id, _d_id, _d_next_order_id-1, 0)];
+            _query_orderline = std::move(response.query);
+            _query_orderline.startScanRecord.serializeNext<int16_t>(_w_id);
+            _query_orderline.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_orderline.startScanRecord.serializeNext<int64_t>(d_next_order_id-20);
+            _query_orderline.endScanRecord.serializeNext<int16_t>(_w_id);
+            _query_orderline.endScanRecord.serializeNext<int16_t>(_d_id);
+            _query_orderline.endScanRecord.serializeNext<int64_t>(d_next_order_id);
+            _query_orderline.setLimit(-1);
+            _query_orderline.setReverseDirection(false);
+
+            std::vector<String> projection{"ItemID"}; // make projection
+            _query_orderline.addProjection(projection);
+            dto::expression::Expression filter{};   // make filter Expression
+            _query_orderline.setFilterExpression(std::move(filter));
+
+            return do_with(std::vector<std::vector<dto::SKVRecord>>(), false,
+            [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done) {
+                return do_until(
+                [this, &done] () { return done; },
+                [this, &result_set, &done] () {
+                    return _txn.query(_query_orderline)
+                    .then([this, &result_set, &done] (auto&& response) {
+                        CHECK_READ_STATUS(response);
+                        done = response.status.is2xxOK() ? _query_orderline.isDone() : true;
+                        result_set.push_back(std::move(response.records));
+
+                        return make_ready_future();
+                    });
+                })
+                .then([this, &result_set] () {
+                    std::set<int32_t> item_ids;
+                    for (std::vector<dto::SKVRecord>& set : result_set) {
+                        for (dto::SKVRecord& rec : set) {
+                            std::optional<int32_t> itemId = rec.deserializeField<int32_t>("ItemID");
+                            item_ids.insert(*itemId);
+                        }
+                    }
+
+                    return make_ready_future< std::set<int32_t> >(std::move(item_ids));
+                });
+            });
+        });
+    }
+
+    // get stock quantity for each item and update low stock
+    future<> getStockQuantity(std::set<int32_t>&& item_ids) {
+        return parallel_for_each(item_ids.begin(), item_ids.end(), [this, &item_ids] (int32_t item_id) {
+            return _txn.read<Stock>(Stock(_w_id,item_id))
+            .then([this] (auto&& result) {
+                CHECK_READ_STATUS(result);
+                if ( (*(result.value.Quantity)) < _threshold) {
+                    _low_stock++;
+                }
+                return make_ready_future();
+            });
+        });
+    }
+
+    RandomContext& _random;
+    K23SIClient& _client;
+    K2TxnHandle _txn;
+    bool _failed;
+    int16_t _w_id;
+    int16_t _d_id;
+    int16_t _threshold;
+    Query _query_orderline;
+
+private:
+    // output data that Stock-Level-Transaction wants
+    // _low_stock count
+    int64_t _low_stock;
+};
