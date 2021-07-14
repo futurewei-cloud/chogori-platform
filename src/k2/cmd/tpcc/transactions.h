@@ -37,6 +37,43 @@ Copyright(c) 2020 Futurewei Cloud
 using namespace seastar;
 using namespace k2;
 
+// a simple retry strategy, stop after a number of retries
+class FixedRetryStrategy {
+public:
+    FixedRetryStrategy(int retries) : _retries(retries), _try(0), _success(false) {
+    }
+
+    ~FixedRetryStrategy() = default;
+
+template<typename Func>
+    future<> run(Func&& func) {
+        K2LOG_D(log::tpcc, "First attempt");
+        return do_until(
+            [this] { return _success || this->_try >= this->_retries; },
+            [this, func=std::move(func)] () mutable {
+                this->_try++;
+                return func().
+                    then_wrapped([this] (auto&& fut) {
+                        _success = !fut.failed();
+                        K2LOG_D(log::tpcc, "round {} ended with success={}", _try, _success);
+                        return make_ready_future<>();
+                    });
+            }).then_wrapped([this] (auto&& fut) {
+                if (fut.failed()) {
+                    K2LOG_W(log::tpcc, "Run failed");
+                }
+                return make_ready_future<>();
+            });
+    }
+
+private:
+    // how many times we should retry
+    int _retries;
+    // which try we're on
+    int _try;
+    // indicate if the latest round has succeeded (so that we can break the retry loop)
+    bool _success;
+};
 
 struct CIdSortElement {
     String firstName;
@@ -50,8 +87,18 @@ class AtomicVerify;
 
 class TPCCTxn {
 public:
-    virtual future<bool> run() = 0;
+    virtual future<bool> attempt() = 0;
     virtual ~TPCCTxn() = default;
+
+    future<bool> run() {
+        // retry 10 times for a failed transaction
+        auto retryStrategy = make_shared<FixedRetryStrategy>(10);
+        return retryStrategy->run([this]() {
+            return attempt();
+        }).then_wrapped([this] (auto&& fut) {
+            return make_ready_future<bool>(!fut.failed());
+        });
+    }
 };
 
 class PaymentT : public TPCCTxn
@@ -81,7 +128,7 @@ public:
         _abort = false;
     }
 
-    future<bool> run() override {
+    future<bool> attempt() override {
         K2TxnOptions options{};
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
@@ -297,7 +344,7 @@ public:
                         _random(random), _client(client), _w_id(w_id), _max_w_id(max_w_id),
                         _failed(false), _order(random, w_id) {}
 
-    future<bool> run() override {
+    future<bool> attempt() override {
         K2TxnOptions options{};
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
@@ -480,7 +527,7 @@ public:
         _failed = false;
     }
 
-    future<bool> run() override {
+    future<bool> attempt() override {
         K2TxnOptions options{};
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
@@ -816,7 +863,7 @@ public:
         _failed = false;
     }
 
-    future<bool> run() override {
+    future<bool> attempt() override {
         return do_with(
             (uint16_t)0, std::vector<uint32_t> {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
             [this] (uint16_t& batchStart, std::vector<uint32_t>& vIdx) {
@@ -1187,7 +1234,7 @@ public:
         _failed = false;
     }
 
-    future<bool> run() override {
+    future<bool> attempt() override {
         K2TxnOptions options{};
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
