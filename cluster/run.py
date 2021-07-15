@@ -48,6 +48,7 @@ parser.add_argument("--start", nargs="*", default=[], help="List of component na
 parser.add_argument("--remove", nargs="*", default=[], help="List of component names (from config_file) to be removed")
 parser.add_argument("--stop", nargs="*", default=[], help="List of component names (from config_file) to be stopped")
 parser.add_argument("--logs", nargs="*", default=[], help="List of component names (from config_file) to display logs")
+parser.add_argument("--rdma", nargs="?", const=True, default=False, help="Enable RDMA for the components")
 parser.add_argument("--state", nargs="?", const=True, default=False, help="Show the cluster state")
 parser.add_argument("--dry_run", nargs="?", const=True, default=False,
                     help="Change the assumed cluster state without running any ssh commands")
@@ -56,7 +57,7 @@ args = parser.parse_args()
 runnables = parse.parseConfig(args.config_file)
 validate_command(runnables, args)
 
-assignment = clusterstate.Assignment(args.state_file)
+assignment = clusterstate.Assignment(args.state_file, args.rdma)
 
 for r in runnables:
     pull_cmd = ""
@@ -68,20 +69,23 @@ for r in runnables:
         pull_cmd = r.getDockerPull()
         cmd = r.getDockerRun()
     if r.component in args.stop or "all" in args.stop:
+        r = assignment.get_assigned_runnable(r)
         print("Stopping:")
         print(r)
         cmd = r.getDockerStop()
     if r.component in args.logs or "all" in args.logs:
+        r = assignment.get_assigned_runnable(r)
         print("Getting logs for:")
         print(r)
         cmd = r.getDockerLogs()
     if r.component in args.remove or "all" in args.remove:
-        assignment.remove_runnable(r)
+        r = assignment.remove_runnable(r)
         print("Removing:")
         print(r)
         cmd = r.getDockerRemove()
 
     if not args.dry_run and cmd != "":
+        print(r.host)
         conn = Connection(r.host, user=args.username)
         if pull_cmd != "":
             pull = conn.run(pull_cmd)
@@ -89,9 +93,9 @@ for r in runnables:
         run = conn.run(cmd)
         print(run)
 
-print(args.state)
 if args.state:
     for x in assignment.assignment:
         print(x.runnable)
 
 assignment.save_state(args.state_file)
+

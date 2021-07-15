@@ -34,7 +34,8 @@ class AssignedNode:
 
 
 class Assignment:
-    def __init__(self, pickle_filename):
+    def __init__(self, pickle_filename, rdma: bool):
+        self.use_rdma = rdma
         self.assignment = None
         try:
             state_p = open(pickle_filename, 'rb')
@@ -49,6 +50,16 @@ class Assignment:
                 self.assignment.append(AssignedNode(node, None))
 
     def save_state(self, pickle_filename):
+        # If there are no assignents, just save a None object, which
+        # will force a reload of the local hosts on the next run
+        all_free = True
+        for node in self.assignment:
+            if node.runnable is not None:
+                all_free = False
+                break
+        if all_free:
+            self.assignment = None
+
         state_p = open(pickle_filename, 'wb')
         pickle.dump(self.assignment, state_p)
         state_p.close()
@@ -79,7 +90,13 @@ class Assignment:
         self.replace_program_arg(assigned.runnable, "$my_endpoints", my_endpoints_str)
 
     def fill_rdma(self, assigned: AssignedNode):
-        self.replace_program_arg(assigned.runnable, "$rdma", assigned.host.rdma)
+        if self.use_rdma:
+            self.replace_program_arg(assigned.runnable, "$rdma", assigned.host.rdma)
+        else:
+            for i in range(0, len(assigned.runnable.program_args_list)):
+                if assigned.runnable.program_args_list[i][1] == "$rdma":
+                    assigned.runnable.program_args_list.pop(i)
+                    break
 
     def fill_cpuset(self, assigned: AssignedNode):
         cpuset_str = ""
@@ -100,7 +117,8 @@ class Assignment:
 
     def fill_cpo_endpoints(self, assigned: AssignedNode):
         cpo_endpoints = self.get_component_endpoints("cpo")
-        cpo_endpoints = cpo_endpoints.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
+        if self.use_rdma:
+            cpo_endpoints = cpo_endpoints.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
         self.replace_program_arg(assigned.runnable, "$cpo_endpoints", cpo_endpoints)
 
     def fill_nodepool_endpoints(self, assigned: AssignedNode):
@@ -114,12 +132,14 @@ class Assignment:
             tso_endpoint = tso_endpoints.split()[0]
         except:
             return
-        tso_endpoint = tso_endpoint.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
+        if self.use_rdma:
+            tso_endpoint = tso_endpoint.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
         self.replace_program_arg(assigned.runnable, "$tso_endpoints", tso_endpoint)
 
     def fill_persist_endpoints(self, assigned: AssignedNode):
         persist_endpoints = self.get_component_endpoints("persist")
-        persist_endpoints = persist_endpoints.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
+        if self.use_rdma:
+            persist_endpoints = persist_endpoints.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
         if persist_endpoints == "":
             return
         persist_endpoints_list = persist_endpoints.split()
@@ -185,6 +205,14 @@ class Assignment:
         self.fill_nodepool_endpoints(assigned)
         self.make_program_args(assigned)
 
+    def get_assigned_runnable(self, runnable: Runnable):
+        index = -1
+        for i in range(0, len(self.assignment)):
+            if self.assignment[i].runnable is not None and self.assignment[i].runnable.name == runnable.name:
+                return self.assignment[i].runnable
+
+        return None
+
     def remove_runnable(self, runnable: Runnable):
         index = -1
         for i in range(0, len(self.assignment)):
@@ -194,4 +222,7 @@ class Assignment:
 
         if index != -1:
             host = self.assignment[index].host
+            r = self.assignment[index].runnable
             self.assignment[index] = AssignedNode(host, None)
+            return r
+        return None
