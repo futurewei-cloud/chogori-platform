@@ -109,6 +109,8 @@ public:  // application lifespan
     seastar::future<> start() {
         _stopped = false;
 
+        _weights = _parse_weights(_txn_weights());
+
         setupSchemaPointers();
 
         registerMetrics();
@@ -149,6 +151,23 @@ public:  // application lifespan
     }
 
 private:
+    std::vector<uint32_t> _parse_weights(k2::String txn_weights) {
+        K2LOG_D(log::tpcc, "Parsing transaction weights {}", txn_weights);
+        std::stringstream ss(txn_weights);
+        std::string weight_str;
+        std::vector<uint32_t> weights;
+
+        uint32_t sum = 0;
+        while (getline (ss, weight_str, ',')) {
+            uint32_t weight = std::stoi(weight_str);
+            sum += weight;
+            weights.push_back(sum);
+        }
+        K2ASSERT(log::tpcc, weights.size() == 5, "number of transaction types should be 5, but the actual is {}", weights.size());
+        K2ASSERT(log::tpcc, sum == 100, "The sum of transaction weights should be 100, but the actual value is {}", sum);
+        return weights;
+    }
+
     seastar::future<> _schema_load() {
         std::vector<seastar::future<>> schema_futures;
 
@@ -246,15 +265,15 @@ private:
                 uint32_t w_id = (seastar::this_shard_id() % _max_warehouses()) + 1;
                 uint32_t d_id = (seastar::this_shard_id() % _districts_per_warehouse()) + 1;
                 TPCCTxn* curTxn;
-                if (txn_type <= 43) {
+                if (txn_type <= _weights[0]) {
                     curTxn = (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses());
-                } else if (txn_type <= 47) {
+                } else if (txn_type <= _weights[1]) {
                     curTxn = (TPCCTxn*) new OrderStatusT(_random, _client, w_id);
-                } else if (txn_type <= 51) {
+                } else if (txn_type <= _weights[2]) {
                     // range from 1-10 is allowed, otherwise set to 10
                     uint16_t batch_size = (_delivery_txn_batch_size() <= 10 && _delivery_txn_batch_size() > 0) ? batch_size : 10;
                     curTxn = (TPCCTxn*) new DeliveryT(_random, _client, w_id, batch_size);
-                } else if (txn_type > 55) {
+                } else if (txn_type <= _weights[3]) {
                     curTxn = (TPCCTxn*) new NewOrderT(_random, _client, w_id, _max_warehouses());
                 } else {
                     curTxn = (TPCCTxn*) new StockLevelT(_random, _client, w_id, d_id);
@@ -271,16 +290,16 @@ private:
                     auto end = k2::Clock::now();
                     auto dur = end - txn_start;
 
-                    if (txn_type <= 43) {
+                    if (txn_type <= _weights[0]) {
                         _paymentTxns++;
                         _paymentLatency.add(dur);
-                    } else if (txn_type <= 47) {
+                    } else if (txn_type <= _weights[1]) {
                         _orderStatusTxns++;
                         _orderStatusLatency.add(dur);
-                    } else if (txn_type <= 51) {
+                    } else if (txn_type <= _weights[2]) {
                         _deliveryTxns++;
                         _deliveryLatency.add(dur);
-                    } else if (txn_type > 55) {
+                    } else if (txn_type <= _weights[3]) {
                         _newOrderTxns++;
                         _newOrderLatency.add(dur);
                     } else {
@@ -350,6 +369,7 @@ private:
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
     ConfigVar<uint16_t> _delivery_txn_batch_size{"delivery_txn_batch_size"};
     ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<k2::String> _txn_weights{"txn_weights"};
 
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _newOrderLatency;
@@ -365,6 +385,7 @@ private:
     uint64_t _stockLevelTxns{0};
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
+    std::vector<uint32_t> _weights;
 }; // class Client
 
 int main(int argc, char** argv) {;
@@ -385,7 +406,8 @@ int main(int argc, char** argv) {;
         ("do_verification", bpo::value<bool>()->default_value(true), "Run verification tests after run")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
-        ("delivery_txn_batch_size", bpo::value<uint16_t>()->default_value(10), "The batch number of Delivery transaction");
+        ("delivery_txn_batch_size", bpo::value<uint16_t>()->default_value(10), "The batch number of Delivery transaction")
+        ("txn_weights", bpo::value<k2::String>(), "Workload percentages for transaction types: Payment, OrderStatus, Delivery, NewOrder, and StockLevel, the sum should be 100");
 
     app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<Client>();

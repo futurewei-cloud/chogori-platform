@@ -4,14 +4,16 @@ Start CPO, TSO, K2 server, and persistence
 
 Run load phase:
 ./tpcc_client <Normal seastar args> --tcp_remotes <Server data URLs> --cpo <CPU URL> --tso_endpoint <TSO URL>
-        --data_load true num_warehouses <Number of warehouses (size of data)>
+        --data_load true --num_warehouses <Number of warehouses (size of data)>
+        --txn_weights <transaction type percentages>
 
 Wait for "Done with benchmark" message and kill process.
 
 
 Run bechmark phase:
 ./tpcc_client <Normal seastar args> --tcp_remotes <Server data URLs> --cpo <CPU URL> --tso_endpoint <TSO URL>
-        --data_load false num_warehouses <Same as load phase> clients_per_core <Number of concurrent transactions to run>
+        --data_load false --num_warehouses <Same as load phase> clients_per_core <Number of concurrent transactions to run>
+        --txn_weights <transaction type percentages>
 
 Wait for "Done with benchmark" message
 
