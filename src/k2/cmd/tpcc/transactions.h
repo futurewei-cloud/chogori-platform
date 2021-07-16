@@ -92,11 +92,12 @@ public:
 
     future<bool> run() {
         // retry 10 times for a failed transaction
-        auto retryStrategy = make_shared<FixedRetryStrategy>(10);
-        return retryStrategy->run([this]() {
-            return attempt();
-        }).then_wrapped([this] (auto&& fut) {
-            return make_ready_future<bool>(!fut.failed());
+        return do_with(FixedRetryStrategy(10),  [this] (auto& retryStrategy) {
+            return retryStrategy.run([this]() {
+                return attempt();
+            }).then_wrapped([this] (auto&& fut) {
+                return make_ready_future<bool>(!fut.failed());
+            });
         });
     }
 };
