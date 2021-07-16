@@ -13,27 +13,27 @@ Requirements:
 run.py is the top-level script for running the benchmarks. It has commands to start, stop, remove, and 
 get logs for the cluster components. For example the full sequence of commands to run the TPC-C benchmark 
 could look like this:
-1. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --start cpo tso persist k2node k2node2
-2. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --start load
-3. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --log load
-4. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --stop load
-5. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --remove load
-6. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --start client
-7. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --log client
-8. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --stop cpo tso persist k2node k2node2 client
-9. ./run.py --locals\_file locals.cfg --config\_file configs/cluster.cfg  --remove cpo tso persist k2node k2node2 client
+1. ./run.py --config\_file configs/cluster.cfg  --start cpo tso persist nodepool
+2. ./run.py --config\_file configs/cluster.cfg  --start load
+3. ./run.py --config\_file configs/cluster.cfg  --log load
+4. ./run.py --config\_file configs/cluster.cfg  --stop load
+5. ./run.py --config\_file configs/cluster.cfg  --remove load
+6. ./run.py --config\_file configs/cluster.cfg  --start client
+7. ./run.py --config\_file configs/cluster.cfg  --log client
+8. ./run.py --config\_file configs/cluster.cfg  --stop cpo tso persist nodepool client
+9. ./run.py --config\_file configs/cluster.cfg  --remove cpo tso persist nodepool client
 
 
 Each item listed after --start will start a docker container on the cluster. --stop will stop containers 
 but not remove them (so the logs can still be examined), and --remove removes the container. The file 
 specified with --config\_file is a top-level configuration file that describes each cluster component 
-and where and how to run. The file specified with --locals\_file has local configuration information that 
+and where and how to run. The locals.py file has local configuration information that 
 must be modified for every cluster environment; it contains hostname URLs and docker image URLs.
 
 
-For now, individual configuration files (e.g. configs/cpo.cfg, etc.) must also be modified for the local 
-cluster environment. This includes seastar options such as tcp\_endpoints which must be changed to the 
-correct IP addresses for the environment.
+Individual configuration files (e.g. configs/cpo.cfg, etc.) contain docker and seastar specific options, 
+such as the amount of memory to use. They also contain placeholders for options that are automatically 
+configured by the script, for example the TCP endpoints. These placeholder options are prefaced with "$$".
 
 
 Some guidelines for performance benchmarking:
