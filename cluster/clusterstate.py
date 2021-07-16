@@ -38,9 +38,8 @@ class Assignment:
         self.use_rdma = rdma
         self.assignment = None
         try:
-            state_p = open(pickle_filename, 'rb')
-            self.assignment = pickle.load(state_p)
-            state_p.close()
+            with open(pickle_filename, 'rb') as state_p:
+                self.assignment = pickle.load(state_p)
         except:
             pass
 
@@ -60,9 +59,8 @@ class Assignment:
         if all_free:
             self.assignment = None
 
-        state_p = open(pickle_filename, 'wb')
-        pickle.dump(self.assignment, state_p)
-        state_p.close()
+        with open(pickle_filename, 'wb') as state_p:
+            pickle.dump(self.assignment, state_p)
 
     def replace_program_arg(self, runnable: Runnable, target_arg, replacement):
         index = -1
