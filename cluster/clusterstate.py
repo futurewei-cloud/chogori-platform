@@ -50,7 +50,7 @@ class Assignment:
                 self.assignment.append(AssignedNode(node, None))
 
     def save_state(self, pickle_filename):
-        # If there are no assignents, just save a None object, which
+        # If there are no assignments, just save a None object, which
         # will force a reload of the local hosts on the next run
         all_free = True
         for node in self.assignment:

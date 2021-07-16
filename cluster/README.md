@@ -31,7 +31,7 @@ and where and how to run. The locals.py file has local configuration information
 must be modified for every cluster environment; it contains hostname URLs and docker image URLs.
 
 
-Individual configuration files (e.g. configs/cpo.cfg, etc.) contain docker and seaster specific options, 
+Individual configuration files (e.g. configs/cpo.cfg, etc.) contain docker and seastar specific options, 
 such as the amount of memory to use. They also contain placeholders for options that are automatically 
 configured by the script, for example the TCP endpoints. These placeholder options are prefaced with "$$".
 
