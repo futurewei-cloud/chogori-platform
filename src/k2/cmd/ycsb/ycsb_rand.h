@@ -31,7 +31,9 @@ Copyright(c) 2021 Futurewei Cloud
 
 class RandomContext {
 public:
-    RandomContext(int seed=0) : _generator(seed) {}
+    RandomContext(int seed=0) : _generator(seed) {};
+
+    RandomContext(int seed=0, vector<double> prob) : _generator(seed), _discreteDis(prob.begin(),prob.end()) {}
 
     uint32_t UniformRandom(uint32_t min, uint32_t max)
     {
@@ -50,6 +52,22 @@ public:
         return str;
     }
 
+    uint64_t BiasedInt()
+    {
+        return _discreteDis(gen);
+    }
+
 private:
     std::mt19937 _generator;
+    std::optional< discrete_distribution<> > _discreteDis;
 };
+
+class RandomGenerator {
+    virtual uint64_t getValue() = 0;
+    virtual ~RandomGenerator() = default;
+}
+
+class UniformGenerator : public RandomGenerator {
+
+}
+

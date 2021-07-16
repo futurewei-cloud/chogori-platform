@@ -231,6 +231,10 @@ private:
     ConfigVar<size_t> _num_records{"num_records"};
     ConfigVar<uint32_t> _test_duration_sec{"test_duration_s"};
 
+    ConfigVar<String> _requestDistName{"request_dist"};
+    ConfigVar<String> _scanLengthDistName{"scan_length_dist"};
+    ConfigVar<String> _keyLengthDistName{"key_length_dist"};
+
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _txnLatency;
     uint64_t _completedTxns{0};
