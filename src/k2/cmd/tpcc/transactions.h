@@ -146,7 +146,7 @@ private:
     future<bool> runWithTxn() {
         future<> warehouse_update = warehouseUpdate();
         future<> district_update = districtUpdate();
-        future<> CId_get = getCIdByLastName();
+        future<> CId_get = getCIdByLastNameViaIndex();
 
         return when_all_succeed(std::move(warehouse_update), std::move(district_update), std::move(CId_get)).discard_result()
         .then([this] () {
@@ -241,8 +241,72 @@ private:
         return writeRow<History>(history, _txn).discard_result();
     }
 
+    future<> getCIdByLastNameViaIndex() {
+        uint32_t cid_type = _random.UniformRandom(1, 100);
+        if (cid_type > 60) {
+            return make_ready_future();
+        }
+
+        k2::String lastName = _random.RandowLastNameString();
+
+        return _client.createQuery(tpccCollectionName, "idx_customer_name")
+        .then([this, &lastName](auto&& response) mutable {
+            CHECK_READ_STATUS(response);
+
+            // make Query request and set query rules.
+            // 1. range:[ (_w_id, _d_id, c_last), (_w_id, _d_id, c_last) ]; 2. no record number limits; 3. forward direction scan;
+            // 4. projection "c_id" field for ascending sorting;
+            _query = std::move(response.query);
+            _query.startScanRecord.serializeNext<int16_t>(_c_w_id);
+            _query.startScanRecord.serializeNext<int16_t>(_c_d_id);
+            _query.startScanRecord.serializeNext<k2::String>(lastName);
+            _query.endScanRecord.serializeNext<int16_t>(_c_w_id);
+            _query.endScanRecord.serializeNext<int16_t>(_c_d_id);
+            _query.endScanRecord.serializeNext<k2::String>(lastName);
+
+            _query.setLimit(-1);
+            _query.setReverseDirection(false);
+            std::vector<String> projection{"CID"}; // make projection
+            _query.addProjection(projection);
+
+            return do_with(std::vector<std::vector<dto::SKVRecord>>(), false, (uint32_t)0,
+            [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done, uint32_t& count) {
+                return do_until(
+                [this, &done] () { return done; },
+                [this, &result_set, &done, &count] () {
+                    return _txn.query(_query)
+                    .then([this, &result_set, &done, &count] (auto&& response) {
+                        CHECK_READ_STATUS(response);
+                        done = response.status.is2xxOK() ? _query.isDone() : true;
+                        count += response.records.size();
+                        result_set.push_back(std::move(response.records));
+
+                        return make_ready_future();
+                    });
+                })
+                .then([this, &result_set, &count] () {
+                    std::vector<int32_t> cIdSort;
+                    for (std::vector<dto::SKVRecord>& set : result_set) {
+                        for (dto::SKVRecord& rec : set) {
+                            std::optional<int32_t> cIdOpt = rec.deserializeField<int32_t>("CID");
+                            cIdSort.push_back(cIdOpt.value());
+                        }
+                    }
+
+                    // retrieve at the position n/2 rounded up in the sorted set from idx_customer_name table.
+                    if (cIdSort.size()) {
+                        std::sort(cIdSort.begin(), cIdSort.end());
+                        _c_id = cIdSort[cIdSort.size() / 2];
+                    }
+
+                    return make_ready_future();
+                });
+            });
+        });
+    }
+
     // get customer ID by last name
-    // 60% select customer by last name; 40%, the _c_id has already been set randomly at the consturctor
+    // 60% select customer by last name; 40%, the _c_id has already been set randomly at the constructor
     future<> getCIdByLastName() {
         uint32_t cid_type = _random.UniformRandom(1, 100);
         if (cid_type > 60) {

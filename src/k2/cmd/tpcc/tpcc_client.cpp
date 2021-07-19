@@ -183,6 +183,11 @@ private:
             K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
+        schema_futures.push_back(_client.createSchema(tpccCollectionName, IdxCustomerName::idx_customer_name_schema)
+        .then([] (auto&& result) {
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
+        }));
+
         schema_futures.push_back(_client.createSchema(tpccCollectionName, History::history_schema)
         .then([] (auto&& result) {
             K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
