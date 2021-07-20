@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright(c) 2020 Futurewei Cloud
+Copyright(c) 2021 Futurewei Cloud
 
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
@@ -31,56 +31,55 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/RetryStrategy.h>
 #include <seastar/core/sleep.hh>
 
-#include "data.h"
-#include "Log.h"
+#include <k2/cmd/ycsb/data.h>
+#include <k2/cmd/ycsb/Log.h>
 
-using namespace seastar;
 using namespace k2;
 
 class DataLoader {
 public:
     DataLoader() = default;
 
-    future<> loadData(K23SIClient& client, int pipeline_depth)
+    seastar::future<> loadData(K23SIClient& client, int pipeline_depth)
     {
         K2TxnOptions options{};
         options.deadline = Deadline(ConfigDuration("dataload_txn_timeout", 600s)());
         options.syncFinalize = true;
-        std::vector<future<>> futures;
+        RandomContext random_context(0);
 
         K2LOG_D(log::ycsb, "pipeline depth and data load per txn ={}, {}", pipeline_depth, _writes_per_load_txn());
-        return do_with((size_t)0, [this, options, pipeline_depth, &client] (size_t& start_idx){
-            return do_until(
-                [this, options, pipeline_depth, &client, &start_idx] { return start_idx>=_num_records();  },
-                [this, options, pipeline_depth, &client, &start_idx] {
-                    std::vector<future<>> futures;
+        return seastar::do_with((size_t)0, [this, options, pipeline_depth, &client, random_context] (size_t& start_idx){
+            return seastar::do_until(
+                [this, &start_idx] { return start_idx>=_num_records();  },
+                [this, options, pipeline_depth, &client, &start_idx, random_context] {
+                    std::vector<seastar::future<>> futures;
 
                     for (int i=0; i < pipeline_depth; ++i) {
-                        futures.push_back(client.beginTxn(options).then([this, i, start_idx] (K2TxnHandle&& t) {
+                        futures.push_back(client.beginTxn(options).then([this, i, start_idx, random_context] (K2TxnHandle&& t) {
                                 K2LOG_D(log::ycsb, "txn begin in load data");
-                                return do_with(std::move(t), [this, i, start_idx] (K2TxnHandle& txn) {
+                                return seastar::do_with(std::move(t), [this, i, start_idx, random_context] (K2TxnHandle& txn) {
                                     size_t idx = start_idx + i*_writes_per_load_txn();
-                                    return insertDataLoop(txn, idx);
+                                    return insertDataLoop(txn, idx, random_context);
                             });
                         }));
                     }
                     start_idx = start_idx + pipeline_depth*_writes_per_load_txn();
-                    return when_all_succeed(futures.begin(), futures.end());
+                    return seastar::when_all_succeed(futures.begin(), futures.end());
             });
          });
     }
 
 private:
-    future<> insertDataLoop(K2TxnHandle& txn, size_t start_idx)
+    seastar::future<> insertDataLoop(K2TxnHandle& txn, size_t start_idx, RandomContext random_context)
     {
         K2LOG_D(log::ycsb, "Starting transaction, start_idx is {}", start_idx);
-        return do_with((size_t)0, [this, &txn, start_idx] (size_t& current_size) {
-            return do_until(
+        return seastar::do_with((size_t)0, [this, &txn, start_idx, &random_context] (size_t& current_size) {
+            return seastar::do_until(
                 [this, &current_size, start_idx] { return ((current_size >= _writes_per_load_txn()) || ((start_idx + current_size)>= _num_records())); },
-                [this, &current_size, &txn, start_idx] () {
+                [this, &current_size, &txn, start_idx, &random_context] () {
                 K2LOG_D(log::ycsb, "Record being loaded now in this txn is {}", start_idx + current_size);
 
-                YCSBData row(start_idx + current_size); // generate row
+                YCSBData row(start_idx + current_size, random_context); // generate row
                 ++current_size;
 
                 return writeRow(row, txn).discard_result();
@@ -90,10 +89,10 @@ private:
             }).then([] (EndResult&& result) {
                 if (!result.status.is2xxOK()) {
                     K2LOG_E(log::ycsb, "Failed to commit: {}", result.status);
-                    return make_exception_future<>(std::runtime_error("Commit failed during bulk data load"));
+                    return seastar::make_exception_future<>(std::runtime_error("Commit failed during bulk data load"));
                 }
 
-                return make_ready_future<>();
+                return seastar::make_ready_future<>();
             });
         });
     }

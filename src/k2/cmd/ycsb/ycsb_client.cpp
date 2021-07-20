@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright(c) 2020 Futurewei Cloud
+Copyright(c) 2021 Futurewei Cloud
 
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
@@ -31,27 +31,35 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
 #include <k2/tso/client/tso_clientlib.h>
+#include <k2/common/Timer.h>
 #include <seastar/core/sleep.hh>
 
-#include "Log.h"
-#include "data.h"
-#include "dataload.h"
+#include <k2/cmd/ycsb/Log.h>
+#include <k2/cmd/ycsb/data.h>
+#include <k2/cmd/ycsb/dataload.h>
 
 using namespace k2;
 
+// variable to keep track of number of cores that complete benchmark
 std::atomic<uint32_t> cores_finished = 0;
 
-std::vector<String> getRangeEnds(uint32_t numPartitions, size_t numRows, uint32_t len_field) {
+/* This function is used for obtaining the range of YCSB Data keys that will be stored each partition.
+   It is invoked while creating YCSB Data collection
+   "numPartitions" is the total number of partitions
+   "numRows" records is the max number of YCSB Data records that will be stored
+   "lenfield" is the max length of each field in a YCSB Data record */
+std::vector<String> getRangeEnds(uint32_t numPartitions, size_t numRows, uint32_t lenField) {
 
+    std::deque<String> keys;
 
-    std::vector<String> keys;
-
-    for(size_t i = 0; i < numRows+1; ++i){ // generate all keys for YCSB Data to getRange for collection
-        keys.push_back(YCSBData::idToKey(i,len_field));
+    for(size_t i = 0; i < numRows+1; ++i){ // generate all keys for YCSB Data to get Range
+        keys.push_back(YCSBData::idToKey(i,lenField));
     }
 
     std::sort(keys.begin(),keys.end());
 
+    // share is the number of records that will be stored per partition
+    // the last partition can have more than share records
     uint32_t share = numRows / numPartitions;
     share = share == 0 ? 1 : share;
     std::vector<String> rangeEnds;
@@ -63,6 +71,7 @@ std::vector<String> getRangeEnds(uint32_t numPartitions, size_t numRows, uint32_
         rangeEnds.push_back(range_end);
     }
 
+    // range end of last partition is set to "" as range end is open interval and "" will not be counted as key
     rangeEnds[numPartitions-1] = "";
 
     return rangeEnds;
@@ -72,11 +81,11 @@ class Client {
 public:  // application lifespan
     Client():
         _client(K23SIClient(K23SIClientConfig())),
-        _testDuration(k2::Config()["test_duration_s"].as<uint32_t>()*1s),
+        _testDuration(_test_duration_sec()*1s),
         _stopped(true),
-        _timer(seastar::timer<>([this] {
+        _timer([this] {
             _stopped = true;
-        })) {
+        }) {
         K2LOG_I(log::ycsb, "ctor");
     };
 
@@ -94,6 +103,9 @@ public:  // application lifespan
         return std::move(_benchFuture);
     }
 
+    /* Each transaction will comprise of a set of read, scan, insert, update and delete operations.
+       The number of operations per transaction is set as per the specified config.
+       For the metrics we measure the number of transcations and the number of each operation */
     void registerMetrics() {
         _metric_groups.clear();
         std::vector<sm::label_instance> labels;
@@ -101,21 +113,13 @@ public:  // application lifespan
 
         _metric_groups.add_group("YCSB", {
             sm::make_counter("completed_txns", _completedTxns, sm::description("Number of completed YCSB transactions"), labels),
-            sm::make_counter("read_txns", _readTxns, sm::description("Number of completed Read transactions"), labels),
-            sm::make_counter("scan_txns", _scanTxns, sm::description("Number of completed Scan transactions"), labels),
-            sm::make_counter("insert_txns", _insertTxns, sm::description("Number of completed Insert transactions"), labels),
-            sm::make_counter("update_txns", _updateTxns, sm::description("Number of completed Update transactions"), labels),
-            sm::make_counter("delete_txns", _deleteTxns, sm::description("Number of completed Delete transactions"), labels),
-            sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();},
-                    sm::description("Latency of Read transactions"), labels),
-            sm::make_histogram("scan_latency", [this]{ return _scanLatency.getHistogram();},
-                    sm::description("Latency of Scan transactions"), labels),
-            sm::make_histogram("insert_latency", [this]{ return _insertLatency.getHistogram();},
-                    sm::description("Latency of Insert transactions"), labels),
-            sm::make_histogram("update_latency", [this]{ return _updateLatency.getHistogram();},
-                    sm::description("Latency of Update transactions"), labels),
-            sm::make_histogram("delete_latency", [this]{ return _deleteLatency.getHistogram();},
-                    sm::description("Latency of Delete transactions"), labels)
+            sm::make_counter("read_ops", _readOps, sm::description("Number of completed Read operations"), labels),
+            sm::make_counter("scan_ops", _scanOps, sm::description("Number of completed Scan operations"), labels),
+            sm::make_counter("insert_ops", _insertOps, sm::description("Number of completed Insert operations"), labels),
+            sm::make_counter("update_ops", _updateOps, sm::description("Number of completed Update operations"), labels),
+            sm::make_counter("delete_ops", _deleteOps, sm::description("Number of completed Delete operations"), labels),
+            sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();},
+                    sm::description("Latency of YCSB transactions"), labels)
         });
     }
 
@@ -134,7 +138,6 @@ public:  // application lifespan
             return seastar::make_ready_future<>();
         }).finally([this]() {
             K2LOG_I(log::ycsb, "Done with benchmark");
-            _stopped = true;
             cores_finished++;
             if (cores_finished == seastar::smp::count) {
                 if (_do_verification()) {
@@ -144,37 +147,36 @@ public:  // application lifespan
                 }
             }
 
-            return make_ready_future<>();
+            return seastar::make_ready_future<>();
         });
 
-        return make_ready_future<>();
+        return seastar::make_ready_future<>();
     }
 
 private:
-    seastar::future<> _schema_load() {
-        std::vector<seastar::future<>> schema_futures;
+    // This function is used for loading the YCSB Data Schema
+    seastar::future<> _schemaLoad() {
 
-        schema_futures.push_back(_client.createSchema(ycsbCollectionName, YCSBData::ycsb_schema)
+        return _client.createSchema(ycsbCollectionName, YCSBData::ycsb_schema)
         .then([] (auto&& result) {
             K2ASSERT(log::ycsb, result.status.is2xxOK(), "Failed to create schema");
-        }));
-
-        return seastar::when_all_succeed(schema_futures.begin(), schema_futures.end());
+        });
     }
 
-    seastar::future<> _data_load() {
+    /* This function is used for loading data.
+       It first creates a collection for YCSB data and then loads the data */
+    seastar::future<> _dataLoad() {
         K2LOG_I(log::ycsb, "Creating DataLoader");
 
-        auto f = seastar::sleep(5s);
+        K2ASSERT(log::ycsb,seastar::smp::count==1,"Currently only 1 core is used");
 
-        K2LOG_D(log::ycsb, "smp count: {}",seastar::smp::count);
-
-        return f.then ([this] {
+        return seastar::sleep(5s)
+        .then ([this] {
             K2LOG_I(log::ycsb, "Creating collection");
             return _client.makeCollection("YCSB", getRangeEnds(_tcpRemotes().size(), _num_records(),_field_length()));
         }).discard_result()
         .then([this] () {
-            return _schema_load();
+            return _schemaLoad();
         })
         .then([this] {
             K2LOG_I(log::ycsb, "Starting data gen and load");
@@ -185,15 +187,19 @@ private:
         });
     }
 
+    /* This function will perform data loading if do_data_load is set
+       and perform YCSB Benchmarking for given workload
+
+       TODO - Yet to implement Benchmarking part !!! */
     seastar::future<> _benchmark() {
 
         K2LOG_I(log::ycsb, "Creating K23SIClient");
 
         if (_do_data_load()) {
-            return _data_load();
+            return _dataLoad();
         }
 
-        return make_ready_future();
+        return seastar::make_ready_future();
     }
 
 private:
@@ -203,8 +209,8 @@ private:
     DataLoader _data_loader;
     RandomContext _random;
     k2::TimePoint _start;
-    seastar::timer<> _timer;
-    std::vector<future<>> _ycsb_futures;
+    SingleTimer _timer;
+    std::vector<seastar::future<> > _ycsb_futures;
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
 
     ConfigVar<std::vector<String> > _tcpRemotes{"tcp_remotes"};
@@ -214,26 +220,20 @@ private:
     ConfigVar<uint32_t> _num_fields{"num_fields"};
     ConfigVar<uint32_t> _field_length{"field_length"};
     ConfigVar<size_t> _num_records{"num_records"};
+    ConfigVar<uint32_t> _test_duration_sec{"test_duration_s"};
 
     sm::metric_groups _metric_groups;
-    k2::ExponentialHistogram _scanLatency;
-    k2::ExponentialHistogram _updateLatency;
-    k2::ExponentialHistogram _insertLatency;
-    k2::ExponentialHistogram _readLatency;
-    k2::ExponentialHistogram _deleteLatency;
+    k2::ExponentialHistogram _txnLatency;
     uint64_t _completedTxns{0};
-    uint64_t _readTxns{0};
-    uint64_t _insertTxns{0};
-    uint64_t _updateTxns{0};
-    uint64_t _scanTxns{0};
-    uint64_t _deleteTxns{0};
-
     uint64_t _readOps{0};
-    uint64_t _writeOps{0};
+    uint64_t _insertOps{0};
+    uint64_t _updateOps{0};
+    uint64_t _scanOps{0};
+    uint64_t _deleteOps{0};
 }; // class Client
 
 int main(int argc, char** argv) {;
-    k2::App app("TPCCClient");
+    k2::App app("YCSBClient");
     app.addOptions()
         ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
