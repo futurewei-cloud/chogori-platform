@@ -75,14 +75,6 @@ private:
     bool _success;
 };
 
-struct CIdSortElement {
-    String firstName;
-    int32_t c_id;
-    bool operator<(const CIdSortElement& other) const noexcept {
-        return firstName < other.firstName;
-    }
-};
-
 class AtomicVerify;
 
 class TPCCTxn {
@@ -146,7 +138,7 @@ private:
     future<bool> runWithTxn() {
         future<> warehouse_update = warehouseUpdate();
         future<> district_update = districtUpdate();
-        future<> CId_get = getCIdByLastName();
+        future<> CId_get = getCIdByLastNameViaIndex();
 
         return when_all_succeed(std::move(warehouse_update), std::move(district_update), std::move(CId_get)).discard_result()
         .then([this] () {
@@ -242,39 +234,34 @@ private:
     }
 
     // get customer ID by last name
-    // 60% select customer by last name; 40%, the _c_id has already been set randomly at the consturctor
-    future<> getCIdByLastName() {
+    // 60% select customer by last name; 40%, the _c_id has already been set randomly at the constructor
+    future<> getCIdByLastNameViaIndex() {
         uint32_t cid_type = _random.UniformRandom(1, 100);
-        if (cid_type > 60) {
+        if (cid_type <= 60) {
             return make_ready_future();
         }
 
         k2::String lastName = _random.RandowLastNameString();
 
-        return _client.createQuery(tpccCollectionName, "customer")
+        return _client.createQuery(tpccCollectionName, "idx_customer_name")
         .then([this, &lastName](auto&& response) mutable {
             CHECK_READ_STATUS(response);
 
             // make Query request and set query rules.
-            // 1. range:[ (_w_id, _d_id, 0), (_w_id, _d_id + 1, 0) ); 2. no record number limits; 3. forward direction scan;
-            // 4. projection "FirstName" field for ascending sorting; 5. filter out the record rows of lastName
+            // 1. range:[ (_w_id, _d_id, c_last), (_w_id, _d_id, c_last) ]; 2. no record number limits; 3. forward direction scan;
+            // 4. projection "c_id" field for ascending sorting;
             _query = std::move(response.query);
             _query.startScanRecord.serializeNext<int16_t>(_c_w_id);
             _query.startScanRecord.serializeNext<int16_t>(_c_d_id);
+            _query.startScanRecord.serializeNext<k2::String>(lastName);
             _query.endScanRecord.serializeNext<int16_t>(_c_w_id);
-            _query.endScanRecord.serializeNext<int16_t>(_c_d_id + 1);
+            _query.endScanRecord.serializeNext<int16_t>(_c_d_id);
+            _query.endScanRecord.serializeNext<k2::String>(lastName);
 
             _query.setLimit(-1);
             _query.setReverseDirection(false);
-            std::vector<String> projection{"CID", "FirstName"}; // make projection
+            std::vector<String> projection{"CID"}; // make projection
             _query.addProjection(projection);
-            std::vector<dto::expression::Value> values; // make filter Expression
-            std::vector<dto::expression::Expression> exps;
-            values.emplace_back(dto::expression::makeValueReference("LastName"));
-            values.emplace_back(dto::expression::makeValueLiteral<k2::String>(std::move(lastName)));
-            dto::expression::Expression filter = dto::expression::makeExpression(dto::expression::Operation::EQ,
-                                                    std::move(values), std::move(exps));
-            _query.setFilterExpression(std::move(filter));
 
             return do_with(std::vector<std::vector<dto::SKVRecord>>(), false, (uint32_t)0,
             [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done, uint32_t& count) {
@@ -292,21 +279,18 @@ private:
                     });
                 })
                 .then([this, &result_set, &count] () {
-                    std::vector<CIdSortElement> cIdSort;
+                    std::vector<int32_t> cIdSort;
                     for (std::vector<dto::SKVRecord>& set : result_set) {
                         for (dto::SKVRecord& rec : set) {
                             std::optional<int32_t> cIdOpt = rec.deserializeField<int32_t>("CID");
-                            std::optional<String> firstNameOpt = rec.deserializeField<String>("FirstName");
-
-                            cIdSort.push_back(CIdSortElement{*firstNameOpt, *cIdOpt});
+                            cIdSort.push_back(cIdOpt.value());
                         }
                     }
 
-                    // sorted by C_FIRST_NAME in ascending order, and retrieve at the
-                    // position n/2 rounded up in the sorted set from CUSTORMER table.
+                    // retrieve at the position n/2 rounded up in the sorted set from idx_customer_name table.
                     if (cIdSort.size()) {
                         std::sort(cIdSort.begin(), cIdSort.end());
-                        _c_id = cIdSort[cIdSort.size() / 2].c_id;
+                        _c_id = cIdSort[cIdSort.size() / 2];
                     }
 
                     return make_ready_future();
@@ -314,7 +298,6 @@ private:
             });
         });
     }
-
 
     RandomContext& _random;
     K23SIClient& _client;
@@ -544,7 +527,7 @@ public:
 private:
     future<bool> runWithTxn() {
         // Get customer_id
-        return getCustomerId()
+        return getCustomerIdViaIndex()
         .then([this] () {
             // Get Customer row when get_customer_id is done
             future<> customer_f = getCustomer();
@@ -589,39 +572,33 @@ private:
     }
 
     // Get customer_id, 60% by last name, 40% by random customer id
-    future<> getCustomerId() {
+    future<> getCustomerIdViaIndex() {
         uint32_t cid_type = _random.UniformRandom(1, 100);
-        // 40%, the _c_id has already been set randomly at the constructor
-        if (cid_type > 60) {
+        if (cid_type <= 60) {
             return make_ready_future();
-        } //else{}, 60% select customer by last name
+        }
 
         k2::String lastName = _random.RandowLastNameString();
 
-        return _client.createQuery(tpccCollectionName, "customer")
+        return _client.createQuery(tpccCollectionName, "idx_customer_name")
         .then([this, &lastName](auto&& response) mutable {
             CHECK_READ_STATUS(response);
 
             // make Query request and set query rules.
-            // 1. range:[ (_w_id, _d_id, 0), (_w_id, _d_id + 1, 0) ); 2. no record number limits; 3. forward direction scan;
-            // 4. projection "FirstName" field for ascending sorting; 5. filter out the record rows of lastName
+            // 1. range:[ (_w_id, _d_id, c_last), (_w_id, _d_id, c_last) ]; 2. no record number limits; 3. forward direction scan;
+            // 4. projection "c_id" field for ascending sorting;
             _query_cid = std::move(response.query);
             _query_cid.startScanRecord.serializeNext<int16_t>(_w_id);
             _query_cid.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_cid.startScanRecord.serializeNext<k2::String>(lastName);
             _query_cid.endScanRecord.serializeNext<int16_t>(_w_id);
-            _query_cid.endScanRecord.serializeNext<int16_t>(_d_id + 1);
+            _query_cid.endScanRecord.serializeNext<int16_t>(_d_id);
+            _query_cid.endScanRecord.serializeNext<k2::String>(lastName);
+
             _query_cid.setLimit(-1);
             _query_cid.setReverseDirection(false);
-
-            std::vector<String> projection{"CID", "FirstName"}; // make projection
+            std::vector<String> projection{"CID"}; // make projection
             _query_cid.addProjection(projection);
-            std::vector<dto::expression::Value> values; // make filter Expression
-            std::vector<dto::expression::Expression> exps;
-            values.emplace_back(dto::expression::makeValueReference("LastName"));
-            values.emplace_back(dto::expression::makeValueLiteral<String>(std::move(lastName)));
-            dto::expression::Expression filter = dto::expression::makeExpression(dto::expression::Operation::EQ,
-                                                    std::move(values), std::move(exps));
-            _query_cid.setFilterExpression(std::move(filter));
 
             return do_with(std::vector<std::vector<dto::SKVRecord>>(), false, (uint32_t)0,
             [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done, uint32_t& count) {
@@ -639,21 +616,18 @@ private:
                     });
                 })
                 .then([this, &result_set, &count] () {
-                    std::vector<CIdSortElement> cIdSort;
+                    std::vector<int32_t> cIdSort;
                     for (std::vector<dto::SKVRecord>& set : result_set) {
                         for (dto::SKVRecord& rec : set) {
                             std::optional<int32_t> cIdOpt = rec.deserializeField<int32_t>("CID");
-                            std::optional<String> firstNameOpt = rec.deserializeField<String>("FirstName");
-
-                            cIdSort.push_back(CIdSortElement{*firstNameOpt, *cIdOpt});
+                            cIdSort.push_back(cIdOpt.value());
                         }
                     }
 
-                    // sorted by C_FIRST_NAME in ascending order, and retrieve at the
-                    // position n/2 rounded up in the sorted set from CUSTORMER table.
+                    // retrieve at the position n/2 rounded up in the sorted set from idx_customer_name table.
                     if (cIdSort.size()) {
                         std::sort(cIdSort.begin(), cIdSort.end());
-                        _c_id = cIdSort[cIdSort.size() / 2].c_id;
+                        _c_id = cIdSort[cIdSort.size() / 2];
                     }
 
                     return make_ready_future();

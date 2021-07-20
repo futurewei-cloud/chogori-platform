@@ -290,6 +290,42 @@ public:
         Info, address);
 };
 
+// secondary index for customer name in original TPCC created by the following ddl
+//
+//      CREATE INDEX idx_customer_name ON customer (c_w_id,c_d_id,c_last,c_first);
+//
+class IdxCustomerName {
+public:
+    static inline dto::Schema idx_customer_name_schema {
+        .name = "idx_customer_name",
+        .version = 1,
+        .fields = std::vector<dto::SchemaField> {
+            {dto::FieldType::INT16T, "ID", false, false},
+            {dto::FieldType::INT16T, "DID", false, false},
+            {dto::FieldType::STRING, "LastName", false, false},
+            {dto::FieldType::STRING, "FirstName", false, false},
+            {dto::FieldType::INT32T, "CID", false, false}
+        },
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3, 4}
+    };
+
+    IdxCustomerName(int16_t w_id, int16_t d_id, String c_last, String c_first, int32_t c_id) :
+        WarehouseID(w_id), DistrictID(d_id), FirstName(c_last), LastName(c_first), CustomerID(c_id) {};
+
+    IdxCustomerName() = default;
+
+    std::optional<int16_t> WarehouseID;
+    std::optional<int16_t> DistrictID;
+    std::optional<String> FirstName;
+    std::optional<String> LastName;
+    std::optional<int32_t> CustomerID;
+
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, FirstName, LastName, CustomerID);
+};
+
 class History {
 public:
     static inline dto::Schema history_schema {
@@ -686,6 +722,7 @@ void setupSchemaPointers() {
     Warehouse::schema = std::make_shared<dto::Schema>(Warehouse::warehouse_schema);
     District::schema = std::make_shared<dto::Schema>(District::district_schema);
     Customer::schema = std::make_shared<dto::Schema>(Customer::customer_schema);
+    IdxCustomerName::schema = std::make_shared<dto::Schema>(IdxCustomerName::idx_customer_name_schema);
     History::schema = std::make_shared<dto::Schema>(History::history_schema);
     Order::schema = std::make_shared<dto::Schema>(Order::order_schema);
     NewOrder::schema = std::make_shared<dto::Schema>(NewOrder::neworder_schema);
@@ -693,4 +730,3 @@ void setupSchemaPointers() {
     Item::schema = std::make_shared<dto::Schema>(Item::item_schema);
     Stock::schema = std::make_shared<dto::Schema>(Stock::stock_schema);
 }
-

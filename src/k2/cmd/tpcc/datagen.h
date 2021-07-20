@@ -59,6 +59,13 @@ struct TPCCDataGen {
                 return writeRow<Customer>(_customer, txn);
             });
 
+            // populate secondary index idx_customer_name
+            auto idx_customer_name = IdxCustomerName(customer.WarehouseID.value(), customer.DistrictID.value(),
+                customer.LastName.value(), customer.FirstName.value(), customer.CustomerID.value());
+            data.push_back([_idx_customer_name=std::move(idx_customer_name)] (k2::K2TxnHandle& txn) mutable {
+                return writeRow<IdxCustomerName>(_idx_customer_name, txn);
+            });
+
             auto history = History(random, w_id, d_id, i);
             data.push_back([_history=std::move(history)] (k2::K2TxnHandle& txn) mutable {
                 return writeRow<History>(_history, txn);
