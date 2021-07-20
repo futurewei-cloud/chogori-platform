@@ -49,10 +49,10 @@ Copyright(c) 2020 Futurewei Cloud
 
 #define DO_K2LOG_LEVEL_FMT(level, module, fmt_str, ...)                                                      \
     {                                                                                                        \
-        auto id = seastar::engine_is_ready() ? seastar::this_shard_id() : pthread_self();                    \
+        auto __K2LOG_id = seastar::engine_is_ready() ? seastar::this_shard_id() : pthread_self();                    \
         fmt::print(K2LOG_STREAM,                                                                             \
                    FMT_STRING("[{}]-{}-[{}]-({}) [{}] [{}:{} @{}] " fmt_str "\n"),                           \
-                   k2::Clock::now(), k2::logging::Logger::procName, id, module,                              \
+                   k2::Clock::now(), k2::logging::Logger::procName, __K2LOG_id, module,                              \
                    k2::logging::LogLevelNames[to_integral(level)], __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
         K2LOG_STREAM << std::flush;                                                                          \
     }
