@@ -38,9 +38,9 @@ using namespace k2;
 static const String ycsbCollectionName = "YCSB";
 
 // helper function to convert to base (default 93 (ascii from 33 to 126)) representation
-String iToString(int n, int base = 93)
+String iToString(uint64_t  n, uint8_t  base = 93)
 {
-    uint32_t len = ceil(std::log(n+1)/std::log(base));
+    uint32_t len = ceil(std::log1p(n)/std::log(base));
     String buf(String::initialized_later{},len);
     std::div_t dv{}; dv.quot = n; dv.rem = 0;
     uint32_t i = 0;
@@ -58,7 +58,7 @@ class YCSBData{
 public:
 
     // function to generate the schema for YCSB Data based on the number of fields per records
-    static dto::Schema generate_schema(const uint32_t num_fields){
+    static dto::Schema generateSchema(const uint32_t num_fields){
 
         std::vector<dto::SchemaField> field_names;
 

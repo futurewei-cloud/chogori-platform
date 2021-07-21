@@ -126,7 +126,7 @@ public:  // application lifespan
     seastar::future<> start() {
         _stopped = false;
 
-        YCSBData::ycsb_schema = YCSBData::generate_schema(_num_fields());
+        YCSBData::ycsb_schema = YCSBData::generateSchema(_num_fields());
         setupSchemaPointers();
 
         registerMetrics();
@@ -167,21 +167,30 @@ private:
        It first creates a collection for YCSB data and then loads the data */
     seastar::future<> _dataLoad() {
         K2LOG_I(log::ycsb, "Creating DataLoader");
+        int cpus = seastar::smp::count;
+        int id = seastar::this_shard_id();
+        int share = _num_records() / cpus; // number of records loaded per cpu, the last one can have more than share loads
 
-        K2ASSERT(log::ycsb,seastar::smp::count==1,"Currently only 1 core is used");
+        auto f = seastar::sleep(5s); // sleep for collection to be loaded first
+        if (id == 0) { // only shard 0 loads the collection
+            f = f.then ([this] {
+                K2LOG_I(log::ycsb, "Creating collection");
+                return _client.makeCollection("YCSB", getRangeEnds(_tcpRemotes().size(), _num_records(),_field_length()));
+            }).discard_result()
+            .then([this] () {
+                return _schemaLoad();
+            });
+        } else {
+            f = f.then([] { return seastar::sleep(5s); });
+        }
 
-        return seastar::sleep(5s)
-        .then ([this] {
-            K2LOG_I(log::ycsb, "Creating collection");
-            return _client.makeCollection("YCSB", getRangeEnds(_tcpRemotes().size(), _num_records(),_field_length()));
-        }).discard_result()
-        .then([this] () {
-            return _schemaLoad();
-        })
-        .then([this] {
-            K2LOG_I(log::ycsb, "Starting data gen and load");
+        return f.then ([this, share, id, cpus] {
+            K2LOG_I(log::ycsb, "Starting data gen and load in shard {}", id);
             _data_loader = DataLoader();
-            return _data_loader.loadData(_client, _num_concurrent_txns());
+            size_t end_idx = (id*share)+share; // end_idx to load record
+            if(id==(cpus-1))
+                end_idx = _num_records();
+            return _data_loader.loadData(_client, _num_concurrent_txns(),(id*share),end_idx); // load records from id*share to end_idx (not inclusive)
         }).then ([this] {
             K2LOG_I(log::ycsb, "Data load done");
         });
@@ -210,10 +219,10 @@ private:
     RandomContext _random;
     k2::TimePoint _start;
     SingleTimer _timer;
-    std::vector<seastar::future<> > _ycsb_futures;
+    std::vector<seastar::future<>> _ycsb_futures;
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
 
-    ConfigVar<std::vector<String> > _tcpRemotes{"tcp_remotes"};
+    ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<bool> _do_verification{"do_verification"};
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
