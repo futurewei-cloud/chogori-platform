@@ -33,7 +33,7 @@ class RandomContext {
 public:
     RandomContext(int seed=0) : _generator(seed) {};
 
-    RandomContext(int seed=0, vector<double> prob) : _generator(seed), _discreteDis(prob.begin(),prob.end()) {}
+    RandomContext(int seed, std::vector<double> prob) : _generator(seed), _discreteDis(prob.begin(),prob.end()) {};
 
     uint32_t UniformRandom(uint32_t min, uint32_t max)
     {
@@ -52,22 +52,45 @@ public:
         return str;
     }
 
-    uint64_t BiasedInt()
+    std::set<uint32_t> RandomSetInt(uint32_t num, uint32_t max, uint32_t min = 1){
+        // Create a set to hold the random numbers
+        std::set<uint32_t> randNos;
+
+        // Generate the random numbers
+        while(randNos.size() != num)
+        {
+            randNos.insert(UniformRandom(min,max));
+        }
+
+        return randNos;
+    }
+
+    uint64_t BiasedInt() // will be used for selecting operations
     {
-        return _discreteDis(gen);
+        return _discreteDis(_generator);
     }
 
 private:
     std::mt19937 _generator;
-    std::optional< discrete_distribution<> > _discreteDis;
+    std::discrete_distribution<> _discreteDis;
 };
 
 class RandomGenerator {
+public:
     virtual uint64_t getValue() = 0;
     virtual ~RandomGenerator() = default;
-}
+};
 
 class UniformGenerator : public RandomGenerator {
+public:
+    UniformGenerator(int max, int min = 0, int seed=0) : _generator(seed), _dist(min,max) {};
 
-}
+     uint64_t getValue() override {
+         return _dist(_generator);
+     }
+
+private:
+    std::mt19937 _generator;
+    std::uniform_int_distribution<> _dist;
+};
 

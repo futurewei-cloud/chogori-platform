@@ -37,16 +37,25 @@ Copyright(c) 2021 Futurewei Cloud
 using namespace k2;
 static const String ycsbCollectionName = "YCSB";
 
+enum operation {Read=0, Update=1, Scan=2, Insert=3, Delete=4};
+
+#define CHECK_READ_STATUS(read_result) \
+    do { \
+        if ((read_result).status.code == 404) { \
+            K2LOG_D(log::ycsb, "YCSB failed to find keys: {}", (read_result).status); \
+            return seastar::make_ready_future(); \
+        } \
+        else if (!((read_result).status.is2xxOK())) { \
+            K2LOG_D(log::ycsb, "YCSB failed to read rows: {}", (read_result).status); \
+            return seastar::make_exception_future(std::runtime_error(String("YCSB failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
+        } \
+    } \
+    while (0) \
+
 // helper function to convert to base (default 93 (ascii from 33 to 126)) representation
-<<<<<<< HEAD
 String iToString(uint64_t  n, uint8_t  base = 93)
 {
     uint32_t len = ceil(std::log1p(n)/std::log(base));
-=======
-String iToString(int n, int base = 93)
-{
-    uint32_t len = ceil(std::log(n+1)/std::log(base));
->>>>>>> PR review changes
     String buf(String::initialized_later{},len);
     std::div_t dv{}; dv.quot = n; dv.rem = 0;
     uint32_t i = 0;
@@ -64,18 +73,16 @@ class YCSBData{
 public:
 
     // function to generate the schema for YCSB Data based on the number of fields per records
-<<<<<<< HEAD
     static dto::Schema generateSchema(const uint32_t num_fields){
-=======
-    static dto::Schema generate_schema(const uint32_t num_fields){
->>>>>>> PR review changes
 
         std::vector<dto::SchemaField> field_names;
 
+        YCSBData::_fieldNames.reserve(num_fields); // static variable of type vector<String> to store fieldnames
         field_names.reserve(num_fields);
 
         for(uint32_t field_no = 0; field_no < num_fields; ++field_no){
             String fieldname = "field" + std::to_string(field_no);
+            YCSBData::_fieldNames.push_back(fieldname);
             dto::SchemaField f {dto::FieldType::STRING, fieldname , false, false};
             field_names.push_back(f);
         }
@@ -102,10 +109,13 @@ public:
         return padding + key;
     }
 
-    YCSBData(uint64_t keyid) : ID(keyid) {}
+    YCSBData(uint64_t keyid = 0) : ID(keyid), fields(_num_fields(),"") {
+        fields[0] = YCSBData::idToKey(keyid,_len_field()); // initialize key
+    }
 
     YCSBData(uint64_t keyid, RandomContext& random) : ID(keyid) {
 
+        fields.reserve(_num_fields());
         fields.push_back(YCSBData::idToKey(keyid,_len_field()));
 
         // populate fields with random strings of fixed length
@@ -119,6 +129,7 @@ public:
     static inline dto::Schema ycsb_schema;
     static inline thread_local std::shared_ptr<dto::Schema> schema; // schema required in this format for creating SKV record
     static inline String collectionName = ycsbCollectionName;
+    static inline std::vector<String> _fieldNames;
 
 private:
     k2::ConfigVar<uint32_t> _len_field{"field_length"};
@@ -135,8 +146,8 @@ seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool eras
     }
 
     return txn.write<dto::SKVRecord>(skv_record, erase).then([] (WriteResult&& result) {
-        if (!result.status.is2xxOK()) {
-            K2LOG_D(log::ycsb, "writeRow failed: {}", result.status);
+        if (!result.status.is2xxOK() && result.status.code!=403 && result.status.code!=404) { // 403 for write with erase=false and key already exists or 404 for write with erase=true and key does not exist
+            K2LOG_D(log::ycsb, "writeRow failed and is retryable: {}", result.status);
             return seastar::make_exception_future<WriteResult>(std::runtime_error("writeRow failed!"));
         }
 
@@ -146,22 +157,42 @@ seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool eras
 
 // function to update the partial fields for a YCSB Data row
 seastar::future<PartialUpdateResult>
-partialUpdateRow(std::vector<String> fieldValues, std::vector<String> fieldsToUpdate, K2TxnHandle& txn) {
+partialUpdateRow(uint32_t keyid, std::vector<String> fieldValues, std::vector<uint32_t> fieldsToUpdate, K2TxnHandle& txn) {
 
     dto::SKVRecord skv_record(YCSBData::collectionName, YCSBData::schema); // create SKV record
 
-    for(auto&& field : fieldValues){
-        skv_record.serializeNext<String>(field); // add values of fields to be updated to SKV record
+    uint32_t cur = 0;
+
+    for(uint32_t field=0; field<YCSBData::ycsb_schema.fields.size(); field++){
+        if(field==0) { // 0 is the key and cannot be updated
+            skv_record.serializeNext<String>(YCSBData::idToKey(keyid,YCSBData::ycsb_schema.fields.size())); // add key
+        } else if(cur==fieldsToUpdate.size() || fieldsToUpdate[cur]!=field) { // fields to update are in order
+            skv_record.serializeNull();
+        } else {
+            skv_record.serializeNext<String>(fieldValues[cur]); // add values of fields to be updated to SKV record
+            cur++;
+        }
     }
 
-    return txn.partialUpdate<dto::SKVRecord>(skv_record, fieldsToUpdate).then([] (PartialUpdateResult&& result) {
-        if (!result.status.is2xxOK()) {
+    return txn.partialUpdate<dto::SKVRecord>(skv_record, std::move(fieldsToUpdate)).then([] (PartialUpdateResult&& result) {
+        if (!result.status.is2xxOK() && result.status.code!=404) { // 404 for key not found
             K2LOG_D(log::ycsb, "partialUpdateRow failed: {}", result.status);
             return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
         }
 
         return seastar::make_ready_future<PartialUpdateResult>(std::move(result));
     });
+}
+
+void SKVRecordToYCSBData(uint64_t keyid, YCSBData& row, SKVRecord& skvRec){
+        row.ID = keyid;
+        std::optional<String> s;
+        // deserialize fields
+        for(uint32_t i=0; i<YCSBData::ycsb_schema.fields.size(); i++){
+            s = skvRec.deserializeField<String>(i);
+            if(!s)
+                row.fields[i] = s.value();
+        }
 }
 
 void setupSchemaPointers() {

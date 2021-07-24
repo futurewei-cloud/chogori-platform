@@ -37,6 +37,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/cmd/ycsb/Log.h>
 #include <k2/cmd/ycsb/data.h>
 #include <k2/cmd/ycsb/dataload.h>
+#include <k2/cmd/ycsb/transactions.h>
 
 using namespace k2;
 
@@ -196,10 +197,38 @@ private:
         });
     }
 
+    seastar::future<> _ycsb() {
+        return seastar::do_until(
+            [this] { return _stopped; },
+            [this] {
+                YCSBTxn* curTxn;
+                curTxn = (YCSBTxn*) new YCSBBasicTxn(_random, _client, _requestDist, _scanLengthDist);
+
+                auto txn_start = k2::Clock::now();
+                return curTxn->run()
+                .then([this, txn_start] (bool success) {
+                    if (!success) {
+                        return;
+                    }
+
+                    _completedTxns++;
+                    auto end = k2::Clock::now();
+                    auto dur = end - txn_start;
+
+                    _txnLatency.add(dur);
+                })
+                .finally([curTxn] () {
+                    delete curTxn;
+                });
+            }
+        );
+    }
+
     /* This function will perform data loading if do_data_load is set
        and perform YCSB Benchmarking for given workload
 
-       TODO - Yet to implement Benchmarking part !!! */
+       TODO - Yet to implement Benchmarking part for multiple distribution
+             We now have only Uniform !!! */
     seastar::future<> _benchmark() {
 
         K2LOG_I(log::ycsb, "Creating K23SIClient");
@@ -208,7 +237,56 @@ private:
             return _dataLoad();
         }
 
-        return seastar::make_ready_future();
+        return seastar::sleep(5s)
+        .then([this] {
+            K2LOG_I(log::ycsb, "Starting transactions...");
+
+            _timer.arm(_testDuration);
+            _start = k2::Clock::now();
+            _random = RandomContext(seastar::this_shard_id(), getOpsProportion());
+            _requestDist = new UniformGenerator(_num_records(), 0, seastar::this_shard_id()); // uniform for now
+            _scanLengthDist = new UniformGenerator(_maxScanLen(), 1, seastar::this_shard_id()); // uniform for now
+
+            for (int i=0; i < _num_concurrent_txns(); ++i) {
+                _ycsb_futures.emplace_back(_ycsb());
+            }
+            return when_all(_ycsb_futures.begin(), _ycsb_futures.end());
+        })
+        .discard_result()
+        .finally([this] () {
+            auto duration = k2::Clock::now() - _start;
+            auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
+            auto cntpsec = (double)_completedTxns/totalsecs;
+            auto readpsec = (double)_client.read_ops/totalsecs;
+            auto writepsec = (double)_client.write_ops/totalsecs;
+            auto querypsec = (double)_client.query_ops/totalsecs;
+            K2LOG_I(log::ycsb, "completedTxns={} ({} per sec)", _completedTxns, cntpsec);
+            K2LOG_I(log::ycsb, "read ops {} per sec", readpsec);
+            K2LOG_I(log::ycsb, "write ops {} per sec", writepsec);
+            K2LOG_I(log::ycsb, "query ops {} per sec", querypsec);
+            return seastar::make_ready_future();
+        });
+    }
+
+    // Function returns a vector of operation proportion to initialize discrete generator
+    std::vector<double> getOpsProportion(){
+        std::vector<double> opsProportion(4,0); // there are 4 operations
+        uint8_t i = 0;
+        for(i=0;i<4;i++){
+            if((operation)i == Read) { // enum operation {Read=0, Update=1, Scan=2, Insert=3}
+                opsProportion[i] = _readProp();
+            } else if((operation)i == Update) {
+                opsProportion[i] = _updateProp();
+            } else if((operation)i == Scan) {
+                opsProportion[i] = _scanProp();
+            } else if((operation)i == Insert) {
+                opsProportion[i] = _insertProp();
+            } else {
+                opsProportion[i] = _deleteProp();
+            }
+        }
+        K2ASSERT(log::ycsb, accumulate(opsProportion.begin(), opsProportion.end(), 0)==100, "Operation proportions don't sum upto 100");
+        return opsProportion;
     }
 
 private:
@@ -221,6 +299,9 @@ private:
     SingleTimer _timer;
     std::vector<seastar::future<>> _ycsb_futures;
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
+    RandomGenerator* _requestDist;
+    RandomGenerator* _scanLengthDist;
+    RandomGenerator* _keyLengthDist;
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<bool> _do_data_load{"data_load"};
@@ -234,6 +315,13 @@ private:
     ConfigVar<String> _requestDistName{"request_dist"};
     ConfigVar<String> _scanLengthDistName{"scan_length_dist"};
     ConfigVar<String> _keyLengthDistName{"key_length_dist"};
+
+    ConfigVar<double> _readProp{"read_proportion"};
+    ConfigVar<double> _updateProp{"update_proportion"};
+    ConfigVar<double> _scanProp{"scan_proportion"};
+    ConfigVar<double> _insertProp{"insert_proportion"};
+    ConfigVar<double> _deleteProp{"delete_proportion"};
+    ConfigVar<uint32_t> _maxScanLen{"max_scan_length"};
 
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _txnLatency;
@@ -262,7 +350,16 @@ int main(int argc, char** argv) {;
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
         ("num_records",bpo::value<size_t>()->default_value(1000),"How many records to load")
         ("field_length",bpo::value<uint32_t>()->default_value(10),"The size of all fields in the table")
-        ("num_fields",bpo::value<uint32_t>()->default_value(5), "The number of fields in the table");
+        ("num_fields",bpo::value<uint32_t>()->default_value(5), "The number of fields in the table")
+        ("request_dist",bpo::value<String>()->default_value("uniform"), "Request distribution")
+        ("key_length_dist",bpo::value<String>()->default_value("uniform"), "Key length distribution")
+        ("scan_length_dist",bpo::value<String>()->default_value("uniform"), "Scan length distribution")
+        ("read_proportion",bpo::value<double>()->default_value(80.0), "Read Proportion")
+        ("update_proportion",bpo::value<double>()->default_value(10.0), "Update Proportion")
+        ("scan_proportion",bpo::value<double>()->default_value(10.0), "Scan Proportion")
+        ("insert_proportion",bpo::value<double>()->default_value(0), "Insert Proportion")
+        ("delete_proportion",bpo::value<double>()->default_value(0), "Delete Proportion")
+        ("max_scan_length",bpo::value<uint32_t>()->default_value(10), "Maximum scan length");
 
     app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<Client>();
