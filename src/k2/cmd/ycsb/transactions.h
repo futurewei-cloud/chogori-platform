@@ -94,10 +94,11 @@ public:
 class YCSBBasicTxn : public YCSBTxn {
 public:
     YCSBBasicTxn(RandomContext& random, K23SIClient& client,
-             RandomGenerator* requestDist, RandomGenerator* scanLengthDist) :
-                        _random(random), _client(client) {
+             RandomGenerator* requestDist, RandomGenerator* scanLengthDist, std::vector<uint8_t>& ops) :
+                        _random(random), _client(client), _ops(ops) {
             _requestDist = requestDist;
             _scanLengthDist = scanLengthDist;
+            _failed = false;
     }
 
      seastar::future<bool> attempt() override {
@@ -123,14 +124,14 @@ private:
                 [this, &current_op] { return current_op >= _ops_per_txn(); },
                 [this, &current_op] () {
 
-                operation op = (operation)_random.BiasedInt(); // randomly pick operation based on the workload proportion
-
                 if(_txnkeyids.size()<=current_op){
-                    _txnkeyids.push_back(_requestDist->getValue());
+                    _txnkeyids.push_back(_requestDist->getValue()); // randomly pick key for current operation
+                    _ops[current_op] = _random.BiasedInt(); // randomly pick operation based on the workload proportion
                 }
 
                 _keyid = _txnkeyids[current_op]; // use same key values if we are retrying txn
-                 ++current_op;
+                operation op = (operation)_ops[current_op]; // use same operation if we are retrying txn
+                ++current_op;
 
                 if(op==Read){
                     return readOperation();
@@ -169,6 +170,7 @@ private:
 
                 EndResult result = fut.get0();
                 if (result.status.is2xxOK() && !_failed) {
+
                     return seastar::make_ready_future<bool>(true);
                 }
 
@@ -186,6 +188,7 @@ private:
 
         return _txn.read(skv_record.getKey(), skv_record.collectionName).then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
+            K2LOG_D(log::ycsb, "Read succeeded : {}", result.status);
             // store returned read result in _data
             SKVRecordToYCSBData(_keyid,_data,result.value);
             return seastar::make_ready_future();
@@ -254,6 +257,7 @@ private:
                             _scanResult.push_back(data); // store in _scanResult
                         }
                     }
+                    K2LOG_D(log::ycsb, "Scan succeeded");
                     return seastar::make_ready_future();
                 });
             });
@@ -279,7 +283,8 @@ private:
     bool _failed;
     YCSBData _data; // row read from read operation
     int64_t _keyid; // keyid for current op
-    std::vector<int64_t> _txnkeyids; // keyids used in this txn stored for retries
+    std::vector<uint64_t> _txnkeyids; // keyids used in this txn stored for retries
+    std::vector<uint8_t>& _ops; // ops used in this txn stored for retries
     std::vector<YCSBData> _scanResult; // rows read from scan operation
     RandomGenerator* _requestDist; // Request distribution for selecting keys
     RandomGenerator* _scanLengthDist; // Request distribution for selecting length of scan

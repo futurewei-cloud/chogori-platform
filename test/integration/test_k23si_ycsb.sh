@@ -54,4 +54,12 @@ trap finish EXIT
 sleep 5
 
 echo ">>> Starting load ..."
-./build/src/k2/cmd/ycsb/ycsb_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --prometheus_port 63100 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --do_verification false --num_concurrent_txns=2 --num_records=5000
+./build/src/k2/cmd/ycsb/ycsb_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --prometheus_port 63100 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --do_verification false --num_concurrent_txns=2 --num_records=5000 --log_level DEBUG
+
+sleep 1
+
+echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+echo ">>> Starting benchmark ..."
+./build/src/k2/cmd/ycsb/ycsb_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load false --prometheus_port 63100 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s --do_verification false --num_concurrent_txns=2 --num_records=5000 --test_duration_s=60 --ops_per_txn=1 --log_level DEBUG

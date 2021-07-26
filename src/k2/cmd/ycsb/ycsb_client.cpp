@@ -120,7 +120,17 @@ public:  // application lifespan
             sm::make_counter("update_ops", _updateOps, sm::description("Number of completed Update operations"), labels),
             sm::make_counter("delete_ops", _deleteOps, sm::description("Number of completed Delete operations"), labels),
             sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();},
-                    sm::description("Latency of YCSB transactions"), labels)
+                    sm::description("Latency of YCSB transactions"), labels),
+            sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();},
+                    sm::description("Latency of YCSB Read Operations"), labels),
+            sm::make_histogram("update_latency", [this]{ return _updateLatency.getHistogram();},
+                    sm::description("Latency of YCSB  Update Operations"), labels),
+            sm::make_histogram("scan_latency", [this]{ return _scanLatency.getHistogram();},
+                    sm::description("Latency of YCSB  Scan Operations"), labels),
+            sm::make_histogram("insert_latency", [this]{ return _insertLatency.getHistogram();},
+                    sm::description("Latency of YCSB  Insert Operations"), labels),
+            sm::make_histogram("delete_latency", [this]{ return _deleteLatency.getHistogram();},
+                    sm::description("Latency of YCSB  Delete Operations"), labels)
         });
     }
 
@@ -198,15 +208,17 @@ private:
     }
 
     seastar::future<> _ycsb() {
+        K2LOG_D(log::ycsb, "Starting Transactions in ycsb()");
         return seastar::do_until(
             [this] { return _stopped; },
             [this] {
+                std::vector<uint8_t> ops(_ops_per_txn(),0); // to record operations in transaction
                 YCSBTxn* curTxn;
-                curTxn = (YCSBTxn*) new YCSBBasicTxn(_random, _client, _requestDist, _scanLengthDist);
+                curTxn = (YCSBTxn*) new YCSBBasicTxn(_random, _client, _requestDist, _scanLengthDist, ops);
 
                 auto txn_start = k2::Clock::now();
                 return curTxn->run()
-                .then([this, txn_start] (bool success) {
+                .then([this, txn_start, ops] (bool success) {
                     if (!success) {
                         return;
                     }
@@ -216,6 +228,29 @@ private:
                     auto dur = end - txn_start;
 
                     _txnLatency.add(dur);
+                    for(auto&& i: ops){ // go over all operations in this transaction
+                        operation op = (operation)i;
+                        if(op==Read){
+                            _readOps++;
+                            _readLatency.add(dur);
+                        }
+                        else if(op==Update){
+                            _updateOps++;
+                            _updateLatency.add(dur);
+                        }
+                        else if(op==Scan){
+                            _scanOps++;
+                            _scanLatency.add(dur);
+                        }
+                        else if(op==Insert){
+                            _insertOps++;
+                            _insertLatency.add(dur);
+                        }
+                        else{
+                            _deleteOps++;
+                            _deleteLatency.add(dur);
+                        }
+                    }
                 })
                 .finally([curTxn] () {
                     delete curTxn;
@@ -244,8 +279,8 @@ private:
             _timer.arm(_testDuration);
             _start = k2::Clock::now();
             _random = RandomContext(seastar::this_shard_id(), getOpsProportion());
-            _requestDist = new UniformGenerator(_num_records(), 0, seastar::this_shard_id()); // uniform for now
-            _scanLengthDist = new UniformGenerator(_maxScanLen(), 1, seastar::this_shard_id()); // uniform for now
+            _requestDist = (RandomGenerator*) new UniformGenerator(_num_records(), 0, seastar::this_shard_id()); // uniform for now
+            _scanLengthDist = (RandomGenerator*) new UniformGenerator(_maxScanLen(), 1, seastar::this_shard_id()); // uniform for now
 
             for (int i=0; i < _num_concurrent_txns(); ++i) {
                 _ycsb_futures.emplace_back(_ycsb());
@@ -261,6 +296,11 @@ private:
             auto writepsec = (double)_client.write_ops/totalsecs;
             auto querypsec = (double)_client.query_ops/totalsecs;
             K2LOG_I(log::ycsb, "completedTxns={} ({} per sec)", _completedTxns, cntpsec);
+            K2LOG_I(log::ycsb, "completed YCSB Read operations={}", _readOps);
+            K2LOG_I(log::ycsb, "completed YCSB Update operations={}", _updateOps);
+            K2LOG_I(log::ycsb, "completed YCSB Scan operations={}", _scanOps);
+            K2LOG_I(log::ycsb, "completed YCSB Insert operations={}", _insertOps);
+            K2LOG_I(log::ycsb, "completed YCSB Delete operations={}", _deleteOps);
             K2LOG_I(log::ycsb, "read ops {} per sec", readpsec);
             K2LOG_I(log::ycsb, "write ops {} per sec", writepsec);
             K2LOG_I(log::ycsb, "query ops {} per sec", querypsec);
@@ -270,10 +310,10 @@ private:
 
     // Function returns a vector of operation proportion to initialize discrete generator
     std::vector<double> getOpsProportion(){
-        std::vector<double> opsProportion(4,0); // there are 4 operations
+        std::vector<double> opsProportion(5,0); // there are 5 operations
         uint8_t i = 0;
-        for(i=0;i<4;i++){
-            if((operation)i == Read) { // enum operation {Read=0, Update=1, Scan=2, Insert=3}
+        for(i=0;i<5;i++){
+            if((operation)i == Read) { // enum operation {Read=0, Update=1, Scan=2, Insert=3, Delete=4}
                 opsProportion[i] = _readProp();
             } else if((operation)i == Update) {
                 opsProportion[i] = _updateProp();
@@ -311,6 +351,7 @@ private:
     ConfigVar<uint32_t> _field_length{"field_length"};
     ConfigVar<size_t> _num_records{"num_records"};
     ConfigVar<uint32_t> _test_duration_sec{"test_duration_s"};
+    ConfigVar<uint64_t> _ops_per_txn{"ops_per_txn"};
 
     ConfigVar<String> _requestDistName{"request_dist"};
     ConfigVar<String> _scanLengthDistName{"scan_length_dist"};
@@ -325,6 +366,11 @@ private:
 
     sm::metric_groups _metric_groups;
     k2::ExponentialHistogram _txnLatency;
+    k2::ExponentialHistogram _readLatency;
+    k2::ExponentialHistogram _updateLatency;
+    k2::ExponentialHistogram _scanLatency;
+    k2::ExponentialHistogram _insertLatency;
+    k2::ExponentialHistogram _deleteLatency;
     uint64_t _completedTxns{0};
     uint64_t _readOps{0};
     uint64_t _insertOps{0};
@@ -350,16 +396,17 @@ int main(int argc, char** argv) {;
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
         ("num_records",bpo::value<size_t>()->default_value(1000),"How many records to load")
         ("field_length",bpo::value<uint32_t>()->default_value(10),"The size of all fields in the table")
-        ("num_fields",bpo::value<uint32_t>()->default_value(5), "The number of fields in the table")
+        ("num_fields",bpo::value<uint32_t>()->default_value(10), "The number of fields in the table")
         ("request_dist",bpo::value<String>()->default_value("uniform"), "Request distribution")
         ("key_length_dist",bpo::value<String>()->default_value("uniform"), "Key length distribution")
         ("scan_length_dist",bpo::value<String>()->default_value("uniform"), "Scan length distribution")
-        ("read_proportion",bpo::value<double>()->default_value(80.0), "Read Proportion")
+        ("read_proportion",bpo::value<double>()->default_value(70.0), "Read Proportion")
         ("update_proportion",bpo::value<double>()->default_value(10.0), "Update Proportion")
-        ("scan_proportion",bpo::value<double>()->default_value(10.0), "Scan Proportion")
+        ("scan_proportion",bpo::value<double>()->default_value(20.0), "Scan Proportion")
         ("insert_proportion",bpo::value<double>()->default_value(0), "Insert Proportion")
         ("delete_proportion",bpo::value<double>()->default_value(0), "Delete Proportion")
-        ("max_scan_length",bpo::value<uint32_t>()->default_value(10), "Maximum scan length");
+        ("max_scan_length",bpo::value<uint32_t>()->default_value(10), "Maximum scan length")
+        ("ops_per_txn",bpo::value<uint64_t>()->default_value(1), "The number of operations per transaction");
 
     app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<Client>();

@@ -109,7 +109,8 @@ public:
         return padding + key;
     }
 
-    YCSBData(uint64_t keyid = 0) : ID(keyid), fields(_num_fields(),"") {
+    YCSBData(uint64_t keyid = 0) : ID(keyid) {
+        fields.resize(_num_fields());
         fields[0] = YCSBData::idToKey(keyid,_len_field()); // initialize key
     }
 
@@ -180,6 +181,7 @@ partialUpdateRow(uint32_t keyid, std::vector<String> fieldValues, std::vector<ui
             return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
         }
 
+        K2LOG_D(log::ycsb, "partialUpdateRow succeeded : {}", result.status);
         return seastar::make_ready_future<PartialUpdateResult>(std::move(result));
     });
 }
