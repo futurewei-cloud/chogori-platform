@@ -56,7 +56,7 @@ public:  // application lifespan
 
     seastar::future<> start() {
         _stopped = false;
-        _session = std::move(BenchSession(0, _requestSize()));
+        _session = BenchSession(0, _requestSize());
         auto myid = seastar::this_shard_id();
 
         // push all eps to talk to, starting with mine
