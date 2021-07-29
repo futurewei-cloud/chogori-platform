@@ -199,11 +199,11 @@ private:
         K2LOG_D(log::ycsb, "Update operation started");
 
         // select number of fields to update uniformly at random and also fill their values at random
-        int32_t numFields = _random.UniformRandom(1,_num_fields()-1);
+        int32_t numFields = _random.UniformRandom(1,_max_fields_update());
         std::vector<String> fieldValues(numFields,"");
         std::vector<uint32_t> fieldsToUpdate(numFields,0);
 
-        std::set<uint32_t> fields = _random.RandomSetInt(numFields, _num_fields()-1, 1);
+        std::set<uint32_t> fields = _random.RandomSetInt(numFields, 1, _num_fields()-1); // select the fields to be updated
 
         uint32_t cur = 0;
         for(auto&& field: fields){
@@ -294,6 +294,6 @@ private:
     ConfigVar<uint64_t> _ops_per_txn{"ops_per_txn"};
     ConfigVar<uint32_t> _field_length{"field_length"};
     ConfigVar<uint32_t> _num_fields{"num_fields"};
-    ConfigVar<uint32_t> _maxScanLen{"max_scan_length"};
+    ConfigVar<uint32_t> _max_fields_update{"max_fields_update"};
 };
  // Need to retry so many times only if operation failed and error code not 400!

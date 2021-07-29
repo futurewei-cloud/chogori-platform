@@ -73,7 +73,7 @@ class YCSBData{
 public:
 
     // function to generate the schema for YCSB Data based on the number of fields per records
-    static dto::Schema generateSchema(const uint32_t num_fields){
+    static void generateSchema(const uint32_t num_fields){
 
         std::vector<dto::SchemaField> field_names;
 
@@ -95,7 +95,7 @@ public:
             .rangeKeyFields = std::vector<uint32_t> {}
         };
 
-        return ycsb_data_schema;
+        YCSBData::ycsb_schema = ycsb_data_schema;
     }
 
     // function to obtain generate key for a particular id
