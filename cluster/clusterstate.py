@@ -120,8 +120,20 @@ class Assignment:
         self.replace_program_arg(assigned.runnable, "$cpo_endpoints", cpo_endpoints)
 
     def fill_nodepool_endpoints(self, assigned: AssignedNode):
-        cpo_endpoints = self.get_component_endpoints("nodepool")
-        self.replace_program_arg(assigned.runnable, "$nodepool_endpoints", cpo_endpoints)
+        endpoints = self.get_component_endpoints("nodepool")
+        self.replace_program_arg(assigned.runnable, "$nodepool_endpoints", endpoints)
+
+    def fill_netserver_endpoints(self, assigned: AssignedNode):
+        endpoints = self.get_component_endpoints("netserver")
+        if self.use_rdma:
+            endpoints = endpoints.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
+        self.replace_program_arg(assigned.runnable, "$netserver_endpoints", endpoints)
+
+    def fill_rpcserver_endpoints(self, assigned: AssignedNode):
+        endpoints = self.get_component_endpoints("rpcserver")
+        if self.use_rdma:
+            endpoints = endpoints.replace("tcp+k2rpc", "auto-rrdma+k2rpc")
+        self.replace_program_arg(assigned.runnable, "$rpcserver_endpoints", endpoints)
 
     def fill_tso_endpoints(self, assigned: AssignedNode):
         tso_endpoints = self.get_component_endpoints("tso")
@@ -181,8 +193,12 @@ class Assignment:
 
         # Second check for cluster prerequisites (e.g. CPO must be parsed before nodepool)
         can_assign = False
+        if runnable.component == "netserver" or runnable.component == "netclient":
+            can_assign = True
+        if runnable.component == "rpcserver" or runnable.component == "rpcclient":
+            can_assign = True
         # CPO, TSO, and persist are standalone with no prerequisites
-        if runnable.component == "cpo" or runnable.component == "tso" or runnable.component == "persist":
+        elif runnable.component == "cpo" or runnable.component == "tso" or runnable.component == "persist":
             can_assign = True
         elif runnable.component == "nodepool":
             can_assign = self.check_assigned("cpo") and self.check_assigned("tso") and self.check_assigned("persist")
@@ -201,6 +217,8 @@ class Assignment:
         self.fill_tso_endpoints(assigned)
         self.fill_persist_endpoints(assigned)
         self.fill_nodepool_endpoints(assigned)
+        self.fill_netserver_endpoints(assigned)
+        self.fill_rpcserver_endpoints(assigned)
         self.make_program_args(assigned)
 
     def get_assigned_runnable(self, runnable: Runnable):

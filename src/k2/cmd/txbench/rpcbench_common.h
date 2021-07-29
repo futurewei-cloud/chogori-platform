@@ -39,14 +39,14 @@ struct BenchSession {
     BenchSession(BenchSession&&)=default;
     BenchSession& operator=(BenchSession&&)=default;
     BenchSession(uint64_t sessionId, size_t dataSize): sessionId(sessionId) {
-        dataCopy = String('.', dataSize);
+        dataCopy = String(dataSize, '.');
         dataShare.write(dataCopy);
     }
 
     uint64_t sessionId = 0;
     uint64_t totalSize=0;
     uint64_t totalCount=0;
-    Payload dataShare{[]{ return Binary(1446);}};
+    Payload dataShare{Payload::DefaultAllocator};
     String dataCopy;
     std::vector<std::unique_ptr<TXEndpoint>> endpoints;
 };
