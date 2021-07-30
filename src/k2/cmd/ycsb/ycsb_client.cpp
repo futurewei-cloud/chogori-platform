@@ -82,7 +82,6 @@ class Client {
 public:  // application lifespan
     Client():
         _client(K23SIClient(K23SIClientConfig())),
-        _testDuration(_test_duration_sec()*1s),
         _stopped(true),
         _timer([this] {
             _stopped = true;
@@ -119,6 +118,7 @@ public:  // application lifespan
             sm::make_counter("insert_ops", _insertOps, sm::description("Number of completed Insert operations"), labels),
             sm::make_counter("update_ops", _updateOps, sm::description("Number of completed Update operations"), labels),
             sm::make_counter("delete_ops", _deleteOps, sm::description("Number of completed Delete operations"), labels),
+            sm::make_counter("insert_misses", _insertMissesLatest, sm::description("Number of Insert Misses for Latest distribution"), labels),
             sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();},
                     sm::description("Latency of YCSB transactions"), labels),
             sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();},
@@ -216,7 +216,7 @@ private:
                  // ops records operations in transaction
                 return seastar::do_with(std::vector<uint8_t>(_ops_per_txn(),0), [this] (std::vector<uint8_t>& ops) {
                     YCSBTxn* curTxn;
-                    curTxn = (YCSBTxn*) new YCSBBasicTxn(_random, _client, _requestDist, _scanLengthDist, ops);
+                    curTxn = (YCSBTxn*) new YCSBBasicTxn(_random, _client, _requestDist, _scanLengthDist, ops, _insertMissesLatest);
 
                     K2LOG_D(log::ycsb, "Stopped at start={}",_stopped);
                     auto txn_start = k2::Clock::now();
@@ -279,10 +279,14 @@ private:
         .then([this] {
             K2LOG_I(log::ycsb, "Starting transactions...");
 
-            _timer.arm(_testDuration);
+            _timer.arm(_testDuration());
             _start = k2::Clock::now();
             _random = RandomContext(seastar::this_shard_id(), getOpsProportion()); // initialize Random Context with operations proportions for biased selection
-            _requestDist = getDistribution(_requestDistName(),0,_num_keys-1, seastar::this_shard_id()); // create request Distribution
+            if(_requestDistName()=="latest"){ // create request Distribution
+                _requestDist = getDistribution(_requestDistName(),0,_num_records()-1, seastar::this_shard_id()); // set max to the last loaded record
+            } else {
+                _requestDist = getDistribution(_requestDistName(),0,_num_keys-1, seastar::this_shard_id()); // set max to the total key space size
+            }
             _scanLengthDist = getDistribution(_scanLengthDistName(),1,_maxScanLen(), seastar::this_shard_id()); // create Scan length Distribution
 
             for (int i=0; i < _num_concurrent_txns(); ++i) {
@@ -315,15 +319,17 @@ private:
     // returns distribution that generates items in range [min,max] and uses given seed
     RandomGenerator* getDistribution(String name, uint64_t min, uint64_t max, int seed = 0){
 
-        K2ASSERT(log::ycsb, name=="uniform" || name=="zipfian" || name=="szipfian", "Invalid distribution name");
+        K2ASSERT(log::ycsb, name=="uniform" || name=="zipfian" || name=="szipfian" || name=="latest", "Invalid distribution name");
 
         RandomGenerator* dis;
         if(name=="uniform"){
             dis = (RandomGenerator*) new UniformGenerator(min,max,seed);
         }else if(name=="zipfian"){
             dis = (RandomGenerator*) new ZipfianGenerator(min,max,seed);
-        }else{
+        }else if(name=="szipfian"){
             dis = (RandomGenerator*) new ScrambledZipfianGenerator(min,max,seed);
+        }else{
+            dis = (RandomGenerator*) new LatestGenerator(min,max,seed);
         }
 
         return dis;
@@ -352,7 +358,6 @@ private:
 
 private:
     K23SIClient _client;
-    k2::Duration _testDuration;
     bool _stopped = true;
     DataLoader _data_loader;
     RandomContext _random;
@@ -372,8 +377,8 @@ private:
     ConfigVar<uint32_t> _field_length{"field_length"};
     ConfigVar<size_t> _num_records{"num_records"};
     ConfigVar<size_t> _num_inserts{"num_records_insert"};
-    ConfigVar<uint32_t> _test_duration_sec{"test_duration_s"};
     ConfigVar<uint64_t> _ops_per_txn{"ops_per_txn"};
+    k2::ConfigDuration _testDuration{"test_duration", 30s};
 
     ConfigVar<String> _requestDistName{"request_dist"};
     ConfigVar<String> _scanLengthDistName{"scan_length_dist"};
@@ -398,6 +403,7 @@ private:
     uint64_t _updateOps{0};
     uint64_t _scanOps{0};
     uint64_t _deleteOps{0};
+    uint64_t _insertMissesLatest{0};
 }; // class Client
 
 int main(int argc, char** argv) {;
@@ -408,7 +414,7 @@ int main(int argc, char** argv) {;
         ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_concurrent_txns", bpo::value<int>()->default_value(2), "Number of concurrent transactions to use")
-        ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
+        ("test_duration", bpo::value<k2::ParseableDuration>(), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("dataload_txn_timeout", bpo::value<ParseableDuration>(), "Timeout of dataload txn, as chrono literal")
         ("writes_per_load_txn", bpo::value<size_t>()->default_value(10), "The number of writes to do in the load phase between txn commit calls")
@@ -419,7 +425,7 @@ int main(int argc, char** argv) {;
         ("num_records_insert",bpo::value<size_t>()->default_value(50),"How many records expected to be inserted during workloads")
         ("field_length",bpo::value<uint32_t>()->default_value(10),"The size of all fields in the table")
         ("num_fields",bpo::value<uint32_t>()->default_value(10), "The number of fields in the table")
-        ("request_dist",bpo::value<String>()->default_value("szipfian"), "Request distribution") // choices are: "uniform", "szipfian" (scrambledZipfian), "zipfian" (latest) - to do
+        ("request_dist",bpo::value<String>()->default_value("szipfian"), "Request distribution") // choices are: "uniform", "szipfian" (scrambledZipfian), "latest" - to do
         ("scan_length_dist",bpo::value<String>()->default_value("uniform"), "Scan length distribution") // choices are: "uniform", "zipfian" - favouring shorter scans
         ("read_proportion",bpo::value<double>()->default_value(70.0), "Read Proportion")
         ("update_proportion",bpo::value<double>()->default_value(10.0), "Update Proportion")

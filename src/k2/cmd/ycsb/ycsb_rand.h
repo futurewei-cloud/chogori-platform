@@ -82,7 +82,9 @@ private:
 // Base class for all distributions that generate random items : Uniform, Zipfian and Scrambled Zipfian
 class RandomGenerator {
 public:
-    virtual uint64_t getValue() = 0;
+    virtual uint64_t getValue() = 0; // returns random value according to distribution
+    virtual void updateBounds(uint64_t min, uint64_t max) = 0; // returns true if Bounds are successfully updated
+    virtual uint64_t getMaxValue() = 0;
     virtual ~RandomGenerator() = default;
 };
 
@@ -94,6 +96,14 @@ public:
          return _dist(_generator);
      }
 
+    void updateBounds(uint64_t min, uint64_t max) override {
+         _dist.param(std::uniform_int_distribution<int>::param_type{(int)min, (int)max});
+    }
+
+    uint64_t getMaxValue() override {
+        return _dist.max();
+    }
+
 private:
     std::mt19937 _generator;
     std::uniform_int_distribution<> _dist;
@@ -102,45 +112,66 @@ private:
 class ZipfianGenerator : public RandomGenerator{
 
 public:
-  // create zipfian generator for items between min and max (inclusive) with given zipfianconstant
-  ZipfianGenerator(uint64_t min, uint64_t max, int seed=0, double zipfianconstant=0.99) : ZipfianGenerator(min,max,zipfianconstant,computeZetan(max-min+1,zipfianconstant),seed) { }
+    // create zipfian generator for items between min and max (inclusive) with given zipfianconstant
+    ZipfianGenerator(uint64_t min, uint64_t max, int seed=0, double zipfianconstant=0.99) : ZipfianGenerator(min,max,zipfianconstant,computeZetan(max-min+1,zipfianconstant),seed) { }
 
-  // create zipfian generator for items between min and max (inclusive) with given zipfianconstant and precomputed parameter zeta
-  ZipfianGenerator(uint64_t min, uint64_t max, double zipfianconstant, double zetan, int seed=0) :
-                                              _generator(seed), _dist(0,1), _min(min), _items(max - min + 1), _zipfianconstant(zipfianconstant), _zetan(zetan) {
-    double zeta2theta = computeZetan(2,_zipfianconstant);
-    _alpha = 1.0 / (1.0 - _zipfianconstant);
-    _eta = (1 - pow(2.0 / _items, 1 - _zipfianconstant)) / (1 - zeta2theta / _zetan);
-  }
-
-  // sample from the zipfian distribution. The min-th item is the most popular, followed by the min+1th item and so on...
-  // use algorithm from "Quickly Generating Billion-Record Synthetic Databases", Jim Gray et al, SIGMOD 1994
-  uint64_t getValue() override {
-    double u = _dist(_generator);
-    double uz = u * _zetan;
-
-    if (uz < 1.0) {
-      return _min;
+    // create zipfian generator for items between min and max (inclusive) with given zipfianconstant and precomputed parameter zeta
+    ZipfianGenerator(uint64_t min, uint64_t max, double zipfianconstant, double zetan, int seed=0) :
+                                                _generator(seed), _dist(0,1), _min(min), _items(max - min + 1), _zipfianconstant(zipfianconstant), _zetan(zetan) {
+        _zeta2theta = computeZetan(2,_zipfianconstant);
+        _alpha = 1.0 / (1.0 - _zipfianconstant);
+        _eta = (1 - pow(2.0 / _items, 1 - _zipfianconstant)) / (1 - _zeta2theta / _zetan);
     }
 
-    if (uz < 1.0 + pow(0.5, _zipfianconstant)) {
-      return _min + 1;
+    // sample from the zipfian distribution. The min-th item is the most popular, followed by the min+1th item and so on...
+    // use algorithm from "Quickly Generating Billion-Record Synthetic Databases", Jim Gray et al, SIGMOD 1994
+    uint64_t getValue() override {
+        double u = _dist(_generator);
+        double uz = u * _zetan;
+
+        if (uz < 1.0) {
+            return _min;
+        }
+
+        if (uz < 1.0 + pow(0.5, _zipfianconstant)) {
+            return _min + 1;
+        }
+
+        uint64_t ret = _min + (uint64_t) ((_items) * pow(_eta * u - _eta + 1, _alpha));
+        return ret;
     }
 
-    uint64_t ret = _min + (uint64_t) ((_items) * pow(_eta * u - _eta + 1, _alpha));
-    return ret;
-  }
+    // compute parameter zeta given n and zipfianconstant
+    // compute parameter incrementally when n increases
+    static double computeZetan(uint64_t n, double zipfianconstant, double oldZeta=0, uint64_t oldn=0){
+        double zetan = oldZeta;
 
-  // compute parameter zeta given n and zipfianconstant
-  static double computeZetan(uint64_t n, double zipfianconstant){
-    double zetan = 0;
+        for(uint64_t i=oldn; i<n; i++){
+            zetan += 1.0/(pow(i + 1, zipfianconstant));
+        }
 
-    for(uint64_t i=0;i<n;i++){
-      zetan += 1.0/(pow(i + 1, zipfianconstant));
+        return zetan;
     }
 
-    return zetan;
-  }
+    void updateBounds(uint64_t min, uint64_t max) override {
+        if(max-min+1==_items){
+            _min = min; // only changing min is enough
+        } else if(max-min+1>_items){
+            _zetan = computeZetan(max-min+1,_zipfianconstant,_zetan,_items); //update zetan
+            _min = min;
+            _items = max-min+1;
+            _eta = (1 - pow(2.0 / _items, 1 - _zipfianconstant)) / (1 - _zeta2theta / _zetan);
+        } else {
+            _zetan = computeZetan(max-min+1,_zipfianconstant); // recompute zetan
+            _min = min;
+            _items = max-min+1;
+            _eta = (1 - pow(2.0 / _items, 1 - _zipfianconstant)) / (1 - _zeta2theta / _zetan);
+        }
+    }
+
+    uint64_t getMaxValue() override {
+        return _min+_items-1;
+    }
 
 private:
     std::mt19937 _generator;
@@ -148,7 +179,7 @@ private:
     uint64_t _min; // the min item
     uint64_t _items; // total items
     double _zipfianconstant; // zipfian constant used
-    double _zetan, _alpha, _eta; //parameters for the distribution
+    double _zeta2theta, _zetan, _alpha, _eta; //parameters for the distribution
 };
 
 // 64 bit FNV hash - used in Scrambled zipfian generator to scatter items in itemspace
@@ -189,8 +220,42 @@ public:
         return ret;
     }
 
+    void updateBounds(uint64_t min, uint64_t max) override {
+        _min = min;
+        _itemcount = max-min+1;
+    }
+
+    uint64_t getMaxValue() override {
+        return _min+_itemcount-1;
+    }
+
 private:
     ZipfianGenerator _gen;
     uint64_t _min, _itemcount;
 };
 
+
+class LatestGenerator : public RandomGenerator{
+public:
+    // create latest generator for items between min and max (inclusive) with given zipfianconstant
+    LatestGenerator(uint64_t min, uint64_t max, int seed=0) : _gen(min, max, seed), _max(max) {}
+
+    // Sample value from latest distribution - most popular item is the latest inserted item or max
+    uint64_t getValue() override {
+        uint64_t ret = _gen.getValue();
+        return _max - ret;
+    }
+
+    void updateBounds(uint64_t min, uint64_t max) override {
+        _max = max;
+        _gen.updateBounds(min,max);
+    }
+
+    uint64_t getMaxValue() override {
+        return _max;
+    }
+
+private:
+    ZipfianGenerator _gen;
+    uint64_t _max;
+};

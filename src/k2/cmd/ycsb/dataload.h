@@ -80,7 +80,7 @@ private:
                 [this, &current_size, start_idx, endIdxShard] { return ((current_size >= _writes_per_load_txn()) || ((start_idx + current_size)>= endIdxShard)); },
                 [this, &current_size, &txn, start_idx, &random_c] () {
                 uint8_t isLoad = random_c.BiasedInt();
-                if(isLoad){ // load record with prob = _num_records / _num_keys
+                if(isLoad || (_requestDistName()=="latest" && (start_idx + current_size)<_num_records())){ // load record with prob = _num_records / _num_keys or if latest load all records uptil num_records()
                     K2LOG_D(log::ycsb, "Record being loaded now in this txn is {}", start_idx + current_size);
 
                     YCSBData row(start_idx + current_size, random_c); // generate row
@@ -110,5 +110,6 @@ private:
     ConfigVar<size_t> _writes_per_load_txn{"writes_per_load_txn"};
     ConfigVar<size_t> _num_records{"num_records"};
     ConfigVar<size_t> _num_inserts{"num_records_insert"};
+    ConfigVar<String> _requestDistName{"request_dist"};
 };
 

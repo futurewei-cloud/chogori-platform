@@ -94,8 +94,8 @@ public:
 class YCSBBasicTxn : public YCSBTxn {
 public:
     YCSBBasicTxn(RandomContext& random, K23SIClient& client,
-             RandomGenerator* requestDist, RandomGenerator* scanLengthDist, std::vector<uint8_t>& ops) :
-                        _random(random), _client(client), _ops(ops) {
+             RandomGenerator* requestDist, RandomGenerator* scanLengthDist, std::vector<uint8_t>& ops,uint64_t& insertMissesLatest) :
+                        _random(random), _client(client), _ops(ops), _insertMissesLatest(insertMissesLatest) {
             _requestDist = requestDist;
             _scanLengthDist = scanLengthDist;
             _failed = false;
@@ -119,10 +119,10 @@ private:
     seastar::future<bool> runWithTxn(){
         K2LOG_D(log::ycsb, "Starting transaction");
         _txnkeyids.reserve(_ops_per_txn());
-        return seastar::do_with((size_t)0, [this] (size_t& current_op) {
+        return seastar::do_with((size_t)0,(operation)0, [this] (size_t& current_op,operation& op) {
             return seastar::do_until(
                 [this, &current_op] { return current_op >= _ops_per_txn(); },
-                [this, &current_op] () {
+                [this, &current_op, &op] () {
 
                 if(_txnkeyids.size()<=current_op){
                     _txnkeyids.push_back(_requestDist->getValue()); // randomly pick key for current operation
@@ -130,7 +130,7 @@ private:
                 }
 
                 _keyid = _txnkeyids[current_op]; // use same key values if we are retrying txn
-                operation op = (operation)_ops[current_op]; // use same operation if we are retrying txn
+                op = (operation)_ops[current_op]; // use same operation if we are retrying txn
                 ++current_op;
 
                 if(op==Read){
@@ -217,15 +217,14 @@ private:
 
     seastar::future<> scanOperation(){
         K2LOG_D(log::ycsb, "Scan operation started");
-        int32_t numScan = _scanLengthDist->getValue();
 
         return _client.createQuery(ycsbCollectionName, "ycsb_data")
-        .then([this, &numScan](auto&& response) mutable {
+        .then([this](auto&& response) mutable {
             CHECK_READ_STATUS(response);
             // make Query request and set query rules
             _query_scan = std::move(response.query);
             _query_scan.startScanRecord.serializeNext<String>(YCSBData::idToKey(_keyid,_num_fields()));
-            _query_scan.setLimit(numScan); // get numScan entries starting from given key
+            _query_scan.setLimit(_scanLengthDist->getValue()); // get specified number of entries (got from scanLength Distribution) starting from given key
             _query_scan.setReverseDirection(false);
 
             std::vector<String> projection(YCSBData::_fieldNames); // make projection on all fields
@@ -265,9 +264,38 @@ private:
     }
 
     seastar::future<> insertOperation(){
-        K2LOG_D(log::ycsb, "Insert operation started");
-        YCSBData row(_keyid, _random); // generate row
-        return writeRow(row, _txn).discard_result();
+
+        return seastar::do_with((uint64_t)_keyid, [this] (uint64_t& keyid) {
+            if(_requestDistName()!="latest") {
+                K2LOG_D(log::ycsb, "Insert operation started for key {}", keyid);
+                YCSBData row(keyid, _random); // generate row
+                return writeRow(row, _txn).discard_result();
+            }
+
+            keyid = _requestDist->getMaxValue()+1;
+            YCSBData row(keyid,_random); // key is max known (latest) key + 1
+
+            K2LOG_D(log::ycsb, "Insert operation started for key {}", keyid);
+            return writeRow(row, _txn) //handle latest distribution separately to identify insert fails and increment latest known record max key value
+                .then_wrapped([this,keyid] (auto&& fut) {
+                    if (fut.failed()) {
+                        fut.ignore_ready_future();
+                        return seastar::make_exception_future<>(std::runtime_error("Insert failed!"));
+                    }
+
+                    WriteResult result = fut.get0();
+                    if (result.status.is2xxOK() || result.status.code == 403) { // key inserted or already exists
+                        if(_requestDist->getMaxValue() < keyid) { // update bounds of distribution
+                            _requestDist->updateBounds(0,keyid);
+                        }
+                        if(result.status.code == 403) { // insert missed because record exists
+                            _insertMissesLatest++; // increment misses counter
+                        }
+                    }
+
+                    return seastar::make_ready_future();
+                });
+        });
     }
 
     seastar::future<> deleteOperation(){
@@ -288,12 +316,13 @@ private:
     std::vector<YCSBData> _scanResult; // rows read from scan operation
     RandomGenerator* _requestDist; // Request distribution for selecting keys
     RandomGenerator* _scanLengthDist; // Request distribution for selecting length of scan
-    // RandomGenerator _keyLengthDist;
+    uint64_t& _insertMissesLatest;
 
 private:
     ConfigVar<uint64_t> _ops_per_txn{"ops_per_txn"};
     ConfigVar<uint32_t> _field_length{"field_length"};
     ConfigVar<uint32_t> _num_fields{"num_fields"};
     ConfigVar<uint32_t> _max_fields_update{"max_fields_update"};
+    ConfigVar<String> _requestDistName{"request_dist"};
 };
  // Need to retry so many times only if operation failed and error code not 400!
