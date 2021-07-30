@@ -79,12 +79,12 @@ private:
     std::discrete_distribution<> _discreteDis;
 };
 
-// Base class for all distributions that generate random items : Uniform, Zipfian and Scrambled Zipfian
+// Base class for all distributions that generate random items : Uniform, Zipfian, Scrambled Zipfian and Latest
 class RandomGenerator {
 public:
     virtual uint64_t getValue() = 0; // returns random value according to distribution
     virtual void updateBounds(uint64_t min, uint64_t max) = 0; // returns true if Bounds are successfully updated
-    virtual uint64_t getMaxValue() = 0;
+    virtual uint64_t getMaxValue() = 0; // returns max value that can be output by distribution
     virtual ~RandomGenerator() = default;
 };
 
@@ -153,20 +153,18 @@ public:
         return zetan;
     }
 
-    void updateBounds(uint64_t min, uint64_t max) override {
+    void updateBounds(uint64_t min, uint64_t max) override { //update all parameters as well
         if(max-min+1==_items){
             _min = min; // only changing min is enough
+            return;
         } else if(max-min+1>_items){
             _zetan = computeZetan(max-min+1,_zipfianconstant,_zetan,_items); //update zetan
-            _min = min;
-            _items = max-min+1;
-            _eta = (1 - pow(2.0 / _items, 1 - _zipfianconstant)) / (1 - _zeta2theta / _zetan);
         } else {
             _zetan = computeZetan(max-min+1,_zipfianconstant); // recompute zetan
-            _min = min;
-            _items = max-min+1;
-            _eta = (1 - pow(2.0 / _items, 1 - _zipfianconstant)) / (1 - _zeta2theta / _zetan);
         }
+        _min = min;
+        _items = max-min+1;
+        _eta = (1 - pow(2.0 / _items, 1 - _zipfianconstant)) / (1 - _zeta2theta / _zetan);
     }
 
     uint64_t getMaxValue() override {

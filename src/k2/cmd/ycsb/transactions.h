@@ -180,7 +180,7 @@ private:
     }
 
     seastar::future<> readOperation(){
-        K2LOG_D(log::ycsb, "Read operation started");
+        K2LOG_D(log::ycsb, "Read operation started for keyid {}",_keyid);
         String key = YCSBData::idToKey(_keyid,_field_length());
         dto::SKVRecord skv_record(YCSBData::collectionName, YCSBData::schema); // create SKV record
 
@@ -196,14 +196,14 @@ private:
     }
 
     seastar::future<> updateOperation(){
-        K2LOG_D(log::ycsb, "Update operation started");
+        K2LOG_D(log::ycsb, "Update operation started for keyid {}", _keyid);
 
         // select number of fields to update uniformly at random and also fill their values at random
         int32_t numFields = _random.UniformRandom(1,_max_fields_update());
         std::vector<String> fieldValues(numFields,"");
         std::vector<uint32_t> fieldsToUpdate(numFields,0);
 
-        std::set<uint32_t> fields = _random.RandomSetInt(numFields, 1, _num_fields()-1); // select the fields to be updated
+        std::set<uint32_t> fields = _random.RandomSetInt(numFields, 1, _num_fields()-1); // select the fields to be updated, do not consider 0 because it is key
 
         uint32_t cur = 0;
         for(auto&& field: fields){
@@ -253,7 +253,7 @@ private:
                         for (dto::SKVRecord& rec : set) {
                             YCSBData data;
                             SKVRecordToYCSBData(0,data,rec); // convert skvrecord to YCSBData object
-                            _scanResult.push_back(data); // store in _scanResult
+                            _scanResult.push_back(data); // store result in _scanResult
                         }
                     }
                     K2LOG_D(log::ycsb, "Scan succeeded");
@@ -267,7 +267,7 @@ private:
 
         return seastar::do_with((uint64_t)_keyid, [this] (uint64_t& keyid) {
             if(_requestDistName()!="latest") {
-                K2LOG_D(log::ycsb, "Insert operation started for key {}", keyid);
+                K2LOG_D(log::ycsb, "Insert operation started for keyid {}", keyid);
                 YCSBData row(keyid, _random); // generate row
                 return writeRow(row, _txn).discard_result();
             }
@@ -275,7 +275,7 @@ private:
             keyid = _requestDist->getMaxValue()+1;
             YCSBData row(keyid,_random); // key is max known (latest) key + 1
 
-            K2LOG_D(log::ycsb, "Insert operation started for key {}", keyid);
+            K2LOG_D(log::ycsb, "Insert operation started for keyid {}", keyid);
             return writeRow(row, _txn) //handle latest distribution separately to identify insert fails and increment latest known record max key value
                 .then_wrapped([this,keyid] (auto&& fut) {
                     if (fut.failed()) {
@@ -299,7 +299,7 @@ private:
     }
 
     seastar::future<> deleteOperation(){
-        K2LOG_D(log::ycsb, "Delete operation started");
+        K2LOG_D(log::ycsb, "Delete operation started for keyid {}", _keyid);
         YCSBData row(_keyid); // generate row
         return writeRow(row, _txn, true).discard_result();
     }
@@ -316,7 +316,7 @@ private:
     std::vector<YCSBData> _scanResult; // rows read from scan operation
     RandomGenerator* _requestDist; // Request distribution for selecting keys
     RandomGenerator* _scanLengthDist; // Request distribution for selecting length of scan
-    uint64_t& _insertMissesLatest;
+    uint64_t& _insertMissesLatest; // number of inserts missed when request distribution is Latest distribution
 
 private:
     ConfigVar<uint64_t> _ops_per_txn{"ops_per_txn"};
@@ -325,4 +325,3 @@ private:
     ConfigVar<uint32_t> _max_fields_update{"max_fields_update"};
     ConfigVar<String> _requestDistName{"request_dist"};
 };
- // Need to retry so many times only if operation failed and error code not 400!

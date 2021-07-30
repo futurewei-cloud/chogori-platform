@@ -54,12 +54,12 @@ trap finish EXIT
 sleep 5
 
 echo ">>> Starting load ..."
-./build/src/k2/cmd/ycsb/ycsb_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --prometheus_port 63100 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --do_verification false --num_concurrent_txns=2 --num_records=500 --num_records_insert=5
+./build/src/k2/cmd/ycsb/ycsb_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --prometheus_port 63100 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --num_concurrent_txns=2 --num_records=500 --num_records_insert=100 --request_dist="latest"
 
 sleep 1
 
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-echo ">>> Starting benchmark ..."
-./build/src/k2/cmd/ycsb/ycsb_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load false --prometheus_port 63100 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s --do_verification false --num_concurrent_txns=1 --num_records=500 --num_records_insert=5 --test_duration_s=30 --ops_per_txn=1 --log_level DEBUG
+echo ">>> Starting benchmark Workload D..."
+./build/src/k2/cmd/ycsb/ycsb_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --data_load false --prometheus_port 63100 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s --num_concurrent_txns=1 --num_records=500 --num_records_insert=100 --test_duration=200ms --ops_per_txn=1 --read_proportion=95 --update_proportion=0 --scan_proportion=0 --insert_proportion=5 --request_dist="latest"

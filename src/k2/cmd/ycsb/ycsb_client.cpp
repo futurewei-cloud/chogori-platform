@@ -21,7 +21,6 @@ Copyright(c) 2021 Futurewei Cloud
     SOFTWARE.
 */
 
-// stl
 #include <atomic>
 #include <chrono>
 
@@ -152,11 +151,7 @@ public:  // application lifespan
             K2LOG_I(log::ycsb, "Done with benchmark");
             cores_finished++;
             if (cores_finished == seastar::smp::count) {
-                if (_do_verification()) {
-                    // to implement verification later
-                } else {
-                    seastar::engine().exit(0);
-                }
+                seastar::engine().exit(0);
             }
 
             return seastar::make_ready_future<>();
@@ -208,17 +203,16 @@ private:
         });
     }
 
+    // Function to create and run ycsb transactions and record metrics
     seastar::future<> _ycsb() {
         K2LOG_D(log::ycsb, "Starting Transactions in ycsb()");
         return seastar::do_until(
             [this] { return _stopped; },
             [this] {
-                 // ops records operations in transaction
-                return seastar::do_with(std::vector<uint8_t>(_ops_per_txn(),0), [this] (std::vector<uint8_t>& ops) {
+                return seastar::do_with(std::vector<uint8_t>(_ops_per_txn(),0), [this] (std::vector<uint8_t>& ops) { // ops records operations in transaction
                     YCSBTxn* curTxn;
                     curTxn = (YCSBTxn*) new YCSBBasicTxn(_random, _client, _requestDist, _scanLengthDist, ops, _insertMissesLatest);
 
-                    K2LOG_D(log::ycsb, "Stopped at start={}",_stopped);
                     auto txn_start = k2::Clock::now();
                     return curTxn->run() // run the transaction
                     .then([this, txn_start, &ops] (bool success) {
@@ -226,6 +220,7 @@ private:
                             return;
                         }
 
+                        // update metrics for succeeded transaction
                         _completedTxns++;
                         auto end = k2::Clock::now();
                         auto dur = end - txn_start;
@@ -254,7 +249,6 @@ private:
                                 _deleteLatency.add(dur);
                             }
                         }
-                        K2LOG_D(log::ycsb, "Stopped={}",_stopped);
                     })
                     .finally([curTxn] () {
                         delete curTxn;
@@ -312,6 +306,9 @@ private:
             K2LOG_I(log::ycsb, "read ops {} per sec", readpsec);
             K2LOG_I(log::ycsb, "write ops {} per sec", writepsec);
             K2LOG_I(log::ycsb, "query ops {} per sec", querypsec);
+            if(_requestDistName()=="latest") {
+                  K2LOG_I(log::ycsb, "Total Insert Misses={}", _insertMissesLatest);
+            }
             return seastar::make_ready_future();
         });
     }
@@ -365,13 +362,12 @@ private:
     SingleTimer _timer;
     std::vector<seastar::future<>> _ycsb_futures;
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
-    RandomGenerator* _requestDist;
-    RandomGenerator* _scanLengthDist;
-    size_t _num_keys;
+    RandomGenerator* _requestDist; // Request distribution for selecting keys
+    RandomGenerator* _scanLengthDist; // Request distribution for selecting length of scan
+    size_t _num_keys; // total keys in keyspace
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<bool> _do_data_load{"data_load"};
-    ConfigVar<bool> _do_verification{"do_verification"};
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
     ConfigVar<uint32_t> _num_fields{"num_fields"};
     ConfigVar<uint32_t> _field_length{"field_length"};
@@ -403,7 +399,8 @@ private:
     uint64_t _updateOps{0};
     uint64_t _scanOps{0};
     uint64_t _deleteOps{0};
-    uint64_t _insertMissesLatest{0};
+    uint64_t _insertMissesLatest{0}; // number of inserts missed when request distribution is Latest distribution
+
 }; // class Client
 
 int main(int argc, char** argv) {;
@@ -418,7 +415,6 @@ int main(int argc, char** argv) {;
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("dataload_txn_timeout", bpo::value<ParseableDuration>(), "Timeout of dataload txn, as chrono literal")
         ("writes_per_load_txn", bpo::value<size_t>()->default_value(10), "The number of writes to do in the load phase between txn commit calls")
-        ("do_verification", bpo::value<bool>()->default_value(true), "Run verification tests after run")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
         ("num_records",bpo::value<size_t>()->default_value(5000),"How many records to load")
