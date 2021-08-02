@@ -37,7 +37,14 @@ Copyright(c) 2021 Futurewei Cloud
 using namespace k2;
 static const String ycsbCollectionName = "YCSB";
 
-enum operation {Read=0, Update=1, Scan=2, Insert=3, Delete=4};
+// possible operations in YCSB
+K2_DEF_ENUM(Operation,
+    Read,
+    Update,
+    Scan,
+    Insert,
+    Delete
+);
 
 #define CHECK_READ_STATUS(read_result) \
     do { \
@@ -138,7 +145,7 @@ private:
 };
 
 // function to write the given YCSB Data row
-seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool erase = false)
+seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool erase = false, ExistencePrecondition precondition = ExistencePrecondition::None)
 {
     dto::SKVRecord skv_record(YCSBData::collectionName, YCSBData::schema); // create SKV record
 
@@ -146,7 +153,7 @@ seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool eras
         skv_record.serializeNext<String>(field); // add fields to SKV record
     }
 
-    return txn.write<dto::SKVRecord>(skv_record, erase).then([] (WriteResult&& result) {
+    return txn.write<dto::SKVRecord>(skv_record, erase, precondition).then([] (WriteResult&& result) {
         if (!result.status.is2xxOK() && result.status.code!=403 && result.status.code!=404) { // 403 for write with erase=false and key already exists or 404 for write with erase=true and key does not exist
             K2LOG_D(log::ycsb, "writeRow failed and is retryable: {}", result.status);
             return seastar::make_exception_future<WriteResult>(std::runtime_error("writeRow failed!"));
@@ -192,7 +199,7 @@ void SKVRecordToYCSBData(uint64_t keyid, YCSBData& row, SKVRecord& skvRec){
         // deserialize fields
         for(uint32_t i=0; i<YCSBData::ycsb_schema.fields.size(); i++){
             s = skvRec.deserializeField<String>(i);
-            if(!s)
+            if(s.has_value())
                 row.fields[i] = s.value();
         }
 }

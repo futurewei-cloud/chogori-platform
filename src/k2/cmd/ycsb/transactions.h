@@ -75,10 +75,8 @@ private:
 };
 
 class YCSBTxn {
-public:
-    virtual seastar::future<bool> attempt() = 0;
-    virtual ~YCSBTxn() = default;
 
+public:
     seastar::future<bool> run() {
         // retry 10 times for a failed transaction
         return seastar::do_with(FixedRetryStrategy(10),  [this] (auto& retryStrategy) {
@@ -89,19 +87,12 @@ public:
             });
         });
     }
-};
 
-class YCSBBasicTxn : public YCSBTxn {
-public:
-    YCSBBasicTxn(RandomContext& random, K23SIClient& client,
-             RandomGenerator* requestDist, RandomGenerator* scanLengthDist, std::vector<uint8_t>& ops,uint64_t& insertMissesLatest) :
-                        _random(random), _client(client), _ops(ops), _insertMissesLatest(insertMissesLatest) {
-            _requestDist = requestDist;
-            _scanLengthDist = scanLengthDist;
-            _failed = false;
-    }
+    YCSBTxn(RandomContext& random, K23SIClient& client,
+             std::unique_ptr<RandomGenerator>& requestDist, std::unique_ptr<RandomGenerator>& scanLengthDist, uint64_t& insertMissesLatest) :
+                        _random(random), _client(client), _failed(false), _requestDist(requestDist), _scanLengthDist(scanLengthDist), _insertMissesLatest(insertMissesLatest) {}
 
-     seastar::future<bool> attempt() override {
+     seastar::future<bool> attempt() {
         K2TxnOptions options{};
         options.deadline = Deadline(5s);
         return _client.beginTxn(options)
@@ -114,40 +105,48 @@ public:
         });
     }
 
+    // function to get all operations in transcation
+    std::vector<Operation>& getOps(){
+        return _ops;
+    }
+
 private:
 
     seastar::future<bool> runWithTxn(){
         K2LOG_D(log::ycsb, "Starting transaction");
         _txnkeyids.reserve(_ops_per_txn());
-        return seastar::do_with((size_t)0,(operation)0, [this] (size_t& current_op,operation& op) {
+        return seastar::do_with((size_t)0, [this] (size_t& current_op) {
             return seastar::do_until(
                 [this, &current_op] { return current_op >= _ops_per_txn(); },
-                [this, &current_op, &op] () {
+                [this, &current_op] () {
 
                 if(_txnkeyids.size()<=current_op){
                     _txnkeyids.push_back(_requestDist->getValue()); // randomly pick key for current operation
-                    _ops[current_op] = _random.BiasedInt(); // randomly pick operation based on the workload proportion
+                    _ops.push_back((Operation)_random.BiasedInt()); // randomly pick operation based on the workload proportion
                 }
 
                 _keyid = _txnkeyids[current_op]; // use same key values if we are retrying txn
-                op = (operation)_ops[current_op]; // use same operation if we are retrying txn
                 ++current_op;
-
-                if(op==Read){
-                    return readOperation();
-                }
-                else if(op==Update){
-                    return updateOperation();
-                }
-                else if(op==Scan){
-                    return scanOperation();
-                }
-                else if(op==Insert){
-                    return insertOperation();
-                }
-                else{
-                    return deleteOperation();
-                }
+                switch(_ops[current_op-1]){
+                    case Operation::Read: {
+                        return readOperation();
+                    }
+                    case Operation::Update: {
+                        return updateOperation();
+                    }
+                    case Operation::Scan: {
+                        return scanOperation();
+                    }
+                    case Operation::Insert: {
+                        return insertOperation();
+                    }
+                    case Operation::Delete: {
+                        return deleteOperation();
+                    }
+                    default: {
+                        K2ASSERT(log::ycsb, false, "Invalid operation");
+                    }
+                };
             })
             // commit txn
             .then_wrapped([this] (auto&& fut) {
@@ -186,7 +185,8 @@ private:
 
         skv_record.serializeNext<String>(key);
 
-        return _txn.read(skv_record.getKey(), skv_record.collectionName).then([this] (auto&& result) {
+        //return _txn.read(skv_record.getKey(), skv_record.collectionName).then([this] (auto&& result) {
+        return _txn.read(std::move(skv_record)).then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
             K2LOG_D(log::ycsb, "Read succeeded : {}", result.status);
             // store returned read result in _data
@@ -231,31 +231,28 @@ private:
             _query_scan.addProjection(projection);
             dto::expression::Expression filter{};   // make filter Expression
             _query_scan.setFilterExpression(std::move(filter));
+            _scanResult.clear();
 
-            return seastar::do_with(std::vector<std::vector<dto::SKVRecord>>(), false,
-            [this] (std::vector<std::vector<dto::SKVRecord>>& result_set, bool& done) {
+            return seastar::do_with((bool)false,  [this] (bool& done) {
                 return seastar::do_until(
                 [this, &done] () { return done; },
-                [this, &result_set, &done] () {
+                [this, &done] () {
                     return _txn.query(_query_scan)
-                    .then([this, &result_set, &done] (auto&& response) {
+                    .then([this, &done] (auto&& response) {
                         CHECK_READ_STATUS(response);
                         done = response.status.is2xxOK() ? _query_scan.isDone() : true;
-                        result_set.push_back(std::move(response.records));
 
-                        return seastar::make_ready_future();
-                    });
-                })
-                .then([this, &result_set] () {
-                    _scanResult.clear();
-                    for (std::vector<dto::SKVRecord>& set : result_set) {
-                        _scanResult.reserve(_scanResult.size()+set.size());
-                        for (dto::SKVRecord& rec : set) {
+                        _scanResult.reserve(_scanResult.size()+response.records.size()); // reserve space for writing the records in scan result
+                        for (dto::SKVRecord& rec : response.records) {
                             YCSBData data;
                             SKVRecordToYCSBData(0,data,rec); // convert skvrecord to YCSBData object
                             _scanResult.push_back(data); // store result in _scanResult
                         }
-                    }
+
+                        return seastar::make_ready_future();
+                    });
+                })
+                .then([this] () {
                     K2LOG_D(log::ycsb, "Scan succeeded");
                     return seastar::make_ready_future();
                 });
@@ -265,37 +262,36 @@ private:
 
     seastar::future<> insertOperation(){
 
-        return seastar::do_with((uint64_t)_keyid, [this] (uint64_t& keyid) {
-            if(_requestDistName()!="latest") {
-                K2LOG_D(log::ycsb, "Insert operation started for keyid {}", keyid);
-                YCSBData row(keyid, _random); // generate row
-                return writeRow(row, _txn).discard_result();
-            }
+        if(_requestDistName()!="latest") {
+            K2LOG_D(log::ycsb, "Insert operation started for keyid {}", _keyid);
+            YCSBData row(_keyid, _random); // generate row
+            return writeRow(row, _txn).discard_result();
+        }
 
-            keyid = _requestDist->getMaxValue()+1;
-            YCSBData row(keyid,_random); // key is max known (latest) key + 1
+        _keyid = _requestDist->getMaxValue()+1;
+        YCSBData row(_keyid,_random); // key is max known (latest) key + 1
 
-            K2LOG_D(log::ycsb, "Insert operation started for keyid {}", keyid);
-            return writeRow(row, _txn) //handle latest distribution separately to identify insert fails and increment latest known record max key value
-                .then_wrapped([this,keyid] (auto&& fut) {
-                    if (fut.failed()) {
-                        fut.ignore_ready_future();
-                        return seastar::make_exception_future<>(std::runtime_error("Insert failed!"));
+        //handle latest distribution separately to identify insert fails and increment latest known record max key value
+        K2LOG_D(log::ycsb, "Insert operation started for keyid {}", _keyid);
+        return writeRow(row, _txn, false, ExistencePrecondition::Exists) // if record with given key already exists must return error so we set precondition to Exists
+            .then_wrapped([this] (auto&& fut) {
+                if (fut.failed()) {
+                    fut.ignore_ready_future();
+                    return seastar::make_exception_future<>(std::runtime_error("Insert failed!"));
+                }
+
+                WriteResult result = fut.get0();
+                if (result.status.is2xxOK() || result.status.code == 403) { // key inserted or already exists
+                    if(_requestDist->getMaxValue() < _keyid) { // update bounds of distribution
+                        _requestDist->updateBounds(0,_keyid);
                     }
-
-                    WriteResult result = fut.get0();
-                    if (result.status.is2xxOK() || result.status.code == 403) { // key inserted or already exists
-                        if(_requestDist->getMaxValue() < keyid) { // update bounds of distribution
-                            _requestDist->updateBounds(0,keyid);
-                        }
-                        if(result.status.code == 403) { // insert missed because record exists
-                            _insertMissesLatest++; // increment misses counter
-                        }
+                    if(result.status.code == 403) { // insert missed because record exists
+                        _insertMissesLatest++; // increment misses counter
                     }
+                }
 
-                    return seastar::make_ready_future();
-                });
-        });
+                return seastar::make_ready_future();
+            });
     }
 
     seastar::future<> deleteOperation(){
@@ -310,12 +306,12 @@ private:
     K23SIClient& _client;
     bool _failed;
     YCSBData _data; // row read from read operation
-    int64_t _keyid; // keyid for current op
+    uint64_t _keyid; // keyid for current op
     std::vector<uint64_t> _txnkeyids; // keyids used in this txn stored for retries
-    std::vector<uint8_t>& _ops; // ops used in this txn stored for retries
+    std::vector<Operation> _ops; // ops used in this txn stored for retries
     std::vector<YCSBData> _scanResult; // rows read from scan operation
-    RandomGenerator* _requestDist; // Request distribution for selecting keys
-    RandomGenerator* _scanLengthDist; // Request distribution for selecting length of scan
+    std::unique_ptr<RandomGenerator>& _requestDist; // Request distribution for selecting keys
+    std::unique_ptr<RandomGenerator>& _scanLengthDist; // Request distribution for selecting length of scan
     uint64_t& _insertMissesLatest; // number of inserts missed when request distribution is Latest distribution
 
 private:

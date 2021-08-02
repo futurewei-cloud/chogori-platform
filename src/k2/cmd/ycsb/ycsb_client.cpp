@@ -209,13 +209,12 @@ private:
         return seastar::do_until(
             [this] { return _stopped; },
             [this] {
-                return seastar::do_with(std::vector<uint8_t>(_ops_per_txn(),0), [this] (std::vector<uint8_t>& ops) { // ops records operations in transaction
-                    YCSBTxn* curTxn;
-                    curTxn = (YCSBTxn*) new YCSBBasicTxn(_random, _client, _requestDist, _scanLengthDist, ops, _insertMissesLatest);
+                return seastar::do_with(std::unique_ptr<YCSBTxn>(), [this] ( std::unique_ptr<YCSBTxn>& curTxn) {
+                    curTxn = (std::unique_ptr<YCSBTxn>) new YCSBTxn(_random, _client, _requestDist, _scanLengthDist, _insertMissesLatest);
 
                     auto txn_start = k2::Clock::now();
                     return curTxn->run() // run the transaction
-                    .then([this, txn_start, &ops] (bool success) {
+                    .then([this, txn_start, &curTxn] (bool success) {
                         if (!success) {
                             return;
                         }
@@ -226,32 +225,37 @@ private:
                         auto dur = end - txn_start;
 
                         _txnLatency.add(dur);
-                        for(auto&& i: ops){ // go over all operations in this transaction and record metrics
-                            operation op = (operation)i;
-                            if(op==Read){
-                                _readOps++;
-                                _readLatency.add(dur);
-                            }
-                            else if(op==Update){
-                                _updateOps++;
-                                _updateLatency.add(dur);
-                            }
-                            else if(op==Scan){
-                                _scanOps++;
-                                _scanLatency.add(dur);
-                            }
-                            else if(op==Insert){
-                                _insertOps++;
-                                _insertLatency.add(dur);
-                            }
-                            else{
-                                _deleteOps++;
-                                _deleteLatency.add(dur);
-                            }
+                        for(auto&& op: curTxn->getOps()){ // go over all operations in this transaction and record metrics
+                            switch(op){
+                                case Operation::Read: {
+                                    _readOps++;
+                                    _readLatency.add(dur);
+                                    break;
+                                }
+                                case Operation::Update: {
+                                    _updateOps++;
+                                    _updateLatency.add(dur);
+                                    break;
+                                }
+                                case Operation::Scan: {
+                                    _scanOps++;
+                                    _scanLatency.add(dur);
+                                    break;
+                                }
+                                case Operation::Insert: {
+                                    _insertOps++;
+                                    _insertLatency.add(dur);
+                                    break;
+                                }
+                                case Operation::Delete: {
+                                    _deleteOps++;
+                                    _deleteLatency.add(dur);
+                                }
+                            };
                         }
                     })
-                    .finally([curTxn] () {
-                        delete curTxn;
+                    .finally([] () {
+                        K2LOG_D(log::ycsb, "Completed Transaction");
                     });
                 });
             }
@@ -314,19 +318,19 @@ private:
     }
 
     // returns distribution that generates items in range [min,max] and uses given seed
-    RandomGenerator* getDistribution(String name, uint64_t min, uint64_t max, int seed = 0){
+    std::unique_ptr<RandomGenerator> getDistribution(String name, uint64_t min, uint64_t max, int seed = 0){
 
         K2ASSERT(log::ycsb, name=="uniform" || name=="zipfian" || name=="szipfian" || name=="latest", "Invalid distribution name");
 
-        RandomGenerator* dis;
+        std::unique_ptr<RandomGenerator> dis;
         if(name=="uniform"){
-            dis = (RandomGenerator*) new UniformGenerator(min,max,seed);
+            dis = (std::unique_ptr<RandomGenerator>) new UniformGenerator(min,max,seed);
         }else if(name=="zipfian"){
-            dis = (RandomGenerator*) new ZipfianGenerator(min,max,seed);
+            dis = (std::unique_ptr<RandomGenerator>) new ZipfianGenerator(min,max,seed);
         }else if(name=="szipfian"){
-            dis = (RandomGenerator*) new ScrambledZipfianGenerator(min,max,seed);
+            dis = (std::unique_ptr<RandomGenerator>) new ScrambledZipfianGenerator(min,max,seed);
         }else{
-            dis = (RandomGenerator*) new LatestGenerator(min,max,seed);
+            dis = (std::unique_ptr<RandomGenerator>) new LatestGenerator(min,max,seed);
         }
 
         return dis;
@@ -337,17 +341,27 @@ private:
         std::vector<double> opsProportion(5,0); // there are 5 operations
         uint8_t i = 0;
         for(i=0;i<5;i++){
-            if((operation)i == Read) { // enum operation {Read=0, Update=1, Scan=2, Insert=3, Delete=4}
-                opsProportion[i] = _readProp();
-            } else if((operation)i == Update) {
-                opsProportion[i] = _updateProp();
-            } else if((operation)i == Scan) {
-                opsProportion[i] = _scanProp();
-            } else if((operation)i == Insert) {
-                opsProportion[i] = _insertProp();
-            } else {
-                opsProportion[i] = _deleteProp();
-            }
+            switch((Operation)i){
+                    case Operation::Read: {
+                        opsProportion[i] = _readProp();
+                        break;
+                    }
+                    case Operation::Update: {
+                        opsProportion[i] = _updateProp();
+                        break;
+                    }
+                    case Operation::Scan: {
+                        opsProportion[i] = _scanProp();
+                        break;
+                    }
+                    case Operation::Insert: {
+                        opsProportion[i] = _insertProp();
+                        break;
+                    }
+                    case Operation::Delete: {
+                        opsProportion[i] = _deleteProp();
+                    }
+            };
         }
         K2ASSERT(log::ycsb, accumulate(opsProportion.begin(), opsProportion.end(), 0)==100, "Operation proportions don't sum upto 100");
         return opsProportion;
@@ -362,8 +376,8 @@ private:
     SingleTimer _timer;
     std::vector<seastar::future<>> _ycsb_futures;
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
-    RandomGenerator* _requestDist; // Request distribution for selecting keys
-    RandomGenerator* _scanLengthDist; // Request distribution for selecting length of scan
+    std::unique_ptr<RandomGenerator> _requestDist; // Request distribution for selecting keys
+    std::unique_ptr<RandomGenerator> _scanLengthDist; // Request distribution for selecting length of scan
     size_t _num_keys; // total keys in keyspace
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
@@ -421,7 +435,7 @@ int main(int argc, char** argv) {;
         ("num_records_insert",bpo::value<size_t>()->default_value(50),"How many records expected to be inserted during workloads")
         ("field_length",bpo::value<uint32_t>()->default_value(10),"The size of all fields in the table")
         ("num_fields",bpo::value<uint32_t>()->default_value(10), "The number of fields in the table")
-        ("request_dist",bpo::value<String>()->default_value("szipfian"), "Request distribution") // choices are: "uniform", "szipfian" (scrambledZipfian), "latest" - to do
+        ("request_dist",bpo::value<String>()->default_value("szipfian"), "Request distribution") // choices are: "uniform", "szipfian" (scrambledZipfian), "latest"
         ("scan_length_dist",bpo::value<String>()->default_value("uniform"), "Scan length distribution") // choices are: "uniform", "zipfian" - favouring shorter scans
         ("read_proportion",bpo::value<double>()->default_value(70.0), "Read Proportion")
         ("update_proportion",bpo::value<double>()->default_value(10.0), "Update Proportion")

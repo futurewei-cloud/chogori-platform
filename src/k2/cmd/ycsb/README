@@ -1,0 +1,28 @@
+To run:
+
+Start CPO, TSO, K2 server, and persistence
+
+Run load phase:
+./ycsb_client <Normal seastar args> --tcp_remotes <Server data URLs> --cpo <CPU URL> --tso_endpoint <TSO URL>
+        --data_load true --num_records <number of records to be loaded>
+        --num_records_insert <number of records that are expected to be inserted during benchmark (for expanding keyspace)>
+        --request_dist <distribution for sampling keys from keyspace, choices are "uniform", "szipfian" (scrambledZipfian), "latest" (needed because data loaded sequentially for latest but not for others)
+
+Wait for "Done with benchmark" message and kill process.
+
+YCSB Consists of 5 main workloads each of which differs by (i) the proportion of different operations (such as read and scan) and (ii) the request and scan distributions.
+    Workload A: read=50%, update=50%, request_dist=Zipfian
+    Workload B: read=95%, update=5%, request_dist=Zipfian
+    Workload A: read=100%, request_dist=Zipfian
+    Workload A: read=95%, insert=5%, request_dist=Latest
+    Workload A: scan=95%, insert=5%, request_dist=Zipfian, scan_dist=Uniform
+
+Each workload is run using the following command. The load phase needed to be repeated for different request_dist.
+Run bechmark phase:
+./ycsb_client <Normal seastar args> --tcp_remotes <Server data URLs> --cpo <CPU URL> --tso_endpoint <TSO URL>
+        --data_load false --clients_per_core <Number of concurrent transactions to run>
+        --num_records<same as load phase> --num_records_insert<same as load phase> --request_dist<same as load phase>
+        --ops_per_txn <number of YCSB operation per txn (=1 for basic YCSB)>
+        --read_proportion --update_proportion --scan_proportion --insert_proportion --delete_propotion <proportion of each operation for the workload, all five operation proportions must add up to 100>
+
+Wait for "Done with benchmark" message
