@@ -45,7 +45,9 @@ public:
         K2TxnOptions options{};
         options.deadline = Deadline(ConfigDuration("dataload_txn_timeout", 600s)());
         options.syncFinalize = true;
-        RandomContext random_context(0);
+
+        double propSkip = (double)_num_inserts()/(_num_records()+_num_inserts()); // proportion of records to Skip while loading
+        RandomContext random_context(0,{propSkip, 1-propSkip});
 
         K2LOG_D(log::ycsb, "pipeline depth and data load per txn ={}, {}", pipeline_depth, _writes_per_load_txn());
         return seastar::do_with((size_t)startIdxShard, [this, options, pipeline_depth, &client, random_context, startIdxShard, endIdxShard] (size_t& start_idx){
@@ -73,16 +75,24 @@ private:
     seastar::future<> insertDataLoop(K2TxnHandle& txn, size_t start_idx, RandomContext random_context, size_t endIdxShard)
     {
         K2LOG_D(log::ycsb, "Starting transaction, start_idx is {}", start_idx);
-        return seastar::do_with((size_t)0, [this, &txn, start_idx, &random_context, endIdxShard] (size_t& current_size) {
+        return seastar::do_with((size_t)0, std::move(random_context), [this, &txn, start_idx, endIdxShard] (size_t& current_size, RandomContext& random_c) {
             return seastar::do_until(
                 [this, &current_size, start_idx, endIdxShard] { return ((current_size >= _writes_per_load_txn()) || ((start_idx + current_size)>= endIdxShard)); },
-                [this, &current_size, &txn, start_idx, &random_context] () {
-                K2LOG_D(log::ycsb, "Record being loaded now in this txn is {}", start_idx + current_size);
+                [this, &current_size, &txn, start_idx, &random_c] () {
+                uint8_t isLoad = random_c.BiasedInt();
+                if(isLoad || (_requestDistName()=="latest" && (start_idx + current_size)<_num_records())){ // load record with prob = _num_records / _num_keys or if latest load all records uptil num_records()
+                    K2LOG_D(log::ycsb, "Record being loaded now in this txn is {}", start_idx + current_size);
 
-                YCSBData row(start_idx + current_size, random_context); // generate row
+                    YCSBData row(start_idx + current_size, random_c); // generate row
+                    ++current_size;
+
+                    return writeRow(row, txn).discard_result();
+                }
+                K2LOG_D(log::ycsb, "Record {} skipped", start_idx + current_size);
                 ++current_size;
 
-                return writeRow(row, txn).discard_result();
+                return seastar::make_ready_future<>();
+
             }).then([&txn] () {
                 K2LOG_D(log::ycsb, "Ending transaction");
                 return txn.end(true);
@@ -98,5 +108,8 @@ private:
     }
 
     ConfigVar<size_t> _writes_per_load_txn{"writes_per_load_txn"};
+    ConfigVar<size_t> _num_records{"num_records"};
+    ConfigVar<size_t> _num_inserts{"num_records_insert"};
+    ConfigVar<String> _requestDistName{"request_dist"};
 };
 
