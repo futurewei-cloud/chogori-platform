@@ -89,8 +89,8 @@ public:
     }
 
     YCSBTxn(RandomContext& random, K23SIClient& client,
-             std::unique_ptr<RandomGenerator>& requestDist, std::unique_ptr<RandomGenerator>& scanLengthDist, uint64_t& insertMissesLatest) :
-                        _random(random), _client(client), _failed(false), _requestDist(requestDist), _scanLengthDist(scanLengthDist), _insertMissesLatest(insertMissesLatest) {}
+             std::shared_ptr<RandomGenerator> requestDist, std::shared_ptr<RandomGenerator> scanLengthDist) :
+                        _random(random), _client(client), _failed(false), _requestDist(requestDist), _scanLengthDist(scanLengthDist) {}
 
      seastar::future<bool> attempt() {
         K2TxnOptions options{};
@@ -108,6 +108,11 @@ public:
     // function to get all operations in transcation
     std::vector<Operation>& getOps(){
         return _ops;
+    }
+
+    // function to get number of inserts missed
+    uint64_t getInsertMisses(){
+        return _insertMissesLatest;
     }
 
 private:
@@ -185,7 +190,6 @@ private:
 
         skv_record.serializeNext<String>(key);
 
-        //return _txn.read(skv_record.getKey(), skv_record.collectionName).then([this] (auto&& result) {
         return _txn.read(std::move(skv_record)).then([this] (auto&& result) {
             CHECK_READ_STATUS(result);
             K2LOG_D(log::ycsb, "Read succeeded : {}", result.status);
@@ -310,9 +314,9 @@ private:
     std::vector<uint64_t> _txnkeyids; // keyids used in this txn stored for retries
     std::vector<Operation> _ops; // ops used in this txn stored for retries
     std::vector<YCSBData> _scanResult; // rows read from scan operation
-    std::unique_ptr<RandomGenerator>& _requestDist; // Request distribution for selecting keys
-    std::unique_ptr<RandomGenerator>& _scanLengthDist; // Request distribution for selecting length of scan
-    uint64_t& _insertMissesLatest; // number of inserts missed when request distribution is Latest distribution
+    std::shared_ptr<RandomGenerator> _requestDist; // Request distribution for selecting keys
+    std::shared_ptr<RandomGenerator> _scanLengthDist; // Request distribution for selecting length of scan
+    uint64_t _insertMissesLatest{0}; // number of inserts missed when request distribution is Latest distribution
 
 private:
     ConfigVar<uint64_t> _ops_per_txn{"ops_per_txn"};

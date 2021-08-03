@@ -210,7 +210,7 @@ private:
             [this] { return _stopped; },
             [this] {
                 return seastar::do_with(std::unique_ptr<YCSBTxn>(), [this] ( std::unique_ptr<YCSBTxn>& curTxn) {
-                    curTxn = (std::unique_ptr<YCSBTxn>) new YCSBTxn(_random, _client, _requestDist, _scanLengthDist, _insertMissesLatest);
+                    curTxn = (std::unique_ptr<YCSBTxn>) new YCSBTxn(_random, _client, _requestDist, _scanLengthDist);
 
                     auto txn_start = k2::Clock::now();
                     return curTxn->run() // run the transaction
@@ -221,6 +221,7 @@ private:
 
                         // update metrics for succeeded transaction
                         _completedTxns++;
+                        _insertMissesLatest += curTxn->getInsertMisses();
                         auto end = k2::Clock::now();
                         auto dur = end - txn_start;
 
@@ -318,19 +319,20 @@ private:
     }
 
     // returns distribution that generates items in range [min,max] and uses given seed
-    std::unique_ptr<RandomGenerator> getDistribution(String name, uint64_t min, uint64_t max, int seed = 0){
+    std::shared_ptr<RandomGenerator> getDistribution(String name, uint64_t min, uint64_t max, int seed = 0){
 
         K2ASSERT(log::ycsb, name=="uniform" || name=="zipfian" || name=="szipfian" || name=="latest", "Invalid distribution name");
 
-        std::unique_ptr<RandomGenerator> dis;
+        std::shared_ptr<RandomGenerator> dis;
+
         if(name=="uniform"){
-            dis = (std::unique_ptr<RandomGenerator>) new UniformGenerator(min,max,seed);
+            dis = std::make_shared<UniformGenerator>(min,max,seed);
         }else if(name=="zipfian"){
-            dis = (std::unique_ptr<RandomGenerator>) new ZipfianGenerator(min,max,seed);
+            dis = std::make_shared<ZipfianGenerator>(min,max,seed);
         }else if(name=="szipfian"){
-            dis = (std::unique_ptr<RandomGenerator>) new ScrambledZipfianGenerator(min,max,seed);
+            dis = std::make_shared<ScrambledZipfianGenerator>(min,max,seed);
         }else{
-            dis = (std::unique_ptr<RandomGenerator>) new LatestGenerator(min,max,seed);
+            dis = std::make_shared<LatestGenerator>(min,max,seed);
         }
 
         return dis;
@@ -376,8 +378,8 @@ private:
     SingleTimer _timer;
     std::vector<seastar::future<>> _ycsb_futures;
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
-    std::unique_ptr<RandomGenerator> _requestDist; // Request distribution for selecting keys
-    std::unique_ptr<RandomGenerator> _scanLengthDist; // Request distribution for selecting length of scan
+    std::shared_ptr<RandomGenerator> _requestDist; // Request distribution for selecting keys
+    std::shared_ptr<RandomGenerator> _scanLengthDist; // Request distribution for selecting length of scan
     size_t _num_keys; // total keys in keyspace
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
