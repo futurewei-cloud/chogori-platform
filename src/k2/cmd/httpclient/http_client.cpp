@@ -48,10 +48,44 @@ k2::dto::Schema _schema {
 };
 static thread_local std::shared_ptr<k2::dto::Schema> schemaPtr;
 
-class ReadRequest{
-public:
-};
-
+template <typename T>
+void serializeFieldFromJSON(const k2::SchemaField& field, k2::SKVRecord& record,
+                                   const nlohmann::json& jsonRecord) {
+    T value;
+    jsonRecord.at(field.name).get_to(value);
+    record.serializeNext<T>(value);
+}
+template <>
+void serializeFieldFromJSON<k2::String>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
+    std::string value;
+    jsonRecord.at(field.name).get_to(value);
+    record.serializeNext<k2::String>(value);
+}
+template <>
+void serializeFieldFromJSON<std::decimal::decimal64>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
+    (void) field;
+    (void) record;
+    (void) jsonRecord;
+    throw k2::dto::TypeMismatchException("decimal64 type not supported with JSON interface");
+}
+template <>
+void serializeFieldFromJSON<std::decimal::decimal128>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
+    (void) field;
+    (void) record;
+    (void) jsonRecord;
+    throw k2::dto::TypeMismatchException("decimal128 type not supported with JSON interface");
+}
+template <>
+void serializeFieldFromJSON<k2::dto::FieldType>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
+    (void) field;
+    (void) record;
+    (void) jsonRecord;
+    throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
+}
 
 class Client {
 public:  // application lifespan
@@ -86,6 +120,24 @@ public:  // application lifespan
     }
 
 private:
+    static void serializeRecordFromJSON(k2::SKVRecord& record, nlohmann::json&& jsonRecord) {
+        for (const k2::dto::SchemaField& field : record.schema->fields) {
+            std::string name = field.name;
+            if (!jsonRecord.contains(name)) {
+                record.serializeNull();
+                continue;
+            }
+
+            K2_DTO_CAST_APPLY_FIELD_VALUE(serializeFieldFromJSON, field, record, jsonRecord);
+        }
+    }
+
+    static nlohmann::json serializeJSONFromRecord(const k2::SKVRecord& record) {
+        (void) record;
+        nlohmann::json jsonRecord;
+        return jsonRecord;
+    }
+
     seastar::future<nlohmann::json> _handleBegin(nlohmann::json&& request) {
         (void) request;
         return _client.beginTxn(k2::K2TxnOptions())
@@ -93,18 +145,93 @@ private:
             K2LOG_D(k2::log::httpclient, "begin txn: {}", txn.mtr());
             _txns[_txnID++] = std::move(txn);
             nlohmann::json response;
-            response["status"] = 200;
+            response["status"] = 201;
             response["txnID"] = _txnID - 1;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         });
     }
 
     seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request) {
-        return seastar::make_ready_future<nlohmann::json>(std::move(request));
+        uint64_t id;
+        bool commit;
+        nlohmann::json response;
+        try {
+            request.at("txnID").get_to(id);
+            request.at("commit").get_to(commit);
+        } catch (...) {
+            response["status"] = 400; // Bad request code
+            return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        }
+
+        std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
+        if (it == _txns.end()) {
+            response["status"] = 400; // Bad request
+            return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        }
+
+        return it->second.end(commit)
+        .then([this, id] (k2::EndResult&& result) {
+            nlohmann::json r;
+            r["status"] = result.status.code;
+            _txns.erase(id);
+            return seastar::make_ready_future<nlohmann::json>(std::move(r));
+        });
     }
+
     seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request) {
-        return seastar::make_ready_future<nlohmann::json>(std::move(request));
+        std::string collectionName;
+        std::string schemaName;
+        uint64_t id;
+        nlohmann::json record;
+        nlohmann::json response;
+
+        try {
+            request.at("collectionName").get_to(collectionName);
+            request.at("schemaName").get_to(schemaName);
+            request.at("txnID").get_to(id);
+            bool found = request.contains("record");
+            if (!found) {
+                throw std::runtime_error("Bad request");
+            }
+            record = request["record"];
+        } catch (...) {
+            response["status"] = 400; // Bad request code
+            return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        }
+
+        std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
+        if (it == _txns.end()) {
+            response["status"] = 400; // Bad request
+            return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        }
+
+        return _client.getSchema(collectionName, schemaName, k2::K23SIClient::ANY_VERSION)
+        .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
+                                                (k2::GetSchemaResult&& result) mutable {
+            if(!result.status.is2xxOK()) {
+                nlohmann::json resp;
+                resp["status"] = result.status;
+                return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            }
+
+            k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
+            serializeRecordFromJSON(record, std::move(jsonRecord));
+
+            return _txns[id].read(std::move(record))
+            .then([] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
+                nlohmann::json resp;
+                resp["status"] = result.status;
+
+                if(!result.status.is2xxOK()) {
+                    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+                }
+
+                resp["record"] = serializeJSONFromRecord(result.value);
+                return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            });
+        });
     }
+
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request) {
         return seastar::make_ready_future<nlohmann::json>(std::move(request));
     }
