@@ -216,13 +216,70 @@ TEST_CASE("Test5: bool key ordering") {
 
     k2::dto::SKVRecord isfalse("collection", schema_ptr);
     k2::dto::SKVRecord istrue("collection", schema_ptr);
+    k2::dto::SKVRecord null("collection", schema_ptr);
 
     isfalse.serializeNext<bool>(false);
     istrue.serializeNext<bool>(true);
+    null.serializeNull();
 
     k2::String falseKey = isfalse.getPartitionKey();
     k2::String trueKey = istrue.getPartitionKey();
+    k2::String nullKey = null.getPartitionKey();
 
+    REQUIRE(nullKey < falseKey);
     REQUIRE(falseKey < trueKey);
 }
 
+TEST_CASE("Test6: Mixed type compound keys string int32") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::STRING, "Name", false, false},
+            {k2::dto::FieldType::INT32T, "Value", false, false},
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"Name", "Value"});
+    std::shared_ptr<k2::dto::Schema> schema_ptr = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    k2::dto::SKVRecord coll1("collection", schema_ptr);
+    k2::dto::SKVRecord coll2("collection", schema_ptr);
+
+    coll1.serializeNext<k2::String>("TestName");
+    coll1.serializeNext<int32_t>(10000);
+
+    coll2.serializeNext<k2::String>("TestName");
+    coll2.serializeNext<int32_t>(10);
+
+    k2::String coll1Key = coll1.getPartitionKey();
+    k2::String coll2Key = coll2.getPartitionKey();
+
+    REQUIRE(coll2Key < coll1Key);
+}
+
+TEST_CASE("Test7: Mixed type compound keys string bool") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::STRING, "Name", false, false},
+            {k2::dto::FieldType::BOOL, "myBool", false, false},
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"Name", "myBool"});
+    std::shared_ptr<k2::dto::Schema> schema_ptr = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    k2::dto::SKVRecord coll1("collection", schema_ptr);
+    k2::dto::SKVRecord coll2("collection", schema_ptr);
+
+    coll1.serializeNext<k2::String>("TestName");
+    coll1.serializeNext<bool>(false);
+
+    coll2.serializeNext<k2::String>("TestName");
+    coll2.serializeNext<bool>(true);
+
+    k2::String coll1Key = coll1.getPartitionKey();
+    k2::String coll2Key = coll2.getPartitionKey();
+
+    REQUIRE(coll1Key < coll2Key);
+}

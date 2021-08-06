@@ -70,6 +70,8 @@ public: // application lifespan
         .then([this] { return runScenario07(); })
         .then([this] { return runScenario08(); })
         .then([this] { return runScenario09(); })
+        .then([this] { return runScenario10(); })
+        .then([this] { return runScenario11(); })
         .then([this] {
             K2LOG_I(log::k23si, "======= All tests passed ========");
             exitcode = 0;
@@ -550,6 +552,81 @@ seastar::future<> runScenario09(){
     });
 }
 
+seastar::future<> runScenario10(){
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 10: Create a new version of an existing schema by changing type of (non-key) field +++++++");
+
+    K2LOG_I(log::k23si, "STEP1: get an existing Schema");
+    dto::GetSchemasRequest request { collname };
+    return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
+    .then([this](auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
+
+        K2LOG_I(log::k23si, "STEP2: change type of non-key field and then create");
+        auto schema(resp.schemas[0]);
+        schema.version = 444;
+        schema.fields[2].type = dto::FieldType::INT64T;
+        K2EXPECT(log::k23si, schema.basicValidation(), Statuses::S200_OK);
+        K2EXPECT(log::k23si, resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
+
+        dto::CreateSchemaRequest request{ collname, std::move(schema) };
+        return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+        .then([this] (auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
+
+            dto::GetSchemasRequest request { collname };
+            return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
+        })
+        .then([] (auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
+            K2LOG_I(log::k23si, "------- create a new version of schema success. -------");
+            return seastar::make_ready_future<>();
+        });
+    });
+}
+
+seastar::future<> runScenario11(){
+    K2LOG_I(log::k23si, "+++++++ Schema Creation Test 11: Create a new version of an existing schema by changing NULL ordering (non-key) field +++++++");
+
+    K2LOG_I(log::k23si, "STEP1: get an existing Schema");
+    dto::GetSchemasRequest request { collname };
+    return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s)
+    .then([this](auto&& response) {
+        auto& [status, resp] = response;
+        K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
+
+        K2LOG_I(log::k23si, "STEP2: change NULL ordering of a non-key field and then create");
+        auto schema(resp.schemas[0]);
+        schema.version = 445;
+        schema.fields[2].nullLast = true;
+        K2EXPECT(log::k23si, schema.basicValidation(), Statuses::S200_OK);
+        K2EXPECT(log::k23si, resp.schemas[0].canUpgradeTo(schema), Statuses::S200_OK);
+
+        dto::CreateSchemaRequest request{ collname, std::move(schema) };
+        return RPC().callRPC<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, request, *_cpoEndpoint, 1s)
+        .then([this] (auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
+
+            dto::GetSchemasRequest request { collname };
+            return RPC().callRPC<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET, request, *_cpoEndpoint, 1s);
+        })
+        .then([] (auto&& response) {
+            auto& [status, resp] = response;
+            K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
+            K2LOG_I(log::k23si, "------- create a new version of schema success. -------");
+            return seastar::make_ready_future<>();
+        });
+    });
+}
 
 }; // class schemaCreation
 } //  ns k2
