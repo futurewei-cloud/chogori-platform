@@ -283,3 +283,39 @@ TEST_CASE("Test7: Mixed type compound keys string bool") {
 
     REQUIRE(coll1Key < coll2Key);
 }
+
+TEST_CASE("Test7: int32 and NULL key ordering with NULL last key order") {
+    k2::dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::INT32T, "ID", false, false},
+    };
+    schema.fields[0].nullLast = true;
+
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
+    std::shared_ptr<k2::dto::Schema> schema_ptr = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    k2::dto::SKVRecord zero("collection", schema_ptr);
+    k2::dto::SKVRecord one("collection", schema_ptr);
+    k2::dto::SKVRecord small("collection", schema_ptr);
+    k2::dto::SKVRecord big("collection", schema_ptr);
+    k2::dto::SKVRecord null("collection", schema_ptr);
+
+    zero.serializeNext<int32_t>(0);
+    one.serializeNext<int32_t>(1);
+    small.serializeNext<int32_t>(777);
+    big.serializeNext<int32_t>(3000000);
+    null.serializeNull();
+
+    k2::String zeroKey = zero.getPartitionKey();
+    k2::String oneKey = one.getPartitionKey();
+    k2::String smallKey = small.getPartitionKey();
+    k2::String bigKey = big.getPartitionKey();
+    k2::String nullKey = null.getPartitionKey();
+
+    REQUIRE(zeroKey < oneKey);
+    REQUIRE(oneKey < smallKey);
+    REQUIRE(smallKey < bigKey);
+    REQUIRE(bigKey < nullKey);
+}
