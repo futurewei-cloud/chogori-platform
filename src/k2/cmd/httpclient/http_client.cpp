@@ -87,13 +87,60 @@ void serializeFieldFromJSON<k2::dto::FieldType>(const k2::SchemaField& field,
     throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
 }
 
+template <typename T>
+void serializeFieldFromRecord(const k2::SchemaField& field, k2::SKVRecord& record,
+                                   nlohmann::json& jsonRecord) {
+    std::optional<T> value = record.deserializeNext<T>();
+    if (!value.has_value()) {
+        jsonRecord[field.name] = nullptr;
+    } else {
+        jsonRecord[field.name] = *value;
+    }
+}
+template <>
+void serializeFieldFromRecord<k2::String>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
+    std::optional<k2::String> value = record.deserializeNext<k2::String>();
+    if (!value.has_value()) {
+        jsonRecord[field.name] = nullptr;
+    } else {
+        std::string val_str = *value;
+        jsonRecord[field.name] = val_str;
+    }
+}
+template <>
+void serializeFieldFromRecord<std::decimal::decimal64>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
+    (void) field;
+    (void) record;
+    (void) jsonRecord;
+    throw k2::dto::TypeMismatchException("decimal64 type not supported with JSON interface");
+}
+template <>
+void serializeFieldFromRecord<std::decimal::decimal128>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
+    (void) field;
+    (void) record;
+    (void) jsonRecord;
+    throw k2::dto::TypeMismatchException("decimal128 type not supported with JSON interface");
+}
+template <>
+void serializeFieldFromRecord<k2::dto::FieldType>(const k2::SchemaField& field,
+                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
+    (void) field;
+    (void) record;
+    (void) jsonRecord;
+    throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
+}
+
 class Client {
 public:  // application lifespan
     Client():
         _client(k2::K23SIClientConfig()) {
     }
-    // required for seastar::distributed interface
+
     seastar::future<> gracefulStop() {
+        // TODO stop all existing txns
         _stopped = true;
         return seastar::make_ready_future<>();
     }
@@ -132,9 +179,11 @@ private:
         }
     }
 
-    static nlohmann::json serializeJSONFromRecord(const k2::SKVRecord& record) {
-        (void) record;
+    static nlohmann::json serializeJSONFromRecord(k2::SKVRecord& record) {
         nlohmann::json jsonRecord;
+        for (const k2::dto::SchemaField& field : record.schema->fields) {
+            K2_DTO_CAST_APPLY_FIELD_VALUE(serializeFieldFromRecord, field, record, jsonRecord);
+        }
         return jsonRecord;
     }
 
@@ -145,6 +194,7 @@ private:
             K2LOG_D(k2::log::httpclient, "begin txn: {}", txn.mtr());
             _txns[_txnID++] = std::move(txn);
             nlohmann::json response;
+            // TODO fix response to match K2 status
             response["status"] = 201;
             response["txnID"] = _txnID - 1;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
@@ -172,7 +222,7 @@ private:
         return it->second.end(commit)
         .then([this, id] (k2::EndResult&& result) {
             nlohmann::json r;
-            r["status"] = result.status.code;
+            r["status"] = result.status;
             _txns.erase(id);
             return seastar::make_ready_future<nlohmann::json>(std::move(r));
         });
@@ -233,7 +283,53 @@ private:
     }
 
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request) {
-        return seastar::make_ready_future<nlohmann::json>(std::move(request));
+        std::string collectionName;
+        std::string schemaName;
+        uint64_t id;
+        uint64_t schemaVersion;
+        nlohmann::json record;
+        nlohmann::json response;
+
+        try {
+            request.at("collectionName").get_to(collectionName);
+            request.at("schemaName").get_to(schemaName);
+            request.at("txnID").get_to(id);
+            request.at("schemaVersion").get_to(schemaVersion);
+            bool found = request.contains("record");
+            if (!found) {
+                throw std::runtime_error("Bad request");
+            }
+            record = request["record"];
+        } catch (...) {
+            response["status"] = 400; // Bad request code
+            return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        }
+
+        std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
+        if (it == _txns.end()) {
+            response["status"] = 400; // Bad request
+            return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        }
+
+        return _client.getSchema(collectionName, schemaName, schemaVersion)
+        .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
+                                                (k2::GetSchemaResult&& result) mutable {
+            if(!result.status.is2xxOK()) {
+                nlohmann::json resp;
+                resp["status"] = result.status;
+                return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            }
+
+            k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
+            serializeRecordFromJSON(record, std::move(jsonRecord));
+
+            return _txns[id].write(record)
+            .then([] (k2::WriteResult&& result) {
+                nlohmann::json resp;
+                resp["status"] = result.status;
+                return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            });
+        });
     }
 
     void _registerAPI() {
@@ -242,6 +338,15 @@ private:
 
         api_server.registerRawAPIObserver("BeginTxn", "Begin a txn, returning a numeric txn handle", [this](nlohmann::json&& request) {
             return _handleBegin(std::move(request));
+        });
+        api_server.registerRawAPIObserver("EndTxn", "End a txn", [this](nlohmann::json&& request) {
+            return _handleEnd(std::move(request));
+        });
+        api_server.registerRawAPIObserver("Read", "handle read", [this](nlohmann::json&& request) {
+            return _handleRead(std::move(request));
+        });
+        api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
+            return _handleWrite(std::move(request));
         });
     }
 
