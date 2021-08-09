@@ -95,6 +95,8 @@ public:  // application lifespan
         .then([this] { return runScenario05(); })
         .then([this] { return runScenario06(); })
         .then([this] { return runScenario07(); })
+        // TODO: enable the test after issue is fixed
+        //.then([this] { return runScenario08(); })
         .then([this] {
             K2LOG_I(log::k23si, "======= All tests passed ========");
             exitcode = 0;
@@ -685,6 +687,75 @@ seastar::future<> runScenario07() {
     })
     .then([this] () {
         return doQuery("scenario07", "scenario07", -1, false, 0, 1).discard_result();
+    });
+}
+
+// scenario04 but in reverse scan
+seastar::future<> runScenario08() {
+    K2LOG_I(log::k23si, "runScenario08");
+    return seastar::make_ready_future()
+    .then([this] () {
+        // Simple Equals filter, all records should be returned
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueReference("data2"));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        K2LOG_I(log::k23si, "runScenario08-1");
+        return doQuery("", "", -1, true, 6, 4, k2::dto::K23SIStatus::OK, std::move(filter)).discard_result();
+    })
+    .then([this] () {
+        // Simple Equals filter, only one record returned but all partitions accessed
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueLiteral<int32_t>(1));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        K2LOG_I(log::k23si, "runScenario08-2");
+        return doQuery("", "", -1, true, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter))
+        .then([this] (auto&& result_set) {
+            k2::dto::SKVRecord& rec = result_set[0][0];
+            std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
+            std::optional<k2::String> key = rec.deserializeNext<k2::String>();
+            K2EXPECT(log::k23si, *key, "b");
+        });
+    })
+    .then([this] () {
+        // Equals filter with type promotion, only one record returned but all partitions accessed
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueLiteral<int64_t>(1));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        K2LOG_I(log::k23si, "runScenario08-3");
+        return doQuery("", "", -1, true, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter))
+        .then([this] (auto&& result_set) {
+            k2::dto::SKVRecord& rec = result_set[0][0];
+            std::optional<k2::String> part1 = rec.deserializeNext<k2::String>();
+            std::optional<k2::String> key = rec.deserializeNext<k2::String>();
+            K2EXPECT(log::k23si, *key, "b");
+        });
+    })
+    .then([this] () {
+        // Mismatched types, no records returned
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        values.emplace_back(k2e::makeValueLiteral<k2::String>("1"));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        K2LOG_I(log::k23si, "runScenario08-4");
+        return doQuery("", "", -1, true, 0, 2, k2::dto::K23SIStatus::OK, std::move(filter))
+        .discard_result();
+    })
+    .then([this] () {
+        // Failure case of malformed filter
+        std::vector<k2e::Value> values;
+        std::vector<k2e::Expression> exps;
+        values.emplace_back(k2e::makeValueReference("data1"));
+        k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+        K2LOG_I(log::k23si, "runScenario08-5");
+        return doQuery("", "", -1, true, 0, 1, k2::dto::K23SIStatus::OperationNotAllowed, std::move(filter))
+        .discard_result();
     });
 }
 
