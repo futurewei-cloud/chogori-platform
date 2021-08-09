@@ -1108,11 +1108,40 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         }
     }
 
+    // build write_ranges for Transaction end request
+    std::unordered_map<String, std::unordered_set<dto::KeyRangeVersion>> write_ranges; // will be filled in later if WI is created successfully
 
-    // all checks passed - we're ready to place this WI as the latest version
-    auto status = _createWI(std::move(request), vset);
-    K2LOG_D(log::skvsvr, "WI creation with status {}", status);
-    return RPCResponse(std::move(status), dto::K23SIWriteResponse{});
+    //endRequest created for calling EndTransaction for one hot transactions.
+    dto::K23SITxnEndRequest endRequest{request.pvid,
+        request.trhCollection,
+        request.trh,
+        request.mtr,
+        dto::EndAction::Commit,
+        std::move(write_ranges)
+    };
+
+    return seastar::do_with((dto::K23SITxnEndRequest)std::move(endRequest), (bool)request.isonehot,
+                            [this, &request] (dto::K23SITxnEndRequest& endRequest, bool& isonehot) {
+        // all checks passed - we're ready to place this WI as the latest version
+        auto& vset = _indexer[request.key];
+        auto status = _createWI(std::move(request), vset);
+        K2LOG_D(log::skvsvr, "WI creation with status {}", status);
+
+        // not one hot transaction or WI creation failed
+        if(!isonehot || !status.is2xxOK()) {
+            return RPCResponse(std::move(status), dto::K23SIWriteResponse{});
+        }
+
+        endRequest.writeRanges[request.collectionName].insert(_partition().keyRangeV); // add keyRangeV of current partition (TRH)
+
+        // End one hot transaction
+        return handleTxnEnd(std::move(endRequest))
+                .then( [this] (auto&& response) {
+                    auto& [endstatus, k2response] = response;
+                    return RPCResponse(std::move(endstatus), dto::K23SIWriteResponse{}); // Return status after ending one hot transaction
+                });
+
+    });
 }
 
 Status
