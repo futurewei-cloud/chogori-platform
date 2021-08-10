@@ -2,7 +2,14 @@ cmake_minimum_required (VERSION 3.13)
 
 project (k2_platform VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
-add_compile_options(-O3 -g -Werror -Wall -Wextra -march=skylake -mtune=skylake-avx512 -mavx -mavx2 -mxsave -mbmi -mbmi2 -mlzcnt -maes -mpopcnt)
+set(CMAKE_THREAD_LIBS_INIT "-lpthread")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+set(CMAKE_HAVE_THREADS_LIBRARY 1)
+set(CMAKE_USE_WIN32_THREADS_INIT 0)
+set(CMAKE_USE_PTHREADS_INIT 1)
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+
+add_compile_options(-O3 -g -Werror -Wall -Wextra -march=skylake -mtune=skylake-avx512 -mavx -mavx2 -mxsave -mbmi -mbmi2 -mlzcnt -maes -mpopcnt -pthread)
 
 # K2_VERBOSE_LOGGING enables some verbose logging for debug purposes. By default it is disabled and compiled out
 if(DEFINED ENV{K2_VERBOSE_LOGGING})
@@ -15,13 +22,14 @@ add_compile_definitions(K2_VERBOSE_LOGGING=${K2_VERBOSE_LOGGING})
 
 include_directories(src)
 
+find_package(Threads)
 find_package (Seastar REQUIRED)
 find_package (fmt REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package (yaml-cpp REQUIRED) # required for configuration file parsing
 
 add_subdirectory (src)
-add_subdirectory (test)
+#add_subdirectory (test)
 
 # install the cmake config for the entire project so that it can be used by upstream
 # via find_package(k2 REQUIRED)
