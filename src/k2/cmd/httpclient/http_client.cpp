@@ -140,9 +140,14 @@ public:  // application lifespan
     }
 
     seastar::future<> gracefulStop() {
-        // TODO stop all existing txns
         _stopped = true;
-        return seastar::make_ready_future<>();
+
+        auto it = _txns.begin();
+        for(; it != _txns.end(); ++it) {
+            _endFuts.push_back(it->second.end(false).discard_result());
+        }
+
+        return seastar::when_all_succeed(_endFuts.begin(), _endFuts.end());
     }
 
     seastar::future<> start() {
@@ -194,8 +199,10 @@ private:
             K2LOG_D(k2::log::httpclient, "begin txn: {}", txn.mtr());
             _txns[_txnID++] = std::move(txn);
             nlohmann::json response;
-            // TODO fix response to match K2 status
-            response["status"] = 201;
+            nlohmann::json status;
+            status["message"] = "Begin txn success";
+            status["code"] = 201;
+            response["status"] = status;
             response["txnID"] = _txnID - 1;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         });
@@ -209,13 +216,19 @@ private:
             request.at("txnID").get_to(id);
             request.at("commit").get_to(commit);
         } catch (...) {
-            response["status"] = 400; // Bad request code
+            nlohmann::json status;
+            status["message"] = "Bad json for end request";
+            status["code"] = 400;
+            response["status"] = status;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         }
 
         std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
         if (it == _txns.end()) {
-            response["status"] = 400; // Bad request
+            nlohmann::json status;
+            status["message"] = "Could not find txnID for end request";
+            status["code"] = 400;
+            response["status"] = status;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         }
 
@@ -245,13 +258,19 @@ private:
             }
             record = request["record"];
         } catch (...) {
-            response["status"] = 400; // Bad request code
+            nlohmann::json status;
+            status["message"] = "Bad json for read request";
+            status["code"] = 400;
+            response["status"] = status;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         }
 
         std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
         if (it == _txns.end()) {
-            response["status"] = 400; // Bad request
+            nlohmann::json status;
+            status["message"] = "Could not find txnID for read request";
+            status["code"] = 400;
+            response["status"] = status;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         }
 
@@ -301,13 +320,19 @@ private:
             }
             record = request["record"];
         } catch (...) {
-            response["status"] = 400; // Bad request code
+            nlohmann::json status;
+            status["message"] = "Bad json for write request";
+            status["code"] = 400;
+            response["status"] = status;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         }
 
         std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
         if (it == _txns.end()) {
-            response["status"] = 400; // Bad request
+            nlohmann::json status;
+            status["message"] = "Could not find txnID for write request";
+            status["code"] = 400;
+            response["status"] = status;
             return seastar::make_ready_future<nlohmann::json>(std::move(response));
         }
 
@@ -393,6 +418,7 @@ private:
     k2::K23SIClient _client;
     uint64_t _txnID = 0;
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
+    std::vector<seastar::future<>> _endFuts;
 };  // class Client
 
 int main(int argc, char** argv) {

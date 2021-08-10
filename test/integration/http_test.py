@@ -24,54 +24,54 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
+import argparse, unittest, sys
 import requests, json
 from urllib.parse import urlparse
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--http", help="HTTP API URL")
 args = parser.parse_args()
 
-# Begin Txn
-data = {}
-url = args.http + "/api/BeginTxn"
-r = requests.post(url, data=json.dumps(data))
-result = r.json()
-result = result[0][0]
-print(result)
-if result["status"] != 201:
-    print("Error in BeginTxn")
-ID = result["txnID"]
+class TestBasicTxn(unittest.TestCase):
+    def test_basicTxn(self):
+        # Begin Txn
+        data = {}
+        url = args.http + "/api/BeginTxn"
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        result = result[0][0]
+        print(result)
+        self.assertEqual(result["status"]["code"], 201);
+        ID = result["txnID"]
 
+        # Write
+        record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
+        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": ID, "schemaVersion": 1, "record": record}
+        url = args.http + "/api/Write"
+        r = requests.post(url, data=json.dumps(request))
+        result = r.json()
+        result = result[0][0]
+        print(result)
+        self.assertEqual(result["status"]["code"], 201);
 
-# Write
-record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
-request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": ID, "schemaVersion": 1, "record": record}
-url = args.http + "/api/Write"
-r = requests.post(url, data=json.dumps(request))
-result = r.json()
-result = result[0][0]
-print(result)
-if result["status"]["code"] != 201:
-    print("Error in Write")
+        # Read
+        record = {"partitionKey": "test1", "rangeKey": "test1"}
+        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": ID, "record": record}
+        url = args.http + "/api/Read"
+        r = requests.post(url, data=json.dumps(request))
+        result = r.json()
+        result = result[0][0]
+        print(result)
+        self.assertEqual(result["status"]["code"], 200);
 
-# Read
-record = {"partitionKey": "test1", "rangeKey": "test1"}
-request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": ID, "record": record}
-url = args.http + "/api/Read"
-r = requests.post(url, data=json.dumps(request))
-result = r.json()
-result = result[0][0]
-print(result)
-if result["status"]["code"] != 200:
-    print("Error in Read")
+        # Commit
+        request = {"txnID": ID, "commit": True}
+        url = args.http + "/api/EndTxn"
+        r = requests.post(url, data=json.dumps(request))
+        result = r.json()
+        result = result[0][0]
+        print(result)
+        self.assertEqual(result["status"]["code"], 200);
 
-# Commit
-request = {"txnID": ID, "commit": True}
-url = args.http + "/api/EndTxn"
-r = requests.post(url, data=json.dumps(request))
-result = r.json()
-result = result[0][0]
-print(result)
-if result["status"]["code"] != 200:
-    print("Error in commit")
+del sys.argv[1:]
+unittest.main()
