@@ -325,8 +325,8 @@ public:
                     }
                     //note we need not end heartbeat timer because we never started it for one hot transactions.
                     auto time_spent = Clock::now() - _start_time;
-                    if (time_spent < 50us) {
-                        sleep = 50us - time_spent;
+                    if (time_spent < 5us) {
+                        sleep = 5us - time_spent;
                     }
                 }
 
@@ -430,8 +430,8 @@ public:
                     }
                     //note we need not end heartbeat timer because we never started it for one hot transactions.
                     auto time_spent = Clock::now() - _start_time;
-                    if (time_spent < 50us) {
-                        sleep = 50us - time_spent;
+                    if (time_spent < 5us) {
+                        sleep = 5us - time_spent;
                     }
                 }
 

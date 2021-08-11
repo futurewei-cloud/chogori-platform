@@ -90,7 +90,7 @@ public:
 
     YCSBTxn(RandomContext& random, K23SIClient& client,
              std::shared_ptr<RandomGenerator> requestDist, std::shared_ptr<RandomGenerator> scanLengthDist) :
-                        _random(random), _client(client), _failed(false), _requestDist(requestDist), _scanLengthDist(scanLengthDist) {}
+                        _random(random), _client(client), _failed(false), _requestDist(requestDist), _scanLengthDist(scanLengthDist), _onehot(false) {}
 
      seastar::future<bool> attempt() {
         K2TxnOptions options{};
@@ -164,6 +164,9 @@ private:
                 fut.ignore_ready_future();
                 K2LOG_D(log::ycsb, "Txn finished");
 
+                if(_onehot) // one hot transaction and succeeded
+                    return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("one hot transaction ended successfully")));
+
                 return _txn.end(true);
             }).then_wrapped([this] (auto&& fut) {
                 if (fut.failed()) {
@@ -216,7 +219,8 @@ private:
             cur++;
         }
 
-        return partialUpdateRow(_keyid,std::move(fieldValues),std::move(fieldsToUpdate),_txn).discard_result();
+        _onehot = _ops_per_txn()==1?_isonehot():false; // flag for one-hot transactions
+        return partialUpdateRow(_keyid,std::move(fieldValues),std::move(fieldsToUpdate),_txn, _onehot).discard_result();
     }
 
     seastar::future<> scanOperation(){
@@ -269,7 +273,8 @@ private:
         if(_requestDistName()!="latest") {
             K2LOG_D(log::ycsb, "Insert operation started for keyid {}", _keyid);
             YCSBData row(_keyid, _random); // generate row
-            return writeRow(row, _txn).discard_result();
+            _onehot = _ops_per_txn()==1?_isonehot():false; // flag for one-hot transactions
+            return writeRow(row, _txn, false, ExistencePrecondition::None, _onehot).discard_result();
         }
 
         _keyid = _requestDist->getMaxValue()+1;
@@ -277,7 +282,9 @@ private:
 
         //handle latest distribution separately to identify insert fails and increment latest known record max key value
         K2LOG_D(log::ycsb, "Insert operation started for keyid {}", _keyid);
-        return writeRow(row, _txn, false, ExistencePrecondition::Exists) // if record with given key already exists must return error so we set precondition to Exists
+
+        _onehot = _ops_per_txn()==1?_isonehot():false; // flag for one-hot transactions
+        return writeRow(row, _txn, false, ExistencePrecondition::NotExists, _onehot) // if record with given key already exists must return error so we set precondition to NotExists
             .then_wrapped([this] (auto&& fut) {
                 if (fut.failed()) {
                     fut.ignore_ready_future();
@@ -285,11 +292,11 @@ private:
                 }
 
                 WriteResult result = fut.get0();
-                if (result.status.is2xxOK() || result.status.code == 403) { // key inserted or already exists
+                if (result.status.is2xxOK() || result.status.code == 412) { // key inserted or already exists
                     if(_requestDist->getMaxValue() < _keyid) { // update bounds of distribution
                         _requestDist->updateBounds(0,_keyid);
                     }
-                    if(result.status.code == 403) { // insert missed because record exists
+                    if(result.status.code == 412) { // insert missed because record exists
                         _insertMissesLatest++; // increment misses counter
                     }
                 }
@@ -301,7 +308,8 @@ private:
     seastar::future<> deleteOperation(){
         K2LOG_D(log::ycsb, "Delete operation started for keyid {}", _keyid);
         YCSBData row(_keyid); // generate row
-        return writeRow(row, _txn, true).discard_result();
+        _onehot = _ops_per_txn()==1?_isonehot():false; // flag for one-hot transactions
+        return writeRow(row, _txn, true, ExistencePrecondition::None, _onehot).discard_result();
     }
 
     Query _query_scan;
@@ -317,6 +325,7 @@ private:
     std::shared_ptr<RandomGenerator> _requestDist; // Request distribution for selecting keys
     std::shared_ptr<RandomGenerator> _scanLengthDist; // Request distribution for selecting length of scan
     uint64_t _insertMissesLatest{0}; // number of inserts missed when request distribution is Latest distribution
+    bool _onehot; // set to true if one hot transaction
 
 private:
     ConfigVar<uint64_t> _ops_per_txn{"ops_per_txn"};
@@ -324,4 +333,5 @@ private:
     ConfigVar<uint32_t> _num_fields{"num_fields"};
     ConfigVar<uint32_t> _max_fields_update{"max_fields_update"};
     ConfigVar<String> _requestDistName{"request_dist"};
+    ConfigVar<bool> _isonehot{"isonehot"};
 };
