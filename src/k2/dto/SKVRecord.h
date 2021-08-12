@@ -67,6 +67,10 @@ struct KeyNotAvailableError : public std::exception {
 
 class SKVRecord {
 public:
+    enum CursorType : uint8_t {
+        SERIALIZER,
+        DESERIALIZER
+    };
     // The record must be serialized in order. Schema will be enforced
     template <typename T>
     void serializeNext(T field) {
@@ -75,24 +79,25 @@ public:
         }
 
         FieldType ft = TToFieldType<T>();
-        if (fieldCursor >= schema->fields.size() || ft != schema->fields[fieldCursor].type) {
-            throw TypeMismatchException("Schema not followed in record serialization");
+        if (serializerFieldCursor >= schema->fields.size() || ft != schema->fields[serializerFieldCursor].type) {
+            throw TypeMismatchException(fmt::format("Schema not followed in record serialization for index {}",
+                                        serializerFieldCursor));
         }
 
         for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
-            if (schema->partitionKeyFields[i] == fieldCursor) {
+            if (schema->partitionKeyFields[i] == serializerFieldCursor) {
                 partitionKeys[i] = FieldToKeyString<T>(field);
             }
         }
 
         for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
-            if (schema->rangeKeyFields[i] == fieldCursor) {
+            if (schema->rangeKeyFields[i] == serializerFieldCursor) {
                 rangeKeys[i] = FieldToKeyString<T>(field);
             }
         }
 
         storage.fieldData.write(field);
-        ++fieldCursor;
+        ++serializerFieldCursor;
     }
 
     // Serializing a Null value on the next field, for optional fields or partial updates
@@ -138,15 +143,15 @@ public:
         std::optional<T> null_val = std::nullopt;
 
         if (fieldIndex >= schema->fields.size() || ft != schema->fields[fieldIndex].type) {
-
-            throw TypeMismatchException(fmt::format("schema not followed in record deserialization for index {}", fieldIndex));
+            throw TypeMismatchException(fmt::format("schema not followed in record deserialization for index {}",
+                                        fieldIndex));
         }
 
-        if (fieldIndex != fieldCursor) {
+        if (fieldIndex != deserializerFieldCursor || deserializerFieldCursor == 0) {
             seekField(fieldIndex);
         }
 
-        ++fieldCursor;
+        ++deserializerFieldCursor;
 
         if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldIndex]) {
             return null_val;
@@ -163,7 +168,7 @@ public:
 
     template <typename T>
     std::optional<T> deserializeNext() {
-        return deserializeField<T>(fieldCursor);
+        return deserializeField<T>(deserializerFieldCursor);
     }
 
     // Used as part of the SKV_RECORD_FIELDS macro for converting to user-defined types
@@ -182,7 +187,7 @@ public:
     // no-arg version to satisfy the template expansion above in the terminal case
     void readMany() {}
 
-    uint32_t getFieldCursor() const;
+    uint32_t getFieldCursor(CursorType cursorType) const;
 
     // These fields are used by the client to build a request but are not serialized on the wire
     std::shared_ptr<Schema> schema;
@@ -252,7 +257,8 @@ private:
 
     std::vector<String> partitionKeys;
     std::vector<String> rangeKeys;
-    uint32_t fieldCursor = 0;
+    uint32_t serializerFieldCursor = 0;    // field possition during serialization
+    uint32_t deserializerFieldCursor = 0;  // field possition during deserialization 
     bool keyValuesAvailable = false; // Whether the values for key fields are in the storage payload
     bool keyStringsConstructed = false; // Whether the encoded keys are already in the vectors above
 
@@ -268,7 +274,7 @@ private:
 // and a variable number (at least 1) of arguments passed from the user
 #define DO_ON_NEXT_RECORD_FIELD(record, func, ...)                                                                    \
     do {                                                                                                              \
-        auto& field = (record).schema->fields[(record).getFieldCursor()];                                             \
+        auto& field = (record).schema->fields[(record).getFieldCursor(k2::dto::SKVRecord::CursorType::DESERIALIZER)];                                             \
         switch (field.type) {                                                                                         \
             case k2::dto::FieldType::STRING: {                                                                        \
                 std::optional<k2::String> value = (record).deserializeNext<k2::String>();                             \
@@ -319,7 +325,7 @@ private:
 #define FOR_EACH_RECORD_FIELD(record, func, ...)                             \
     do {                                                                     \
         (record).seekField(0);                                               \
-        while ((record).getFieldCursor() < (record).schema->fields.size()) { \
+        while ((record).getFieldCursor(k2::dto::SKVRecord::CursorType::DESERIALIZER) < (record).schema->fields.size()) { \
             DO_ON_NEXT_RECORD_FIELD((record), func, __VA_ARGS__);            \
         }                                                                    \
     } while (0)

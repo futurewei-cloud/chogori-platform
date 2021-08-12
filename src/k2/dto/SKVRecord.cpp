@@ -31,19 +31,19 @@ namespace k2 {
 namespace dto {
 
 void SKVRecord::serializeNull() {
-    if (fieldCursor >= schema->fields.size()) {
+    if (serializerFieldCursor >= schema->fields.size()) {
         throw NoFieldFoundException();
     }
 
     for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
-        if (schema->partitionKeyFields[i] == fieldCursor) {
-            partitionKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+        if (schema->partitionKeyFields[i] == serializerFieldCursor) {
+            partitionKeys[i] = schema->fields[serializerFieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
     for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
-        if (schema->rangeKeyFields[i] == fieldCursor) {
-            rangeKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+        if (schema->rangeKeyFields[i] == serializerFieldCursor) {
+            rangeKeys[i] = schema->fields[serializerFieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
@@ -51,8 +51,8 @@ void SKVRecord::serializeNull() {
         storage.excludedFields = std::vector<bool>(schema->fields.size(), false);
     }
 
-    storage.excludedFields[fieldCursor] = true;
-    ++fieldCursor;
+    storage.excludedFields[serializerFieldCursor] = true;
+    ++serializerFieldCursor;
 }
 
 // NoOp function to be used with the convience macros to get document fields
@@ -63,8 +63,8 @@ void NoOp(std::optional<T> value, const String& fieldName, int n) {
     (void) n;
 };
 
-uint32_t SKVRecord::getFieldCursor() const {
-    return fieldCursor;
+uint32_t SKVRecord::getFieldCursor(CursorType cursorType) const {
+    return cursorType == CursorType::SERIALIZER ? serializerFieldCursor : deserializerFieldCursor;
 }
 
 void SKVRecord::seekField(uint32_t fieldIndex) {
@@ -72,18 +72,21 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
         throw NoFieldFoundException();
     }
 
-    if (fieldIndex == fieldCursor) {
+    if (deserializerFieldCursor == 0)
+        storage.fieldData.seek(0);
+
+    if (fieldIndex == deserializerFieldCursor) {
         return;
     }
 
-    if (fieldIndex < fieldCursor) {
-        fieldCursor = 0;
+    if (fieldIndex < deserializerFieldCursor) {
+        deserializerFieldCursor = 0;
         storage.fieldData.seek(0);
     }
 
-    while(fieldIndex != fieldCursor) {
-        if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldCursor]) {
-            ++fieldCursor;
+    while(fieldIndex != deserializerFieldCursor) {
+        if (storage.excludedFields.size() > 0 && storage.excludedFields[deserializerFieldCursor]) {
+            ++deserializerFieldCursor;
             continue;
         }
 
@@ -120,21 +123,21 @@ void SKVRecord::makeKeyString(std::optional<T> value, const String& fieldName, i
     for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
         // Subtracting 1 from fieldCursor here and below because this function gets called
         // after the deserialize function moves the fieldCursor
-        if (schema->partitionKeyFields[i] == fieldCursor-1) {
+        if (schema->partitionKeyFields[i] == deserializerFieldCursor-1) {
             if (value.has_value()) {
                 partitionKeys[i] = FieldToKeyString<T>(*value);
             } else {
-                partitionKeys[i] = schema->fields[fieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+                partitionKeys[i] = schema->fields[deserializerFieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
             }
         }
     }
 
     for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
-         if (schema->rangeKeyFields[i] == fieldCursor-1) {
+         if (schema->rangeKeyFields[i] == deserializerFieldCursor-1) {
             if (value.has_value()) {
                 rangeKeys[i] = FieldToKeyString<T>(*value);
             } else {
-                rangeKeys[i] = schema->fields[fieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+                rangeKeys[i] = schema->fields[deserializerFieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
             }
         }
     }
@@ -144,7 +147,7 @@ void SKVRecord::constructKeyStrings() {
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
 
-    uint32_t beginCursor = getFieldCursor();
+    uint32_t beginCursor = getFieldCursor(CursorType::DESERIALIZER);
     seekField(0);
     for (size_t i = 0; i < partitionKeys.size() + rangeKeys.size() && i < schema->fields.size(); ++i) {
         // Need the extra 0 argument for vararg macro expansion

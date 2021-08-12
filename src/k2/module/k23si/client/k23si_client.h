@@ -279,10 +279,16 @@ public:
 
         std::unique_ptr<dto::K23SIWriteRequest> request;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
+            // check if all fields have been serialized
+            if (record.getFieldCursor(k2::dto::SKVRecord::SERIALIZER) != record.schema->fields.size())
+                return seastar::make_exception_future<WriteResult>(K23SIClientException("Not all the record fields serialized"));
             request = _makeWriteRequest(record, erase, precondition);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
+            // check if all fields have been serialized
+            if (skv_record.getFieldCursor(k2::dto::SKVRecord::SERIALIZER) != skv_record.schema->fields.size())
+                return seastar::make_exception_future<WriteResult>(K23SIClientException("Not all the record fields serialized"));
             request = _makeWriteRequest(skv_record, erase, precondition);
         }
 
