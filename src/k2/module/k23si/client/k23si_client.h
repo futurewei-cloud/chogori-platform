@@ -180,7 +180,7 @@ private:
     std::unique_ptr<dto::K23SIReadRequest> _makeReadRequest(const dto::Key& key,
                                                            const String& collectionName) const;
     std::unique_ptr<dto::K23SIWriteRequest> _makeWriteRequest(dto::SKVRecord& record, bool erase,
-                                                             dto::ExistencePrecondition precondition);
+                                                             dto::ExistencePrecondition precondition, bool isonehot);
 
     template <class T>
     std::unique_ptr<dto::K23SIReadRequest> _makeReadRequest(const T& user_record) const {
@@ -191,7 +191,7 @@ private:
     }
 
     std::unique_ptr<dto::K23SIWriteRequest> _makePartialUpdateRequest(dto::SKVRecord& record,
-            std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key);
+            std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key, bool isonehot);
 
     void _prepareQueryRequest(Query& query);
 
@@ -247,6 +247,7 @@ public:
 
         _client->read_ops++;
         _ongoing_ops++;
+        _total_ops++;
 
         return _cpo_client->partitionRequest
             <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
@@ -269,30 +270,39 @@ public:
 
     template <class T>
     seastar::future<WriteResult> write(T& record, bool erase=false,
-                                       ExistencePrecondition precondition=ExistencePrecondition::None) {
+                                       ExistencePrecondition precondition=ExistencePrecondition::None, bool isonehot=false) {
         if (!_valid) {
             return seastar::make_exception_future<WriteResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<WriteResult>(WriteResult(_failed_status, dto::K23SIWriteResponse()));
         }
+        if (isonehot) {
+            // this must be the only operation in the transaction
+            if (_total_ops>0) {
+                return seastar::make_exception_future<WriteResult>(K23SIClientException("Invalid use of one hot transaction"));
+            }
+            // User is not allowed to call anything else on this TxnHandle after this operation since one hot transactions call end() on server side
+            _valid = false;
+        }
 
         std::unique_ptr<dto::K23SIWriteRequest> request;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
-            request = _makeWriteRequest(record, erase, precondition);
+            request = _makeWriteRequest(record, erase, precondition, isonehot);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
-            request = _makeWriteRequest(skv_record, erase, precondition);
+            request = _makeWriteRequest(skv_record, erase, precondition, isonehot);
         }
 
         _client->write_ops++;
         _ongoing_ops++;
+        _total_ops++;
 
         return _cpo_client->partitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
-            then([this, request=std::move(request)] (auto&& response) {
+            then([this, request=std::move(request), isonehot=std::move(isonehot)] (auto&& response) {
                 auto& [status, k2response] = response;
 
                 _registerRangeForWrite(status, *request);
@@ -300,21 +310,39 @@ public:
                 _checkResponseStatus(status);
                 _ongoing_ops--;
 
-                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
+                k2::Duration sleep= 0us; // time to sleep before we return to satisfy min time_spent in txn
+
+                if (!isonehot && status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr);
                     _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
                     _makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
+                else if(isonehot) { //handle one hot transactions separately and similar to what is done in end()
+                    if (status.is2xxOK()) {
+                        _client->successful_txns++;
+                    }
+                    //note we need not end heartbeat timer because we never started it for one hot transactions.
+                    auto time_spent = Clock::now() - _start_time;
+                    if (time_spent < 5us) {
+                        sleep = 5us - time_spent;
+                    }
+                }
 
-                return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+                if(sleep==0us) {
+                    return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+                }
+                return seastar::sleep(std::move(sleep))
+                      .then([status=std::move(status),k2response=std::move(k2response)] () mutable {
+                        return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+                    });
             });
     }
 
     template <typename T>
     seastar::future<PartialUpdateResult> partialUpdate(T& record, std::vector<k2::String> fieldsName,
-                                                       dto::Key key=dto::Key()) {
+                                                       dto::Key key=dto::Key(), bool isonehot=false) {
         std::vector<uint32_t> fieldsForPartialUpdate;
         bool find = false;
         for (std::size_t i = 0; i < fieldsName.size(); ++i) {
@@ -330,21 +358,31 @@ public:
                     PartialUpdateResult(dto::K23SIStatus::BadParameter("error parameter: fieldsForPartialUpdate")) );
         }
 
-        return partialUpdate(record, std::move(fieldsForPartialUpdate), std::move(key));
+        return partialUpdate(record, std::move(fieldsForPartialUpdate), std::move(key), isonehot);
     }
 
     template <typename T>
     seastar::future<PartialUpdateResult> partialUpdate(T& record,
                                                        std::vector<uint32_t> fieldsForPartialUpdate,
-                                                       dto::Key key=dto::Key()) {
+                                                       dto::Key key=dto::Key(), bool isonehot=false) {
         if (!_valid) {
             return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
         if (_failed) {
             return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status));
         }
+        if (isonehot) {
+            // this must be the only operation in the transaction
+            if (_total_ops>0) {
+                return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of one hot transaction"));
+            }
+            // User is not allowed to call anything else on this TxnHandle after this operation since one hot transactions call end() on server side
+            _valid = false;
+        }
+
         _client->write_ops++;
         _ongoing_ops++;
+        _total_ops++;
 
         std::unique_ptr<dto::K23SIWriteRequest> request;
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
@@ -352,7 +390,7 @@ public:
                 key = record.getKey();
             }
 
-            request = _makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key));
+            request = _makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key), isonehot);
         } else {
             SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
@@ -360,7 +398,7 @@ public:
                 key = skv_record.getKey();
             }
 
-            request = _makePartialUpdateRequest(skv_record, fieldsForPartialUpdate, std::move(key));
+            request = _makePartialUpdateRequest(skv_record, fieldsForPartialUpdate, std::move(key), isonehot);
         }
         if (!request) {
             return seastar::make_ready_future<PartialUpdateResult> (
@@ -370,7 +408,7 @@ public:
         return _cpo_client->partitionRequest
             <dto::K23SIWriteRequest, dto::K23SIWriteResponse, dto::Verbs::K23SI_WRITE>
             (_options.deadline, *request).
-            then([this, request=std::move(request)] (auto&& response) {
+            then([this, request=std::move(request), isonehot=std::move(isonehot)] (auto&& response) {
                 auto& [status, k2response] = response;
 
                 _registerRangeForWrite(status, *request);
@@ -378,15 +416,33 @@ public:
                 _checkResponseStatus(status);
                 _ongoing_ops--;
 
-                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
+                k2::Duration sleep= 0us; // time to sleep before we return to satisfy min time_spent in txn
+
+                if (!isonehot && status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr)
                     _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
                     _makeHeartbeatTimer();
                     _heartbeat_timer.armPeriodic(_heartbeat_interval);
                 }
+                else if(isonehot) { //handle one hot transactions separately and similar to what is done in end()
+                    if (status.is2xxOK()) {
+                        _client->successful_txns++;
+                    }
+                    //note we need not end heartbeat timer because we never started it for one hot transactions.
+                    auto time_spent = Clock::now() - _start_time;
+                    if (time_spent < 5us) {
+                        sleep = 5us - time_spent;
+                    }
+                }
 
-                return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
+                if(sleep==0us) {
+                    return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
+                }
+                return seastar::sleep(std::move(sleep))
+                      .then([status=std::move(status)] () {
+                        return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
+                    });
             });
     }
 
@@ -414,7 +470,7 @@ private:
     Duration _txn_end_deadline;
     TimePoint _start_time;
     uint64_t _ongoing_ops = 0; // Used to track if there are operations in flight when end() is called
-
+    uint64_t _total_ops = 0; // Used to track number of operations in the txn and is used to determine if transaction is one hot
     Duration _heartbeat_interval;
     PeriodicTimer _heartbeat_timer;
 

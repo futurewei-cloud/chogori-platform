@@ -120,6 +120,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
 
     _client->read_ops++;
     _ongoing_ops++;
+    _total_ops++;
 
     return _cpo_client->partitionRequest
         <dto::K23SIReadRequest, dto::K23SIReadResponse, dto::Verbs::K23SI_READ>
@@ -156,7 +157,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
 
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makeWriteRequest(dto::SKVRecord& record, bool erase,
-                                                                    dto::ExistencePrecondition precondition) {
+                                                                    dto::ExistencePrecondition precondition, bool isonehot=false) {
     for (const String& key : record.partitionKeys) {
         if (key == "") {
             throw K23SIClientException("Partition key field not set for write request");
@@ -187,12 +188,13 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makeWriteRequest(dto::SKVR
         _client->write_ops,
         key,
         record.storage.share(),
-        std::vector<uint32_t>()
+        std::vector<uint32_t>(),
+        isonehot
     );
 }
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(dto::SKVRecord& record,
-                    std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key) {
+                    std::vector<uint32_t> fieldsForPartialUpdate, dto::Key&& key, bool isonehot=false) {
         bool isTRH = !_trh_key.has_value();
         if (isTRH) {
             _trh_key = key;
@@ -211,7 +213,8 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(d
             _client->write_ops,
             std::move(key),
             record.storage.share(),
-            fieldsForPartialUpdate
+            fieldsForPartialUpdate,
+            isonehot
         });
     }
 
@@ -277,8 +280,8 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             return _heartbeat_timer.stop().then([this, s=std::move(status)] () {
                 // TODO get min transaction time from TSO client
                 auto time_spent = Clock::now() - _start_time;
-                if (time_spent < 50us) {
-                    auto sleep = 50us - time_spent;
+                if (time_spent < 5us) {
+                    auto sleep = 5us - time_spent;
                     return seastar::sleep(sleep).then([s=std::move(s)] () {
                         return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
                     });
@@ -554,6 +557,7 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
 
     _client->query_ops++;
     _ongoing_ops++;
+    _total_ops++;
 
     return _cpo_client->partitionRequest
         <dto::K23SIQueryRequest, dto::K23SIQueryResponse, dto::Verbs::K23SI_QUERY>

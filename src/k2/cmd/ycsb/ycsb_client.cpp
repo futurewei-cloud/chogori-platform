@@ -446,7 +446,8 @@ int main(int argc, char** argv) {;
         ("delete_proportion",bpo::value<double>()->default_value(0), "Delete Proportion")
         ("max_scan_length",bpo::value<uint32_t>()->default_value(10), "Maximum scan length")
         ("max_fields_update",bpo::value<uint32_t>()->default_value(1), "Maximum number of fields to update")
-        ("ops_per_txn",bpo::value<uint64_t>()->default_value(1), "The number of operations per transaction");
+        ("ops_per_txn",bpo::value<uint64_t>()->default_value(1), "The number of operations per transaction")
+        ("isonehot",bpo::value<bool>()->default_value(true),"Whether to use one hot transactions (for transactions with one write/update) or not");
 
     app.addApplet<k2::TSO_ClientLib>();
     app.addApplet<Client>();

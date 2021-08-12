@@ -1172,11 +1172,35 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         }
     }
 
+    //endRequest created for calling EndTransaction for one hot transactions.
+    dto::K23SITxnEndRequest endRequest{request.pvid,
+        request.trhCollection,
+        request.trh,
+        request.mtr,
+        dto::EndAction::Commit,
+        {}
+    };
+
+    bool isonehot = request.isonehot;
+    auto collection = request.collection;
 
     // all checks passed - we're ready to place this WI as the latest version
     auto status = _createWI(std::move(request), vset);
     K2LOG_D(log::skvsvr, "WI creation with status {}", status);
-    return RPCResponse(std::move(status), dto::K23SIWriteResponse{});
+
+    // not one hot transaction or WI creation failed
+    if(!isonehot || !status.is2xxOK()) {
+        return RPCResponse(std::move(status), dto::K23SIWriteResponse{});
+    }
+
+    endRequest.writeRanges[collection].insert(_partition().keyRangeV); // add keyRangeV of current partition (TRH)
+
+    // End one hot transaction
+    return handleTxnEnd(std::move(endRequest))
+            .then( [this] (auto&& response) {
+                auto& [endstatus, k2response] = response;
+                return RPCResponse(std::move(endstatus), dto::K23SIWriteResponse{}); // Return status after ending one hot transaction
+            });
 }
 
 Status
