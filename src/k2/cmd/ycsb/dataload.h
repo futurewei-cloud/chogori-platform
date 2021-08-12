@@ -47,21 +47,21 @@ public:
         options.syncFinalize = true;
 
         double propSkip = (double)_num_inserts()/(_num_records()+_num_inserts()); // proportion of records to Skip while loading
-        RandomContext random_context(0,{propSkip, 1-propSkip});
+        _random = RandomContext {0,{propSkip, 1-propSkip}};
 
         K2LOG_D(log::ycsb, "pipeline depth and data load per txn ={}, {}", pipeline_depth, _writes_per_load_txn());
-        return seastar::do_with((size_t)startIdxShard, [this, options, pipeline_depth, &client, random_context, startIdxShard, endIdxShard] (size_t& start_idx){
+        return seastar::do_with((size_t)startIdxShard, [this, options, pipeline_depth, &client, startIdxShard, endIdxShard] (size_t& start_idx){
             return seastar::do_until(
                 [this, &start_idx, endIdxShard] { return start_idx>=endIdxShard;  },
-                [this, options, pipeline_depth, &client, &start_idx, random_context, endIdxShard] {
+                [this, options, pipeline_depth, &client, &start_idx, endIdxShard] {
                     std::vector<seastar::future<>> futures;
 
                     for (int i=0; i < pipeline_depth; ++i) {
-                        futures.push_back(client.beginTxn(options).then([this, i, start_idx, random_context, endIdxShard] (K2TxnHandle&& t) {
+                        futures.push_back(client.beginTxn(options).then([this, i, start_idx, endIdxShard] (K2TxnHandle&& t) {
                                 K2LOG_D(log::ycsb, "txn begin in load data");
-                                return seastar::do_with(std::move(t), [this, i, start_idx, random_context, endIdxShard] (K2TxnHandle& txn) {
+                                return seastar::do_with(std::move(t), [this, i, start_idx, endIdxShard] (K2TxnHandle& txn) {
                                     size_t idx = start_idx + i*_writes_per_load_txn();
-                                    return insertDataLoop(txn, idx, random_context, endIdxShard);
+                                    return insertDataLoop(txn, idx, endIdxShard);
                             });
                         }));
                     }
@@ -72,18 +72,18 @@ public:
     }
 
 private:
-    seastar::future<> insertDataLoop(K2TxnHandle& txn, size_t start_idx, RandomContext random_context, size_t endIdxShard)
+    seastar::future<> insertDataLoop(K2TxnHandle& txn, size_t start_idx, size_t endIdxShard)
     {
         K2LOG_D(log::ycsb, "Starting transaction, start_idx is {}", start_idx);
-        return seastar::do_with((size_t)0, std::move(random_context), [this, &txn, start_idx, endIdxShard] (size_t& current_size, RandomContext& random_c) {
+        return seastar::do_with((size_t)0, [this, &txn, start_idx, endIdxShard] (size_t& current_size) {
             return seastar::do_until(
                 [this, &current_size, start_idx, endIdxShard] { return ((current_size >= _writes_per_load_txn()) || ((start_idx + current_size)>= endIdxShard)); },
-                [this, &current_size, &txn, start_idx, &random_c] () {
-                uint8_t isLoad = random_c.BiasedInt();
-                if(isLoad || (_requestDistName()=="latest" && (start_idx + current_size)<_num_records())){ // load record with prob = _num_records / _num_keys or if latest load all records uptil num_records()
+                [this, &current_size, &txn, start_idx] () {
+                uint8_t isLoad = _random.BiasedInt();
+                if((!(_requestDistName()=="latest") && isLoad) || (_requestDistName()=="latest" && (start_idx + current_size)<_num_records())){ // load record with prob = _num_records / _num_keys or if latest load all records uptil num_records()
                     K2LOG_D(log::ycsb, "Record being loaded now in this txn is {}", start_idx + current_size);
 
-                    YCSBData row(start_idx + current_size, random_c); // generate row
+                    YCSBData row(start_idx + current_size, _random); // generate row
                     ++current_size;
 
                     return writeRow(row, txn).discard_result();
@@ -107,6 +107,7 @@ private:
         });
     }
 
+    RandomContext _random;
     ConfigVar<size_t> _writes_per_load_txn{"writes_per_load_txn"};
     ConfigVar<size_t> _num_records{"num_records"};
     ConfigVar<size_t> _num_inserts{"num_records_insert"};

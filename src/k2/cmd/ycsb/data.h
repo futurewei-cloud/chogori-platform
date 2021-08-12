@@ -154,7 +154,7 @@ seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool eras
     }
 
     return txn.write<dto::SKVRecord>(skv_record, erase, precondition).then([] (WriteResult&& result) {
-        if (!result.status.is2xxOK() && result.status.code!=403 && result.status.code!=404) { // 403 for write with erase=false and key already exists or 404 for write with erase=true and key does not exist
+        if (!result.status.is2xxOK() && result.status.code!=412 && result.status.code!=404) { // k2::Statuses::S412_Precondition_Failed for write with erase=false and key already exists and k2::Statuses::S404_Not_Found for write with erase=true and key does not exist
             K2LOG_D(log::ycsb, "writeRow failed and is retryable: {}", result.status);
             return seastar::make_exception_future<WriteResult>(std::runtime_error("writeRow failed!"));
         }
@@ -183,7 +183,7 @@ partialUpdateRow(uint32_t keyid, std::vector<String> fieldValues, std::vector<ui
     }
 
     return txn.partialUpdate<dto::SKVRecord>(skv_record, std::move(fieldsToUpdate)).then([] (PartialUpdateResult&& result) {
-        if (!result.status.is2xxOK() && result.status.code!=404) { // 404 for key not found
+        if (!result.status.is2xxOK() && result.status.code!=412 && result.status.code!=404) { // 412 for precondition of exists not satisfied and 404 for key not found
             K2LOG_D(log::ycsb, "partialUpdateRow failed: {}", result.status);
             return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
         }
