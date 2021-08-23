@@ -310,7 +310,7 @@ public:
                 _checkResponseStatus(status);
                 _ongoing_ops--;
 
-                k2::CachedSteadyClock::duration sleep= 0us; // time to sleep before we return to satisfy min time_spent in txn
+                k2::Duration sleep= 0us; // time to sleep before we return to satisfy min time_spent in txn
 
                 if (!isonehot && status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
@@ -330,12 +330,13 @@ public:
                     }
                 }
 
-                return seastar::do_with( (k2::CachedSteadyClock::duration)sleep, (dto::K23SIWriteResponse)std::move(k2response), [this,sleep=std::move(sleep),status=std::move(status)] (k2::CachedSteadyClock::duration& dur, dto::K23SIWriteResponse& k2response) {
-                    return seastar::sleep(std::move(dur))
-                    .then([status=std::move(status),&k2response] () -> seastar::future<WriteResult> {
+                if(sleep==0us) {
+                    return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+                }
+                return seastar::sleep(std::move(sleep))
+                      .then([status=std::move(status),k2response=std::move(k2response)] () mutable {
                         return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
                     });
-                });
             });
     }
 
@@ -415,7 +416,7 @@ public:
                 _checkResponseStatus(status);
                 _ongoing_ops--;
 
-                k2::CachedSteadyClock::duration sleep= 0us; // time to sleep before we return to satisfy min time_spent in txn
+                k2::Duration sleep= 0us; // time to sleep before we return to satisfy min time_spent in txn
 
                 if (!isonehot && status.is2xxOK() && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
@@ -435,12 +436,13 @@ public:
                     }
                 }
 
-                return seastar::do_with( (k2::CachedSteadyClock::duration)sleep, [sleep=std::move(sleep),status=std::move(status)] (k2::CachedSteadyClock::duration& dur) {
-                    return seastar::sleep(std::move(dur))
-                    .then([status=std::move(status)] () -> seastar::future<PartialUpdateResult> {
+                if(sleep==0us) {
+                    return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
+                }
+                return seastar::sleep(std::move(sleep))
+                      .then([status=std::move(status)] () {
                         return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
                     });
-                });
             });
     }
 
