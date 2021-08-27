@@ -45,8 +45,20 @@ Persistence::Persistence() {
     K2LOG_I(log::skvsvr, "ctor with endpoint: {}", _remoteEndpoint->url);
 }
 
+void Persistence::_registerMetrics() {
+    _metric_groups.clear();
+    std::vector<sm::label_instance> labels;
+    labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
+
+    _metric_groups.add_group("Nodepool", {
+        sm::make_histogram("flush_latency", [this]{ return _flushLatency.getHistogram();},
+                sm::description("Latency of Persistence Flush"), labels)
+    });
+}
+
 seastar::future<> Persistence::start() {
     _flushTimer.armPeriodic(_config.persistenceAutoflushDeadline());
+    _registerMetrics();
     return seastar::make_ready_future();
 }
 
@@ -65,11 +77,18 @@ seastar::future<> Persistence::stop() {
 }
 
 seastar::future<Status> Persistence::flush() {
+    auto start = k2::Clock::now();
     ++_flushId;
     K2LOG_D(log::skvsvr, "flush with bs={}, proms={}, fid={}", (_buffer? _buffer->getSize() : 0), _pendingProms.size(), _flushId);
     if (!_buffer) {
         K2ASSERT(log::skvsvr, _pendingProms.size() == 0, "There is no data to send but we have pending promises");
-        return _chainFlushResponse();
+        return _chainFlushResponse()
+                .then([this, start](auto&& response){
+                    auto end = k2::Clock::now();
+                    auto dur = end - start;
+                    _flushLatency.add(dur);
+                    return std::move(response);
+                });
     }
 
     // move the buffered data into a single request and delete the buffer.
@@ -107,7 +126,13 @@ seastar::future<Status> Persistence::flush() {
             for (auto& prom: proms) prom.set_value(status);
             return seastar::make_ready_future<Status>(std::move(status));
         });
-    return _chainFlushResponse();
+    return _chainFlushResponse()
+            .then([this,start](auto&& response){
+                    auto end = k2::Clock::now();
+                    auto dur = end - start;
+                    _flushLatency.add(dur);
+                    return std::move(response);
+            });
 }
 
 seastar::future<Status> Persistence::_chainFlushResponse() {

@@ -191,23 +191,57 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
     (dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
-        return handleRead(std::move(request), FastDeadline(_config.readTimeout()));
+        auto start = k2::Clock::now();
+        return handleRead(std::move(request), FastDeadline(_config.readTimeout()))
+               .then([this, start](auto&& response){
+                    _readOps++;
+                    auto end = k2::Clock::now();
+                    auto dur = end - start;
+                    _readLatency.add(dur);
+                    return std::move(response);
+               });
     });
 
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
     (dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
-        return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()));
+        auto start = k2::Clock::now();
+        return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()))
+                .then([this, start] (auto&& response) {
+                    _queryOps++;
+                    auto end = k2::Clock::now();
+                    auto dur = end - start;
+                    _queryLatency.add(dur);
+                    return std::move(response);
+               });
     });
 
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
     (dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
+        auto start = k2::Clock::now();
         return handleWrite(std::move(request), FastDeadline(_config.writeTimeout()))
-            .then([this] (auto&& resp) { return _respondAfterFlush(std::move(resp));});
+            .then([this, start] (auto&& resp) {
+                return _respondAfterFlush(std::move(resp))
+                        .then([this, start] (auto&& response) {
+                            _writeOps++;
+                            auto end = k2::Clock::now();
+                            auto dur = end - start;
+                            _writeLatency.add(dur);
+                            return std::move(response);
+                        });
+            });
     });
 
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
-        return handleTxnPush(std::move(request));
+        auto start = k2::Clock::now();
+        return handleTxnPush(std::move(request))
+                .then([this, start] (auto&& response) {
+                    _pushes++;
+                    auto end = k2::Clock::now();
+                    auto dur = end - start;
+                    _pushLatency.add(dur);
+                    return std::move(response);
+               });
     });
 
     RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
@@ -223,8 +257,18 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
     (dto::Verbs::K23SI_TXN_FINALIZE, [this](dto::K23SITxnFinalizeRequest&& request) {
+        auto start = k2::Clock::now();
         return handleTxnFinalize(std::move(request))
-            .then([this] (auto&& resp) { return _respondAfterFlush(std::move(resp));});
+                .then([this, start] (auto&& resp) {
+                    return _respondAfterFlush(std::move(resp))
+                    .then([this, start] (auto&& response) {
+                                _finalizations++;
+                                auto end = k2::Clock::now();
+                                auto dur = end - start;
+                                _finalizationLatency.add(dur);
+                                return std::move(response);
+                            });
+                });
     });
 
     RPC().registerRPCObserver<dto::K23SIPushSchemaRequest, dto::K23SIPushSchemaResponse>
@@ -284,7 +328,38 @@ void K23SIPartitionModule::_unregisterVerbs() {
     api_server.deregisterAPIObserver("InspectAllKeys");
 }
 
+void K23SIPartitionModule::_registerMetrics() {
+    _metric_groups.clear();
+    std::vector<sm::label_instance> labels;
+    labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
+
+    _metric_groups.add_group("Nodepool", {
+        sm::make_gauge("indexer_keys",[this]{ return _indexer.size();},
+                        sm::description("Number of keys in indexer"), labels),
+        sm::make_counter("read_operations", _readOps, sm::description("Number of read operations"), labels),
+        sm::make_counter("write_operations", _writeOps, sm::description("Number of write operations"), labels),
+        sm::make_counter("query_operations", _queryOps, sm::description("Number of query operations"), labels),
+        sm::make_counter("finalization_operations", _finalizations, sm::description("Number of finalizations requests"), labels),
+        sm::make_counter("push_operations", _pushes, sm::description("Number of pushses"), labels),
+        sm::make_gauge("active_WI", _activeWI, sm::description("Number of active WIs"), labels),
+        sm::make_counter("record_versions", _recordVersions, sm::description("Number of record versions over all records"), labels),
+        sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();},
+                sm::description("Latency of Read Operations"), labels),
+        sm::make_histogram("write_latency", [this]{ return _writeLatency.getHistogram();},
+                sm::description("Latency of Write Operations"), labels),
+        sm::make_histogram("query_latency", [this]{ return _queryLatency.getHistogram();},
+                sm::description("Latency of Query Operations"), labels),
+        sm::make_histogram("finalization_latency", [this]{ return _finalizationLatency.getHistogram();},
+                sm::description("Latency of Finalizations"), labels),
+        sm::make_histogram("push_latency", [this]{ return _pushLatency.getHistogram();},
+                sm::description("Latency of Pushes"), labels)
+    });
+}
+
 seastar::future<> K23SIPartitionModule::start() {
+
+    _registerMetrics();
+
     _cpo.init(_config.cpoEndpoint());
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
         K2LOG_W(log::skvsvr,
@@ -1129,6 +1204,7 @@ K23SIPartitionModule::_createWI(dto::K23SIWriteRequest&& request, VersionSet& ve
 
     // the TWIM accepted the write. Add it as a WI now
     versions.WI.emplace(std::move(rec), request.request_id);
+    _activeWI++;
 
     _persistence->append(versions.WI->data);
     return Statuses::S201_Created("WI created");
@@ -1249,6 +1325,8 @@ K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23
                             return seastar::make_ready_future<Status>(std::move(status));
                         }
                         versions.committed.push_front(std::move(versions.WI->data));
+                        _recordVersions++;
+                        _activeWI--;
                         versions.WI.reset();
                         break;
                     }
@@ -1324,7 +1402,9 @@ Status K23SIPartitionModule::_finalizeTxnWIs(dto::Timestamp txnts, dto::EndActio
             case dto::EndAction::Commit: {
                 K2LOG_D(log::skvsvr, "committing {}, in txn {}", key, *twim);
                 versions.committed.push_front(std::move(versions.WI->data));
+                _recordVersions++;
                 versions.WI.reset();
+                _activeWI--;
                 break;
             }
             default:
@@ -1495,10 +1575,14 @@ K23SIPartitionModule::_getDataRecordForRead(VersionSet& versions, dto::Timestamp
 // Helper to remove a WI and delete the key from the indexer of there are no committed records
 void K23SIPartitionModule::_removeWI(IndexerIterator it) {
     if (it->second.committed.size() == 0) {
+        if(it->second.WI.has_value())
+            _activeWI--;
         _indexer.erase(it);
         return;
     }
 
+    if(it->second.WI.has_value())
+        _activeWI--;
     it->second.WI.reset();
 }
 
