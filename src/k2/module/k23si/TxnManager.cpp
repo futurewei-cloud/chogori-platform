@@ -70,7 +70,10 @@ void TxnManager::_registerMetrics() {
         sm::make_gauge("active_txns", [this]{ return _transactions.size();}, sm::description("Number of active transactions"), labels),
         sm::make_counter("committed_txns", _committedTxns, sm::description("Number of commited transactions"), labels),
         sm::make_counter("aborted_txns", _abortedTxns, sm::description("Number of aborted transactions"), labels),
-        sm::make_counter("conflict_aborts", _conflictAborts, sm::description("Number of conflict aborts (incumbent abort due to push)"), labels)
+        sm::make_counter("conflict_aborts", _conflictAborts, sm::description("Number of conflict aborts (incumbent abort due to push)"), labels),
+        sm::make_counter("finalization_operations", _finalizations, sm::description("Number of finalizations requests"), labels),
+        sm::make_histogram("finalization_latency", [this]{ return _finalizationLatency.getHistogram();},
+                sm::description("Latency of Finalizations"), labels)
     });
 }
 
@@ -763,11 +766,13 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                 [this, &rec, deadline, &requests] (auto idx) {
                     auto& [request, krv] = requests[idx];
                     K2LOG_D(log::skvsvr, "Finalizing req={}", request);
+                    auto start = k2::Clock::now(); // for measuring latency
                     return _cpo.partitionRequestByPVID<dto::K23SITxnFinalizeRequest,
                                                 dto::K23SITxnFinalizeResponse,
                                                 dto::Verbs::K23SI_TXN_FINALIZE>
                     (deadline, request, _config.finalizeRetries())
-                    .then([this, idx, &requests](auto&& responsePair) {
+                    .then([this, idx, &requests, start](auto&& responsePair) {
+
                         auto& [status, response] = responsePair;
                         auto& [request, krv] = requests[idx];
 
@@ -791,6 +796,11 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                                 return seastar::make_ready_future<>();
                             }
                         }
+
+                        _finalizations++;
+                        auto end = k2::Clock::now();
+                        auto dur = end - start;
+                        _finalizationLatency.add(dur);
 
                         K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
                         return seastar::make_ready_future<>();
