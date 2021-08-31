@@ -241,12 +241,12 @@ private:
             return make_ready_future();
         }
 
-        k2::String lastName = _random.RandowLastNameString();
 
         return _client.createQuery(tpccCollectionName, "idx_customer_name")
-        .then([this, &lastName](auto&& response) mutable {
+        .then([this](auto&& response) mutable {
             CHECK_READ_STATUS(response);
 
+            k2::String lastName = _random.RandowLastNameString();
             // make Query request and set query rules.
             // 1. range:[ (_w_id, _d_id, c_last), (_w_id, _d_id, c_last) ]; 2. no record number limits; 3. forward direction scan;
             // 4. projection "c_id" field for ascending sorting;
@@ -578,12 +578,12 @@ private:
             return make_ready_future();
         }
 
-        k2::String lastName = _random.RandowLastNameString();
 
         return _client.createQuery(tpccCollectionName, "idx_customer_name")
-        .then([this, &lastName](auto&& response) mutable {
+        .then([this](auto&& response) mutable {
             CHECK_READ_STATUS(response);
 
+            k2::String lastName = _random.RandowLastNameString();
             // make Query request and set query rules.
             // 1. range:[ (_w_id, _d_id, c_last), (_w_id, _d_id, c_last) ]; 2. no record number limits; 3. forward direction scan;
             // 4. projection "c_id" field for ascending sorting;
