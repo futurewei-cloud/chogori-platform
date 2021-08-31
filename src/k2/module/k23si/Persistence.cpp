@@ -82,13 +82,7 @@ seastar::future<Status> Persistence::flush() {
     K2LOG_D(log::skvsvr, "flush with bs={}, proms={}, fid={}", (_buffer? _buffer->getSize() : 0), _pendingProms.size(), _flushId);
     if (!_buffer) {
         K2ASSERT(log::skvsvr, _pendingProms.size() == 0, "There is no data to send but we have pending promises");
-        return _chainFlushResponse()
-                .then([this, start](auto&& response){
-                    auto end = k2::Clock::now();
-                    auto dur = end - start;
-                    _flushLatency.add(dur);
-                    return std::move(response);
-                });
+        return _chainFlushResponse();
     }
 
     // move the buffered data into a single request and delete the buffer.

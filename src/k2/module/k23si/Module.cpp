@@ -27,17 +27,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/MessageVerbs.h>
 #include <k2/infrastructure/APIServer.h>
 
-#define GET_LATENCY
-
-#define ADD_OPS_LATENCY(start_time, ops, latency_hist)  \
-    do { \
-        ops++; \
-        auto end = k2::Clock::now(); \
-        auto dur = end - start_time; \
-        latency_hist.add(dur); \
-    } \
-    while (0) \
-
 namespace k2 {
 namespace dto {
 // we want the read cache to determine ordering based on certain comparison so that we have some stable
@@ -202,14 +191,14 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
     (dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
-        k2::TimePoint start;
+        OperationLatencyReporter reporter(_readOps, _readLatency);
         #ifdef GET_LATENCY
-            start = k2::Clock::now();
+            reporter.startOperation();
         #endif
         return handleRead(std::move(request), FastDeadline(_config.readTimeout()))
-               .then([this, start](auto&& response){
+               .then([this, reporter=std::move(reporter)](auto&& response) mutable {
                     #ifdef GET_LATENCY
-                        ADD_OPS_LATENCY(start, _readOps, _readLatency);
+                        reporter.report();
                     #endif
                     return std::move(response);
                });
@@ -217,14 +206,14 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
     (dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
-        k2::TimePoint start;
+        OperationLatencyReporter reporter(_queryOps, _queryLatency);
         #ifdef GET_LATENCY
-            start = k2::Clock::now();
+            reporter.startOperation();
         #endif
         return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()))
-                .then([this, start] (auto&& response) {
+                .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     #ifdef GET_LATENCY
-                        ADD_OPS_LATENCY(start, _queryOps, _queryLatency);
+                        reporter.report();
                     #endif
                     return std::move(response);
                });
@@ -232,16 +221,16 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
     (dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
-        k2::TimePoint start;
+        OperationLatencyReporter reporter(_writeOps, _writeLatency);
         #ifdef GET_LATENCY
-            start = k2::Clock::now();
+            reporter.startOperation();
         #endif
         return handleWrite(std::move(request), FastDeadline(_config.writeTimeout()))
-            .then([this, start] (auto&& resp) {
+            .then([this, reporter=std::move(reporter)] (auto&& resp) mutable {
                 return _respondAfterFlush(std::move(resp))
-                        .then([this, start] (auto&& response) {
+                        .then([this, reporter=std::move(reporter)] (auto&& response) {
                             #ifdef GET_LATENCY
-                                ADD_OPS_LATENCY(start, _writeOps, _writeLatency);
+                                reporter.report();
                             #endif
                             return std::move(response);
                         });
@@ -250,14 +239,14 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
-        k2::TimePoint start;
+        OperationLatencyReporter reporter(_pushes, _pushLatency);
         #ifdef GET_LATENCY
-            start = k2::Clock::now();
+            reporter.startOperation();
         #endif
         return handleTxnPush(std::move(request))
-                .then([this, start] (auto&& response) {
+                .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     #ifdef GET_LATENCY
-                        ADD_OPS_LATENCY(start, _pushes, _pushLatency);
+                        reporter.report();
                     #endif
                     return std::move(response);
                });
@@ -352,7 +341,7 @@ void K23SIPartitionModule::_registerMetrics() {
         sm::make_counter("query_operations", _queryOps, sm::description("Number of query operations"), labels),
         sm::make_counter("push_operations", _pushes, sm::description("Number of pushses"), labels),
         sm::make_gauge("active_WI", _activeWI, sm::description("Number of active WIs"), labels),
-        sm::make_counter("record_versions", _recordVersions, sm::description("Number of record versions over all records"), labels),
+        sm::make_gauge("record_versions", _recordVersions, sm::description("Number of record versions over all records"), labels),
         sm::make_counter("total_committed_payload", _totalCommittedPayload, sm::description("Total size of committed payloads"), labels),
         sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();},
                 sm::description("Latency of Read Operations"), labels),
@@ -1336,8 +1325,7 @@ K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23
                         _totalCommittedPayload += versions.WI->data.value.fieldData.getSize();
                         versions.committed.push_front(std::move(versions.WI->data));
                         _recordVersions++;
-                        _activeWI--;
-                        versions.WI.reset();
+                        _removeWI(IndexerIt);
                         break;
                     }
                     default:
@@ -1414,8 +1402,7 @@ Status K23SIPartitionModule::_finalizeTxnWIs(dto::Timestamp txnts, dto::EndActio
                 _totalCommittedPayload += versions.WI->data.value.fieldData.getSize();
                 versions.committed.push_front(std::move(versions.WI->data));
                 _recordVersions++;
-                versions.WI.reset();
-                _activeWI--;
+                _removeWI(idxIt);
                 break;
             }
             default:

@@ -766,12 +766,13 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                 [this, &rec, deadline, &requests] (auto idx) {
                     auto& [request, krv] = requests[idx];
                     K2LOG_D(log::skvsvr, "Finalizing req={}", request);
-                    auto start = k2::Clock::now(); // for measuring latency
+                    OperationLatencyReporter reporter(_finalizations, _finalizationLatency);
+                    reporter.startOperation();
                     return _cpo.partitionRequestByPVID<dto::K23SITxnFinalizeRequest,
                                                 dto::K23SITxnFinalizeResponse,
                                                 dto::Verbs::K23SI_TXN_FINALIZE>
                     (deadline, request, _config.finalizeRetries())
-                    .then([this, idx, &requests, start](auto&& responsePair) {
+                    .then([this, idx, &requests, reporter=std::move(reporter)](auto&& responsePair) mutable {
 
                         auto& [status, response] = responsePair;
                         auto& [request, krv] = requests[idx];
@@ -796,11 +797,7 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                                 return seastar::make_ready_future<>();
                             }
                         }
-
-                        _finalizations++;
-                        auto end = k2::Clock::now();
-                        auto dur = end - start;
-                        _finalizationLatency.add(dur);
+                        reporter.report();
 
                         K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
                         return seastar::make_ready_future<>();
