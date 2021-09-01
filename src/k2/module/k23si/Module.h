@@ -294,9 +294,10 @@ private:  // members
     uint64_t _queryOps{0}; // for query rate
     uint64_t _pushes{0}; // for push rate
 
-    uint64_t _activeWI{0}; // for number of active WIs
+    uint64_t _totalWI{0}; // for number of active WIs
     uint64_t _recordVersions{0};
     uint64_t _totalCommittedPayload{0}; //total committed user payload size
+    uint64_t _finalizedWI{0}; // total number of finalized WI
 
     k2::ExponentialHistogram _readLatency;
     k2::ExponentialHistogram _writeLatency;

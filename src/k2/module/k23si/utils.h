@@ -27,19 +27,20 @@ namespace k2 {
 // Class to update metrics (i) count of operation and (ii) latency of operation
 class OperationLatencyReporter{
     public:
-        OperationLatencyReporter(uint64_t& ops, k2::ExponentialHistogram& latencyHist): _ops(ops), _latencyHist(latencyHist){}
-
-        // record start time to calculate latency of operation
-        void startOperation(){
-            _startTime = k2::Clock::now();
+        OperationLatencyReporter(uint64_t& ops, k2::ExponentialHistogram& latencyHist): _ops(ops), _latencyHist(latencyHist){
+            #if defined GET_LATENCY || defined FORCE_GET_LATENCY
+                _startTime = k2::Clock::now(); // record start time to calculate latency of operation
+            #endif
         }
 
         // update operation count and latency metrics
         void report(){
             _ops++;
-            auto end = k2::Clock::now();
-            auto dur = end - _startTime;
-            _latencyHist.add(dur);
+            #if defined GET_LATENCY || defined FORCE_GET_LATENCY
+                auto end = k2::Clock::now();
+                auto dur = end - _startTime;
+                _latencyHist.add(dur);
+            #endif
         }
 
     private:

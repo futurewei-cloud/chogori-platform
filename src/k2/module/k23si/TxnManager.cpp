@@ -71,7 +71,7 @@ void TxnManager::_registerMetrics() {
         sm::make_counter("committed_txns", _committedTxns, sm::description("Number of commited transactions"), labels),
         sm::make_counter("aborted_txns", _abortedTxns, sm::description("Number of aborted transactions"), labels),
         sm::make_counter("conflict_aborts", _conflictAborts, sm::description("Number of conflict aborts (incumbent abort due to push)"), labels),
-        sm::make_counter("finalization_operations", _finalizations, sm::description("Number of finalizations requests"), labels),
+        sm::make_counter("finalization_operations", _finalizations, sm::description("Number of finalization requests"), labels),
         sm::make_histogram("finalization_latency", [this]{ return _finalizationLatency.getHistogram();},
                 sm::description("Latency of Finalizations"), labels)
     });
@@ -766,8 +766,10 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                 [this, &rec, deadline, &requests] (auto idx) {
                     auto& [request, krv] = requests[idx];
                     K2LOG_D(log::skvsvr, "Finalizing req={}", request);
-                    OperationLatencyReporter reporter(_finalizations, _finalizationLatency);
-                    reporter.startOperation();
+
+                    #define FORCE_GET_LATENCY // Flag to force to get latency metric
+                    OperationLatencyReporter reporter(_finalizations, _finalizationLatency); // for reporting metrics
+
                     return _cpo.partitionRequestByPVID<dto::K23SITxnFinalizeRequest,
                                                 dto::K23SITxnFinalizeResponse,
                                                 dto::Verbs::K23SI_TXN_FINALIZE>
@@ -798,6 +800,7 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                             }
                         }
                         reporter.report();
+                        #undef FORCE_GET_LATENCY
 
                         K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
                         return seastar::make_ready_future<>();
