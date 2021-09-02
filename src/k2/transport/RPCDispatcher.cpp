@@ -178,17 +178,17 @@ RPCDispatcher::_send(Verb verb, std::unique_ptr<Payload> payload, TXEndpoint& en
             payload->seek(txconstants::MAX_HEADER_SIZE);
             meta.setPayloadSize(payload->getDataRemaining());
 
-            if (serverep && endpoint == *serverep){
-                _handleNewMessage(Request(verb, *RPC().getServerEndpoint(endpoint.protocol), std::move(meta), std::move(payload)));
-            }
-            else{
+            // if (serverep && endpoint == *serverep){
+            //     _handleNewMessage(Request(verb, *RPC().getServerEndpoint(endpoint.protocol), std::move(meta), std::move(payload)));
+            // }
+            // else{
                 //We don't care about the result of this call since we don't make a promise that we're going to deliver the data.
                 (void) RPCDist().invoke_on(core->second, &k2::RPCDispatcher::_handleNewMessage, Request(verb, *RPC().getServerEndpoint(endpoint.protocol), std::move(meta), std::move(payload))).
                 handle_exception([&](auto exc) mutable {
                     K2LOG_W_EXC(log::tx, exc, "invoke_on failed");
                     return seastar::make_ready_future();
                 });
-            }
+            // }
             return seastar::make_ready_future<>();
         }
     }
