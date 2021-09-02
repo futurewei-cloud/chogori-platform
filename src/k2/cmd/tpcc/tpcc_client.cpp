@@ -330,7 +330,11 @@ private:
 
             _timer.arm(_testDuration);
             _start = k2::Clock::now();
-            _random = RandomContext(seastar::this_shard_id());
+
+            // From TPC-C spec, this adjusts the randomness so that the same C_LAST (customer last names)
+            // that were more likely for loading are not the same used for lookup
+            int C_adj = _do_data_load() ? 0 : 65;
+            _random = RandomContext(seastar::this_shard_id(), C_adj);
             for (int i=0; i < _num_concurrent_txns(); ++i) {
                 _tpcc_futures.emplace_back(_tpcc());
             }

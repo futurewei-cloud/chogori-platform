@@ -236,7 +236,12 @@ public:
 
     Customer(RandomContext& random, int16_t w_id, int16_t d_id, int32_t c_id) :
             WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id) {
-        LastName = random.RandowLastNameString();
+        if (c_id < 1000) {
+            LastName = random.RandowLastNameString(true, c_id);
+        } else {
+            LastName = random.RandowLastNameString();
+        }
+
         MiddleName = "OE";
         FirstName = random.RandomString(8, 16);
         address = Address(random);
