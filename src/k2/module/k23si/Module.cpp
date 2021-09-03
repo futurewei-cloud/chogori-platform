@@ -667,9 +667,12 @@ K23SIPartitionModule::_handleRead(dto::K23SIReadRequest&& request, FastDeadline 
 
     return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
         .then([this, request=std::move(request), deadline, counter](auto&& retryChallenger) mutable {
-            K2LOG_D(log::skvsvr, "Do push status for Partition: {}, received read {}, deadline {}, conter {}, retryChallenger {}", _partition, request, deadline, counter, retryChallenger);
+            K2LOG_D(log::skvsvr, "Push status for Partition: {}, received read {}, deadline {}, counter {}, retryChallenger {}", _partition, request, deadline, counter, retryChallenger);
             if (!retryChallenger.is2xxOK()) {
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse{});
+            }
+            if (counter > 1) {
+                return RPCResponse(dto::K23SIStatus::InternalError("request has already been pushed, incumbent txn won in read push"), dto::K23SIReadResponse{});
             }
             return _handleRead(std::move(request), deadline, counter);
         });
