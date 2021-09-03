@@ -92,6 +92,9 @@ public:
     seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
     handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline);
 
+    seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
+    _handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, int counter);
+
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
 

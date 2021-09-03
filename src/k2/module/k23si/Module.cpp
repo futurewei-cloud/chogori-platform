@@ -627,6 +627,11 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
 seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
 K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline) {
+    return _handleRead(std::move(request), deadline, 0);
+}
+
+seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
+K23SIPartitionModule::_handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, int counter) {
     K2LOG_D(log::skvsvr, "Partition: {}, received read {}", _partition, request);
 
     Status validateStatus = _validateReadRequest(request);
@@ -656,16 +661,17 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
         return _makeReadOK(rec);
     }
 
+    counter++;
     // record is still pending and isn't from same transaction.
-    K2LOG_D(log::skvsvr, "Do push for Partition: {}, received read {}, deadline {}", _partition, request, deadline);
+    K2LOG_D(log::skvsvr, "Do push for Partition: {}, received read {}, deadline {}, counter {}", _partition, request, deadline, counter);
 
     return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
-        .then([this, request=std::move(request), deadline](auto&& retryChallenger) mutable {
-            K2LOG_D(log::skvsvr, "Do push status for Partition: {}, received read {}, deadline {} retryChallenger {}", _partition, request, deadline, retryChallenger);
+        .then([this, request=std::move(request), deadline, counter](auto&& retryChallenger) mutable {
+            K2LOG_D(log::skvsvr, "Do push status for Partition: {}, received read {}, deadline {}, conter {}, retryChallenger {}", _partition, request, deadline, counter, retryChallenger);
             if (!retryChallenger.is2xxOK()) {
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse{});
             }
-            return handleRead(std::move(request), deadline);
+            return _handleRead(std::move(request), deadline, counter);
         });
 }
 
