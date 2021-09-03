@@ -86,15 +86,15 @@ public:
     seastar::future<std::tuple<Status, ResponseT>>
     partitionRequest(Deadline<ClockT> deadline, RequestT& request,
                      bool reverse=false, bool exclusiveKey=false, uint8_t retries=1) {
-        K2LOG_D(log::cpoclient, "making partition request with deadline={}", deadline.getRemaining());
+        K2LOG_D(log::cpoclient, "making partition request with deadline={} retries={}", deadline.getRemaining(), retries);
 
         return _getPartitionGetterForCollection(deadline, request.collectionName, request.key, reverse, exclusiveKey)
         .then([this, deadline, &request, reverse, exclusiveKey, retries](auto&& result) {
             auto& [status, pgetter] = result;
-            K2LOG_D(log::cpoclient, "Collection get completed with status={}, request={} ", status, request);
+            K2LOG_D(log::cpoclient, "Collection get completed with status={}, request={}, retries={}", status, request, retries);
             if (!status.is2xxOK()) {
                 // Failed to get collection, returning status from GetAssignedPartitionWithRetry
-                K2LOG_D(log::cpoclient, "Failed to get collection with status={}", status);
+                K2LOG_D(log::cpoclient, "Failed to get collection with status={}, retries={}", status, retries);
                 return RPCResponse(std::move(status), ResponseT{});
             }
             // Try to get partition info
@@ -103,20 +103,20 @@ public:
             .then([this, deadline, &request, reverse, exclusiveKey, retries] (auto&& result) {
                 auto& [status, k2resp] = result;
                 if (status.is5xxRetryable()) {
-                    K2LOG_D(log::cpoclient, "call failed with retryable status: {}", status);
+                    K2LOG_D(log::cpoclient, "call failed with retryable status: {}, retries: {}", status, retries);
                     if (retries == 0) {
-                        K2LOG_D(log::cpoclient, "Retries exceeded, status={}", status);
+                        K2LOG_D(log::cpoclient, "Retries exceeded, status={}, retries={}", status, retries);
                         return RPCResponse(Statuses::S408_Request_Timeout("partition retries exceeded"), ResponseT{});
                     }
-                    K2LOG_D(log::cpoclient, "refreshing collection from CPO after status={}", status);
+                    K2LOG_D(log::cpoclient, "refreshing collection from CPO after status={}, retries={}", status, retries);
                     return _getAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey)
                     .then([this, deadline, &request, reverse, exclusiveKey, retries] (auto&& status) {
                         // just retry here regardless of the result.
-                        K2LOG_D(log::cpoclient, "retrying partition call after status={}", status);
+                        K2LOG_D(log::cpoclient, "retrying partition call after status={}, retries={}", status, retries);
                         return partitionRequest<RequestT, ResponseT, verb, ClockT>(deadline, request, reverse, exclusiveKey, retries - 1);
                     });
                 }
-                K2LOG_D(log::cpoclient, "call completed with status: {}", status);
+                K2LOG_D(log::cpoclient, "call completed with status: {}, retries: {}", status, retries);
 
                 return RPCResponse(std::move(status), std::move(k2resp));
             });
