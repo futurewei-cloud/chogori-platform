@@ -657,8 +657,11 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
     }
 
     // record is still pending and isn't from same transaction.
+    K2LOG_D(log::skvsvr, "Do push for Partition: {}, received read {}, deadline {}", _partition, request, deadline);
+
     return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
         .then([this, request=std::move(request), deadline](auto&& retryChallenger) mutable {
+            K2LOG_D(log::skvsvr, "Do push status for Partition: {}, received read {}, deadline {} retryChallenger {}", _partition, request, deadline, retryChallenger);
             if (!retryChallenger.is2xxOK()) {
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse{});
             }
