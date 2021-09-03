@@ -1019,16 +1019,16 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
                 }
 
                 K2LOG_D(log::skvsvr, "succeeded creating TR. Processing write for {}", request.mtr);
-                return _processWrite(std::move(request), deadline);
+
+                return _processWrite(std::move(request), deadline, 0);
             });
     }
-
-    return _processWrite(std::move(request), deadline);
+    return _processWrite(std::move(request), deadline, 0);
 }
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline) {
-    K2LOG_D(log::skvsvr, "processing write: {}", request);
+K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline, int counter) {
+    K2LOG_D(log::skvsvr, "processing write: {} with deadline {} with counter {}", request, deadline, counter);
     auto& vset = _indexer[request.key];
     Status validateStatus = _validateWriteRequest(request, vset);
     K2LOG_D(log::skvsvr, "write for {} validated with status {}", request, validateStatus);
@@ -1047,16 +1047,22 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         // this is a write request finding a WI from a different transaction. Do a push with the remaining
         // deadline time.
         K2LOG_D(log::skvsvr, "different WI found for key {}", request.key);
+        counter++;
+        if (counter > 1) {
+            K2LOG_D(log::skvsvr, "write push for key {} has pushed for {}, reject it", request.key, counter);
+            return RPCResponse(dto::K23SIStatus::ServiceUnavailable("reject push for more than one"), dto::K23SIWriteResponse{});
+        }
+
         return _doPush(request.key, vset.WI->data.timestamp, request.mtr, deadline)
-            .then([this, request = std::move(request), deadline](auto&& retryChallenger) mutable {
+            .then([this, request = std::move(request), deadline, counter](auto&& retryChallenger) mutable {
                 if (!retryChallenger.is2xxOK()) {
                     // challenger must fail. Flush in case a TR was created during this call to handle write
                     K2LOG_D(log::skvsvr, "write push challenger lost for key {}", request.key);
                     return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in write push"), dto::K23SIWriteResponse{});
                 }
 
-                K2LOG_D(log::skvsvr, "write push retry for key {}", request.key);
-                return _processWrite(std::move(request), deadline);
+                K2LOG_D(log::skvsvr, "write push retry for key {} with counter {}", request.key, counter);
+                return _processWrite(std::move(request), deadline, counter);
             });
     }
 
