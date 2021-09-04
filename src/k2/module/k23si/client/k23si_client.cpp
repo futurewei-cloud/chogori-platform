@@ -520,10 +520,8 @@ void K2TxnHandle::_prepareQueryRequest(Query& query) {
         // If we've padded the end key for a forward prefix scan, we need to add one more byte
         // because the end key is exclusive but we want to include any record that may actually
         // have null last key fields set
-        query.request.endKey.partitionKey.append(" ", 1);
         query.request.endKey.rangeKey.append(" ", 1);
     }
-
 
     if (query.request.key > query.request.endKey && !query.request.reverseDirection &&
                 query.request.endKey.partitionKey != "") {

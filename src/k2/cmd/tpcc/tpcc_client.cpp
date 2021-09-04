@@ -225,14 +225,18 @@ private:
         K2LOG_I(log::tpcc, "Creating DataLoader");
         int cpus = seastar::smp::count;
         int id = seastar::this_shard_id();
-        int share = _max_warehouses() / cpus;
-        if (_max_warehouses() % cpus != 0) {
+        int total_cpus = cpus * _num_instances();
+        int share = _max_warehouses() / total_cpus;
+
+        _global_id = (cpus * _instance_id()) + id;
+
+        if (_max_warehouses() % total_cpus != 0) {
             K2LOG_W(log::tpcc, "CPUs must divide evenly into num warehouses!");
             return make_ready_future<>();
         }
 
-        auto f = seastar::sleep(5s);
-        if (id == 0) {
+        auto f = seastar::make_ready_future<>();
+        if (_global_id == 0) {
             f = f.then ([this] {
                 K2LOG_I(log::tpcc, "Creating collection");
                 return _client.makeCollection("TPCC", getRangeEnds(_tcpRemotes().size(), _max_warehouses()));
@@ -249,9 +253,10 @@ private:
             f = f.then([] { return seastar::sleep(5s); });
         }
 
-        return f.then ([this, share, id] {
+        return f.then ([this, share] {
             K2LOG_I(log::tpcc, "Starting data gen");
-            _loader = DataLoader(TPCCDataGen().generateWarehouseData(1+(id*share), 1+(id*share)+share));
+            _loader = DataLoader(TPCCDataGen().generateWarehouseData(1 + (_global_id * share),
+                                    1 + (_global_id * share) + share));
             K2LOG_I(log::tpcc, "Starting load to server");
             return _loader.loadData(_client, _num_concurrent_txns());
         }).then ([this] {
@@ -264,8 +269,8 @@ private:
             [this] { return _stopped; },
             [this] {
                 uint32_t txn_type = _random.UniformRandom(1, 100);
-                uint32_t w_id = (seastar::this_shard_id() % _max_warehouses()) + 1;
-                uint32_t d_id = (seastar::this_shard_id() % _districts_per_warehouse()) + 1;
+                uint32_t w_id = (_global_id % _max_warehouses()) + 1;
+                uint32_t d_id = (_global_id % _districts_per_warehouse()) + 1;
                 TPCCTxn* curTxn;
                 if (txn_type <= _weights[0]) {
                     curTxn = (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses());
@@ -371,6 +376,8 @@ private:
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<bool> _do_verification{"do_verification"};
+    ConfigVar<int> _num_instances{"num_instances"};
+    ConfigVar<int> _instance_id{"instance_id"};
     ConfigVar<int> _max_warehouses{"num_warehouses"};
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
     ConfigVar<uint16_t> _delivery_txn_batch_size{"delivery_txn_batch_size"};
@@ -392,6 +399,7 @@ private:
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
     std::vector<uint32_t> _weights;
+    int _global_id;
 }; // class Client
 
 int main(int argc, char** argv) {;
@@ -401,6 +409,8 @@ int main(int argc, char** argv) {;
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
+        ("num_instances", bpo::value<int>()->default_value(1), "Number of client instances.")
+        ("instance_id", bpo::value<int>()->default_value(0), "ID of this client instance.")
         ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
         ("num_concurrent_txns", bpo::value<int>()->default_value(2), "Number of concurrent transactions to use")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")

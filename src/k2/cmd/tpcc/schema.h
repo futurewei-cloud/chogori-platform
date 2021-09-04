@@ -308,27 +308,25 @@ public:
             {dto::FieldType::INT16T, "ID", false, false},
             {dto::FieldType::INT16T, "DID", false, false},
             {dto::FieldType::STRING, "LastName", false, false},
-            {dto::FieldType::STRING, "FirstName", false, false},
             {dto::FieldType::INT32T, "CID", false, false}
         },
         .partitionKeyFields = std::vector<uint32_t> { 0 },
-        .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3, 4}
+        .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3 }
     };
 
-    IdxCustomerName(int16_t w_id, int16_t d_id, String c_last, String c_first, int32_t c_id) :
-        WarehouseID(w_id), DistrictID(d_id), FirstName(c_last), LastName(c_first), CustomerID(c_id) {};
+    IdxCustomerName(int16_t w_id, int16_t d_id, String c_last, int32_t c_id) :
+        WarehouseID(w_id), DistrictID(d_id), LastName(c_last), CustomerID(c_id) {};
 
     IdxCustomerName() = default;
 
     std::optional<int16_t> WarehouseID;
     std::optional<int16_t> DistrictID;
-    std::optional<String> FirstName;
     std::optional<String> LastName;
     std::optional<int32_t> CustomerID;
 
     static inline thread_local std::shared_ptr<dto::Schema> schema;
     static inline String collectionName = tpccCollectionName;
-    SKV_RECORD_FIELDS(WarehouseID, DistrictID, FirstName, LastName, CustomerID);
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, LastName, CustomerID);
 };
 
 class History {
