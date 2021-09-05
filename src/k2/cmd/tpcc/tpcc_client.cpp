@@ -110,6 +110,7 @@ public:  // application lifespan
         _stopped = false;
 
         _weights = _aggregate_weights(_txn_weights());
+        _global_id = (seastar::smp::count * _instance_id()) + seastar::this_shard_id();
 
         setupSchemaPointers();
 
@@ -224,11 +225,8 @@ private:
     seastar::future<> _data_load() {
         K2LOG_I(log::tpcc, "Creating DataLoader");
         int cpus = seastar::smp::count;
-        int id = seastar::this_shard_id();
         int total_cpus = cpus * _num_instances();
         int share = _max_warehouses() / total_cpus;
-
-        _global_id = (cpus * _instance_id()) + id;
 
         if (_max_warehouses() % total_cpus != 0) {
             K2LOG_W(log::tpcc, "CPUs must divide evenly into num warehouses!");
