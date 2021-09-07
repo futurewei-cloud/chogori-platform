@@ -94,6 +94,7 @@ private:
     TimePoint _lastFlush{Clock::now()};
     uint64_t _flushId{0};
     sm::metric_groups _metric_groups;
+    uint64_t _flushes{0};
     k2::ExponentialHistogram _flushLatency;
 };
 

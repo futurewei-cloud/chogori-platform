@@ -767,8 +767,7 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                     auto& [request, krv] = requests[idx];
                     K2LOG_D(log::skvsvr, "Finalizing req={}", request);
 
-                    #define FORCE_GET_LATENCY // Flag to force to get latency metric
-                    OperationLatencyReporter reporter(_finalizations, _finalizationLatency); // for reporting metrics
+                    k2::OperationLatencyReporter reporter(_finalizations, _finalizationLatency); // for reporting metrics
 
                     return _cpo.partitionRequestByPVID<dto::K23SITxnFinalizeRequest,
                                                 dto::K23SITxnFinalizeResponse,
@@ -800,7 +799,6 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                             }
                         }
                         reporter.report();
-                        #undef FORCE_GET_LATENCY
 
                         K2LOG_D(log::skvsvr, "Finalize request succeeded for {}", request);
                         return seastar::make_ready_future<>();

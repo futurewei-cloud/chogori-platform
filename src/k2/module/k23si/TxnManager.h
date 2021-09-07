@@ -35,7 +35,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Config.h"
 #include "Log.h"
 #include "Persistence.h"
-#include "utils.h"
 
 namespace k2 {
 

@@ -191,7 +191,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
     (dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
-        OperationLatencyReporter reporter(_readOps, _readLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_readOps, _readLatency); // for reporting metrics
         return handleRead(std::move(request), FastDeadline(_config.readTimeout()))
                .then([this, reporter=std::move(reporter)](auto&& response) mutable {
                     reporter.report();
@@ -201,7 +201,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
     (dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
-        OperationLatencyReporter reporter(_queryOps, _queryLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_queryOps, _queryLatency); // for reporting metrics
         return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()))
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     reporter.report();
@@ -211,7 +211,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
     (dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
-        OperationLatencyReporter reporter(_writeOps, _writeLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_writeOps, _writeLatency); // for reporting metrics
         return handleWrite(std::move(request), FastDeadline(_config.writeTimeout()))
             .then([this, reporter=std::move(reporter)] (auto&& resp) mutable {
                 return _respondAfterFlush(std::move(resp))
@@ -224,7 +224,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
-        OperationLatencyReporter reporter(_pushes, _pushLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_pushes, _pushLatency); // for reporting metrics
         return handleTxnPush(std::move(request))
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     reporter.report();
