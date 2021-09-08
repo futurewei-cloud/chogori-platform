@@ -90,7 +90,7 @@ public:
     // on behalf of an incoming read (recursively). We only perform the recursive attempt
     // to read if we were allowed to retry by the PUSH operation
     seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
-    handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline);
+    handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, int count = 1);
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
@@ -236,7 +236,7 @@ private: // methods
 
     // helper used to process the write part of a write request
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-    _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
+    _processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline, int count = 1);
 
     void _unregisterVerbs();
 

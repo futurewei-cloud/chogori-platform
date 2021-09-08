@@ -690,7 +690,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 }
 
 seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
-K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline) {
+K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, int count) {
     K2LOG_D(log::skvsvr, "Partition: {}, received read {}", _partition, request);
 
     Status validateStatus = _validateReadRequest(request);
@@ -720,13 +720,18 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
         return _makeReadOK(rec);
     }
 
+    if (count > 20) {
+        return RPCResponse(dto::K23SIStatus::ServiceUnavailable("Consecutive pushes, client should retry"),
+                           dto::K23SIReadResponse{});
+    }
+
     // record is still pending and isn't from same transaction.
     return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
-        .then([this, request=std::move(request), deadline](auto&& retryChallenger) mutable {
+        .then([this, request=std::move(request), deadline, count](auto&& retryChallenger) mutable {
             if (!retryChallenger.is2xxOK()) {
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse{});
             }
-            return handleRead(std::move(request), deadline);
+            return handleRead(std::move(request), deadline, count+1);
         });
 }
 
@@ -1091,7 +1096,7 @@ K23SIPartitionModule::handleWrite(dto::K23SIWriteRequest&& request, FastDeadline
 }
 
 seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
-K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline) {
+K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline, int count) {
     K2LOG_D(log::skvsvr, "processing write: {}", request);
     auto& vset = _indexer[request.key];
     Status validateStatus = _validateWriteRequest(request, vset);
@@ -1108,11 +1113,16 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
 
     // check to see if we should push or is this a write from same txn
     if (vset.WI.has_value() && vset.WI->data.timestamp != request.mtr.timestamp) {
+        if (count > 20) {
+            return RPCResponse(dto::K23SIStatus::ServiceUnavailable("Consecutive pushes, client should retry"),
+                               dto::K23SIWriteResponse{});
+        }
+
         // this is a write request finding a WI from a different transaction. Do a push with the remaining
         // deadline time.
         K2LOG_D(log::skvsvr, "different WI found for key {}", request.key);
         return _doPush(request.key, vset.WI->data.timestamp, request.mtr, deadline)
-            .then([this, request = std::move(request), deadline](auto&& retryChallenger) mutable {
+            .then([this, request = std::move(request), deadline, count](auto&& retryChallenger) mutable {
                 if (!retryChallenger.is2xxOK()) {
                     // challenger must fail. Flush in case a TR was created during this call to handle write
                     K2LOG_D(log::skvsvr, "write push challenger lost for key {}", request.key);
@@ -1120,7 +1130,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
                 }
 
                 K2LOG_D(log::skvsvr, "write push retry for key {}", request.key);
-                return _processWrite(std::move(request), deadline);
+                return _processWrite(std::move(request), deadline, count + 1);
             });
     }
 
