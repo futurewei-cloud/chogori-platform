@@ -26,6 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/common/Common.h>
 #include <k2/common/Log.h>
+#include <k2/config/Config.h>
 
 #include <cmath>
 #include <seastar/core/future.hh>
@@ -177,4 +178,30 @@ private:
     seastar::metrics::histogram _promHistogram;
 
 }; // class ExponentialHistogram
+
+// Class to update metrics (i) count of operation and (ii) latency of operation
+class OperationLatencyReporter{
+    public:
+        OperationLatencyReporter(uint64_t& ops, k2::ExponentialHistogram& latencyHist): _ops(ops), _latencyHist(latencyHist){
+            if(_enableMetrics()) {
+                _startTime = k2::Clock::now(); // record start time to calculate latency of operation
+            }
+        }
+
+        // update operation count and latency metrics
+        void report(){
+            _ops++;
+            if(_enableMetrics()) {
+                auto end = k2::Clock::now();
+                auto dur = end - _startTime;
+                _latencyHist.add(dur);
+            }
+        }
+
+    private:
+        k2::TimePoint _startTime;
+        uint64_t& _ops;
+        k2::ExponentialHistogram& _latencyHist;
+        k2::ConfigVar<bool> _enableMetrics{"enable_metrics", true};
+};
 } // k2 namespace

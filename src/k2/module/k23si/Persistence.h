@@ -80,6 +80,8 @@ public:
         _buffer->write(val);
     }
 
+    void _registerMetrics();
+
 private:
     bool _stopped{false};
     std::unique_ptr<Payload> _buffer;
@@ -91,6 +93,9 @@ private:
     PeriodicTimer _flushTimer; // TODO consider also flushing based on accumulated data size
     TimePoint _lastFlush{Clock::now()};
     uint64_t _flushId{0};
+    sm::metric_groups _metric_groups;
+    uint64_t _flushes{0};
+    k2::ExponentialHistogram _flushLatency;
 };
 
 } // ns k2
