@@ -70,7 +70,7 @@ void VirtualNetworkStack::start(){
 BinaryAllocatorFunctor VirtualNetworkStack::getTCPAllocator() {
     // The seastar stacks don't expose allocation mechanism so we just allocate
     // the binaries in user space
-    return []() {
+    return [](size_t bsize=tcpsegsize) {
         //NB at some point, we'll have to capture the underlying network stack here in order
         // to pass on allocations. This should be done with weakly_referencable and weak_from_this()
 
@@ -78,7 +78,7 @@ BinaryAllocatorFunctor VirtualNetworkStack::getTCPAllocator() {
 
         // NB, there is no performance benefit of allocating smaller chunks. Chunks up to 16384 are allocated from
         // seastar pool allocator and overhead is the same regardless of size(~10ns per allocation)
-        return Binary(tcpsegsize);
+        return Binary(bsize);
     };
 }
 
@@ -111,8 +111,8 @@ VirtualNetworkStack::connectRRDMA(seastar::rdma::EndPoint remoteAddress) {
 }
 
 BinaryAllocatorFunctor VirtualNetworkStack::getRRDMAAllocator() {
-    return []() {
-        return Binary(rrdmasegsize);
+    return [](size_t bsize=rrdmasegsize) {
+        return Binary(bsize);
     };
 }
 

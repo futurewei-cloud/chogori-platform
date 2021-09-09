@@ -95,7 +95,7 @@ typedef seastar::temporary_buffer<char> Binary;
 //
 // The type for a function which can allocate Binary
 //
-typedef std::function<Binary()> BinaryAllocatorFunctor;
+typedef std::function<Binary(size_t)> BinaryAllocatorFunctor;
 
 class HexCodec {
 private:
