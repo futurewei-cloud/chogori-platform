@@ -435,7 +435,9 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
 }
 
 Payload Payload::copy(BinaryAllocatorFunctor allocator) {
-    Payload copied(allocator);
+    (void) allocator;
+    auto myalloc = ([size=getSize()] () { return Binary(size); });
+    Payload copied(myalloc);
 
     // copy exactly the data we need
     size_t toCopy = _size;
