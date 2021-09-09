@@ -85,7 +85,7 @@ data<embeddedComplex> makeData(uint32_t a, uint64_t b, char x, int ya, char yb, 
     result.z = embeddedComplex{.a=std::move(za), .b=zb, .c=zc};
     if (pdata) {
         String pp(pdata);
-        result.c = Payload([allocSize]{return Binary(allocSize);});
+        result.c = Payload([allocSize] (size_t bsize) { bsize= allocSize; return Binary(bsize);});
         result.c.write(pp);
     }
     result.dur = dur;
@@ -113,7 +113,7 @@ SCENARIO("test empty payload serialization") {
     REQUIRE(shared.getCapacity() == 0);
     REQUIRE(shared.computeCrc32c() == 0);
 
-    Payload dst([]() { return Binary(999); });
+    Payload dst([](size_t bsize=999) { return Binary(bsize); });
     dst.write(src);
     REQUIRE(dst.getCurrentPosition().bufferIndex == 1);
     REQUIRE(dst.getCurrentPosition().bufferOffset == 0);
@@ -147,7 +147,7 @@ SCENARIO("test empty payload serialization") {
 }
 
 SCENARIO("test multi-buffer serialization") {
-    Payload dst([]() { return Binary(11); });
+    Payload dst([](size_t bsize=11) { return Binary(bsize); });
     String s(100, 'x');
     dst.write(s);
 
@@ -160,7 +160,7 @@ SCENARIO("test multi-buffer serialization") {
     REQUIRE(q == s);
 
     dst.seek(0);
-    Payload dst2([]() { return Binary(23); });
+    Payload dst2([](size_t bsize=23) { return Binary(bsize); });
     dst2.write(dst);
     REQUIRE(dst2.getSize() == 113); // 8 bytes for size + 105 bytes from dst
     dst2.write(s);
@@ -182,8 +182,8 @@ SCENARIO("test multi-buffer serialization") {
     REQUIRE(pb == dst);
     REQUIRE(pa == pb);
 
-    Payload p1([]() { return Binary(4096); });
-    Payload p2([]() { return Binary(20); });
+    Payload p1([](size_t bsize=4096) { return Binary(bsize); });
+    Payload p2([](size_t bsize=20) { return Binary(bsize); });
     int32_t a = 10;
     p1.write(a);
     p2.write(p1);
@@ -209,7 +209,7 @@ SCENARIO("Serialize/deserialze empty SerializeAsPayload<T>") {
     d.a = 100;
     d.b = 200;
     d.x = '!';
-    Payload dst([] { return Binary(1500); });
+    Payload dst([] (size_t bsize=1500) { return Binary(bsize); });
     dst.write(d);
     dst.seek(0);
 
@@ -224,7 +224,7 @@ SCENARIO("Serialize/deserialze empty SerializeAsPayload<T>") {
         for (int i = 0; i < 100000; ++i) {
             bvec.push_back(blanks{});
             auto idx = uint64_t(std::rand()) % bvec.size();
-            Payload dst([] { return Binary(1500); });
+            Payload dst([] (size_t bsize=1500) { return Binary(bsize); });
             dst.write(bvec[idx]);
             dst.seek(0);
             REQUIRE(dst.computeCrc32c() == 1383945041);
@@ -240,7 +240,7 @@ SCENARIO("Serialize/deserialze empty SerializeAsPayload<T>") {
             d.a = 1;
             d.b = 2;
             d.x = '!';
-            Payload dst([] { return Binary(1500); });
+            Payload dst([] (size_t bsize=1500) { return Binary(bsize); });
             dst.write(d);
             data<Payload> recv;
             dst.seek(0);
@@ -262,7 +262,7 @@ SCENARIO("test empty payload serialization after some data") {
     testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
     testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
     for (auto& d: testCases) {
-        Payload dst([] { return Binary(111); });
+        Payload dst([] (size_t bsize=111) { return Binary(bsize); });
         dst.write(d);
         dst.seek(0);
         auto chksum = dst.computeCrc32c();
@@ -283,7 +283,7 @@ SCENARIO("test empty payload serialization after some data") {
         REQUIRE(cmplx == d.w.val);
 
         // write the parsed data back and make sure checksum remains the same
-        Payload dst2([] { return Binary(110); });
+        Payload dst2([] (size_t bsize=110) { return Binary(bsize); });
         dst2.write(parsed);
         dst2.seek(0);
         REQUIRE(chksum == dst2.computeCrc32c());
@@ -304,12 +304,12 @@ SCENARIO("test copy from payload") {
     testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
     testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
     for (auto& d: testCases) {
-        Payload dst([] { return Binary(111); });
+        Payload dst([] (size_t bsize=111) { return Binary(bsize); });
         dst.write(d);
         dst.seek(0);
         auto chksum = dst.computeCrc32c();
 
-        Payload dst2([] { return Binary(111); });
+        Payload dst2([] (size_t bsize=111) { return Binary(bsize); });
         dst2.copyFromPayload(dst, dst.getSize());
         dst2.seek(0);
 
@@ -331,7 +331,7 @@ SCENARIO("test shareAll() and shareRegion()") {
     testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 124123456, 's', s.c_str(), s, 109, Duration(21s)));
     testCases.push_back(makeData(1111, 22222, 'd', 44444, 'i', 123123456, s, 1241223456, 's', nullptr, s, 203, Duration(123456789s)));
 
-    Payload dst([] { return Binary(4096); });
+    Payload dst([] (size_t bsize=4096) { return Binary(bsize); });
     std::vector<uint32_t> offsetCheckPoint;
     for (auto& d: testCases) {
         offsetCheckPoint.push_back(dst.getSize());
@@ -370,7 +370,7 @@ SCENARIO("test shareAll() and shareRegion()") {
 }
 
 SCENARIO("test getSerializedSizeOf method") {
-    Payload src([] { return Binary(32); } );
+    Payload src([] (size_t bsize=32) { return Binary(bsize); } );
     char a = 'a';
     String b = "test getSerializedSizeOf method";
     std::decimal::decimal64 c(323.435);
@@ -400,7 +400,7 @@ SCENARIO("test getSerializedSizeOf method") {
             {2, {2, 3}},
             {3, {3, 4, 5}},
     };
-    Payload j([] { return Binary(32); });
+    Payload j([] (size_t bsize=32) { return Binary(bsize); });
     j.write(b);
 
     src.write(a);

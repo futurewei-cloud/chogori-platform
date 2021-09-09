@@ -554,7 +554,7 @@ Status CPOService::_loadSchemas(const String& collectionName) {
 
 Status CPOService::_saveCollection(dto::Collection& collection) {
     auto cpath = _getCollectionPath(collection.metadata.name);
-    Payload p([] { return Binary(4096); });
+    Payload p([] (size_t bsize=4096) { return Binary(bsize); });
     p.write(collection);
     if (!fileutil::writeFile(std::move(p), cpath)) {
         return Statuses::S500_Internal_Server_Error("unable to write collection data");
@@ -566,7 +566,7 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
 
 Status CPOService::_saveSchemas(const String& collectionName) {
     auto cpath = _getSchemasPath(collectionName);
-    Payload p([] { return Binary(4096); });
+    Payload p([] (size_t bsize=4096) { return Binary(bsize); });
     p.write(schemas[collectionName]);
     if (!fileutil::writeFile(std::move(p), cpath)) {
         return Statuses::S500_Internal_Server_Error("unable to write schema data");
@@ -586,7 +586,7 @@ CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&
         return RPCResponse(Statuses::S409_Conflict("persistence cluster already exists"), dto::PersistenceClusterCreateResponse());
     }
 
-    Payload q([] { return Binary(4096); });
+    Payload q([] (size_t bsize=4096) { return Binary(bsize); });
     q.write(request.cluster);
     if (!fileutil::writeFile(std::move(q), cpath)) {
         return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write persistence cluster data"), dto::PersistenceClusterCreateResponse());
@@ -634,7 +634,7 @@ CPOService::handleMetadataPut(dto::MetadataPutRequest&& request){
         dto::PartitionMetdataRecord element{.plogId=std::move(request.new_plogId), .sealed_offset=0};
         records->second.push_back(std::move(element));
     }
-    
+
     return RPCResponse(Statuses::S201_Created("metadata log updates successfully"), dto::MetadataPutResponse{});
 }
 

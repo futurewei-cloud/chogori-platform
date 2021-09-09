@@ -144,7 +144,7 @@ public:  // application lifespan
             auto& [status, resp] = response;
             K2EXPECT(log::ptest, status, Statuses::S409_Conflict);
 
-            Payload payload([] { return Binary(4096); });
+            Payload payload([] (size_t bsize=4096) { return Binary(bsize); });
             payload.write("1234567890");
             return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=0, .payload=std::move(payload)});
         })
@@ -154,7 +154,7 @@ public:  // application lifespan
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             K2EXPECT(log::ptest, return_response.newOffset, 15);
 
-            Payload payload([] { return Binary(4096); });
+            Payload payload([] (size_t bsize=4096) { return Binary(bsize); });
             payload.write("0987654321");
             return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=15, .payload=std::move(payload)});
         })
@@ -164,7 +164,7 @@ public:  // application lifespan
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             K2EXPECT(log::ptest, return_response.newOffset, 30);
 
-            Payload payload([] { return Binary(4096); });
+            Payload payload([] (size_t bsize=4096) { return Binary(bsize); });
             payload.write("2333333333");
             return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=30, .payload=std::move(payload)});
         })
@@ -174,7 +174,7 @@ public:  // application lifespan
             K2EXPECT(log::ptest, status, Statuses::S200_OK);
             K2EXPECT(log::ptest, return_response.newOffset, 45);
 
-            Payload payload([] { return Binary(4096); });
+            Payload payload([] (size_t bsize=4096) { return Binary(bsize); });
             payload.write("1234567890");
             return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=100, .payload=std::move(payload)});
         })
@@ -239,7 +239,7 @@ public:  // application lifespan
             K2EXPECT(log::ptest, status, Statuses::S409_Conflict);
             K2EXPECT(log::ptest, return_response.sealedOffset, 45);
 
-            Payload payload([] { return Binary(4096); });
+            Payload payload([] (size_t bsize=4096) { return Binary(bsize); });
             payload.write("1234567890");
             return _client.append(dto::PlogAppendRequest{.plogId=_plogId, .offset=45, .payload=std::move(payload)});
         })
