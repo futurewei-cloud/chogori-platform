@@ -92,10 +92,26 @@ typedef seastar::sstring String;
 //
 typedef seastar::temporary_buffer<char> Binary;
 
-//
-// The type for a function which can allocate Binary
-//
-typedef std::function<Binary()> BinaryAllocatorFunctor;
+// define a binary allocator either by a default size or by a specific size
+class BinaryAllocator {
+public:
+    BinaryAllocator(size_t size) : _size(size) {
+    }
+
+    // allocate by the default size
+    Binary allocate() {
+        return Binary(_size);
+    }
+
+    // allocate by a specific size
+    Binary allocate(size_t bsize) {
+        return Binary(bsize);
+    }
+
+private:
+    // default allocation size
+    size_t _size;
+};
 
 class HexCodec {
 private:

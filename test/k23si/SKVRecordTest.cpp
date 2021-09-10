@@ -236,7 +236,7 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
     // to payload and then read back later
     k2::dto::SKVRecord key_record = doc.getSKVKeyRecord();
     const k2::dto::SKVRecord::Storage& storage = key_record.getStorage();
-    k2::Payload payload(k2::Payload::DefaultAllocator);
+    k2::Payload payload(k2::Payload::DefaultAllocator());
     payload.write(storage);
     k2::dto::SKVRecord::Storage read_storage{};
     payload.seek(0);

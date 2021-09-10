@@ -131,8 +131,8 @@ public: // types
 
 public: // Lifecycle
     // Create a blank payload which can grow by allocating with the given allocator
-    Payload(BinaryAllocatorFunctor allocator);
-    static Binary DefaultAllocator();
+    Payload(std::shared_ptr<BinaryAllocator> allocator);
+    static std::shared_ptr<BinaryAllocator> DefaultAllocator();
 
     Payload(Payload&&) = default;
     Payload& operator=(Payload&& other) = default;
@@ -165,7 +165,10 @@ public: // memory management
     Payload shareRegion(size_t startOffset, size_t nbytes);
 
     // Creates a new payload as a copy of this payload. The underlying data is copied over to the new payload
-    Payload copy(BinaryAllocatorFunctor dest_allocator=DefaultAllocator);
+    Payload copy(std::shared_ptr<BinaryAllocator> dest_allocator);
+
+    // copy with the default binary allocator
+    Payload copy();
 
     // clear this payload
     void clear();
@@ -664,7 +667,7 @@ private:  // types and fields
     std::vector<Binary> _buffers;
     size_t _size; // total bytes of user data present
     size_t _capacity; // total bytes allocated in the buffers.
-    BinaryAllocatorFunctor _allocator;
+    std::shared_ptr<BinaryAllocator> _allocator;
     PayloadPosition _currentPosition;
 
 private: // helper methods

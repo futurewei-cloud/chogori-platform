@@ -774,7 +774,7 @@ bool K23SIPartitionModule::_isUpdatedField(uint32_t fieldIdx, std::vector<uint32
 
 bool K23SIPartitionModule::_makeFieldsForSameVersion(dto::Schema& schema, dto::K23SIWriteRequest& request, dto::DataRecord& version) {
     Payload basePayload = version.value.fieldData.shareAll();   // base payload
-    Payload payload(Payload::DefaultAllocator);                     // payload for new record
+    Payload payload(Payload::DefaultAllocator());                     // payload for new record
 
     for (std::size_t i = 0; i < schema.fields.size(); ++i) {
         if (_isUpdatedField(i, request.fieldsForPartialUpdate)) {
@@ -860,7 +860,7 @@ bool K23SIPartitionModule::_makeFieldsForDiffVersion(dto::Schema& schema, dto::S
     std::size_t baseCursor = 0; // indicate fieldsOffset cursor
 
     Payload basePayload = version.value.fieldData.shareAll();   // base payload
-    Payload payload(Payload::DefaultAllocator);                     // payload for new record
+    Payload payload(Payload::DefaultAllocator());                     // payload for new record
 
     // make every fields in schema for new full-record-WI
     for (std::size_t i = 0; i < schema.fields.size(); ++i) {
@@ -985,7 +985,7 @@ bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto
     auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
     dto::Schema& schema = *(schemaVer->second);
     std::vector<bool> excludedFields(schema.fields.size(), true);   // excludedFields for projection
-    Payload projectedPayload(Payload::DefaultAllocator);            // payload for projection
+    Payload projectedPayload(Payload::DefaultAllocator());            // payload for projection
 
     for (uint32_t i = 0; i < schema.fields.size(); ++i) {
         if (fullRec.excludedFields.size() && fullRec.excludedFields[i]) {

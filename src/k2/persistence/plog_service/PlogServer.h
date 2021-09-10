@@ -53,12 +53,12 @@ private:
         InternalPlog(){
             sealed=false;
             offset=0;
-            payload = Payload(([] { return Binary(PLOG_MAX_SIZE); }));
+            payload = Payload(std::make_shared<BinaryAllocator>(PLOG_MAX_SIZE));
         }
 
         bool sealed;
         uint32_t offset;
-        Payload payload; 
+        Payload payload;
     };
 
     // a map to store all the plogs based on plog id
@@ -83,7 +83,7 @@ private:
     //handle the seal request
     seastar::future<std::tuple<Status, dto::PlogGetStatusResponse>>
     _handleGetStatus(dto::PlogGetStatusRequest&& request);
-    
+
 public:
      PlogServer();
     ~PlogServer();

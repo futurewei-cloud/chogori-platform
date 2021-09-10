@@ -102,7 +102,7 @@ const SKVRecord::Storage& SKVRecord::getStorage() {
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
             schema(s), collectionName(collection), keyValuesAvailable(true), keyStringsConstructed(true) {
     storage.schemaVersion = schema->version;
-    storage.fieldData = Payload(Payload::DefaultAllocator);
+    storage.fieldData = Payload(Payload::DefaultAllocator());
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
 }

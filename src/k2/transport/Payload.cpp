@@ -36,7 +36,7 @@ Payload::PayloadPosition::PayloadPosition(_Size bIdx, _Size bOff, size_t offset)
     // Empty payload will have position of (bidx=0, boff=0, off=0)
 }
 
-Payload::Payload(BinaryAllocatorFunctor allocator):
+Payload::Payload(std::shared_ptr<BinaryAllocator> allocator):
     _size(0), _capacity(0), _allocator(allocator) {
 }
 
@@ -53,8 +53,8 @@ Payload::Payload():
     _allocator(nullptr) {
 }
 
-Binary Payload::DefaultAllocator() {
-    return Binary(8192);
+std::shared_ptr<BinaryAllocator> Payload::DefaultAllocator() {
+    return std::make_shared<BinaryAllocator>(8196);
 }
 
 bool Payload::isEmpty() const {
@@ -334,7 +334,7 @@ size_t Payload::getFieldsSize() {
 
 bool Payload::_allocateBuffer() {
     K2ASSERT(log::tx, _allocator, "cannot allocate buffer without allocator");
-    Binary buf = _allocator();
+    Binary buf = _allocator->allocate();
     if (!buf) {
         return false;
     }
@@ -434,8 +434,9 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     return shared;
 }
 
-Payload Payload::copy(BinaryAllocatorFunctor allocator) {
-    Payload copied(allocator);
+Payload Payload::copy(std::shared_ptr<BinaryAllocator> allocator) {
+    Payload copied;
+    Binary b = allocator->allocate(_size);
 
     // copy exactly the data we need
     size_t toCopy = _size;
@@ -444,13 +445,18 @@ Payload Payload::copy(BinaryAllocatorFunctor allocator) {
         auto& curBuf = _buffers[curBufIndex];
         auto copySizeFromCurBuf = std::min(toCopy, curBuf.size());
 
-        copied.write(curBuf.get(), copySizeFromCurBuf);
+        std::memcpy(b.get_write() + (b.size() - toCopy), curBuf.get(), copySizeFromCurBuf);
         toCopy -= copySizeFromCurBuf;
         curBufIndex++;
     }
 
-    copied.seek(0);
+    copied.appendBinary(std::move(b));
+    copied._allocator = allocator;
     return copied;
+}
+
+Payload Payload::copy() {
+    return copy(DefaultAllocator());
 }
 
 bool Payload::operator==(const Payload& o) const {

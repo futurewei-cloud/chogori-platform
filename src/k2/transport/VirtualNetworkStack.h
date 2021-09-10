@@ -64,8 +64,8 @@ public: // TCP API
     // It is up to caller to shutdown the input/output when the socket should be closed
     seastar::future<seastar::connected_socket> connectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress={});
 
-    // Create a payload from the TCP provider
-    BinaryAllocatorFunctor getTCPAllocator();
+    // Create a binary allocator from the TCP provider
+    std::shared_ptr<BinaryAllocator> getTCPAllocator();
 
     // registerLowTCPMemoryObserver allows the user to register a observer which will be called when
     // the TCP stack becomes low on memory and requires the application to release some buffers back.
@@ -87,8 +87,8 @@ public: // RDMA API
     // Create an RRDMA connection to connect to a given remote address.
     std::unique_ptr<seastar::rdma::RDMAConnection> connectRRDMA(seastar::rdma::EndPoint remoteAddress);
 
-    // Create a binary from the RRDMA provider
-    BinaryAllocatorFunctor getRRDMAAllocator();
+    // Create a binary allocator from the RRDMA provider
+    std::shared_ptr<BinaryAllocator> getRRDMAAllocator();
 
     // RegisterLowRRDMAMemoryObserver allows the user to register a observer which will be called when
     // the RRDMA stack becomes low on memory and requires the application to release some buffers back.
