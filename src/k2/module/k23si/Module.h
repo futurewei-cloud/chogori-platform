@@ -96,7 +96,7 @@ public:
     handleWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
-    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline);
+    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline, uint64_t numScans=0);
 
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
@@ -302,6 +302,8 @@ private:  // members
     k2::ExponentialHistogram _writeLatency;
     k2::ExponentialHistogram _queryLatency;
     k2::ExponentialHistogram _pushLatency;
+    k2::ExponentialHistogram _queryScans;
+    k2::ExponentialHistogram _queryReturns;
 };
 
 } // ns k2

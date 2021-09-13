@@ -572,7 +572,7 @@ std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryReq
 }
 
 seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
-K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline) {
+K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline, uint64_t numScans) {
     K2LOG_D(log::skvsvr, "Partition: {}, received query {}", _partition, request);
 
     Status validateStatus = _validateReadRequest(request);
@@ -585,7 +585,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
     IndexerIterator key_it = _initializeScan(request.key, request.reverseDirection, request.exclusiveKey);
     for (; !_isScanDone(key_it, request, response.results.size());
-                        _scanAdvance(key_it, request.reverseDirection, request.key.schemaName)) {
+                        _scanAdvance(key_it, request.reverseDirection, request.key.schemaName), numScans++) {
         auto& versions = key_it->second;
         DataRecord* record = _getDataRecordForRead(versions, request.mtr.timestamp);
         bool needPush = !record ? _checkPushForRead(versions, request.mtr.timestamp) : false;
@@ -646,12 +646,12 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         request.key = key_it->first; // if we retry, do so with the key we're currently iterating on
         return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
         .then([this, request=std::move(request),
-                        resp=std::move(response), deadline](auto&& retryChallenger) mutable {
+                        resp=std::move(response), numScans=std::move(numScans), deadline](auto&& retryChallenger) mutable {
             if (!retryChallenger.is2xxOK()) {
                 // sitting transaction won. Abort the incoming request
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in query push"), dto::K23SIQueryResponse{});
             }
-            return handleQuery(std::move(request), std::move(resp), deadline);
+            return handleQuery(std::move(request), std::move(resp), deadline, numScans);
         });
     }
 
@@ -676,6 +676,9 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
     response.nextToScan = _getContinuationToken(key_it, request, response, response.results.size());
     K2LOG_D(log::skvsvr, "nextToScan: {}, exclusiveToken: {}", response.nextToScan, response.exclusiveToken);
+
+    _queryScans.add(numScans);
+    _queryReturns.add(response.results.size());
     return RPCResponse(dto::K23SIStatus::OK("Query success"), std::move(response));
 }
 
