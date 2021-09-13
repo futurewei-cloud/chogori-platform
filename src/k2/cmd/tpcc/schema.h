@@ -457,6 +457,35 @@ private:
     ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 };
 
+// secondary index for order table on (warehouse_id, district_id, customer_id, and order_id)
+class IdxOrderCustomer {
+public:
+    static inline dto::Schema idx_order_customer_schema {
+        .name = "idx_order_customer",
+        .version = 1,
+        .fields = std::vector<dto::SchemaField> {
+            {dto::FieldType::INT16T, "ID", false, false},
+            {dto::FieldType::INT16T, "DID", false, false},
+            {dto::FieldType::INT32T, "CID", false, false},
+            {dto::FieldType::INT64T, "OID", false, false}
+        },
+        .partitionKeyFields = std::vector<uint32_t> { 0 },
+        .rangeKeyFields = std::vector<uint32_t> { 1, 2, 3 }
+    };
+
+    IdxOrderCustomer(int16_t w_id, int16_t d_id, int32_t c_id, int64_t o_id) :
+        WarehouseID(w_id), DistrictID(d_id), CustomerID(c_id), OrderID(o_id) {};
+
+    std::optional<int16_t> WarehouseID;
+    std::optional<int16_t> DistrictID;
+    std::optional<int32_t> CustomerID;
+    std::optional<int64_t> OrderID;
+
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(WarehouseID, DistrictID, CustomerID, OrderID);
+};
+
 class NewOrder {
 public:
     static inline dto::Schema neworder_schema {
@@ -726,6 +755,7 @@ void setupSchemaPointers() {
     District::schema = std::make_shared<dto::Schema>(District::district_schema);
     Customer::schema = std::make_shared<dto::Schema>(Customer::customer_schema);
     IdxCustomerName::schema = std::make_shared<dto::Schema>(IdxCustomerName::idx_customer_name_schema);
+    IdxOrderCustomer::schema = std::make_shared<dto::Schema>(IdxOrderCustomer::idx_order_customer_schema);
     History::schema = std::make_shared<dto::Schema>(History::history_schema);
     Order::schema = std::make_shared<dto::Schema>(Order::order_schema);
     NewOrder::schema = std::make_shared<dto::Schema>(NewOrder::neworder_schema);

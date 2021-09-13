@@ -377,7 +377,13 @@ private:
             makeOrderLines();
 
             // Write Order row
-            future<WriteResult> order_update = writeRow<Order>(_order, _txn);
+            future<WriteResult> order_update = writeRow<Order>(_order, _txn).discard_result()
+                                               .then([this](){
+                                                    // insert secondary index idx_order_customer
+                                                    auto idx_order_customer = IdxOrderCustomer(_order.WarehouseID.value(), _order.DistrictID.value(),
+                                                        _order.CustomerID.value(), _order.OrderID.value());
+                                                    return writeRow<IdxOrderCustomer>(idx_order_customer, _txn);
+                                               });
 
             future<> line_updates = parallel_for_each(_lines.begin(), _lines.end(), [this] (OrderLine& line) {
                 return _txn.read<Item>(Item(*(line.ItemID)))

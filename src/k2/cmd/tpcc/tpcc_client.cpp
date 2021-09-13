@@ -199,6 +199,11 @@ private:
             K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
+        schema_futures.push_back(_client.createSchema(tpccCollectionName, IdxOrderCustomer::idx_order_customer_schema)
+        .then([] (auto&& result) {
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
+        }));
+
         schema_futures.push_back(_client.createSchema(tpccCollectionName, NewOrder::neworder_schema)
         .then([] (auto&& result) {
             K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
