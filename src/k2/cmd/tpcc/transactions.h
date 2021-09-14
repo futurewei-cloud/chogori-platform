@@ -684,53 +684,83 @@ private:
         });
     }
 
-    // Get order row based on _w_id, _d_id, _c_id with the largest _o_id (most recent order)
-    future<> getOrderdByCId() {
-        return _client.createQuery(tpccCollectionName, "order")
+    // get Order ID by Customer ID
+    future<> getOIdByCIdViaIndex(){
+        return _client.createQuery(tpccCollectionName, "idx_order_customer")
         .then([this](auto&& response) mutable {
             CHECK_READ_STATUS(response);
 
             // make Query request and set query rules.
-            // 1. range:[ (_w_id, _d_id, INT64_MAX), (_w_id, _d_id-1, INT64_MAX) ); 2. return the newest Order record;
-            // 3. reverse direction scan (newest one); 4. projection "OID", "EntryDate", "CarrierID" fields;
-            // 5. filter out the record rows of customer id
-            _query_order = std::move(response.query);
-            _query_order.startScanRecord.serializeNext<int16_t>(_w_id);
-            _query_order.startScanRecord.serializeNext<int16_t>(_d_id);
-            _query_order.startScanRecord.serializeNext<int64_t>(INT64_MAX);
-            _query_order.endScanRecord.serializeNext<int16_t>(_w_id);
-            _query_order.endScanRecord.serializeNext<int16_t>(_d_id - 1);
-            _query_order.endScanRecord.serializeNext<int64_t>(INT64_MAX);
-            _query_order.setLimit(1);
-            _query_order.setReverseDirection(true);
+            // 1. range:[ (_w_id, _d_id, _c_id), (_w_id, _d_id, _c_id) ); 2. return the newest Order record;
+            // 3. reverse direction scan (newest one); 4. projection "OID" field;
+            _query_oid = std::move(response.query);
+            _query_oid.startScanRecord.serializeNext<int16_t>(_w_id);
+            _query_oid.startScanRecord.serializeNext<int16_t>(_d_id);
+            _query_oid.startScanRecord.serializeNext<int32_t>(_c_id);
+            _query_oid.endScanRecord.serializeNext<int16_t>(_w_id);
+            _query_oid.endScanRecord.serializeNext<int16_t>(_d_id);
+            _query_oid.endScanRecord.serializeNext<int32_t>(_c_id);
+            _query_oid.setLimit(1);
+            _query_oid.setReverseDirection(true);
 
-            std::vector<String> projection{"OID", "EntryDate", "CarrierID"}; // make projection
-            _query_order.addProjection(projection);
-            std::vector<dto::expression::Value> values; // make filter Expression
-            std::vector<dto::expression::Expression> exps;
-            values.emplace_back(dto::expression::makeValueReference("CID"));
-            values.emplace_back(dto::expression::makeValueLiteral<int16_t>(std::move(_c_id)));
-            dto::expression::Expression filter = dto::expression::makeExpression(dto::expression::Operation::EQ,
-                                                    std::move(values), std::move(exps));
-            _query_order.setFilterExpression(std::move(filter));
+            std::vector<String> projection{"OID"}; // make projection
+            _query_oid.addProjection(projection);
 
-            return _txn.query(_query_order)
+            return _txn.query(_query_oid)
             .then([this] (auto&& response) {
                 CHECK_READ_STATUS(response);
 
                 for (dto::SKVRecord& rec : response.records) {
                     std::optional<int64_t> oidOpt = rec.deserializeField<int64_t>("OID");
-                    std::optional<int64_t> entryDateOpt = rec.deserializeField<int64_t>("EntryDate");
-                    std::optional<int32_t> carrierOpt = rec.deserializeField<int32_t>("CarrierID");
 
                     _o_id = *oidOpt;
-                    _out_o_id = *oidOpt;
-                    _out_o_entry_date = *entryDateOpt;
-                    _out_o_carrier_id = *carrierOpt;
                 }
                 return make_ready_future();
             });
         });
+    }
+
+    // Get order row based on _w_id, _d_id, _c_id with the largest _o_id (most recent order)
+    future<> getOrderdByCId() {
+        return getOIdByCIdViaIndex().discard_result()
+                .then([this]() mutable {
+                    return _client.createQuery(tpccCollectionName, "order")
+                        .then([this](auto&& response) mutable {
+                            CHECK_READ_STATUS(response);
+
+                            // make Query request and set query rules.
+                            // 1) just one skvrecord returns; 2) add Projection fields as needed;
+                            _query_order = std::move(response.query);
+                            _query_order.startScanRecord.serializeNext<int16_t>(_w_id);
+                            _query_order.startScanRecord.serializeNext<int16_t>(_d_id);
+                            _query_order.startScanRecord.serializeNext<int64_t>(_o_id);
+                            _query_order.endScanRecord.serializeNext<int16_t>(_w_id);
+                            _query_order.endScanRecord.serializeNext<int16_t>(_d_id);
+                            _query_order.endScanRecord.serializeNext<int64_t>(_o_id + 1);
+                            _query_order.setLimit(-1);
+                            _query_order.setReverseDirection(false);
+
+                            std::vector<String> projection{"OID", "EntryDate", "CarrierID"}; // make projection
+                            _query_order.addProjection(projection);
+                            dto::expression::Expression filter{};   // make filter Expression
+                            _query_order.setFilterExpression(std::move(filter));
+
+                            return _txn.query(_query_order)
+                            .then([this] (auto&& response) {
+                                CHECK_READ_STATUS(response);
+
+                                dto::SKVRecord& rec = response.records[0];
+                                std::optional<int64_t> oidOpt = rec.deserializeField<int64_t>("OID");
+                                std::optional<int64_t> entryDateOpt = rec.deserializeField<int64_t>("EntryDate");
+                                std::optional<int32_t> carrierOpt = rec.deserializeField<int32_t>("CarrierID");
+
+                                _out_o_id = *oidOpt;
+                                _out_o_entry_date = *entryDateOpt;
+                                _out_o_carrier_id = *carrierOpt;
+                                return make_ready_future();
+                            });
+                        });
+                });
     }
 
     // Get all Order-Line rows with _w_id, _d_id, _o_id
@@ -803,6 +833,7 @@ private:
     int64_t _o_id;
     Query _query_cid;
     Query _query_customer;
+    Query _query_oid;
     Query _query_order;
     Query _query_order_line;
 
