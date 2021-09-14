@@ -1182,7 +1182,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
     };
 
     bool isonehot = request.isonehot;
-    auto collection = request.collection;
+    auto collection = request.collectionName;
 
     // all checks passed - we're ready to place this WI as the latest version
     auto status = _createWI(std::move(request), vset);
