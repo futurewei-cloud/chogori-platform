@@ -378,7 +378,7 @@ private:
 
             // Write Order row
             future<WriteResult> order_update = writeRow<Order>(_order, _txn).discard_result()
-                                               .then([this](){
+                                               .then([this]() mutable {
                                                     // insert secondary index idx_order_customer
                                                     auto idx_order_customer = IdxOrderCustomer(_order.WarehouseID.value(), _order.DistrictID.value(),
                                                         _order.CustomerID.value(), _order.OrderID.value());
