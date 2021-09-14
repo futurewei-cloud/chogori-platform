@@ -102,8 +102,16 @@ struct TPCCDataGen {
                 });
             }
 
+            auto idx_order_customer = IdxOrderCustomer(order.WarehouseID.value(), order.DistrictID.value(),
+                                     order.CustomerID.value(), order.OrderID.value());
+
             data.push_back([_order=std::move(order)] (k2::K2TxnHandle& txn) mutable {
                 return writeRow<Order>(_order, txn);
+            });
+
+            // populate secondary index idx_order_customer
+            data.push_back([_idx_order_customer=std::move(idx_order_customer)] (k2::K2TxnHandle& txn) mutable {
+                return writeRow<IdxOrderCustomer>(_idx_order_customer, txn);
             });
         }
     }
