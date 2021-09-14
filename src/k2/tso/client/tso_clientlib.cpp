@@ -57,7 +57,22 @@ seastar::future<> TSO_ClientLib::start()
 
     _tSOServerURLs.emplace_back(TSOServerURL());
     // for now we use the first server URL only, in the future, allow to check other server in case first one is not available
-    return _discoverServiceNodes(_tSOServerURLs[0]);
+    std::uniform_int_distribution<int> d(0, 100);
+    std::random_device rd1;
+
+    int sleep = seastar::this_shard_id() == 0 ? 0 : d(rd1);
+    return seastar::sleep(100ms*sleep)
+    .then([this] () {
+        return _discoverServiceNodes(_tSOServerURLs[0])
+        .then([this] () {
+            K2LOG_I(log::tsoclient, "Getting bootstrap timestamp");
+            return _getTimestampBatch(1)
+            .then([this] (auto&& batch) {
+                K2LOG_I(log::tsoclient, "Got bootstrap timestamp");
+                (void) batch;
+            });
+        });
+    });
 }
 
 seastar::future<> TSO_ClientLib::gracefulStop() {
@@ -502,7 +517,7 @@ seastar::future<TimestampBatch> TSO_ClientLib::_getTimestampBatch(uint16_t batch
 {
     auto retryStrategy = k2::ExponentialBackoffStrategy();
     //TODO: need to find out if the TSO is local or remote and get the timeout config accordingly
-    retryStrategy.withRetries(3).withStartTimeout(10ms).withRate(5);
+    retryStrategy.withRetries(5).withStartTimeout(1s).withRate(5);
 
     return seastar::do_with(std::move(retryStrategy), TimestampBatch(), [this, batchSize]
         (ExponentialBackoffStrategy& rs, TimestampBatch& batch) mutable
