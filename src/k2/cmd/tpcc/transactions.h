@@ -377,13 +377,13 @@ private:
             makeOrderLines();
 
             // Write Order row
-            future<WriteResult> order_update = writeRow<Order>(_order, _txn).discard_result()
-                                               .then([this]() mutable {
-                                                    // insert secondary index idx_order_customer
-                                                    auto idx_order_customer = IdxOrderCustomer(_order.WarehouseID.value(), _order.DistrictID.value(),
-                                                        _order.CustomerID.value(), _order.OrderID.value());
-                                                    return writeRow<IdxOrderCustomer>(idx_order_customer, _txn);
-                                               });
+            future<WriteResult> order_update = writeRow<Order>(_order, _txn);
+
+            IdxOrderCustomer idx_order_customer(_order.WarehouseID.value(), _order.DistrictID.value(),
+                                     _order.CustomerID.value(), _order.OrderID.value());
+
+            // Write order secondary index row
+            future<WriteResult> order_idx_update = writeRow<IdxOrderCustomer>(idx_order_customer, _txn);
 
             future<> line_updates = parallel_for_each(_lines.begin(), _lines.end(), [this] (OrderLine& line) {
                 return _txn.read<Item>(Item(*(line.ItemID)))
@@ -424,7 +424,7 @@ private:
                 });
             });
 
-            return when_all_succeed(std::move(line_updates), std::move(order_update), std::move(new_order_update), std::move(district_update)).discard_result();
+            return when_all_succeed(std::move(line_updates), std::move(order_update), std::move(order_idx_update), std::move(new_order_update), std::move(district_update)).discard_result();
         });
 
         return when_all_succeed(std::move(main_f), std::move(customer_f), std::move(warehouse_f)).discard_result()
@@ -644,44 +644,16 @@ private:
 
     // Get Customer row based on _w_id, _d_id, _c_id
     future<> getCustomer() {
-        return _client.createQuery(tpccCollectionName, "customer")
-        .then([this](auto&& response) mutable {
-            CHECK_READ_STATUS(response);
+         return _txn.read<Customer>(Customer(_w_id,_d_id,_c_id))
+                    .then([this](auto&& result) mutable {
+                        CHECK_READ_STATUS(result);
+                        _out_c_balance = *(result.value.Balance);
+                        _out_c_first_name = *(result.value.FirstName);
+                        _out_c_middle_name = *(result.value.MiddleName);
+                        _out_c_last_name = *(result.value.LastName);
 
-            // make Query request and set query rules.
-            // 1) just one skvrecord returns; 2) add Projection fields as needed;
-            _query_customer = std::move(response.query);
-            _query_customer.startScanRecord.serializeNext<int16_t>(_w_id);
-            _query_customer.startScanRecord.serializeNext<int16_t>(_d_id);
-            _query_customer.startScanRecord.serializeNext<int32_t>(_c_id);
-            _query_customer.endScanRecord.serializeNext<int16_t>(_w_id);
-            _query_customer.endScanRecord.serializeNext<int16_t>(_d_id);
-            _query_customer.endScanRecord.serializeNext<int32_t>(_c_id + 1);
-            _query_customer.setLimit(-1);
-            _query_customer.setReverseDirection(false);
-
-            std::vector<String> projection{"Balance", "FirstName", "MiddleName", "LastName"}; // make projection
-            _query_customer.addProjection(projection);
-            dto::expression::Expression filter{};   // make filter Expression
-            _query_customer.setFilterExpression(std::move(filter));
-
-            return _txn.query(_query_customer)
-            .then([this] (auto&& response) {
-                CHECK_READ_STATUS(response);
-
-                dto::SKVRecord& rec = response.records[0];
-                std::optional<std::decimal::decimal64> balanceOpt = rec.deserializeField<std::decimal::decimal64>("Balance");
-                std::optional<String> firstNameOpt = rec.deserializeField<String>("FirstName");
-                std::optional<String> middleNameOpt = rec.deserializeField<String>("MiddleName");
-                std::optional<String> lastNameOpt = rec.deserializeField<String>("LastName");
-
-                _out_c_balance = *balanceOpt;
-                _out_c_first_name = *firstNameOpt;
-                _out_c_middle_name = *middleNameOpt;
-                _out_c_last_name = *lastNameOpt;
-                return make_ready_future();
-            });
-        });
+                        return make_ready_future();
+                    });
     }
 
     // get Order ID by Customer ID
@@ -706,59 +678,48 @@ private:
             std::vector<String> projection{"OID"}; // make projection
             _query_oid.addProjection(projection);
 
-            return _txn.query(_query_oid)
-            .then([this] (auto&& response) {
-                CHECK_READ_STATUS(response);
+            return do_with(std::vector<dto::SKVRecord>(), false,
+            [this] (std::vector<dto::SKVRecord>& result, bool& done) {
+                return do_until(
+                [this, &done] () { return done; },
+                [this, &result, &done] () {
+                    return _txn.query(_query_oid)
+                    .then([this, &result, &done] (auto&& response) {
+                        CHECK_READ_STATUS(response);
+                        done = response.status.is2xxOK() ? _query_oid.isDone() : true;
+                        if(response.records.size()) {
+                            result.push_back(std::move(response.records[0]));
+                        }
 
-                for (dto::SKVRecord& rec : response.records) {
-                    std::optional<int64_t> oidOpt = rec.deserializeField<int64_t>("OID");
+                        return make_ready_future();
+                    });
+                })
+                .then([this, &result] () {
+                    if(result.size()){
+                        dto::SKVRecord& rec = result[0];
+                        std::optional<int64_t> oidOpt = rec.deserializeField<int64_t>("OID");
 
-                    _o_id = *oidOpt;
-                }
-                return make_ready_future();
+                        _o_id = *oidOpt;
+                    }
+
+                    return make_ready_future();
+                });
             });
         });
     }
 
     // Get order row based on _w_id, _d_id, _c_id with the largest _o_id (most recent order)
     future<> getOrderdByCId() {
+        // first get _o_id using secondary index
         return getOIdByCIdViaIndex().discard_result()
                 .then([this]() mutable {
-                    return _client.createQuery(tpccCollectionName, "order")
-                        .then([this](auto&& response) mutable {
-                            CHECK_READ_STATUS(response);
-
-                            // make Query request and set query rules.
-                            // 1) just one skvrecord returns; 2) add Projection fields as needed;
-                            _query_order = std::move(response.query);
-                            _query_order.startScanRecord.serializeNext<int16_t>(_w_id);
-                            _query_order.startScanRecord.serializeNext<int16_t>(_d_id);
-                            _query_order.startScanRecord.serializeNext<int64_t>(_o_id);
-                            _query_order.endScanRecord.serializeNext<int16_t>(_w_id);
-                            _query_order.endScanRecord.serializeNext<int16_t>(_d_id);
-                            _query_order.endScanRecord.serializeNext<int64_t>(_o_id + 1);
-                            _query_order.setLimit(-1);
-                            _query_order.setReverseDirection(false);
-
-                            std::vector<String> projection{"OID", "EntryDate", "CarrierID"}; // make projection
-                            _query_order.addProjection(projection);
-                            dto::expression::Expression filter{};   // make filter Expression
-                            _query_order.setFilterExpression(std::move(filter));
-
-                            return _txn.query(_query_order)
-                            .then([this] (auto&& response) {
-                                CHECK_READ_STATUS(response);
-
-                                dto::SKVRecord& rec = response.records[0];
-                                std::optional<int64_t> oidOpt = rec.deserializeField<int64_t>("OID");
-                                std::optional<int64_t> entryDateOpt = rec.deserializeField<int64_t>("EntryDate");
-                                std::optional<int32_t> carrierOpt = rec.deserializeField<int32_t>("CarrierID");
-
-                                _out_o_id = *oidOpt;
-                                _out_o_entry_date = *entryDateOpt;
-                                _out_o_carrier_id = *carrierOpt;
-                                return make_ready_future();
-                            });
+                    return _txn.read<Order>(Order(_w_id,_d_id,_o_id))
+                        .then([this](auto&& result) mutable {
+                            CHECK_READ_STATUS(result);
+                            _out_o_id = *(result.value.OrderID);
+                            _out_o_entry_date = *(result.value.EntryDate);
+                            _out_o_carrier_id = *(result.value.CarrierID);
+                            return make_ready_future();
                         });
                 });
     }
