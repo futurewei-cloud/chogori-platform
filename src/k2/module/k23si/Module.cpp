@@ -331,7 +331,11 @@ void K23SIPartitionModule::_registerMetrics() {
         sm::make_histogram("query_latency", [this]{ return _queryLatency.getHistogram();},
                 sm::description("Latency of Query Operations"), labels),
         sm::make_histogram("push_latency", [this]{ return _pushLatency.getHistogram();},
-                sm::description("Latency of Pushes"), labels)
+                sm::description("Latency of Pushes"), labels),
+        sm::make_histogram("query_scans", [this]{ return _queryScans.getHistogram();},
+                sm::description("Number of records scanned by query operations"), labels),
+        sm::make_histogram("query_returns", [this]{ return _queryReturns.getHistogram();},
+                sm::description("Number of records returned by query operations"), labels)
     });
 }
 
