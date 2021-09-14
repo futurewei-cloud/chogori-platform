@@ -178,7 +178,7 @@ private:
         int id = seastar::this_shard_id();
         int share = _num_keys / cpus; // number of records loaded per cpu, the last one can have more than share loads
 
-        auto f = seastar::sleep(5s); // sleep for collection to be loaded first
+        auto f = seastar::make_ready_future<>();
         if (id == 0) { // only shard 0 loads the collection
             f = f.then ([this] {
                 K2LOG_I(log::ycsb, "Creating collection");
