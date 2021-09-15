@@ -554,7 +554,7 @@ Status CPOService::_loadSchemas(const String& collectionName) {
 
 Status CPOService::_saveCollection(dto::Collection& collection) {
     auto cpath = _getCollectionPath(collection.metadata.name);
-    Payload p(std::make_shared<BinaryAllocator>(4096));
+    Payload p(Payload::DefaultAllocator(4096));
     p.write(collection);
     if (!fileutil::writeFile(std::move(p), cpath)) {
         return Statuses::S500_Internal_Server_Error("unable to write collection data");
@@ -566,7 +566,7 @@ Status CPOService::_saveCollection(dto::Collection& collection) {
 
 Status CPOService::_saveSchemas(const String& collectionName) {
     auto cpath = _getSchemasPath(collectionName);
-    Payload p(std::make_shared<BinaryAllocator>(4096));
+    Payload p(Payload::DefaultAllocator(4096));
     p.write(schemas[collectionName]);
     if (!fileutil::writeFile(std::move(p), cpath)) {
         return Statuses::S500_Internal_Server_Error("unable to write schema data");
@@ -586,7 +586,7 @@ CPOService::handlePersistenceClusterCreate(dto::PersistenceClusterCreateRequest&
         return RPCResponse(Statuses::S409_Conflict("persistence cluster already exists"), dto::PersistenceClusterCreateResponse());
     }
 
-    Payload q(std::make_shared<BinaryAllocator>(4096));
+    Payload q(Payload::DefaultAllocator(4096));
     q.write(request.cluster);
     if (!fileutil::writeFile(std::move(q), cpath)) {
         return RPCResponse(Statuses::S500_Internal_Server_Error("unable to write persistence cluster data"), dto::PersistenceClusterCreateResponse());

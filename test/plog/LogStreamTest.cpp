@@ -130,7 +130,7 @@ public:  // application lifespan
             _logStream = logStream;
         }
         String data_to_append(10000, '2');
-        Payload payload(std::make_shared<BinaryAllocator>(20000));
+        Payload payload(Payload::DefaultAllocator(20000));
         payload.write(data_to_append);
         // write a string to the first log stream
         return _logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)})
@@ -167,7 +167,7 @@ public:  // application lifespan
         String data_to_append(10000, '3');
         std::vector<seastar::future<std::tuple<Status, dto::AppendResponse>> > writeFutures;
         for (uint32_t i = 0; i < 2000; ++i){
-            Payload payload(std::make_shared<BinaryAllocator>(20000));
+            Payload payload(Payload::DefaultAllocator(20000));
             payload.write(data_to_append);
             writeFutures.push_back(_logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)}));
         }
@@ -237,7 +237,7 @@ public:  // application lifespan
             K2EXPECT(log::ltest, count, 2000);
             std::vector<seastar::future<std::tuple<Status, dto::AppendResponse>> > writeFutures;
             for (uint32_t i = 0; i < 2000; ++i){
-                Payload payload(std::make_shared<BinaryAllocator>(20000));
+                Payload payload(Payload::DefaultAllocator(20000));
                 payload.write(data_to_append);
                 writeFutures.push_back(_logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)}));
             }
@@ -381,7 +381,7 @@ public:  // application lifespan
 
             std::vector<seastar::future<std::tuple<Status, dto::AppendResponse>> > writeFutures;
             for (uint32_t i = 0; i < 2000; ++i){
-                Payload payload(std::make_shared<BinaryAllocator>(20000));
+                Payload payload(Payload::DefaultAllocator(20000));
                 payload.write(data_to_append);
                 writeFutures.push_back(_reload_logStream->append_data_to_plogs(dto::AppendRequest{.payload=std::move(payload)}));
             }

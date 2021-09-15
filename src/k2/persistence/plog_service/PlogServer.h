@@ -53,8 +53,8 @@ private:
         InternalPlog(){
             sealed=false;
             offset=0;
-            payload = Payload(std::make_shared<BinaryAllocator>(PLOG_MAX_SIZE));
-        }
+            payload = Payload(Payload::DefaultAllocator(PLOG_MAX_SIZE));
+       }
 
         bool sealed;
         uint32_t offset;

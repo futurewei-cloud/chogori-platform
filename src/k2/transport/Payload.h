@@ -132,7 +132,7 @@ public: // types
 public: // Lifecycle
     // Create a blank payload which can grow by allocating with the given allocator
     Payload(std::shared_ptr<BinaryAllocator> allocator);
-    static std::shared_ptr<BinaryAllocator> DefaultAllocator();
+    static std::shared_ptr<BinaryAllocator> DefaultAllocator(size_t default_size=8196);
 
     Payload(Payload&&) = default;
     Payload& operator=(Payload&& other) = default;

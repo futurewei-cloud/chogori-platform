@@ -53,8 +53,8 @@ Payload::Payload():
     _allocator(nullptr) {
 }
 
-std::shared_ptr<BinaryAllocator> Payload::DefaultAllocator() {
-    return std::make_shared<BinaryAllocator>(8196);
+std::shared_ptr<BinaryAllocator> Payload::DefaultAllocator(size_t default_size) {
+    return std::make_shared<BinaryAllocator>(default_size, [](size_t bsize) { return Binary(bsize); });
 }
 
 bool Payload::isEmpty() const {

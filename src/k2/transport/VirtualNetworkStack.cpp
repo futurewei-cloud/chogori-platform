@@ -79,7 +79,7 @@ std::shared_ptr<BinaryAllocator> VirtualNetworkStack::getTCPAllocator() {
 
     // NB, there is no performance benefit of allocating smaller chunks. Chunks up to 16384 are allocated from
     // seastar pool allocator and overhead is the same regardless of size(~10ns per allocation)
-    return std::make_shared<BinaryAllocator>(tcpsegsize);
+    return Payload::DefaultAllocator(tcpsegsize);
 }
 
 void VirtualNetworkStack::registerLowTCPMemoryObserver(LowMemoryObserver_t observer) {
@@ -111,7 +111,7 @@ VirtualNetworkStack::connectRRDMA(seastar::rdma::EndPoint remoteAddress) {
 }
 
 std::shared_ptr<BinaryAllocator> VirtualNetworkStack::getRRDMAAllocator() {
-    return std::make_shared<BinaryAllocator>(rrdmasegsize);
+    return Payload::DefaultAllocator(rrdmasegsize);
 }
 
 void VirtualNetworkStack::registerLowRRDMAMemoryObserver(LowMemoryObserver_t observer) {
