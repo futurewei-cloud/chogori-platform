@@ -166,7 +166,7 @@ seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool eras
 
 // function to update the partial fields for a YCSB Data row
 seastar::future<PartialUpdateResult>
-partialUpdateRow(uint32_t keyid, std::vector<String> fieldValues, std::vector<uint32_t> fieldsToUpdate, K2TxnHandle& txn, bool isonehot=false) {
+partialUpdateRow(uint32_t keyid, std::vector<String> fieldValues, std::vector<uint32_t> fieldsToUpdate, K2TxnHandle& txn, uint32_t field_length, bool isonehot=false) {
 
     dto::SKVRecord skv_record(YCSBData::collectionName, YCSBData::schema); // create SKV record
 
@@ -174,7 +174,7 @@ partialUpdateRow(uint32_t keyid, std::vector<String> fieldValues, std::vector<ui
 
     for(uint32_t field=0; field<YCSBData::ycsb_schema.fields.size(); field++){
         if(field==0) { // 0 is the key and cannot be updated
-            skv_record.serializeNext<String>(YCSBData::idToKey(keyid,YCSBData::ycsb_schema.fields.size())); // add key
+            skv_record.serializeNext<String>(YCSBData::idToKey(keyid,field_length)); // add key
         } else if(cur==fieldsToUpdate.size() || fieldsToUpdate[cur]!=field) { // fields to update are in order
             skv_record.serializeNull();
         } else {

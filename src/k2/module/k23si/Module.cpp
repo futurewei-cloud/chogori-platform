@@ -1145,6 +1145,12 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
     // delete) and it is set for partial updates
     if (request.precondition == ExistencePrecondition::Exists && (!head || head->isTombstone)) {
         K2LOG_D(log::skvsvr, "Request {} not accepted since Exists precondition failed", request);
+        if(!head){
+            K2LOG_D(log::skvsvr, "head is nullptr");
+        }
+        else if(head->isTombstone){
+            K2LOG_D(log::skvsvr, "head is tombstone");
+        }
         _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
         return RPCResponse(dto::K23SIStatus::ConditionFailed("Exists precondition failed"), dto::K23SIWriteResponse{});
     }
@@ -1195,10 +1201,12 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
 
     endRequest.writeRanges[collection].insert(_partition().keyRangeV); // add keyRangeV of current partition (TRH)
 
+    K2LOG_D(log::skvsvr, "Ending one-hot transaction");
     // End one hot transaction
     return handleTxnEnd(std::move(endRequest))
             .then( [this] (auto&& response) {
                 auto& [endstatus, k2response] = response;
+                K2LOG_D(log::skvsvr, "One-hot transaction ended with status {}", endstatus);
                 return RPCResponse(std::move(endstatus), dto::K23SIWriteResponse{}); // Return status after ending one hot transaction
             });
 }

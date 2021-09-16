@@ -220,7 +220,7 @@ private:
         }
 
         _onehot = _ops_per_txn()==1?_isonehot():false; // flag for one-hot transactions
-        return partialUpdateRow(_keyid,std::move(fieldValues),std::move(fieldsToUpdate),_txn, _onehot).discard_result();
+        return partialUpdateRow(_keyid,std::move(fieldValues),std::move(fieldsToUpdate),_txn, _field_length(), _onehot).discard_result();
     }
 
     seastar::future<> scanOperation(){
@@ -231,7 +231,7 @@ private:
             CHECK_READ_STATUS(response);
             // make Query request and set query rules
             _query_scan = std::move(response.query);
-            _query_scan.startScanRecord.serializeNext<String>(YCSBData::idToKey(_keyid,_num_fields()));
+            _query_scan.startScanRecord.serializeNext<String>(YCSBData::idToKey(_keyid,_field_length()));
             _query_scan.setLimit(_scanLengthDist->getValue()); // get specified number of entries (got from scanLength Distribution) starting from given key
             _query_scan.setReverseDirection(false);
 
