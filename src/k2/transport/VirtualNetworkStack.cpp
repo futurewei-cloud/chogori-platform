@@ -68,7 +68,7 @@ void VirtualNetworkStack::start(){
     K2LOG_D(log::tx, "start");
 }
 
-std::shared_ptr<BinaryAllocator> VirtualNetworkStack::getTCPAllocator() {
+seastar::lw_shared_ptr<BinaryAllocator> VirtualNetworkStack::getTCPAllocator() {
     // The seastar stacks don't expose allocation mechanism so we just allocate
     // the binaries in user space
 
@@ -110,7 +110,7 @@ VirtualNetworkStack::connectRRDMA(seastar::rdma::EndPoint remoteAddress) {
     return seastar::engine()._rdma_stack->connect(std::move(remoteAddress));
 }
 
-std::shared_ptr<BinaryAllocator> VirtualNetworkStack::getRRDMAAllocator() {
+seastar::lw_shared_ptr<BinaryAllocator> VirtualNetworkStack::getRRDMAAllocator() {
     return Payload::DefaultAllocator(rrdmasegsize);
 }
 

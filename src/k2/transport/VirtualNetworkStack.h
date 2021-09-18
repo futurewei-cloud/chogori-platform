@@ -65,7 +65,7 @@ public: // TCP API
     seastar::future<seastar::connected_socket> connectTCP(SocketAddress remoteAddress, SocketAddress sourceAddress={});
 
     // Create a binary allocator from the TCP provider
-    std::shared_ptr<BinaryAllocator> getTCPAllocator();
+    seastar::lw_shared_ptr<BinaryAllocator> getTCPAllocator();
 
     // registerLowTCPMemoryObserver allows the user to register a observer which will be called when
     // the TCP stack becomes low on memory and requires the application to release some buffers back.
@@ -88,7 +88,7 @@ public: // RDMA API
     std::unique_ptr<seastar::rdma::RDMAConnection> connectRRDMA(seastar::rdma::EndPoint remoteAddress);
 
     // Create a binary allocator from the RRDMA provider
-    std::shared_ptr<BinaryAllocator> getRRDMAAllocator();
+    seastar::lw_shared_ptr<BinaryAllocator> getRRDMAAllocator();
 
     // RegisterLowRRDMAMemoryObserver allows the user to register a observer which will be called when
     // the RRDMA stack becomes low on memory and requires the application to release some buffers back.

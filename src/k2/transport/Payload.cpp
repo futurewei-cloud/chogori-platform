@@ -36,7 +36,7 @@ Payload::PayloadPosition::PayloadPosition(_Size bIdx, _Size bOff, size_t offset)
     // Empty payload will have position of (bidx=0, boff=0, off=0)
 }
 
-Payload::Payload(std::shared_ptr<BinaryAllocator> allocator):
+Payload::Payload(seastar::lw_shared_ptr<BinaryAllocator> allocator):
     _size(0), _capacity(0), _allocator(allocator) {
 }
 
@@ -53,8 +53,8 @@ Payload::Payload():
     _allocator(nullptr) {
 }
 
-std::shared_ptr<BinaryAllocator> Payload::DefaultAllocator(size_t default_size) {
-    return std::make_shared<BinaryAllocator>(default_size, [](size_t bsize) { return Binary(bsize); });
+seastar::lw_shared_ptr<BinaryAllocator> Payload::DefaultAllocator(size_t default_size) {
+    return seastar::make_lw_shared<BinaryAllocator>(default_size, [](size_t bsize) { return Binary(bsize); });
 }
 
 bool Payload::isEmpty() const {
@@ -93,7 +93,7 @@ void Payload::clear() {
 
 void Payload::appendBinary(Binary&& binary) {
     // we can only append into a non-self-allocating payload
-    K2ASSERT(log::tx, _allocator == nullptr, "cannot append to non-allocating payload");
+    K2ASSERT(log::tx, _allocator.get() == nullptr, "cannot append to non-allocating payload");
     _size += binary.size();
     _capacity += binary.size();
     _buffers.push_back(std::move(binary));
@@ -434,7 +434,7 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     return shared;
 }
 
-Payload Payload::copy(std::shared_ptr<BinaryAllocator> allocator) {
+Payload Payload::copy(seastar::lw_shared_ptr<BinaryAllocator> allocator) {
     Payload copied;
     Binary b = allocator->allocate(_size);
 
