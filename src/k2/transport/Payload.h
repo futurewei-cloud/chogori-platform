@@ -131,8 +131,8 @@ public: // types
 
 public: // Lifecycle
     // Create a blank payload which can grow by allocating with the given allocator
-    Payload(seastar::lw_shared_ptr<BinaryAllocator> allocator);
-    static seastar::lw_shared_ptr<BinaryAllocator> DefaultAllocator(size_t default_size=8196);
+    Payload(BinaryAllocator allocator);
+    static BinaryAllocator DefaultAllocator(size_t default_size=8196);
 
     Payload(Payload&&) = default;
     Payload& operator=(Payload&& other) = default;
@@ -165,7 +165,7 @@ public: // memory management
     Payload shareRegion(size_t startOffset, size_t nbytes);
 
     // Creates a new payload as a copy of this payload. The underlying data is copied over to the new payload
-    Payload copy(seastar::lw_shared_ptr<BinaryAllocator> dest_allocator);
+    Payload copy(BinaryAllocator dest_allocator);
 
     // copy with the default binary allocator
     Payload copy();
@@ -667,7 +667,7 @@ private:  // types and fields
     std::vector<Binary> _buffers;
     size_t _size; // total bytes of user data present
     size_t _capacity; // total bytes allocated in the buffers.
-    seastar::lw_shared_ptr<BinaryAllocator> _allocator;
+    BinaryAllocator _allocator;
     PayloadPosition _currentPosition;
 
 private: // helper methods

@@ -55,7 +55,7 @@ APIServer::start() {
     seastar::ipv4_addr listenAddr;
     bool parsed = false;
     if (size_t(coreID) < _tcp_endpoints().size()) {
-        auto ep = k2::TXEndpoint::fromURL(_tcp_endpoints()[coreID], nullptr);
+        auto ep = k2::TXEndpoint::fromURL(_tcp_endpoints()[coreID], BinaryAllocator());
         if (ep) {
             parsed = true;
             listenAddr = seastar::ipv4_addr(ep->ip, uint16_t(ep->port + API_PORT_OFFSET));

@@ -100,8 +100,17 @@ typedef std::function<Binary(size_t)> BinaryAllocatorFunctor;
 // define a binary allocator either by a default size or by a specific size
 class BinaryAllocator {
 public:
+    // constructor without an allocation function
+    BinaryAllocator() : _size(0), _func(nullptr) {
+    }
+
     // pass in a default size and an allocation function
     BinaryAllocator(size_t size, BinaryAllocatorFunctor func) : _size(size), _func(func) {
+    }
+
+    // whether we can use this allocator
+    bool canAllocate() const {
+        return _func != nullptr;
     }
 
     // allocate by the default size
