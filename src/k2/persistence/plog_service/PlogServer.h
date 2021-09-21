@@ -53,8 +53,8 @@ private:
         InternalPlog(){
             sealed=false;
             offset=0;
-            payload = Payload(([] (size_t bsize=PLOG_MAX_SIZE) { return Binary(bsize); }));
-        }
+            payload = Payload(Payload::DefaultAllocator(PLOG_MAX_SIZE));
+       }
 
         bool sealed;
         uint32_t offset;

@@ -44,7 +44,7 @@ class TXEndpoint {
 public: // lifecycle
     // construct an endpoint from a url with the given allocator
     // Returns nullptr if there was a problem parsing the url
-    static std::unique_ptr<TXEndpoint> fromURL(const String& url, BinaryAllocatorFunctor&& allocator);
+    static std::unique_ptr<TXEndpoint> fromURL(const String& url, BinaryAllocator allocator);
 
     // default ctor
     TXEndpoint() = default;
@@ -56,7 +56,7 @@ public: // lifecycle
     TXEndpoint& operator=(TXEndpoint&&) = default;
 
     // construct an endpoint from the tuple (protocol, ip, port) with the given allocator and protocol
-    TXEndpoint(String&& protocol, String&& ip, uint32_t port, BinaryAllocatorFunctor&& allocator);
+    TXEndpoint(String&& protocol, String&& ip, uint32_t port, BinaryAllocator allocator);
 
     // copy constructor
     TXEndpoint(const TXEndpoint& o);
@@ -92,7 +92,7 @@ public: // API
 
 private:
     size_t _hash;
-    BinaryAllocatorFunctor _allocator;
+    BinaryAllocator _allocator;
 
 }; // class TXEndpoint
 } // namespace k2

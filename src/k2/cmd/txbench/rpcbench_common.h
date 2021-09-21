@@ -46,7 +46,7 @@ struct BenchSession {
     uint64_t sessionId = 0;
     uint64_t totalSize=0;
     uint64_t totalCount=0;
-    Payload dataShare{Payload::DefaultAllocator};
+    Payload dataShare{Payload::DefaultAllocator()};
     String dataCopy;
     std::vector<std::unique_ptr<TXEndpoint>> endpoints;
 };

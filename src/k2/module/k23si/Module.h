@@ -246,6 +246,8 @@ private: // methods
     // helper used to finalize all local WIs for a give transaction
     Status _finalizeTxnWIs(dto::Timestamp txnts, dto::EndAction action);
 
+    void _registerMetrics();
+
 private:  // members
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
@@ -285,6 +287,24 @@ private:  // members
     std::shared_ptr<Persistence> _persistence;
 
     CPOClient _cpo;
+
+    sm::metric_groups _metric_groups;
+
+    //metrics
+    uint64_t _readOps{0}; // for read rate
+    uint64_t _writeOps{0}; // for write rate
+    uint64_t _queryOps{0}; // for query rate
+    uint64_t _pushes{0}; // for push rate
+
+    uint64_t _totalWI{0}; // for number of active WIs
+    uint64_t _recordVersions{0};
+    uint64_t _totalCommittedPayload{0}; //total committed user payload size
+    uint64_t _finalizedWI{0}; // total number of finalized WI
+
+    k2::ExponentialHistogram _readLatency;
+    k2::ExponentialHistogram _writeLatency;
+    k2::ExponentialHistogram _queryLatency;
+    k2::ExponentialHistogram _pushLatency;
 };
 
 } // ns k2

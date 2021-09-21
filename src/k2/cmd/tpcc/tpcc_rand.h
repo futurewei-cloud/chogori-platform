@@ -33,9 +33,9 @@ static const std::vector<k2::String> LastNameChart {"BAR", "OUGHT", "ABLE", "PRI
 
 class RandomContext {
 public:
-    RandomContext(int seed=0) : _generator(seed) {
+    RandomContext(int seed=0, int C_adj=0) : _generator(seed) {
         std::uniform_int_distribution<> dist255(0, 255);
-        _C_A255 = dist255(_generator);
+        _C_A255 = dist255(_generator) + C_adj;
         std::uniform_int_distribution<> dist1023(0, 1023);
         _C_A1023 = dist1023(_generator);
         std::uniform_int_distribution<> dist8191(0, 8191);
@@ -112,10 +112,12 @@ public:
         return zip;
     }
 
-    k2::String RandowLastNameString()
+    k2::String RandowLastNameString(bool randOverride = false, uint32_t nuRand = 0)
     {
-        uint32_t nuRand = NonUniformRandom(255, 0, 999);
-        k2::String lastNameString;
+        if (!randOverride) {
+            nuRand = NonUniformRandom(255, 0, 999);
+        }
+        k2::String lastNameString = "";
 
         for (uint32_t i = 0; i < 3; ++i) {
             lastNameString = LastNameChart[nuRand % 10] + lastNameString;

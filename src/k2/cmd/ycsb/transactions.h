@@ -277,7 +277,7 @@ private:
 
         //handle latest distribution separately to identify insert fails and increment latest known record max key value
         K2LOG_D(log::ycsb, "Insert operation started for keyid {}", _keyid);
-        return writeRow(row, _txn, false, ExistencePrecondition::Exists) // if record with given key already exists must return error so we set precondition to Exists
+        return writeRow(row, _txn, false, ExistencePrecondition::NotExists) // if record with given key already exists must return error so we set precondition to Exists
             .then_wrapped([this] (auto&& fut) {
                 if (fut.failed()) {
                     fut.ignore_ready_future();
@@ -285,11 +285,11 @@ private:
                 }
 
                 WriteResult result = fut.get0();
-                if (result.status.is2xxOK() || result.status.code == 403) { // key inserted or already exists
+                if (result.status.is2xxOK() || result.status.code == 412) { // key inserted or already exists
                     if(_requestDist->getMaxValue() < _keyid) { // update bounds of distribution
                         _requestDist->updateBounds(0,_keyid);
                     }
-                    if(result.status.code == 403) { // insert missed because record exists
+                    if(result.status.code == 412) { // insert missed because record exists
                         _insertMissesLatest++; // increment misses counter
                     }
                 }
