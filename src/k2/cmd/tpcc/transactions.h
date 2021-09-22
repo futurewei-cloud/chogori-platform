@@ -49,18 +49,19 @@ template<typename Func>
     future<> run(Func&& func) {
         K2LOG_D(log::tpcc, "First attempt");
         return do_until(
-            [this] { return _success || this->_try >= this->_retries; },
+            [this] { return this->_success || this->_try >= this->_retries; },
             [this, func=std::move(func)] () mutable {
                 this->_try++;
                 return func().
                     then_wrapped([this] (auto&& fut) {
-                        _success = !fut.failed();
+                        _success = !fut.failed() && fut.get0();
                         K2LOG_D(log::tpcc, "round {} ended with success={}", _try, _success);
                         return make_ready_future<>();
                     });
             }).then_wrapped([this] (auto&& fut) {
-                if (fut.failed()) {
+                if (fut.failed()  || !_success) {
                     K2LOG_W(log::tpcc, "Run failed");
+                    return make_exception_future<>(std::runtime_error("Run failed:"));
                 }
                 return make_ready_future<>();
             });
