@@ -1,0 +1,7 @@
+Total client cores
+Throughput (1K Txns/sec)
+Cores vs Throughput
+YCSB-B-Throughput.pdf
+1
+80 72 64 56 48 40 32 24 16 8
+104 105 104 109 110 104 82.6 81.7 88 87.1
