@@ -35,6 +35,8 @@ namespace log {
 inline thread_local k2::logging::Logger apisvr("k2::api_server");
 }
 
+using APIRawObserver_t = std::function<seastar::future<nlohmann::json>(nlohmann::json&& request)>;
+
 // Helper class for registering HTTP routes
 class api_route_handler : public seastar::httpd::handler_base  {
 public:
@@ -89,6 +91,19 @@ public:
               jsonResponse["status"] = status;
               jsonResponse["response"] = response;
               return seastar::make_ready_future<String>(String(jsonResponse.dump()));
+           });
+        }));
+    }
+
+    void registerRawAPIObserver(String pathSuffix, String description, APIRawObserver_t observer) {
+        _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
+
+        _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
+        [observer=std::move(observer)] (const std::string& jsonRequest) {
+           nlohmann::json request = nlohmann::json::parse(jsonRequest);
+           return observer(std::move(request))
+           .then([] (nlohmann::json&& response) {
+              return seastar::make_ready_future<String>(String(response.dump()));
            });
         }));
     }
