@@ -1,0 +1,7 @@
+Total client cores
+Throughput (1K Txns/sec)
+Cores vs Throughput
+YCSB-A-Throughput.pdf
+1
+80 72 64 56 48 40 32 24 16 8
+432 393 414 422 409 423 391 389 304 165
