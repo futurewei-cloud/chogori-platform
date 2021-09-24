@@ -199,16 +199,16 @@ uint64_t fnvhash64(uint64_t val) {
     static const int64_t FNV_PRIME_64 = 1099511628211L;
 
     //from http://en.wikipedia.org/wiki/Fowler_Noll_Vo_hash
-    int64_t hashval = FNV_OFFSET_BASIS_64;
+    uint64_t hashval = FNV_OFFSET_BASIS_64;
 
-    for (uint8_t i = 0; i < 8; i++) {
-        int64_t octet = val & 0x00ff;
+    for (uint8_t it = 0; it < 8; it++) {
+        uint64_t octet = val & 0x00ff;
         val = val >> 8;
 
         hashval = hashval ^ octet;
         hashval = hashval * FNV_PRIME_64;
     }
-    return abs(hashval);
+    return hashval;
 }
 
 // ScrambledZipfianGenerator unlike Zipfian generator ensures that popular items are scattered over the itemspace
