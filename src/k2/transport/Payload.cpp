@@ -36,8 +36,8 @@ Payload::PayloadPosition::PayloadPosition(_Size bIdx, _Size bOff, size_t offset)
     // Empty payload will have position of (bidx=0, boff=0, off=0)
 }
 
-Payload::Payload(BinaryAllocator allocator):
-    _size(0), _capacity(0), _allocator(allocator) {
+Payload::Payload(BinaryAllocator&& allocator):
+    _size(0), _capacity(0), _allocator(std::move(allocator)) {
 }
 
 Payload::Payload(std::vector<Binary>&& externallyAllocatedBuffers, size_t containedDataSize):
@@ -409,7 +409,8 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     seek(startOffset);
     nbytes = std::min(_size - _currentPosition.offset, nbytes);
 
-    Payload shared(_allocator);
+    BinaryAllocator copied_allocator = _allocator;
+    Payload shared(std::move(copied_allocator));
     shared._size = nbytes;
     shared._capacity = nbytes; // the capacity of the new payload stops with the current data written
 
@@ -434,7 +435,7 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     return shared;
 }
 
-Payload Payload::copy(BinaryAllocator allocator) {
+Payload Payload::copy(BinaryAllocator&& allocator) {
     Payload copied;
     Binary b = allocator.allocate(_size);
 
@@ -451,7 +452,7 @@ Payload Payload::copy(BinaryAllocator allocator) {
     }
 
     copied.appendBinary(std::move(b));
-    copied._allocator = allocator;
+    copied._allocator = std::move(allocator);
     return copied;
 }
 

@@ -24,7 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include "VirtualNetworkStack.h"
 
 // third-party
-#include <memory>
 #include <seastar/core/reactor.hh>
 #include <seastar/net/net.hh>
 

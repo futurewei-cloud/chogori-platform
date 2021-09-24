@@ -131,7 +131,7 @@ public: // types
 
 public: // Lifecycle
     // Create a blank payload which can grow by allocating with the given allocator
-    Payload(BinaryAllocator allocator);
+    Payload(BinaryAllocator&& allocator);
     static BinaryAllocator DefaultAllocator(size_t default_size=8196);
 
     Payload(Payload&&) = default;
@@ -165,7 +165,7 @@ public: // memory management
     Payload shareRegion(size_t startOffset, size_t nbytes);
 
     // Creates a new payload as a copy of this payload. The underlying data is copied over to the new payload
-    Payload copy(BinaryAllocator dest_allocator);
+    Payload copy(BinaryAllocator&& dest_allocator);
 
     // copy with the default binary allocator
     Payload copy();
