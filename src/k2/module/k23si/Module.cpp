@@ -201,7 +201,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
     (dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
-        k2::OperationLatencyReporter reporter(_queryOps, _queryLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_queryPageOps, _queryPageLatency); // for reporting metrics
         return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()))
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     reporter.report();
@@ -318,7 +318,7 @@ void K23SIPartitionModule::_registerMetrics() {
                         sm::description("Number of keys in indexer"), labels),
         sm::make_counter("read_operations", _readOps, sm::description("Number of read operations"), labels),
         sm::make_counter("write_operations", _writeOps, sm::description("Number of write operations"), labels),
-        sm::make_counter("query_operations", _queryOps, sm::description("Number of query operations"), labels),
+        sm::make_counter("query_page_operations", _queryPageOps, sm::description("Number of query page operations"), labels),
         sm::make_counter("push_operations", _pushes, sm::description("Number of pushses"), labels),
         sm::make_counter("total_WI", _totalWI, sm::description("Number of WIs created"), labels),
         sm::make_counter("finalized_WI", _finalizedWI, sm::description("Number of WIs finalized"), labels),
@@ -328,14 +328,14 @@ void K23SIPartitionModule::_registerMetrics() {
                 sm::description("Latency of Read Operations"), labels),
         sm::make_histogram("write_latency", [this]{ return _writeLatency.getHistogram();},
                 sm::description("Latency of Write Operations"), labels),
-        sm::make_histogram("query_latency", [this]{ return _queryLatency.getHistogram();},
-                sm::description("Latency of Query Operations"), labels),
+        sm::make_histogram("query_page_latency", [this]{ return _queryPageLatency.getHistogram();},
+                sm::description("Latency of Query Page Operations"), labels),
         sm::make_histogram("push_latency", [this]{ return _pushLatency.getHistogram();},
                 sm::description("Latency of Pushes"), labels),
-        sm::make_histogram("query_scans", [this]{ return _queryScans.getHistogram();},
-                sm::description("Number of records scanned by query operations"), labels),
-        sm::make_histogram("query_returns", [this]{ return _queryReturns.getHistogram();},
-                sm::description("Number of records returned by query operations"), labels)
+        sm::make_histogram("query_page_scans", [this]{ return _queryPageScans.getHistogram();},
+                sm::description("Number of records scanned by query page operations"), labels),
+        sm::make_histogram("query_page_returns", [this]{ return _queryPageReturns.getHistogram();},
+                sm::description("Number of records returned by query page operations"), labels)
     });
 }
 
@@ -652,8 +652,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         request.key = key_it->first; // if we retry, do so with the key we're currently iterating on
 
         // add metrics
-        _queryScans.add(numScans);
-        _queryReturns.add(response.results.size());
+        _queryPageScans.add(numScans);
+        _queryPageReturns.add(response.results.size());
 
         return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
         .then([this, request=std::move(request),
@@ -688,8 +688,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     response.nextToScan = _getContinuationToken(key_it, request, response, response.results.size());
     K2LOG_D(log::skvsvr, "nextToScan: {}, exclusiveToken: {}", response.nextToScan, response.exclusiveToken);
 
-    _queryScans.add(numScans);
-    _queryReturns.add(response.results.size());
+    _queryPageScans.add(numScans);
+    _queryPageReturns.add(response.results.size());
     return RPCResponse(dto::K23SIStatus::OK("Query success"), std::move(response));
 }
 

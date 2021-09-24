@@ -290,7 +290,7 @@ private:  // members
     //metrics
     uint64_t _readOps{0}; // for read rate
     uint64_t _writeOps{0}; // for write rate
-    uint64_t _queryOps{0}; // for query rate
+    uint64_t _queryPageOps{0}; // for query rate
     uint64_t _pushes{0}; // for push rate
 
     uint64_t _totalWI{0}; // for number of active WIs
@@ -300,10 +300,10 @@ private:  // members
 
     k2::ExponentialHistogram _readLatency;
     k2::ExponentialHistogram _writeLatency;
-    k2::ExponentialHistogram _queryLatency;
+    k2::ExponentialHistogram _queryPageLatency;
     k2::ExponentialHistogram _pushLatency;
-    k2::ExponentialHistogram _queryScans;
-    k2::ExponentialHistogram _queryReturns;
+    k2::ExponentialHistogram _queryPageScans;
+    k2::ExponentialHistogram _queryPageReturns;
 };
 
 } // ns k2
