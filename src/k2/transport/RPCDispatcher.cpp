@@ -265,7 +265,7 @@ void RPCDispatcher::registerLowTransportMemoryObserver(LowTransportMemoryObserve
 std::unique_ptr<TXEndpoint> RPCDispatcher::getTXEndpoint(String url) {
     K2LOG_D(log::tx, "get endpoint for {}", url)
     // temporary endpoint just so that we can see what the protocol is supposed to be
-    auto ep = TXEndpoint::fromURL(url, nullptr);
+    auto ep = TXEndpoint::fromURL(url, BinaryAllocator());
     if (!ep) {
         K2LOG_W(log::tx, "Unable to get tx endpoint for url: {}", url);
         return nullptr;

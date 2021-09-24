@@ -59,7 +59,7 @@ class MultiAddressProvider : public k2::IAddressProvider {
     seastar::socket_address getAddress(int coreID) const override {
         if (size_t(coreID) < _urls.size()) {
             K2LOG_D(log::appbase, "On core {} have url {}", coreID, _urls[coreID]);
-            auto ep = k2::TXEndpoint::fromURL(_urls[coreID], nullptr);
+            auto ep = k2::TXEndpoint::fromURL(_urls[coreID], BinaryAllocator());
             if (ep) {
                 return seastar::socket_address(seastar::ipv4_addr(ep->ip, uint16_t(ep->port)));
             }

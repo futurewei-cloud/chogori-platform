@@ -38,7 +38,7 @@ namespace k2 {
 // must have: protocol(group1), ip(group2==ipv4, group3==ipv6), port(group4)
 const std::regex urlregex{"(.+)://(?:([^:\\[\\]]+)|\\[(.+)\\]):(\\d+)"};
 
-std::unique_ptr<TXEndpoint> TXEndpoint::fromURL(const String& url, BinaryAllocatorFunctor&& allocator) {
+std::unique_ptr<TXEndpoint> TXEndpoint::fromURL(const String& url, BinaryAllocator&& allocator) {
     K2LOG_D(log::tx, "Parsing url {}", url);
     std::cmatch matches;
     if (!std::regex_match(url.c_str(), matches, urlregex)) {
@@ -79,7 +79,7 @@ TXEndpoint::~TXEndpoint() {
     K2LOG_D(log::tx, "dtor");
 }
 
-TXEndpoint::TXEndpoint(String&& pprotocol, String&& pip, uint32_t pport, BinaryAllocatorFunctor&& allocator):
+TXEndpoint::TXEndpoint(String&& pprotocol, String&& pip, uint32_t pport, BinaryAllocator&& allocator):
     protocol(std::move(pprotocol)),
     ip(std::move(pip)),
     port(pport),
@@ -115,7 +115,7 @@ TXEndpoint::TXEndpoint(TXEndpoint&& o) {
     url = std::move(o.url);
     _hash = o._hash; o._hash = 0;
     _allocator = std::move(o._allocator);
-    o._allocator = nullptr;
+    o._allocator = BinaryAllocator();
 
     K2LOG_D(log::tx, "move ctor done");
 }
@@ -127,15 +127,15 @@ bool TXEndpoint::operator==(const TXEndpoint& other) const {
 size_t TXEndpoint::hash() const { return _hash; }
 
 std::unique_ptr<Payload> TXEndpoint::newPayload() {
-    K2ASSERT(log::tx, _allocator != nullptr, "asked to create payload from non-allocating endpoint");
-    auto result = std::make_unique<Payload>(_allocator);
+    K2ASSERT(log::tx, _allocator.canAllocate(), "asked to create payload from non-allocating endpoint");
+    auto result = std::make_unique<Payload>(BinaryAllocator(_allocator));
     // rewind enough bytes to write out a header when we're sending
     result->reserve(txconstants::MAX_HEADER_SIZE);
     return result;
 }
 
 bool TXEndpoint::canAllocate() const {
-    return _allocator != nullptr;
+    return _allocator.canAllocate();
 }
 
 }

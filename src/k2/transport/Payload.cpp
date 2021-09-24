@@ -36,25 +36,25 @@ Payload::PayloadPosition::PayloadPosition(_Size bIdx, _Size bOff, size_t offset)
     // Empty payload will have position of (bidx=0, boff=0, off=0)
 }
 
-Payload::Payload(BinaryAllocatorFunctor allocator):
-    _size(0), _capacity(0), _allocator(allocator) {
+Payload::Payload(BinaryAllocator&& allocator):
+    _size(0), _capacity(0), _allocator(std::move(allocator)) {
 }
 
 Payload::Payload(std::vector<Binary>&& externallyAllocatedBuffers, size_t containedDataSize):
     _buffers(std::move(externallyAllocatedBuffers)),
     _size(containedDataSize),
     _capacity(_size),
-    _allocator(nullptr) {
+    _allocator(BinaryAllocator()) {
 }
 
 Payload::Payload():
     _size(0),
     _capacity(0),
-    _allocator(nullptr) {
+    _allocator(BinaryAllocator()) {
 }
 
-Binary Payload::DefaultAllocator() {
-    return Binary(8192);
+BinaryAllocator Payload::DefaultAllocator(size_t default_size) {
+    return BinaryAllocator(default_size, [](size_t bsize) { return Binary(bsize); });
 }
 
 bool Payload::isEmpty() const {
@@ -93,7 +93,7 @@ void Payload::clear() {
 
 void Payload::appendBinary(Binary&& binary) {
     // we can only append into a non-self-allocating payload
-    K2ASSERT(log::tx, _allocator == nullptr, "cannot append to non-allocating payload");
+    K2ASSERT(log::tx, !_allocator.canAllocate(), "cannot append to non-allocating payload");
     _size += binary.size();
     _capacity += binary.size();
     _buffers.push_back(std::move(binary));
@@ -201,7 +201,7 @@ bool Payload::read(Payload& other) {
     other.clear();
     other._size = size;
     other._capacity = size;
-    other._allocator = nullptr;
+    other._allocator = BinaryAllocator();
     other._currentPosition = PayloadPosition();
     while(size > 0) {
         auto shared = _buffers[_currentPosition.bufferIndex].share();
@@ -333,8 +333,8 @@ size_t Payload::getFieldsSize() {
 }
 
 bool Payload::_allocateBuffer() {
-    K2ASSERT(log::tx, _allocator, "cannot allocate buffer without allocator");
-    Binary buf = _allocator();
+    K2ASSERT(log::tx, _allocator.canAllocate(), "cannot allocate buffer without allocator");
+    Binary buf = _allocator.allocate();
     if (!buf) {
         return false;
     }
@@ -409,7 +409,7 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     seek(startOffset);
     nbytes = std::min(_size - _currentPosition.offset, nbytes);
 
-    Payload shared(_allocator);
+    Payload shared(std::move(BinaryAllocator(_allocator)));
     shared._size = nbytes;
     shared._capacity = nbytes; // the capacity of the new payload stops with the current data written
 
@@ -434,8 +434,9 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     return shared;
 }
 
-Payload Payload::copy(BinaryAllocatorFunctor allocator) {
-    Payload copied(allocator);
+Payload Payload::copy(BinaryAllocator&& allocator) {
+    Payload copied;
+    Binary b = allocator.allocate(_size);
 
     // copy exactly the data we need
     size_t toCopy = _size;
@@ -444,13 +445,18 @@ Payload Payload::copy(BinaryAllocatorFunctor allocator) {
         auto& curBuf = _buffers[curBufIndex];
         auto copySizeFromCurBuf = std::min(toCopy, curBuf.size());
 
-        copied.write(curBuf.get(), copySizeFromCurBuf);
+        std::memcpy(b.get_write() + (b.size() - toCopy), curBuf.get(), copySizeFromCurBuf);
         toCopy -= copySizeFromCurBuf;
         curBufIndex++;
     }
 
-    copied.seek(0);
+    copied.appendBinary(std::move(b));
+    copied._allocator = std::move(allocator);
     return copied;
+}
+
+Payload Payload::copy() {
+    return copy(DefaultAllocator());
 }
 
 bool Payload::operator==(const Payload& o) const {

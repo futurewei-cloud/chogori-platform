@@ -460,7 +460,7 @@ std::tuple<Status, std::shared_ptr<LogStream>> PartitionMetadataMgr::obtainLogSt
 
 seastar::future<Status>
 PartitionMetadataMgr::addNewPLogIntoLogStream(LogStreamType name, uint32_t sealed_offset, String new_plogId){
-    Payload temp_payload(Payload::DefaultAllocator);
+    Payload temp_payload(Payload::DefaultAllocator());
     temp_payload.write(name);
     temp_payload.write(sealed_offset);
     temp_payload.write(std::move(new_plogId));
