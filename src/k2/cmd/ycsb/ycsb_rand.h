@@ -200,10 +200,9 @@ uint64_t fnvhash64(uint64_t val) {
 
     //from http://en.wikipedia.org/wiki/Fowler_Noll_Vo_hash
     uint64_t hashval = FNV_OFFSET_BASIS_64;
-    uint64_t octet;
 
     for (uint8_t it = 0; it < 8; it++) {
-        octet = val & 0x00ff;
+        uint64_t octet = val & 0x00ff;
         val = val >> 8;
 
         hashval = hashval ^ octet;
