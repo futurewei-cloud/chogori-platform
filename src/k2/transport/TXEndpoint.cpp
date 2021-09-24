@@ -128,8 +128,7 @@ size_t TXEndpoint::hash() const { return _hash; }
 
 std::unique_ptr<Payload> TXEndpoint::newPayload() {
     K2ASSERT(log::tx, _allocator.canAllocate(), "asked to create payload from non-allocating endpoint");
-    BinaryAllocator copied_allocator = _allocator;
-    auto result = std::make_unique<Payload>(std::move(copied_allocator));
+    auto result = std::make_unique<Payload>(BinaryAllocator(_allocator));
     // rewind enough bytes to write out a header when we're sending
     result->reserve(txconstants::MAX_HEADER_SIZE);
     return result;

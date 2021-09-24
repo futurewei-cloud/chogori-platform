@@ -409,8 +409,7 @@ Payload Payload::shareRegion(size_t startOffset, size_t nbytes){
     seek(startOffset);
     nbytes = std::min(_size - _currentPosition.offset, nbytes);
 
-    BinaryAllocator copied_allocator = _allocator;
-    Payload shared(std::move(copied_allocator));
+    Payload shared(std::move(BinaryAllocator(_allocator)));
     shared._size = nbytes;
     shared._capacity = nbytes; // the capacity of the new payload stops with the current data written
 
