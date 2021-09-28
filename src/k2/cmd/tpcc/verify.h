@@ -76,23 +76,28 @@ public:
     ConsistencyVerify(K23SIClient& client, int16_t max_w_id) :
             _client(client), _max_w_id(max_w_id) {}
 
+    future<> run();
 private:
-    using warehouseOp = future<> (ConsistencyVerify::*)();
+    using consistencyOp = future<> (ConsistencyVerify::*)();
 
     future<> verifyWarehouseYTD();
     future<> verifyOrderIDs();
-    future<> runForEachWarehouse(warehouseOp op);
+    future<> verifyNewOrderIDs();
+    future<> verifyOrderLineCount();
+    future<> verifyCarrierID();
+    future<int16_t> countOrderLineRows(int64_t oid);
+    future<> verifyOrderLineByOrder();
+    future<> runForEachWarehouse(consistencyOp op);
+    future<> runForEachWarehouseDistrict(consistencyOp op);
 
     K23SIClient& _client;
     K2TxnHandle _txn;
     Query _query;
     int16_t _max_w_id;
     int16_t _cur_w_id;
+    int16_t _cur_d_id;
     int64_t _nextOrderID;
 
     ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
-
-public:
-    future<> run();
 };
 

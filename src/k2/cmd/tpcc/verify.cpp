@@ -53,7 +53,7 @@ future<> AtomicVerify::getVerificationValues(ValuesToCompare& values) {
         auto customer = _txn.read<Customer>(Customer(_payment._c_w_id, _payment._c_d_id, _payment._c_id))
         .then([this, &values] (auto&& result) {
             CHECK_READ_STATUS(result);
-            K2ASSERT(log::tpcc, result.value.Balance.has_value(), "Balacne is null")
+            K2ASSERT(log::tpcc, result.value.Balance.has_value(), "Balance is null")
             K2ASSERT(log::tpcc, result.value.YTDPayment.has_value(), "YTDPayment is null")
             K2ASSERT(log::tpcc, result.value.PaymentCount.has_value(), "PaymentCount is null")
 
@@ -82,8 +82,11 @@ future<> AtomicVerify::runPaymentTxn(PaymentT& _payment) {
 }
 
 void AtomicVerify::compareCommitValues() {
+    K2LOG_I(log::tpcc, "before w_ytd {} amount {} after w_ytd {}", _before.w_ytd, _payment._amount, _after.w_ytd);
     K2ASSERT(log::tpcc, _before.w_ytd + _payment._amount == _after.w_ytd, "Warehouse YTD did not commit!");
+    K2LOG_I(log::tpcc, "before d_ytd {} amount {} after d_ytd {}", _before.c_ytd, _payment._amount, _after.c_ytd);
     K2ASSERT(log::tpcc, _before.d_ytd + _payment._amount == _after.d_ytd, "District YTD did not commit!");
+    K2LOG_I(log::tpcc, "before c_ytd {} amount {} after c_ytd {}", _before.c_ytd, _payment._amount, _after.c_ytd);
     K2ASSERT(log::tpcc, _before.c_ytd + _payment._amount == _after.c_ytd, "Customer YTD did not commit!");
     K2ASSERT(log::tpcc, _before.c_balance - _payment._amount == _after.c_balance, "Customer Balance did not commit!");
     K2ASSERT(log::tpcc, _before.c_payments + 1 == _after.c_payments, "Customer Payment Count did not commit!");
@@ -159,100 +162,341 @@ future<> ConsistencyVerify::verifyWarehouseYTD() {
 
 // Consistency condition 2: District next orderID - 1 == max OrderID == max NewOrderID
 future<> ConsistencyVerify::verifyOrderIDs() {
-    return do_with((uint16_t)0, [this] (uint16_t& cur_d_id) {
+    return _txn.read<District>(District(_cur_w_id, _cur_d_id))
+    .then([this] (auto&& result) {
+        if (!(result.status.is2xxOK())) {
+            return make_exception_future<uint32_t>(std::runtime_error(k2::String("District should exist but does not")));
+        }
+
+        K2ASSERT(log::tpcc, result.value.NextOrderID.has_value(), "NextOrderID is null")
+        return make_ready_future<uint32_t>(*(result.value.NextOrderID));
+    })
+    .then([this] (uint32_t nextOrderID) {
+        _nextOrderID = nextOrderID;
+        return _client.createQuery(tpccCollectionName, "order");
+    })
+    .then([this](auto&& response) mutable {
+        CHECK_READ_STATUS(response);
+
+        _query = std::move(response.query);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+        _query.startScanRecord.serializeNext<int64_t>(_nextOrderID - 1);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+        _query.endScanRecord.serializeNext<int64_t>(std::numeric_limits<int64_t>::max());
+
+        _query.setLimit(-1);
+        _query.setReverseDirection(false);
+
         return do_until(
-                [this, &cur_d_id] () { return cur_d_id >= _districts_per_warehouse(); },
-                [this, &cur_d_id] () {
-            cur_d_id++;
-            return _txn.read<District>(District(_cur_w_id, cur_d_id))
-            .then([this, cur_d_id] (auto&& result) {
-                if (!(result.status.is2xxOK())) {
-                    return make_exception_future<uint32_t>(std::runtime_error(k2::String("District should exist but does not")));
+        [this] () { return _query.isDone(); },
+        [this] () {
+            return _txn.query(_query)
+            .then([this] (auto&& response) {
+                CHECK_READ_STATUS(response);
+                K2ASSERT(log::tpcc, response.records.size() == 1 || !response.records.size(),
+                                "Should only be one records with order ID >= nextOrderID-1");
+                if (response.records.size()) {
+                    dto::SKVRecord& record = response.records[0];
+                    std::optional<int64_t> oid = record.deserializeField<int64_t>("OID");
+                    K2ASSERT(log::tpcc, oid.has_value(), "OID is null");
+                    K2ASSERT(log::tpcc, *oid == _nextOrderID - 1,
+                            "OrderID does not match nextOrderID - 1");
                 }
 
-                K2ASSERT(log::tpcc, result.value.NextOrderID.has_value(), "NextOrderID is null")
-                return make_ready_future<uint32_t>(*(result.value.NextOrderID));
-            })
-            .then([this, cur_d_id] (uint32_t nextOrderID) {
-                _nextOrderID = nextOrderID;
-                return _client.createQuery(tpccCollectionName, "order");
-            })
-            .then([this, cur_d_id](auto&& response) mutable {
+                return make_ready_future<>();
+            });
+        });
+    })
+    .then([this] () {
+        return _client.createQuery(tpccCollectionName, "neworder");
+    })
+    .then([this](auto&& response) mutable {
+        CHECK_READ_STATUS(response);
+
+        _query = std::move(response.query);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+        _query.startScanRecord.serializeNext<int64_t>(_nextOrderID - 1);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+        _query.endScanRecord.serializeNext<int64_t>(std::numeric_limits<int64_t>::max());
+
+        _query.setLimit(-1);
+        _query.setReverseDirection(false);
+
+        return do_until(
+        [this] () { return _query.isDone(); },
+        [this] () {
+            return _txn.query(_query)
+            .then([this] (auto&& response) {
                 CHECK_READ_STATUS(response);
+                K2ASSERT(log::tpcc, response.records.size() == 1 || !response.records.size(),
+                                "Should only be one records with order ID >= nextOrderID-1");
+                if (response.records.size()) {
+                    dto::SKVRecord& record = response.records[0];
+                    std::optional<int64_t> oid = record.deserializeField<int64_t>("OID");
+                    K2ASSERT(log::tpcc, oid.has_value(), "OID is null");
+                    K2ASSERT(log::tpcc, *oid == _nextOrderID - 1,
+                            "OrderID does not match nextOrderID - 1");
+                }
 
-                _query = std::move(response.query);
-                _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
-                _query.startScanRecord.serializeNext<int16_t>(cur_d_id);
-                _query.startScanRecord.serializeNext<int64_t>(_nextOrderID - 1);
-                _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
-                _query.endScanRecord.serializeNext<int16_t>(cur_d_id);
-                _query.endScanRecord.serializeNext<int64_t>(std::numeric_limits<int64_t>::max());
-
-                _query.setLimit(-1);
-                _query.setReverseDirection(false);
-
-                return do_until(
-                [this] () { return _query.isDone(); },
-                [this] () {
-                    return _txn.query(_query)
-                    .then([this] (auto&& response) {
-                        CHECK_READ_STATUS(response);
-                        K2ASSERT(log::tpcc, response.records.size() == 1 || !response.records.size(),
-                                        "Should only be one records with order ID >= nextOrderID-1");
-                        if (response.records.size()) {
-                            dto::SKVRecord& record = response.records[0];
-                            std::optional<int64_t> oid = record.deserializeField<int64_t>("OID");
-                            K2ASSERT(log::tpcc, oid.has_value(), "OID is null");
-                            K2ASSERT(log::tpcc, *oid == _nextOrderID - 1,
-                                    "OrderID does not match nextOrderID - 1");
-                        }
-
-                        return make_ready_future<>();
-                    });
-                });
-            })
-            .then([this] () {
-                return _client.createQuery(tpccCollectionName, "neworder");
-            })
-            .then([this, cur_d_id](auto&& response) mutable {
-                CHECK_READ_STATUS(response);
-
-                _query = std::move(response.query);
-                _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
-                _query.startScanRecord.serializeNext<int16_t>(cur_d_id);
-                _query.startScanRecord.serializeNext<int64_t>(_nextOrderID - 1);
-                _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
-                _query.endScanRecord.serializeNext<int16_t>(cur_d_id);
-                _query.endScanRecord.serializeNext<int64_t>(std::numeric_limits<int64_t>::max());
-
-                _query.setLimit(-1);
-                _query.setReverseDirection(false);
-
-                return do_until(
-                [this] () { return _query.isDone(); },
-                [this] () {
-                    return _txn.query(_query)
-                    .then([this] (auto&& response) {
-                        CHECK_READ_STATUS(response);
-                        K2ASSERT(log::tpcc, response.records.size() == 1 || !response.records.size(),
-                                        "Should only be one records with order ID >= nextOrderID-1");
-                        if (response.records.size()) {
-                            dto::SKVRecord& record = response.records[0];
-                            std::optional<int64_t> oid = record.deserializeField<int64_t>("OID");
-                            K2ASSERT(log::tpcc, oid.has_value(), "OID is null");
-                            K2ASSERT(log::tpcc, *oid == _nextOrderID - 1,
-                                    "OrderID does not match nextOrderID - 1");
-                        }
-
-                        return make_ready_future<>();
-                    });
-                });
+                return make_ready_future<>();
             });
         });
     });
 }
 
-future<> ConsistencyVerify::runForEachWarehouse(warehouseOp op) {
+// Consistency condition 3: max(new order ID) - min (new order ID) + 1 == number of new order rows
+future<> ConsistencyVerify::verifyNewOrderIDs() {
+    return do_with((int64_t)std::numeric_limits<int64_t>::min(),
+                   (int64_t)std::numeric_limits<int64_t>::max(), (int64_t)0, [this]
+                            (int64_t& max_id, int64_t& min_id, int64_t& count) {
+        return _client.createQuery(tpccCollectionName, "neworder")
+        .then([this, &min_id, &max_id, &count](auto&& response) mutable {
+            CHECK_READ_STATUS(response);
+
+            _query = std::move(response.query);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+
+            _query.setLimit(-1);
+            _query.setReverseDirection(false);
+            return do_until(
+            [this] () { return _query.isDone(); },
+            [this, &min_id, &max_id, &count] () {
+                return _txn.query(_query)
+                .then([this, &min_id, &max_id, &count] (auto&& response) {
+                    CHECK_READ_STATUS(response);
+
+                    for (SKVRecord& record : response.records) {
+                        ++count;
+                        std::optional<int64_t> id = record.deserializeField<int64_t>("OID");
+                        K2ASSERT(log::tpcc, id.has_value(), "OID is null");
+                        min_id = *id < min_id ? *id : min_id;
+                        max_id = *id > max_id ? *id : max_id;
+                    }
+
+                    return make_ready_future<>();
+                });
+            });
+        })
+        .then([this, &min_id, &max_id, &count] () {
+            if (count == 0) {
+                K2LOG_I(log::tpcc, "No NewOrder records for warehouse {} district {}, skipping",
+                            _cur_w_id, _cur_d_id);
+                return make_ready_future<>();
+            }
+            K2LOG_I(log::tpcc, "max_id {} min_id {} count {}", max_id, min_id, count);
+            K2ASSERT(log::tpcc, max_id - min_id + 1 == count, "There is a hole in NewOrder IDs");
+            return make_ready_future<>();
+        });
+    });
+}
+
+// Consistency condition 4: sum of order lines from order table == number or rows in order line table
+future<> ConsistencyVerify::verifyOrderLineCount() {
+    return do_with((uint64_t)0, (uint64_t)0, [this] (uint64_t& olSum, uint64_t& olRows) {
+        return _client.createQuery(tpccCollectionName, "order")
+        .then([this, &olSum](auto&& response) {
+            CHECK_READ_STATUS(response);
+
+            _query = std::move(response.query);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+
+            _query.setLimit(-1);
+            _query.setReverseDirection(false);
+
+            return do_until(
+            [this] () { return _query.isDone(); },
+            [this, &olSum] () {
+                return _txn.query(_query)
+                .then([this, &olSum] (auto&& response) {
+                    CHECK_READ_STATUS(response);
+
+                    for (SKVRecord& record : response.records) {
+                        std::optional<int16_t> order_lines = record.deserializeField<int16_t>("OrderLineCount");
+                        K2ASSERT(log::tpcc, order_lines.has_value(), "LineCount is null");
+                        olSum += *order_lines;
+                    }
+
+                    return make_ready_future<>();
+                });
+            });
+        })
+        .then([this] () {
+            return _client.createQuery(tpccCollectionName, "orderline");
+        })
+        .then([this, &olRows](auto&& response) {
+            CHECK_READ_STATUS(response);
+
+            _query = std::move(response.query);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+
+            _query.setLimit(-1);
+            _query.setReverseDirection(false);
+
+            return do_until(
+            [this] () { return _query.isDone(); },
+            [this, &olRows] () {
+                return _txn.query(_query)
+                .then([this, &olRows] (auto&& response) {
+                    CHECK_READ_STATUS(response);
+
+                    olRows += response.records.size();
+                    return make_ready_future<>();
+                });
+            });
+        })
+        .then([this, &olSum, &olRows] () {
+            K2ASSERT(log::tpcc, olSum == olRows, "Order line sum and order line row count do not match");
+        });
+    });
+}
+
+// Consistency condition 5: order carrier id is 0 iff there is a matching new order row
+future<> ConsistencyVerify::verifyCarrierID() {
+    return _client.createQuery(tpccCollectionName, "order")
+    .then([this](auto&& response) {
+        CHECK_READ_STATUS(response);
+
+        _query = std::move(response.query);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+
+        _query.setLimit(-1);
+        _query.setReverseDirection(false);
+
+        return do_until(
+        [this] () { return _query.isDone(); },
+        [this] () {
+            return _txn.query(_query)
+            .then([this] (auto&& response) {
+                CHECK_READ_STATUS(response);
+
+                std::vector<future<>> newOrderFutures;
+                for (SKVRecord& record : response.records) {
+                    std::optional<int32_t> carrierID = record.deserializeField<int32_t>("CarrierID");
+                    std::optional<int64_t> OID = record.deserializeField<int64_t>("OID");
+                    K2ASSERT(log::tpcc, carrierID.has_value(), "carrierID is null");
+
+                    if (*carrierID == 0) {
+                        future<> newOrderFut = _txn.read<NewOrder>(NewOrder(_cur_w_id, _cur_d_id, *OID))
+                        .then([this] (auto&& result) {
+                            CHECK_READ_STATUS(result);
+                            return make_ready_future<>();
+                        });
+                        newOrderFutures.push_back(std::move(newOrderFut));
+                    } else {
+                        future<> newOrderFut = _txn.read<NewOrder>(NewOrder(_cur_w_id, _cur_d_id, *OID))
+                        .then([this] (auto&& result) {
+                            K2ASSERT(log::tpcc, result.status == dto::K23SIStatus::KeyNotFound,
+                                        "No NewOrder row should exist with this ID");
+                            return make_ready_future<>();
+                        });
+                        newOrderFutures.push_back(std::move(newOrderFut));
+                    }
+                }
+
+                return when_all_succeed(newOrderFutures.begin(), newOrderFutures.end()).discard_result();
+            });
+        });
+    });
+}
+
+// Helper for condition 6
+future<int16_t> ConsistencyVerify::countOrderLineRows(int64_t oid) {
+    return do_with((int16_t)0, [this, oid] (int16_t& count) {
+        return _client.createQuery(tpccCollectionName, "orderline")
+        .then([this, &count, oid](auto&& response) {
+            CHECK_READ_STATUS(response);
+
+            _query = std::move(response.query);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+            _query.startScanRecord.serializeNext<int64_t>(oid);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+            _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+            _query.endScanRecord.serializeNext<int64_t>(oid);
+
+            _query.setLimit(-1);
+            _query.setReverseDirection(false);
+
+            return do_until(
+            [this] () { return _query.isDone(); },
+            [this, &count] () {
+                return _txn.query(_query)
+                .then([this, &count] (auto&& response) {
+                    CHECK_READ_STATUS(response);
+
+                    count += response.records.size();
+                    return make_ready_future<>();
+                });
+            });
+        })
+        .then([this, &count] () {
+            return make_ready_future<int16_t>(count);
+        });
+    });
+}
+
+// Consistency condition 6: for each order, order line count == number of rows in order line table
+future<> ConsistencyVerify::verifyOrderLineByOrder() {
+    return _client.createQuery(tpccCollectionName, "order")
+    .then([this](auto&& response) {
+        CHECK_READ_STATUS(response);
+
+        _query = std::move(response.query);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+
+        _query.setLimit(-1);
+        _query.setReverseDirection(false);
+
+        return do_until(
+        [this] () { return _query.isDone(); },
+        [this] () {
+            return _txn.query(_query)
+            .then([this] (auto&& response) {
+                CHECK_READ_STATUS(response);
+
+                std::vector<future<>> orderlineFutures;
+                for (SKVRecord& record : response.records) {
+                    std::optional<int16_t> line_count = record.deserializeField<int16_t>("OrderLineCount");
+                    std::optional<int64_t> OID = record.deserializeField<int64_t>("OID");
+                    K2ASSERT(log::tpcc, line_count.has_value(), "line_count is null");
+                    K2ASSERT(log::tpcc, OID.has_value(), "OID is null");
+
+                    future<> orderlineFut = countOrderLineRows(*OID)
+                    .then([this, line_count] (int16_t numRows) {
+                        K2ASSERT(log::tpcc, *line_count == numRows,
+                            "Line count of order {} does not match rows in order line table {}",
+                            *line_count, numRows);
+                        return make_ready_future<>();
+                    });
+                    orderlineFutures.push_back(std::move(orderlineFut));
+                }
+
+                return when_all_succeed(orderlineFutures.begin(), orderlineFutures.end()).discard_result();
+            });
+        });
+    });
+}
+
+future<> ConsistencyVerify::runForEachWarehouse(consistencyOp op) {
     K2TxnOptions options{};
     options.deadline = Deadline(5s);
     return _client.beginTxn(options)
@@ -281,16 +525,68 @@ future<> ConsistencyVerify::runForEachWarehouse(warehouseOp op) {
     });
 }
 
+future<> ConsistencyVerify::runForEachWarehouseDistrict(consistencyOp op) {
+    K2TxnOptions options{};
+    options.deadline = Deadline(5s);
+    return _client.beginTxn(options)
+    .then([this, op] (K2TxnHandle&& txn) {
+        _txn = K2TxnHandle(std::move(txn));
+        _cur_w_id = 1;
+        _cur_d_id = 1;
+
+        return repeat([this, op] () {
+            return (this->*op)().then([this] () {
+                _cur_d_id++;
+
+                if (_cur_d_id > _districts_per_warehouse()) {
+                    _cur_w_id++;
+                    _cur_d_id = 1;
+                }
+                if (_cur_w_id > _max_w_id) {
+                    return stop_iteration::yes;
+                }
+
+                return stop_iteration::no;
+            });
+        });
+    }).discard_result()
+    .then([this] () {
+        return _txn.end(true);
+    })
+    .then_wrapped([this] (auto&& fut) {
+        K2ASSERT(log::tpcc, !fut.failed(), "Txn end failed");
+        EndResult result = fut.get0();
+        K2ASSERT(log::tpcc, result.status.is2xxOK(), "Txn end failed, bad status: {}", result.status);
+    });
+}
+
 future<> ConsistencyVerify::run() {
-    K2LOG_I(log::tpcc, "Starting consistency verification");
+    K2LOG_I(log::tpcc, "Starting consistency verification 1");
     return runForEachWarehouse(&ConsistencyVerify::verifyWarehouseYTD)
     .then([this] () {
         K2LOG_I(log::tpcc, "verifyWarehouseYTD consistency success");
-        K2LOG_I(log::tpcc, "Starting consistency verification: order ID");
-        return runForEachWarehouse(&ConsistencyVerify::verifyOrderIDs);
+        K2LOG_I(log::tpcc, "Starting consistency verification 2: order ID");
+        return runForEachWarehouseDistrict(&ConsistencyVerify::verifyOrderIDs);
     })
     .then([this] () {
         K2LOG_I(log::tpcc, "verifyOrderIDs consistency success");
+        K2LOG_I(log::tpcc, "Starting consistency verification 3: neworder ID");
+        return runForEachWarehouseDistrict(&ConsistencyVerify::verifyNewOrderIDs);
+    })
+    .then([this] () {
+        K2LOG_I(log::tpcc, "verifyNewOrderIDs consistency success");
+        K2LOG_I(log::tpcc, "Starting consistency verification 4: order lines count");
+        return runForEachWarehouseDistrict(&ConsistencyVerify::verifyOrderLineCount);
+    })
+    .then([this] () {
+        K2LOG_I(log::tpcc, "verifyOrderLineCount consistency success");
+        K2LOG_I(log::tpcc, "Starting consistency verification 5: carrier ID");
+        return runForEachWarehouseDistrict(&ConsistencyVerify::verifyCarrierID);
+    })
+    .then([this] () {
+        K2LOG_I(log::tpcc, "verifyCarrierID consistency success");
+        K2LOG_I(log::tpcc, "Starting consistency verification 6: order line by order");
+        return runForEachWarehouseDistrict(&ConsistencyVerify::verifyOrderLineByOrder);
     });
 }
 

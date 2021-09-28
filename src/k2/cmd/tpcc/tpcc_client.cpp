@@ -117,15 +117,14 @@ public:  // application lifespan
         registerMetrics();
 
         _benchFuture = _client.start().then([this] () { return _benchmark(); })
-        .handle_exception([this](auto exc) {
-            K2LOG_W_EXC(log::tpcc, exc, "Unable to execute benchmark");
-            _stopped = true;
-            return seastar::make_ready_future<>();
-        }).finally([this]() {
+        .then([this]() {
+            return seastar::sleep(1s);
+        })
+        .then([this]() {
             K2LOG_I(log::tpcc, "Done with benchmark");
             _stopped = true;
             cores_finished++;
-            if (cores_finished == seastar::smp::count) {
+            if (cores_finished == seastar::smp::count && (uint32_t)_global_id < seastar::smp::count) {
                 if (_do_verification()) {
                     K2LOG_I(log::tpcc, "Starting verification");
                     return do_with(AtomicVerify(_random, _client, _max_warehouses()),
@@ -144,8 +143,16 @@ public:  // application lifespan
                 } else {
                     seastar::engine().exit(0);
                 }
+            } else if (cores_finished == seastar::smp::count) {
+                seastar::engine().exit(0);
             }
 
+            return make_ready_future<>();
+        })
+        .handle_exception([this](auto exc) {
+            K2LOG_W_EXC(log::tpcc, exc, "Unable to execute benchmark");
+            _stopped = true;
+            return seastar::make_ready_future<>();
             return make_ready_future<>();
         });
 

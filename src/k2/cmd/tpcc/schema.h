@@ -401,7 +401,7 @@ public:
                 {dto::FieldType::INT16T, "ID", false, false},
                 {dto::FieldType::INT16T, "DID", false, false},
                 {dto::FieldType::INT64T, "OID", false, false},
-                {dto::FieldType::INT16T, "LineCount", false, false},
+                {dto::FieldType::INT16T, "OrderLineCount", false, false},
                 {dto::FieldType::INT64T, "EntryDate", false, false},
                 {dto::FieldType::INT32T, "CID", false, false},
                 {dto::FieldType::INT32T, "CarrierID", false, false},
