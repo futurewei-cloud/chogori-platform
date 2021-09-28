@@ -316,7 +316,7 @@ private:
     bool _abort; // Used by verification test to force an abort
 
 private:
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 
 friend class AtomicVerify;
@@ -800,7 +800,7 @@ private:
     Query _query_order_line;
 
 private:
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 
 
@@ -1188,7 +1188,7 @@ private:
     std::vector<int32_t> _o_carrier_id;
     std::vector<int16_t> _o_line_count = std::vector<int16_t>(10, -1); // Count how many Order Lines for each Order
 
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
 
 private:
     // output data that DeliveryT wanna get

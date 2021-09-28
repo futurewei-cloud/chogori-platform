@@ -132,8 +132,9 @@ public:  // application lifespan
                                     [] (AtomicVerify& verify) {
                         return verify.run();
                     }).then([this] () {
-                        return do_with(ConsistencyVerify(_random, _client, _max_warehouses()),
+                        return do_with(ConsistencyVerify(_client, _max_warehouses()),
                                        [] (ConsistencyVerify& verify) {
+                            K2LOG_I(log::tpcc, "Consistency verify created");
                            return verify.run().then([] () {
                                K2LOG_I(log::tpcc, "Verify done, exiting");
                                seastar::engine().exit(0);
@@ -272,8 +273,8 @@ private:
             [this] { return _stopped; },
             [this] {
                 uint32_t txn_type = _random.UniformRandom(1, 100);
-                uint32_t w_id = (_global_id % _max_warehouses()) + 1;
-                uint32_t d_id = (_global_id % _districts_per_warehouse()) + 1;
+                int16_t w_id = (_global_id % _max_warehouses()) + 1;
+                int16_t d_id = (_global_id % _districts_per_warehouse()) + 1;
                 TPCCTxn* curTxn;
                 if (txn_type <= _weights[0]) {
                     curTxn = (TPCCTxn*) new PaymentT(_random, _client, w_id, _max_warehouses());
@@ -381,10 +382,10 @@ private:
     ConfigVar<bool> _do_verification{"do_verification"};
     ConfigVar<int> _num_instances{"num_instances"};
     ConfigVar<int> _instance_id{"instance_id"};
-    ConfigVar<int> _max_warehouses{"num_warehouses"};
+    ConfigVar<int16_t> _max_warehouses{"num_warehouses"};
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
     ConfigVar<uint16_t> _delivery_txn_batch_size{"delivery_txn_batch_size"};
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     ConfigVar<std::vector<int>> _txn_weights{"txn_weights"};
 
     sm::metric_groups _metric_groups;
@@ -414,13 +415,13 @@ int main(int argc, char** argv) {;
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_instances", bpo::value<int>()->default_value(1), "Number of client instances.")
         ("instance_id", bpo::value<int>()->default_value(0), "ID of this client instance.")
-        ("num_warehouses", bpo::value<int>()->default_value(2), "Number of TPC-C Warehouses.")
+        ("num_warehouses", bpo::value<int16_t>()->default_value(2), "Number of TPC-C Warehouses.")
         ("num_concurrent_txns", bpo::value<int>()->default_value(2), "Number of concurrent transactions to use")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("dataload_txn_timeout", bpo::value<ParseableDuration>(), "Timeout of dataload txn, as chrono literal")
         ("writes_per_load_txn", bpo::value<size_t>()->default_value(10), "The number of writes to do in the load phase between txn commit calls")
-        ("districts_per_warehouse", bpo::value<uint16_t>()->default_value(10), "The number of districts per warehouse")
+        ("districts_per_warehouse", bpo::value<int16_t>()->default_value(10), "The number of districts per warehouse")
         ("customers_per_district", bpo::value<uint32_t>()->default_value(3000), "The number of customers per district")
         ("do_verification", bpo::value<bool>()->default_value(true), "Run verification tests after run")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
