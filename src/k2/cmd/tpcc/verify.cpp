@@ -84,7 +84,7 @@ future<> AtomicVerify::runPaymentTxn(PaymentT& _payment) {
 void AtomicVerify::compareCommitValues() {
     K2LOG_I(log::tpcc, "before w_ytd {} amount {} after w_ytd {}", _before.w_ytd, _payment._amount, _after.w_ytd);
     K2ASSERT(log::tpcc, _before.w_ytd + _payment._amount == _after.w_ytd, "Warehouse YTD did not commit!");
-    K2LOG_I(log::tpcc, "before d_ytd {} amount {} after d_ytd {}", _before.c_ytd, _payment._amount, _after.c_ytd);
+    K2LOG_I(log::tpcc, "before d_ytd {} amount {} after d_ytd {}", _before.d_ytd, _payment._amount, _after.d_ytd);
     K2ASSERT(log::tpcc, _before.d_ytd + _payment._amount == _after.d_ytd, "District YTD did not commit!");
     K2LOG_I(log::tpcc, "before c_ytd {} amount {} after c_ytd {}", _before.c_ytd, _payment._amount, _after.c_ytd);
     K2ASSERT(log::tpcc, _before.c_ytd + _payment._amount == _after.c_ytd, "Customer YTD did not commit!");
@@ -417,27 +417,27 @@ future<> ConsistencyVerify::verifyCarrierID() {
 
 // Helper for condition 6
 future<int16_t> ConsistencyVerify::countOrderLineRows(int64_t oid) {
-    return do_with((int16_t)0, [this, oid] (int16_t& count) {
+    return do_with((int16_t)0, Query(), [this, oid] (int16_t& count, Query& query) {
         return _client.createQuery(tpccCollectionName, "orderline")
-        .then([this, &count, oid](auto&& response) {
+        .then([this, &count, &query, oid](auto&& response) {
             CHECK_READ_STATUS(response);
 
-            _query = std::move(response.query);
-            _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
-            _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
-            _query.startScanRecord.serializeNext<int64_t>(oid);
-            _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
-            _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
-            _query.endScanRecord.serializeNext<int64_t>(oid);
+            query = std::move(response.query);
+            query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+            query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+            query.startScanRecord.serializeNext<int64_t>(oid);
+            query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+            query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+            query.endScanRecord.serializeNext<int64_t>(oid);
 
-            _query.setLimit(-1);
-            _query.setReverseDirection(false);
+            query.setLimit(-1);
+            query.setReverseDirection(false);
 
             return do_until(
-            [this] () { return _query.isDone(); },
-            [this, &count] () {
-                return _txn.query(_query)
-                .then([this, &count] (auto&& response) {
+            [&query] () { return query.isDone(); },
+            [this, &count, &query, oid] () {
+                return _txn.query(query)
+                .then([this, &count, oid] (auto&& response) {
                     CHECK_READ_STATUS(response);
 
                     count += response.records.size();
@@ -481,10 +481,10 @@ future<> ConsistencyVerify::verifyOrderLineByOrder() {
                     K2ASSERT(log::tpcc, OID.has_value(), "OID is null");
 
                     future<> orderlineFut = countOrderLineRows(*OID)
-                    .then([this, line_count] (int16_t numRows) {
+                    .then([this, line_count, OID] (int16_t numRows) {
                         K2ASSERT(log::tpcc, *line_count == numRows,
-                            "Line count of order {} does not match rows in order line table {}",
-                            *line_count, numRows);
+                            "Line count of order {} does not match rows in order line table {} for OID {}",
+                            *line_count, numRows, *OID);
                         return make_ready_future<>();
                     });
                     orderlineFutures.push_back(std::move(orderlineFut));

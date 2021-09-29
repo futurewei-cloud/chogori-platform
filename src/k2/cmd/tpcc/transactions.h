@@ -1023,7 +1023,7 @@ private:
                 query_cid.setLimit(1);
                 query_cid.setReverseDirection(false);
 
-                std::vector<String> projection{"LineCount", "CID"};  // make projection
+                std::vector<String> projection{"OrderLineCount", "CID"};  // make projection
                 query_cid.addProjection(projection);
                 dto::expression::Expression filter{};   // make filter Expression
                 query_cid.setFilterExpression(std::move(filter));
@@ -1034,7 +1034,7 @@ private:
 
                     // get customer ID
                     dto::SKVRecord& rec = response.records[0];
-                    std::optional<int16_t> lineCountOpt = rec.deserializeField<int16_t>("LineCount");
+                    std::optional<int16_t> lineCountOpt = rec.deserializeField<int16_t>("OrderLineCount");
                     std::optional<int32_t> cidOpt = rec.deserializeField<int32_t>("CID");
                     _o_line_count[idx] = *lineCountOpt;
                     _O_C_ID[idx] = *cidOpt;
