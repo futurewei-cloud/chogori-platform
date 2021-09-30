@@ -191,7 +191,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
     (dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
-        k2::OperationLatencyReporter reporter(_readOps, _readLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_readLatency); // for reporting metrics
         return handleRead(std::move(request), FastDeadline(_config.readTimeout()))
                .then([this, reporter=std::move(reporter)](auto&& response) mutable {
                     reporter.report();
@@ -201,7 +201,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
     (dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
-        k2::OperationLatencyReporter reporter(_queryPageOps, _queryPageLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_queryPageLatency); // for reporting metrics
         return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()))
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     reporter.report();
@@ -211,7 +211,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
     (dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
-        k2::OperationLatencyReporter reporter(_writeOps, _writeLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_writeLatency); // for reporting metrics
         return handleWrite(std::move(request), FastDeadline(_config.writeTimeout()))
             .then([this, reporter=std::move(reporter)] (auto&& resp) mutable {
                 return _respondAfterFlush(std::move(resp))
@@ -224,7 +224,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
 
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
-        k2::OperationLatencyReporter reporter(_pushes, _pushLatency); // for reporting metrics
+        k2::OperationLatencyReporter reporter(_pushLatency); // for reporting metrics
         return handleTxnPush(std::move(request))
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     reporter.report();
@@ -316,10 +316,6 @@ void K23SIPartitionModule::_registerMetrics() {
     _metric_groups.add_group("Nodepool", {
         sm::make_gauge("indexer_keys",[this]{ return _indexer.size();},
                         sm::description("Number of keys in indexer"), labels),
-        sm::make_counter("read_operations", _readOps, sm::description("Number of read operations"), labels),
-        sm::make_counter("write_operations", _writeOps, sm::description("Number of write operations"), labels),
-        sm::make_counter("query_page_operations", _queryPageOps, sm::description("Number of query page operations"), labels),
-        sm::make_counter("push_operations", _pushes, sm::description("Number of pushses"), labels),
         sm::make_counter("total_WI", _totalWI, sm::description("Number of WIs created"), labels),
         sm::make_counter("finalized_WI", _finalizedWI, sm::description("Number of WIs finalized"), labels),
         sm::make_gauge("record_versions", _recordVersions, sm::description("Number of record versions over all records"), labels),
@@ -593,7 +589,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                         _scanAdvance(key_it, request.reverseDirection, request.key.schemaName)) {
         ++numScans;
         auto& versions = key_it->second;
-        DataRecord* record = _getDataRecordForRead(versions, request.mtr.timestamp);
+        dto::DataRecord* record = _getDataRecordForRead(versions, request.mtr.timestamp);
         bool needPush = !record ? _checkPushForRead(versions, request.mtr.timestamp) : false;
 
         if (!record && !needPush) {
@@ -716,7 +712,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
     }
 
     VersionSet& versions = IndexIt->second;
-    DataRecord* rec = _getDataRecordForRead(versions, request.mtr.timestamp);
+    dto::DataRecord* rec = _getDataRecordForRead(versions, request.mtr.timestamp);
     bool needPush = !rec ? _checkPushForRead(versions, request.mtr.timestamp) : false;
 
     // happy case: either committed, or txn is reading its own write, or there is no matching version
@@ -1138,7 +1134,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
     }
 
     // Note that if we are here and a WI exists, it must be from the txn of the current request
-    DataRecord* head = nullptr;
+    dto::DataRecord* head = nullptr;
     if (vset.WI.has_value()) {
         head = &(vset.WI->data);
     } else if (vset.committed.size() > 0) {
@@ -1147,13 +1143,13 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
 
     // Exists precondition can be set by the user (e.g. with a delete to know if a record was actually
     // delete) and it is set for partial updates
-    if (request.precondition == ExistencePrecondition::Exists && (!head || head->isTombstone)) {
+    if (request.precondition == dto::ExistencePrecondition::Exists && (!head || head->isTombstone)) {
         K2LOG_D(log::skvsvr, "Request {} not accepted since Exists precondition failed", request);
         _readCache->insertInterval(request.key, request.key, request.mtr.timestamp);
         return RPCResponse(dto::K23SIStatus::ConditionFailed("Exists precondition failed"), dto::K23SIWriteResponse{});
     }
 
-    if (request.precondition == ExistencePrecondition::NotExists && head && !head->isTombstone) {
+    if (request.precondition == dto::ExistencePrecondition::NotExists && head && !head->isTombstone) {
         // Need to add to read cache to prevent an erase coming in before this requests timestamp
         // If the condition passes (ie, there was no previous version and the insert succeeds) then
         // we do not need to insert into the read cache because the write intent will handle conflicts

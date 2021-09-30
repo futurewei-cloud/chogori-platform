@@ -132,7 +132,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
             K2LOG_D(log::skvclient, "got status={}", status);
             if (!status.is2xxOK()) {
                 return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
-                            ReadResult<dto::SKVRecord>(std::move(status), SKVRecord()));
+                            ReadResult<dto::SKVRecord>(std::move(status), dto::SKVRecord()));
             }
 
             return _client->getSchema(collName, schemaName, k2response.value.schemaVersion)
@@ -144,10 +144,10 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
                     return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
                         ReadResult<dto::SKVRecord>(
                         dto::K23SIStatus::OperationNotAllowed("Matching schema could not be found"),
-                        SKVRecord()));
+                        dto::SKVRecord()));
                 }
 
-                SKVRecord skv_record(collName, schema_ptr, std::move(storage), true);
+                dto::SKVRecord skv_record(collName, schema_ptr, std::move(storage), true);
                 return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
                         ReadResult<dto::SKVRecord>(std::move(s), std::move(skv_record)));
             });
@@ -368,7 +368,7 @@ seastar::future<Status> K23SIClient::refreshSchemaCache(const String& collection
         }
 
         auto& schemaMap = schemas[collectionName];
-        for (const Schema& schema : collSchemas) {
+        for (const auto& schema : collSchemas) {
             schemaMap[schema.name][schema.version] = std::make_shared<dto::Schema>(schema);
         }
 
@@ -455,8 +455,8 @@ seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collec
 
         Query query;
         query.schema = response.schema;
-        query.startScanRecord = SKVRecord(collectionName, query.schema);
-        query.endScanRecord = SKVRecord(collectionName, query.schema);
+        query.startScanRecord = dto::SKVRecord(collectionName, query.schema);
+        query.endScanRecord = dto::SKVRecord(collectionName, query.schema);
         query.request.collectionName = collectionName;
         return CreateQueryResult{Statuses::S200_OK("Created query"), std::move(query)};
     });
@@ -475,7 +475,7 @@ void K2TxnHandle::_prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
             if (query.request.reverseDirection) {
-                key = NullLastToKeyString();
+                key = dto::NullLastToKeyString();
             }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of startScanRecord are not a prefix");
@@ -485,7 +485,7 @@ void K2TxnHandle::_prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
             if (query.request.reverseDirection) {
-                key = NullLastToKeyString();
+                key = dto::NullLastToKeyString();
             }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of startScanRecord are not a prefix");
@@ -497,7 +497,7 @@ void K2TxnHandle::_prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
             if (!query.request.reverseDirection) {
-                key = NullLastToKeyString();
+                key = dto::NullLastToKeyString();
             }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of endScanRecord are not a prefix");
@@ -507,7 +507,7 @@ void K2TxnHandle::_prepareQueryRequest(Query& query) {
         if (key == "") {
             emptyField = true;
             if (!query.request.reverseDirection) {
-                key = NullLastToKeyString();
+                key = dto::NullLastToKeyString();
             }
         } else if (emptyField) {
             throw K23SIClientException("Key fields of endScanRecord are not a prefix");

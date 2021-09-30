@@ -35,6 +35,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Log.h"
 
 namespace k2 {
+using namespace dto;
 struct DataRec {
     String f1;
     String f2;

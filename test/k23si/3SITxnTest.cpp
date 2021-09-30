@@ -37,6 +37,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Log.h"
 
 namespace k2{
+using namespace dto;
+
 const String badCname = "bad_collection_name";
 const String collname = "3si_txn_collection";
 const String s02nd_cname = "Second_" + collname;

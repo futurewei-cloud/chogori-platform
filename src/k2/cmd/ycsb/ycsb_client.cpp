@@ -39,6 +39,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/cmd/ycsb/transactions.h>
 
 using namespace k2;
+using namespace dto;
 
 // variable to keep track of number of cores that complete benchmark
 std::atomic<uint32_t> cores_finished = 0;

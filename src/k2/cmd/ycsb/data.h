@@ -145,7 +145,7 @@ private:
 };
 
 // function to write the given YCSB Data row
-seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool erase = false, ExistencePrecondition precondition = ExistencePrecondition::None)
+seastar::future<WriteResult> writeRow(YCSBData& row, K2TxnHandle& txn, bool erase = false, dto::ExistencePrecondition precondition = dto::ExistencePrecondition::None)
 {
     dto::SKVRecord skv_record(YCSBData::collectionName, YCSBData::schema); // create SKV record
 
@@ -193,7 +193,7 @@ partialUpdateRow(uint32_t keyid, std::vector<String> fieldValues, std::vector<ui
     });
 }
 
-void SKVRecordToYCSBData(uint64_t keyid, YCSBData& row, SKVRecord& skvRec){
+void SKVRecordToYCSBData(uint64_t keyid, YCSBData& row, dto::SKVRecord& skvRec){
         row.ID = keyid;
         std::optional<String> s;
         // deserialize fields

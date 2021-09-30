@@ -51,7 +51,6 @@ void Persistence::_registerMetrics() {
     labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
 
     _metric_groups.add_group("Nodepool", {
-        sm::make_counter("flushes", _flushes, sm::description("Number of flushes"), labels),
         sm::make_histogram("flush_latency", [this]{ return _flushLatency.getHistogram();},
                 sm::description("Latency of Persistence Flush"), labels)
     });
@@ -78,7 +77,7 @@ seastar::future<> Persistence::stop() {
 }
 
 seastar::future<Status> Persistence::flush() {
-    k2::OperationLatencyReporter reporter(_flushes, _flushLatency); // for reporting metrics
+    k2::OperationLatencyReporter reporter(_flushLatency); // for reporting metrics
     ++_flushId;
     K2LOG_D(log::skvsvr, "flush with bs={}, proms={}, fid={}", (_buffer? _buffer->getSize() : 0), _pendingProms.size(), _flushId);
     if (!_buffer) {

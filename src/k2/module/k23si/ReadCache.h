@@ -29,8 +29,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <intervaltree.hpp>
 
-using namespace Intervals;
-
 template <typename KeyT, typename TimestampT>
 class ReadCache
 {
@@ -39,7 +37,7 @@ public:
 
     TimestampT checkInterval(KeyT low, KeyT high)
     {
-        auto interval = Interval<KeyT, TreeValue>(std::move(low), std::move(high));
+        auto interval = Intervals::Interval<KeyT, TreeValue>(std::move(low), std::move(high));
         auto overlapping = _tree.findOverlappingIntervals(interval);
         if (overlapping.size() == 0) {
             return _min;
@@ -57,7 +55,7 @@ public:
 
     void insertInterval(KeyT low, KeyT high, TimestampT timestamp)
     {
-        Interval<KeyT, TreeValue>* found = _tree.find(Interval<KeyT, TreeValue>(low, high));
+        Intervals::Interval<KeyT, TreeValue>* found = _tree.find(Intervals::Interval<KeyT, TreeValue>(low, high));
         if (found) {
             _lru.erase(found->value.it);
             _lru.emplace_front(std::move(low), std::move(high), timestamp);
@@ -67,14 +65,14 @@ public:
         }
 
         _lru.emplace_front(low, high, timestamp);
-        Interval<KeyT, TreeValue> interval = Interval<KeyT, TreeValue>(std::move(low), std::move(high));
+        Intervals::Interval<KeyT, TreeValue> interval = Intervals::Interval<KeyT, TreeValue>(std::move(low), std::move(high));
         interval.value.timestamp = timestamp;
         interval.value.it = _lru.begin();
         _tree.insert(std::move(interval));
 
         if (_lru.size() > _max_size) {
-            Interval<KeyT, TimestampT>& to_remove = _lru.back();
-            _tree.remove(Interval<KeyT, TreeValue>(to_remove.low, to_remove.high));
+            Intervals::Interval<KeyT, TimestampT>& to_remove = _lru.back();
+            _tree.remove(Intervals::Interval<KeyT, TreeValue>(to_remove.low, to_remove.high));
             _min = do_max(_min, to_remove.value);
             _lru.pop_back();
         }
@@ -88,12 +86,12 @@ private:
     }
 
     struct TreeValue {
-        typename std::list<Interval<KeyT, TimestampT>>::iterator it;
+        typename std::list<Intervals::Interval<KeyT, TimestampT>>::iterator it;
         TimestampT timestamp;
     };
 
-    IntervalTree<KeyT, TreeValue> _tree;
-    std::list<Interval<KeyT, TimestampT>> _lru;
+    Intervals::IntervalTree<KeyT, TreeValue> _tree;
+    std::list<Intervals::Interval<KeyT, TimestampT>> _lru;
     TimestampT _min;
     size_t _max_size;
 };

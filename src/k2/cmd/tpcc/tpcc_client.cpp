@@ -51,7 +51,7 @@ std::vector<String> getRangeEnds(uint32_t numPartitions, uint32_t numWarehouses)
 
     // Warehouse IDs start at 1, and range end is open interval
     for (uint32_t i = 1; i <= numPartitions; ++i) {
-        String range_end = FieldToKeyString<int16_t>((i*share)+1);
+        String range_end = dto::FieldToKeyString<int16_t>((i*share)+1);
         K2LOG_D(log::tpcc, "RangeEnd: {}", range_end);
         rangeEnds.push_back(range_end);
     }

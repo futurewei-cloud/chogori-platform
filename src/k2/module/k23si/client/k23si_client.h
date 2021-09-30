@@ -259,7 +259,7 @@ public:
                 T userResponseRecord{};
 
                 if (status.is2xxOK()) {
-                    SKVRecord skv_record(collName, request_schema, std::move(k2response.value), true);
+                    dto::SKVRecord skv_record(collName, request_schema, std::move(k2response.value), true);
                     userResponseRecord.__readFields(skv_record);
                 }
 
@@ -269,7 +269,7 @@ public:
 
     template <class T>
     seastar::future<WriteResult> write(T& record, bool erase=false,
-                                       ExistencePrecondition precondition=ExistencePrecondition::None) {
+                                       dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None) {
         if (!_valid) {
             return seastar::make_exception_future<WriteResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
@@ -281,7 +281,7 @@ public:
         if constexpr (std::is_same<T, dto::SKVRecord>()) {
             request = _makeWriteRequest(record, erase, precondition);
         } else {
-            SKVRecord skv_record(record.collectionName, record.schema);
+            dto::SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
             request = _makeWriteRequest(skv_record, erase, precondition);
         }
@@ -354,7 +354,7 @@ public:
 
             request = _makePartialUpdateRequest(record, fieldsForPartialUpdate, std::move(key));
         } else {
-            SKVRecord skv_record(record.collectionName, record.schema);
+            dto::SKVRecord skv_record(record.collectionName, record.schema);
             record.__writeFields(skv_record);
             if (key.partitionKey == "") {
                 key = skv_record.getKey();

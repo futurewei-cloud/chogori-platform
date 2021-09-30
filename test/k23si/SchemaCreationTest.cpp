@@ -37,6 +37,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Log.h"
 
 namespace k2{
+using namespace dto;
 const char* collname = "skv_collection";
 const char* scname = "skv_schema";
 const char* scWoRKey = "skv_schema_wo_rkey";  // schema name without range key
