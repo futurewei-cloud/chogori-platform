@@ -29,8 +29,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <hot/singlethreaded/HOTSingleThreaded.hpp>
 #include <idx/contenthelpers/IdentityKeyExtractor.hpp>
 
-using namespace std;
-
 namespace k2
 {
 

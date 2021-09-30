@@ -63,19 +63,19 @@ TSOService::TSOWorker::handleGetTSOTimestampBatch(dto::GetTimeStampBatchRequest&
     try
     {
         auto timestampBatchGot = GetTimestampFromTSO(request.batchSizeRequested);
-        GetTimeStampBatchResponse response{.timeStampBatch = timestampBatchGot};
+        dto::GetTimeStampBatchResponse response{.timeStampBatch = timestampBatchGot};
         K2LOG_D(log::tsoserver, "returned timeStampBatch: {}", timestampBatchGot);
         return RPCResponse(Statuses::S200_OK("OK"), std::move(response));
     }
     catch(const TSONotReadyException& e)
     {
         K2LOG_E(log::tsoserver, "TSO Not Ready:{}", e.what());
-        return RPCResponse(Statuses::S503_Service_Unavailable(e.what()), GetTimeStampBatchResponse());
+        return RPCResponse(Statuses::S503_Service_Unavailable(e.what()), dto::GetTimeStampBatchResponse());
     }
     catch(const std::exception& e)
     {
         K2LOG_E(log::tsoserver, "Unknown Error:{}", e.what());
-        return RPCResponse(Statuses::S500_Internal_Server_Error(e.what()), GetTimeStampBatchResponse());
+        return RPCResponse(Statuses::S500_Internal_Server_Error(e.what()), dto::GetTimeStampBatchResponse());
     }
 }
 
@@ -194,9 +194,9 @@ void TSOService::TSOWorker::AdjustWorker(const TSOWorkerControlInfo& controlInfo
 }
 
 // API issuing Timestamp to the TSO client
-TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequested)
+dto::TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequested)
 {
-    TimestampBatch result;
+    dto::TimestampBatch result;
 
     K2LOG_D(log::tsoserver, "Start getting a timestamp batch");
 
@@ -217,7 +217,7 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
         {
             K2ASSERT(log::tsoserver, _curControlInfo.IgnoreThreshold, "Only when shreshold is ignored, we can issue timestamp beyond researvedTimeShreshold.");
             // this is really a bug if ReservedTimeThreshold is not updated promptly, this could happen in single machine dev env where the control core is busy.
-            K2LOG_D(log::tsoserver, "Issue timestamp batch ignoring reservedTimeShreshold. CurTime + 1000us : {} and shreshold(us counts): {}. ",  
+            K2LOG_D(log::tsoserver, "Issue timestamp batch ignoring reservedTimeShreshold. CurTime + 1000us : {} and shreshold(us counts): {}. ",
                 curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeThreshold);
         }
 
@@ -249,8 +249,7 @@ TimestampBatch TSOService::TSOWorker::GetTimestampFromTSO(uint16_t batchSizeRequ
 }
 
 // helper function to issue timestamp (or check error situation)
-TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t curTBEMicroSecRounded)
-{
+dto::TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint16_t batchSizeRequested, uint64_t curTBEMicroSecRounded) {
     K2LOG_I(log::tsoserver, "getting a timestamp batch in helper");
     // step 1/4 sanity check, check IsReadyToIssueTS and possible issued timestamp is within ReservedTimeThreshold
     if (!_curControlInfo.IsReadyToIssueTS)
@@ -267,14 +266,14 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
         if (!_curControlInfo.IgnoreThreshold)
         {
             // this is really a bug if ReservedTimeThreshold is not updated promptly.
-            K2LOG_E(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeThreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}.",  
+            K2LOG_E(log::tsoserver, "Not ready to issue timestamp batch due to ReservedTimeThreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}.",
                 curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeThreshold);
 
             throw TSONotReadyException();
         }
         else
         {
-            K2LOG_I(log::tsoserver, "Issue timestamp batch as IgnoreThreshold is set, ReservedTimeThreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}.",  
+            K2LOG_I(log::tsoserver, "Issue timestamp batch as IgnoreThreshold is set, ReservedTimeThreshold exceeded curTime + 1000 and shreshold(us counts): {}:{}.",
                 curTBEMicroSecRounded + 1000, _curControlInfo.ReservedTimeThreshold);
         }
     }
@@ -307,7 +306,7 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
 
     K2ASSERT(log::tsoserver, curTBEMicroSecRounded == _lastRequestTBEMicroSecRounded, "last and this requests are in same microsecond!");
 
-    TimestampBatch result;
+    dto::TimestampBatch result;
     result.TBEBase = curTBEMicroSecRounded + seastar::this_shard_id() - 1 + _lastRequestTimeStampCount * _curControlInfo.TBENanoSecStep;
     result.TSOId = _tsoId;
     result.TsDelta = _curControlInfo.TsDelta;
@@ -320,5 +319,4 @@ TimestampBatch TSOService::TSOWorker::GetTimeStampFromTSOLessFrequentHelper(uint
 
     return result;
 }
-
 }

@@ -62,7 +62,7 @@ struct VersionSet {
     // This allows us to
     // - perform finalization in a rate-limited fashion (i.e. have only some WIs finalized for a txn)
     // - finalize out WIs which actively trigger a conflict, without requiring finalization for the entire txn.
-    std::optional<WriteIntent> WI;
+    std::optional<dto::WriteIntent> WI;
     VersionsT committed;
     bool empty() const {
         return !WI.has_value() && committed.empty();
@@ -288,11 +288,6 @@ private:  // members
     sm::metric_groups _metric_groups;
 
     //metrics
-    uint64_t _readOps{0}; // for read rate
-    uint64_t _writeOps{0}; // for write rate
-    uint64_t _queryPageOps{0}; // for query rate
-    uint64_t _pushes{0}; // for push rate
-
     uint64_t _totalWI{0}; // for number of active WIs
     uint64_t _recordVersions{0};
     uint64_t _totalCommittedPayload{0}; //total committed user payload size

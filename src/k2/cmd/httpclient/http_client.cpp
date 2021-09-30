@@ -33,6 +33,8 @@ Copyright(c) 2021 Futurewei Cloud
 #include <seastar/core/sleep.hh>
 
 #include "Log.h"
+namespace k2 {
+using namespace dto;
 
 const char* collname="HTTPClient";
 k2::dto::Schema _schema {
@@ -133,9 +135,9 @@ void serializeFieldFromRecord<k2::dto::FieldType>(const k2::SchemaField& field,
     throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
 }
 
-class Client {
+class HTTPClient {
 public:  // application lifespan
-    Client():
+    HTTPClient():
         _client(k2::K23SIClientConfig()) {
     }
 
@@ -419,13 +421,15 @@ private:
     uint64_t _txnID = 0;
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
     std::vector<seastar::future<>> _endFuts;
-};  // class Client
+};  // class HTTPClient
+
+} // namespace k2
 
 int main(int argc, char** argv) {
     k2::App app("K23SIBenchClient");
     app.addApplet<k2::APIServer>();
     app.addApplet<k2::TSO_ClientLib>();
-    app.addApplet<Client>();
+    app.addApplet<k2::HTTPClient>();
     app.addOptions()
         // config for dependencies
         ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")

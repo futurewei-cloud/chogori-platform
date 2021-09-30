@@ -35,56 +35,62 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/TimestampBatch.h>
 
-namespace k2
-{
+namespace k2 {
 namespace log {
-inline thread_local k2::logging::Logger tsoclient("k2::tsoclient");
+inline thread_local logging::Logger tsoclient("k2::tsoclient");
 }
-using namespace dto;
 
 // TSO client lib - providing K2 Timestamp to app
-class TSO_ClientLib
-{
+class TSO_ClientLib {
 public:
-    // constructor
-    TSO_ClientLib() { K2LOG_I(log::tsoclient, "ctor");}
-
-    ~TSO_ClientLib() { K2LOG_I(log::tsoclient, "dtor");}
-
     seastar::future<> start();
     seastar::future<> gracefulStop();
 
     // get the timestamp from TSO (distributed from TSOClient Timestamp batch)
-    seastar::future<Timestamp> getTimestampFromTSO(const TimePoint& requestLocalTime);
+    seastar::future<dto::Timestamp> getTimestampFromTSO(TimePoint requestLocalTime);
     // get the timestamp with MTL(Minimum Transaction Latency) - alternatively instead of this new API, consider put MTL inside timestamp.
     // seastar::future<std::tuple<Timestamp, Duration>> GetTimeStampWithMTLFromTSO(const TimePoint& requestLocalTime);
+
+private: // metrics
+    // total latency/count
+    ExponentialHistogram _totalLatency;
+
+    // remote call latency/count
+    ExponentialHistogram _remoteLatency;
+
+    // used to register metrics
+    sm::metric_groups _metricGroups;
+
+    // helper
+    void _registerMetrics();
 
 private:
 
     // discover TSO service end points by a node/server url, as each TSO server/node in general has multiple service end points(each worker CPU core have one),
     // to populate _curTSOServiceNodes, during start() and server change.
-    seastar::future<> _discoverServiceNodes(const k2::String& serverURL);
+    seastar::future<> _discoverServiceNodes(const String& serverURL);
 
-    seastar::future<TimestampBatch> _getTimestampBatch(uint16_t batchSize);
+    seastar::future<dto::TimestampBatch> _getTimestampBatch(uint16_t batchSize);
 
     // process returned batch from TSO server
-    void _processReturnedBatch(TimestampBatch batch, TimePoint batchTriggeredTime);
+    void _processReturnedBatch(dto::TimestampBatch batch, TimePoint batchTriggeredTime);
 
-    ConfigVar<k2::String> TSOServerURL{"tso_endpoint"};
+    ConfigVar<String> TSOServerURL{"tso_endpoint"};
 
-    bool _stopped{false};
+    bool _stopped{true};
 
     // a promise/signal for ready to serve request when they come earlier than TSO server end point set up
     bool _readyToServe {false};
     std::vector<seastar::promise<>> _promiseReadyToServe;  // have to use a seperate promise/future for each early request to hold on
+    seastar::future<> _batchCall = seastar::make_ready_future<>();
 
     // a vector of TSO servers
     // TODO: currently just use one, we will use multiple later, with more info like location(local or remote), availability status etc. Also get them from CPO instead.
     //       the CPO should give the list of TSO servers in preference order in the vector.
-    std::vector<k2::String> _tSOServerURLs;
+    std::vector<String> _tSOServerURLs;
 
     // all URLs of workers of current TSO server
-    std::vector<std::unique_ptr<k2::TXEndpoint>> _curTSOServiceNodes;
+    std::vector<std::unique_ptr<TXEndpoint>> _curTSOServiceNodes;
     // Try to use the same endpoint untill there is an error to minimize connection usage
     size_t _curWorkerIdx{0};
 
@@ -97,39 +103,31 @@ private:
     TimePoint _lastIssuedBatchTriggeredTime;
 
     // info about queued request that is promised but not yet fulfilled
-    struct ClientRequest
-    {
-        TimePoint   _requestTime;
-        seastar::lw_shared_ptr<seastar::promise<Timestamp>> _promise;       // promise for this client request
-        bool        _triggeredBatchRequest{false};  // if this client request tirggered a batch request to TSO server
+    struct ClientRequest {
+        TimePoint _requestTime;
+        seastar::promise<dto::Timestamp> _promise;       // promise for this client request
+        bool _triggeredBatchRequest{false};  // if this client request tirggered a batch request to TSO server
     };
 
 
-
     // returned available timestamp batch
-    struct TimestampBatchInfo
-    {
-        TimestampBatch _batch;
-        bool _isAvailable{false};   // if this issued batch is already fulfilled.
+    struct TimestampBatchInfo {
+        dto::TimestampBatch _batch;
+        bool _isAvailable{false}; // if this issued batch is already fulfilled.
         uint8_t _usedCount{0};
         TimePoint _triggeredTime; // triggered time for this batch, any other later client request comes in before this value + batch TTL could be fulfilled by this batch timewise.
         uint16_t    _expectedBatchSize{0}; // the count of timestamp in triggered/not returned batch request, used for estimate. The TSO server may return less amount of TS
         uint16_t    _expectedTTL{0};       // in nanosecond, estimated TTL in triggered/not returned batch request. The TSO server control the value, returned in _batch.
         bool _isTriggeredByReplacement{false};   // when timestamp batch request was triggerred by replacment for the TSBatch that is returned out of order and discarded
 
-        const TimePoint expirationTime()
-        {
+        const TimePoint expirationTime() {
             K2ASSERT(log::tsoclient, _isAvailable, "Doesn't support ExpirationTime on unavailable TimestampBatch as true TTL from server is not available.");
-
             std::chrono::nanoseconds TTL(_batch.TTLNanoSec);
-
             return _triggeredTime + TTL;
         }
 
-        const TimePoint expectedExpirationTime()
-        {
+        const TimePoint expectedExpirationTime() {
             std::chrono::nanoseconds TTL(_expectedTTL);
-
             return _triggeredTime + TTL;
         }
     };
@@ -139,7 +137,7 @@ private:
     //    Sometime there are pending client requests waiting for batch result to fulfill, sometimes there are left over Timestamp from returned batch(s).
     //    Thus, we have two deques,  _pendingClientRequest and _timestampBatchQueue to hold the info.
     // 2. Client request comes in with request time(steady clock) in order and will be only fulfilled in order as well.
-    // 3. timestamp batch coming back from TSO server(s) could be out of order occasionly, we will discard the older batch if we already start to issue timestam from newer batch
+    // 3. timestamp batch coming back from TSO server(s) could be out of order occasionally, we will discard the older batch if we already start to issue timestam from newer batch
     //    When such discard happens, we may need to issue another replacment batch request to TSO server.
     //    Also, there is case the TSO server may return a batch with less amount of timestamps that we requested,
     //    in this case, we will issue a Replacement batch request as well with current time as triggerred time.

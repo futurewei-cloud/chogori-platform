@@ -156,7 +156,7 @@ TSOService::TSOController::handleGetTSOServerURLs(dto::GetTSOServerURLsRequest&&
     K2LOG_D(log::tsoserver, "handleGetTSOServerURLs");
     (void) request;
 
-    GetTSOServerURLsResponse response{.serverURLs = _TSOServerURLs};
+    dto::GetTSOServerURLsResponse response{.serverURLs = _TSOServerURLs};
     K2LOG_D(log::tsoserver, "returned TSO Server TCP endpoints are: {}", _TSOServerURLs);
     return RPCResponse(Statuses::S200_OK("OK"), std::move(response));
 }
@@ -167,7 +167,7 @@ TSOService::TSOController::handleGetTSOServiceNodeURLs(dto::GetTSOServiceNodeURL
     K2LOG_D(log::tsoserver, "handleGetTSOServiceNodeURLs");
     (void) request;
 
-    GetTSOServiceNodeURLsResponse response{.serviceNodeURLs = _workersURLs};
+    dto::GetTSOServiceNodeURLsResponse response{.serviceNodeURLs = _workersURLs};
     K2LOG_D(log::tsoserver, "returned TSO service nodes endpoints are: {}", _workersURLs);
     return RPCResponse(Statuses::S200_OK("OK"), std::move(response));
 }

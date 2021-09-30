@@ -278,7 +278,7 @@ private:
 
         //handle latest distribution separately to identify insert fails and increment latest known record max key value
         K2LOG_D(log::ycsb, "Insert operation started for keyid {}", _keyid);
-        return writeRow(row, _txn, false, ExistencePrecondition::NotExists) // if record with given key already exists must return error so we set precondition to Exists
+        return writeRow(row, _txn, false, dto::ExistencePrecondition::NotExists) // if record with given key already exists must return error so we set precondition to Exists
             .then_wrapped([this] (auto&& fut) {
                 if (fut.failed()) {
                     fut.ignore_ready_future();

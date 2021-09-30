@@ -227,7 +227,6 @@ private: // fields
     uint64_t _committedTxns{0}; // for committed txn rate
     uint64_t _abortedTxns{0}; // for aborts rate
     uint64_t _conflictAborts{0}; // for conflict abort rate
-    uint64_t _finalizations{0}; // for finalization rate
     k2::ExponentialHistogram _finalizationLatency;
 }; // class TxnManager
 

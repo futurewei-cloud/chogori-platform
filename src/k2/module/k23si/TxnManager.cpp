@@ -71,7 +71,6 @@ void TxnManager::_registerMetrics() {
         sm::make_counter("committed_txns", _committedTxns, sm::description("Number of commited transactions"), labels),
         sm::make_counter("aborted_txns", _abortedTxns, sm::description("Number of aborted transactions"), labels),
         sm::make_counter("conflict_aborts", _conflictAborts, sm::description("Number of conflict aborts (incumbent abort due to push)"), labels),
-        sm::make_counter("finalization_operations", _finalizations, sm::description("Number of finalization requests"), labels),
         sm::make_histogram("finalization_latency", [this]{ return _finalizationLatency.getHistogram();},
                 sm::description("Latency of Finalizations"), labels)
     });
@@ -767,7 +766,7 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                     auto& [request, krv] = requests[idx];
                     K2LOG_D(log::skvsvr, "Finalizing req={}", request);
 
-                    k2::OperationLatencyReporter reporter(_finalizations, _finalizationLatency); // for reporting metrics
+                    k2::OperationLatencyReporter reporter(_finalizationLatency); // for reporting metrics
 
                     return _cpo.partitionRequestByPVID<dto::K23SITxnFinalizeRequest,
                                                 dto::K23SITxnFinalizeResponse,
