@@ -64,4 +64,4 @@ echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>> Starting benchmark ..."
-./build/src/k2/cmd/tpcc/tpcc_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63101 ${COMMON_ARGS} --memory=512M --partition_request_timeout=1s  --num_concurrent_txns=1 --do_verification true --delivery_txn_batch_size=10 --txn_weights={43,4,4,45,4}
+./build/src/k2/cmd/tpcc/tpcc_client -c1 --tcp_remotes ${EPS} --cpo ${CPO} --tso_endpoint ${TSO} --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63101 ${COMMON_ARGS} --memory=512M --partition_request_timeout=6s  --num_concurrent_txns=1 --do_verification true --delivery_txn_batch_size=10 --txn_weights={43,4,4,45,4}

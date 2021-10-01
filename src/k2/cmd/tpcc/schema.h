@@ -414,7 +414,7 @@ public:
     Order(RandomContext& random, int16_t w_id, int16_t d_id, int32_t c_id, int64_t id) :
             WarehouseID(w_id), DistrictID(d_id), OrderID(id) {
         CustomerID = c_id;
-        EntryDate = 0; // TODO
+        EntryDate = getDate();
         if (id < 2101) {
             CarrierID = random.UniformRandom(1, 10);
         } else {

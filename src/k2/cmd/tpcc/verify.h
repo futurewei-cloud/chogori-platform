@@ -87,6 +87,10 @@ private:
     future<> verifyCarrierID();
     future<int16_t> countOrderLineRows(int64_t oid);
     future<> verifyOrderLineByOrder();
+    future<> verifyOrderLineDelivery();
+    future<std::decimal::decimal64> historySum(bool useDistrictID);
+    future<> verifyWarehouseHistorySum();
+    future<> verifyDistrictHistorySum();
     future<> runForEachWarehouse(consistencyOp op);
     future<> runForEachWarehouseDistrict(consistencyOp op);
 

@@ -496,9 +496,133 @@ future<> ConsistencyVerify::verifyOrderLineByOrder() {
     });
 }
 
+// Consistency condition 7: order line delivery is 0 iff carrier is 0 in order
+future<> ConsistencyVerify::verifyOrderLineDelivery() {
+    return _client.createQuery(tpccCollectionName, "orderline")
+    .then([this](auto&& response) {
+        CHECK_READ_STATUS(response);
+
+        _query = std::move(response.query);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.startScanRecord.serializeNext<int16_t>(_cur_d_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+        _query.endScanRecord.serializeNext<int16_t>(_cur_d_id);
+
+        _query.setLimit(-1);
+        _query.setReverseDirection(false);
+
+        return do_until(
+        [this] () { return _query.isDone(); },
+        [this] () {
+            return _txn.query(_query)
+            .then([this] (auto&& response) {
+                CHECK_READ_STATUS(response);
+
+                std::vector<future<>> orderFutures;
+                for (SKVRecord& record : response.records) {
+                    std::optional<int64_t> delivery = record.deserializeField<int64_t>("DeliveryDate");
+                    std::optional<int64_t> OID = record.deserializeField<int64_t>("OID");
+                    K2ASSERT(log::tpcc, OID.has_value(), "OID is null");
+
+                    future<> orderFut = _txn.read<Order>(Order(_cur_w_id, _cur_d_id, *OID))
+                    .then([this, delivery, OID] (auto&& result) {
+                        CHECK_READ_STATUS(result);
+                        std::optional<int32_t> carrier = result.value.CarrierID;
+
+                        K2ASSERT(log::tpcc, *delivery != 0 ? *carrier > 0 : *carrier == 0,
+                                    "deliveryData of orderline {} not consistent with order carrier {} for OID {}",
+                                    *delivery, *carrier, *OID);
+
+                        return make_ready_future<>();
+                    });
+                    orderFutures.push_back(std::move(orderFut));
+                }
+
+                return when_all_succeed(orderFutures.begin(), orderFutures.end()).discard_result();
+            });
+        });
+    });
+}
+
+
+// Helper for consistency conditions 8 and 9
+future<std::decimal::decimal64> ConsistencyVerify::historySum(bool useDistrictID) {
+    return do_with((std::decimal::decimal64)0, Query(), [this, useDistrictID] (std::decimal::decimal64& sum, Query& query) {
+        return _client.createQuery(tpccCollectionName, "history")
+        .then([this, &sum, &query, useDistrictID](auto&& response) {
+            CHECK_READ_STATUS(response);
+
+            query = std::move(response.query);
+            query.startScanRecord.serializeNext<int16_t>(_cur_w_id);
+            query.endScanRecord.serializeNext<int16_t>(_cur_w_id);
+
+            query.setLimit(-1);
+            query.setReverseDirection(false);
+
+            if (useDistrictID) {
+                std::vector<expression::Value> values;
+                std::vector<expression::Expression> exps;
+                values.emplace_back(expression::makeValueReference("DID"));
+                int16_t d_id = _cur_d_id;
+                values.emplace_back(expression::makeValueLiteral<int16_t>(std::move(d_id)));
+                expression::Expression filter = expression::makeExpression(expression::Operation::EQ,
+                                                    std::move(values), std::move(exps));
+                query.setFilterExpression(std::move(filter));
+            }
+
+            return do_until(
+            [&query] () { return query.isDone(); },
+            [this, &sum, &query] () {
+                return _txn.query(query)
+                .then([this, &sum] (auto&& response) {
+                    CHECK_READ_STATUS(response);
+
+                    for (SKVRecord& record : response.records) {
+                        std::optional<std::decimal::decimal64> amount = record.deserializeField<std::decimal::decimal64>("Amount");
+                        sum += *amount;
+                    }
+
+                    return make_ready_future<>();
+                });
+            });
+        })
+        .then([this, &sum] () {
+            return make_ready_future<std::decimal::decimal64>(sum);
+        });
+    });
+}
+
+// Consistency condition 8: Warehouse YTD == sum of history amount
+future<> ConsistencyVerify::verifyWarehouseHistorySum() {
+    return _txn.read<Warehouse>(Warehouse(_cur_w_id))
+    .then([this] (auto&& response) {
+        CHECK_READ_STATUS(response);
+
+        std::optional<std::decimal::decimal64> ytd = response.value.YTD;
+        return historySum(false)
+        .then([this, ytd] (std::decimal::decimal64&& sum) {
+            K2ASSERT(log::tpcc, *ytd == sum, "History sum and Warehouse YTD do not match");
+        });
+    });
+}
+
+// Consistency condition 9: District YTD == sum of history amount
+future<> ConsistencyVerify::verifyDistrictHistorySum() {
+    return _txn.read<District>(District(_cur_w_id, _cur_d_id))
+    .then([this] (auto&& response) {
+        CHECK_READ_STATUS(response);
+
+        std::optional<std::decimal::decimal64> ytd = response.value.YTD;
+        return historySum(true)
+        .then([this, ytd] (std::decimal::decimal64&& sum) {
+            K2ASSERT(log::tpcc, *ytd == sum, "History sum and District YTD do not match");
+        });
+    });
+}
+
 future<> ConsistencyVerify::runForEachWarehouse(consistencyOp op) {
     K2TxnOptions options{};
-    options.deadline = Deadline(5s);
+    options.deadline = Deadline(60s);
     return _client.beginTxn(options)
     .then([this, op] (K2TxnHandle&& txn) {
         _txn = K2TxnHandle(std::move(txn));
@@ -519,7 +643,10 @@ future<> ConsistencyVerify::runForEachWarehouse(consistencyOp op) {
         return _txn.end(true);
     })
     .then_wrapped([this] (auto&& fut) {
-        K2ASSERT(log::tpcc, !fut.failed(), "Txn end failed");
+        if (fut.failed()) {
+            K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
+            K2ASSERT(log::tpcc, false, "Txn failed");
+        }
         EndResult result = fut.get0();
         K2ASSERT(log::tpcc, result.status.is2xxOK(), "Txn end failed, bad status: {}", result.status);
     });
@@ -527,7 +654,7 @@ future<> ConsistencyVerify::runForEachWarehouse(consistencyOp op) {
 
 future<> ConsistencyVerify::runForEachWarehouseDistrict(consistencyOp op) {
     K2TxnOptions options{};
-    options.deadline = Deadline(5s);
+    options.deadline = Deadline(60s);
     return _client.beginTxn(options)
     .then([this, op] (K2TxnHandle&& txn) {
         _txn = K2TxnHandle(std::move(txn));
@@ -554,7 +681,10 @@ future<> ConsistencyVerify::runForEachWarehouseDistrict(consistencyOp op) {
         return _txn.end(true);
     })
     .then_wrapped([this] (auto&& fut) {
-        K2ASSERT(log::tpcc, !fut.failed(), "Txn end failed");
+        if (fut.failed()) {
+            K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
+            K2ASSERT(log::tpcc, false, "Txn failed");
+        }
         EndResult result = fut.get0();
         K2ASSERT(log::tpcc, result.status.is2xxOK(), "Txn end failed, bad status: {}", result.status);
     });
@@ -587,6 +717,21 @@ future<> ConsistencyVerify::run() {
         K2LOG_I(log::tpcc, "verifyCarrierID consistency success");
         K2LOG_I(log::tpcc, "Starting consistency verification 6: order line by order");
         return runForEachWarehouseDistrict(&ConsistencyVerify::verifyOrderLineByOrder);
+    })
+    .then([this] () {
+        K2LOG_I(log::tpcc, "verifyOrderLineByOrder consistency success");
+        K2LOG_I(log::tpcc, "Starting consistency verification 7: order line delivery");
+        return runForEachWarehouseDistrict(&ConsistencyVerify::verifyOrderLineDelivery);
+    })
+    .then([this] () {
+        K2LOG_I(log::tpcc, "verifyOrderLineDelivery consistency success");
+        K2LOG_I(log::tpcc, "Starting consistency verification 8: warehouse ytd and history sum");
+        return runForEachWarehouse(&ConsistencyVerify::verifyWarehouseHistorySum);
+    })
+    .then([this] () {
+        K2LOG_I(log::tpcc, "verifyWarehouseHistory sum consistency success");
+        K2LOG_I(log::tpcc, "Starting consistency verification 9: district ytd and history sum");
+        return runForEachWarehouseDistrict(&ConsistencyVerify::verifyDistrictHistorySum);
     });
 }
 
