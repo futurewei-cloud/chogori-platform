@@ -272,7 +272,7 @@ future<> ConsistencyVerify::verifyNewOrderIDs() {
                 .then([this, &min_id, &max_id, &count] (auto&& response) {
                     CHECK_READ_STATUS(response);
 
-                    for (SKVRecord& record : response.records) {
+                    for (dto::SKVRecord& record : response.records) {
                         ++count;
                         std::optional<int64_t> id = record.deserializeField<int64_t>("OID");
                         K2ASSERT(log::tpcc, id.has_value(), "OID is null");
@@ -320,7 +320,7 @@ future<> ConsistencyVerify::verifyOrderLineCount() {
                 .then([this, &olSum] (auto&& response) {
                     CHECK_READ_STATUS(response);
 
-                    for (SKVRecord& record : response.records) {
+                    for (dto::SKVRecord& record : response.records) {
                         std::optional<int16_t> order_lines = record.deserializeField<int16_t>("OrderLineCount");
                         K2ASSERT(log::tpcc, order_lines.has_value(), "LineCount is null");
                         olSum += *order_lines;
@@ -386,7 +386,7 @@ future<> ConsistencyVerify::verifyCarrierID() {
                 CHECK_READ_STATUS(response);
 
                 std::vector<future<>> newOrderFutures;
-                for (SKVRecord& record : response.records) {
+                for (dto::SKVRecord& record : response.records) {
                     std::optional<int32_t> carrierID = record.deserializeField<int32_t>("CarrierID");
                     std::optional<int64_t> OID = record.deserializeField<int64_t>("OID");
                     K2ASSERT(log::tpcc, carrierID.has_value(), "carrierID is null");
@@ -474,7 +474,7 @@ future<> ConsistencyVerify::verifyOrderLineByOrder() {
                 CHECK_READ_STATUS(response);
 
                 std::vector<future<>> orderlineFutures;
-                for (SKVRecord& record : response.records) {
+                for (dto::SKVRecord& record : response.records) {
                     std::optional<int16_t> line_count = record.deserializeField<int16_t>("OrderLineCount");
                     std::optional<int64_t> OID = record.deserializeField<int64_t>("OID");
                     K2ASSERT(log::tpcc, line_count.has_value(), "line_count is null");
@@ -519,7 +519,7 @@ future<> ConsistencyVerify::verifyOrderLineDelivery() {
                 CHECK_READ_STATUS(response);
 
                 std::vector<future<>> orderFutures;
-                for (SKVRecord& record : response.records) {
+                for (dto::SKVRecord& record : response.records) {
                     std::optional<int64_t> delivery = record.deserializeField<int64_t>("DeliveryDate");
                     std::optional<int64_t> OID = record.deserializeField<int64_t>("OID");
                     K2ASSERT(log::tpcc, OID.has_value(), "OID is null");
@@ -560,12 +560,13 @@ future<std::decimal::decimal64> ConsistencyVerify::historySum(bool useDistrictID
             query.setReverseDirection(false);
 
             if (useDistrictID) {
-                std::vector<expression::Value> values;
-                std::vector<expression::Expression> exps;
-                values.emplace_back(expression::makeValueReference("DID"));
+                std::vector<dto::expression::Value> values;
+                std::vector<dto::expression::Expression> exps;
+                values.emplace_back(dto::expression::makeValueReference("DID"));
                 int16_t d_id = _cur_d_id;
-                values.emplace_back(expression::makeValueLiteral<int16_t>(std::move(d_id)));
-                expression::Expression filter = expression::makeExpression(expression::Operation::EQ,
+                values.emplace_back(dto::expression::makeValueLiteral<int16_t>(std::move(d_id)));
+                dto::expression::Expression filter = dto::expression::makeExpression(
+                                                    dto::expression::Operation::EQ,
                                                     std::move(values), std::move(exps));
                 query.setFilterExpression(std::move(filter));
             }
@@ -577,7 +578,7 @@ future<std::decimal::decimal64> ConsistencyVerify::historySum(bool useDistrictID
                 .then([this, &sum] (auto&& response) {
                     CHECK_READ_STATUS(response);
 
-                    for (SKVRecord& record : response.records) {
+                    for (dto::SKVRecord& record : response.records) {
                         std::optional<std::decimal::decimal64> amount = record.deserializeField<std::decimal::decimal64>("Amount");
                         sum += *amount;
                     }
