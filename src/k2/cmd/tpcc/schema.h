@@ -354,6 +354,7 @@ public:
         CustomerDistrictID = d_id;
         Date = getDate();
         Amount = 10;
+        DistrictID = d_id;
         Info = random.RandomString(12, 24);
     }
 
