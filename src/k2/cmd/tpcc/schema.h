@@ -99,7 +99,7 @@ struct Address {
     SKV_RECORD_FIELDS(Street_1, Street_2, City, State, Zip);
 };
 
-uint64_t getDate()
+inline uint64_t getDate()
 {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -148,7 +148,7 @@ public:
     SKV_RECORD_FIELDS(WarehouseID, Tax, YTD, Name, address);
 
 private:
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 };
 
@@ -354,6 +354,7 @@ public:
         CustomerDistrictID = d_id;
         Date = getDate();
         Amount = 10;
+        DistrictID = d_id;
         Info = random.RandomString(12, 24);
     }
 
@@ -401,7 +402,7 @@ public:
                 {dto::FieldType::INT16T, "ID", false, false},
                 {dto::FieldType::INT16T, "DID", false, false},
                 {dto::FieldType::INT64T, "OID", false, false},
-                {dto::FieldType::INT16T, "LineCount", false, false},
+                {dto::FieldType::INT16T, "OrderLineCount", false, false},
                 {dto::FieldType::INT64T, "EntryDate", false, false},
                 {dto::FieldType::INT32T, "CID", false, false},
                 {dto::FieldType::INT32T, "CarrierID", false, false},
@@ -414,7 +415,7 @@ public:
     Order(RandomContext& random, int16_t w_id, int16_t d_id, int32_t c_id, int64_t id) :
             WarehouseID(w_id), DistrictID(d_id), OrderID(id) {
         CustomerID = c_id;
-        EntryDate = 0; // TODO
+        EntryDate = getDate();
         if (id < 2101) {
             CarrierID = random.UniformRandom(1, 10);
         } else {
@@ -453,7 +454,7 @@ public:
         CarrierID, AllLocal);
 
 private:
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 };
 
@@ -750,7 +751,7 @@ public:
         Dist_03, Dist_04, Dist_05, Dist_06, Dist_07, Dist_08, Dist_09, Dist_10, Info);
 };
 
-void setupSchemaPointers() {
+void inline setupSchemaPointers() {
     Warehouse::schema = std::make_shared<dto::Schema>(Warehouse::warehouse_schema);
     District::schema = std::make_shared<dto::Schema>(District::district_schema);
     Customer::schema = std::make_shared<dto::Schema>(Customer::customer_schema);

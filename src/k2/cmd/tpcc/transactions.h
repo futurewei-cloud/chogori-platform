@@ -59,9 +59,12 @@ template<typename Func>
                         return make_ready_future<>();
                     });
             }).then_wrapped([this] (auto&& fut) {
-                if (fut.failed()  || !_success) {
-                    K2LOG_W(log::tpcc, "Run failed");
-                    return make_exception_future<>(std::runtime_error("Run failed:"));
+                fut.ignore_ready_future();
+                if (fut.failed()) {
+                    K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
+                } else if (!_success) {
+                    K2LOG_D(log::tpcc, "Txn attempt failed");
+                    return make_exception_future<>(std::runtime_error("Attempt failed"));
                 }
                 return make_ready_future<>();
             });
@@ -89,8 +92,13 @@ public:
             return retryStrategy.run([this]() {
                 return attempt();
             }).then_wrapped([this] (auto&& fut) {
+                fut.ignore_ready_future();
                 return make_ready_future<bool>(!fut.failed());
             });
+        })
+        .handle_exception([] (auto exc) {
+            K2LOG_W_EXC(log::tpcc, exc, "Txn failed after retries");
+            return make_ready_future<bool>(false);
         });
     }
 };
@@ -120,6 +128,7 @@ public:
 
         _failed = false;
         _abort = false;
+        _force_original_cid = false;
     }
 
     future<bool> attempt() override {
@@ -150,6 +159,7 @@ private:
             .then_wrapped([this] (auto&& fut) {
                 if (fut.failed()) {
                     _failed = true;
+                    K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Payment Txn failed");
                     fut.ignore_ready_future();
                     return _txn.end(false);
                 }
@@ -161,6 +171,7 @@ private:
             }).then_wrapped([this] (auto&& fut) {
                 if (fut.failed()) {
                     _failed = true;
+                    K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Payment Txn failed");
                     fut.ignore_ready_future();
                     return make_ready_future<bool>(false);
                 }
@@ -212,7 +223,7 @@ private:
 
             if (*(result.value.Credit) == "BC") {
                 size_t shift_size = sizeof(_c_id) + sizeof(_c_d_id) + sizeof(_d_id) + sizeof(_w_id) + sizeof(_amount);
-                memcpy((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
+                memmove((char*)customer.Info->c_str() + shift_size, (char*)result.value.Info->c_str(), 500-shift_size);
                 uint32_t offset = 0;
                 memcpy((char*)customer.Info->c_str() + offset, &_c_id, sizeof(_c_id));
                 offset += sizeof(_c_id);
@@ -238,7 +249,7 @@ private:
     // 60% select customer by last name; 40%, the _c_id has already been set randomly at the constructor
     future<> getCIdByLastNameViaIndex() {
         uint32_t cid_type = _random.UniformRandom(1, 100);
-        if (cid_type <= 60) {
+        if (cid_type <= 60 || _force_original_cid) {
             return make_ready_future();
         }
 
@@ -314,9 +325,10 @@ private:
     k2::String _d_name;
     bool _failed;
     bool _abort; // Used by verification test to force an abort
+    bool _force_original_cid; // Used by verification test to force the cid to not change
 
 private:
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 
 friend class AtomicVerify;
@@ -800,7 +812,7 @@ private:
     Query _query_order_line;
 
 private:
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 
 
@@ -1023,7 +1035,7 @@ private:
                 query_cid.setLimit(1);
                 query_cid.setReverseDirection(false);
 
-                std::vector<String> projection{"LineCount", "CID"};  // make projection
+                std::vector<String> projection{"OrderLineCount", "CID"};  // make projection
                 query_cid.addProjection(projection);
                 dto::expression::Expression filter{};   // make filter Expression
                 query_cid.setFilterExpression(std::move(filter));
@@ -1034,7 +1046,7 @@ private:
 
                     // get customer ID
                     dto::SKVRecord& rec = response.records[0];
-                    std::optional<int16_t> lineCountOpt = rec.deserializeField<int16_t>("LineCount");
+                    std::optional<int16_t> lineCountOpt = rec.deserializeField<int16_t>("OrderLineCount");
                     std::optional<int32_t> cidOpt = rec.deserializeField<int32_t>("CID");
                     _o_line_count[idx] = *lineCountOpt;
                     _O_C_ID[idx] = *cidOpt;
@@ -1188,7 +1200,7 @@ private:
     std::vector<int32_t> _o_carrier_id;
     std::vector<int16_t> _o_line_count = std::vector<int16_t>(10, -1); // Count how many Order Lines for each Order
 
-    ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
 
 private:
     // output data that DeliveryT wanna get
