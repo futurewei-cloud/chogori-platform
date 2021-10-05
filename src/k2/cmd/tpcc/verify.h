@@ -41,7 +41,10 @@ class AtomicVerify
 public:
     AtomicVerify(RandomContext& random, K23SIClient& client, int16_t max_w_id) :
             _random(random), _client(client), _payment(PaymentT(random, client, 1, max_w_id)),
-            _payment2(PaymentT(random, client, 1, max_w_id)), _max_w_id(max_w_id) {}
+            _payment2(PaymentT(random, client, 1, max_w_id)), _max_w_id(max_w_id) {
+        _payment._force_original_cid = true;
+        _payment2._force_original_cid = true;
+    }
 
 private:
     struct ValuesToCompare {
