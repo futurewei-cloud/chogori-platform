@@ -162,6 +162,6 @@ struct TPCCDataGen {
     }
 
 private:
-    k2::ConfigVar<uint16_t> _districts_per_warehouse{"districts_per_warehouse"};
+    k2::ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
     k2::ConfigVar<uint32_t> _customers_per_district{"customers_per_district"};
 };
