@@ -59,13 +59,13 @@ template<typename Func>
                         return make_ready_future<>();
                     });
             }).then_wrapped([this] (auto&& fut) {
-                if (fut.failed()) {
-                    K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
-                    return make_ready_future<>();
+                if (!fut.failed()) {
+                    fut.ignore_ready_future();
                 }
 
-                fut.ignore_ready_future();
-                if (!_success) {
+                if (fut.failed()) {
+                    K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
+                } else if (!_success) {
                     K2LOG_D(log::tpcc, "Txn attempt failed");
                     return make_exception_future<>(std::runtime_error("Attempt failed"));
                 }
@@ -95,8 +95,9 @@ public:
             return retryStrategy.run([this]() {
                 return attempt();
             }).then_wrapped([this] (auto&& fut) {
+                bool failed = fut.failed();
                 fut.ignore_ready_future();
-                return make_ready_future<bool>(!fut.failed());
+                return make_ready_future<bool>(failed);
             });
         })
         .handle_exception([] (auto exc) {
@@ -443,13 +444,13 @@ private:
 
         return when_all_succeed(std::move(main_f), std::move(customer_f), std::move(warehouse_f)).discard_result()
         .then_wrapped([this] (auto&& fut) {
-            fut.ignore_ready_future();
-
             if (fut.failed()) {
                 _failed = true;
+                fut.ignore_ready_future();
                 return _txn.end(false);
             }
 
+            fut.ignore_ready_future();
             _total_amount *= (1 - _c_discount) * (1 + _w_tax + _d_tax);
             (void) _total_amount;
             K2LOG_D(log::tpcc, "NewOrder _total_amount: {}", _total_amount);
@@ -565,13 +566,14 @@ private:
         })
         // commit txn
         .then_wrapped([this] (auto&& fut) {
-            fut.ignore_ready_future();
 
             if (fut.failed()) {
                 _failed = true;
+                fut.ignore_ready_future();
                 return _txn.end(false);
             }
 
+            fut.ignore_ready_future();
             K2LOG_D(log::tpcc, "OrderStatus txn finished");
 
             return _txn.end(true);
@@ -881,10 +883,10 @@ public:
                     return _txn.end(true);
                 })
                 .then_wrapped([this] (auto&& fut) {
-                    fut.ignore_ready_future();
                     if (fut.failed()) {
                         _failed = true;
                     }
+                    fut.ignore_ready_future();
                 });
             })
             .then([this]() {
@@ -1247,13 +1249,14 @@ private:
         })
         // commit txn
         .then_wrapped([this] (auto&& fut) {
-            fut.ignore_ready_future();
 
             if (fut.failed()) {
                 _failed = true;
+                fut.ignore_ready_future();
                 return _txn.end(false);
             }
 
+            fut.ignore_ready_future();
             K2LOG_D(log::tpcc, "StockLevel txn finished with lowstock = {}",_low_stock);
 
             return _txn.end(true);
