@@ -105,6 +105,7 @@ public:
         })
         .handle_exception([] (auto exc) {
             K2LOG_W_EXC(log::tpcc, exc, "Txn failed after retries");
+            K2LOG_I(log::tpcc, "Txn failed after retries");
             return make_ready_future<bool>(false);
         });
     }
@@ -504,7 +505,8 @@ private:
         }
         uint32_t rollback = _random.UniformRandom(1, 100);
         if (rollback == 1) {
-            _lines.back().ItemID = Item::InvalidID;
+            _lines.back().ItemID = 999999; //Item::InvalidID;
+ //           _lines.back().ItemID = Item::InvalidID;
         }
     }
 
@@ -569,6 +571,7 @@ private:
         })
         // commit txn
         .then_wrapped([this] (auto&& fut) {
+
             if (fut.failed()) {
                 _failed = true;
                 fut.ignore_ready_future();
@@ -887,9 +890,8 @@ public:
                 .then_wrapped([this] (auto&& fut) {
                     if (fut.failed()) {
                         _failed = true;
-                    } else {
-                         fut.ignore_ready_future();
-                    }  
+                    }
+                    fut.ignore_ready_future();
                 });
             })
             .then([this]() {
@@ -1252,6 +1254,7 @@ private:
         })
         // commit txn
         .then_wrapped([this] (auto&& fut) {
+
             if (fut.failed()) {
                 _failed = true;
                 fut.ignore_ready_future();
