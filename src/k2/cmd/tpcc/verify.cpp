@@ -516,6 +516,7 @@ future<> ConsistencyVerify::verifyOrderLineDelivery() {
         [this] () {
             return _txn.query(_query)
             .then([this] (auto&& response) {
+                K2LOG_I(log::tpcc, "checking response for orderline: {}", response);
                 CHECK_READ_STATUS(response);
 
                 std::vector<future<>> orderFutures;
@@ -679,12 +680,13 @@ future<> ConsistencyVerify::runForEachWarehouseDistrict(consistencyOp op) {
         });
     }).discard_result()
     .then([this] () {
+        K2LOG_I(log::tpcc, "ending transaction for runForEachWarehouseDistrict");
         return _txn.end(true);
     })
     .then_wrapped([this] (auto&& fut) {
         if (fut.failed()) {
             K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
-            K2ASSERT(log::tpcc, false, "Txn failed");
+            K2ASSERT(log::tpcc, false, "Txn failed with exception {}", fut.get_exception());
         }
         EndResult result = fut.get0();
         K2ASSERT(log::tpcc, result.status.is2xxOK(), "Txn end failed, bad status: {}", result.status);
@@ -735,4 +737,3 @@ future<> ConsistencyVerify::run() {
         return runForEachWarehouseDistrict(&ConsistencyVerify::verifyDistrictHistorySum);
     });
 }
-

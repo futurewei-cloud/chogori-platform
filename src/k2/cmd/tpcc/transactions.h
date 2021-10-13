@@ -95,13 +95,18 @@ public:
             return retryStrategy.run([this]() {
                 return attempt();
             }).then_wrapped([this] (auto&& fut) {
-                bool failed = fut.failed();
-                fut.ignore_ready_future();
-                return make_ready_future<bool>(failed);
+                bool succeed = !fut.failed();
+                K2LOG_I(log::tpcc, "TPCC Txn result: {}", succeed);
+                if (succeed)
+                    fut.ignore_ready_future();
+                else
+                    K2LOG_I(log::tpcc, "TPCC Txn failed: {}", fut.get_exception());
+                return make_ready_future<bool>(succeed);
             });
         })
         .handle_exception([] (auto exc) {
             K2LOG_W_EXC(log::tpcc, exc, "Txn failed after retries");
+            K2LOG_I(log::tpcc, "Txn failed after retries");
             return make_ready_future<bool>(false);
         });
     }
@@ -501,7 +506,8 @@ private:
         }
         uint32_t rollback = _random.UniformRandom(1, 100);
         if (rollback == 1) {
-            _lines.back().ItemID = Item::InvalidID;
+            _lines.back().ItemID = 999999; //Item::InvalidID;
+ //           _lines.back().ItemID = Item::InvalidID;
         }
     }
 
