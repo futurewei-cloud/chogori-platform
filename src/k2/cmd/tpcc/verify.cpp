@@ -516,7 +516,7 @@ future<> ConsistencyVerify::verifyOrderLineDelivery() {
         [this] () {
             return _txn.query(_query)
             .then([this] (auto&& response) {
-                K2LOG_I(log::tpcc, "checking response for orderline: {}", response);
+//                K2LOG_I(log::tpcc, "checking response for orderline: {}", response);
                 CHECK_READ_STATUS(response);
 
                 std::vector<future<>> orderFutures;
@@ -656,7 +656,7 @@ future<> ConsistencyVerify::runForEachWarehouse(consistencyOp op) {
 
 future<> ConsistencyVerify::runForEachWarehouseDistrict(consistencyOp op) {
     K2TxnOptions options{};
-    options.deadline = Deadline(60s);
+    options.deadline = Deadline(120s);
     return _client.beginTxn(options)
     .then([this, op] (K2TxnHandle&& txn) {
         _txn = K2TxnHandle(std::move(txn));
@@ -680,13 +680,14 @@ future<> ConsistencyVerify::runForEachWarehouseDistrict(consistencyOp op) {
         });
     }).discard_result()
     .then([this] () {
-        K2LOG_I(log::tpcc, "ending transaction for runForEachWarehouseDistrict");
+//        K2LOG_I(log::tpcc, "ending transaction for runForEachWarehouseDistrict");
         return _txn.end(true);
     })
     .then_wrapped([this] (auto&& fut) {
         if (fut.failed()) {
-            K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
-            K2ASSERT(log::tpcc, false, "Txn failed with exception {}", fut.get_exception());
+            auto exp = fut.get_exception();
+            K2LOG_W_EXC(log::tpcc, exp, "Txn failed");
+            K2ASSERT(log::tpcc, false, "Txn failed with exception {}", exp);
         }
         EndResult result = fut.get0();
         K2ASSERT(log::tpcc, result.status.is2xxOK(), "Txn end failed, bad status: {}", result.status);

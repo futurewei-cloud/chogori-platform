@@ -356,7 +356,7 @@ private:
         // Attempt the request RPC
         return RPC()
         .callRPC<RequestT, ResponseT>(verb, request, *partition.preferredEndpoint, timeout)
-        .then([this, &request, deadline] (auto&& result) {
+        .then([this, &request, deadline, timeout] (auto&& result) {
             auto& [status, k2response] = result;
             K2LOG_D(log::cpoclient, "partition call completed with status={}", status);
 
@@ -366,7 +366,8 @@ private:
             }
 
             if (deadline.isOver()) {
-                K2LOG_D(log::cpoclient, "Deadline exceeded");
+               K2LOG_I(log::cpoclient, "PRT={}, timeout={}, deadline={}, deadlineR={}", partition_request_timeout(), timeout, deadline, deadline.getRemaining());
+               K2LOG_E(log::cpoclient, "Deadline exceeded: {}, with status: {}", deadline, status);
                 return RPCResponse(Statuses::S408_Request_Timeout("partition deadline exceeded"), ResponseT{});
             }
 

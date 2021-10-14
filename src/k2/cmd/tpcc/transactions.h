@@ -96,7 +96,6 @@ public:
                 return attempt();
             }).then_wrapped([this] (auto&& fut) {
                 bool succeed = !fut.failed();
-                K2LOG_I(log::tpcc, "TPCC Txn result: {}", succeed);
                 if (succeed)
                     fut.ignore_ready_future();
                 else
@@ -506,8 +505,7 @@ private:
         }
         uint32_t rollback = _random.UniformRandom(1, 100);
         if (rollback == 1) {
-            _lines.back().ItemID = 999999; //Item::InvalidID;
- //           _lines.back().ItemID = Item::InvalidID;
+            _lines.back().ItemID = Item::InvalidID;
         }
     }
 

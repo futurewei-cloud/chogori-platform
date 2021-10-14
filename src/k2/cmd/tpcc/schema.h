@@ -39,7 +39,7 @@ static const String tpccCollectionName = "TPCC";
 #define CHECK_READ_STATUS(read_result) \
     do { \
         if (!((read_result).status.is2xxOK())) { \
-            K2LOG_D(log::tpcc, "TPC-C failed to read rows: {}", (read_result).status); \
+            K2LOG_E(log::tpcc, "TPC-C failed to read rows: {}", (read_result).status); \
             return make_exception_future(std::runtime_error(String("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
         } \
     } \
@@ -48,7 +48,7 @@ static const String tpccCollectionName = "TPCC";
 #define CHECK_READ_STATUS_TYPE(read_result,type) \
     do { \
         if (!((read_result).status.is2xxOK())) { \
-            K2LOG_D(log::tpcc, "TPC-C failed to read rows: {}", (read_result).status); \
+            K2LOG_E(log::tpcc, "TPC-C failed to read rows: {}", (read_result).status); \
             return make_exception_future<type>(std::runtime_error(String("TPC-C failed to read rows: ") + __FILE__ + ":" + std::to_string(__LINE__))); \
         } \
     } \
@@ -59,7 +59,7 @@ seastar::future<WriteResult> writeRow(ValueType& row, K2TxnHandle& txn, bool era
 {
     return txn.write<ValueType>(row, erase).then([] (WriteResult&& result) {
         if (!result.status.is2xxOK()) {
-            K2LOG_D(log::tpcc, "writeRow failed: {}", result.status);
+            K2LOG_E(log::tpcc, "writeRow failed: {}", result.status);
             return seastar::make_exception_future<WriteResult>(std::runtime_error("writeRow failed!"));
         }
 
@@ -72,7 +72,7 @@ seastar::future<PartialUpdateResult>
 partialUpdateRow(ValueType& row, FieldType fieldsToUpdate, K2TxnHandle& txn) {
     return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (PartialUpdateResult&& result) {
         if (!result.status.is2xxOK()) {
-            K2LOG_D(log::tpcc, "partialUpdateRow failed: {}", result.status);
+            K2LOG_E(log::tpcc, "partialUpdateRow failed: {}", result.status);
             return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
         }
 
@@ -600,7 +600,7 @@ public:
 
 class Item {
 public:
-    static const int32_t InvalidID = 999999;
+    static inline const int32_t InvalidID = 999999;
     static inline dto::Schema item_schema {
         .name = "item",
         .version = 1,
