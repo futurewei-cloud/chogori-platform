@@ -3,6 +3,7 @@ set -e
 topname=$(dirname "$0")
 source ${topname}/common_defs.sh
 cd ${topname}/../..
+<<<<<<< HEAD
 
 # start nodepool
 ./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --memory=3G --partition_request_timeout=6s &
