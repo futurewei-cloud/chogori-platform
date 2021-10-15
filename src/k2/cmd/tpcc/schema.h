@@ -72,7 +72,7 @@ seastar::future<PartialUpdateResult>
 partialUpdateRow(ValueType& row, FieldType fieldsToUpdate, K2TxnHandle& txn) {
     return txn.partialUpdate<ValueType>(row, fieldsToUpdate).then([] (PartialUpdateResult&& result) {
         if (!result.status.is2xxOK()) {
-            K2LOG_E(log::tpcc, "partialUpdateRow failed: {}", result.status);
+            K2LOG_D(log::tpcc, "partialUpdateRow failed: {}", result.status);
             return seastar::make_exception_future<PartialUpdateResult>(std::runtime_error("partialUpdateRow failed!"));
         }
 
