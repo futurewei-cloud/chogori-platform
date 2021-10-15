@@ -655,7 +655,7 @@ future<> ConsistencyVerify::runForEachWarehouse(consistencyOp op) {
 
 future<> ConsistencyVerify::runForEachWarehouseDistrict(consistencyOp op) {
     K2TxnOptions options{};
-    options.deadline = Deadline(60s);
+    options.deadline = Deadline(120s);
     return _client.beginTxn(options)
     .then([this, op] (K2TxnHandle&& txn) {
         _txn = K2TxnHandle(std::move(txn));

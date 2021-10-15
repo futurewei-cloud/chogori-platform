@@ -59,7 +59,10 @@ template<typename Func>
                         return make_ready_future<>();
                     });
             }).then_wrapped([this] (auto&& fut) {
-                fut.ignore_ready_future();
+                if (!fut.failed()) {
+                    fut.ignore_ready_future();
+                }
+
                 if (fut.failed()) {
                     K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Txn failed");
                 } else if (!_success) {
@@ -92,8 +95,12 @@ public:
             return retryStrategy.run([this]() {
                 return attempt();
             }).then_wrapped([this] (auto&& fut) {
-                fut.ignore_ready_future();
-                return make_ready_future<bool>(!fut.failed());
+                bool succeed = !fut.failed();
+                if (succeed)
+                    fut.ignore_ready_future();
+                else
+                    K2LOG_E(log::tpcc, "TPCC Txn failed: {}", fut.get_exception());
+                return make_ready_future<bool>(succeed);
             });
         })
         .handle_exception([] (auto exc) {
@@ -160,7 +167,6 @@ private:
                 if (fut.failed()) {
                     _failed = true;
                     K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Payment Txn failed");
-                    fut.ignore_ready_future();
                     return _txn.end(false);
                 }
 
@@ -172,7 +178,6 @@ private:
                 if (fut.failed()) {
                     _failed = true;
                     K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Payment Txn failed");
-                    fut.ignore_ready_future();
                     return make_ready_future<bool>(false);
                 }
 
@@ -882,8 +887,9 @@ public:
                 .then_wrapped([this] (auto&& fut) {
                     if (fut.failed()) {
                         _failed = true;
-                        fut.ignore_ready_future();
-                    }
+                    } else {
+                         fut.ignore_ready_future();
+                    }  
                 });
             })
             .then([this]() {
