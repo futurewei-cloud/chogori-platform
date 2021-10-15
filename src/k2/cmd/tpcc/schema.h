@@ -600,7 +600,7 @@ public:
 
 class Item {
 public:
-    static const int32_t InvalidID = 999999;
+    static inline const int32_t InvalidID = 999999;
     static inline dto::Schema item_schema {
         .name = "item",
         .version = 1,
