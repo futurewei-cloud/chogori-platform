@@ -462,9 +462,7 @@ IndexerIterator K23SIPartitionModule::_initializeScan(const dto::Key& start, boo
         } else if (key_it->first == start && exclusiveKey) {
             _scanAdvance(key_it, reverse, start.schemaName);
         } else if (key_it->first > start) {
-            while (key_it->first > start) {
-                _scanAdvance(key_it, reverse, start.schemaName);
-            }
+            _scanAdvance(key_it, reverse, start.schemaName);
         }
     }
 
