@@ -63,6 +63,10 @@ seastar::future<> CPOService::gracefulStop() {
 seastar::future<> CPOService::start() {
     APIServer& api_server = AppBase().getDist<APIServer>().local();
 
+    if (seastar::smp::count < 2) {
+        K2LOG_W(log::cposvr, "CPO requires 2 cores to enable health monitoring, but only 1 is available. Health monitoring is disabled");
+    }
+
     K2LOG_I(log::cposvr, "Registering message handlers");
     RPC().registerRPCObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, [this](dto::CollectionCreateRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));

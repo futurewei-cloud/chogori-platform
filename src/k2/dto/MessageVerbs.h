@@ -45,6 +45,8 @@ enum Verbs : k2::Verb {
     CPO_SCHEMAS_GET,
     CPO_COLLECTION_DROP,
 
+    CPO_HEARTBEAT,
+
     /************ Assignment *****************/
     // K2Assignment: CPO asks K2 to assign a partition
     K2_ASSIGNMENT_CREATE = 25,

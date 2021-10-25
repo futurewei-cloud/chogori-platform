@@ -1,0 +1,87 @@
+/*
+MIT License
+
+Copyright(c) 2021 Futurewei Cloud
+
+    Permission is hereby granted,
+    free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
+
+    The above copyright notice and this permission notice shall be included in all copies
+    or
+    substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS",
+    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER
+    LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
+
+#pragma once
+
+// third-party
+#include <seastar/core/distributed.hh>
+#include <seastar/core/future.hh>  // for future stuff
+
+#include <k2/appbase/AppEssentials.h>
+#include <k2/cpo/service/CPOService.h>
+#include <k2/dto/ControlPlaneOracle.h>
+#include <k2/dto/LogStream.h>
+#include <k2/transport/Status.h>
+#include <k2/common/Timer.h>
+
+namespace k2 {
+
+class RPCServer {
+public:
+    String ID;
+    String role;
+    String roleMetadata;
+    std::vector<String> endpoints;
+    K2_DEF_FMT(RPCServer, ID, role, roleMetadata, endpoints);
+};
+
+class HeartbeatControl {
+public:
+    TimePoint nextHeartbeat;
+    seastar::future<> heartbeatRequest = seastar::make_ready_future<>();
+    RPCServer target;
+    std::unique_ptr<TXEndpoint> endpoint;
+    // Last opaque token received by the target, which is echoed back on the next request.
+    // The target uses this to detect if its responses are getting through
+    uint64_t lastToken{0};
+    uint32_t unackedHeartbeats{0};
+    bool heartbeatInFlight{false};
+    K2_DEF_FMT(HeartbeatControl, nextHeartbeat, target, lastToken, unackedHeartbeats, heartbeatInFlight);
+};
+
+class HealthMonitor {
+private:
+    ConfigVar<std::vector<String>> _nodepoolEndpoints{"nodepool_endpoints"};
+    ConfigVar<std::vector<String>> _TSOEndpoints{"tso_endpoints"};
+    ConfigVar<std::vector<String>> _persistEndpoints{"k23si_persistence_endpoints"};
+    ConfigVar<Duration> _interval{"heartbeat_interval", 100ms};
+    ConfigVar<Duration> _batchWait{"heartbeat_batch_wait", 0s};
+    ConfigVar<uint32_t> _batchSize{"heartbeat_batch_size"};
+    ConfigVar<uint32_t> _deadThreshold{"heartbeat_lost_threshold"};
+
+    SingleTimer _nextHeartbeat;
+    bool _running{false};
+
+    std::list<seastar::lw_shared_ptr<HeartbeatControl>> _heartbeats;
+    std::list<seastar::lw_shared_ptr<HeartbeatControl>> _deadHeartbeats;
+
+    void addHBControl(RPCServer&& server, TimePoint nextHB);
+    void checkHBs();
+
+public:
+    // required for seastar::distributed interface
+    seastar::future<> gracefulStop();
+    seastar::future<> start();
+};  // class HealthMonitor
+
+} // namespace k2
