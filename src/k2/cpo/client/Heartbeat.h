@@ -28,70 +28,49 @@ Copyright(c) 2021 Futurewei Cloud
 #include <seastar/core/future.hh>  // for future stuff
 
 #include <k2/appbase/AppEssentials.h>
-#include <k2/cpo/service/CPOService.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/LogStream.h>
 #include <k2/transport/Status.h>
 #include <k2/common/Timer.h>
 
 namespace k2 {
-
-class RPCServer {
-public:
-    String ID;
-    String role;
-    String roleMetadata;
-    std::vector<String> endpoints;
-    K2_DEF_FMT(RPCServer, ID, role, roleMetadata, endpoints);
-};
-
-class HeartbeatControl {
-public:
-    TimePoint nextHeartbeat;
-    seastar::future<> heartbeatRequest = seastar::make_ready_future<>();
-    RPCServer target;
-    std::unique_ptr<TXEndpoint> endpoint;
-    // Last opaque token received by the target, which is echoed back on the next request.
-    // The target uses this to detect if its responses are getting through
-    uint64_t lastToken{0};
-    uint32_t unackedHeartbeats{0};
-    bool heartbeatInFlight{false};
-    K2_DEF_FMT(HeartbeatControl, nextHeartbeat, target, lastToken, unackedHeartbeats, heartbeatInFlight);
-};
-
-class HealthMonitor {
+/*
+    auto tcp_ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
+    if (tcp_ep) {
+        partition.endpoints.insert(tcp_ep->url);
+    }
+    auto rdma_ep = k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto);
+    if (rdma_ep) {
+        partition.endpoints.insert(rdma_ep->url);
+    }
+*/
+class HeartbeatResponder {
 private:
-    ConfigVar<std::vector<String>> _nodepoolEndpoints{"nodepool_endpoints"};
-    ConfigVar<std::vector<String>> _TSOEndpoints{"tso_endpoints"};
-    ConfigVar<std::vector<String>> _persistEndpoints{"k23si_persistence_endpoints"};
-    ConfigVar<Duration> _interval{"heartbeat_interval", 100ms};
-    ConfigVar<Duration> _batchWait{"heartbeat_batch_wait", 0s};
-    ConfigVar<uint32_t> _batchSize{"heartbeat_batch_size"};
-    ConfigVar<uint32_t> _deadThreshold{"heartbeat_lost_threshold"};
-
     SingleTimer _nextHeartbeat;
+    Duration _HBInterval;      // Will be obtained from the heartbeat requests
+    uint32_t _HBDeadThreshold; // Will be obtained from the heartbeat requests
+    uint32_t _missedHBs;
     bool _running{false};
-
-    std::list<seastar::lw_shared_ptr<HeartbeatControl>> _heartbeats;
-    std::list<seastar::lw_shared_ptr<HeartbeatControl>> _deadHeartbeats;
+    bool _up{false};
 
     // For metrics
     void _registerMetrics();
     sm::metric_groups _metric_groups;
-    uint32_t _nodepoolDown{0};
-    uint32_t _TSODown{0};
-    uint32_t _persistDown{0};
-    uint64_t _heartbeatsSent{0};
-    uint64_t _heartbeatsLost{0};
-    uint64_t _downEvents{0};
+    uint64_t _heartbeats{0};
 
-    void addHBControl(RPCServer&& server, TimePoint nextHB);
-    void checkHBs();
+    seastar::future<std::tuple<Status, dto::HeartbeatResponse>>
+    _handleHeartbeat(dto::HeartbeatRequest&& request);
 
 public:
     // required for seastar::distributed interface
     seastar::future<> gracefulStop();
     seastar::future<> start();
+
+    // Used by other applets to know if they should soft-down themselves
+    bool isUp();
+    // Used by other applets to set role-specific metadata,
+    // which is passed on to the monitor in the HB response
+    void setRoleMetadata(String metadata);
 };  // class HealthMonitor
 
 } // namespace k2

@@ -60,6 +60,15 @@ void HealthMonitor::checkHBs() {
             (*it)->unackedHeartbeats++;
             if ((*it)->unackedHeartbeats >= _deadThreshold()) {
                 K2LOG_I(log::cposvr, "HB target is dead: {}", **it);
+                _downEvents++;
+                if ((*it)->target.role == "Nodepool") {
+                    _nodepoolDown++;
+                } else if ((*it)->target.role == "TSO") {
+                    _TSODown++;
+                } else if ((*it)->target.role == "Persistence") {
+                    _persistDown++;
+                }
+
                 _deadHeartbeats.push_back(std::move(*it));
                 it = _heartbeats.erase(it);
                 continue;
@@ -74,6 +83,7 @@ void HealthMonitor::checkHBs() {
         (*it)->heartbeatInFlight = true;
         (*it)->nextHeartbeat = now + _interval();
 
+        _heartbeatsSent++;
         (*it)->heartbeatRequest = RPC()
         .callRPC<dto::HeartbeatRequest, dto::HeartbeatResponse>(dto::Verbs::CPO_HEARTBEAT, request,
                                                                 *((*it)->endpoint), _interval())
@@ -82,7 +92,9 @@ void HealthMonitor::checkHBs() {
             K2LOG_V(log::cposvr, "Heartbeat response for {}", *hb_ptr);
 
             if (!status.is2xxOK()) {
-                // Missed HB will be counted the next time this target reaches the head of the list
+                // Missed HB will be counted against the target the next time this target reaches the
+                // head of the list
+                _heartbeatsLost++;
                 return seastar::make_ready_future<>();
             }
             if (hb_ptr->unackedHeartbeats >= _deadThreshold()) {
@@ -105,10 +117,13 @@ void HealthMonitor::checkHBs() {
 
             return seastar::make_ready_future<>();
         })
-        .handle_exception([hb_ptr=*it] (auto exc){
+        .handle_exception([this, hb_ptr=*it] (auto exc){
+            _heartbeatsLost++;
             K2LOG_W_EXC(log::cposvr, exc, "caught exception in heartbeat RPC for target {}", *hb_ptr);
             return seastar::make_ready_future();
         });
+
+        ++it;
     }
 
     _nextHeartbeat.arm(nextArm);
@@ -142,6 +157,26 @@ seastar::future<> HealthMonitor::gracefulStop() {
     });
 }
 
+void HealthMonitor::_registerMetrics() {
+    _metric_groups.clear();
+    std::vector<sm::label_instance> labels;
+    labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
+
+    _metric_groups.add_group("HealthMonitor", {
+        sm::make_gauge("nodepool_total",[this]{ return _nodepoolEndpoints().size();},
+                        sm::description("Number nodepool node targets"), labels),
+        sm::make_gauge("TSO_total",[this]{ return _TSOEndpoints().size();},
+                        sm::description("Number TSO targets"), labels),
+        sm::make_gauge("persistence_total",[this]{ return _persistEndpoints().size();},
+                        sm::description("Number persistence targets"), labels),
+        sm::make_gauge("nodepool_down", _nodepoolDown, sm::description("Number of nodepool nodes considered dead"), labels),
+        sm::make_gauge("TSO_down", _TSODown, sm::description("Number of TSO targets considered dead"), labels),
+        sm::make_gauge("persistence_down", _persistDown, sm::description("Number of persistence targets considered dead"), labels),
+        sm::make_counter("heartbeats_sent", _heartbeatsSent, sm::description("Number of heartbeat requests sent"), labels),
+        sm::make_counter("heartbeats_lost", _heartbeatsLost, sm::description("Number of heartbeat lost"), labels),
+        sm::make_counter("down_events", _downEvents, sm::description("Number of down events"), labels),
+    });
+}
 seastar::future<> HealthMonitor::start() {
     if (seastar::this_shard_id() != 1) {
         // Health monitor only runs on core 1
