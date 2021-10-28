@@ -31,11 +31,12 @@ int main(int argc, char** argv) {
     app.addOptions()
         ("nodepool_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list (space-delimited) of nodepool endpoints")
         ("tso_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list (space-delimited) of TSO endpoints")
-        ("k23si_persistence_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list (space-delimited) of persistence endpoints")
+        ("persistence_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list (space-delimited) of persistence endpoints")
         ("heartbeat_interval", bpo::value<k2::ParseableDuration>(), "The interval the health monitor uses to send heartbeats")
         ("heartbeat_batch_wait", bpo::value<k2::ParseableDuration>(), "How long the heartbeat monitor waits between batches (only for the start-up set of heartbeats")
         ("heartbeat_batch_size", bpo::value<uint32_t>()->default_value(100), "How many heartbeats the monitor sends before waiting (only for the start-up set of heartbeats")
         ("heartbeat_lost_threshold", bpo::value<uint32_t>()->default_value(3), "How many lost heartbeats are required before the monitor considers a target dead")
+        ("txn_heartbeat_deadline", bpo::value<k2::ParseableDuration>(), "The interval clients must use to heartbeat active transactions")
         ("assignment_timeout", bpo::value<k2::ParseableDuration>(), "Timeout for K2 partition assignment")
         ("data_dir", bpo::value<k2::String>(), "The directory where we can keep data");
     app.addApplet<k2::CPOService>([]() mutable -> seastar::distributed<k2::CPOService>& {

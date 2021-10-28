@@ -26,6 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/infrastructure/APIServer.h>
+#include <k2/cpo/client/Heartbeat.h>
 
 namespace k2 {
 namespace dto {
@@ -188,9 +189,15 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     K2LOG_D(log::skvsvr, "Starting for partition: {}", _partition);
 
     APIServer& api_server = AppBase().getDist<APIServer>().local();
+    HeartbeatResponder& hb_resp = AppBase().getDist<HeartbeatResponder>().local();
+    hb_resp.setRoleMetadata("Partition assigned");
 
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
-    (dto::Verbs::K23SI_READ, [this](dto::K23SIReadRequest&& request) {
+    (dto::Verbs::K23SI_READ, [this, &hb_resp](dto::K23SIReadRequest&& request) {
+        if (!hb_resp.isUp()) {
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIReadResponse{});
+        }
+
         k2::OperationLatencyReporter reporter(_readLatency); // for reporting metrics
         return handleRead(std::move(request), FastDeadline(_config.readTimeout()))
                .then([this, reporter=std::move(reporter)](auto&& response) mutable {
@@ -200,7 +207,11 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     });
 
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
-    (dto::Verbs::K23SI_QUERY, [this](dto::K23SIQueryRequest&& request) {
+    (dto::Verbs::K23SI_QUERY, [this, &hb_resp](dto::K23SIQueryRequest&& request) {
+        if (!hb_resp.isUp()) {
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIQueryResponse{});
+        }
+
         k2::OperationLatencyReporter reporter(_queryPageLatency); // for reporting metrics
         return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()))
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
@@ -210,7 +221,11 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     });
 
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
-    (dto::Verbs::K23SI_WRITE, [this](dto::K23SIWriteRequest&& request) {
+    (dto::Verbs::K23SI_WRITE, [this, &hb_resp](dto::K23SIWriteRequest&& request) {
+        if (!hb_resp.isUp()) {
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIWriteResponse{});
+        }
+
         k2::OperationLatencyReporter reporter(_writeLatency); // for reporting metrics
         return handleWrite(std::move(request), FastDeadline(_config.writeTimeout()))
             .then([this, reporter=std::move(reporter)] (auto&& resp) mutable {
@@ -223,7 +238,11 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     });
 
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
-    (dto::Verbs::K23SI_TXN_PUSH, [this](dto::K23SITxnPushRequest&& request) {
+    (dto::Verbs::K23SI_TXN_PUSH, [this, &hb_resp](dto::K23SITxnPushRequest&& request) {
+        if (!hb_resp.isUp()) {
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnPushResponse{});
+        }
+
         k2::OperationLatencyReporter reporter(_pushLatency); // for reporting metrics
         return handleTxnPush(std::move(request))
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
@@ -233,18 +252,30 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     });
 
     RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
-    (dto::Verbs::K23SI_TXN_END, [this](dto::K23SITxnEndRequest&& request) {
+    (dto::Verbs::K23SI_TXN_END, [this, &hb_resp](dto::K23SITxnEndRequest&& request) {
+        if (!hb_resp.isUp()) {
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnEndResponse{});
+        }
+
         return handleTxnEnd(std::move(request))
             .then([this] (auto&& resp) { return _respondAfterFlush(std::move(resp));});
     });
 
     RPC().registerRPCObserver<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>
-    (dto::Verbs::K23SI_TXN_HEARTBEAT, [this](dto::K23SITxnHeartbeatRequest&& request) {
+    (dto::Verbs::K23SI_TXN_HEARTBEAT, [this, &hb_resp](dto::K23SITxnHeartbeatRequest&& request) {
+        if (!hb_resp.isUp()) {
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnHeartbeatResponse{});
+        }
+
         return handleTxnHeartbeat(std::move(request));
     });
 
     RPC().registerRPCObserver<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
-    (dto::Verbs::K23SI_TXN_FINALIZE, [this](dto::K23SITxnFinalizeRequest&& request) {
+    (dto::Verbs::K23SI_TXN_FINALIZE, [this, &hb_resp](dto::K23SITxnFinalizeRequest&& request) {
+        if (!hb_resp.isUp()) {
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnFinalizeResponse{});
+        }
+
         return handleTxnFinalize(std::move(request))
                 .then([this] (auto&& resp) {
                     return _respondAfterFlush(std::move(resp));

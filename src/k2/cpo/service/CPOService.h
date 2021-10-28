@@ -49,7 +49,7 @@ private:
     void _assignCollection(dto::Collection& collection);
     seastar::future<bool> _offloadCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
-    ConfigDuration _collectionHeartbeatDeadline{"heartbeat_deadline", 100ms};
+    ConfigDuration _collectionHeartbeatDeadline{"txn_heartbeat_deadline", 100ms};
     std::unordered_map<String, seastar::future<>> _assignments;
     std::unordered_map<String, std::vector<dto::PartitionMetdataRecord>> _metadataRecords;
     std::tuple<Status, dto::Collection> _getCollection(String name);

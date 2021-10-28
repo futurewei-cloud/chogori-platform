@@ -44,6 +44,8 @@ void HealthMonitor::checkHBs() {
     auto now = CachedSteadyClock::now(true);
     Duration nextArm = _interval();
 
+    // We keep one list, _heartbeats, which tracks both time to send the next heartbeat for each target,
+    // and the time that the heartbeat will expire for each target
     auto it = _heartbeats.begin();
     while (it != _heartbeats.end()) {
         // List is kept in sorted order, if we reach one that is not expired then we are done,
@@ -56,10 +58,10 @@ void HealthMonitor::checkHBs() {
         // If the last heartbeat has not been responded to yet, count it as missed and potentially the target
         // as dead.
         if ((*it)->heartbeatInFlight) {
-            K2LOG_D(log::cposvr, "missed HB for {}", *it);
+            K2LOG_I(log::cposvr, "missed HB for {}", *it);
             (*it)->unackedHeartbeats++;
             if ((*it)->unackedHeartbeats >= _deadThreshold()) {
-                K2LOG_I(log::cposvr, "HB target is dead: {}", **it);
+                K2LOG_W(log::cposvr, "HB target is dead: {}", **it);
                 _downEvents++;
                 if ((*it)->target.role == "Nodepool") {
                     _nodepoolDown++;
@@ -76,54 +78,60 @@ void HealthMonitor::checkHBs() {
         }
 
         // Normal case. Send a new heartbeat request to target.
-
         dto::HeartbeatRequest request{.lastToken = (*it)->lastToken, .interval = _interval(),
                                         .deadThreshold = _deadThreshold()};
 
         (*it)->heartbeatInFlight = true;
         (*it)->nextHeartbeat = now + _interval();
+        // last_it will be captured in the heartbeat request, so that it can be moved to the end
+        // when we get a response
+        auto last_it = _heartbeats.insert(_heartbeats.end(), *it);
+        // This both iterates over the list and sets the current target to the end, since we just
+        // changed the nextHeartbeat variable and we need to keep the list sorted
+        it = _heartbeats.erase(it);
 
         _heartbeatsSent++;
-        (*it)->heartbeatRequest = RPC()
-        .callRPC<dto::HeartbeatRequest, dto::HeartbeatResponse>(dto::Verbs::CPO_HEARTBEAT, request,
-                                                                *((*it)->endpoint), _interval())
-        .then([this, hb_ptr=*it, it] (auto&& result) {
-            auto& [status, response] = result;
-            K2LOG_V(log::cposvr, "Heartbeat response for {}", *hb_ptr);
+        (*last_it)->heartbeatRequest = (*last_it)->heartbeatRequest
+        .then([this, request, hb_ptr=*last_it, last_it] () mutable {
+            return RPC()
+            .callRPC<dto::HeartbeatRequest, dto::HeartbeatResponse>(dto::Verbs::CPO_HEARTBEAT, request,
+                                                                    *((*last_it)->endpoint), _interval() / 2)
+            .then([this, hb_ptr, it=last_it] (auto&& result) {
+                auto& [status, response] = result;
+                K2LOG_V(log::cposvr, "Heartbeat response for {}", *hb_ptr);
 
-            if (!status.is2xxOK()) {
-                // Missed HB will be counted against the target the next time this target reaches the
-                // head of the list
-                _heartbeatsLost++;
+                if (!status.is2xxOK()) {
+                    // Missed HB will be counted against the target the next time this target reaches the
+                    // head of the list
+                    K2LOG_I(log::cposvr, "Bad heartbeat response: {}", status);
+                    _heartbeatsLost++;
+                    return seastar::make_ready_future<>();
+                }
+                if (hb_ptr->unackedHeartbeats >= _deadThreshold()) {
+                    // This target has already been determined dead (and iterator is not valid anymore)
+                    K2LOG_I(log::cposvr, "HB response after target determined dead for {}", *hb_ptr);
+                    return seastar::make_ready_future<>();
+                }
+
+                hb_ptr->target.roleMetadata = std::move(response.roleMetadata);
+                hb_ptr->target.endpoints = std::move(response.endpoints);
+
+                hb_ptr->heartbeatInFlight = false;
+                hb_ptr->unackedHeartbeats = 0;
+                auto now = CachedSteadyClock::now(true);
+                hb_ptr->nextHeartbeat = now + _interval();
+                hb_ptr->lastToken = response.echoToken;
+
+                _heartbeats.erase(it);
+                _heartbeats.push_back(hb_ptr);
+
                 return seastar::make_ready_future<>();
-            }
-            if (hb_ptr->unackedHeartbeats >= _deadThreshold()) {
-                // This target has already been determined dead (and iterator is not valid anymore)
-                K2LOG_I(log::cposvr, "HB response after target determined dead for {}", *hb_ptr);
-                return seastar::make_ready_future<>();
-            }
-
-            hb_ptr->target.roleMetadata = std::move(response.roleMetadata);
-            hb_ptr->target.endpoints = std::move(response.endpoints);
-
-            hb_ptr->heartbeatInFlight = false;
-            hb_ptr->unackedHeartbeats = 0;
-            auto now = CachedSteadyClock::now(true);
-            hb_ptr->nextHeartbeat = now + _interval();
-            hb_ptr->lastToken = response.echoToken;
-
-            _heartbeats.erase(it);
-            _heartbeats.push_back(hb_ptr);
-
-            return seastar::make_ready_future<>();
-        })
-        .handle_exception([this, hb_ptr=*it] (auto exc){
-            _heartbeatsLost++;
-            K2LOG_W_EXC(log::cposvr, exc, "caught exception in heartbeat RPC for target {}", *hb_ptr);
-            return seastar::make_ready_future();
+            })
+            .handle_exception([this, hb_ptr=*last_it] (auto exc){
+                K2LOG_W_EXC(log::cposvr, exc, "caught exception in heartbeat RPC for target {}", *hb_ptr);
+                return seastar::make_ready_future();
+            });
         });
-
-        ++it;
     }
 
     _nextHeartbeat.arm(nextArm);
@@ -177,6 +185,7 @@ void HealthMonitor::_registerMetrics() {
         sm::make_counter("down_events", _downEvents, sm::description("Number of down events"), labels),
     });
 }
+
 seastar::future<> HealthMonitor::start() {
     if (seastar::this_shard_id() != 1) {
         // Health monitor only runs on core 1
@@ -231,6 +240,8 @@ seastar::future<> HealthMonitor::start() {
             count = 0;
         }
     }
+
+    _registerMetrics();
 
     _nextHeartbeat.setCallback([this] {
         K2LOG_D(log::cposvr, "Heartbeat timer fired");

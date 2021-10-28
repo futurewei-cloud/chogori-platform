@@ -34,24 +34,21 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/common/Timer.h>
 
 namespace k2 {
-/*
-    auto tcp_ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
-    if (tcp_ep) {
-        partition.endpoints.insert(tcp_ep->url);
-    }
-    auto rdma_ep = k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto);
-    if (rdma_ep) {
-        partition.endpoints.insert(rdma_ep->url);
-    }
-*/
+
 class HeartbeatResponder {
 private:
-    SingleTimer _nextHeartbeat;
+    SingleTimer _nextHeartbeatExpire;
     Duration _HBInterval;      // Will be obtained from the heartbeat requests
     uint32_t _HBDeadThreshold; // Will be obtained from the heartbeat requests
     uint32_t _missedHBs;
+    uint64_t _lastSeq{0};
     bool _running{false};
     bool _up{false};
+
+    // Returned in heartbeat response
+    String _ID;
+    std::vector<String> _eps;
+    String _metadata;
 
     // For metrics
     void _registerMetrics();

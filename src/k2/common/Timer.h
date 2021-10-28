@@ -50,7 +50,9 @@ public:
 
     seastar::future<> stop() {
         _timer.cancel();
-        return std::move(_timerDone);
+        auto stop_fut = std::move(_timerDone);
+        _timerDone = seastar::make_ready_future();
+        return stop_fut;
     };
 
     void arm(Duration when) {
