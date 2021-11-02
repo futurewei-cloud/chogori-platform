@@ -27,20 +27,20 @@ Copyright(c) 2021 Futurewei Cloud
 
 namespace k2 {
 
-void HealthMonitor::addHBControl(RPCServer&& server, TimePoint nextHB) {
+void HealthMonitor::_addHBControl(RPCServer&& server, TimePoint nextHB) {
     auto control = seastar::make_lw_shared<HeartbeatControl>();
     control->target = std::move(server);
     control->endpoint = RPC().getTXEndpoint(control->target.ID);
+    if (!control->endpoint) {
+        K2LOG_W(log::cposvr, "Endpoint is null for URL: {} for role {}", control->target.ID, control->target.role);
+        throw std::runtime_error("Endpoint is null for heartbeat target");
+    }
     control->nextHeartbeat = nextHB;
 
     _heartbeats.push_back(std::move(control));
 }
 
-void HealthMonitor::checkHBs() {
-    if (!_running) {
-        return;
-    }
-
+void HealthMonitor::_checkHBs() {
     auto now = CachedSteadyClock::now(true);
     Duration nextArm = _interval();
 
@@ -58,16 +58,16 @@ void HealthMonitor::checkHBs() {
         // If the last heartbeat has not been responded to yet, count it as missed and potentially the target
         // as dead.
         if ((*it)->heartbeatInFlight) {
-            K2LOG_I(log::cposvr, "missed HB for {}", *it);
+            K2LOG_D(log::cposvr, "missed HB for {}", *it);
             (*it)->unackedHeartbeats++;
             if ((*it)->unackedHeartbeats >= _deadThreshold()) {
                 K2LOG_W(log::cposvr, "HB target is dead: {}", **it);
                 _downEvents++;
-                if ((*it)->target.role == "Nodepool") {
+                if ((*it)->target.role == _nodepoolRole) {
                     _nodepoolDown++;
-                } else if ((*it)->target.role == "TSO") {
+                } else if ((*it)->target.role == _tsoRole) {
                     _TSODown++;
-                } else if ((*it)->target.role == "Persistence") {
+                } else if ((*it)->target.role == _persistRole) {
                     _persistDown++;
                 }
 
@@ -173,7 +173,7 @@ void HealthMonitor::_registerMetrics() {
     _metric_groups.add_group("HealthMonitor", {
         sm::make_gauge("nodepool_total",[this]{ return _nodepoolEndpoints().size();},
                         sm::description("Number nodepool node targets"), labels),
-        sm::make_gauge("TSO_total",[this]{ return _TSOEndpoints().size();},
+        sm::make_gauge("tso_total",[this]{ return _TSOEndpoints().size();},
                         sm::description("Number TSO targets"), labels),
         sm::make_gauge("persistence_total",[this]{ return _persistEndpoints().size();},
                         sm::description("Number persistence targets"), labels),
@@ -202,9 +202,9 @@ seastar::future<> HealthMonitor::start() {
     for(const String& ep_url : _nodepoolEndpoints()) {
         RPCServer server;
         server.ID = ep_url;
-        server.role = "Nodepool";
+        server.role = _nodepoolRole;
 
-        addHBControl(std::move(server), now + delay);
+        _addHBControl(std::move(server), now + delay);
 
         ++count;
         if (count == _batchSize()) {
@@ -216,9 +216,9 @@ seastar::future<> HealthMonitor::start() {
     for(const String& ep_url : _TSOEndpoints()) {
         RPCServer server;
         server.ID = ep_url;
-        server.role = "TSO";
+        server.role = _tsoRole;
 
-        addHBControl(std::move(server), now + delay);
+        _addHBControl(std::move(server), now + delay);
 
         ++count;
         if (count == _batchSize()) {
@@ -230,9 +230,9 @@ seastar::future<> HealthMonitor::start() {
     for(const String& ep_url : _persistEndpoints()) {
         RPCServer server;
         server.ID = ep_url;
-        server.role = "Persistence";
+        server.role = _persistRole;
 
-        addHBControl(std::move(server), now + delay);
+        _addHBControl(std::move(server), now + delay);
 
         ++count;
         if (count == _batchSize()) {
@@ -245,7 +245,7 @@ seastar::future<> HealthMonitor::start() {
 
     _nextHeartbeat.setCallback([this] {
         K2LOG_D(log::cposvr, "Heartbeat timer fired");
-        checkHBs();
+        _checkHBs();
     });
     _nextHeartbeat.arm(0s);
 

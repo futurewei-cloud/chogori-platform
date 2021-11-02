@@ -103,7 +103,7 @@ seastar::future<> HeartbeatResponder::start() {
 
     _nextHeartbeatExpire.setCallback([this] () {
         ++_missedHBs;
-        K2LOG_I(log::cpoclient, "Heartbeat from CPO monitor was missed");
+        K2LOG_D(log::cpoclient, "Heartbeat from CPO monitor was missed");
         if (_missedHBs >= _HBDeadThreshold - 1) {
             K2LOG_W(log::cpoclient, "Too many heartbeats missed, this node is considered down");
             _up = false;

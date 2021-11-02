@@ -22,8 +22,6 @@ persistence_child_pid=$!
 ./build/src/k2/cmd/tso/tso -c2 --tcp_endpoints ${TSO} 13001 --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63003 &
 tso_child_pid=$!
 
-sleep 2
-
 ./build/src/k2/cmd/controlPlaneOracle/cpo_main -c2 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63000 --assignment_timeout=1s --nodepool_endpoints ${EPS} --tso_endpoints ${TSO} --persistence_endpoints ${PERSISTENCE} &
 cpo_child_pid=$!
 

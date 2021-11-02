@@ -36,6 +36,9 @@ Copyright(c) 2021 Futurewei Cloud
 
 namespace k2 {
 
+// Represents the target of a heartbeat request, which can be anything that responds to a
+// Chogori platform RPC request. The data here is informational only and is does not affect the
+// heartbeat monitor operation but can be used by other CPO components or for logging purposes
 class RPCServer {
 public:
     String ID;
@@ -45,6 +48,8 @@ public:
     K2_DEF_FMT(RPCServer, ID, role, roleMetadata, endpoints);
 };
 
+// The data needed for a single target (one-to-one with an RPCServer above) for the heartbeat monitor to
+// operate on
 class HeartbeatControl {
 public:
     TimePoint nextHeartbeat;
@@ -64,10 +69,10 @@ private:
     ConfigVar<std::vector<String>> _nodepoolEndpoints{"nodepool_endpoints"};
     ConfigVar<std::vector<String>> _TSOEndpoints{"tso_endpoints"};
     ConfigVar<std::vector<String>> _persistEndpoints{"k23si_persistence_endpoints"};
-    ConfigVar<Duration> _interval{"heartbeat_interval", 100ms};
+    ConfigVar<Duration> _interval{"heartbeat_interval", 500ms};
     ConfigVar<Duration> _batchWait{"heartbeat_batch_wait", 0s};
-    ConfigVar<uint32_t> _batchSize{"heartbeat_batch_size"};
-    ConfigVar<uint32_t> _deadThreshold{"heartbeat_lost_threshold"};
+    ConfigVar<uint32_t> _batchSize{"heartbeat_batch_size", 100};
+    ConfigVar<uint32_t> _deadThreshold{"heartbeat_lost_threshold", 3};
 
     SingleTimer _nextHeartbeat;
     bool _running{false};
@@ -85,8 +90,12 @@ private:
     uint64_t _heartbeatsLost{0};
     uint64_t _downEvents{0};
 
-    void addHBControl(RPCServer&& server, TimePoint nextHB);
-    void checkHBs();
+    String _nodepoolRole{"Nodepool"};
+    String _tsoRole{"TSO"};
+    String _persistRole{"Persistence"};
+
+    void _addHBControl(RPCServer&& server, TimePoint nextHB);
+    void _checkHBs();
 
 public:
     // required for seastar::distributed interface

@@ -98,7 +98,6 @@ class TestHeartbeatFailure(unittest.TestCase):
                 self.assertTrue(count > 0)
                 print("nodepool_total: ", count)
 
-
-del sys.argv[1:]
+# Needed because unittest will throw an exception if it sees any command line arguments it doesn't understand
 del sys.argv[1:]
 unittest.main()

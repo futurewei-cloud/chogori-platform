@@ -40,7 +40,7 @@ private:
     SingleTimer _nextHeartbeatExpire;
     Duration _HBInterval;      // Will be obtained from the heartbeat requests
     uint32_t _HBDeadThreshold; // Will be obtained from the heartbeat requests
-    uint32_t _missedHBs;
+    uint32_t _missedHBs{0};
     uint64_t _lastSeq{0};
     bool _running{false};
     bool _up{false};
