@@ -35,6 +35,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/cpo/client/CPOClient.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include "Log.h"
+#include "TestUtil.h"
 
 namespace k2{
 using namespace dto;
@@ -84,12 +85,6 @@ class txn_testing {
 public: // application
     txn_testing() { K2LOG_I(log::k23si, "ctor"); }
     ~txn_testing(){ K2LOG_I(log::k23si, "dtor"); }
-
-    static seastar::future<dto::Timestamp> getTimeNow() {
-        // TODO call TSO service with timeout and retry logic
-        auto nsecsSinceEpoch = sys_now_nsec_count();
-        return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 123, 1000));
-    }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
@@ -2891,4 +2886,3 @@ int main(int argc, char** argv){
     app.addApplet<k2::txn_testing>();
     return app.start(argc, argv);
 }
-

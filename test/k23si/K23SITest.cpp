@@ -33,6 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
 #include "Log.h"
+#include "TestUtil.h"
 
 namespace k2 {
 using namespace dto;
@@ -53,12 +54,6 @@ class K23SITest {
 public:  // application lifespan
     K23SITest() { K2LOG_I(log::k23si, "ctor");}
     ~K23SITest(){ K2LOG_I(log::k23si, "dtor");}
-
-    static seastar::future<dto::Timestamp> getTimeNow() {
-        // TODO call TSO service with timeout and retry logic
-        auto nsecsSinceEpoch = sys_now_nsec_count();
-        return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 1550647543, 1000));
-    }
 
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {

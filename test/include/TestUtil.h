@@ -23,7 +23,9 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 #include <k2/common/Common.h>
+#include <k2/common/Chrono.h>
 #include <k2/common/Log.h>
+#include <k2/dto/Timestamp.h>
 #include <pthread.h>
 #include <filesystem>
 #include <iostream>
@@ -37,4 +39,34 @@ std::string generateTempFolderPath(const char* id)
     K2ASSERT(k2::log::testutil, res > 0 && res < (int)sizeof(folder), "unable to construct folder name");
 
     return std::filesystem::temp_directory_path().concat(folder);
+}
+
+class TimestampWorker {
+    public:
+    TimestampWorker() {
+       last = k2::sys_now_nsec_count();
+    }
+
+    uint64_t getTimeNow() {
+        auto current = k2::sys_now_nsec_count();
+        // check if the timestamp is the same as the last one. This could happen and it was reported by some users
+        while (current == last) {
+            // sleep for 1 nanosecond to make sure that we have an increasing timestamp
+            std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+            current = k2::sys_now_nsec_count();
+        }
+        last = current;
+        return last;
+    }
+
+    private:
+    uint64_t last;
+};
+
+static class TimestampWorker defaultTimestampWorker;
+
+seastar::future<k2::dto::Timestamp> getTimeNow() {
+    // TODO call TSO service with timeout and retry logic
+    auto nsecsSinceEpoch = defaultTimestampWorker.getTimeNow();
+    return seastar::make_ready_future<k2::dto::Timestamp>(k2::dto::Timestamp(nsecsSinceEpoch, 123, 1000));
 }
