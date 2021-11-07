@@ -53,4 +53,4 @@ trap finish EXIT
 
 sleep 2
 
-./build/test/k23si/3si_txn_test --cpo_endpoint ${CPO} --k2_endpoints ${EPS} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63100
+./build/test/k23si/3si_txn_test --cpo_endpoint ${CPO} --k2_endpoints ${EPS} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63100 --tso_endpoint ${TSO}
