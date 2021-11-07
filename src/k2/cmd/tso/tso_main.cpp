@@ -21,15 +21,13 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <k2/tso/service/TSOService.h>
 #include <k2/cpo/client/Heartbeat.h>
+#include <k2/tso/service/Service.h>
+#include <k2/appbase/Appbase.h>
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     k2::App app("TSOService");
-
     app.addApplet<k2::HeartbeatResponder>();
-    app.addApplet<k2::TSOService>();
-
+    app.addApplet<k2::tso::TSOService>();
     return app.start(argc, argv);
 }

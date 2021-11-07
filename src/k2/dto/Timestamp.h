@@ -90,7 +90,14 @@ private:
 public:
     K2_PAYLOAD_FIELDS(_tEndTSECount, _tsoId, _tStartDelta);
     K2_DEF_FMT(Timestamp, _tEndTSECount, _tsoId, _tStartDelta);
+    // Zero timestamp
+    static const Timestamp ZERO;
+    static const Timestamp INF;
 };
+inline const Timestamp Timestamp::ZERO = Timestamp(1, 0, 1);
+inline const Timestamp Timestamp::INF = Timestamp(std::numeric_limits<uint64_t>::max(),
+                                              0,
+                                              std::numeric_limits<uint32_t>::max());
 
 } // ns dto
 } // ns k2

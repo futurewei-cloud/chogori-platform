@@ -21,7 +21,7 @@ Copyright(c) 2021 Futurewei Cloud
     SOFTWARE.
 */
 #pragma once
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/dto/K23SI.h>
 
 #include <unordered_set>
@@ -130,7 +130,7 @@ private:
     TxnWIMeta::RWList _rwlist;
 
     // used to call other K2 nodes(e.g. the TRH for a txn)
-    CPOClient _cpo;
+    cpo::CPOClient _cpo;
 
 private:
     // process the given action against the given metadata record

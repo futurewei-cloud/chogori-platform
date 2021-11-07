@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/Persistence.h>
 #include <k2/common/Common.h>
 #include <k2/config/Config.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/transport/BaseTypes.h>
 #include <k2/transport/TXEndpoint.h>
 #include <k2/appbase/AppEssentials.h>
@@ -91,7 +91,7 @@ private:
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
     ConfigDuration _plog_timeout{"plog_timeout", 200ms};
     ConfigVar<String> _cpo_url{"cpo_url", ""};
-    CPOClient _cpo;
+    cpo::CPOClient _cpo;
 };
 
 

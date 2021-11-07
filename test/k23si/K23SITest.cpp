@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/module/k23si/Module.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <seastar/core/sleep.hh>
 
 #include <k2/dto/K23SI.h>
@@ -179,7 +179,7 @@ private:
     seastar::timer<> _testTimer;
     seastar::future<> _testFuture = seastar::make_ready_future();
 
-    CPOClient _cpo_client;
+    cpo::CPOClient _cpo_client;
     dto::PartitionGetter _pgetter;
     dto::Schema _schema;
 

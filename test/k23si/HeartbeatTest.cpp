@@ -23,7 +23,7 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <seastar/core/sleep.hh>
 using namespace k2;
@@ -141,7 +141,7 @@ seastar::future<> runScenario() {
     .then([this] () {
         Deadline<> deadline(50ms);
 
-        K2LOG_I(log::k23si, "start time: {}", Clock::now());
+        K2LOG_I(log::k23si, "start");
         return seastar::do_until(
             [this, d=std::move(deadline)] () { return d.isOver(); },
             [this] () {
@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
         ("tso_endpoint", bpo::value<String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("cpo", bpo::value<String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
-    app.addApplet<TSO_ClientLib>();
+    app.addApplet<tso::TSOClient>();
     app.addApplet<HeartbeatTest>();
     return app.start(argc, argv);
 }

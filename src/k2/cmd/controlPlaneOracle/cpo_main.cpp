@@ -23,8 +23,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/appbase/Appbase.h>
 #include <k2/infrastructure/APIServer.h>
-#include <k2/cpo/service/CPOService.h>
 #include <k2/cpo/service/HealthMonitor.h>
+#include <k2/cpo/service/Service.h>
 
 int main(int argc, char** argv) {
     k2::App app("CPOService");
@@ -40,10 +40,8 @@ int main(int argc, char** argv) {
         ("txn_heartbeat_deadline", bpo::value<k2::ParseableDuration>(), "The interval clients must use to heartbeat active transactions")
         ("assignment_timeout", bpo::value<k2::ParseableDuration>(), "Timeout for K2 partition assignment")
         ("data_dir", bpo::value<k2::String>(), "The directory where we can keep data");
-    app.addApplet<k2::CPOService>([]() mutable -> seastar::distributed<k2::CPOService>& {
-        return k2::AppBase().getDist<k2::CPOService>();
-    });
     app.addApplet<k2::HealthMonitor>();
+    app.addApplet<k2::cpo::CPOService>();
     app.addApplet<k2::APIServer>();
     return app.start(argc, argv);
 }

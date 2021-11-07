@@ -23,7 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <seastar/core/sleep.hh>
 #include "Log.h"
@@ -778,7 +778,7 @@ int main(int argc, char** argv) {
         ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")
         ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
-    app.addApplet<k2::TSO_ClientLib>();
+    app.addApplet<k2::tso::TSOClient>();
     app.addApplet<QueryTest>();
     return app.start(argc, argv);
 }

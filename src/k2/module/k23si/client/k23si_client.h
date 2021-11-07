@@ -28,13 +28,13 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Common.h>
 #include <k2/common/Log.h>
 #include <k2/common/Timer.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/transport/Status.h>
-#include <k2/tso/client/tso_clientlib.h>
+#include <k2/tso/client/Client.h>
 
 #include <random>
 #include <seastar/core/future-util.hh>
@@ -129,7 +129,7 @@ class K23SIClient {
 public:
     K23SIClient(const K23SIClientConfig &);
 private:
-    TSO_ClientLib& _tsoClient;
+    tso::TSOClient& _tsoClient;
 public:
 
     seastar::future<> start();
@@ -159,7 +159,7 @@ public:
     uint64_t abort_too_old{0};
     uint64_t heartbeats{0};
 
-    CPOClient cpo_client;
+    cpo::CPOClient cpo_client;
     // collection name -> (schema name -> (schema version -> schemaPtr))
     std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, std::shared_ptr<dto::Schema>>>> schemas;
 
@@ -224,7 +224,7 @@ public:
     K2TxnHandle() = default;
     K2TxnHandle(K2TxnHandle&& o) noexcept = default;
     K2TxnHandle& operator=(K2TxnHandle&& o) noexcept = default;
-    K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept;
+    K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, cpo::CPOClient* cpo, K23SIClient* client, Duration d) noexcept;
 
     // The dto::Key oriented interface for read. The key should be one obtained from SKVRecord::getKey()
     // and not directly created by the user
@@ -406,7 +406,7 @@ public:
 private:
     dto::K23SI_MTR _mtr;
     K2TxnOptions _options;
-    CPOClient* _cpo_client = nullptr;
+    cpo::CPOClient* _cpo_client = nullptr;
     K23SIClient* _client = nullptr;
     bool _valid = false; // If false, then was not create by beginTxn() or end() has already been called
     bool _failed = false;

@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, CPOClient* cpo, K23SIClient* client, Duration d, TimePoint start_time) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _valid(true), _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(start_time) {
+K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, cpo::CPOClient* cpo, K23SIClient* client, Duration d) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _valid(true), _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(Clock::now()) {
     K2LOG_D(log::skvclient, "ctor, mtr={}", _mtr);
 }
 
@@ -290,7 +290,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
 }
 
 K23SIClient::K23SIClient(const K23SIClientConfig &) :
-        _tsoClient(AppBase().getDist<TSO_ClientLib>().local()) {
+        _tsoClient(AppBase().getDist<tso::TSOClient>().local()) {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
     _metric_groups.add_group("K23SI_client", {
@@ -338,16 +338,15 @@ seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& me
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
-    auto start_time = Clock::now();
-    return _tsoClient.getTimestampFromTSO(start_time)
-    .then([this, start_time, options] (auto&& timestamp) {
+    return _tsoClient.getTimestamp()
+    .then([this, options] (auto&& ts) {
         dto::K23SI_MTR mtr{
-            .timestamp=std::move(timestamp),
+            .timestamp=std::move(ts),
             .priority=options.priority
         };
 
         total_txns++;
-        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), std::move(options), &cpo_client, this, txn_end_deadline(), start_time));
+        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), std::move(options), &cpo_client, this, txn_end_deadline()));
     });
 }
 
@@ -363,7 +362,7 @@ seastar::future<Status> K23SIClient::refreshSchemaCache(const String& collection
         auto& [status, collSchemas] = response;
 
         if (!status.is2xxOK()) {
-            K2LOG_W(log::cpoclient, "Failed to refresh schemas from CPO: status={}", status);
+            K2LOG_W(log::skvclient, "Failed to refresh schemas from CPO: status={}", status);
             return status;
         }
 

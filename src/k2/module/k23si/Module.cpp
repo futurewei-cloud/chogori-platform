@@ -180,6 +180,7 @@ Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest&
 // ********************** Validators
 
 K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
+    _tsoClient(AppBase().getDist<tso::TSOClient>().local()),
     _cmeta(std::move(cmeta)),
     _partition(std::move(partition), _cmeta.hashScheme) {
     K2LOG_I(log::skvsvr, "ctor for cname={}, part={}", _cmeta.name, _partition);
@@ -379,7 +380,7 @@ seastar::future<> K23SIPartitionModule::start() {
     }
 
     // todo call TSO to get a timestamp
-    return getTimeNow()
+    return _tsoClient.getTimestamp()
         .then([this](dto::Timestamp&& watermark) {
             K2LOG_D(log::skvsvr, "Cache watermark: {}, period={}", watermark, _cmeta.retentionPeriod);
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;
@@ -389,7 +390,7 @@ seastar::future<> K23SIPartitionModule::start() {
 
             _retentionUpdateTimer.setCallback([this] {
                 K2LOG_D(log::skvsvr, "Partition {}, refreshing retention timestamp", _partition);
-                return getTimeNow()
+                return _tsoClient.getTimestamp()
                     .then([this](dto::Timestamp&& ts) {
                         // set the retention timestamp (the time of the oldest entry we should keep)
                         _retentionTimestamp = ts - _cmeta.retentionPeriod;
@@ -1412,6 +1413,7 @@ Status K23SIPartitionModule::_finalizeTxnWIs(dto::Timestamp txnts, dto::EndActio
         K2ASSERT(log::skvsvr, versions.WI->data.timestamp == txnts,
                  "TWIM {} has registered WI for key{}, but WI is from different transaction {}",
                  *twim, key, versions.WI->data.timestamp);
+        _finalizedWI++;
 
         switch (action) {
             case dto::EndAction::Abort: {
@@ -1435,7 +1437,6 @@ Status K23SIPartitionModule::_finalizeTxnWIs(dto::Timestamp txnts, dto::EndActio
         }
     }
 
-    _finalizedWI++;
     return dto::K23SIStatus::OK;
 }
 

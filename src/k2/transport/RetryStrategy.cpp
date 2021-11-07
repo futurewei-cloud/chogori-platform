@@ -25,20 +25,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-ExponentialBackoffStrategy::ExponentialBackoffStrategy() : _retries(3),
-                                                           _try(0),
-                                                           _rate(5),
-                                                           _currentTimeout(1us),
-                                                           _success(false),
-                                                           _used(false) {
-    K2LOG_D(log::tx, "ctor retries {}, rate {}, startTimeout {}ms", _retries, _rate, k2::usec(_currentTimeout).count());
-}
-
-// destructor
-ExponentialBackoffStrategy::~ExponentialBackoffStrategy() {
-    K2LOG_D(log::tx, "dtor");
-}
-
 // Set the desired number of retries
 ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRetries(int retries) {
     K2LOG_D(log::tx, "retries: {}", retries);

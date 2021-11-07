@@ -32,7 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/module/k23si/Module.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include "Log.h"
 

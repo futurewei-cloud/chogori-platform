@@ -29,7 +29,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/dto/FieldTypes.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
-#include <k2/tso/client/tso_clientlib.h>
+#include <k2/tso/client/Client.h>
 #include <k2/common/Timer.h>
 #include <seastar/core/sleep.hh>
 
@@ -449,7 +449,7 @@ int main(int argc, char** argv) {;
         ("max_fields_update",bpo::value<uint32_t>()->default_value(1), "Maximum number of fields to update")
         ("ops_per_txn",bpo::value<uint64_t>()->default_value(1), "The number of operations per transaction");
 
-    app.addApplet<k2::TSO_ClientLib>();
+    app.addApplet<k2::tso::TSOClient>();
     app.addApplet<Client>();
     return app.start(argc, argv);
 }

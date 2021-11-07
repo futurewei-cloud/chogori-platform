@@ -21,19 +21,19 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include "CPOClient.h"
+#include "Client.h"
 
 #include <k2/dto/FieldTypes.h>
 
-namespace k2 {
+namespace k2::cpo {
 
 CPOClient::CPOClient() {
     K2LOG_D(log::cpoclient, "ctor");
 }
 
-void CPOClient::init(String cpo_url) {
-    cpo = RPC().getTXEndpoint(cpo_url);
-    K2ASSERT(log::cpoclient, cpo, "unable to get endpoint for url {}", cpo_url);
+void CPOClient::init(String cpoURL) {
+    cpo = RPC().getTXEndpoint(cpoURL);
+    K2ASSERT(log::cpoclient, cpo, "unable to get endpoint for url {}", cpoURL);
 }
 
 CPOClient::~CPOClient() {

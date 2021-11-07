@@ -42,9 +42,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/LogStream.h>
 
-namespace k2 {
+namespace k2::cpo {
 namespace log {
-inline thread_local k2::logging::Logger cpoclient("k2::cpo_client");
+inline thread_local logging::Logger cpoclient("k2::cpo_client");
 }
 
 class CPOClient {
@@ -52,7 +52,7 @@ public:
     CPOClient();
     ~CPOClient();
 
-    void init(String cpo_url);
+    void init(String cpoURL);
 
     // Creates a collection and waits for it to be assigned. If the collection already exisits,
     // the future is still completed successfully

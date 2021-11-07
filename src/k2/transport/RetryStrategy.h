@@ -35,25 +35,18 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Log.h"
 
 namespace k2 {
-// This file defines a few retry strategies that can be used in communication
+// this is returned in an exceptional future if you attempt to call Do() more than once
+class DuplicateExecutionException : public std::exception {};
+
+// this can be returned by retryable code to indicate that no more retries should be performed
+class StopRetryException: public std::exception{};
 
 // an Exponential backoff strategy, with parameters retries, rate, and startTimeout.
-// when Do() is invoked with some function, the function is repeatedly called with
-// the remaining retries and the timeoutValue it should use.
-// the timeoutvalue is calculated based on exponential increase:
-// timeoutValue = startTimeout * ((rate)**retryIndex)
+// When Do() is invoked with some function, the function is repeatedly called with the remaining retries and the
+// timeoutValue it should use. The timeoutvalue is calculated based on exponential increase.
+// The callback is invoked until it returns a successful future. If it returns an exceptional future, we keep retrying
 class ExponentialBackoffStrategy {
-public: // types
-    // this is returned in an exceptional future if you attempt to call Do() more than once
-    class DuplicateExecutionException : public std::exception {};
-
-public: // lifecycle
-    // create a new ExponentialBackoffStrategy
-    ExponentialBackoffStrategy();
-
-    // destructor
-    ~ExponentialBackoffStrategy();
-
+public:
     // Set the desired number of retries
     ExponentialBackoffStrategy& withRetries(int retries);
 
@@ -88,6 +81,11 @@ public: // API
                         this->_try = this->_retries; // ff to the last retry
                         return seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException());
                     }).
+                    handle_exception_type([this](StopRetryException&) {
+                        K2LOG_D(log::tx, "Stopping retry due to explicit request to stop retrying");
+                        this->_try = this->_retries; // ff to the last retry
+                        return seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException());
+                    }).
                     then_wrapped([this, resultPtr](auto&& fut) {
                         // the func future is done.
                         // if we exited with success, then we shouldn't run anymore
@@ -106,17 +104,17 @@ public: // API
 
 private: // fields
     // how many times we should retry
-    int _retries;
+    int _retries{3};
     // which try we're on
-    int _try;
+    int _try{0};
     // the exponential growth rate
-    int _rate;
+    int _rate{5};
     // the value of the current timeout
-    Duration _currentTimeout;
+    Duration _currentTimeout{1us};
     // indicate if the latest round has succeeded (so that we can break the retry loop)
-    bool _success;
+    bool _success{false};
     // indicate if this strategy has been used already so that we can reject duplicate attempts to use it
-    bool _used;
+    bool _used{false};
 }; // ExponentialBackoffStrategy
 
 } // k2

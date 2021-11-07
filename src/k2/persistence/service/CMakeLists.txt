@@ -8,7 +8,7 @@ set_target_properties(persistence_service PROPERTIES
     SOVERSION 1
 )
 
-target_link_libraries (persistence_service PRIVATE common transport Seastar::seastar )
+target_link_libraries (persistence_service PRIVATE common transport dto Seastar::seastar )
 
 # export the library in the common k2Targets
 install(TARGETS persistence_service EXPORT k2Targets DESTINATION lib/k2)

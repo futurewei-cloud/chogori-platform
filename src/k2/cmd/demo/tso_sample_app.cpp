@@ -31,8 +31,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
 
-#include <k2/tso/client/tso_clientlib.h>
-#include <k2/tso/service/TSOService.h>
+#include <k2/tso/client/Client.h>
+#include <k2/tso/service/Service.h>
 
 using namespace seastar;
 
@@ -42,28 +42,7 @@ inline thread_local k2::logging::Logger tsoapp("k2::tso_app");
 }
 using namespace dto;
 
-// debugging print, time point (nano accurate) to a stream
-// TODO we can use https://en.cppreference.com/w/cpp/chrono/system_clock/to_stream here, but it is a C++20 feature
-inline void TimePointToStream(int64_t nanosec, char buffer[100])
-{
-    auto microsec = nanosec/1000;
-    nanosec -= microsec*1000;
-    auto millis = microsec/1000;
-    microsec -= millis*1000;
-    auto secs = millis/1000;
-    millis -= secs*1000;
-    auto mins = (secs/60);
-    secs -= (mins*60);
-    auto hours = (mins/60);
-    mins -= (hours*60);
-    auto days = (hours/24);
-    hours -= (days*24);
-
-    std::snprintf(buffer, 100, "%04ld:%02ld:%02ld:%02ld.%03ld.%03ld.%03ld", days, hours, mins, secs, millis, microsec, nanosec);
-}
-
-class sampleTSOApp
-{
+class sampleTSOApp {
 public:
     sampleTSOApp(){};
 
@@ -72,46 +51,25 @@ public:
         return seastar::make_ready_future<>();
     };
 
-    void start()
-    {
+    seastar::future<> start() {
         K2LOG_I(log::tsoapp, "start");
-        (void)seastar::sleep(2s)
-        .then([this]
-        {
-            K2LOG_I(log::tsoapp, "Getting 2 timestamps async in loop at least 100us apart from each other");
-
-            auto curSteadyTime = Clock::now();
-            char timeBuffer[100];
-            TimePointToStream(nsec_count(curSteadyTime), timeBuffer);
-            K2LOG_I(log::tsoapp, "Issuing first 100us apart TS at local request time: {}", timeBuffer);
-            (void) AppBase().getDist<k2::TSO_ClientLib>().local().getTimestampFromTSO(curSteadyTime)
-                .then([this](auto&& timestamp)
-                {
-                    char timeBufferS[100];
-                    char timeBufferE[100];
-                    TimePointToStream(timestamp.tStartTSECount(), timeBufferS);
-                    TimePointToStream(timestamp.tEndTSECount(), timeBufferE);
-                    K2LOG_I(log::tsoapp, "got first 100us apart TS value:[{}:{}], TSOId:{}", timeBufferS, timeBufferE, timestamp.tsoId());
-                    (void) seastar::sleep(100us)
-                    .then([this]
-                    {
-                        TimePoint curSteadyTime = Clock::now();
-                        char timeBuffer[100];
-                        TimePointToStream(nsec_count(curSteadyTime), timeBuffer);
-                        K2LOG_I(log::tsoapp, "Issuing second 100us apart TS at local request time: {}", timeBuffer);
-                        (void) AppBase().getDist<k2::TSO_ClientLib>().local().getTimestampFromTSO(curSteadyTime)
-                        .then([](auto&& ts)
-                        {
-                            char timeBufferS[100];
-                            char timeBufferE[100];
-                            TimePointToStream(ts.tStartTSECount(), timeBufferS);
-                            TimePointToStream(ts.tEndTSECount(), timeBufferE);
-                            K2LOG_I(log::tsoapp, "got second 100us apart TS value:[{}:{}] TSOId:{}", timeBufferS,timeBufferE, ts.tsoId());
-                        });
-                    });
-                });
+        return seastar::sleep(2s)
+        .then([this] {
+            K2LOG_I(log::tsoapp, "Getting new timestamp");
+            return AppBase().getDist<k2::tso::TSOClient>().local().getTimestamp();
+        })
+        .then([this](auto&& ts) {
+            K2LOG_I(log::tsoapp, "Received response with timestamp{}", ts);
+            return seastar::sleep(100us);
+        })
+        .then([this] {
+            K2LOG_I(log::tsoapp, "getting second timestamp");
+             return AppBase().getDist<k2::tso::TSOClient>().local().getTimestamp();
+        })
+        .then([](auto&& ts) {
+            K2LOG_I(log::tsoapp, "Received second response with timestamp{}", ts);
         });
-    };
+    }
 };
 }
 
@@ -121,8 +79,8 @@ int main(int argc, char **argv)
     app.addOptions()
     ("tso_endpoint", bpo::value<k2::String>()->default_value("tcp+k2rpc://127.0.0.1:9000"), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
 
-    app.addApplet<k2::TSO_ClientLib>();
-    app.addApplet<k2::TSOService>();
+    app.addApplet<k2::tso::TSOClient>();
+    app.addApplet<k2::tso::TSOService>();
     app.addApplet<k2::sampleTSOApp>();
 
     return app.start(argc, argv);
