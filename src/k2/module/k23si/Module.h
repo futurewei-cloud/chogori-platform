@@ -282,7 +282,7 @@ private:  // members
 
     cpo::CPOClient _cpo;
 
-    sm::metric_groups _metric_groups;
+    sm::metric_groups _metricGroups;
 
     //metrics
     uint64_t _totalWI{0}; // for number of active WIs

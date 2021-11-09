@@ -773,7 +773,7 @@ seastar::future<> runScenario08() {
 };  // class QueryTest
 
 int main(int argc, char** argv) {
-    k2::App app("SKVClientTest");
+    k2::App app("QueryTest");
     app.addOptions()
         ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")
         ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")

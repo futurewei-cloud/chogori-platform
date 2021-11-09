@@ -84,14 +84,13 @@ enum class ErrorCaseOpt: uint8_t {
 class txn_testing {
 
 public: // application
-    txn_testing() :
-        _tsoClient(AppBase().getDist<tso::TSOClient>().local()) {
+    txn_testing() {
         K2LOG_I(log::k23si, "ctor");
     }
     ~txn_testing(){ K2LOG_I(log::k23si, "dtor"); }
 
     seastar::future<dto::Timestamp> getTimeNow() {
-        return _tsoClient.getTimestamp();
+        return AppBase().getDist<tso::TSOClient>().local().getTimestamp();
     }
 
     // required for seastar::distributed interface
@@ -146,7 +145,6 @@ public: // application
 
 
 private:
-    k2::tso::TSOClient& _tsoClient;
     ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
     ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
 

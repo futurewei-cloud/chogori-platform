@@ -29,5 +29,8 @@ int main(int argc, char** argv) {
     k2::App app("TSOService");
     app.addApplet<k2::HeartbeatResponder>();
     app.addApplet<k2::tso::TSOService>();
+
+    app.addOptions()("tso.clock_poller_cpu", bpo::value<int16_t>(), "CPU to which to pin the GPS clock polling thread");
+    app.addOptions()("tso.error_bound", bpo::value<k2::ParseableDuration>(), "the error bound for this instance");
     return app.start(argc, argv);
 }

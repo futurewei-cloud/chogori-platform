@@ -5,6 +5,9 @@ set -e
 CPODIR=/tmp/___cpo_integ_test
 rm -rf ${CPODIR}
 EPS="tcp+k2rpc://0.0.0.0:10000"
+NUMCORES=`nproc`
+# core on which to run the TSO poller thread. Pick 4 if we have that many, or the highest-available otherwise
+TSO_POLLER_CORE=$(( 5 > $NUMCORES ? $NUMCORES-1 : 4 ))
 
 PERSISTENCE=tcp+k2rpc://0.0.0.0:12001
 CPO=tcp+k2rpc://0.0.0.0:9000
@@ -12,20 +15,20 @@ TSO=tcp+k2rpc://0.0.0.0:13000
 HTTP=tcp+k2rpc://0.0.0.0:20000
 COMMON_ARGS="--enable_tx_checksum true --thread-affinity false"
 
-# start CPO on 1 cores
+# start CPO
 ./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} 9001 --data_dir ${CPODIR} ${COMMON_ARGS}  --prometheus_port 63000 --assignment_timeout=1s --reactor-backend epoll --heartbeat_deadline=1s &
 cpo_child_pid=$!
 
-# start nodepool on 1 cores
+# start nodepool
 ./build/src/k2/cmd/nodepool/nodepool -c1 --tcp_endpoints ${EPS} --k23si_persistence_endpoint ${PERSISTENCE} ${COMMON_ARGS} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --memory=1G --partition_request_timeout=6s &
 nodepool_child_pid=$!
 
-# start persistence on 1 cores
+# start persistence
 ./build/src/k2/cmd/persistence/persistence -c1 --tcp_endpoints ${PERSISTENCE} ${COMMON_ARGS} --prometheus_port 63002 &
 persistence_child_pid=$!
 
-# start tso on 2 cores
-./build/src/k2/cmd/tso/tso -c2 --tcp_endpoints ${TSO} 13001 ${COMMON_ARGS} --prometheus_port 63003 &
+# start tso
+./build/src/k2/cmd/tso/tso -c1 --tcp_endpoints ${TSO} ${COMMON_ARGS} --prometheus_port 63003 --tso.error_bound=100us --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
 sleep 3
@@ -65,4 +68,4 @@ trap finish EXIT
 sleep 5
 
 echo ">>> Starting http test ..."
-./test/integration/http_test.py --http http://127.0.0.1:30000
+./test/integration/test_http.py --http http://127.0.0.1:30000

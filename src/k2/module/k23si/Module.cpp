@@ -341,11 +341,11 @@ void K23SIPartitionModule::_unregisterVerbs() {
 }
 
 void K23SIPartitionModule::_registerMetrics() {
-    _metric_groups.clear();
+    _metricGroups.clear();
     std::vector<sm::label_instance> labels;
     labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
 
-    _metric_groups.add_group("Nodepool", {
+    _metricGroups.add_group("Nodepool", {
         sm::make_gauge("indexer_keys",[this]{ return _indexer.size();},
                         sm::description("Number of keys in indexer"), labels),
         sm::make_counter("total_WI", _totalWI, sm::description("Number of WIs created"), labels),

@@ -22,9 +22,9 @@ Copyright(c) 2021 Futurewei Cloud
 */
 
 #include "Clock.h"
+#include "Log.h"
 
-namespace k2 {
-
+namespace k2::tso {
 bool GPSTimePoint::operator==(const GPSTimePoint& o) const {
     return steady == o.steady && real == o.real && error == o.error;
 }
@@ -36,8 +36,10 @@ GPSTimePoint GPSClock::now() {
         std::lock_guard lock{_mutex};
         tai = _lastGPSts;
     }
-
-    uint64_t totalError = (uint64_t)tai.error + getDriftForDuration(_steadyNow() - tai.steady);
+    const uint64_t elapsed = _steadyNow() - tai.steady;
+    const uint64_t drift = getDriftForDuration(elapsed);
+    const uint64_t totalError = (uint64_t)tai.error + drift;
+    K2LOG_V(log::tsoserver, "gps::now error {}, GPN(real={}, steady={}, error={}), drift={}, elapsed={}", totalError, tai.real, tai.steady, tai.error, drift, elapsed);
     // Do not change the real/steady parts if the timestamp is too old (real hasn't been updated in a while)
     // Instead, we increase the total error incurred by scaling out based on drift.
     // This way it is up to the caller to decide if the error is acceptable or not.
@@ -84,32 +86,37 @@ void GPSClock::poll() {
     auto realChange = nowReal - _lastGPSts.real;
     auto steadyChange = nowSteady - _lastGPSts.steady;
     auto drift = getDriftForDuration(steadyChange);
-
+    if (drift > 1000 && _lastGPSts.steady > 0) {
+        K2LOG_W(log::tsoserver, "Drift too large in poll realc={}, stc={}, drift={}", realChange, steadyChange, drift);
+    }
     // apply the new TS in memory-coherent way
-    std::lock_guard lock{_mutex};
-    if (drift == INF_DRIFT) {
-        // force infinite error if we were signalled that the interval was too large for drift computation
-        _lastGPSts = _GPSNanos(nowSteady, nowReal, INF_DRIFT);
-    } else {
+    uint32_t totalError = INF_DRIFT;
+    if (drift != INF_DRIFT) {
         // the drift is uint32 and is less than uint32::max, which means steadyChange is also less than uint32::max
-        // adding/subtracting the two might slightly overflow 32bits so make sure we catch that.
-        // Also, drift is guaranteed to be < elapsed time by the helper function
-        uint32_t expectedHigh = (uint32_t)std::min((uint64_t)INF_DRIFT, steadyChange + drift);
+        // adding the two might slightly overflow 32bits so make sure we catch that.
+        // subtracting the two is fine since change > drift since
+        // drift is guaranteed to be < elapsed time by the helper function
+        // promote the change to 64 bit to make sure no overflow can happen with addition
+        uint32_t expectedHigh = (uint32_t)std::min((uint64_t)INF_DRIFT, (uint64_t)steadyChange + drift);
         uint32_t expectedLow = (uint32_t)(steadyChange - drift);
 
         // figure out how far the real change is from the expected change. The larger the changes, the larger
         // the error is going to be.
-        uint64_t errorFromExpectedHigh = BASE_ERROR_NANOS + realChange > expectedHigh ? realChange - expectedHigh : expectedHigh - realChange;
-        uint64_t errorFromExpectedLow = BASE_ERROR_NANOS + realChange > expectedLow ? realChange - expectedLow : expectedLow - realChange;
+        uint64_t errorFromExpectedHigh = BASE_ERROR_NANOS + (realChange > expectedHigh ? realChange - expectedHigh : expectedHigh - realChange);
+        uint64_t errorFromExpectedLow = BASE_ERROR_NANOS + (realChange > expectedLow ? realChange - expectedLow : expectedLow - realChange);
         auto largerError = std::max(errorFromExpectedHigh, errorFromExpectedLow);
-        uint32_t totalError = (uint32_t)std::min((uint64_t)INF_DRIFT, largerError);
-        _lastGPSts = _GPSNanos(nowSteady, nowReal, totalError);
+        totalError = (uint32_t)std::min((uint64_t)INF_DRIFT, largerError);
+        K2LOG_V(log::tsoserver, "poll stc={}, rc={}, drift={}, nowS={}, nowR={}, err={}, erH={}, erL={}, expH={}, expL={}", steadyChange, realChange, drift, nowSteady, nowReal, totalError, errorFromExpectedHigh, errorFromExpectedLow, expectedHigh, expectedLow);
     }
+
+    std::lock_guard lock{_mutex};
+    _lastGPSts = _GPSNanos(nowSteady, nowReal, totalError);
 }
 
 void GPSClock::initialize() {
     // in a happy-case situation, we should be able to poll the steady and
     // real values within a base error of each other
+    _lastGPSts.error = INF_DRIFT;
     auto start = Clock::now();
     while (_lastGPSts.error > 2 * BASE_ERROR_NANOS) {
         poll();
@@ -131,7 +138,7 @@ uint64_t GPSClock::_gpsNow() {
     // 1. Timestamp from atomic or GPS source is somehow written to a volatile location in memory
     // 2. We can assume the drift in the GPS source is negligible, and so can assume the error is
     //    a small constant (BASE_ERROR_NANOS)
-    // 3. The value gets updated with some cadence (e.g. 1-5us or so)
+    // 3. The value gets updated with some cadence (e.g. once every 1-5us or so)
 
     // simulate the value changing only once per cadence period to avoid modifying the timestamp too often
     uint64_t constexpr updateCadence = BASE_ERROR_NANOS / 2;

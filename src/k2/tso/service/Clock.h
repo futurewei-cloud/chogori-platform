@@ -26,7 +26,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/common/Chrono.h>
 #include <k2/common/LFMutex.h>
 
-namespace k2 {
+namespace k2::tso {
 // Standardize on using GPS timestamps due to no other reason other than the epoch is a nice value
 // epoch = 01-01-1980:00:00:00.000000000, and GPS clocks are the most-likely deployment scenario for
 // cloud infrastructure. They are easily convertable to other GNSS or atomic standards
@@ -65,10 +65,21 @@ class GPSClock {
     // the base error tolerance for the gps device
     // TODO this should come based on particular manufacturer guarantees and calibrated values
     static constexpr inline uint32_t BASE_ERROR_NANOS = 1'000;
-    // sentinel value to indicate infinite drift. If this value is returned, the drift should
+    // sentinel value to indicate infinite drift in nanoseconds. If this value is returned, the drift should
     // be considered infinite
     static constexpr inline uint32_t INF_DRIFT = std::numeric_limits<uint32_t>::max();
 
+    // TODO, this should be benchmarked and confirmed for the particular motherboard crystal.
+    // Standard drift  is ~30 PPM on desktop hardware (or 30us per second). We could achieve better
+    // with server-grade components with better quality crystals (e.g. TCXO)
+    // Some published numbers
+    //
+    // 2021 IBM power8/9 servers with 3sec/day which is ~35PPM
+    //   https://www.ibm.com/support/pages/time-drift-power8-and-power9-servers
+    //
+    // TCXO-based oscillators can achieve 1us/day (1.2PPM)
+    //  - https://www.gsc-europa.eu/sites/default/files/sites/all/files/Report_on_User_Needs_and_Requirements_Timing_Synchronisation.pdf
+    // - https://www.microsemi.com/product-directory/high-reliability-rugged-oscillators/4848-tcxo
     static constexpr inline uint32_t DRIFT = 30;  // drift rate as parts-per DRIFT_PERIOD
     static constexpr inline uint32_t DRIFT_PERIOD = 1'000'000;
 
@@ -93,29 +104,33 @@ private:
         uint32_t error{0};
     };
     // the last time we observed a new atomic clock value
+    // the following, combined with the spin-lock guard should guarantee coherency across threads on X86/64
+    // For other archs, don't compile for now, but we should use an std::atomic instead
+#ifdef __x86_64__
     static inline volatile _GPSNanos _lastGPSts;
-
     // to prevent r-w races when modifying _lastGPSts
     static inline LFMutex _mutex;
+#endif
+
 };
 }  // namespace k2
 
 // Formatting utilities for atomic timestamps
 template <>
-struct fmt::formatter<k2::GPSTimePoint> {
+struct fmt::formatter<k2::tso::GPSTimePoint> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
         return ctx.begin();
     }
 
     template <typename FormatContext>
-    auto format(k2::GPSTimePoint const& ts, FormatContext& ctx) {
+    auto format(k2::tso::GPSTimePoint const& ts, FormatContext& ctx) {
         return fmt::format_to(ctx.out(), "steady:{}, real:{}, error:{}", ts.steady, ts.real, ts.error);
     }
 };
 
 namespace std {
-inline void to_json(nlohmann::json& j, const k2::GPSTimePoint& tp) {
+inline void to_json(nlohmann::json& j, const k2::tso::GPSTimePoint& tp) {
     j = nlohmann::json{
         {"steady", fmt::format("{}", tp.steady)},
         {"real", fmt::format("{}", tp.real)},
@@ -123,13 +138,13 @@ inline void to_json(nlohmann::json& j, const k2::GPSTimePoint& tp) {
     };
 }
 
-inline void from_json(const nlohmann::json& j, k2::GPSTimePoint& tp) {
+inline void from_json(const nlohmann::json& j, k2::tso::GPSTimePoint& tp) {
     tp.steady = j[0].get<k2::TimePoint>();
     tp.real = j[1].get<k2::TimePoint>();
     tp.error = j[2].get<k2::Duration>();
 }
 
-inline ostream& operator<<(ostream& os, const k2::GPSTimePoint& o) {
+inline ostream& operator<<(ostream& os, const k2::tso::GPSTimePoint& o) {
     fmt::print(os, "{}", o);
     return os;
 }

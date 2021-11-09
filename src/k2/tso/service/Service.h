@@ -22,10 +22,11 @@ Copyright(c) 2021 Futurewei Cloud
 */
 #pragma once
 #include <k2/dto/TSO.h>
-#include <k2/transport/RPCDispatcher.h>  // for RPC
 
 #include "Clock.h"
 #include "Log.h"
+#include <thread>
+#include <k2/appbase/AppEssentials.h>
 
 namespace k2::tso {
 
@@ -57,8 +58,7 @@ private: // methods
     // Register with the CPO as an authorized TSO server
     seastar::future<> _cpoRegister();
 
-    // gets the latest GPS clock timestamp and sets up the
-    // offset needed to produce the next timestamp in sequence
+    // gets the latest GPS clock timestamp
     void _getGPSNow();
 
 private: // members
@@ -68,8 +68,8 @@ private: // members
     // keep track of the last GPS timestamp we saw so that we can guarantee strictly-increasing sequence
     GPSTimePoint _lastGPSTime;
 
-    // keep track of the current offset we need to apply to a GPS timestamp if it hasn't changed
-    uint64_t _currentSequenceOffset{0};
+    // the last endCount we generated from this service
+    uint64_t _lastGeneratedEndCount{0};
 
     // the URLs for all workers at this service. Each worker can have multiple URLs (e.g. TCP and RDMA)
     std::vector<std::vector<k2::String>> _workersURLs;
@@ -80,11 +80,24 @@ private: // members
     // which makes it an instance not authorized to produce timestamps in the cluster.
     uint64_t _tsoId{0};
 
+    // to poll the gps clock
+    std::thread _clockPoller;
+    // flag to signal the poller to stop
+    std::atomic_flag _keepRunningPoller = ATOMIC_FLAG_INIT;
+
+    // metrics
+    sm::metric_groups _metricGroups;
+    k2::ExponentialHistogram _timestampErrors;
+
 private: // config
     // The error bound for uncertainty for timestamps
     // The minimum transaction latency (see K23SI design doc) is derived from this number; essentially
     // MTL = max( {TSO.uncertaintyWindow | for all TSOs} )
-    ConfigDuration _errorBound{"tso.error_bound", 10us};
+    // Returned timestamps are guaranteed to contain the true time in the window [endCount - error_bound, endCount]
+    ConfigDuration _errorBound{"tso.error_bound", 20us};
+
+    // pick CPU on which to pin clock poller (default(-1) is free-floating)
+    ConfigVar<int16_t> _clockPollerCPU{"tso.clock_poller_cpu", -1};
 };
 
 }

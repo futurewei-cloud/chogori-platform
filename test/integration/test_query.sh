@@ -5,21 +5,24 @@ set -e
 CPODIR=/tmp/___cpo_integ_test
 rm -rf ${CPODIR}
 EPS="tcp+k2rpc://0.0.0.0:10000 tcp+k2rpc://0.0.0.0:10001"
+NUMCORES=`nproc`
+# core on which to run the TSO poller thread. Pick 4 if we have that many, or the highest-available otherwise
+TSO_POLLER_CORE=$(( 5 > $NUMCORES ? $NUMCORES-1 : 4 ))
 
 PERSISTENCE=tcp+k2rpc://0.0.0.0:12001
 CPO=tcp+k2rpc://0.0.0.0:9000
 TSO=tcp+k2rpc://0.0.0.0:13000
 
-# start nodepool on 2 cores
+# start nodepool
 ./build/src/k2/cmd/nodepool/nodepool -c2 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --k23si_query_pagination_limit 2 &
 nodepool_child_pid=$!
 
-# start persistence on 1 cores
+# start persistence
 ./build/src/k2/cmd/persistence/persistence -c1 --tcp_endpoints ${PERSISTENCE} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63002 &
 persistence_child_pid=$!
 
-# start tso on 2 cores
-./build/src/k2/cmd/tso/tso -c2 --tcp_endpoints ${TSO} 13001 --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63003 &
+# start tso
+./build/src/k2/cmd/tso/tso -c1 --tcp_endpoints ${TSO} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63003 --tso.error_bound=100us --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
 ./build/src/k2/cmd/controlPlaneOracle/cpo_main -c2 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63000 --assignment_timeout=1s --nodepool_endpoints ${EPS} --tso_endpoints ${TSO} --persistence_endpoints ${PERSISTENCE} &

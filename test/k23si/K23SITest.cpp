@@ -51,14 +51,13 @@ const char* collname = "k23si_test_collection";
 class K23SITest {
 
 public:  // application lifespan
-    K23SITest() :
-        _tsoClient(AppBase().getDist<tso::TSOClient>().local()) {
+    K23SITest() {
         K2LOG_I(log::k23si, "ctor");
     }
     ~K23SITest(){ K2LOG_I(log::k23si, "dtor");}
 
     seastar::future<dto::Timestamp> getTimeNow() {
-        return _tsoClient.getTimestamp();
+        return AppBase().getDist<tso::TSOClient>().local().getTimestamp();
     }
 
     // required for seastar::distributed interface
@@ -170,8 +169,6 @@ public:  // application lifespan
     }
 
 private:
-    k2::tso::TSOClient& _tsoClient;
-
     int exitcode = -1;
     ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
     ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
