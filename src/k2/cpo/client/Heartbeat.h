@@ -53,7 +53,8 @@ private:
     // For metrics
     void _registerMetrics();
     sm::metric_groups _metric_groups;
-    uint64_t _heartbeats{0};
+    k2::ExponentialHistogram _heartbeatInterarrival;
+    k2::TimePoint _lastHeartbeatTime;
 
     seastar::future<std::tuple<Status, dto::HeartbeatResponse>>
     _handleHeartbeat(dto::HeartbeatRequest&& request);

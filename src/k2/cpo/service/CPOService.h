@@ -43,6 +43,7 @@ private:
     typedef std::function<seastar::distributed<CPOService>&()> DistGetter;
     DistGetter _dist;
     ConfigVar<String> _dataDir{"data_dir"};
+    ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id"};
     String _getCollectionPath(String name);
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);

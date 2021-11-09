@@ -42,7 +42,7 @@ class TestHeartbeatFailure(unittest.TestCase):
         url = "http://127.0.0.1:" + args.prometheus_port + "/metrics"
         r = requests.get(url)
         for line in r.text.splitlines():
-            if "HealthMonitor_heartbeats_sent" in line:
+            if "HealthMonitor_heartbeat_latency_count" in line:
                 count = 0
                 try:
                     count = int(float(line.split()[1]))
@@ -73,7 +73,7 @@ class TestHeartbeatFailure(unittest.TestCase):
         url = "http://127.0.0.1:" + args.prometheus_port + "/metrics"
         r = requests.get(url)
         for line in r.text.splitlines():
-            if "HealthMonitor_heartbeats_sent" in line:
+            if "HealthMonitor_heartbeat_latency_count" in line:
                 count = 0
                 try:
                     count = int(float(line.split()[1]))

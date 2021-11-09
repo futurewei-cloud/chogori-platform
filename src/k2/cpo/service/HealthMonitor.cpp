@@ -70,14 +70,10 @@ void HealthMonitor::_checkHBs() {
                 } else if ((*it)->target.role == _persistRole) {
                     _persistDown++;
                 }
-
-                _deadHeartbeats.push_back(std::move(*it));
-                it = _heartbeats.erase(it);
-                continue;
             }
         }
 
-        // Normal case. Send a new heartbeat request to target.
+        // Send a new heartbeat request to target.
         dto::HeartbeatRequest request{.lastToken = (*it)->lastToken, .interval = _interval(),
                                         .deadThreshold = _deadThreshold()};
 
@@ -90,26 +86,22 @@ void HealthMonitor::_checkHBs() {
         // changed the nextHeartbeat variable and we need to keep the list sorted
         it = _heartbeats.erase(it);
 
-        _heartbeatsSent++;
+        k2::OperationLatencyReporter reporter(_heartbeatLatency);
         (*last_it)->heartbeatRequest = (*last_it)->heartbeatRequest
-        .then([this, request, hb_ptr=*last_it, last_it] () mutable {
+        .then([this, request, hb_ptr=*last_it, last_it, reporter=std::move(reporter)] () mutable {
             return RPC()
             .callRPC<dto::HeartbeatRequest, dto::HeartbeatResponse>(dto::Verbs::CPO_HEARTBEAT, request,
                                                                     *((*last_it)->endpoint), _interval() / 2)
-            .then([this, hb_ptr, it=last_it] (auto&& result) {
+            .then([this, hb_ptr, it=last_it, reporter=std::move(reporter)] (auto&& result) mutable {
                 auto& [status, response] = result;
                 K2LOG_V(log::cposvr, "Heartbeat response for {}", *hb_ptr);
+                reporter.report();
 
                 if (!status.is2xxOK()) {
                     // Missed HB will be counted against the target the next time this target reaches the
                     // head of the list
                     K2LOG_I(log::cposvr, "Bad heartbeat response: {}", status);
                     _heartbeatsLost++;
-                    return seastar::make_ready_future<>();
-                }
-                if (hb_ptr->unackedHeartbeats >= _deadThreshold()) {
-                    // This target has already been determined dead (and iterator is not valid anymore)
-                    K2LOG_I(log::cposvr, "HB response after target determined dead for {}", *hb_ptr);
                     return seastar::make_ready_future<>();
                 }
 
@@ -138,8 +130,7 @@ void HealthMonitor::_checkHBs() {
 }
 
 seastar::future<> HealthMonitor::gracefulStop() {
-     if (seastar::this_shard_id() != 1) {
-        // Health monitor only runs on core 1
+    if (seastar::this_shard_id() != _heartbeatMonitorShardId()) {
         return seastar::make_ready_future<>();
     }
 
@@ -148,16 +139,11 @@ seastar::future<> HealthMonitor::gracefulStop() {
 
     return seastar::do_with(std::vector<seastar::future<>>{}, [this, timer=std::move(timer)]
                                                               (std::vector<seastar::future<>>& futs) mutable {
-        futs.reserve(_heartbeats.size() + _deadHeartbeats.size() + 1);
+        futs.reserve(_heartbeats.size() + 1);
 
         futs.push_back(std::move(timer));
 
         for (auto hb : _heartbeats) {
-            futs.push_back(std::move(hb->heartbeatRequest));
-        }
-
-        // Need to wait for dead heartbeats too because the RPC request could still be waiting for a timeout
-        for (auto hb : _deadHeartbeats) {
             futs.push_back(std::move(hb->heartbeatRequest));
         }
 
@@ -180,15 +166,15 @@ void HealthMonitor::_registerMetrics() {
         sm::make_gauge("nodepool_down", _nodepoolDown, sm::description("Number of nodepool nodes considered dead"), labels),
         sm::make_gauge("TSO_down", _TSODown, sm::description("Number of TSO targets considered dead"), labels),
         sm::make_gauge("persistence_down", _persistDown, sm::description("Number of persistence targets considered dead"), labels),
-        sm::make_counter("heartbeats_sent", _heartbeatsSent, sm::description("Number of heartbeat requests sent"), labels),
         sm::make_counter("heartbeats_lost", _heartbeatsLost, sm::description("Number of heartbeat lost"), labels),
         sm::make_counter("down_events", _downEvents, sm::description("Number of down events"), labels),
+        sm::make_histogram("heartbeat_latency", [this]{ return _heartbeatLatency.getHistogram();},
+                sm::description("Latency of heartbeat requests"), labels),
     });
 }
 
 seastar::future<> HealthMonitor::start() {
-    if (seastar::this_shard_id() != 1) {
-        // Health monitor only runs on core 1
+    if (seastar::this_shard_id() != _heartbeatMonitorShardId()) {
         return seastar::make_ready_future<>();
     }
 

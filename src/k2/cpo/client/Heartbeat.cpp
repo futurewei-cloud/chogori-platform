@@ -36,38 +36,46 @@ void HeartbeatResponder::_registerMetrics() {
     labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
 
     _metric_groups.add_group("HeartbeatResponder", {
-        sm::make_counter("heartbeats", _heartbeats, sm::description("Number of heartbeat requests"), labels),
+        sm::make_counter("heartbeats_missed", _missedHBs, sm::description("Number of heartbeat missed"), labels),
+        sm::make_histogram("heartbeat_interarrival", [this]{ return _heartbeatInterarrival.getHistogram();},
+                sm::description("Interarrival time of heartbeat requests"), labels),
     });
 }
 
 seastar::future<std::tuple<Status, dto::HeartbeatResponse>>
 HeartbeatResponder::_handleHeartbeat(dto::HeartbeatRequest&& request) {
     K2LOG_V(log::cpoclient, "HB Request {}", request);
-    _heartbeats++;
+    // metrics
+    auto end = k2::Clock::now();
+    auto dur = end - _lastHeartbeatTime;
+    _heartbeatInterarrival.add(dur);
+    _lastHeartbeatTime = end;
+
+    // Default response status, will be overwritten if there is a sequence number mismatch
+    auto status = Statuses::S200_OK("Heartbeat success");
 
     if (!_up) {
-        // First heartbeat we have seen, initialize the HB config
         _HBInterval = request.interval;
         _HBDeadThreshold = request.deadThreshold;
         _up = true;
+        _missedHBs = 0;
     } else if (_lastSeq != request.lastToken) {
         // Monitor did not get our response
         ++_missedHBs;
         K2LOG_I(log::cpoclient, "CPO did not get last response (token mismatch)");
+        status = Statuses::S403_Forbidden("Heartbeat request token does not match");
     }
+
 
     if (_missedHBs >= _HBDeadThreshold - 1) {
         if (_up) {
             K2LOG_W(log::cpoclient, "Too many heartbeats missed, this node is considered down");
             _up = false;
         }
-        K2LOG_W(log::cpoclient, "This node is already considered down");
-        return RPCResponse(Statuses::S410_Gone("This target is down due to lack of heartbeats"),
-                                                dto::HeartbeatResponse{});
     }
 
     return _nextHeartbeatExpire.stop()
-    .then([this] () {
+    .then([this, status=std::move(status)] () mutable {
         _lastSeq++;
         _missedHBs = 0;
         dto::HeartbeatResponse response {
@@ -78,7 +86,7 @@ HeartbeatResponder::_handleHeartbeat(dto::HeartbeatRequest&& request) {
         };
 
         _nextHeartbeatExpire.arm(_HBInterval + (_HBInterval / 2));
-        return RPCResponse(Statuses::S200_OK("Heartbeat success"), std::move(response));
+        return RPCResponse(std::move(status), std::move(response));
     });
 }
 
@@ -89,14 +97,8 @@ seastar::future<> HeartbeatResponder::gracefulStop() {
 }
 
 seastar::future<> HeartbeatResponder::start() {
-    auto tcp_ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
-    if (tcp_ep) {
-        _ID = tcp_ep->url;
-        _eps.push_back(tcp_ep->url);
-    }
-    auto rdma_ep = k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto);
-    if (rdma_ep) {
-        _eps.push_back(tcp_ep->url);
+    for (auto& serverEndpoint : RPC().getServerEndpoints()) {
+        _eps.push_back(serverEndpoint->url);
     }
 
     _registerMetrics();
@@ -113,6 +115,8 @@ seastar::future<> HeartbeatResponder::start() {
             _nextHeartbeatExpire.arm(_HBInterval);
         }
     });
+
+    _lastHeartbeatTime = k2::Clock::now();
 
     RPC().registerRPCObserver<dto::HeartbeatRequest, dto::HeartbeatResponse>
     (dto::Verbs::CPO_HEARTBEAT, [this](dto::HeartbeatRequest&& request) {

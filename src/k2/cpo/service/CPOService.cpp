@@ -63,8 +63,8 @@ seastar::future<> CPOService::gracefulStop() {
 seastar::future<> CPOService::start() {
     APIServer& api_server = AppBase().getDist<APIServer>().local();
 
-    if (seastar::smp::count < 2) {
-        K2LOG_W(log::cposvr, "CPO requires 2 cores to enable health monitoring, but only 1 is available. Health monitoring is disabled");
+    if (_heartbeatMonitorShardId() >= seastar::smp::count) {
+        K2LOG_W(log::cposvr, "Specified shard ID for heartbeat monitoring is unavailable. Health monitoring is disabled");
     }
 
     K2LOG_I(log::cposvr, "Registering message handlers");

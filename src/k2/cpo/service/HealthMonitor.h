@@ -31,6 +31,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/cpo/service/CPOService.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/LogStream.h>
+#include <k2/transport/Prometheus.h>
 #include <k2/transport/Status.h>
 #include <k2/common/Timer.h>
 
@@ -73,12 +74,12 @@ private:
     ConfigVar<Duration> _batchWait{"heartbeat_batch_wait", 0s};
     ConfigVar<uint32_t> _batchSize{"heartbeat_batch_size", 100};
     ConfigVar<uint32_t> _deadThreshold{"heartbeat_lost_threshold", 3};
+    ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id", 1};
 
     SingleTimer _nextHeartbeat;
     bool _running{false};
 
     std::list<seastar::lw_shared_ptr<HeartbeatControl>> _heartbeats;
-    std::list<seastar::lw_shared_ptr<HeartbeatControl>> _deadHeartbeats;
 
     // For metrics
     void _registerMetrics();
@@ -86,13 +87,13 @@ private:
     uint32_t _nodepoolDown{0};
     uint32_t _TSODown{0};
     uint32_t _persistDown{0};
-    uint64_t _heartbeatsSent{0};
     uint64_t _heartbeatsLost{0};
     uint64_t _downEvents{0};
+    k2::ExponentialHistogram _heartbeatLatency;
 
-    String _nodepoolRole{"Nodepool"};
-    String _tsoRole{"TSO"};
-    String _persistRole{"Persistence"};
+    const String _nodepoolRole{"Nodepool"};
+    const String _tsoRole{"TSO"};
+    const String _persistRole{"Persistence"};
 
     void _addHBControl(RPCServer&& server, TimePoint nextHB);
     void _checkHBs();
