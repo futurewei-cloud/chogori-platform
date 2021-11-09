@@ -56,7 +56,7 @@ seastar::future<> TSOService::start() {
             return seastar::make_exception_future<>(std::runtime_error("gps error is bigger than max error bound"));
         }
         // start the poller thread
-        K2LOG_I(log::tsoserver, "Starting GPS clock poller");
+        K2LOG_I(log::tsoserver, "Starting GPS clock poller on CPU: {}", _clockPollerCPU());
         _keepRunningPoller.test_and_set(); // set the running flag to true
         _clockPoller = std::thread([this, pinCPU=_clockPollerCPU()] {
             // pin the calling thread to the given CPU
