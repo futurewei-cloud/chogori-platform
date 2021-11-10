@@ -63,6 +63,10 @@ seastar::future<> CPOService::gracefulStop() {
 seastar::future<> CPOService::start() {
     APIServer& api_server = AppBase().getDist<APIServer>().local();
 
+    if (_heartbeatMonitorShardId() >= seastar::smp::count) {
+        K2LOG_W(log::cposvr, "Specified shard ID for heartbeat monitoring is unavailable. Health monitoring is disabled");
+    }
+
     K2LOG_I(log::cposvr, "Registering message handlers");
     RPC().registerRPCObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, [this](dto::CollectionCreateRequest&& request) {
         return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));
