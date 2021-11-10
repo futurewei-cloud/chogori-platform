@@ -62,7 +62,7 @@ HeartbeatResponder::_handleHeartbeat(dto::HeartbeatRequest&& request) {
     } else if (_lastSeq != request.lastToken) {
         // Monitor did not get our response
         ++_missedHBs;
-        K2LOG_I(log::cpoclient, "CPO did not get last response (token mismatch)");
+        K2LOG_D(log::cpoclient, "CPO did not get last response (token mismatch)");
         status = Statuses::S403_Forbidden("Heartbeat request token does not match");
     }
 
