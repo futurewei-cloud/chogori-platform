@@ -190,13 +190,13 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     K2LOG_D(log::skvsvr, "Starting for partition: {}", _partition);
 
     APIServer& api_server = AppBase().getDist<APIServer>().local();
-    HeartbeatResponder& hb_resp = AppBase().getDist<HeartbeatResponder>().local();
+    cpo::HeartbeatResponder& hb_resp = AppBase().getDist<cpo::HeartbeatResponder>().local();
     hb_resp.setRoleMetadata("Partition assigned");
 
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
     (dto::Verbs::K23SI_READ, [this, &hb_resp](dto::K23SIReadRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIReadResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SIReadResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_readLatency); // for reporting metrics
@@ -210,7 +210,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
     (dto::Verbs::K23SI_QUERY, [this, &hb_resp](dto::K23SIQueryRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIQueryResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SIQueryResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_queryPageLatency); // for reporting metrics
@@ -224,7 +224,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
     (dto::Verbs::K23SI_WRITE, [this, &hb_resp](dto::K23SIWriteRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIWriteResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SIWriteResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_writeLatency); // for reporting metrics
@@ -241,7 +241,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this, &hb_resp](dto::K23SITxnPushRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnPushResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnPushResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_pushLatency); // for reporting metrics
@@ -255,7 +255,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
     (dto::Verbs::K23SI_TXN_END, [this, &hb_resp](dto::K23SITxnEndRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnEndResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnEndResponse{});
         }
 
         return handleTxnEnd(std::move(request))
@@ -265,7 +265,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>
     (dto::Verbs::K23SI_TXN_HEARTBEAT, [this, &hb_resp](dto::K23SITxnHeartbeatRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnHeartbeatResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnHeartbeatResponse{});
         }
 
         return handleTxnHeartbeat(std::move(request));
@@ -274,7 +274,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
     (dto::Verbs::K23SI_TXN_FINALIZE, [this, &hb_resp](dto::K23SITxnFinalizeRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnFinalizeResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnFinalizeResponse{});
         }
 
         return handleTxnFinalize(std::move(request))
@@ -379,7 +379,6 @@ seastar::future<> K23SIPartitionModule::start() {
         _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
     }
 
-    // todo call TSO to get a timestamp
     return _tsoClient.getTimestamp()
         .then([this](dto::Timestamp&& watermark) {
             K2LOG_D(log::skvsvr, "Cache watermark: {}, period={}", watermark, _cmeta.retentionPeriod);

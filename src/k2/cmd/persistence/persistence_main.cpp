@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 int main(int argc, char** argv) {
     k2::App app("PersistenceService");
-    app.addApplet<k2::HeartbeatResponder>();
+    app.addApplet<k2::cpo::HeartbeatResponder>();
     // pass the ss::distributed container to the PersistenceService constructor
     app.addApplet<k2::PersistenceService>();
     return app.start(argc, argv);

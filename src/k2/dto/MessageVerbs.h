@@ -85,7 +85,7 @@ enum Verbs : k2::Verb {
 
     /************* TSO *******************/
     // API from TSO client to TSO server to get URLs of its nodes (i.e. service end points at worker CPU core)
-    GET_TSO_SERVICE_NODE_URLS=120,
+    GET_TSO_SERVICE_NODE_URLS = 120,
     // API from TSO client to get timestamp from any TSO worker core
     GET_TSO_TIMESTAMP,
 

@@ -33,7 +33,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/transport/Status.h>
 #include <k2/common/Timer.h>
 
-namespace k2 {
+namespace k2::cpo {
 
 class HeartbeatResponder {
 private:

@@ -47,10 +47,10 @@ seastar::future<> TSOService::start() {
     seastar::future<> startFut = seastar::make_ready_future<>();
     if (seastar::this_shard_id() == 0) {
         K2LOG_I(log::tsoserver, "TSOService initializing GPS clock");
-        GPSClock::initialize();
-        auto now = GPSClock::now();
-        K2LOG_I(log::tsoserver, "TSOService clock has been initialized with GPS steady={}, real={}, error={}",
-                     nsec(now.steady).count(), nsec(now.real).count(), nsec(now.error).count());
+        GPSClockInst.initialize(nsec(_errorBound()).count());
+        auto now = GPSClockInst.now();
+        K2LOG_I(log::tsoserver, "TSOService clock has been initialized with GPS real={}, error={}",
+                nsec(now.real).count(), nsec(now.error).count());
         if (now.error > _errorBound()) {
             K2LOG_E(log::tsoserver, "TSOService cannot start since the GPS error is larger than our error bound {}", _errorBound());
             return seastar::make_exception_future<>(std::runtime_error("gps error is bigger than max error bound"));
@@ -58,7 +58,7 @@ seastar::future<> TSOService::start() {
         // start the poller thread
         K2LOG_I(log::tsoserver, "Starting GPS clock poller on CPU: {}", _clockPollerCPU());
         _keepRunningPoller.test_and_set(); // set the running flag to true
-        _clockPoller = std::thread([this, pinCPU=_clockPollerCPU()] {
+        _clockPoller = std::thread([this, pinCPU = _clockPollerCPU()] {
             // pin the calling thread to the given CPU
             if (pinCPU >= 0) {
                 cpu_set_t cpuset;
@@ -69,7 +69,7 @@ seastar::future<> TSOService::start() {
                 }
             }
             while (_keepRunningPoller.test_and_set()) {
-                GPSClock::poll();
+                GPSClockInst.poll();
             }
         });
         startFut = startFut.then([] {
@@ -159,12 +159,12 @@ TSOService::_handleGetTimestamp(dto::GetTimestampRequest&& request) {
     if (_tsoId == 0) {
         return RPCResponse(Statuses::S410_Gone("this server is not authorized to generate timestamps"), dto::GetTimestampResponse{});
     }
-    _getGPSNow();
-    _timestampErrors.add(nsec(_lastGPSTime.error).count());
+    auto now = GPSClockInst.now();
+    _timestampErrors.add(nsec(now.error).count());
 
-    if (_lastGPSTime.error > _errorBound()/2) {
+    if (now.error > _errorBound()/2) {
         // no need to bother doing anything else - the error in gps is too high
-        K2LOG_W(log::tsoserver, "large gps error detected: {}", _lastGPSTime);
+        K2LOG_W(log::tsoserver, "large gps error detected: {}", now);
         return RPCResponse(Statuses::S503_Service_Unavailable("gps error too high at the moment"), dto::GetTimestampResponse{});
     }
     // We now have to map a GPS timepoint (real +-error) to a K2 Timestamp([endCount-delta: endCount]).
@@ -184,7 +184,7 @@ TSOService::_handleGetTimestamp(dto::GetTimestampRequest&& request) {
     // To achieve this, we use the fact that we're allowed to produce all of our timestamps with constant max error
     uint64_t delta = nsec(_errorBound()).count(); // condition #3: error is no-greater than error bound
     // and then we use the monotonic gps.real value, shifting it by a constant so that it remains monotonic
-    uint64_t endCount = nsec(_lastGPSTime.real).count() + delta/2;
+    uint64_t endCount = nsec(now.real).count() + delta/2;
     // Thus Timestamp([endCount - error, error]) is guaranteed to include the entirety of the gps time
 
     // condition #0: now we have to make sure that endCount is strictly-increasing
@@ -196,25 +196,16 @@ TSOService::_handleGetTimestamp(dto::GetTimestampRequest&& request) {
     }
 
     // ensure the result is a valid TSO timestamp within error bound
-    if ((uint64_t)nsec(_lastGPSTime.real - _lastGPSTime.error).count() < endCount - delta ||
-        (uint64_t)nsec(_lastGPSTime.real + _lastGPSTime.error).count() > endCount) {
+    if ((uint64_t)nsec(now.real - now.error).count() < endCount - delta ||
+        (uint64_t)nsec(now.real + now.error).count() > endCount) {
         // condition #1 and #2: Timestamp is guaranteed to contain the GPSTime including any error there
-        K2LOG_W(log::tsoserver, "large gps error detected: {}", _lastGPSTime);
+        K2LOG_W(log::tsoserver, "large gps error detected: {}", now);
         return RPCResponse(Statuses::S503_Service_Unavailable("gps error too high at the moment"), dto::GetTimestampResponse{});
     }
 
     // we're done generating a new timestamp. Remember the end count for next time
     _lastGeneratedEndCount = endCount;
     return RPCResponse(Statuses::S200_OK("OK"), dto::GetTimestampResponse{.timestamp = dto::Timestamp(endCount, _tsoId, delta)});
-}
-
-void TSOService::_getGPSNow() {
-    auto now = GPSClock::now();
-
-    K2ASSERT(log::tsoserver, now.real >= _lastGPSTime.real, "gps timestamp goes back in time: now={}, last={}", now, _lastGPSTime);
-    K2ASSERT(log::tsoserver, now.steady >= _lastGPSTime.steady, "gps timestamp goes back in time: now={}, last={}", now, _lastGPSTime);
-
-    _lastGPSTime = now;
 }
 
 }

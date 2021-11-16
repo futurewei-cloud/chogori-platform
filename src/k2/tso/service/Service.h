@@ -58,15 +58,9 @@ private: // methods
     // Register with the CPO as an authorized TSO server
     seastar::future<> _cpoRegister();
 
-    // gets the latest GPS clock timestamp
-    void _getGPSNow();
-
 private: // members
     // we use this to signal from core 0 to all workers that the GPS clock has been initialized
     seastar::promise<> _clockInitialized;
-
-    // keep track of the last GPS timestamp we saw so that we can guarantee strictly-increasing sequence
-    GPSTimePoint _lastGPSTime;
 
     // the last endCount we generated from this service
     uint64_t _lastGeneratedEndCount{0};

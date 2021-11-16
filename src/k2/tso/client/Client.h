@@ -64,6 +64,8 @@ private: // methods
     seastar::future<> _discoverServiceNodes();
 
     // make a remote call to the TSO to discover the worker URLs
+    // This method is a helper, used within a RetryStrategy. It can return an exceptional
+    // future with StopRetryException to signal that further retries are futile.
     seastar::future<> _getServiceNodeURLs(Duration timeout);
 
     // Helper used to obtain the timestamp from server and report latency

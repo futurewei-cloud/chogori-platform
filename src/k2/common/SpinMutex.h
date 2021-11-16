@@ -24,8 +24,8 @@ Copyright(c) 2021 Futurewei Cloud
 #include <mutex>
 
 namespace k2 {
-// Lock-Free mutex implementation
-class LFMutex {
+// Spin-based mutex implementation
+class SpinMutex {
 private:
     std::atomic_flag _flag = ATOMIC_FLAG_INIT;
 
