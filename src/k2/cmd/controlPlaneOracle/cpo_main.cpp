@@ -36,11 +36,11 @@ int main(int argc, char** argv) {
         ("heartbeat_batch_wait", bpo::value<k2::ParseableDuration>(), "How long the heartbeat monitor waits between batches (only for the start-up set of heartbeats")
         ("heartbeat_batch_size", bpo::value<uint32_t>()->default_value(100), "How many heartbeats the monitor sends before waiting (only for the start-up set of heartbeats")
         ("heartbeat_lost_threshold", bpo::value<uint32_t>()->default_value(3), "How many lost heartbeats are required before the monitor considers a target dead")
-        ("heartbeat_monitor_shard_id", bpo::value<uint32_t>()->default_value(1), "Which shard the heartbeat monitor should run on")
+        ("heartbeat_monitor_shard_id", bpo::value<uint32_t>()->default_value(0), "Which shard the heartbeat monitor should run on")
         ("txn_heartbeat_deadline", bpo::value<k2::ParseableDuration>(), "The interval clients must use to heartbeat active transactions")
         ("assignment_timeout", bpo::value<k2::ParseableDuration>(), "Timeout for K2 partition assignment")
         ("data_dir", bpo::value<k2::String>(), "The directory where we can keep data");
-    app.addApplet<k2::HealthMonitor>();
+    app.addApplet<k2::cpo::HealthMonitor>();
     app.addApplet<k2::cpo::CPOService>();
     app.addApplet<k2::APIServer>();
     return app.start(argc, argv);

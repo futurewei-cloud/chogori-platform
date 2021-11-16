@@ -25,7 +25,7 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include <k2/dto/MessageVerbs.h>
 
-namespace k2 {
+namespace k2::cpo {
 
 void HealthMonitor::_addHBControl(RPCServer&& server, TimePoint nextHB) {
     auto control = seastar::make_lw_shared<HeartbeatControl>();
