@@ -28,14 +28,14 @@ Copyright(c) 2021 Futurewei Cloud
 #include <seastar/core/future.hh>  // for future stuff
 
 #include <k2/appbase/AppEssentials.h>
-#include <k2/cpo/service/CPOService.h>
+#include <k2/cpo/service/Service.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/LogStream.h>
 #include <k2/transport/Prometheus.h>
 #include <k2/transport/Status.h>
 #include <k2/common/Timer.h>
 
-namespace k2 {
+namespace k2::cpo {
 
 // Represents the target of a heartbeat request, which can be anything that responds to a
 // Chogori platform RPC request. The data here is informational only and is does not affect the
@@ -74,7 +74,7 @@ private:
     ConfigVar<Duration> _batchWait{"heartbeat_batch_wait", 0s};
     ConfigVar<uint32_t> _batchSize{"heartbeat_batch_size", 100};
     ConfigVar<uint32_t> _deadThreshold{"heartbeat_lost_threshold", 3};
-    ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id", 1};
+    ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id", 0};
 
     SingleTimer _nextHeartbeat;
     bool _running{false};

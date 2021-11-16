@@ -31,7 +31,7 @@ namespace dto {
 enum Verbs : k2::Verb {
     /************ CPO *****************/
     // ControlPlaneOracle: asked to create a collection
-    CPO_COLLECTION_CREATE = 10,
+    CPO_COLLECTION_CREATE = 20,
     // ControlPlaneOracle: asked to return an existing collection
     CPO_COLLECTION_GET,
     // ControlPlaneOracle: asked to register a persistence server
@@ -49,13 +49,13 @@ enum Verbs : k2::Verb {
 
     /************ Assignment *****************/
     // K2Assignment: CPO asks K2 to assign a partition
-    K2_ASSIGNMENT_CREATE = 25,
+    K2_ASSIGNMENT_CREATE = 40,
     // K2Assignment: CPO asks K2 to offload a partition
     K2_ASSIGNMENT_OFFLOAD,
 
     /************ K23SI *****************/
     // K23SI reads
-    K23SI_READ = 30,
+    K23SI_READ = 60,
     // K23SI writes
     K23SI_WRITE,
     // K23SI push operation
@@ -70,26 +70,24 @@ enum Verbs : k2::Verb {
     K23SI_QUERY,
 
     /************ K23SI Persistence *****************/
-    K23SI_Persist = 40,
+    K23SI_Persist = 80,
     PLOG_CREATE,
     PLOG_APPEND,
     PLOG_READ,
     PLOG_SEAL,
     PLOG_GET_STATUS,
     /************ K23SI Inspection ******************/
-    K23SI_INSPECT_RECORDS = 55,
+    K23SI_INSPECT_RECORDS = 100,
     K23SI_INSPECT_TXN,
     K23SI_INSPECT_WIS,
     K23SI_INSPECT_ALL_TXNS,
     K23SI_INSPECT_ALL_KEYS,
 
     /************* TSO *******************/
-    // API from TSO client to any TSO server to get all healthy TSO server URLs in the TSO server cluster
-    GET_TSO_SERVER_URLS    = 100,
     // API from TSO client to TSO server to get URLs of its nodes (i.e. service end points at worker CPU core)
-    GET_TSO_SERVICE_NODE_URLS,
-    // API from TSO client to get timestamp batch from any TSO worker cores
-    GET_TSO_TIMESTAMP_BATCH,
+    GET_TSO_SERVICE_NODE_URLS = 120,
+    // API from TSO client to get timestamp from any TSO worker core
+    GET_TSO_TIMESTAMP,
 
     /************ END OF RESERVED BLOCK *****************/
     END=200

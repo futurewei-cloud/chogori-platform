@@ -344,7 +344,7 @@ So typically, for Low time Accuracy system, there is only one active TSO server.
 
 The design of TSO system for Low Time Accuracy at TSO server differs only at the control core, with more tasks related with working with paxos. Besides those defined in part 3, control core key responsibilities also include
 
-1. Upon instance started up, join the TSO server cluster and figure out which instance is the master(if needed, participate master selection). Also collect info about its own worker cores. So, upon call of GetTSOServerInfo from client, it can tell the client who the TSO Server master instance is, and itself is the master, the readyness of itself and RDMA address of its workers, etc.
+1. Upon instance started up, join the TSO server cluster and figure out which instance is the master(if needed, participate master selection). Also collect info about its own worker cores. So, upon call of GetServerInfo from client, it can tell the client who the TSO Server master instance is, and itself is the master, the readyness of itself and RDMA address of its workers, etc.
 
 2. If current instance is master, periodically send heartbeat to paxos, which including renew lease and reserve the new future threshold, reservedTimeShreshold, that worker core can give out timestamp. As reservedTimeShreshold is a member of TSOWorkerControlInfo, so each time this timed task is done, it propagates updated TSOWorkerControlInfo to all workders. The TimeSyncTask possible caused change on the adjustment of TBEAdjustment can be pushed through heartbeat and reserved threshold result as well.
 

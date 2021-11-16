@@ -20,10 +20,21 @@ Copyright(c) 2021 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-#pragma once
+#include <atomic>
+#include <mutex>
 
-#include <k2/common/Log.h>
+namespace k2 {
+// Spin-based mutex implementation
+class SpinMutex {
+private:
+    std::atomic_flag _flag = ATOMIC_FLAG_INIT;
 
-namespace k2::tso::log {
-inline thread_local logging::Logger tsoserver("k2::tso_server");
+public:
+    void lock() {
+        while (_flag.test_and_set(std::memory_order_acquire));
+    }
+    void unlock() {
+        _flag.clear(std::memory_order_release);
+    }
+};
 }

@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/module/k23si/Module.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <seastar/core/sleep.hh>
 
 #include <k2/dto/K23SI.h>
@@ -51,13 +51,13 @@ const char* collname = "k23si_test_collection";
 class K23SITest {
 
 public:  // application lifespan
-    K23SITest() { K2LOG_I(log::k23si, "ctor");}
+    K23SITest() {
+        K2LOG_I(log::k23si, "ctor");
+    }
     ~K23SITest(){ K2LOG_I(log::k23si, "dtor");}
 
-    static seastar::future<dto::Timestamp> getTimeNow() {
-        // TODO call TSO service with timeout and retry logic
-        auto nsecsSinceEpoch = sys_now_nsec_count();
-        return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 1550647543, 1000));
+    seastar::future<dto::Timestamp> getTimeNow() {
+        return AppBase().getDist<tso::TSOClient>().local().getTimestamp();
     }
 
     // required for seastar::distributed interface
@@ -179,7 +179,7 @@ private:
     seastar::timer<> _testTimer;
     seastar::future<> _testFuture = seastar::make_ready_future();
 
-    CPOClient _cpo_client;
+    cpo::CPOClient _cpo_client;
     dto::PartitionGetter _pgetter;
     dto::Schema _schema;
 
@@ -457,7 +457,7 @@ seastar::future<> runScenario04() {
                     m1.priority = dto::TxnPriority::Medium;
                     return doWrite(k1, {"fk1", "f2"}, m1, k1, collname, false, true);
                 })
-                .then([&](auto&& result) {
+                .then([this](auto&& result) {
                     auto& [status, r] = result;
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
                     return getTimeNow();
@@ -534,7 +534,7 @@ seastar::future<> runScenario05() {
                     m1.priority = dto::TxnPriority::Medium;
                     return doWrite(k1, {"fk1","f2"}, m1, k1, collname, false, true);
                 })
-                .then([&](auto&& result) {
+                .then([this](auto&& result) {
                     auto& [status, r] = result;
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
                     return getTimeNow();
@@ -593,7 +593,10 @@ seastar::future<> runScenario05() {
 int main(int argc, char** argv) {
     k2::App app("K23SITest");
     app.addOptions()("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "The endpoints of the k2 cluster");
+    app.addOptions()("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
     app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO");
     app.addApplet<k2::K23SITest>();
+    app.addApplet<k2::tso::TSOClient>();
+
     return app.start(argc, argv);
 }

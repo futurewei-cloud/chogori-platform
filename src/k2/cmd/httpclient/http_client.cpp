@@ -28,7 +28,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/appbase/Appbase.h>
 #include <k2/infrastructure/APIServer.h>
 #include <k2/module/k23si/client/k23si_client.h>
-#include <k2/tso/client/tso_clientlib.h>
+#include <k2/tso/client/Client.h>
 
 #include <seastar/core/sleep.hh>
 
@@ -428,7 +428,7 @@ private:
 int main(int argc, char** argv) {
     k2::App app("K23SIBenchClient");
     app.addApplet<k2::APIServer>();
-    app.addApplet<k2::TSO_ClientLib>();
+    app.addApplet<k2::tso::TSOClient>();
     app.addApplet<k2::HTTPClient>();
     app.addOptions()
         // config for dependencies

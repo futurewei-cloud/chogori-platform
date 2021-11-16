@@ -21,7 +21,7 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include "CPOService.h"
+#include "Service.h"
 
 #include <k2/appbase/Appbase.h>
 #include <k2/infrastructure/APIServer.h>
@@ -40,9 +40,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <sys/stat.h>
 #include <unistd.h>
 
-namespace k2 {
+namespace k2::cpo {
 
-CPOService::CPOService(DistGetter distGetter) : _dist(distGetter) {
+CPOService::CPOService() {
     K2LOG_I(log::cposvr, "ctor");
 }
 
@@ -69,57 +69,57 @@ seastar::future<> CPOService::start() {
 
     K2LOG_I(log::cposvr, "Registering message handlers");
     RPC().registerRPCObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>(dto::Verbs::CPO_COLLECTION_CREATE, [this](dto::CollectionCreateRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleCreate, std::move(request));
     });
     api_server.registerAPIObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>("CollectionCreate", "CPO CollectionCreate", [this] (dto::CollectionCreateRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleCreate, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleCreate, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::CollectionGetRequest, dto::CollectionGetResponse>(dto::Verbs::CPO_COLLECTION_GET, [this](dto::CollectionGetRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
     api_server.registerAPIObserver<dto::CollectionGetRequest, dto::CollectionGetResponse>("CollectionGet", "CPO CollectionGet", [this](dto::CollectionGetRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleGet, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleGet, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::CollectionDropRequest, dto::CollectionDropResponse>(dto::Verbs::CPO_COLLECTION_DROP, [this](dto::CollectionDropRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleCollectionDrop, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleCollectionDrop, std::move(request));
     });
     api_server.registerAPIObserver<dto::CollectionDropRequest, dto::CollectionDropResponse>("CollectionDrop", "CPO CollectionDrop", [this](dto::CollectionDropRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleCollectionDrop, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleCollectionDrop, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::PersistenceClusterCreateRequest, dto::PersistenceClusterCreateResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_CREATE, [this](dto::PersistenceClusterCreateRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handlePersistenceClusterCreate, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handlePersistenceClusterCreate, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::PersistenceClusterGetRequest, dto::PersistenceClusterGetResponse>(dto::Verbs::CPO_PERSISTENCE_CLUSTER_GET, [this](dto::PersistenceClusterGetRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handlePersistenceClusterGet, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handlePersistenceClusterGet, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>(dto::Verbs::CPO_SCHEMA_CREATE, [this] (dto::CreateSchemaRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
     });
     api_server.registerAPIObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>("SchemaCreate", "CPO SchemaCreate", [this] (dto::CreateSchemaRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleCreateSchema, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>(dto::Verbs::CPO_SCHEMAS_GET,
     [this] (dto::GetSchemasRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::MetadataPutRequest, dto::MetadataPutResponse>(dto::Verbs::CPO_PARTITION_METADATA_PUT, [this](dto::MetadataPutRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleMetadataPut, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleMetadataPut, std::move(request));
     });
 
     RPC().registerRPCObserver<dto::MetadataGetRequest, dto::MetadataGetResponse>(dto::Verbs::CPO_PARTITION_METADATA_GET, [this](dto::MetadataGetRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleMetadataGet, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleMetadataGet, std::move(request));
     });
 
     api_server.registerAPIObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>("GetSchemas", "CPO get all schemas for a collection",
     [this] (dto::GetSchemasRequest&& request) {
-        return _dist().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
+        return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
     });
 
     if (seastar::this_shard_id() == 0) {

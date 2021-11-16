@@ -32,8 +32,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/K23SI.h>
 #include <k2/dto/K23SIInspect.h>
 #include <k2/common/Chrono.h>
-#include <k2/cpo/client/CPOClient.h>
-#include <k2/tso/client/tso_clientlib.h>
+#include <k2/cpo/client/Client.h>
+#include <k2/tso/client/Client.h>
 
 #include "ReadCache.h"
 #include "TxnManager.h"
@@ -219,12 +219,6 @@ private: // methods
     // Helper to remove a WI and delete the key from the indexer of there are no committed records
     void _removeWI(IndexerIterator it);
 
-    // get timeNow Timestamp from TSO
-    seastar::future<dto::Timestamp> getTimeNow() {
-        TSO_ClientLib& tsoClient = AppBase().getDist<TSO_ClientLib>().local();
-        return tsoClient.getTimestampFromTSO(Clock::now());
-    }
-
     seastar::future<> _registerVerbs();
 
     // Helper method which generates an RPCResponce chained after a successful persistence flush
@@ -246,6 +240,9 @@ private: // methods
     void _registerMetrics();
 
 private:  // members
+    // to get K2 timestamps
+    tso::TSOClient& _tsoClient;
+
     // the metadata of our collection
     dto::CollectionMetadata _cmeta;
 
@@ -283,9 +280,9 @@ private:  // members
 
     std::shared_ptr<Persistence> _persistence;
 
-    CPOClient _cpo;
+    cpo::CPOClient _cpo;
 
-    sm::metric_groups _metric_groups;
+    sm::metric_groups _metricGroups;
 
     //metrics
     uint64_t _totalWI{0}; // for number of active WIs

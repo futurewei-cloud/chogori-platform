@@ -21,9 +21,14 @@ Copyright(c) 2021 Futurewei Cloud
     SOFTWARE.
 */
 #pragma once
+#include "Log.h"
+namespace k2::tso {
+    // TSO service should be started with at least two cores, one controller and rest are workers.
+    class NotEnoughCoresException : public std::exception {};
 
-#include <k2/common/Log.h>
+    // TSO server not ready yet to issue timestamp(batch)
+    class NotReadyException : public std::exception {};
 
-namespace k2::tso::log {
-inline thread_local logging::Logger tsoserver("k2::tso_server");
+    // operations invalid during server shutdown
+    class ShutdownException : public std::exception {};
 }

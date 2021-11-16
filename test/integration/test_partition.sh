@@ -1,29 +1,23 @@
 #!/bin/bash
-topname=$(dirname "$0")
-cd ${topname}/../..
 set -e
-CPODIR=/tmp/___cpo_integ_test
-rm -rf ${CPODIR}
-EPS="tcp+k2rpc://0.0.0.0:10000 tcp+k2rpc://0.0.0.0:10001 tcp+k2rpc://0.0.0.0:10002"
+topname=$(dirname "$0")
+source ${topname}/common_defs.sh
+cd ${topname}/../..
 
-PERSISTENCE=tcp+k2rpc://0.0.0.0:12001
-CPO=tcp+k2rpc://0.0.0.0:9000
-TSO=tcp+k2rpc://0.0.0.0:13000
-
-# start CPO on 2 cores
-./build/src/k2/cmd/controlPlaneOracle/cpo_main -c2 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63000 --assignment_timeout=1s &
+# start CPO
+./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --prometheus_port 63000 --assignment_timeout=1s &
 cpo_child_pid=$!
 
-# start nodepool on 3 cores
-./build/src/k2/cmd/nodepool/nodepool -c3 --tcp_endpoints ${EPS} --enable_tx_checksum true --k23si_persistence_endpoint ${PERSISTENCE} --reactor-backend epoll --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} &
+# start nodepool
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} &
 nodepool_child_pid=$!
 
-# start persistence on 1 cores
-./build/src/k2/cmd/persistence/persistence -c1 --tcp_endpoints ${PERSISTENCE} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63002 &
+# start persistence
+./build/src/k2/cmd/persistence/persistence ${COMMON_ARGS} -c1 --tcp_endpoints ${PERSISTENCE} --prometheus_port 63002 &
 persistence_child_pid=$!
 
-# start tso on 2 cores
-./build/src/k2/cmd/tso/tso -c2 --tcp_endpoints ${TSO} 13001 --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63003 &
+# start tso
+./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.error_bound=100us --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
 function finish {
@@ -52,4 +46,4 @@ trap finish EXIT
 
 sleep 2
 
-./build/test/dto/partition_test --cpo ${CPO} --tcp_remotes ${EPS} --tso_endpoint ${TSO} --enable_tx_checksum true --reactor-backend epoll --prometheus_port 63100
+./build/test/dto/partition_test ${COMMON_ARGS} --cpo ${CPO} --tcp_remotes ${EPS[@]} --tso_endpoint ${TSO} --prometheus_port 63100

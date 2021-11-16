@@ -180,6 +180,7 @@ Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest&
 // ********************** Validators
 
 K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
+    _tsoClient(AppBase().getDist<tso::TSOClient>().local()),
     _cmeta(std::move(cmeta)),
     _partition(std::move(partition), _cmeta.hashScheme) {
     K2LOG_I(log::skvsvr, "ctor for cname={}, part={}", _cmeta.name, _partition);
@@ -189,13 +190,13 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     K2LOG_D(log::skvsvr, "Starting for partition: {}", _partition);
 
     APIServer& api_server = AppBase().getDist<APIServer>().local();
-    HeartbeatResponder& hb_resp = AppBase().getDist<HeartbeatResponder>().local();
+    cpo::HeartbeatResponder& hb_resp = AppBase().getDist<cpo::HeartbeatResponder>().local();
     hb_resp.setRoleMetadata("Partition assigned");
 
     RPC().registerRPCObserver<dto::K23SIReadRequest, dto::K23SIReadResponse>
     (dto::Verbs::K23SI_READ, [this, &hb_resp](dto::K23SIReadRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIReadResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SIReadResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_readLatency); // for reporting metrics
@@ -209,7 +210,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SIQueryRequest, dto::K23SIQueryResponse>
     (dto::Verbs::K23SI_QUERY, [this, &hb_resp](dto::K23SIQueryRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIQueryResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SIQueryResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_queryPageLatency); // for reporting metrics
@@ -223,7 +224,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SIWriteRequest, dto::K23SIWriteResponse>
     (dto::Verbs::K23SI_WRITE, [this, &hb_resp](dto::K23SIWriteRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SIWriteResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SIWriteResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_writeLatency); // for reporting metrics
@@ -240,7 +241,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
     (dto::Verbs::K23SI_TXN_PUSH, [this, &hb_resp](dto::K23SITxnPushRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnPushResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnPushResponse{});
         }
 
         k2::OperationLatencyReporter reporter(_pushLatency); // for reporting metrics
@@ -254,7 +255,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
     (dto::Verbs::K23SI_TXN_END, [this, &hb_resp](dto::K23SITxnEndRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnEndResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnEndResponse{});
         }
 
         return handleTxnEnd(std::move(request))
@@ -264,7 +265,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>
     (dto::Verbs::K23SI_TXN_HEARTBEAT, [this, &hb_resp](dto::K23SITxnHeartbeatRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnHeartbeatResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnHeartbeatResponse{});
         }
 
         return handleTxnHeartbeat(std::move(request));
@@ -273,7 +274,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     RPC().registerRPCObserver<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
     (dto::Verbs::K23SI_TXN_FINALIZE, [this, &hb_resp](dto::K23SITxnFinalizeRequest&& request) {
         if (!hb_resp.isUp()) {
-            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heatbeat is dead"), dto::K23SITxnFinalizeResponse{});
+            return RPCResponse(dto::K23SIStatus::RefreshCollection("Heartbeat is dead"), dto::K23SITxnFinalizeResponse{});
         }
 
         return handleTxnFinalize(std::move(request))
@@ -340,11 +341,11 @@ void K23SIPartitionModule::_unregisterVerbs() {
 }
 
 void K23SIPartitionModule::_registerMetrics() {
-    _metric_groups.clear();
+    _metricGroups.clear();
     std::vector<sm::label_instance> labels;
     labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
 
-    _metric_groups.add_group("Nodepool", {
+    _metricGroups.add_group("Nodepool", {
         sm::make_gauge("indexer_keys",[this]{ return _indexer.size();},
                         sm::description("Number of keys in indexer"), labels),
         sm::make_counter("total_WI", _totalWI, sm::description("Number of WIs created"), labels),
@@ -378,8 +379,7 @@ seastar::future<> K23SIPartitionModule::start() {
         _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
     }
 
-    // todo call TSO to get a timestamp
-    return getTimeNow()
+    return _tsoClient.getTimestamp()
         .then([this](dto::Timestamp&& watermark) {
             K2LOG_D(log::skvsvr, "Cache watermark: {}, period={}", watermark, _cmeta.retentionPeriod);
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;
@@ -389,7 +389,7 @@ seastar::future<> K23SIPartitionModule::start() {
 
             _retentionUpdateTimer.setCallback([this] {
                 K2LOG_D(log::skvsvr, "Partition {}, refreshing retention timestamp", _partition);
-                return getTimeNow()
+                return _tsoClient.getTimestamp()
                     .then([this](dto::Timestamp&& ts) {
                         // set the retention timestamp (the time of the oldest entry we should keep)
                         _retentionTimestamp = ts - _cmeta.retentionPeriod;
@@ -1412,6 +1412,7 @@ Status K23SIPartitionModule::_finalizeTxnWIs(dto::Timestamp txnts, dto::EndActio
         K2ASSERT(log::skvsvr, versions.WI->data.timestamp == txnts,
                  "TWIM {} has registered WI for key{}, but WI is from different transaction {}",
                  *twim, key, versions.WI->data.timestamp);
+        _finalizedWI++;
 
         switch (action) {
             case dto::EndAction::Abort: {
@@ -1435,7 +1436,6 @@ Status K23SIPartitionModule::_finalizeTxnWIs(dto::Timestamp txnts, dto::EndActio
         }
     }
 
-    _finalizedWI++;
     return dto::K23SIStatus::OK;
 }
 

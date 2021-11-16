@@ -29,7 +29,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/transport/Status.h>
 #include <k2/common/Common.h>
 #include <k2/config/Config.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/transport/BaseTypes.h>
 #include <k2/transport/TXEndpoint.h>
 #include <k2/persistence/plog_client/PlogClient.h>
@@ -180,7 +180,7 @@ private:
     // a map to store all the log streams managed by this metadata manager
     // instead of raw pointer, using shared pointer
     std::unordered_map<LogStreamType, std::shared_ptr<LogStream>> _logStreamMap;
-    CPOClient _cpo;
+    cpo::CPOClient _cpo;
     String _partitionName;
     ConfigDuration _cpo_timeout {"cpo_timeout", 1s};
 

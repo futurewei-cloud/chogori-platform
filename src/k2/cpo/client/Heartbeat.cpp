@@ -23,12 +23,12 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include "Heartbeat.h"
 
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/transport/TCPRPCProtocol.h>
 #include <k2/transport/RRDMARPCProtocol.h>
 
-namespace k2 {
+namespace k2::cpo {
 
 void HeartbeatResponder::_registerMetrics() {
     _metric_groups.clear();

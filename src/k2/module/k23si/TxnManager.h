@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <deque>
 
 #include <k2/common/Timer.h>
-#include <k2/cpo/client/CPOClient.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/K23SIInspect.h>
 
@@ -217,7 +217,7 @@ private: // fields
     bool _stopping = false;
 
     String _collectionName;
-    CPOClient _cpo;
+    cpo::CPOClient _cpo;
 
     std::shared_ptr<Persistence> _persistence;
 

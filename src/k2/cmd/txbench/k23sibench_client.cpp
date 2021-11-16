@@ -29,7 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/module/k23si/client/k23si_client.h>
-#include <k2/tso/client/tso_clientlib.h>
+#include <k2/tso/client/Client.h>
 
 #include <seastar/core/sleep.hh>
 #include "Log.h"
@@ -320,7 +320,7 @@ private://metrics
 
 int main(int argc, char** argv) {
     App app("K23SIBenchClient");
-    app.addApplet<TSO_ClientLib>();
+    app.addApplet<tso::TSOClient>();
     app.addApplet<Client>();
     app.addOptions()
         ("data_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to write in records")

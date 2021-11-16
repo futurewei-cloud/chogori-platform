@@ -21,19 +21,21 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <seastar/core/reactor.hh>
-#include <seastar/core/sleep.hh>
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
-
-#include <k2/dto/K23SI.h>
-#include <k2/dto/K23SIInspect.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/ControlPlaneOracle.h>
+#include <k2/dto/K23SI.h>
+#include <k2/dto/K23SIInspect.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/module/k23si/Module.h>
-#include <k2/cpo/client/CPOClient.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
+#include <k2/tso/client/Client.h>
+
+#include <seastar/core/reactor.hh>
+#include <seastar/core/sleep.hh>
+
 #include "Log.h"
 
 namespace k2{
@@ -82,13 +84,13 @@ enum class ErrorCaseOpt: uint8_t {
 class txn_testing {
 
 public: // application
-    txn_testing() { K2LOG_I(log::k23si, "ctor"); }
+    txn_testing() {
+        K2LOG_I(log::k23si, "ctor");
+    }
     ~txn_testing(){ K2LOG_I(log::k23si, "dtor"); }
 
-    static seastar::future<dto::Timestamp> getTimeNow() {
-        // TODO call TSO service with timeout and retry logic
-        auto nsecsSinceEpoch = sys_now_nsec_count();
-        return seastar::make_ready_future<dto::Timestamp>(dto::Timestamp(nsecsSinceEpoch, 123, 1000));
+    seastar::future<dto::Timestamp> getTimeNow() {
+        return AppBase().getDist<tso::TSOClient>().local().getTimestamp();
     }
 
     // required for seastar::distributed interface
@@ -639,7 +641,7 @@ seastar::future<> testScenario01() {
             K2EXPECT(log::k23si, status, Statuses::S200_OK);
         });
     })
-    .then([] {
+    .then([this] {
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -768,7 +770,7 @@ seastar::future<> testScenario01() {
                 });
         }); // end do-with
     }) // end SC-01 case-02
-    .then([] {
+    .then([this] {
     // SC01 case3: OP with wrong partition
         return getTimeNow();
     })
@@ -831,7 +833,7 @@ seastar::future<> testScenario01() {
 
         }); // end do_with
     }) // end sc-01 case-03
-    .then([] {
+    .then([this] {
     // SC01 case4: OP key which doesn't belong to partition (based on hashing)
         return getTimeNow();
     })
@@ -894,7 +896,7 @@ seastar::future<> testScenario01() {
 
         }); // end do_with
     }) // end sc-01 case-04
-    .then([] {
+    .then([this] {
     // SC01 case5: OP out-of-date partition version
         return getTimeNow();
     })
@@ -957,7 +959,7 @@ seastar::future<> testScenario01() {
 
         }); // end do_with
     }) // end sc-01 case-05
-    .then([] {
+    .then([this] {
     // SC01 case06: READ/WRITE/FINALIZE empty partition key, empty range key
         return getTimeNow();
     })
@@ -990,7 +992,7 @@ seastar::future<> testScenario01() {
                 });
         }); // end do-with
     }) // end sc-01 case-06
-    .then([] {
+    .then([this] {
     // SC01 case07: READ/WRITE/FINALIZE empty partition key, non-empty range key
         return getTimeNow();
     })
@@ -1027,7 +1029,7 @@ seastar::future<> testScenario01() {
                 });
         }); // end do-with
     }) // end sc-01 case-07
-    .then([] {
+    .then([this] {
     // SC01 case08: READ/WRITE/FINALIZE with only partitionKey
         return getTimeNow();
     })
@@ -1067,7 +1069,7 @@ seastar::future<> testScenario01() {
                 });
         }); // end do-with
     }) // end sc-01 case-08
-    .then([] {
+    .then([this] {
     // SC01 case09: READ/WRITE/FINALIZE with partition and range key
         return getTimeNow();
     })
@@ -1100,7 +1102,7 @@ seastar::future<> testScenario01() {
                 });
         }); // end do-with
     }) // end sc-01 case-09
-    .then([] {
+    .then([this] {
     // SC01 case10: cascading error: READ/WRITE/FINALIZE with bad collection name AND missing partition key
         return getTimeNow();
     })
@@ -1143,7 +1145,7 @@ seastar::future<> testScenario01() {
                 });
         }); // end do_with
     }) // end sc-01 case-10
-    .then([] {
+    .then([this] {
     // SC01 case11: TXN with 2 writes for 2 different partitions ends with Commit. Validate with a read txn afterward
         return getTimeNow();
     })
@@ -1207,7 +1209,7 @@ seastar::future<> testScenario01() {
             });
         });
     }) // end sc-01 case-11
-    .then([] {
+    .then([this] {
     // SC01 case12: TXN with 2 writes for 2 different partitions ends with Abort. Validate with a read txn afterward
         return getTimeNow();
     })
@@ -1324,7 +1326,7 @@ seastar::future<> testScenario02() {
             K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[2].astate, dto::AssignmentState::FailedAssignment);
         });
     })
-    .then([] {
+    .then([this] {
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -1352,7 +1354,7 @@ seastar::future<> testScenario02() {
                     // commit k1 and k2
                     return doEnd(k1, mtr, collname, true, {k1,k2}, Duration(0s), ErrorCaseOpt::NoInjection);
                 })
-                .then([&] (auto&& response) mutable {
+                .then([this] (auto&& response) mutable {
                     auto& [status, val] = response;
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
 
@@ -1367,7 +1369,7 @@ seastar::future<> testScenario02() {
                         };
                     return doWrite(k3, v1, mtr, k3, collname, false, true, ErrorCaseOpt::NoInjection);
                 })
-                .then([&] (auto&& response) {
+                .then([this] (auto&& response) {
                     auto& [status, val] = response;
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
 
@@ -1394,7 +1396,7 @@ seastar::future<> testScenario02() {
                 });
             });
     }) // end test setup
-    .then([] {
+    .then([this] {
         K2LOG_I(log::k23si, "Scenario-02 test setup done.");
         return getTimeNow();
     })
@@ -1425,7 +1427,7 @@ seastar::future<> testScenario02() {
             }
         );
     }) // end sc-02 case-01
-    .then([] {
+    .then([this] {
     // SC02 case02: READ/WRITE with wrong partition
         return getTimeNow();
     })
@@ -1455,7 +1457,7 @@ seastar::future<> testScenario02() {
             }
         );
     }) // end sc-02 case-02
-    .then([] {
+    .then([this] {
     // SC02 case03: READ/WRITE with wrong partition version
         return getTimeNow();
     })
@@ -1483,7 +1485,7 @@ seastar::future<> testScenario02() {
             }
         );
     }) // end sc-02 case-03
-    .then([] {
+    .then([this] {
     // SC02 case04: READ of all data records
         return getTimeNow();
     })
@@ -1524,7 +1526,7 @@ seastar::future<> testScenario02() {
             }
         );
     }) // end sc-02 case-04
-    .then([] {
+    .then([this] {
         // SC02 case05&06: attempt to write in the past and write at same time
         return getTimeNow();
     })
@@ -1571,7 +1573,7 @@ seastar::future<> testScenario02() {
                 ;
         });
     }) // end sc-02 case-05 & 06
-    .then([] {
+    .then([this] {
         // SC02 case07: attempt to write in the future
         return getTimeNow();
     })
@@ -1599,7 +1601,7 @@ seastar::future<> testScenario02() {
             }
         );
     }) // end sc-02 case-07
-    .then([] {
+    .then([this] {
         // SC02 case08 & 09 & 10: READ existing key at time before/equal/after the key
         return getTimeNow();
     })
@@ -1655,7 +1657,7 @@ seastar::future<> testScenario02() {
             }
         );
     }) // end sc-02 case-08-09-10
-    .then([] {
+    .then([this] {
     // SC02 case11 & 12 & 13 & 14: Async END test (end-but-not-finalized key )
     // case11: TXN with a WRITE and then END asynchronously with Commit. Finalize with abort for the same key at time interval.
     // case12: TXN with a WRITE and then END asynchronously with Abort. Finalize with commit for the same key at time interval.
@@ -1738,7 +1740,7 @@ seastar::future<> testScenario04() {
     K2LOG_I(log::k23si, "--->Test SETUP: initialization record, pKey('SC04_pkey1'), rKey('rKey1'), v0{{f1=SC04_f1_zero, f2=SC04_f2_zero}} -> committed");
 
     return seastar::make_ready_future()
-    .then([] {
+    .then([this] {
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -1763,7 +1765,7 @@ seastar::future<> testScenario04() {
             }
         );
     })
-    .then([]{
+    .then([this]{
         K2LOG_I(log::k23si, "Scenario 04 setup done.");
         return getTimeNow();
     })
@@ -1900,7 +1902,7 @@ seastar::future<> testScenario05() {
     K2LOG_I(log::k23si, "--->Test SETUP: initialization record, pKey('SC05_pkey1'), rKey('rKey1'), v0{{f1=SC05_f1_zero, f2=SC05_f2_zero}} -> committed");
 
     return seastar::make_ready_future()
-    .then([] {
+    .then([this] {
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -1924,7 +1926,7 @@ seastar::future<> testScenario05() {
             }
         ); // end do-with
     })
-    .then([]{
+    .then([this]{
         K2LOG_I(log::k23si, "Scenario 05 setup done.");
         return getTimeNow();
     })
@@ -2132,7 +2134,7 @@ seastar::future<> testScenario06() {
     K2LOG_I(log::k23si, "+++++++ TestScenario 06: finalization +++++++");
 
     return seastar::make_ready_future()
-    .then([] {
+    .then([this] {
         return seastar::when_all_succeed(getTimeNow(), getTimeNow());
     })
     .then([this](auto&& timestamps) {
@@ -2199,7 +2201,7 @@ seastar::future<> testScenario06() {
             });
         }); // end do-with
     }) // end case 01-05
-    .then([&] {
+    .then([this] {
         K2LOG_I(log::k23si, "------- SC06.case6 ( After partial Finalization_commit, txn continues and then End_Abort all records ) -------");
         return getTimeNow();
     })
@@ -2262,7 +2264,7 @@ seastar::future<> testScenario06() {
             });
         }); // end do-with
     }) // end case 06
-    .then([&] {
+    .then([this] {
         K2LOG_I(log::k23si, "------- SC06.case7 ( Finalize_Abort partial record within this transaction ) -------");
         return seastar::when_all_succeed(getTimeNow(), getTimeNow());
     })
@@ -2343,7 +2345,7 @@ seastar::future<> testScenario06() {
             });
         }); // end do-with
     }) // end case 07-10
-    .then([&] {
+    .then([this] {
         K2LOG_I(log::k23si, "------- SC06.case11 ( After partial Finalization_abort, txn continues and then End_Abort all records ) -------");
         return getTimeNow();
     })
@@ -2379,7 +2381,7 @@ seastar::future<> testScenario06() {
             });
         }); // end do-with
     }) // end case 11
-    .then([&] {
+    .then([this] {
         K2LOG_I(log::k23si, "------- SC06.case12 ( The MTR parameters of Finalize do not match ) -------");
         return getTimeNow();
     })
@@ -2446,7 +2448,7 @@ seastar::future<> testScenario07() {
     K2LOG_I(log::k23si, "+++++++ TestScenario 07: client-initiated txn abort +++++++");
 
     return seastar::make_ready_future()
-    .then([] {
+    .then([this] {
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -2704,7 +2706,7 @@ seastar::future<> testScenario08() {
     K2LOG_I(log::k23si, "+++++++ TestScenario 08: server-initiated txn abort +++++++");
 
     return seastar::make_ready_future()
-    .then([] {
+    .then([this] {
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
@@ -2887,8 +2889,11 @@ seastar::future<> testScenario08() {
 int main(int argc, char** argv){
     k2::App app("txn_testing");
     app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO service");
+    app.addOptions()("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
     app.addOptions()("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "The endpoints of the k2 cluster");
     app.addApplet<k2::txn_testing>();
+    app.addApplet<k2::tso::TSOClient>();
+
     return app.start(argc, argv);
 }
 

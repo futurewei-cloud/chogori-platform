@@ -1,36 +1,28 @@
 #!/bin/bash
-topname=$(dirname "$0")
-cd ${topname}/../..
 set -e
-CPODIR=/tmp/___cpo_integ_test
-rm -rf ${CPODIR}
-EPS="tcp+k2rpc://0.0.0.0:10000"
+topname=$(dirname "$0")
+source ${topname}/common_defs.sh
+cd ${topname}/../..
 
-PERSISTENCE=tcp+k2rpc://0.0.0.0:12001
-CPO=tcp+k2rpc://0.0.0.0:9000
-TSO=tcp+k2rpc://0.0.0.0:13000
-HTTP=tcp+k2rpc://0.0.0.0:20000
-COMMON_ARGS="--enable_tx_checksum true --thread-affinity false"
-
-# start CPO on 1 cores
-./build/src/k2/cmd/controlPlaneOracle/cpo_main -c1 --tcp_endpoints ${CPO} 9001 --data_dir ${CPODIR} ${COMMON_ARGS}  --prometheus_port 63000 --assignment_timeout=1s --reactor-backend epoll --heartbeat_deadline=1s &
+# start CPO
+./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} 9001 --data_dir ${CPODIR} --prometheus_port 63000 --assignment_timeout=1s --txn_heartbeat_deadline=1s --nodepool_endpoints ${EPS[@]} --tso_endpoints ${TSO} --persistence_endpoints ${PERSISTENCE}&
 cpo_child_pid=$!
 
-# start nodepool on 1 cores
-./build/src/k2/cmd/nodepool/nodepool -c1 --tcp_endpoints ${EPS} --k23si_persistence_endpoint ${PERSISTENCE} ${COMMON_ARGS} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --memory=1G --partition_request_timeout=6s &
+# start nodepool
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --memory=1G --partition_request_timeout=6s &
 nodepool_child_pid=$!
 
-# start persistence on 1 cores
-./build/src/k2/cmd/persistence/persistence -c1 --tcp_endpoints ${PERSISTENCE} ${COMMON_ARGS} --prometheus_port 63002 &
+# start persistence
+./build/src/k2/cmd/persistence/persistence ${COMMON_ARGS} -c1 --tcp_endpoints ${PERSISTENCE} --prometheus_port 63002 &
 persistence_child_pid=$!
 
-# start tso on 2 cores
-./build/src/k2/cmd/tso/tso -c2 --tcp_endpoints ${TSO} 13001 ${COMMON_ARGS} --prometheus_port 63003 &
+# start tso
+./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.error_bound=100us --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
-sleep 3
+sleep 2
 
-./build/src/k2/cmd/httpclient/http_client -c1 --tcp_endpoints ${HTTP} --tcp_remotes ${EPS} --memory=1G --cpo ${CPO} --tso_endpoint ${TSO} ${COMMON_ARGS} &
+./build/src/k2/cmd/httpclient/http_client ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --tcp_remotes ${EPS[@]} --memory=1G --cpo ${CPO} --tso_endpoint ${TSO} &
 http_child_pid=$!
 
 function finish {
@@ -65,4 +57,4 @@ trap finish EXIT
 sleep 5
 
 echo ">>> Starting http test ..."
-./test/integration/http_test.py --http http://127.0.0.1:30000
+./test/integration/test_http.py --http http://127.0.0.1:30000

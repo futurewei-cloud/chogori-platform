@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/FieldTypes.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
-#include <k2/tso/client/tso_clientlib.h>
+#include <k2/tso/client/Client.h>
 #include <seastar/core/sleep.hh>
 
 #include "schema.h"
@@ -436,7 +436,7 @@ int main(int argc, char** argv) {;
         ("delivery_txn_batch_size", bpo::value<uint16_t>()->default_value(10), "The batch number of Delivery transaction")
         ("txn_weights", bpo::value<std::vector<int>>()->multitoken()->default_value(std::vector<int>({43,4,4,45,4})), "A comma-separated list of exactly 5 elements denoting the percentage for each txn type: Payment, OrderStatus, Delivery, NewOrder, and StockLevel");
 
-    app.addApplet<k2::TSO_ClientLib>();
+    app.addApplet<k2::tso::TSOClient>();
     app.addApplet<Client>();
     return app.start(argc, argv);
 }

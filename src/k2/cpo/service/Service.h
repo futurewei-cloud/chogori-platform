@@ -34,14 +34,12 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/LogStream.h>
 #include <k2/transport/Status.h>
 
-namespace k2 {
+namespace k2::cpo {
 namespace log {
 inline thread_local k2::logging::Logger cposvr("k2::cpo_service");
 }
 class CPOService {
 private:
-    typedef std::function<seastar::distributed<CPOService>&()> DistGetter;
-    DistGetter _dist;
     ConfigVar<String> _dataDir{"data_dir"};
     ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id"};
     String _getCollectionPath(String name);
@@ -64,7 +62,7 @@ private:
     std::unordered_map<String, std::vector<dto::Schema>> schemas;
 
    public:  // application lifespan
-    CPOService(DistGetter distGetter);
+    CPOService();
     ~CPOService();
 
     // required for seastar::distributed interface
