@@ -7,11 +7,22 @@ add_compile_options(-O3 -g -Werror -Wall -Wextra -march=skylake -mtune=skylake-a
 # K2_VERBOSE_LOGGING enables some verbose logging for debug purposes. By default it is disabled and compiled out
 if(DEFINED ENV{K2_VERBOSE_LOGGING})
     set(K2_VERBOSE_LOGGING $ENV{K2_VERBOSE_LOGGING})
+
 else()
     set(K2_VERBOSE_LOGGING 0)
 endif()
 
 add_compile_definitions(K2_VERBOSE_LOGGING=${K2_VERBOSE_LOGGING})
+
+# K2_MODULE_POOL_ALLOCATOR enables pool allocator for the module indexer. By default it is disabled
+if(DEFINED ENV{K2_MODULE_POOL_ALLOCATOR})
+    message("Found variable K2_MODULE_POOL_ALLOCATOR = '$ENV{K2_MODULE_POOL_ALLOCATOR}'")
+    set(K2_MODULE_POOL_ALLOCATOR $ENV{K2_MODULE_POOL_ALLOCATOR})
+else()
+    set(K2_MODULE_POOL_ALLOCATOR 0)
+endif()
+
+add_compile_definitions(K2_MODULE_POOL_ALLOCATOR=${K2_MODULE_POOL_ALLOCATOR})
 
 include_directories(src)
 

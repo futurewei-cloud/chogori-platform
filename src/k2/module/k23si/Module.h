@@ -26,6 +26,10 @@ Copyright(c) 2020 Futurewei Cloud
 #include <map>
 #include <unordered_map>
 #include <deque>
+#if K2_MODULE_POOL_ALLOCATOR == 1
+// this can only work on GCC > 4
+#include <ext/pool_allocator.h>
+#endif
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/Collection.h>
@@ -70,7 +74,11 @@ struct VersionSet {
 };
 
 // the type holding versions for all keys, i.e. the indexer
+#if K2_MODULE_POOL_ALLOCATOR == 1
+typedef std::map<dto::Key, VersionSet, std::less<dto::Key>, __gnu_cxx::__pool_alloc<std::pair<dto::Key, VersionSet>>> IndexerT;
+#else
 typedef std::map<dto::Key, VersionSet> IndexerT;
+#endif
 typedef IndexerT::iterator IndexerIterator;
 
 class K23SIPartitionModule {
@@ -298,4 +306,4 @@ private:  // members
     k2::ExponentialHistogram _queryPageReturns;
 };
 
-} // ns k2
+    }  // ns k2
