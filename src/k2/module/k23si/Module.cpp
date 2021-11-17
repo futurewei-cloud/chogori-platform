@@ -199,7 +199,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
         }
 
         k2::OperationLatencyReporter reporter(_readLatency); // for reporting metrics
-        return handleRead(std::move(request), FastDeadline(_config.readTimeout()))
+        return handleRead(std::move(request), FastDeadline(_config.readTimeout()), 0)
                .then([this, reporter=std::move(reporter)](auto&& response) mutable {
                     reporter.report();
                     return std::move(response);
@@ -213,7 +213,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
         }
 
         k2::OperationLatencyReporter reporter(_queryPageLatency); // for reporting metrics
-        return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()))
+        return handleQuery(std::move(request), dto::K23SIQueryResponse{}, FastDeadline(_config.readTimeout()), 0)
                 .then([this, reporter=std::move(reporter)] (auto&& response) mutable {
                     reporter.report();
                     return std::move(response);
@@ -601,7 +601,7 @@ std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryReq
 }
 
 seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
-K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline) {
+K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline, uint32_t count) {
     K2LOG_D(log::skvsvr, "Partition: {}, received query {}", _partition, request);
 
     uint64_t numScans = 0;
@@ -680,14 +680,14 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         _queryPageScans.add(numScans);
         _queryPageReturns.add(response.results.size());
 
-        return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
+        return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline, ++count)
         .then([this, request=std::move(request),
-                        resp=std::move(response), deadline](auto&& retryChallenger) mutable {
+                        resp=std::move(response), deadline, count](auto&& retryChallenger) mutable {
             if (!retryChallenger.is2xxOK()) {
                 // sitting transaction won. Abort the incoming request
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in query push"), dto::K23SIQueryResponse{});
             }
-            return handleQuery(std::move(request), std::move(resp), deadline);
+            return handleQuery(std::move(request), std::move(resp), deadline, count);
         });
     }
 
@@ -719,12 +719,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 }
 
 seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
-K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline) {
-    return _handleRead(std::move(request), deadline, 0);
-}
-
-seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
-K23SIPartitionModule::_handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, uint32_t count) {
+K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, uint32_t count) {
     K2LOG_D(log::skvsvr, "Partition: {}, received read {}, count {}", _partition, request, count);
 
     Status validateStatus = _validateReadRequest(request);
@@ -754,17 +749,13 @@ K23SIPartitionModule::_handleRead(dto::K23SIReadRequest&& request, FastDeadline 
         return _makeReadOK(rec);
     }
 
-    count++;
     // record is still pending and isn't from same transaction.
-    return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline)
+    return _doPush(request.key, versions.WI->data.timestamp, request.mtr, deadline, ++count)
         .then([this, request=std::move(request), deadline, count](auto&& retryChallenger) mutable {
             if (!retryChallenger.is2xxOK()) {
                 return RPCResponse(dto::K23SIStatus::AbortConflict("incumbent txn won in read push"), dto::K23SIReadResponse{});
             }
-            if (count > _config.maxPushCount()) {
-                return RPCResponse(dto::K23SIStatus::InternalError("request has already been pushed, incumbent txn won in read push"), dto::K23SIReadResponse{});
-            }
-            return _handleRead(std::move(request), deadline, count);
+            return handleRead(std::move(request), deadline, count);
         });
 }
 
@@ -1149,13 +1140,8 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         // this is a write request finding a WI from a different transaction. Do a push with the remaining
         // deadline time.
         K2LOG_D(log::skvsvr, "different WI found for key {}", request.key);
-        count++;
-        if (count > _config.maxPushCount()) {
-            K2LOG_D(log::skvsvr, "write push for key {} has pushed for {}, reject it", request.key, count);
-            return RPCResponse(dto::K23SIStatus::ServiceUnavailable("reject multiple pushes"), dto::K23SIWriteResponse{});
-        }
 
-        return _doPush(request.key, vset.WI->data.timestamp, request.mtr, deadline)
+        return _doPush(request.key, vset.WI->data.timestamp, request.mtr, deadline, ++count)
             .then([this, request = std::move(request), deadline, count](auto&& retryChallenger) mutable {
                 if (!retryChallenger.is2xxOK()) {
                     // challenger must fail. Flush in case a TR was created during this call to handle write
@@ -1290,7 +1276,12 @@ K23SIPartitionModule::handleTxnHeartbeat(dto::K23SITxnHeartbeatRequest&& request
 }
 
 seastar::future<Status>
-K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23SI_MTR challengerMTR, FastDeadline deadline) {
+K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23SI_MTR challengerMTR, FastDeadline deadline, uint32_t count) {
+    if (count > _config.maxPushCount()) {
+        K2LOG_D(log::skvsvr, "Key {} has been pushed for {}, reject it", key, count);
+        return seastar::make_ready_future<Status>(dto::K23SIStatus::AbortConflict("request has already been pushed, abort due to multiple pushes"));
+    }
+
     auto* incumbent = _twimMgr.getTxnWIMeta(incumbentId);
     K2ASSERT(log::skvsvr, incumbent != nullptr, "TWIM does not exists for {} in push for key {}", incumbentId, key)
     K2LOG_D(log::skvsvr, "executing push against txn={}, for mtr={}", *incumbent, challengerMTR);

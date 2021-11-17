@@ -90,16 +90,13 @@ public:
     // on behalf of an incoming read (recursively). We only perform the recursive attempt
     // to read if we were allowed to retry by the PUSH operation
     seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
-    handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline);
-
-    seastar::future<std::tuple<Status, dto::K23SIReadResponse>>
-    _handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, uint32_t count);
+    handleRead(dto::K23SIReadRequest&& request, FastDeadline deadline, uint32_t count);
 
     seastar::future<std::tuple<Status, dto::K23SIWriteResponse>>
     handleWrite(dto::K23SIWriteRequest&& request, FastDeadline deadline);
 
     seastar::future<std::tuple<Status, dto::K23SIQueryResponse>>
-    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline);
+    handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQueryResponse&& response, FastDeadline deadline, uint32_t count);
 
     seastar::future<std::tuple<Status, dto::K23SITxnPushResponse>>
     handleTxnPush(dto::K23SITxnPushRequest&& request);
@@ -147,7 +144,7 @@ private: // methods
     // incumbent transaction state at the TRH will be updated to reflect the abort decision.
     // The incumbent transaction will discover upon commit that the txn has been aborted.
     seastar::future<Status>
-    _doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23SI_MTR challengerMTR, FastDeadline deadline);
+    _doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23SI_MTR challengerMTR, FastDeadline deadline, uint32_t count);
 
     // validate requests are coming to the correct partition. return true if request is valid
     template<typename RequestT>
