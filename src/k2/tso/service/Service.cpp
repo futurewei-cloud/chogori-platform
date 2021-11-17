@@ -59,6 +59,15 @@ seastar::future<> TSOService::start() {
         K2LOG_I(log::tsoserver, "Starting GPS clock poller on CPU: {}", _clockPollerCPU());
         _keepRunningPoller.test_and_set(); // set the running flag to true
         _clockPoller = std::thread([this, pinCPU = _clockPollerCPU()] {
+            // Mask most signals,to allow seastar to service them instead
+            sigset_t sigs;
+            sigfillset(&sigs);
+            for (auto sig : {SIGHUP, SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV,
+                            SIGALRM, SIGCONT, SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU}) {
+                sigdelset(&sigs, sig);
+            }
+            pthread_sigmask(SIG_BLOCK, &sigs, nullptr);
+
             // pin the calling thread to the given CPU
             if (pinCPU >= 0) {
                 cpu_set_t cpuset;
