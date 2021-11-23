@@ -76,7 +76,7 @@ std::unique_ptr<TXEndpoint> AutoRRDMARPCProtocol::getTXEndpoint(String url) {
     }
     auto ep = TXEndpoint::fromURL(url, _vnet.local().getRRDMAAllocator());
     if (!ep || ep->protocol != proto) {
-        K2LOG_W(log::tx, "Cannot construct non-`{}` endpoint", proto);
+        K2LOG_W(log::tx, "Cannot construct non-`{}` endpoint from url {}", proto, url);
         return nullptr;
     }
     return ep;
