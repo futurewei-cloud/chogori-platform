@@ -35,6 +35,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Log.h"
 using namespace k2;
 static const String tpccCollectionName = "TPCC";
+static const String itemCollectionName = "TPCCItem";
 
 #define CHECK_READ_STATUS(read_result) \
     do { \
@@ -640,7 +641,7 @@ public:
     std::optional<String> Info;
 
     static inline thread_local std::shared_ptr<dto::Schema> schema;
-    static inline String collectionName = tpccCollectionName;
+    static inline String collectionName = itemCollectionName;
     SKV_RECORD_FIELDS(ItemID, ImageID, Price, Name, Info);
 };
 

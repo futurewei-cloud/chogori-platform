@@ -887,9 +887,8 @@ public:
                 .then_wrapped([this] (auto&& fut) {
                     if (fut.failed()) {
                         _failed = true;
-                    } else {
-                         fut.ignore_ready_future();
-                    }  
+                    }
+                    fut.ignore_ready_future();
                 });
             })
             .then([this]() {

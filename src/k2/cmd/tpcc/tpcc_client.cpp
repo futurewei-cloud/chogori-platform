@@ -222,7 +222,7 @@ private:
             K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
-        schema_futures.push_back(_client.createSchema(tpccCollectionName, Item::item_schema)
+        schema_futures.push_back(_client.createSchema(itemCollectionName, Item::item_schema)
         .then([] (auto&& result) {
             K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
@@ -249,10 +249,38 @@ private:
         auto f = seastar::make_ready_future<>();
         if (_global_id == 0) {
             f = f.then ([this] {
-                K2LOG_I(log::tpcc, "Creating collection");
-                return _client.makeCollection("TPCC", getRangeEnds(_tcpRemotes().size(), _max_warehouses()));
-            }).discard_result()
-            .then([this] () {
+                K2LOG_I(log::tpcc, "Creating primary collection");
+                dto::CollectionMetadata metadata{
+                    .name = tpccCollectionName,
+                    .hashScheme = dto::HashScheme::Range,
+                    .storageDriver = dto::StorageDriver::K23SI,
+                    .capacity = {},
+                    .retentionPeriod = Duration{}
+                };
+                std::vector<String> endpoints(_tcpRemotes().begin()+_item_table_num_nodes(),
+                                                        _tcpRemotes().end());
+
+                return _client.makeCollection(std::move(metadata), std::move(endpoints),
+                                                getRangeEnds(_tcpRemotes().size()-_item_table_num_nodes(),
+                                                _max_warehouses()));
+            })
+            .then([this] (Status&& status) {
+                K2ASSERT(log::tpcc, status.is2xxOK(), "Failed to make primary collection");
+                K2LOG_I(log::tpcc, "Creating Item collection");
+                dto::CollectionMetadata metadata{
+                    .name = itemCollectionName,
+                    .hashScheme = dto::HashScheme::HashCRC32C,
+                    .storageDriver = dto::StorageDriver::K23SI,
+                    .capacity = {},
+                    .retentionPeriod = Duration{}
+                };
+                std::vector<String> endpoints(_tcpRemotes().begin(),
+                                                        _tcpRemotes().begin()+_item_table_num_nodes());
+
+                return _client.makeCollection(std::move(metadata), std::move(endpoints));
+            })
+            .then([this] (Status&& status) {
+                K2ASSERT(log::tpcc, status.is2xxOK(), "Failed to make Item collection");
                 return _schema_load();
             })
             .then([this] {
@@ -261,7 +289,7 @@ private:
                 return _item_loader.loadData(_client, _num_concurrent_txns());
             });
         } else {
-            f = f.then([] { return seastar::sleep(5s); });
+            f = f.then([] { return seastar::sleep(20s); });
         }
 
         return f.then ([this, share] {
@@ -385,6 +413,7 @@ private:
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
 
     ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
+    ConfigVar<uint32_t> _item_table_num_nodes{"item_table_num_nodes"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<bool> _do_verification{"do_verification"};
     ConfigVar<int> _num_instances{"num_instances"};
@@ -417,6 +446,7 @@ int main(int argc, char** argv) {;
     k2::App app("TPCCClient");
     app.addOptions()
         ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
+        ("item_table_num_nodes", bpo::value<uint32_t>()->default_value(1), "Number of nodes to use (drawn from tcp_remotes) for the separate item table collection")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
@@ -433,6 +463,7 @@ int main(int argc, char** argv) {;
         ("do_verification", bpo::value<bool>()->default_value(true), "Run verification tests after run")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
+        ("create_collection_deadline", bpo::value<ParseableDuration>(), "Collection creation and assignment deadline")
         ("delivery_txn_batch_size", bpo::value<uint16_t>()->default_value(10), "The batch number of Delivery transaction")
         ("txn_weights", bpo::value<std::vector<int>>()->multitoken()->default_value(std::vector<int>({43,4,4,45,4})), "A comma-separated list of exactly 5 elements denoting the percentage for each txn type: Payment, OrderStatus, Delivery, NewOrder, and StockLevel");
 
