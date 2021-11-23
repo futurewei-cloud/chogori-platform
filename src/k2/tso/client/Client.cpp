@@ -172,7 +172,7 @@ seastar::future<Timestamp> TSOClient::getTimestamp() {
 seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyReporter&& reporter) {
     // ExponentialBackoffStrategy doesn't support returning values.
     return seastar::do_with(
-        ExponentialBackoffStrategy().withRetries(3).withStartTimeout(10ms).withRate(5),
+        ExponentialBackoffStrategy().withRetries(3).withStartTimeout(100ms).withRate(5),
         GetTimestampRequest{},
         Timestamp(),
         [this] (auto& retryStrategy, auto& request, auto& timestamp) mutable {
@@ -209,6 +209,7 @@ seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyR
         })
         .then_wrapped([&timestamp] (auto&& doneFut) mutable {
             if (doneFut.failed()) {
+                K2LOG_W(log::tsoclient, "Failed to get timestamp");
                 return seastar::make_exception_future<Timestamp>(doneFut.get_exception());
             }
             // in the happy case, ignore the future from the loop and give out our value future

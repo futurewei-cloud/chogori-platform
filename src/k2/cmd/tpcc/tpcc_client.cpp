@@ -261,7 +261,7 @@ private:
                 return _item_loader.loadData(_client, _num_concurrent_txns());
             });
         } else {
-            f = f.then([] { return seastar::sleep(5s); });
+            f = f.then([] { return seastar::sleep(15s); });
         }
 
         return f.then ([this, share] {
