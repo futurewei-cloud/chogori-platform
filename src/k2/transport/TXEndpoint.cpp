@@ -72,6 +72,13 @@ std::unique_ptr<TXEndpoint> TXEndpoint::fromURL(const String& url, BinaryAllocat
         }
         ip = seastar::rdma::EndPoint::GIDToString(tmpip6);
     }
+    else {
+        struct sockaddr_in sa;
+        if (::inet_pton(AF_INET, ip.c_str(), &(sa.sin_addr)) != 1) {
+            K2LOG_W(log::tx, "Invalid ipv4 address: {}", ip);
+            return nullptr;
+        }
+    }
     return std::make_unique<TXEndpoint>(std::move(protocol), std::move(ip), port, std::move(allocator));
 }
 

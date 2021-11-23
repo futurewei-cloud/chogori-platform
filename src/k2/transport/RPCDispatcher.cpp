@@ -267,7 +267,7 @@ std::unique_ptr<TXEndpoint> RPCDispatcher::getTXEndpoint(String url) {
     // temporary endpoint just so that we can see what the protocol is supposed to be
     auto ep = TXEndpoint::fromURL(url, BinaryAllocator());
     if (!ep) {
-        K2LOG_W(log::tx, "Unable to get tx endpoint for url: {}", url);
+        K2LOG_W(log::tx, "Unable to get tx endpoint for url {}", url);
         return nullptr;
     }
 
