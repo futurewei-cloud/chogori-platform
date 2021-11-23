@@ -289,7 +289,7 @@ private:
                 return _item_loader.loadData(_client, _num_concurrent_txns());
             });
         } else {
-            f = f.then([] { return seastar::sleep(15s); });
+            f = f.then([] { return seastar::sleep(20s); });
         }
 
         return f.then ([this, share] {
@@ -463,6 +463,7 @@ int main(int argc, char** argv) {;
         ("do_verification", bpo::value<bool>()->default_value(true), "Run verification tests after run")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
+        ("create_collection_deadline", bpo::value<ParseableDuration>(), "Collection creation and assignment deadline")
         ("delivery_txn_batch_size", bpo::value<uint16_t>()->default_value(10), "The batch number of Delivery transaction")
         ("txn_weights", bpo::value<std::vector<int>>()->multitoken()->default_value(std::vector<int>({43,4,4,45,4})), "A comma-separated list of exactly 5 elements denoting the percentage for each txn type: Payment, OrderStatus, Delivery, NewOrder, and StockLevel");
 

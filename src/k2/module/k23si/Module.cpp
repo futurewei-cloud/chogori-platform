@@ -467,7 +467,7 @@ void K23SIPartitionModule::_scanAdvance(IndexerIterator& it, bool reverseDirecti
         --it;
 
         if (it->first.schemaName != schema) {
-            it = _indexer.end();  //_indexer.begin() ?
+            it = _indexer.end();
         }
     }
 }

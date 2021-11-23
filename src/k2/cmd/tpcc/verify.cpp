@@ -516,7 +516,7 @@ future<> ConsistencyVerify::verifyOrderLineDelivery() {
         [this] () {
             return _txn.query(_query)
             .then([this] (auto&& response) {
-                //K2LOG_I(log::tpcc, "checking response for orderline: {}", response);
+                K2LOG_D(log::tpcc, "checking response for orderline: {}", response);
                 CHECK_READ_STATUS(response);
 
                 std::vector<future<>> orderFutures;
