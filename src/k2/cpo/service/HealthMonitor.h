@@ -37,18 +37,6 @@ Copyright(c) 2021 Futurewei Cloud
 
 namespace k2::cpo {
 
-// Represents the target of a heartbeat request, which can be anything that responds to a
-// Chogori platform RPC request. The data here is informational only and is does not affect the
-// heartbeat monitor operation but can be used by other CPO components or for logging purposes
-class RPCServer {
-public:
-    String ID;
-    String role;
-    String roleMetadata;
-    std::vector<String> endpoints;
-    K2_DEF_FMT(RPCServer, ID, role, roleMetadata, endpoints);
-};
-
 // The data needed for a single target (one-to-one with an RPCServer above) for the heartbeat monitor to
 // operate on
 class HeartbeatControl {
@@ -95,6 +83,12 @@ private:
     const String _tsoRole{"TSO"};
     const String _persistRole{"Persistence"};
 
+    // Endpoints for cluter components, initialized from the command line parameters and updated
+    // with
+    std::vector<String> _nodepoolCurrentEndpoints;
+    std::vector<String> _tsoCurrentEndpoints;
+    std::vector<String> _persistEndpoints;
+
     void _addHBControl(RPCServer&& server, TimePoint nextHB);
     void _checkHBs();
 
@@ -102,6 +96,10 @@ public:
     // required for seastar::distributed interface
     seastar::future<> gracefulStop();
     seastar::future<> start();
+
+    std::vector<String> getNodepoolEndpoints();
+    std::vector<String> getTSOEndpoints();
+    std::vector<String> getPersistEndpoints();
 };  // class HealthMonitor
 
 } // namespace k2

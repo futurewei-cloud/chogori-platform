@@ -33,7 +33,6 @@ int main(int argc, char** argv) {
     k2::App app("NodePoolService");
 
     app.addOptions()
-        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO) endpoint")
         ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
@@ -41,7 +40,6 @@ int main(int argc, char** argv) {
         ("k23si_query_pagination_limit", bpo::value<uint32_t>(), "Max records to return in a single query response")
         ("k23si_query_push_limit", bpo::value<uint32_t>(), "Min records in response needed to avoid a push during query processing")
         ("k23si_max_push_count", bpo::value<uint32_t>(), "Max push count in handleRead and handleWrite")
-        ("k23si_persistence_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A space-delimited list of k2 persistence endpoints, each core will pick one endpoint");
 
     app.addApplet<k2::cpo::HeartbeatResponder>();
     app.addApplet<k2::APIServer>();

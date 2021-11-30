@@ -45,14 +45,12 @@ struct CPOClientException : public std::exception {
 struct CollectionCreateRequest {
     // The metadata which describes the collection K2 should create
     CollectionMetadata metadata;
-    // the endpoints of the k2 cluster to use for setting up this collection
-    std::vector<String> clusterEndpoints;
     // Only relevant for range partitioned collections. Contains the key range
     // endpoints for each partition.
     std::vector<String> rangeEnds;
 
-    K2_PAYLOAD_FIELDS(metadata, clusterEndpoints, rangeEnds);
-    K2_DEF_FMT(CollectionCreateRequest, metadata, clusterEndpoints, rangeEnds);
+    K2_PAYLOAD_FIELDS(metadata, rangeEnds);
+    K2_DEF_FMT(CollectionCreateRequest, metadata, rangeEnds);
 };
 
 // Response to CollectionCreateRequest
@@ -124,6 +122,22 @@ struct Schema {
     K2_PAYLOAD_FIELDS(name, version, fields, partitionKeyFields, rangeKeyFields);
 
     K2_DEF_FMT(Schema, name, version, fields, partitionKeyFields, rangeKeyFields);
+};
+
+// Represents anything that responds to a Chogori platform RPC request.
+// The data originates from the CPO HealthMonitor which is passed RPCServer IDs and roles on the
+// command line, and roleMetadata and endpoints are returned in heartbeat responses.
+//
+// The CPO also uses this to return the endpoints for specific components when requested (e.g.
+// GetTSOServersRequest below)
+class RPCServer {
+public:
+    String ID;
+    String role;
+    String roleMetadata;
+    std::vector<String> endpoints;
+    K2_PAYLOAD_FIELDS(ID, role, roleMetadata, endpoints);
+    K2_DEF_FMT(RPCServer, ID, role, roleMetadata, endpoints);
 };
 
 // Request to create a schema and attach it to a collection

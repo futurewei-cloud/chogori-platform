@@ -383,7 +383,6 @@ private:
     std::shared_ptr<RandomGenerator> _scanLengthDist; // Request distribution for selecting length of scan
     size_t _num_keys; // total keys in keyspace
 
-    ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
     ConfigVar<uint32_t> _num_fields{"num_fields"};
@@ -423,9 +422,7 @@ private:
 int main(int argc, char** argv) {;
     k2::App app("YCSBClient");
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_concurrent_txns", bpo::value<int>()->default_value(2), "Number of concurrent transactions to use")
         ("test_duration", bpo::value<k2::ParseableDuration>(), "How long in seconds to run")

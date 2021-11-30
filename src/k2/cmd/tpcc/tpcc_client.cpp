@@ -412,7 +412,6 @@ private:
     std::vector<future<>> _tpcc_futures;
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
 
-    ConfigVar<std::vector<String>> _tcpRemotes{"tcp_remotes"};
     ConfigVar<uint32_t> _item_table_num_nodes{"item_table_num_nodes"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<bool> _do_verification{"do_verification"};
@@ -445,10 +444,8 @@ private:
 int main(int argc, char** argv) {;
     k2::App app("TPCCClient");
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of TCP remote endpoints to assign to each core. e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("item_table_num_nodes", bpo::value<uint32_t>()->default_value(1), "Number of nodes to use (drawn from tcp_remotes) for the separate item table collection")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_instances", bpo::value<int>()->default_value(1), "Number of client instances.")
         ("instance_id", bpo::value<int>()->default_value(0), "ID of this client instance.")
