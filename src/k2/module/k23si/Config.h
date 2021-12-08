@@ -64,13 +64,8 @@ struct K23SIConfig {
     // Default is > paginiationLimit so it will always push
     ConfigVar<uint32_t> queryPushLimit{"k23si_query_push_limit", 11};
 
-    // the endpoint for our persistence
-    ConfigVar<std::vector<String>> persistenceEndpoint{"k23si_persistence_endpoints"};
     ConfigDuration persistenceTimeout{"k23si_persistence_timeout", 10s};
     ConfigDuration persistenceAutoflushDeadline{"k23si_autoflush_deadline", 1s};
-
-    // the endpoint for the CPO
-    ConfigVar<String> cpoEndpoint{"k23si_cpo_endpoint", "tcp+k2rpc://127.0.0.1:12345"};
 
     // maximum push count for a key during handleRead() and handWrite()
     ConfigVar<uint32_t> maxPushCount{"k23si_max_push_count", 1};
