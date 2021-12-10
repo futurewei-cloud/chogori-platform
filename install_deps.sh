@@ -4,7 +4,7 @@ apt install nlohmann-json3-dev
 
 mkdir -p deps
 cd deps
-if [ ! -d "crc32c" ]; then git clone https://github.com/google/crc32c.git; fi
+if [ ! -d "crc32c" ]; then git clone --branch 1.1.0 https://github.com/google/crc32c.git; fi
 cd crc32c
 git submodule update --init --recursive
 mkdir -p build
@@ -17,4 +17,3 @@ cd chogori-intervaltree
 mkdir -p build
 cd build
 cmake .. && make -j install
-
