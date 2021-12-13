@@ -305,9 +305,6 @@ K23SIClient::K23SIClient(const K23SIClientConfig &) :
 }
 
 seastar::future<> K23SIClient::start() {
-    for (auto it = _tcpRemotes().begin(); it != _tcpRemotes().end(); ++it) {
-        _k2endpoints.push_back(String(*it));
-    }
     K2LOG_I(log::skvclient, "_cpo={}", _cpo());
     cpo_client.init(_cpo());
 

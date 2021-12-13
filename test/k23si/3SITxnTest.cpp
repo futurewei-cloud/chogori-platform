@@ -145,7 +145,6 @@ public: // application
 
 
 private:
-    ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
     ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
 
     seastar::future<> _testFuture = seastar::make_ready_future();
@@ -1295,11 +1294,11 @@ seastar::future<> testScenario02() {
                 .capacity{
                     .dataCapacityMegaBytes = 10,
                     .readIOPs = 1000,
-                    .writeIOPs = 1000
+                    .writeIOPs = 1000,
+                    .minNodes = 3
                 },
                 .retentionPeriod = 5h,
             },
-            .clusterEndpoints = _k2ConfigEps(),
             .rangeEnds{}
         };
         return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
@@ -1307,23 +1306,7 @@ seastar::future<> testScenario02() {
         .then([](auto&& response) {
             // response for collection create
             auto& [status, resp] = response;
-            K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
-            // wait for collection to get assigned
-            return seastar::sleep(100ms);
-        })
-        .then([this] {
-            // check to make sure the collection is assigned
-            auto request = dto::CollectionGetRequest{.name = s02nd_cname};
-            return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
-                (dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
-        })
-        .then([this](auto&& response) {
-            // check collection was assigned
-            auto& [status, resp] = response;
-            K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
-            K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[0].astate, dto::AssignmentState::FailedAssignment);
-            K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[1].astate, dto::AssignmentState::FailedAssignment);
-            K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[2].astate, dto::AssignmentState::FailedAssignment);
+            K2EXPECT(log::k23si, status, dto::K23SIStatus::Forbidden);
         });
     })
     .then([this] {
@@ -2889,8 +2872,6 @@ seastar::future<> testScenario08() {
 int main(int argc, char** argv){
     k2::App app("txn_testing");
     app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO service");
-    app.addOptions()("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
-    app.addOptions()("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "The endpoints of the k2 cluster");
     app.addApplet<k2::txn_testing>();
     app.addApplet<k2::tso::TSOClient>();
 

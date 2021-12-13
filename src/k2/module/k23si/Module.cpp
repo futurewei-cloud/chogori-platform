@@ -179,10 +179,12 @@ Status K23SIPartitionModule::_validateWriteRequest(const dto::K23SIWriteRequest&
 }
 // ********************** Validators
 
-K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition) :
+K23SIPartitionModule::K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition,
+                                           String cpoEndpoint) :
     _tsoClient(AppBase().getDist<tso::TSOClient>().local()),
     _cmeta(std::move(cmeta)),
-    _partition(std::move(partition), _cmeta.hashScheme) {
+    _partition(std::move(partition), _cmeta.hashScheme),
+    _cpoEndpoint(std::move(cpoEndpoint)) {
     K2LOG_I(log::skvsvr, "ctor for cname={}, part={}", _cmeta.name, _partition);
 }
 
@@ -371,7 +373,7 @@ seastar::future<> K23SIPartitionModule::start() {
 
     _registerMetrics();
 
-    _cpo.init(_config.cpoEndpoint());
+    _cpo.init(_cpoEndpoint);
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
         K2LOG_W(log::skvsvr,
             "Requested retention({}) is lower than minimum({}). Extending retention to minimum",
@@ -401,10 +403,10 @@ seastar::future<> K23SIPartitionModule::start() {
             _persistence = std::make_shared<Persistence>();
             return _persistence->start()
                 .then([this] {
-                    return _twimMgr.start(_retentionTimestamp, _persistence);
+                    return _twimMgr.start(_retentionTimestamp, _persistence, _cpoEndpoint);
                 })
                 .then([this] {
-                    return _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline, _persistence);
+                    return _txnMgr.start(_cmeta.name, _retentionTimestamp, _cmeta.heartbeatDeadline, _persistence, _cpoEndpoint);
                 })
                 .then([this] {
                     return _recovery();

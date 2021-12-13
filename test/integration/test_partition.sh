@@ -9,7 +9,7 @@ cd ${topname}/../..
 cpo_child_pid=$!
 
 # start nodepool
-./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} &
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 &
 nodepool_child_pid=$!
 
 # start persistence
@@ -46,4 +46,4 @@ trap finish EXIT
 
 sleep 2
 
-./build/test/dto/partition_test ${COMMON_ARGS} --cpo ${CPO} --tcp_remotes ${EPS[@]} --tso_endpoint ${TSO} --prometheus_port 63100
+./build/test/dto/partition_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100

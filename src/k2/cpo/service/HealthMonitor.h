@@ -28,14 +28,27 @@ Copyright(c) 2021 Futurewei Cloud
 #include <seastar/core/future.hh>  // for future stuff
 
 #include <k2/appbase/AppEssentials.h>
-#include <k2/cpo/service/Service.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/LogStream.h>
 #include <k2/transport/Prometheus.h>
 #include <k2/transport/Status.h>
 #include <k2/common/Timer.h>
 
+#include "Log.h"
+
 namespace k2::cpo {
+
+// Represents the target of a heartbeat request, which can be anything that responds to a
+// Chogori platform RPC request. The data here is informational only and is does not affect the
+// heartbeat monitor operation but can be used by other CPO components or for logging purposes
+class RPCServer {
+public:
+    String ID;
+    String role;
+    String roleMetadata;
+    std::vector<String> endpoints;
+    K2_DEF_FMT(RPCServer, ID, role, roleMetadata, endpoints);
+};
 
 // The data needed for a single target (one-to-one with an RPCServer above) for the heartbeat monitor to
 // operate on
@@ -82,12 +95,6 @@ private:
     const String _nodepoolRole{"Nodepool"};
     const String _tsoRole{"TSO"};
     const String _persistRole{"Persistence"};
-
-    // Endpoints for cluter components, initialized from the command line parameters and updated
-    // with
-    std::vector<String> _nodepoolCurrentEndpoints;
-    std::vector<String> _tsoCurrentEndpoints;
-    std::vector<String> _persistEndpoints;
 
     void _addHBControl(RPCServer&& server, TimePoint nextHB);
     void _checkHBs();

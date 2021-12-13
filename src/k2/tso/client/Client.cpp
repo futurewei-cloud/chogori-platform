@@ -48,11 +48,26 @@ void TSOClient::_registerMetrics() {
 }
 
 seastar::future<> TSOClient::start() {
-    // TODO: instead of using config value TSOServerURL, we need to change later to CPO URL and get URLs of TSO servers from there instead.
-    K2LOG_I(log::tsoclient, "start with bootstrap server url: {}", _bootstrapTSOServerURL());
+    if (_cpoEndpoint() == "") {
+        // This is the case for a nodepool process, which gets the CPO endpoint on assignment.
+        // It will call bootstrap() at that time to start the TSOClient
+        K2LOG_I(log::tsoclient, "Delaying bootstrap since CPO endpoint is empty");
+        return seastar::make_ready_future<>();
+    }
+
+    return bootstrap(_cpoEndpoint());
+}
+
+seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
+    K2LOG_I(log::tsoclient, "start bootstrap with CPO server url: {}", cpoEndpoint);
     _stopped = false;
 
     _registerMetrics();
+    return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
+            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, *_cpoEndpoint, 1s)
+    .then([](auto&& response) {
+        // response for collection create
+        auto& [status, resp] = response;
 
     _tsoServerEndpoint = RPC().getTXEndpoint(_bootstrapTSOServerURL());
     return _discoverServiceNodes();

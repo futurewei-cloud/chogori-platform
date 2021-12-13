@@ -173,6 +173,21 @@ void HealthMonitor::_registerMetrics() {
     });
 }
 
+// TODO: These three get*Endpoints functions are implemented assuming the auto-rrdma
+// protocol will be improved to support full auto-negotiation. If it isn't then one option
+// is to change these to return the endpoints received from the RPCServers heartbeat responses.
+std::vector<String> HealthMonitor::getNodepoolEndpoints() {
+    return _nodepoolEndpoints();
+}
+
+std::vector<String> HealthMonitor::getTSOEndpoints() {
+    return _TSOEndpoints();
+}
+
+std::vector<String> HealthMonitor::getPersistEndpoints() {
+    return _persistEndpoints();
+}
+
 seastar::future<> HealthMonitor::start() {
     if (seastar::this_shard_id() != _heartbeatMonitorShardId()) {
         return seastar::make_ready_future<>();

@@ -60,8 +60,19 @@ public:  // application lifespan
             rangeEnds.push_back(k2::dto::FieldToKeyString<k2::String>("default") +
                                 k2::dto::FieldToKeyString<k2::String>("d"));
             rangeEnds.push_back("");
-
-            return _client.makeCollection(collname, std::move(rangeEnds));
+            k2::dto::CollectionMetadata meta{
+                .name = collname,
+                .hashScheme = dto::HashScheme::Range,
+                .storageDriver = dto::StorageDriver::K23SI,
+                .capacity{
+                    .dataCapacityMegaBytes = 10,
+                    .readIOPs = 1000,
+                    .writeIOPs = 1000,
+                    .minNodes = 3
+                },
+                .retentionPeriod = 5h
+            };
+            return _client.makeCollection(std::move(meta), std::move(rangeEnds));
         })
         .then([](auto&& status) {
             K2EXPECT(log::k23si, status.is2xxOK(), true);
@@ -775,8 +786,6 @@ seastar::future<> runScenario08() {
 int main(int argc, char** argv) {
     k2::App app("QueryTest");
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list(space-delimited) of endpoints to assign in the test collection")
-        ("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
     app.addApplet<k2::tso::TSOClient>();
     app.addApplet<QueryTest>();

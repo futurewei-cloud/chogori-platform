@@ -73,9 +73,9 @@ TxnWIMeta* TxnWIMetaManager::getTxnWIMeta(dto::Timestamp ts) {
     return nullptr;
 }
 
-seastar::future<> TxnWIMetaManager::start(dto::Timestamp rts, std::shared_ptr<Persistence> persistence) {
+seastar::future<> TxnWIMetaManager::start(dto::Timestamp rts, std::shared_ptr<Persistence> persistence, const String& cpoEndpoint) {
     K2LOG_D(log::skvsvr, "starting");
-    _cpo.init(_config.cpoEndpoint());
+    _cpo.init(cpoEndpoint);
     _persistence = persistence;
     updateRetentionTimestamp(rts);
 

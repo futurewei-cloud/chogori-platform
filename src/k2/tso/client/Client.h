@@ -72,7 +72,7 @@ private: // methods
     seastar::future<dto::Timestamp> _getTimestampWithLatency(OperationLatencyReporter&& reporter);
 
 private: // fields
-    ConfigVar<String> _bootstrapTSOServerURL{"tso_endpoint"};
+    ConfigVar<String> _cpoEndpoint{"cpo_endpoint", ""};
 
     // to tell if we've been signaled to stop
     bool _stopped{true};

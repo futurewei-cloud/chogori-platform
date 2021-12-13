@@ -5,7 +5,7 @@ source ${topname}/common_defs.sh
 cd ${topname}/../..
 
 # start nodepool
-./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} --log_level INFO k2::skv_server=INFO -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} &
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} --log_level INFO k2::skv_server=INFO -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 &
 nodepool_child_pid=$!
 
 # start persistence
@@ -45,4 +45,4 @@ trap finish EXIT
 
 sleep 2
 
-./build/test/k23si/k23si_test ${COMMON_ARGS} --cpo_endpoint ${CPO} --k2_endpoints ${EPS[@]} --prometheus_port 63100 --tso_endpoint ${TSO}
+./build/test/k23si/k23si_test ${COMMON_ARGS} --cpo_endpoint ${CPO} --prometheus_port 63100

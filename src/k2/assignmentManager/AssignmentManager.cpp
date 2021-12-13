@@ -64,8 +64,6 @@ seastar::future<> AssignmentManager::start() {
 seastar::future<std::tuple<Status, dto::AssignmentCreateResponse>>
 AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
     K2LOG_I(log::amgr, "Received request to create assignment in collection {}, for partition {}", request.collectionMeta.name, request.partition);
-    // TODO, consider current load on all cores and potentially re-route the assignment to a different core
-    // for now, simply pass it onto local handler
 
     dto::CollectionMetadata& meta = request.collectionMeta;
     dto::Partition& partition = request.partition;
@@ -99,7 +97,7 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
     }
 
     _collectionName = meta.name;
-    _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition);
+    _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition, request.cpoEndpoint);
     return _pmodule->start().then([partition = std::move(partition)] () mutable {
         if (partition.endpoints.size() > 0) {
             partition.astate = dto::AssignmentState::Assigned;

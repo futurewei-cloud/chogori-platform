@@ -164,7 +164,6 @@ private:
     seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh = true);
 
     sm::metric_groups _metric_groups;
-    std::vector<String> _k2endpoints;
 };
 
 

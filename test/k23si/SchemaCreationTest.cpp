@@ -100,7 +100,6 @@ public: // application lifespan
 
 private:
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
-    k2::ConfigVar<std::vector<k2::String>> _k2ConfigEps{"k2_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
     int exitcode = -1;
@@ -116,11 +115,11 @@ private:
                 .capacity{
                     .dataCapacityMegaBytes = 100,
                     .readIOPs = 100000,
-                    .writeIOPs = 100000
+                    .writeIOPs = 100000,
+                    .minNodes = 3 // Integration tests are set up with a three-core nodepool
                 },
                 .retentionPeriod = 5h
             },
-            .clusterEndpoints = _k2ConfigEps(),
             .rangeEnds{}
         };
         return RPC()
@@ -635,7 +634,6 @@ seastar::future<> runScenario11(){
 
 int main(int argc, char** argv) {
     k2::App app("schemaCreationTest");
-    app.addOptions()("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "The endpoints of the k2 cluster");
     app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO");
     app.addApplet<k2::schemaCreation>();
     return app.start(argc, argv);

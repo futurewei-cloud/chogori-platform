@@ -46,6 +46,8 @@ enum Verbs : k2::Verb {
     CPO_COLLECTION_DROP,
 
     CPO_HEARTBEAT,
+    CPO_GET_TSO_ENDPOINTS,
+    CPO_GET_PERSISTENCE_ENDPOINTS,
 
     /************ Assignment *****************/
     // K2Assignment: CPO asks K2 to assign a partition
