@@ -159,6 +159,7 @@ struct GetTSOEndpointsRequest {
 
 struct GetTSOEndpointsResponse {
     std::vector<String> endpoints;
+    K2_PAYLOAD_FIELDS(endpoints);
     K2_DEF_FMT(GetTSOEndpointsResponse, endpoints);
 };
 
@@ -169,6 +170,7 @@ struct GetPersistenceEndpointsRequest {
 
 struct GetPersistenceEndpointsResponse {
     std::vector<String> endpoints;
+    K2_PAYLOAD_FIELDS(endpoints);
     K2_DEF_FMT(GetPersistenceEndpointsResponse, endpoints);
 };
 

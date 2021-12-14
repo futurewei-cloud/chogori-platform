@@ -27,6 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <seastar/core/sleep.hh>
 
+#include <k2/dto/ControlPlaneOracle.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include <k2/transport/RetryStrategy.h>
 
@@ -60,17 +61,29 @@ seastar::future<> TSOClient::start() {
 
 seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
     K2LOG_I(log::tsoclient, "start bootstrap with CPO server url: {}", cpoEndpoint);
+    auto cpoEP = RPC().getTXEndpoint(cpoEndpoint);
+    if (!cpoEP) {
+        K2LOG_E(log::tsoclient, "CPO endpoint is invalid: {}", cpoEndpoint);
+        return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
+    }
+
+    dto::GetTSOEndpointsRequest request{};
     _stopped = false;
-
     _registerMetrics();
-    return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
-            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, *_cpoEndpoint, 1s)
-    .then([](auto&& response) {
-        // response for collection create
-        auto& [status, resp] = response;
 
-    _tsoServerEndpoint = RPC().getTXEndpoint(_bootstrapTSOServerURL());
-    return _discoverServiceNodes();
+    return RPC().callRPC<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>
+            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, *cpoEP, 1s)
+    .then([this](auto&& response) {
+        auto& [status, resp] = response;
+        if (!status.is2xxOK() || resp.endpoints.size() == 0) {
+            K2LOG_E(log::tsoclient, "Get TSO endpoints failed with status {} and endpoint size {}",
+                        status, resp.endpoints.size());
+            return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
+        }
+
+        _tsoServerEndpoint = RPC().getTXEndpoint(resp.endpoints[0]);
+        return _discoverServiceNodes();
+    });
 }
 
 seastar::future<> TSOClient::gracefulStop() {
@@ -152,7 +165,7 @@ seastar::future<> TSOClient::_discoverServiceNodes() {
                 return seastar::make_exception_future<>(StopRetryException{});
             }
             if (!_tsoServerEndpoint) {
-                K2LOG_E(log::tsoclient, "Invalid TSO server endpoint: {}", _bootstrapTSOServerURL());
+                K2LOG_E(log::tsoclient, "Invalid TSO server endpoint");
                 return seastar::make_exception_future(StopRetryException{});
             }
             K2LOG_I(log::tsoclient, "Sending with retriesLeft={}, and timeout={}ms, with {}", retriesLeft, timeout, *_tsoServerEndpoint);

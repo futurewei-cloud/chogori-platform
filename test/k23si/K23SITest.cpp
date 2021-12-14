@@ -69,11 +69,6 @@ public:  // application lifespan
     seastar::future<> start(){
         K2LOG_I(log::k23si, "start");
 
-        K2EXPECT(log::k23si, _k2ConfigEps().size(), 3);
-        for (auto& ep: _k2ConfigEps()) {
-            _k2Endpoints.push_back(RPC().getTXEndpoint(ep));
-        }
-
         _cpo_client.init(_cpoConfigEp());
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
@@ -115,6 +110,7 @@ public:  // application lifespan
                 // check collection was assigned
                 auto& [status, resp] = response;
                 K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
                 _pgetter = dto::PartitionGetter(std::move(resp.collection));
             })
             .then([this] () {
@@ -170,9 +166,8 @@ public:  // application lifespan
 
 private:
     int exitcode = -1;
-    ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
+    ConfigVar<String> _cpoConfigEp{"cpo"};
 
-    std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
     seastar::timer<> _testTimer;
@@ -591,7 +586,7 @@ seastar::future<> runScenario05() {
 
 int main(int argc, char** argv) {
     k2::App app("K23SITest");
-    app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO");
+    app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO");
     app.addApplet<k2::K23SITest>();
     app.addApplet<k2::tso::TSOClient>();
 

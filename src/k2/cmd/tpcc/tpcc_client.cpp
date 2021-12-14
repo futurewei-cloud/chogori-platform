@@ -254,14 +254,17 @@ private:
                     .name = tpccCollectionName,
                     .hashScheme = dto::HashScheme::Range,
                     .storageDriver = dto::StorageDriver::K23SI,
-                    .capacity = {},
+                    .capacity = {
+                        .dataCapacityMegaBytes = 0,
+                        .readIOPs = 0,
+                        .writeIOPs = 0,
+                        .minNodes = _warehouse_tables_num_nodes()
+                    },
                     .retentionPeriod = Duration{}
                 };
-                std::vector<String> endpoints(_tcpRemotes().begin()+_item_table_num_nodes(),
-                                                        _tcpRemotes().end());
 
-                return _client.makeCollection(std::move(metadata), std::move(endpoints),
-                                                getRangeEnds(_tcpRemotes().size()-_item_table_num_nodes(),
+                return _client.makeCollection(std::move(metadata),
+                                                getRangeEnds(_warehouse_tables_num_nodes()-_item_table_num_nodes(),
                                                 _max_warehouses()));
             })
             .then([this] (Status&& status) {
@@ -271,13 +274,16 @@ private:
                     .name = itemCollectionName,
                     .hashScheme = dto::HashScheme::HashCRC32C,
                     .storageDriver = dto::StorageDriver::K23SI,
-                    .capacity = {},
+                    .capacity = {
+                        .dataCapacityMegaBytes = 0,
+                        .readIOPs = 0,
+                        .writeIOPs = 0,
+                        .minNodes = _item_table_num_nodes()
+                    },
                     .retentionPeriod = Duration{}
                 };
-                std::vector<String> endpoints(_tcpRemotes().begin(),
-                                                        _tcpRemotes().begin()+_item_table_num_nodes());
 
-                return _client.makeCollection(std::move(metadata), std::move(endpoints));
+                return _client.makeCollection(std::move(metadata));
             })
             .then([this] (Status&& status) {
                 K2ASSERT(log::tpcc, status.is2xxOK(), "Failed to make Item collection");
@@ -413,6 +419,7 @@ private:
     seastar::future<> _benchFuture = seastar::make_ready_future<>();
 
     ConfigVar<uint32_t> _item_table_num_nodes{"item_table_num_nodes"};
+    ConfigVar<uint32_t> _warehouse_tables_num_nodes{"warehouse_tables_num_nodes"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<bool> _do_verification{"do_verification"};
     ConfigVar<int> _num_instances{"num_instances"};
@@ -444,7 +451,8 @@ private:
 int main(int argc, char** argv) {;
     k2::App app("TPCCClient");
     app.addOptions()
-        ("item_table_num_nodes", bpo::value<uint32_t>()->default_value(1), "Number of nodes to use (drawn from tcp_remotes) for the separate item table collection")
+        ("item_table_num_nodes", bpo::value<uint32_t>()->default_value(1), "Number of nodes to use for the separate item table collection")
+        ("warehouse_tables_num_nodes", bpo::value<uint32_t>()->default_value(1), "Number of nodes to use for the warehouse indexed tables")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_instances", bpo::value<int>()->default_value(1), "Number of client instances.")

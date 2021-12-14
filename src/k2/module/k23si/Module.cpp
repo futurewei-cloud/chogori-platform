@@ -373,6 +373,7 @@ seastar::future<> K23SIPartitionModule::start() {
 
     _registerMetrics();
 
+    K2LOG_I(log::skvsvr, "init cpo with {}", _cpoEndpoint);
     _cpo.init(_cpoEndpoint);
     if (_cmeta.retentionPeriod < _config.minimumRetentionPeriod()) {
         K2LOG_W(log::skvsvr,
@@ -381,7 +382,11 @@ seastar::future<> K23SIPartitionModule::start() {
         _cmeta.retentionPeriod = _config.minimumRetentionPeriod();
     }
 
-    return _tsoClient.getTimestamp()
+    return AppBase().getDist<tso::TSOClient>().invoke_on(seastar::this_shard_id(), &tso::TSOClient::bootstrap,
+                                                    String(_cpoEndpoint))
+        .then([this] () {
+            return _tsoClient.getTimestamp();
+        })
         .then([this](dto::Timestamp&& watermark) {
             K2LOG_D(log::skvsvr, "Cache watermark: {}, period={}", watermark, _cmeta.retentionPeriod);
             _retentionTimestamp = watermark - _cmeta.retentionPeriod;

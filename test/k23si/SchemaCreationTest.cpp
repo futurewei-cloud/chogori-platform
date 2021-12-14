@@ -153,7 +153,7 @@ private:
                 K2EXPECT(log::k23si, resp.collection.partitionMap.partitions.size(), 3);
 
                 // how many partitions we have
-                uint64_t numparts = _k2ConfigEps().size();
+                uint64_t numparts = resp.collection.partitionMap.partitions.size();
                 auto max = std::numeric_limits<uint64_t>::max();
                 // how big is each one
                 uint64_t partSize = max / numparts;
@@ -165,8 +165,7 @@ private:
                     K2EXPECT(log::k23si, p.keyRangeV.pvid.assignmentVersion, 1);
                     K2EXPECT(log::k23si, p.keyRangeV.pvid.id, i);
                     K2EXPECT(log::k23si, p.keyRangeV.startKey, std::to_string(i * partSize));
-                    K2EXPECT(log::k23si, p.keyRangeV.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
-                    K2EXPECT(log::k23si, *p.endpoints.begin(), _k2ConfigEps()[i]);
+                    K2EXPECT(log::k23si, p.keyRangeV.endKey, std::to_string(i == numparts - 1 ? max : (i + 1) * partSize - 1));
                 }
             });
     }

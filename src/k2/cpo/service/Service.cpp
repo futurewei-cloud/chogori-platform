@@ -339,6 +339,15 @@ CPOService::handleCollectionDrop(dto::CollectionDropRequest&& request) {
         remove(collPath.c_str());
         String schemaPath = _getSchemasPath(name);
         remove(schemaPath.c_str());
+
+        auto it = _nodesToCollection.begin();
+        for (; it != _nodesToCollection.end(); ++it) {
+            if (it->second.collection == name) {
+                it->second.assigned = false;
+                it->second.collection = "";
+            }
+        }
+
         return RPCResponse(Statuses::S200_OK("Offload successful"), dto::CollectionDropResponse());
     });
 }
@@ -477,6 +486,14 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         dto::AssignmentCreateRequest request;
         request.collectionMeta = collection.metadata;
         request.partition = part;
+        auto tcp_ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
+        if (tcp_ep) {
+            request.cpoEndpoints.push_back(tcp_ep->url);
+        }
+        auto rdma_ep = k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto);
+        if (rdma_ep) {
+            request.cpoEndpoints.push_back(rdma_ep->url);
+        }
 
         K2LOG_I(log::cposvr, "Sending assignment for partition: {}", request.partition);
         futs.push_back(

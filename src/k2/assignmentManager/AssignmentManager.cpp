@@ -96,8 +96,19 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
         partition.endpoints.insert(rdma_ep->url);
     }
 
+    String cpoEP = "";
+    for (const String& ep : request.cpoEndpoints) {
+        if (ep.find(RRDMARPCProtocol::proto) != String::npos && rdma_ep) {
+            cpoEP = ep;
+        }
+        else if (ep.find(TCPRPCProtocol::proto) != String::npos && !rdma_ep) {
+            cpoEP = ep;
+        }
+    }
+    K2LOG_I(log::amgr, "From CPO: {} chose {}", request.cpoEndpoints, cpoEP);
+
     _collectionName = meta.name;
-    _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition, request.cpoEndpoint);
+    _pmodule = std::make_unique<K23SIPartitionModule>(std::move(meta), partition, cpoEP);
     return _pmodule->start().then([partition = std::move(partition)] () mutable {
         if (partition.endpoints.size() > 0) {
             partition.astate = dto::AssignmentState::Assigned;

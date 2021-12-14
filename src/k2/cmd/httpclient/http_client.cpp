@@ -162,8 +162,21 @@ public:  // application lifespan
         if (myid == 0) {
             K2LOG_I(k2::log::httpclient, "Creating collection...");
             _startFut = _startFut.then([this] {
-                return _client.makeCollection(collname).discard_result()
-                .then([this] () {
+                k2::dto::CollectionMetadata meta {
+                    .name = collname,
+                    .hashScheme = dto::HashScheme::HashCRC32C,
+                    .storageDriver = dto::StorageDriver::K23SI,
+                    .capacity{
+                        .dataCapacityMegaBytes = 0,
+                        .readIOPs = 0,
+                        .writeIOPs = 0,
+                        .minNodes = _numPartitions()
+                    },
+                    .retentionPeriod = 5h,
+                };
+                return _client.makeCollection(std::move(meta))
+                .then([this] (Status&& status) {
+                    K2ASSERT(k2::log::httpclient, status.is2xxOK(), "Failed to create collection");
                     K2LOG_I(k2::log::httpclient, "Creating schema...");
                     return _client.createSchema(collname, _schema);
                 }).discard_result();
@@ -421,6 +434,7 @@ private:
     uint64_t _txnID = 0;
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
     std::vector<seastar::future<>> _endFuts;
+    ConfigVar<uint32_t> _numPartitions{"num_partitions"};
 };  // class HTTPClient
 
 } // namespace k2
@@ -432,6 +446,7 @@ int main(int argc, char** argv) {
     app.addApplet<k2::HTTPClient>();
     app.addOptions()
         // config for dependencies
+        ("num_partitions", bpo::value<uint32_t>(), "Number of k2 nodes to use for the collection")
         ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")

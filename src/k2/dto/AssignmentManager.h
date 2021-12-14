@@ -33,8 +33,8 @@ namespace dto {
 struct AssignmentCreateRequest {
     CollectionMetadata collectionMeta;
     Partition partition;
-    String cpoEndpoint;
-    K2_PAYLOAD_FIELDS(collectionMeta, partition, cpoEndpoint);
+    std::vector<String> cpoEndpoints;
+    K2_PAYLOAD_FIELDS(collectionMeta, partition, cpoEndpoints);
 };
 
 // Response to AssignmentCreateRequest

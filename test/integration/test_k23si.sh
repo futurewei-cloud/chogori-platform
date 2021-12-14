@@ -45,4 +45,4 @@ trap finish EXIT
 
 sleep 2
 
-./build/test/k23si/k23si_test ${COMMON_ARGS} --cpo_endpoint ${CPO} --prometheus_port 63100
+./build/test/k23si/k23si_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100
