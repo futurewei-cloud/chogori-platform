@@ -35,20 +35,29 @@ Copyright(c) 2020 Futurewei Cloud
 typedef std::vector<std::function<seastar::future<k2::WriteResult>(k2::K2TxnHandle&)>> TPCCData;
 
 struct TPCCDataGen {
-    TPCCData generateItemData()
+    seastar::future<TPCCData> generateItemData()
     {
         TPCCData data;
         data.reserve(100000);
-        RandomContext random(0);
-
-        for (int i=1; i<=100000; ++i) {
-            auto item = Item(random, i);
-            data.push_back([_item=std::move(item)] (k2::K2TxnHandle& txn) mutable {
-                return writeRow<Item>(_item, txn);
-            });
-        }
-
-        return data;
+        return seastar::do_with(
+            std::move(data),
+            RandomContext(0),
+            boost::irange(1, 100001),
+            [this] (auto& data, auto& random, auto& range) {
+                return seastar::do_for_each(range, [&random, &data] (auto idx) mutable {
+                    auto item = Item(random, idx);
+                    data.push_back([_item=std::move(item)] (k2::K2TxnHandle& txn) mutable {
+                        return writeRow<Item>(_item, txn);
+                    });
+                })
+                .then([&data] () mutable {
+                    data.push_back([meta=TPCCMetadata(true)] (k2::K2TxnHandle& txn) mutable {
+                        // the last write signals that load is complete
+                        return writeRow<TPCCMetadata>(meta, txn);
+                    });
+                    return seastar::make_ready_future<TPCCData>(std::move(data));
+                });
+        });
     }
 
     void generateCustomerData(TPCCData& data, RandomContext& random, uint32_t w_id, uint16_t d_id)
@@ -116,10 +125,10 @@ struct TPCCDataGen {
         }
     }
 
-    TPCCData generateWarehouseData(uint32_t id_start, uint32_t id_end)
+    seastar::future<TPCCData> generateWarehouseData(uint32_t id_start, uint32_t id_end)
     {
+        K2LOG_I(log::tpcc, "Generating WH data st={}, e={}", id_start, id_end);
         TPCCData data;
-
         uint32_t num_warehouses = id_end - id_start;
         size_t reserve_space = 0;
         reserve_space += num_warehouses;
@@ -131,34 +140,52 @@ struct TPCCDataGen {
         reserve_space += num_warehouses*10*3000*10;
         reserve_space += num_warehouses*10*900;
         data.reserve(reserve_space);
-        RandomContext random(id_start);
 
-        for (uint32_t i=id_start; i < id_end; ++i) {
-            auto warehouse = Warehouse(random, i);
+        return seastar::do_with(
+        std::move(data),
+        RandomContext(id_start),
+        boost::irange(id_start, id_end),
+        [this] (auto& data, auto& random, auto& range) {
+            return seastar::do_for_each(range,
+            [this, &data, &random] (auto idx) mutable {
+                auto warehouse = Warehouse(random, idx);
 
-            data.push_back([_warehouse=std::move(warehouse)] (k2::K2TxnHandle& txn) mutable {
-                return writeRow<Warehouse>(_warehouse, txn);
+                data.push_back([_warehouse=std::move(warehouse)] (k2::K2TxnHandle& txn) mutable {
+                    return writeRow<Warehouse>(_warehouse, txn);
+                });
+
+                K2LOG_I(log::tpcc, "Generating Stock for wh={}", idx);
+                return seastar::do_with(
+                    boost::irange(1, 100001),
+                    [&random, &data, idx] (auto& range) {
+                        return seastar::do_for_each(range, [&random, &data, idx] (auto jdx) {
+                            auto stock = Stock(random, idx, jdx);
+                            data.push_back([_stock=std::move(stock)] (k2::K2TxnHandle& txn) mutable {
+                                return writeRow<Stock>(_stock, txn);
+                            });
+                        });
+                    })
+                    .then([this, &random, &data, idx] {
+                        K2LOG_I(log::tpcc, "Generating Dist _districts_per_warehouse={} for wh={}", _districts_per_warehouse(), idx);
+                        return seastar::do_with(
+                        boost::irange(1, _districts_per_warehouse() + 1),
+                        [this, &random, &data, idx] (auto& range) {
+                            return seastar::do_for_each(range, [this, &random, &data, idx] (auto jdx) {
+                                auto district = District(random, idx, jdx);
+                                data.push_back([_district=std::move(district)] (k2::K2TxnHandle& txn) mutable {
+                                    return writeRow<District>(_district, txn);
+                                });
+
+                                generateCustomerData(data, random, idx, jdx);
+                                generateOrderData(data, random, idx, jdx);
+                            });
+                        });
+                    });
+            })
+            .then([&data] () mutable {
+                return seastar::make_ready_future<TPCCData>(std::move(data));
             });
-
-            for (uint32_t j=1; j<100001; ++j) {
-                auto stock = Stock(random, i, j);
-                data.push_back([_stock=std::move(stock)] (k2::K2TxnHandle& txn) mutable {
-                    return writeRow<Stock>(_stock, txn);
-                });
-            }
-
-            for (uint16_t j=1; j <= _districts_per_warehouse(); ++j) {
-                auto district = District(random, i, j);
-                data.push_back([_district=std::move(district)] (k2::K2TxnHandle& txn) mutable {
-                    return writeRow<District>(_district, txn);
-                });
-
-                generateCustomerData(data, random, i, j);
-                generateOrderData(data, random, i, j);
-            }
-        }
-
-        return data;
+        });
     }
 
 private:
