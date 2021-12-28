@@ -339,7 +339,7 @@ seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
 CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
     auto name = request.schema.name;
     auto ver = request.schema.version;
-    auto cname = request.collectionName
+    auto cname = request.collectionName;
     K2LOG_I(log::cposvr, "Received schema create request for {} : {}@{}", cname, name, ver);
 
     // 1. Stateless validation of request
