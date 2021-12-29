@@ -43,7 +43,7 @@ namespace k2::cpo {
 class NodeAssignmentEntry {
 public:
     String collection;
-    bool assigned;
+    bool assigned{false};
 };
 
 class CPOService {
