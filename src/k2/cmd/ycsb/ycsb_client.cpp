@@ -153,12 +153,13 @@ public:  // application lifespan
             K2LOG_I(log::ycsb, "Done with benchmark");
             cores_finished++;
             if (cores_finished == seastar::smp::count) {
-                seastar::engine().exit(0);
+                K2LOG_I(log::ycsb, "All cores done");
+                AppBase().stop(0);
             }
 
             return seastar::make_ready_future<>();
         });
-
+        K2LOG_I(log::ycsb, "YCSB has been initialized");
         return seastar::make_ready_future<>();
     }
 

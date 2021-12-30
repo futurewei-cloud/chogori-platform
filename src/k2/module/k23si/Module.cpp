@@ -1082,7 +1082,7 @@ K23SIPartitionModule::_respondAfterFlush(std::tuple<Status, ResponseT>&& resp) {
             if (!flushStatus.is2xxOK()) {
                 K2LOG_E(log::skvsvr, "Persistence failed with status {}", flushStatus);
                 // TODO gracefully fail to aid in faster recovery.
-                seastar::engine().exit(1);
+                AppBase().stop(1);
             }
 
             K2LOG_D(log::skvsvr, "persistence flush succeeded. Sending response to client");

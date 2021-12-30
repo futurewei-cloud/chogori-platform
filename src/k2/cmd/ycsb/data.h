@@ -221,10 +221,10 @@ public:
                             auto flag = result.value.deserializeNext<bool>();
                             loaded = flag.value();
                         }
-                        return seastar::make_ready_future();
+                        return seastar::make_ready_future<bool>(result.status.is2xxOK());
                     })
-                    .then([&txn, &loaded] {
-                        return txn.end(true);
+                    .then([&txn, &loaded] (auto&& readSucceeded) {
+                        return txn.end(readSucceeded);
                     })
                     .then([&loaded] (auto&& response) mutable {
                         loaded = loaded && response.status.is2xxOK();

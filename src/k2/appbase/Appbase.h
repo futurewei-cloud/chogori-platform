@@ -160,6 +160,9 @@ public:  // API
     // Once all components are started, we call AppletTypes::start() to let the user begin their workflow
     int start(int argc, char** argv);
 
+    // should be called by applets if they want to exit the app. The return code will be the return code from main()
+    void stop(int retcode);
+
     ~App() {
         for (auto rit = _dtors.rbegin(); rit != _dtors.rend(); ++rit) {
             (*rit)();

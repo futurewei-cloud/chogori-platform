@@ -78,7 +78,7 @@ seastar::future<> CPOTest::start() {
         })
         .finally([this] {
             K2LOG_I(log::cpotest, "======= Test ended ========");
-            seastar::engine().exit(exitcode);
+            AppBase().stop(exitcode);
         });
     });
     _testTimer.arm(0ms);

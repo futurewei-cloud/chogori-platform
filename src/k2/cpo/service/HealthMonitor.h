@@ -71,8 +71,8 @@ private:
     ConfigVar<std::vector<String>> _nodepoolEndpoints{"nodepool_endpoints"};
     ConfigVar<std::vector<String>> _TSOEndpoints{"tso_endpoints"};
     ConfigVar<std::vector<String>> _persistEndpoints{"k23si_persistence_endpoints"};
-    ConfigVar<Duration> _interval{"heartbeat_interval", 500ms};
-    ConfigVar<Duration> _batchWait{"heartbeat_batch_wait", 0s};
+    ConfigDuration _interval{"heartbeat_interval", 500ms};
+    ConfigDuration _batchWait{"heartbeat_batch_wait", 0s};
     ConfigVar<uint32_t> _batchSize{"heartbeat_batch_size", 100};
     ConfigVar<uint32_t> _deadThreshold{"heartbeat_lost_threshold", 3};
     ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id", 0};

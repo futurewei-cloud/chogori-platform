@@ -804,9 +804,10 @@ class TPCCMetadata {
                     return txn.template read<TPCCMetadata>(TPCCMetadata())
                     .then([&loaded] (auto&& result) mutable{
                         loaded = result.status.is2xxOK() && result.value.ItemsLoaded.value();
+                        return seastar::make_ready_future<bool>(result.status.is2xxOK());
                     })
-                    .then([&txn, &loaded] {
-                        return txn.end(true);
+                    .then([&txn, &loaded] (auto&& readSucceeded) {
+                        return txn.end(readSucceeded);
                     })
                     .then([&loaded] (auto&& response) mutable {
                         loaded = loaded && response.status.is2xxOK();

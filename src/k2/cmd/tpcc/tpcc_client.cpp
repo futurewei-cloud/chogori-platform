@@ -132,15 +132,15 @@ public:  // application lifespan
                             K2LOG_I(log::tpcc, "Consistency verify created");
                            return verify.run().then([] () {
                                K2LOG_I(log::tpcc, "Verify done, exiting");
-                               seastar::engine().exit(0);
+                               AppBase().stop(0);
                            });
                         });
                     });
                 } else {
-                    seastar::engine().exit(0);
+                    AppBase().stop(0);
                 }
             } else if (cores_finished == seastar::smp::count) {
-                seastar::engine().exit(0);
+                AppBase().stop(0);
             }
 
             return make_ready_future<>();
