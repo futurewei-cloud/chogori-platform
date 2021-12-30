@@ -28,12 +28,13 @@ Copyright(c) 2021 Futurewei Cloud
 #include <seastar/core/future.hh>  // for future stuff
 
 #include <k2/appbase/AppEssentials.h>
-#include <k2/cpo/service/Service.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/LogStream.h>
 #include <k2/transport/Prometheus.h>
 #include <k2/transport/Status.h>
 #include <k2/common/Timer.h>
+
+#include "Log.h"
 
 namespace k2::cpo {
 
@@ -98,10 +99,18 @@ private:
     void _addHBControl(RPCServer&& server, TimePoint nextHB);
     void _checkHBs();
 
+    std::vector<String> getNodepoolEndpointsHelper();
+    std::vector<String> getTSOEndpointsHelper();
+    std::vector<String> getPersistEndpointsHelper();
+
 public:
     // required for seastar::distributed interface
     seastar::future<> gracefulStop();
     seastar::future<> start();
+
+    seastar::future<std::vector<String>> getNodepoolEndpoints();
+    seastar::future<std::vector<String>> getTSOEndpoints();
+    seastar::future<std::vector<String>> getPersistEndpoints();
 };  // class HealthMonitor
 
 } // namespace k2

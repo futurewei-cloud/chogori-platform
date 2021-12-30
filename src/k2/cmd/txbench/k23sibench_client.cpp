@@ -115,8 +115,21 @@ public:  // application lifespan
         if (myid == 0) {
             K2LOG_I(log::txbench, "Creating collection...");
             _benchFut = _benchFut.then([this] {
-                return _client.makeCollection(collname).discard_result()
-                .then([this] () {
+                k2::dto::CollectionMetadata meta{
+                    .name = collname,
+                    .hashScheme = dto::HashScheme::HashCRC32C,
+                    .storageDriver = dto::StorageDriver::K23SI,
+                    .capacity{
+                        .dataCapacityMegaBytes = 0,
+                        .readIOPs = 0,
+                        .writeIOPs = 0,
+                        .minNodes = _numPartitions()
+                    },
+                    .retentionPeriod = 5h
+                };
+                return _client.makeCollection(std::move(meta))
+                .then([this] (Status&& status) {
+                    K2ASSERT(log::txbench, status.is2xxOK(), "Failed to create collection");
                     return _client.createSchema(collname, _schema);
                 }).discard_result();
             });
@@ -302,6 +315,7 @@ private://metrics
     uint64_t _failWrites = 0;
 
    private:
+    ConfigVar<uint32_t> _numPartitions{"num_partitions"};
     ConfigVar<uint32_t> _dataSize{"data_size"};
     ConfigVar<uint32_t> _reads{"reads"};
     ConfigVar<uint32_t> _writes{"writes"};
@@ -323,6 +337,7 @@ int main(int argc, char** argv) {
     app.addApplet<tso::TSOClient>();
     app.addApplet<Client>();
     app.addOptions()
+        ("num_partitions", bpo::value<uint32_t>()->default_value(1), "How many k2 storage nodes to use")
         ("data_size", bpo::value<uint32_t>()->default_value(512), "How many bytes to write in records")
         ("reads", bpo::value<uint32_t>()->default_value(1), "How many reads to do in each txn")
         ("writes", bpo::value<uint32_t>()->default_value(1), "How many writes to do in each txn")
@@ -331,10 +346,8 @@ int main(int argc, char** argv) {
         ("test_duration", bpo::value<ParseableDuration>(), "How long to run")
         ("txn_timeout", bpo::value<ParseableDuration>(), "timeout for each transaction")
         // config for dependencies
-        ("tcp_remotes", bpo::value<std::vector<String>>()->multitoken()->default_value(std::vector<String>()), "A list(space-delimited) of endpoints to assign in the test collection")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("cpo", bpo::value<String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("tso_endpoint", bpo::value<String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff");
     return app.start(argc, argv);

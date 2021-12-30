@@ -51,7 +51,6 @@ public:  // application lifespan
 private:
     int exitcode = -1;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
-    k2::ConfigVar<std::vector<k2::String>> _k2ConfigEps{"k2_endpoints"};
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
 };

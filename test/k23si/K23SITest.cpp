@@ -69,11 +69,6 @@ public:  // application lifespan
     seastar::future<> start(){
         K2LOG_I(log::k23si, "start");
 
-        K2EXPECT(log::k23si, _k2ConfigEps().size(), 3);
-        for (auto& ep: _k2ConfigEps()) {
-            _k2Endpoints.push_back(RPC().getTXEndpoint(ep));
-        }
-
         _cpo_client.init(_cpoConfigEp());
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
@@ -88,11 +83,11 @@ public:  // application lifespan
                         .capacity{
                             .dataCapacityMegaBytes = 1000,
                             .readIOPs = 100000,
-                            .writeIOPs = 100000
+                            .writeIOPs = 100000,
+                            .minNodes = 3 // Integration tests are set up with a three-core nodepool
                         },
                         .retentionPeriod = Duration(1h)*90*24
                     },
-                    .clusterEndpoints = _k2ConfigEps(),
                     .rangeEnds{}
                 };
                 return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
@@ -115,6 +110,7 @@ public:  // application lifespan
                 // check collection was assigned
                 auto& [status, resp] = response;
                 K2EXPECT(log::k23si, status, Statuses::S200_OK);
+
                 _pgetter = dto::PartitionGetter(std::move(resp.collection));
             })
             .then([this] () {
@@ -170,10 +166,8 @@ public:  // application lifespan
 
 private:
     int exitcode = -1;
-    ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
-    ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
+    ConfigVar<String> _cpoConfigEp{"cpo"};
 
-    std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
     seastar::timer<> _testTimer;
@@ -592,9 +586,7 @@ seastar::future<> runScenario05() {
 
 int main(int argc, char** argv) {
     k2::App app("K23SITest");
-    app.addOptions()("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "The endpoints of the k2 cluster");
-    app.addOptions()("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
-    app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO");
+    app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO");
     app.addApplet<k2::K23SITest>();
     app.addApplet<k2::tso::TSOClient>();
 

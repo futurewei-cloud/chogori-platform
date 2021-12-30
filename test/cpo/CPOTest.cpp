@@ -106,11 +106,11 @@ seastar::future<> CPOTest::runTest2() {
             .capacity{
                 .dataCapacityMegaBytes=1,
                 .readIOPs=100,
-                .writeIOPs=200
+                .writeIOPs=200,
+                .minNodes=0
             },
             .retentionPeriod = 1h*90*24
         },
-        .clusterEndpoints{},
         .rangeEnds{}
     };
     return RPC()
@@ -131,11 +131,11 @@ seastar::future<> CPOTest::runTest3() {
             .capacity{
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
-                .writeIOPs = 100000
+                .writeIOPs = 100000,
+                .minNodes = 0
             },
             .retentionPeriod = 1h
         },
-        .clusterEndpoints{},
         .rangeEnds{}
     };
 
@@ -177,11 +177,11 @@ seastar::future<> CPOTest::runTest5() {
             .capacity{
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
-                .writeIOPs = 100000
+                .writeIOPs = 100000,
+                .minNodes = 3 // Integration test script is set up for a three core nodepool
             },
             .retentionPeriod = 5h
         },
-        .clusterEndpoints = _k2ConfigEps(),
         .rangeEnds{}
     };
     return RPC()
@@ -215,7 +215,7 @@ seastar::future<> CPOTest::runTest5() {
             K2EXPECT(log::cpotest, resp.collection.partitionMap.partitions.size(), 3);
 
             // how many partitions we have
-            uint64_t numparts = _k2ConfigEps().size();
+            uint64_t numparts = resp.collection.partitionMap.partitions.size();
             auto max = std::numeric_limits<uint64_t>::max();
             // how big is each one
             uint64_t partSize = max / numparts;
@@ -227,8 +227,7 @@ seastar::future<> CPOTest::runTest5() {
                 K2EXPECT(log::cpotest, p.keyRangeV.pvid.assignmentVersion, 1);
                 K2EXPECT(log::cpotest, p.keyRangeV.pvid.id, i);
                 K2EXPECT(log::cpotest, p.keyRangeV.startKey, std::to_string(i * partSize));
-                K2EXPECT(log::cpotest, p.keyRangeV.endKey, std::to_string(i == _k2ConfigEps().size() - 1 ? max : (i + 1) * partSize - 1));
-                K2EXPECT(log::cpotest, *p.endpoints.begin(), _k2ConfigEps()[i]);
+                K2EXPECT(log::cpotest, p.keyRangeV.endKey, std::to_string(i == numparts - 1 ? max : (i + 1) * partSize - 1));
             }
         });
 }

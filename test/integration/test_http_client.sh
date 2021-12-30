@@ -9,7 +9,7 @@ cd ${topname}/../..
 cpo_child_pid=$!
 
 # start nodepool
-./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --memory=1G --partition_request_timeout=6s &
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --memory=1G --partition_request_timeout=6s &
 nodepool_child_pid=$!
 
 # start persistence
@@ -22,7 +22,7 @@ tso_child_pid=$!
 
 sleep 2
 
-./build/src/k2/cmd/httpclient/http_client ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --tcp_remotes ${EPS[@]} --memory=1G --cpo ${CPO} --tso_endpoint ${TSO} &
+./build/src/k2/cmd/httpclient/http_client ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --num_partitions=3 --cpo ${CPO} &
 http_child_pid=$!
 
 function finish {

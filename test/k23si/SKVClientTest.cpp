@@ -53,34 +53,48 @@ public:  // application lifespan
                 return _client.start();
             })
             .then([this] {
-                auto eps = ConfigVar<std::vector<String>>("tcp_remotes");
-                K2LOG_I(log::k23si, "Creating test collection with eps {}", eps());
+                K2LOG_I(log::k23si, "Creating test collection with eps");
 
                 dto::CollectionMetadata md1{
                     .name = collname1,
                     .hashScheme = dto::HashScheme::HashCRC32C,
                     .storageDriver = dto::StorageDriver::K23SI,
-                    .capacity = {},
+                    .capacity = {
+                        .dataCapacityMegaBytes = 0,
+                        .readIOPs = 0,
+                        .writeIOPs = 0,
+                        .minNodes = 1
+                    },
                     .retentionPeriod = 2h
                 };
                 dto::CollectionMetadata md2{
                     .name = collname2,
                     .hashScheme = dto::HashScheme::HashCRC32C,
                     .storageDriver = dto::StorageDriver::K23SI,
-                    .capacity = {},
+                    .capacity = {
+                        .dataCapacityMegaBytes = 0,
+                        .readIOPs = 0,
+                        .writeIOPs = 0,
+                        .minNodes = 1
+                    },
                     .retentionPeriod = 2h
                 };
                 dto::CollectionMetadata md3{
                     .name = collname3,
                     .hashScheme = dto::HashScheme::HashCRC32C,
                     .storageDriver = dto::StorageDriver::K23SI,
-                    .capacity = {},
+                    .capacity = {
+                        .dataCapacityMegaBytes = 0,
+                        .readIOPs = 0,
+                        .writeIOPs = 0,
+                        .minNodes = 1
+                    },
                     .retentionPeriod = 2h
                 };
                 return seastar::when_all_succeed(
-                    _client.makeCollection(std::move(md1), {eps()[0]}),
-                    _client.makeCollection(std::move(md2), {eps()[1]}),
-                    _client.makeCollection(std::move(md3), {eps()[2]}),
+                    _client.makeCollection(std::move(md1)),
+                    _client.makeCollection(std::move(md2)),
+                    _client.makeCollection(std::move(md3)),
                     seastar::sleep(1s)
                 );
             })
@@ -1499,8 +1513,6 @@ seastar::future<> runScenario11() {
 int main(int argc, char** argv) {
     App app("SKVClientTest");
     app.addOptions()
-        ("tcp_remotes", bpo::value<std::vector<String>>()->multitoken()->default_value(std::vector<String>()), "A list(space-delimited) of endpoints to assign in the test collection")
-        ("tso_endpoint", bpo::value<String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo", bpo::value<String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
     app.addApplet<tso::TSOClient>();
     app.addApplet<SKVClientTest>();

@@ -5,7 +5,7 @@ source ${topname}/common_defs.sh
 cd ${topname}/../..
 
 # start nodepool
-./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_cpo_endpoint ${CPO} --tso_endpoint ${TSO} --memory=3G --partition_request_timeout=6s &
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --memory=3G --partition_request_timeout=6s &
 nodepool_child_pid=$!
 
 # start persistence
@@ -49,7 +49,7 @@ sleep 2
 NUMWH=1
 NUMDIST=1
 echo ">>> Starting load ..."
-./build/src/k2/cmd/tpcc/tpcc_client ${COMMON_ARGS} -c1 --tcp_remotes ${EPS[@]} --cpo ${CPO} --tso_endpoint ${TSO} --data_load true --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63100 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --do_verification true --num_concurrent_txns=2 --item_table_num_nodes=1 --txn_weights={43,4,4,45,4}
+./build/src/k2/cmd/tpcc/tpcc_client ${COMMON_ARGS} -c1 --cpo ${CPO} --data_load true --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63100 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --do_verification true --num_concurrent_txns=2 --item_table_num_nodes=1 --txn_weights={43,4,4,45,4} --warehouse_tables_num_nodes=2
 
 sleep 1
 
@@ -57,4 +57,4 @@ echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>> Starting benchmark ..."
-./build/src/k2/cmd/tpcc/tpcc_client ${COMMON_ARGS} -c1 --tcp_remotes ${EPS[@]} --cpo ${CPO} --tso_endpoint ${TSO} --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63101 --memory=512M --partition_request_timeout=6s  --num_concurrent_txns=1 --do_verification true --delivery_txn_batch_size=10 --txn_weights={43,4,4,45,4}
+./build/src/k2/cmd/tpcc/tpcc_client ${COMMON_ARGS} -c1 --cpo ${CPO} --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63101 --memory=512M --partition_request_timeout=6s  --num_concurrent_txns=1 --do_verification true --delivery_txn_batch_size=10 --txn_weights={43,4,4,45,4}
