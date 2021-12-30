@@ -405,7 +405,10 @@ CPOService::handleSchemasGet(dto::GetSchemasRequest&& request) {
 
 seastar::future<std::tuple<Status, dto::CreateSchemaResponse>>
 CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
-    K2LOG_I(log::cposvr, "Received schema create request for {} : {}", request.collectionName, request.schema.name);
+    auto name = request.schema.name;
+    auto ver = request.schema.version;
+    auto cname = request.collectionName;
+    K2LOG_I(log::cposvr, "Received schema create request for {} : {}@{}", cname, name, ver);
 
     // 1. Stateless validation of request
 
@@ -418,13 +421,13 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // getCollection to make sure in memory cache of schemas is up to date, and we need the
     // collection with partition map anyway to do the schema push
-    auto [status, collection] = _getCollection(request.collectionName);
+    auto [status, collection] = _getCollection(cname);
     if (!status.is2xxOK()) {
         return RPCResponse(std::move(status), dto::CreateSchemaResponse{});
     }
 
     bool validatedKeys = false;
-    for (const dto::Schema& otherSchema : schemas[request.collectionName]) {
+    for (const dto::Schema& otherSchema : schemas[cname]) {
         if (otherSchema.name == request.schema.name && otherSchema.version == request.schema.version) {
             return RPCResponse(Statuses::S403_Forbidden("Schema name and version already exist"), dto::CreateSchemaResponse{});
         }
@@ -452,7 +455,8 @@ CPOService::handleCreateSchema(dto::CreateSchemaRequest&& request) {
 
     // 5. Push to K2 nodes and respond to client
     return _pushSchema(collection, schemas[request.collectionName].back())
-    .then([] (Status&& status) {
+    .then([cname, name, ver] (Status&& status) {
+        K2LOG_I(log::cposvr, "CreateSchema  {} : {}@{} completed with status {}", cname, name, ver, status);
         return RPCResponse(std::move(status), dto::CreateSchemaResponse{});
     });
 }

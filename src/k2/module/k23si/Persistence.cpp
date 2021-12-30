@@ -22,7 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "Persistence.h"
-
+#include <k2/appbase/Appbase.h>
 namespace k2 {
 
 Persistence::Persistence() {
@@ -36,7 +36,7 @@ Persistence::Persistence() {
                     [](auto&& status) {
                         if (!status.is2xxOK()) {
                             K2LOG_E(log::skvsvr, "Persistence failure due to: {}", status);
-                            seastar::engine().exit(1);
+                            AppBase().stop(1);
                         }
                     });
             }

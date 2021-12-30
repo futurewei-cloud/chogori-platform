@@ -284,4 +284,12 @@ int App::start(int argc, char** argv) {
     K2LOG_I(log::appbase, "Shutdown was successful!");
     return result;
 }
+
+void App::stop(int retcode) {
+    // must invoke exit on reactor 0 since it is the only one allowed to process the shutdown sequence
+    (void) seastar::smp::submit_to(0, [retcode] {
+        K2LOG_I(log::appbase, "exit requested with code {}", retcode);
+        seastar::engine().exit(retcode);
+    });
+}
 }  // ns k2

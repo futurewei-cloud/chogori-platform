@@ -47,9 +47,23 @@ trap finish EXIT
 sleep 2
 
 echo ">>> Starting load ..."
-./build/src/k2/cmd/ycsb/ycsb_client ${COMMON_ARGS} -c1 --cpo ${CPO} --data_load true --prometheus_port 63100 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --num_concurrent_txns=2 --num_records=500 --num_records_insert=100 --request_dist="latest" --num_partitions=3
+./build/src/k2/cmd/ycsb/ycsb_client ${COMMON_ARGS} -c2 --cpo ${CPO} --data_load true --prometheus_port 63100 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --num_concurrent_txns=2 --num_records=500 --num_records_insert=100 --request_dist="latest" --num_partitions=3 --num_instances=2 --instance_id=0 &
+tester_0_child_pid=$!
 
-sleep 1
+./build/src/k2/cmd/ycsb/ycsb_client ${COMMON_ARGS} -c2 --cpo ${CPO} --data_load true --prometheus_port 63101 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --num_concurrent_txns=2 --num_records=500 --num_records_insert=100 --request_dist="latest" --num_partitions=3 --num_instances=2 --instance_id=1 &
+tester_1_child_pid=$!
+wait ${tester_0_child_pid}
+rv=$?
+if [[ ${rv} -ne 0 ]] ; then
+  echo " YCSB client 0 failed with code: ${rv}"
+  exit ${rv}
+fi
+wait ${tester_1_child_pid}
+rv=$?
+if [[ ${rv} -ne 0 ]] ; then
+  echo " YCSB client 1 failed with code: ${rv}"
+  exit ${rv}
+fi
 
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
 echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"

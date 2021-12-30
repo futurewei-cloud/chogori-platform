@@ -752,6 +752,79 @@ public:
         Dist_03, Dist_04, Dist_05, Dist_06, Dist_07, Dist_08, Dist_09, Dist_10, Info);
 };
 
+class TPCCMetadata {
+   public:
+    static inline dto::Schema tpccmetadata_schema{
+        .name = "tpccmeta",
+        .version = 1,
+        .fields = std::vector<dto::SchemaField>{
+            {dto::FieldType::STRING, "key", false, false},
+            {dto::FieldType::BOOL, "itemsLoaded", false, false}},
+        .partitionKeyFields = std::vector<uint32_t>{0},
+        .rangeKeyFields = {}};
+
+    TPCCMetadata(bool itemsLoaded) : TPCCMetadata() { ItemsLoaded = itemsLoaded;}
+
+    TPCCMetadata(): Key("tpcc_system_metadata"), ItemsLoaded(false){};
+
+    seastar::future<> static inline waitItemsLoaded(K23SIClient& client) {
+        return seastar::do_with(
+            Deadline(300s),
+            false,
+            [&client] (auto& deadline, auto& loaded) mutable {
+                return seastar::do_until(
+                    [&deadline, &loaded] { return loaded || deadline.isOver();},
+                    [&client, &loaded] () mutable {
+                        return _getItemsLoaded(client)
+                        .then([&loaded] (bool result) mutable {
+                            loaded = result;
+                            if (!loaded) return seastar::sleep(100ms);
+                            return seastar::make_ready_future();
+                        });
+                })
+                .finally([&loaded] {
+                    if (!loaded) {
+                        return seastar::make_exception_future(std::runtime_error("Unable to load item data within deadline"));
+                    }
+                    return seastar::make_ready_future();
+                });
+            });
+    }
+
+    seastar::future<bool> static inline _getItemsLoaded(K23SIClient& client) {
+        K2TxnOptions opts;
+        opts.priority = dto::TxnPriority::Lowest; // don't abort the write
+        return client.beginTxn(std::move(opts))
+        .then([] (auto&& txn) {
+            return seastar::do_with(
+                std::move(txn),
+                false,
+                [] (auto& txn, auto& loaded) {
+                    return txn.template read<TPCCMetadata>(TPCCMetadata())
+                    .then([&loaded] (auto&& result) mutable{
+                        loaded = result.status.is2xxOK() && result.value.ItemsLoaded.value();
+                        return seastar::make_ready_future<bool>(result.status.is2xxOK());
+                    })
+                    .then([&txn, &loaded] (auto&& readSucceeded) {
+                        return txn.end(readSucceeded);
+                    })
+                    .then([&loaded] (auto&& response) mutable {
+                        loaded = loaded && response.status.is2xxOK();
+
+                        return seastar::make_ready_future<bool>(loaded);
+                    });
+                });
+        });
+    }
+
+    std::optional<String> Key;
+    std::optional<bool> ItemsLoaded;
+
+    static inline thread_local std::shared_ptr<dto::Schema> schema;
+    static inline String collectionName = tpccCollectionName;
+    SKV_RECORD_FIELDS(Key, ItemsLoaded);
+};
+
 void inline setupSchemaPointers() {
     Warehouse::schema = std::make_shared<dto::Schema>(Warehouse::warehouse_schema);
     District::schema = std::make_shared<dto::Schema>(District::district_schema);
@@ -764,4 +837,5 @@ void inline setupSchemaPointers() {
     OrderLine::schema = std::make_shared<dto::Schema>(OrderLine::orderline_schema);
     Item::schema = std::make_shared<dto::Schema>(Item::item_schema);
     Stock::schema = std::make_shared<dto::Schema>(Stock::stock_schema);
+    TPCCMetadata::schema = std::make_shared<dto::Schema>(TPCCMetadata::tpccmetadata_schema);
 }

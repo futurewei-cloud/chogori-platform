@@ -86,7 +86,7 @@ public:  // application lifespan
             })
             .finally([this] {
                 K2LOG_I(log::ptest, "======= Test ended ========");
-                seastar::engine().exit(exitcode);
+                AppBase().stop(exitcode);
             });
         });
         _testTimer.arm(0ms);

@@ -31,7 +31,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
 #include <k2/tso/client/Client.h>
-#include <seastar/core/sleep.hh>
 
 #include "schema.h"
 #include "datagen.h"
@@ -118,9 +117,6 @@ public:  // application lifespan
 
         _benchFuture = _client.start().then([this] () { return _benchmark(); })
         .then([this]() {
-            return seastar::sleep(1s);
-        })
-        .then([this]() {
             K2LOG_I(log::tpcc, "Done with benchmark");
             _stopped = true;
             cores_finished++;
@@ -136,15 +132,15 @@ public:  // application lifespan
                             K2LOG_I(log::tpcc, "Consistency verify created");
                            return verify.run().then([] () {
                                K2LOG_I(log::tpcc, "Verify done, exiting");
-                               seastar::engine().exit(0);
+                               AppBase().stop(0);
                            });
                         });
                     });
                 } else {
-                    seastar::engine().exit(0);
+                    AppBase().stop(0);
                 }
             } else if (cores_finished == seastar::smp::count) {
-                seastar::engine().exit(0);
+                AppBase().stop(0);
             }
 
             return make_ready_future<>();
@@ -232,6 +228,10 @@ private:
             K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
         }));
 
+        schema_futures.push_back(_client.createSchema(tpccCollectionName, TPCCMetadata::tpccmetadata_schema)
+        .then([] (auto&& result) {
+            K2ASSERT(log::tpcc, result.status.is2xxOK(), "Failed to create schema");
+        }));
         return seastar::when_all_succeed(schema_futures.begin(), schema_futures.end());
     }
 
@@ -242,8 +242,8 @@ private:
         int share = _max_warehouses() / total_cpus;
 
         if (_max_warehouses() % total_cpus != 0) {
-            K2LOG_W(log::tpcc, "CPUs must divide evenly into num warehouses!");
-            return make_ready_future<>();
+            K2LOG_W(log::tpcc, "CPUs {} must divide evenly into num warehouses {}!", total_cpus, _max_warehouses());
+            return seastar::make_exception_future(std::runtime_error("Unable to load data due to CPU/warehouse mismatch"));
         }
 
         auto f = seastar::make_ready_future<>();
@@ -291,21 +291,44 @@ private:
             })
             .then([this] {
                 K2LOG_I(log::tpcc, "Starting item data load");
-                _item_loader = DataLoader(TPCCDataGen().generateItemData());
-                return _item_loader.loadData(_client, _num_concurrent_txns());
+                return seastar::do_with(
+                    TPCCDataGen(),
+                    [] (auto& datagen) {
+                        return datagen.generateItemData();
+                });
+            })
+            .then([this] (auto&& data) {
+                K2LOG_I(log::tpcc, "Item data generated");
+                return seastar::do_with(
+                    DataLoader(std::move(data)),
+                    [this] (auto& itemLoader) {
+                        return itemLoader.loadData(_client, _num_concurrent_txns());
+                });
             });
-        } else {
-            f = f.then([] { return seastar::sleep(20s); });
         }
 
-        return f.then ([this, share] {
+        return f
+        .then([this] {
+            K2LOG_I(log::tpcc, "Waiting for item data load to complete...");
+            return TPCCMetadata::waitItemsLoaded(_client);
+        })
+        .then([this, share] {
             K2LOG_I(log::tpcc, "Starting data gen");
-            _loader = DataLoader(TPCCDataGen().generateWarehouseData(1 + (_global_id * share),
-                                    1 + (_global_id * share) + share));
-            K2LOG_I(log::tpcc, "Starting load to server");
-            return _loader.loadData(_client, _num_concurrent_txns());
-        }).then ([this] {
-            K2LOG_I(log::tpcc, "Data load done");
+            auto gshare= _global_id * share;
+            return seastar::do_with(
+                TPCCDataGen(),
+                [gshare, share] (auto& datagen) {
+                    return datagen.generateWarehouseData(1 + gshare, 1 + gshare + share);
+                });
+        })
+        .then([this] (auto&& data) {
+            K2LOG_I(log::tpcc, "Warehouse data generated");
+            return seastar::do_with(
+                DataLoader(std::move(data)),
+                [this] (auto& loader) {
+                    K2LOG_I(log::tpcc, "Starting load to server");
+                    return loader.loadData(_client, _num_concurrent_txns());
+                });
         });
     }
 
@@ -374,23 +397,19 @@ private:
             return _data_load();
         }
 
-        return seastar::sleep(5s)
-        .then([this] {
-            K2LOG_I(log::tpcc, "Starting transactions...");
+        K2LOG_I(log::tpcc, "Starting transactions...");
 
-            _timer.arm(_testDuration);
-            _start = k2::Clock::now();
+        _timer.arm(_testDuration);
+        _start = k2::Clock::now();
 
-            // From TPC-C spec, this adjusts the randomness so that the same C_LAST (customer last names)
-            // that were more likely for loading are not the same used for lookup
-            int C_adj = _do_data_load() ? 0 : 65;
-            _random = RandomContext(seastar::this_shard_id(), C_adj);
-            for (int i=0; i < _num_concurrent_txns(); ++i) {
-                _tpcc_futures.emplace_back(_tpcc());
-            }
-            return when_all(_tpcc_futures.begin(), _tpcc_futures.end());
-        })
-        .discard_result()
+        // From TPC-C spec, this adjusts the randomness so that the same C_LAST (customer last names)
+        // that were more likely for loading are not the same used for lookup
+        int C_adj = _do_data_load() ? 0 : 65;
+        _random = RandomContext(seastar::this_shard_id(), C_adj);
+        for (int i=0; i < _num_concurrent_txns(); ++i) {
+            _tpcc_futures.emplace_back(_tpcc());
+        }
+        return when_all(_tpcc_futures.begin(), _tpcc_futures.end()).discard_result()
         .finally([this] () {
             auto duration = k2::Clock::now() - _start;
             auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
@@ -410,8 +429,6 @@ private:
     K23SIClient _client;
     k2::Duration _testDuration;
     bool _stopped = true;
-    DataLoader _loader;
-    DataLoader _item_loader;
     RandomContext _random;
     k2::TimePoint _start;
     seastar::timer<> _timer;
@@ -445,7 +462,7 @@ private:
     uint64_t _readOps{0};
     uint64_t _writeOps{0};
     std::vector<uint32_t> _weights;
-    int _global_id;
+    int _global_id{0};
 }; // class Client
 
 int main(int argc, char** argv) {;

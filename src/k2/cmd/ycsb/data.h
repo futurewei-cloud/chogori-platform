@@ -35,8 +35,6 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/cmd/ycsb/Log.h>
 
 using namespace k2;
-static const String ycsbCollectionName = "YCSB";
-
 // possible operations in YCSB
 K2_DEF_ENUM(Operation,
     Read,
@@ -94,15 +92,22 @@ public:
             field_names.push_back(f);
         }
 
-        dto::Schema ycsb_data_schema {
+        YCSBData::ycsb_schema = dto::Schema{
             .name = "ycsb_data",
             .version = 1,
-            .fields = field_names,
-            .partitionKeyFields = std::vector<uint32_t> { 0 },
-            .rangeKeyFields = std::vector<uint32_t> {}
+            .fields = std::move(field_names),
+            .partitionKeyFields = std::vector<uint32_t>{0},
+            .rangeKeyFields = std::vector<uint32_t>{}
         };
 
-        YCSBData::ycsb_schema = ycsb_data_schema;
+        YCSBData::ycsb_metadata_schema = dto::Schema{
+            .name = "ycsb_metadata",
+            .version = 1,
+            .fields = std::vector<dto::SchemaField>{
+                {dto::FieldType::STRING, "key", false, false},
+                {dto::FieldType::BOOL, "schemasLoaded", false, false}},
+            .partitionKeyFields = std::vector<uint32_t>{0},
+            .rangeKeyFields = std::vector<uint32_t>{}};
     }
 
     // function to obtain generate key for a particular id
@@ -135,13 +140,104 @@ public:
     uint64_t ID;
     std::vector<String> fields;
     static inline dto::Schema ycsb_schema;
+    static inline dto::Schema ycsb_metadata_schema;
     static inline thread_local std::shared_ptr<dto::Schema> schema; // schema required in this format for creating SKV record
-    static inline String collectionName = ycsbCollectionName;
+    static inline thread_local std::shared_ptr<dto::Schema> metaschema; // schema required in this format for creating SKV record
+    static const inline String collectionName{"YCSB"};
     static inline std::vector<String> _fieldNames;
+
+    static inline seastar::future<> onSetupComplete(K23SIClient& client) {
+        return client.beginTxn(K2TxnOptions{})
+        .then([] (auto&& txn) {
+            dto::SKVRecord rec(YCSBData::collectionName, YCSBData::metaschema);  // create SKV record
+            rec.serializeNext<String>(_metadata_key);
+            rec.serializeNext<bool>(true);
+
+            return seastar::do_with(
+                std::move(txn),
+                std::move(rec),
+                [](auto& txn, auto& rec) {
+                    return txn.write(rec)
+                    .then([](auto&& result) mutable{
+                        if (!result.status.is2xxOK()) {
+                            K2LOG_E(log::ycsb, "Unable to write metadata record due to: {}", result.status);
+                            return seastar::make_exception_future(std::runtime_error("Unable to write metadata record"));
+                        }
+                        return seastar::make_ready_future();
+                    })
+                    .finally([&txn] {
+                        return txn.end(true)
+                        .then([](auto&& response) {
+                            K2ASSERT(log::ycsb, response.status==dto::K23SIStatus::OK, "failed to commit txn: {}", response);
+                            return seastar::make_ready_future();
+                        });
+                    });
+                });
+        });
+    }
+
+    static inline seastar::future<> waitSchemasLoaded(K23SIClient& client) {
+        return seastar::do_with(
+            Deadline(20s),
+            false,
+            [&client](auto& deadline, auto& loaded) mutable {
+                return seastar::do_until(
+                    [&deadline, &loaded] {
+                        return loaded || deadline.isOver();
+                    },
+                    [&client, &loaded]() mutable {
+                        return _getSchemasLoaded(client)
+                        .then([&loaded](bool result) mutable {
+                            loaded = result;
+                            if (!loaded) return seastar::sleep(100ms);
+                            return seastar::make_ready_future();
+                        });
+                    })
+                    .finally([&loaded] {
+                        if (!loaded) {
+                            return seastar::make_exception_future(std::runtime_error("Unable to load schemas within deadline"));
+                        }
+                        return seastar::make_ready_future();
+                    });
+            });
+    }
+
+    seastar::future<bool> static inline _getSchemasLoaded(K23SIClient& client) {
+        K2TxnOptions opts;
+        opts.priority = dto::TxnPriority::Lowest; // don't abort the write
+        return client.beginTxn(std::move(opts))
+        .then([](auto&& txn) {
+            return seastar::do_with(
+                std::move(txn),
+                false,
+                [](auto& txn, auto& loaded) {
+                    dto::SKVRecord skv_record(YCSBData::collectionName, YCSBData::metaschema);  // create SKV record
+                    skv_record.serializeNext<String>(_metadata_key);
+
+                    return txn.read(std::move(skv_record))
+                    .then([&loaded](ReadResult<dto::SKVRecord>&& result) mutable{
+                        if (result.status.is2xxOK()) {
+                            result.value.deserializeNext<String>();
+                            auto flag = result.value.deserializeNext<bool>();
+                            loaded = flag.value();
+                        }
+                        return seastar::make_ready_future<bool>(result.status.is2xxOK());
+                    })
+                    .then([&txn, &loaded] (auto&& readSucceeded) {
+                        return txn.end(readSucceeded);
+                    })
+                    .then([&loaded] (auto&& response) mutable {
+                        loaded = loaded && response.status.is2xxOK();
+                        return seastar::make_ready_future<bool>(loaded);
+                    });
+            });
+        });
+    }
 
 private:
     k2::ConfigVar<uint32_t> _len_field{"field_length"};
     k2::ConfigVar<uint32_t> _num_fields{"num_fields"};
+    const static inline String _metadata_key{"ycsb_system_metadata"};
 };
 
 // function to write the given YCSB Data row
@@ -206,4 +302,5 @@ void SKVRecordToYCSBData(uint64_t keyid, YCSBData& row, dto::SKVRecord& skvRec){
 
 void setupSchemaPointers() {
     YCSBData::schema = std::make_shared<dto::Schema>(YCSBData::ycsb_schema);
+    YCSBData::metaschema = std::make_shared<dto::Schema>(YCSBData::ycsb_metadata_schema);
 }

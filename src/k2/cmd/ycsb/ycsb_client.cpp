@@ -31,7 +31,6 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/transport/RetryStrategy.h>
 #include <k2/tso/client/Client.h>
 #include <k2/common/Timer.h>
-#include <seastar/core/sleep.hh>
 
 #include <k2/cmd/ycsb/Log.h>
 #include <k2/cmd/ycsb/data.h>
@@ -137,6 +136,8 @@ public:  // application lifespan
     seastar::future<> start() {
         _stopped = false;
 
+        _global_id = (seastar::smp::count * _instance_id()) + seastar::this_shard_id();
+
         _num_keys = _num_records() + _num_inserts(); // key space is expanded to include expected inserts
         YCSBData::generateSchema(_num_fields());
         setupSchemaPointers();
@@ -152,35 +153,39 @@ public:  // application lifespan
             K2LOG_I(log::ycsb, "Done with benchmark");
             cores_finished++;
             if (cores_finished == seastar::smp::count) {
-                seastar::engine().exit(0);
+                K2LOG_I(log::ycsb, "All cores done");
+                AppBase().stop(0);
             }
 
             return seastar::make_ready_future<>();
         });
-
+        K2LOG_I(log::ycsb, "YCSB has been initialized");
         return seastar::make_ready_future<>();
     }
 
 private:
     // This function is used for loading the YCSB Data Schema
     seastar::future<> _schemaLoad() {
-
-        return _client.createSchema(ycsbCollectionName, YCSBData::ycsb_schema)
-        .then([] (auto&& result) {
-            K2ASSERT(log::ycsb, result.status.is2xxOK(), "Failed to create schema");
-        });
+        return _client.createSchema(YCSBData::collectionName, YCSBData::ycsb_schema)
+            .then([this](auto&& result) {
+                K2ASSERT(log::ycsb, result.status.is2xxOK(), "Failed to create schema {}", result.status);
+                return _client.createSchema(YCSBData::collectionName, YCSBData::ycsb_metadata_schema);
+            })
+            .then([](auto&& result) {
+                K2ASSERT(log::ycsb, result.status.is2xxOK(), "Failed to create metadata schema {}", result.status);
+            });
     }
 
     /* This function is used for loading data.
        It first creates a collection for YCSB data and then loads the data */
     seastar::future<> _dataLoad() {
         K2LOG_I(log::ycsb, "Creating DataLoader");
-        int cpus = seastar::smp::count;
-        int id = seastar::this_shard_id();
-        int share = _num_keys / cpus; // number of records loaded per cpu, the last one can have more than share loads
+        uint64_t cpus = seastar::smp::count;
+        uint64_t total_cpus = cpus * _num_instances();
+        uint64_t share = _num_keys / total_cpus; // number of records loaded per cpu, the last one can have more than share loads
 
-        auto f = seastar::sleep(5s); // sleep for collection to be loaded first
-        if (id == 0) { // only shard 0 loads the collection
+        auto f = seastar::make_ready_future();
+        if (_global_id == 0) {  // only global worker 0 creates the collection and schemas
             f = f.then ([this] {
                 K2LOG_I(log::ycsb, "Creating collection");
                 k2::dto::CollectionMetadata meta {
@@ -198,20 +203,27 @@ private:
                 return _client.makeCollection(std::move(meta),
                                                 getRangeEnds(_num_partitions(), _num_keys,_field_length()));
             }).discard_result()
-            .then([this] () {
+            .then([this] {
                 return _schemaLoad();
+            })
+            .then([this] {
+                return YCSBData::onSetupComplete(_client);
             });
-        } else {
-            f = f.then([] { return seastar::sleep(5s); });
         }
 
-        return f.then ([this, share, id, cpus] {
-            K2LOG_I(log::ycsb, "Starting data gen and load in shard {}", id);
+        return f
+        .then([this] {
+            K2LOG_I(log::ycsb, "Waiting for collection creation to complete...");
+            return YCSBData::waitSchemasLoaded(_client);
+        })
+        .then ([this, share, total_cpus] {
+            K2LOG_I(log::ycsb, "Starting data gen and load in global id {}", _global_id);
             _data_loader = DataLoader();
-            size_t end_idx = (id*share)+share; // end_idx to load record
-            if(id==(cpus-1))
+            size_t end_idx = (_global_id*share)+share; // end_idx to load record
+            if (_global_id==(total_cpus-1)) {
                 end_idx = _num_keys;
-            return _data_loader.loadData(_client, _num_concurrent_txns(),(id*share),end_idx); // load records from id*share to end_idx (not inclusive)
+            }
+            return _data_loader.loadData(_client, _num_concurrent_txns(), _global_id*share, end_idx); // load records from id*share to end_idx (not inclusive)
         }).then ([this] {
             K2LOG_I(log::ycsb, "Data load done");
         });
@@ -288,26 +300,22 @@ private:
             return _dataLoad();
         }
 
-        return seastar::sleep(5s)
-        .then([this] {
-            K2LOG_I(log::ycsb, "Starting transactions...");
+        K2LOG_I(log::ycsb, "Starting transactions...");
 
-            _timer.arm(_testDuration());
-            _start = k2::Clock::now();
-            _random = RandomContext(seastar::this_shard_id(), getOpsProportion()); // initialize Random Context with operations proportions for biased selection
-            if(_requestDistName()=="latest"){ // create request Distribution
-                _requestDist = getDistribution(_requestDistName(),0,_num_records()-1, seastar::this_shard_id()); // set max to the last loaded record
-            } else {
-                _requestDist = getDistribution(_requestDistName(),0,_num_keys-1, seastar::this_shard_id()); // set max to the total key space size
-            }
-            _scanLengthDist = getDistribution(_scanLengthDistName(),1,_maxScanLen(), seastar::this_shard_id()); // create Scan length Distribution
+        _timer.arm(_testDuration());
+        _start = k2::Clock::now();
+        _random = RandomContext(seastar::this_shard_id(), getOpsProportion()); // initialize Random Context with operations proportions for biased selection
+        if(_requestDistName()=="latest"){ // create request Distribution
+            _requestDist = getDistribution(_requestDistName(),0,_num_records()-1, seastar::this_shard_id()); // set max to the last loaded record
+        } else {
+            _requestDist = getDistribution(_requestDistName(),0,_num_keys-1, seastar::this_shard_id()); // set max to the total key space size
+        }
+        _scanLengthDist = getDistribution(_scanLengthDistName(),1,_maxScanLen(), seastar::this_shard_id()); // create Scan length Distribution
 
-            for (int i=0; i < _num_concurrent_txns(); ++i) {
-                _ycsb_futures.emplace_back(_ycsb());
-            }
-            return when_all(_ycsb_futures.begin(), _ycsb_futures.end());
-        })
-        .discard_result()
+        for (int i=0; i < _num_concurrent_txns(); ++i) {
+            _ycsb_futures.emplace_back(_ycsb());
+        }
+        return when_all(_ycsb_futures.begin(), _ycsb_futures.end()).discard_result()
         .finally([this] () {
             auto duration = k2::Clock::now() - _start;
             auto totalsecs = ((double)k2::msec(duration).count())/1000.0;
@@ -399,6 +407,8 @@ private:
     ConfigVar<uint32_t> _num_partitions{"num_partitions"};
     ConfigVar<bool> _do_data_load{"data_load"};
     ConfigVar<int> _num_concurrent_txns{"num_concurrent_txns"};
+    ConfigVar<int> _num_instances{"num_instances"};
+    ConfigVar<int> _instance_id{"instance_id"};
     ConfigVar<uint32_t> _num_fields{"num_fields"};
     ConfigVar<uint32_t> _field_length{"field_length"};
     ConfigVar<size_t> _num_records{"num_records"};
@@ -430,7 +440,7 @@ private:
     uint64_t _scanOps{0};
     uint64_t _deleteOps{0};
     uint64_t _insertMissesLatest{0}; // number of inserts missed when request distribution is Latest distribution
-
+    uint64_t _global_id{0};
 }; // class Client
 
 int main(int argc, char** argv) {;
@@ -440,6 +450,8 @@ int main(int argc, char** argv) {;
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("data_load", bpo::value<bool>()->default_value(false), "If true, only data gen and load are performed. If false, only benchmark is performed.")
         ("num_concurrent_txns", bpo::value<int>()->default_value(2), "Number of concurrent transactions to use")
+        ("num_instances", bpo::value<int>()->default_value(1), "Number of client instances.")
+        ("instance_id", bpo::value<int>()->default_value(0), "ID of this client instance.")
         ("test_duration", bpo::value<k2::ParseableDuration>(), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("dataload_txn_timeout", bpo::value<ParseableDuration>(), "Timeout of dataload txn, as chrono literal")
