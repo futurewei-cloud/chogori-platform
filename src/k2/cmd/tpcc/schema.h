@@ -763,7 +763,6 @@ class TPCCMetadata {
         .partitionKeyFields = std::vector<uint32_t>{0},
         .rangeKeyFields = {}};
 
-    // For Delivery Transaction
     TPCCMetadata(bool itemsLoaded) : TPCCMetadata() { ItemsLoaded = itemsLoaded;}
 
     TPCCMetadata(): Key("tpcc_system_metadata"), ItemsLoaded(false){};
