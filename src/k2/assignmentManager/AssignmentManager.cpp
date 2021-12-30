@@ -29,6 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/MessageVerbs.h>         // our DTO
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include <k2/transport/Status.h>         // for RPC
+#include <k2/transport/Discovery.h>      // for selectBestEndpointString
 
 namespace k2 {
 
@@ -96,15 +97,7 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
         partition.endpoints.insert(rdma_ep->url);
     }
 
-    String cpoEP = "";
-    for (const String& ep : request.cpoEndpoints) {
-        if (ep.find(RRDMARPCProtocol::proto) != String::npos && rdma_ep) {
-            cpoEP = ep;
-        }
-        else if (ep.find(TCPRPCProtocol::proto) != String::npos && !rdma_ep) {
-            cpoEP = ep;
-        }
-    }
+    String cpoEP = Discovery::selectBestEndpointString(request.cpoEndpoints);
     K2LOG_I(log::amgr, "From CPO: {} chose {}", request.cpoEndpoints, cpoEP);
 
     _collectionName = meta.name;

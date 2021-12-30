@@ -23,6 +23,7 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include "HealthMonitor.h"
 
+#include <k2/appbase/Appbase.h>
 #include <k2/dto/MessageVerbs.h>
 
 namespace k2::cpo {
@@ -176,15 +177,30 @@ void HealthMonitor::_registerMetrics() {
 // TODO: These three get*Endpoints functions are implemented assuming the auto-rrdma
 // protocol will be improved to support full auto-negotiation. If it isn't then one option
 // is to change these to return the endpoints received from the RPCServers heartbeat responses.
-std::vector<String> HealthMonitor::getNodepoolEndpoints() {
+seastar::future<std::vector<String>> HealthMonitor::getNodepoolEndpoints() {
+    return AppBase().getDist<HealthMonitor>().invoke_on(_heartbeatMonitorShardId(),
+                            &HealthMonitor::getNodepoolEndpointsHelper);
+}
+
+seastar::future<std::vector<String>> HealthMonitor::getTSOEndpoints() {
+    return AppBase().getDist<HealthMonitor>().invoke_on(_heartbeatMonitorShardId(),
+                            &HealthMonitor::getTSOEndpointsHelper);
+}
+
+seastar::future<std::vector<String>> HealthMonitor::getPersistEndpoints() {
+    return AppBase().getDist<HealthMonitor>().invoke_on(_heartbeatMonitorShardId(),
+                            &HealthMonitor::getPersistEndpointsHelper);
+}
+
+std::vector<String> HealthMonitor::getNodepoolEndpointsHelper() {
     return _nodepoolEndpoints();
 }
 
-std::vector<String> HealthMonitor::getTSOEndpoints() {
+std::vector<String> HealthMonitor::getTSOEndpointsHelper() {
     return _TSOEndpoints();
 }
 
-std::vector<String> HealthMonitor::getPersistEndpoints() {
+std::vector<String> HealthMonitor::getPersistEndpointsHelper() {
     return _persistEndpoints();
 }
 

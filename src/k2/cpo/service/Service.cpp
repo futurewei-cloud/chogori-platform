@@ -119,8 +119,7 @@ seastar::future<> CPOService::start() {
 
     RPC().registerRPCObserver<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>(dto::Verbs::CPO_GET_TSO_ENDPOINTS, [this] (dto::GetTSOEndpointsRequest&& request) {
         (void) request;
-        return AppBase().getDist<HealthMonitor>().invoke_on(_heartbeatMonitorShardId(),
-                                &HealthMonitor::getTSOEndpoints)
+        return AppBase().getDist<HealthMonitor>().local().getTSOEndpoints()
         .then([this] (std::vector<String>&& eps) {
             return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),
                                dto::GetTSOEndpointsResponse{std::move(eps)});
@@ -129,8 +128,7 @@ seastar::future<> CPOService::start() {
 
     RPC().registerRPCObserver<dto::GetPersistenceEndpointsRequest, dto::GetPersistenceEndpointsResponse>(dto::Verbs::CPO_GET_PERSISTENCE_ENDPOINTS, [this] (dto::GetPersistenceEndpointsRequest&& request) {
         (void) request;
-        return AppBase().getDist<HealthMonitor>().invoke_on(_heartbeatMonitorShardId(),
-                                &HealthMonitor::getPersistEndpoints)
+        return AppBase().getDist<HealthMonitor>().local().getPersistEndpoints()
         .then([this] (std::vector<String>&& eps) {
             return RPCResponse(Statuses::S200_OK("GetPersistenceEndpoints success"),
                                dto::GetPersistenceEndpointsResponse{std::move(eps)});
@@ -174,6 +172,8 @@ String CPOService::_assignToFreeNode(String collection) {
             return it->first;
         }
     }
+    // TODO: when we have CPO persistence figured out (replacing current fileutil::writeFile method),
+    // this needs to be persisted
 
     return "";
 }
@@ -347,6 +347,8 @@ CPOService::handleCollectionDrop(dto::CollectionDropRequest&& request) {
                 it->second.collection = "";
             }
         }
+        // TODO: when we have CPO persistence figured out (replacing current fileutil::writeFile method),
+        // this needs to be persisted
 
         return RPCResponse(Statuses::S200_OK("Offload successful"), dto::CollectionDropResponse());
     });
@@ -486,13 +488,12 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         dto::AssignmentCreateRequest request;
         request.collectionMeta = collection.metadata;
         request.partition = part;
-        auto tcp_ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
-        if (tcp_ep) {
-            request.cpoEndpoints.push_back(tcp_ep->url);
-        }
-        auto rdma_ep = k2::RPC().getServerEndpoint(k2::RRDMARPCProtocol::proto);
-        if (rdma_ep) {
-            request.cpoEndpoints.push_back(rdma_ep->url);
+
+        auto my_eps = k2::RPC().getServerEndpoints();
+        for (const auto& ep : my_eps) {
+            if (ep) {
+                request.cpoEndpoints.push_back(ep->url);
+            }
         }
 
         K2LOG_I(log::cposvr, "Sending assignment for partition: {}", request.partition);
