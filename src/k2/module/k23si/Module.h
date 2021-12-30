@@ -83,7 +83,7 @@ typedef IndexerT::iterator IndexerIterator;
 
 class K23SIPartitionModule {
 public: // lifecycle
-    K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition);
+    K23SIPartitionModule(dto::CollectionMetadata cmeta, dto::Partition partition, String cpoEndpoint);
     ~K23SIPartitionModule();
 
     seastar::future<> start();
@@ -289,6 +289,7 @@ private:  // members
     std::shared_ptr<Persistence> _persistence;
 
     cpo::CPOClient _cpo;
+    String _cpoEndpoint; // Obtained from the CPO assignment request
 
     sm::metric_groups _metricGroups;
 

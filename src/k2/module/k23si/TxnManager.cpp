@@ -76,12 +76,12 @@ void TxnManager::_registerMetrics() {
     });
 }
 
-seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence) {
+seastar::future<> TxnManager::start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence, const String& cpoEndpoint) {
     K2LOG_D(log::skvsvr, "start");
-    _cpo.init(_config.cpoEndpoint());
+    _cpo.init(cpoEndpoint);
     _collectionName = collectionName;
     _hbDeadline = hbDeadline;
-    _persistence= persistence;
+    _persistence = persistence;
     updateRetentionTimestamp(rts);
     // We need to call this now so that a recent time is used for a new
     // transaction's heartbeat expiry if it comes in before the first heartbeat timer callback

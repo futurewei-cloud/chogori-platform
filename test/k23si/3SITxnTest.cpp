@@ -102,11 +102,6 @@ public: // application
     seastar::future<> start(){
         K2LOG_I(log::k23si, "start txn_testing..");
 
-        K2EXPECT(log::k23si, _k2ConfigEps().size(), 3);
-        for (auto& ep: _k2ConfigEps()) {
-            _k2Endpoints.push_back(RPC().getTXEndpoint(ep));
-        }
-
         _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
         _testTimer.set_callback([this] {
             _testFuture = testScenario00()
@@ -145,12 +140,12 @@ public: // application
 
 
 private:
-    ConfigVar<std::vector<String>> _k2ConfigEps{"k2_endpoints"};
-    ConfigVar<String> _cpoConfigEp{"cpo_endpoint"};
+    ConfigVar<String> _cpoConfigEp{"cpo"};
 
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
 
+    std::unique_ptr<k2::TXEndpoint> _dummyEP; // Used for the scenario00 tests that expect timeout
     std::vector<std::unique_ptr<k2::TXEndpoint>> _k2Endpoints;
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
@@ -462,6 +457,8 @@ seastar::future<> testScenario00() {
     K2LOG_I(log::k23si, "+++++++ TestScenario 00: unassigned nodes +++++++");
     K2LOG_I(log::k23si, "--->Test SETUP: start a cluster but don't create a collection. Any requests observe a timeout.");
 
+    _dummyEP = RPC().getTXEndpoint("tcp+k2rpc://0.0.0.0:10000");
+
     return seastar::make_ready_future()
     .then([this] {
         // command: K23SI_WRITE
@@ -490,7 +487,7 @@ seastar::future<> testScenario00() {
                         .value{},
                         .fieldsForPartialUpdate{}
                     };
-                    return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *_k2Endpoints[0], 100ms)
+                    return RPC().callRPC<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(dto::Verbs::K23SI_WRITE, request, *_dummyEP, 100ms)
                     .then([this](auto&& response) {
                         // response: K23SI_WRITE
                         auto& [status, resp] = response;
@@ -510,7 +507,7 @@ seastar::future<> testScenario00() {
             .key{"schema", "SC00_pKey1", "SC00_rKey1"}
         };
         return RPC().callRPC<dto::K23SIReadRequest, dto::K23SIReadResponse>
-                (dto::Verbs::K23SI_READ, request, *_k2Endpoints[0], 100ms)
+                (dto::Verbs::K23SI_READ, request, *_dummyEP, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S503_Service_Unavailable);
@@ -527,7 +524,7 @@ seastar::future<> testScenario00() {
             .challengerMTR{dto::Timestamp(20200101, 1, 1000), dto::TxnPriority::Medium}
         };
         return RPC().callRPC<dto::K23SITxnPushRequest, dto::K23SITxnPushResponse>
-                (dto::Verbs::K23SI_TXN_PUSH, request, *_k2Endpoints[0], 100ms)
+                (dto::Verbs::K23SI_TXN_PUSH, request, *_dummyEP, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S503_Service_Unavailable);
@@ -548,7 +545,7 @@ seastar::future<> testScenario00() {
             .syncFinalize = false
         };
         return RPC().callRPC<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>
-                (dto::Verbs::K23SI_TXN_END, request, *_k2Endpoints[0], 100ms)
+                (dto::Verbs::K23SI_TXN_END, request, *_dummyEP, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S503_Service_Unavailable);
@@ -564,7 +561,7 @@ seastar::future<> testScenario00() {
             .action = dto::EndAction::Abort
         };
         return RPC().callRPC<dto::K23SITxnFinalizeRequest, dto::K23SITxnFinalizeResponse>
-                (dto::Verbs::K23SI_TXN_FINALIZE, request, *_k2Endpoints[0], 100ms)
+                (dto::Verbs::K23SI_TXN_FINALIZE, request, *_dummyEP, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S503_Service_Unavailable);
@@ -580,7 +577,7 @@ seastar::future<> testScenario00() {
             .mtr{dto::Timestamp(20200828, 1, 1000), dto::TxnPriority::Medium},
         };
         return RPC().callRPC<dto::K23SITxnHeartbeatRequest, dto::K23SITxnHeartbeatResponse>
-                (dto::Verbs::K23SI_TXN_HEARTBEAT, request, *_k2Endpoints[0], 100ms)
+                (dto::Verbs::K23SI_TXN_HEARTBEAT, request, *_dummyEP, 100ms)
         .then([](auto&& response) {
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, Statuses::S503_Service_Unavailable);
@@ -604,11 +601,11 @@ seastar::future<> testScenario01() {
                 .capacity{
                     .dataCapacityMegaBytes = 100,
                     .readIOPs = 100000,
-                    .writeIOPs = 100000
+                    .writeIOPs = 100000,
+                    .minNodes = 3
                 },
                 .retentionPeriod = Duration(1s)
             },
-            .clusterEndpoints = _k2ConfigEps(),
             .rangeEnds{}
         };
         return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
@@ -630,6 +627,12 @@ seastar::future<> testScenario01() {
             // check collection was assigned
             auto& [status, resp] = response;
             K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
+
+            for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
+                auto& p = resp.collection.partitionMap.partitions[i];
+                _k2Endpoints.push_back(RPC().getTXEndpoint(*p.endpoints.begin()));
+            }
+
             _pgetter = dto::PartitionGetter(std::move(resp.collection));
         })
         .then([this] () {
@@ -1295,11 +1298,11 @@ seastar::future<> testScenario02() {
                 .capacity{
                     .dataCapacityMegaBytes = 10,
                     .readIOPs = 1000,
-                    .writeIOPs = 1000
+                    .writeIOPs = 1000,
+                    .minNodes = 3
                 },
                 .retentionPeriod = 5h,
             },
-            .clusterEndpoints = _k2ConfigEps(),
             .rangeEnds{}
         };
         return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
@@ -1307,23 +1310,8 @@ seastar::future<> testScenario02() {
         .then([](auto&& response) {
             // response for collection create
             auto& [status, resp] = response;
-            K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
-            // wait for collection to get assigned
-            return seastar::sleep(100ms);
-        })
-        .then([this] {
-            // check to make sure the collection is assigned
-            auto request = dto::CollectionGetRequest{.name = s02nd_cname};
-            return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
-                (dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
-        })
-        .then([this](auto&& response) {
-            // check collection was assigned
-            auto& [status, resp] = response;
-            K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
-            K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[0].astate, dto::AssignmentState::FailedAssignment);
-            K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[1].astate, dto::AssignmentState::FailedAssignment);
-            K2EXPECT(log::k23si, resp.collection.partitionMap.partitions[2].astate, dto::AssignmentState::FailedAssignment);
+            // No free nodes available so we expect CPO to give us an error
+            K2EXPECT(log::k23si, status, k2::Statuses::S403_Forbidden);
         });
     })
     .then([this] {
@@ -2888,9 +2876,7 @@ seastar::future<> testScenario08() {
 
 int main(int argc, char** argv){
     k2::App app("txn_testing");
-    app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO service");
-    app.addOptions()("tso_endpoint", bpo::value<k2::String>(), "URL of Timestamp Oracle (TSO), e.g. 'tcp+k2rpc://192.168.1.2:12345'");
-    app.addOptions()("k2_endpoints", bpo::value<std::vector<k2::String>>()->multitoken(), "The endpoints of the k2 cluster");
+    app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO service");
     app.addApplet<k2::txn_testing>();
     app.addApplet<k2::tso::TSOClient>();
 

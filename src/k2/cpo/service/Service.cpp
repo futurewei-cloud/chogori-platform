@@ -117,6 +117,24 @@ seastar::future<> CPOService::start() {
         return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleMetadataGet, std::move(request));
     });
 
+    RPC().registerRPCObserver<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>(dto::Verbs::CPO_GET_TSO_ENDPOINTS, [this] (dto::GetTSOEndpointsRequest&& request) {
+        (void) request;
+        return AppBase().getDist<HealthMonitor>().local().getTSOEndpoints()
+        .then([this] (std::vector<String>&& eps) {
+            return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),
+                               dto::GetTSOEndpointsResponse{std::move(eps)});
+        });
+    });
+
+    RPC().registerRPCObserver<dto::GetPersistenceEndpointsRequest, dto::GetPersistenceEndpointsResponse>(dto::Verbs::CPO_GET_PERSISTENCE_ENDPOINTS, [this] (dto::GetPersistenceEndpointsRequest&& request) {
+        (void) request;
+        return AppBase().getDist<HealthMonitor>().local().getPersistEndpoints()
+        .then([this] (std::vector<String>&& eps) {
+            return RPCResponse(Statuses::S200_OK("GetPersistenceEndpoints success"),
+                               dto::GetPersistenceEndpointsResponse{std::move(eps)});
+        });
+    });
+
     api_server.registerAPIObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>("GetSchemas", "CPO get all schemas for a collection",
     [this] (dto::GetSchemasRequest&& request) {
         return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
@@ -132,13 +150,37 @@ seastar::future<> CPOService::start() {
     return seastar::make_ready_future<>();
 }
 
-int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& eps, const std::vector<String>& rangeEnds) {
+seastar::future<> CPOService::_getNodes() {
+    return AppBase().getDist<HealthMonitor>().invoke_on(_heartbeatMonitorShardId(), &HealthMonitor::getNodepoolEndpoints)
+    .then([this] (std::vector<String>&& nodes) {
+        for (const String& node : nodes) {
+            if (_nodesToCollection.find(node) == _nodesToCollection.end()) {
+                _nodesToCollection[node] = NodeAssignmentEntry{.collection = "", .assigned = false};
+            }
+        }
+
+        return seastar::make_ready_future<>();
+    });
+}
+
+String CPOService::_assignToFreeNode(String collection) {
+    auto it = _nodesToCollection.begin();
+    for (; it != _nodesToCollection.end(); ++it) {
+        if (!(it->second.assigned)) {
+            it->second.assigned = true;
+            it->second.collection = collection;
+            return it->first;
+        }
+    }
+    // TODO: when we have CPO persistence figured out (replacing current fileutil::writeFile method),
+    // this needs to be persisted
+
+    return "";
+}
+
+int CPOService::_makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& rangeEnds) {
     String lastEnd = "";
 
-    if (rangeEnds.size() != eps.size()) {
-        K2LOG_W(log::cposvr, "Error in client's make collection request: collection endpoints size does not equal rangeEnds size");
-        return -1;
-    }
     // The partition for a key is found using lower_bound on the start keys,
     // so it is OK for the last range end key to be ""
     if (rangeEnds[rangeEnds.size()-1] != "") {
@@ -146,7 +188,13 @@ int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>
         return -1;
     }
 
-    for (uint64_t i = 0; i < eps.size(); ++i) {
+    for (uint64_t i = 0; i < rangeEnds.size(); ++i) {
+        String node = _assignToFreeNode(collection.metadata.name);
+        if (node == "") {
+            K2LOG_W(log::cposvr, "No free nodes for assignment");
+            return -1;
+        }
+
         dto::Partition part {
             .keyRangeV{
                 .startKey=lastEnd,
@@ -157,7 +205,7 @@ int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>
                     .assignmentVersion=1
                 },
             },
-            .endpoints={eps[i]},
+            .endpoints={node},
             .astate=dto::AssignmentState::PendingAssignment
         };
 
@@ -169,13 +217,18 @@ int makeRangePartitionMap(dto::Collection& collection, const std::vector<String>
     return 0;
 }
 
-void makeHashPartitionMap(dto::Collection& collection, const std::vector<String>& eps) {
+int CPOService::_makeHashPartitionMap(dto::Collection& collection, uint32_t numNodes) {
     const uint64_t max = std::numeric_limits<uint64_t>::max();
 
-    uint64_t partSize = (eps.size() > 0) ? (max / eps.size()) : (max);
-    for (uint64_t i =0; i < eps.size(); ++i) {
+    uint64_t partSize = (numNodes > 0) ? (max / numNodes) : (max);
+    for (uint64_t i =0; i < numNodes; ++i) {
         uint64_t start = i*partSize;
-        uint64_t end = (i == eps.size() -1) ? (max) : ((i+1)*partSize - 1);
+        uint64_t end = (i == numNodes -1) ? (max) : ((i+1)*partSize - 1);
+        String node = _assignToFreeNode(collection.metadata.name);
+        if (node == "") {
+            K2LOG_W(log::cposvr, "No free nodes for assignment");
+            return -1;
+        }
 
         dto::Partition part{
             .keyRangeV{
@@ -187,52 +240,56 @@ void makeHashPartitionMap(dto::Collection& collection, const std::vector<String>
                     .assignmentVersion=1
                 },
             },
-            .endpoints={eps[i]},
+            .endpoints={node},
             .astate=dto::AssignmentState::PendingAssignment
         };
         collection.partitionMap.partitions.push_back(std::move(part));
     }
 
     collection.partitionMap.version++;
+
+    return 0;
 }
 
 seastar::future<std::tuple<Status, dto::CollectionCreateResponse>>
 CPOService::handleCreate(dto::CollectionCreateRequest&& request) {
-    K2LOG_I(log::cposvr, "Received collection create request for name={}", request.metadata.name);
-    auto cpath = _getCollectionPath(request.metadata.name);
-    if (fileutil::fileExists(cpath)) {
-        return RPCResponse(Statuses::S403_Forbidden("collection already exists"), dto::CollectionCreateResponse());
-    }
-    request.metadata.heartbeatDeadline = _collectionHeartbeatDeadline();
-    // create a collection from the incoming request
-    dto::Collection collection;
-    collection.metadata = request.metadata;
+    return _getNodes().then([this, request=std::move(request)] () mutable {
+        K2LOG_I(log::cposvr, "Received collection create request for name={}", request.metadata.name);
+        auto cpath = _getCollectionPath(request.metadata.name);
+        if (fileutil::fileExists(cpath)) {
+            return RPCResponse(Statuses::S403_Forbidden("collection already exists"), dto::CollectionCreateResponse());
+        }
+        request.metadata.heartbeatDeadline = _collectionHeartbeatDeadline();
+        // create a collection from the incoming request
+        dto::Collection collection;
+        collection.metadata = request.metadata;
 
-    int err = 0;
-    if (collection.metadata.hashScheme == dto::HashScheme::HashCRC32C) {
-        makeHashPartitionMap(collection, request.clusterEndpoints);
-    }
-    else if (collection.metadata.hashScheme == dto::HashScheme::Range) {
-        err = makeRangePartitionMap(collection, request.clusterEndpoints, request.rangeEnds);
-    }
-    else {
-        return RPCResponse(Statuses::S403_Forbidden("Unknown hashScheme"), dto::CollectionCreateResponse());
-    }
+        int err = 0;
+        if (collection.metadata.hashScheme == dto::HashScheme::HashCRC32C) {
+            err = _makeHashPartitionMap(collection, request.metadata.capacity.minNodes);
+        }
+        else if (collection.metadata.hashScheme == dto::HashScheme::Range) {
+            err = _makeRangePartitionMap(collection, request.rangeEnds);
+        }
+        else {
+            return RPCResponse(Statuses::S403_Forbidden("Unknown hashScheme"), dto::CollectionCreateResponse());
+        }
 
-    if (err) {
-        return RPCResponse(Statuses::S400_Bad_Request("Bad rangeEnds"), dto::CollectionCreateResponse());
-    }
+        if (err) {
+            return RPCResponse(Statuses::S403_Forbidden("Could not find free nodes"), dto::CollectionCreateResponse());
+        }
 
-    schemas[collection.metadata.name] = std::vector<dto::Schema>();
+        schemas[collection.metadata.name] = std::vector<dto::Schema>();
 
-    auto status = _saveCollection(collection);
-    if (!status.is2xxOK()) {
+        auto status = _saveCollection(collection);
+        if (!status.is2xxOK()) {
+            return RPCResponse(std::move(status), dto::CollectionCreateResponse());
+        }
+
+        K2LOG_I(log::cposvr, "Created collection {}", cpath);
+        _assignCollection(collection);
         return RPCResponse(std::move(status), dto::CollectionCreateResponse());
-    }
-
-    K2LOG_I(log::cposvr, "Created collection {}", cpath);
-    _assignCollection(collection);
-    return RPCResponse(std::move(status), dto::CollectionCreateResponse());
+    });
 }
 
 seastar::future<std::tuple<Status, dto::CollectionGetResponse>>
@@ -282,6 +339,17 @@ CPOService::handleCollectionDrop(dto::CollectionDropRequest&& request) {
         remove(collPath.c_str());
         String schemaPath = _getSchemasPath(name);
         remove(schemaPath.c_str());
+
+        auto it = _nodesToCollection.begin();
+        for (; it != _nodesToCollection.end(); ++it) {
+            if (it->second.collection == name) {
+                it->second.assigned = false;
+                it->second.collection = "";
+            }
+        }
+        // TODO: when we have CPO persistence figured out (replacing current fileutil::writeFile method),
+        // this needs to be persisted
+
         return RPCResponse(Statuses::S200_OK("Offload successful"), dto::CollectionDropResponse());
     });
 }
@@ -424,6 +492,13 @@ void CPOService::_assignCollection(dto::Collection& collection) {
         dto::AssignmentCreateRequest request;
         request.collectionMeta = collection.metadata;
         request.partition = part;
+
+        auto my_eps = k2::RPC().getServerEndpoints();
+        for (const auto& ep : my_eps) {
+            if (ep) {
+                request.cpoEndpoints.push_back(ep->url);
+            }
+        }
 
         K2LOG_I(log::cposvr, "Sending assignment for partition: {}", request.partition);
         futs.push_back(

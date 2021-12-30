@@ -34,10 +34,18 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/LogStream.h>
 #include <k2/transport/Status.h>
 
+#include "Log.h"
+#include "HealthMonitor.h"
+
 namespace k2::cpo {
-namespace log {
-inline thread_local k2::logging::Logger cposvr("k2::cpo_service");
-}
+
+// Used by the CPOService class to track mapping of nodes to assigned collections
+class NodeAssignmentEntry {
+public:
+    String collection;
+    bool assigned{false};
+};
+
 class CPOService {
 private:
     ConfigVar<String> _dataDir{"data_dir"};
@@ -51,12 +59,17 @@ private:
     ConfigDuration _collectionHeartbeatDeadline{"txn_heartbeat_deadline", 100ms};
     std::unordered_map<String, seastar::future<>> _assignments;
     std::unordered_map<String, std::vector<dto::PartitionMetdataRecord>> _metadataRecords;
+    std::map<String, NodeAssignmentEntry> _nodesToCollection;
     std::tuple<Status, dto::Collection> _getCollection(String name);
     Status _saveCollection(dto::Collection& collection);
     Status _saveSchemas(const String& collectionName);
     Status _loadSchemas(const String& collectionName);
     seastar::future<Status> _pushSchema(const dto::Collection& collection, const dto::Schema& schema);
     void _handleCompletedAssignment(const String& cname, dto::AssignmentCreateResponse&& request);
+    seastar::future<> _getNodes(); // Get list of nodes from health monitor
+    String _assignToFreeNode(String collection);
+    int _makeHashPartitionMap(dto::Collection& collection, uint32_t numNodes);
+    int _makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& rangeEnds);
 
     // Collection name -> schemas
     std::unordered_map<String, std::vector<dto::Schema>> schemas;

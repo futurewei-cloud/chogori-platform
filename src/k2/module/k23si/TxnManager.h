@@ -120,7 +120,7 @@ public: // lifecycle
     // When started, we need to be told:
     // - the current retentionTimestamp
     // - the heartbeat interval for the collection
-    seastar::future<> start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence);
+    seastar::future<> start(const String& collectionName, dto::Timestamp rts, Duration hbDeadline, std::shared_ptr<Persistence> persistence, const String& cpoEndpoint);
 
     // called when
     seastar::future<> gracefulStop();

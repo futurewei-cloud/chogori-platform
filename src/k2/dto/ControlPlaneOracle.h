@@ -45,14 +45,12 @@ struct CPOClientException : public std::exception {
 struct CollectionCreateRequest {
     // The metadata which describes the collection K2 should create
     CollectionMetadata metadata;
-    // the endpoints of the k2 cluster to use for setting up this collection
-    std::vector<String> clusterEndpoints;
     // Only relevant for range partitioned collections. Contains the key range
     // endpoints for each partition.
     std::vector<String> rangeEnds;
 
-    K2_PAYLOAD_FIELDS(metadata, clusterEndpoints, rangeEnds);
-    K2_DEF_FMT(CollectionCreateRequest, metadata, clusterEndpoints, rangeEnds);
+    K2_PAYLOAD_FIELDS(metadata, rangeEnds);
+    K2_DEF_FMT(CollectionCreateRequest, metadata, rangeEnds);
 };
 
 // Response to CollectionCreateRequest
@@ -152,6 +150,28 @@ struct GetSchemasResponse {
     std::vector<Schema> schemas;
     K2_PAYLOAD_FIELDS(schemas);
     K2_DEF_FMT(GetSchemasResponse, schemas);
+};
+
+struct GetTSOEndpointsRequest {
+    K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(GetTSOEndpointsRequest);
+};
+
+struct GetTSOEndpointsResponse {
+    std::vector<String> endpoints;
+    K2_PAYLOAD_FIELDS(endpoints);
+    K2_DEF_FMT(GetTSOEndpointsResponse, endpoints);
+};
+
+struct GetPersistenceEndpointsRequest {
+    K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(GetPersistenceEndpointsRequest);
+};
+
+struct GetPersistenceEndpointsResponse {
+    std::vector<String> endpoints;
+    K2_PAYLOAD_FIELDS(endpoints);
+    K2_DEF_FMT(GetPersistenceEndpointsResponse, endpoints);
 };
 
 struct HeartbeatRequest {

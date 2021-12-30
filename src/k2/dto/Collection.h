@@ -149,8 +149,9 @@ struct CollectionCapacity {
     uint64_t dataCapacityMegaBytes = 0;
     uint64_t readIOPs = 0;
     uint64_t writeIOPs = 0;
-    K2_PAYLOAD_FIELDS(dataCapacityMegaBytes, readIOPs, writeIOPs);
-    K2_DEF_FMT(CollectionCapacity, dataCapacityMegaBytes, readIOPs, writeIOPs);
+    uint32_t minNodes = 0;
+    K2_PAYLOAD_FIELDS(dataCapacityMegaBytes, readIOPs, writeIOPs, minNodes);
+    K2_DEF_FMT(CollectionCapacity, dataCapacityMegaBytes, readIOPs, writeIOPs, minNodes);
 };
 
 K2_DEF_ENUM(HashScheme,

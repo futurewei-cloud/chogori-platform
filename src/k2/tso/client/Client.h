@@ -45,6 +45,7 @@ class TSOClient {
 public:
     seastar::future<> start();
     seastar::future<> gracefulStop();
+    seastar::future<> bootstrap(const String& cpoEndpoint);
 
     // get a K2 timestamp
     seastar::future<dto::Timestamp> getTimestamp();
@@ -72,7 +73,7 @@ private: // methods
     seastar::future<dto::Timestamp> _getTimestampWithLatency(OperationLatencyReporter&& reporter);
 
 private: // fields
-    ConfigVar<String> _bootstrapTSOServerURL{"tso_endpoint"};
+    ConfigVar<String> _cpoEndpoint{"cpo", ""};
 
     // to tell if we've been signaled to stop
     bool _stopped{true};

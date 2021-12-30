@@ -71,6 +71,24 @@ public :  // application lifespan
         // no match
         return nullptr;
     }
+
+    template<typename StringContainer>
+    static String selectBestEndpointString(const StringContainer& urls) {
+        bool rdma = seastar::engine()._rdma_stack != nullptr;
+        String selectedEP = "";
+
+        for (const String& ep : urls) {
+            if (ep.find(RRDMARPCProtocol::proto) != String::npos && rdma) {
+                selectedEP = ep;
+            }
+            else if (ep.find(TCPRPCProtocol::proto) != String::npos && !rdma) {
+                selectedEP = ep;
+            }
+        }
+
+        return selectedEP;
+    }
+
     // required for seastar::distributed interface
     seastar::future<> gracefulStop();
     seastar::future<> start();

@@ -71,7 +71,7 @@ public:
     // When started, we need to be told:
     // - the current retentionTimestamp
     // - the heartbeat interval for the collection
-    seastar::future<> start(dto::Timestamp rts, std::shared_ptr<Persistence> persistence);
+    seastar::future<> start(dto::Timestamp rts, std::shared_ptr<Persistence> persistence, const String& cpoEndpoint);
     seastar::future<> gracefulStop();
 
     // Update the stored retention window timestamp.

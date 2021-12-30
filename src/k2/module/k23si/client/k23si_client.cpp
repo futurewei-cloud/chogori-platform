@@ -305,9 +305,6 @@ K23SIClient::K23SIClient(const K23SIClientConfig &) :
 }
 
 seastar::future<> K23SIClient::start() {
-    for (auto it = _tcpRemotes().begin(); it != _tcpRemotes().end(); ++it) {
-        _k2endpoints.push_back(String(*it));
-    }
     K2LOG_I(log::skvclient, "_cpo={}", _cpo());
     cpo_client.init(_cpo());
 
@@ -318,23 +315,8 @@ seastar::future<> K23SIClient::gracefulStop() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<Status> K23SIClient::makeCollection(const String& collection, std::vector<String>&& rangeEnds) {
-    std::vector<String> endpoints = _k2endpoints;
-    dto::HashScheme scheme = rangeEnds.size() ? dto::HashScheme::Range : dto::HashScheme::HashCRC32C;
-
-    dto::CollectionMetadata metadata{
-        .name = collection,
-        .hashScheme = scheme,
-        .storageDriver = dto::StorageDriver::K23SI,
-        .capacity = {},
-        .retentionPeriod = Duration(retention_window())
-    };
-
-    return makeCollection(std::move(metadata), std::move(endpoints), std::move(rangeEnds));
-}
-
-seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& metadata, std::vector<String>&& endpoints, std::vector<String>&& rangeEnds) {
-    return cpo_client.createAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(endpoints), std::move(rangeEnds));
+seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& metadata, std::vector<String>&& rangeEnds) {
+    return cpo_client.createAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(rangeEnds));
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
