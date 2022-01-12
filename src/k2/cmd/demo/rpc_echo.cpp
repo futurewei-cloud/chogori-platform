@@ -45,7 +45,7 @@ enum MessageVerbs : Verb {
     MES = 102
 };
 
-class KVService {
+class PingService {
 public:  // application lifespan
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
@@ -58,28 +58,34 @@ public:  // application lifespan
         K2LOG_I(log::echo, "Registering message handlers");
 
         RPC().registerRPCObserver<Echo_Message, Echo_Message>(MessageVerbs::MES, [this](Echo_Message&& request) {
-            K2LOG_I(log::echo, "Received echo for message: {}", request.message);
+            K2LOG_D(log::echo, "Received ping for message: {}", request.message);
             Echo_Message response;
             response.message=request.message;
-            return RPCResponse(Statuses::S200_OK("get accepted"), std::move(response));
+            return RPCResponse(Statuses::S200_OK("pong"), std::move(response));
         });
     }
-private:
-    std::map<String, String> _cache;
 };  // class Service
 
-class KVClientTest {
+class PingClient {
 private:
-    PeriodicTimer _heartbeat_timer;
+    PeriodicTimer _heartbeatTimer;
+    ConfigDuration _interval{"interval", 1s};
+    ConfigVar<std::vector<String>> _strEndpoints{"endpoints"};
+    std::vector<std::unique_ptr<TXEndpoint>> _endpoints;
 
-    void makeHeartbeatTimer() {
-        _heartbeat_timer.setCallback([] {
-            Echo_Message request{.message = "Hello World!"};
-            return RPC().callRPC<Echo_Message, Echo_Message>(MessageVerbs::MES, request, *RPC().getServerEndpoint(TCPRPCProtocol::proto), 1s)
-            .then([] (auto&& resp) {
-                auto& [status, msg] = resp;
-                K2LOG_I(log::echo, "Received MSG response with status {}, value {}", status, msg);
-            });
+    void _makeHeartbeatTimer() {
+        _heartbeatTimer.setCallback([this] {
+            K2LOG_D(log::echo, "Sending new request");
+            Echo_Message msg{.message = "Hello World!"};
+            return seastar::parallel_for_each(_endpoints.begin(), _endpoints.end(),
+            [this, &msg] (auto& endp) {
+                auto start = k2::Clock::now();
+                return RPC().callRPC<Echo_Message, Echo_Message>(MessageVerbs::MES, msg, *endp, 1s)
+                .then([&endp, start] (auto&& resp) {
+                    auto& [status, msg] = resp;
+                    K2LOG_D(log::echo, "Received MSG response with status {}, value {}, from {}, in {}us", status, msg, endp->url, k2::usec(k2::Clock::now() - start));
+                });
+            }).discard_result();
         });
     }
 public:
@@ -89,15 +95,21 @@ public:
     }
 
     void start() {
-        makeHeartbeatTimer();
-        _heartbeat_timer.armPeriodic(Duration(1s));
+        for (auto& ep: _strEndpoints()) {
+            _endpoints.push_back(k2::RPC().getTXEndpoint(ep));
+        }
+        _makeHeartbeatTimer();
+        _heartbeatTimer.armPeriodic(_interval());
     }
 };
 }  // namespace k2
 
 int main(int argc, char** argv) {
     k2::App app("RPCEchoDemo");
-    app.addApplet<k2::KVService>();
-    app.addApplet<k2::KVClientTest>();
+    app.addOptions()
+    ("interval", bpo::value<k2::ParseableDuration>(), "Ping interval (1s default)")
+    ("endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A space-delimited list of k2 endpoints to contact");
+    app.addApplet<k2::PingService>();
+    app.addApplet<k2::PingClient>();
     return app.start(argc, argv);
 }
