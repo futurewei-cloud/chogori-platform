@@ -110,7 +110,7 @@ public:  // application lifespan
         schemaPtr = std::make_shared<dto::Schema>(_schema);
         _gen.seed(myid);
 
-        _benchFut = seastar::sleep(5s);
+        _benchFut = seastar::make_ready_future<>();
         _benchFut = _benchFut.then([this] {return _client.start();});
         if (myid == 0) {
             K2LOG_I(log::txbench, "Creating collection...");
@@ -153,6 +153,7 @@ public:  // application lifespan
         })
         .finally([this] {
             K2LOG_I(log::txbench, "Done with benchmark");
+            AppBase().stop(0);
         });
 
         return seastar::make_ready_future();

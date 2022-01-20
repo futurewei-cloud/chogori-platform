@@ -128,7 +128,7 @@ seastar::future<> HeartbeatResponder::start() {
 
 // Used by other applets to know if they should soft-down themselves
 bool HeartbeatResponder::isUp() {
-    return _up;
+    return true; // TODO "return _up;" when we are ready to test fault tolerance
 }
 
 // Used by other applets to set role-specific metadata,

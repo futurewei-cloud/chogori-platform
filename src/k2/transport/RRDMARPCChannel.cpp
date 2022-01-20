@@ -120,9 +120,9 @@ void RRDMARPCChannel::registerFailureObserver(FailureObserver_t observer) {
     K2LOG_D(log::tx, "register failure observer");
     if (observer == nullptr) {
         K2LOG_D(log::tx, "Setting default failure observer");
-        _failureObserver = [this](TXEndpoint&, std::exception_ptr) {
+        _failureObserver = [this](TXEndpoint&, std::exception_ptr exc) {
             if (!this->_closingInProgress) {
-                K2LOG_W(log::tx, "Ignoring failure since there is no failure observer registered...");
+                K2LOG_W_EXC(log::tx, exc, "Ignoring failure since there is no failure observer registered...");
             }
         };
     }
@@ -146,6 +146,8 @@ void RRDMARPCChannel::_closeRconn() {
     if (!_closingInProgress) {
         _closingInProgress = true;
         _closeDoneFuture = _rconn->close();
+        // signal the Protocol that this channel has closed
+        _failureObserver(_endpoint, nullptr);
     }
 }
 

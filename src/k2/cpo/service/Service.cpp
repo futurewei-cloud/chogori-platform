@@ -366,7 +366,7 @@ seastar::future<Status> CPOService::_pushSchema(const dto::Collection& collectio
         dto::K23SIPushSchemaRequest request { collection.metadata.name, schema };
 
         pushFutures.push_back(RPC().callRPC<dto::K23SIPushSchemaRequest, dto::K23SIPushSchemaResponse>
-            (dto::Verbs::K23SI_PUSH_SCHEMA, request, *endpoint, 1s));
+            (dto::Verbs::K23SI_PUSH_SCHEMA, request, *endpoint, 10s));
     }
 
     return when_all_succeed(pushFutures.begin(), pushFutures.end())
