@@ -153,7 +153,6 @@ public:  // application lifespan
         })
         .finally([this] {
             K2LOG_I(log::txbench, "Done with benchmark");
-            AppBase().stop(0);
         });
 
         return seastar::make_ready_future();
