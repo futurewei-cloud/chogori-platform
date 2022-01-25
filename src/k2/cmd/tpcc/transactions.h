@@ -984,7 +984,7 @@ private:
                         return make_ready_future<bool>(false);
                     }
 
-                    if (response.records.size()) {
+                    if (response.records.size() > 0) {
                         dto::SKVRecord& rec = response.records[0];
                         // get order id
                         std::optional<int64_t> orderIDOpt = rec.deserializeField<int64_t>("OID");
