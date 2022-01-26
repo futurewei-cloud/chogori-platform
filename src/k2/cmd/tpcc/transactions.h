@@ -906,7 +906,6 @@ private:
             return getOrderID(idx)
             .then([this, &idx] (bool success) {
                 if (!success) {
-                    _failed = false;
                     return make_ready_future();
                 }
 
@@ -1007,6 +1006,8 @@ private:
                                     "Order ID matches w_id[{}] & d_id[{}] in New-Order table", _w_id, _d_id[idx]);
                         }
                         _miss_once = true;
+
+                        _failed = false;
 
                         return make_ready_future<bool>(false);
                     }
