@@ -104,7 +104,7 @@ public:
                 if (status.is5xxRetryable()) {
                     K2LOG_D(log::cpoclient, "call failed with retryable status: {}", status);
                     if (retries == 0) {
-                        K2LOG_D(log::cpoclient, "Retries exceeded, status={}", status);
+                        K2LOG_W(log::cpoclient, "Retries exceeded, status={}", status);
                         return RPCResponse(Statuses::S408_Request_Timeout("partition retries exceeded"), ResponseT{});
                     }
                     K2LOG_D(log::cpoclient, "refreshing collection from CPO after status={}", status);
@@ -147,7 +147,7 @@ public:
                 if (status.is5xxRetryable()) {
                     K2LOG_D(log::cpoclient, "call failed with retryable status: {}", status);
                     if (retries == 0) {
-                        K2LOG_D(log::cpoclient, "Retries exceeded, status={}", status);
+                        K2LOG_W(log::cpoclient, "Retries exceeded, status={}", status);
                         return RPCResponse(Statuses::S408_Request_Timeout("partition retries exceeded"), ResponseT{});
                     }
                     K2LOG_D(log::cpoclient, "retrying partition call after status={}", status);

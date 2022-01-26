@@ -59,7 +59,7 @@ void HealthMonitor::_checkHBs() {
         // If the last heartbeat has not been responded to yet, count it as missed and potentially the target
         // as dead.
         if ((*it)->heartbeatInFlight) {
-            K2LOG_D(log::cposvr, "missed HB for {}", *it);
+            K2LOG_W(log::cposvr, "missed HB for {}", *it);
             (*it)->unackedHeartbeats++;
             if ((*it)->unackedHeartbeats >= _deadThreshold()) {
                 K2LOG_W(log::cposvr, "HB target is dead: {}", **it);
