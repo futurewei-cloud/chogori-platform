@@ -906,6 +906,7 @@ private:
             return getOrderID(idx)
             .then([this, &idx] (bool success) {
                 if (!success) {
+                    _failed = false;
                     return make_ready_future();
                 }
 
