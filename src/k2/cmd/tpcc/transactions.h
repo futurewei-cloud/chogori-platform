@@ -885,6 +885,7 @@ public:
                 })
                 .then_wrapped([this] (auto&& fut) {
                     if (fut.failed()) {
+                        K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Delivery attempt failed");
                         _failed = true;
                     }
                     fut.ignore_ready_future();
@@ -933,6 +934,7 @@ private:
                     return when_all_succeed(std::move(updateOLDeliveryD_f), std::move(updateCustomerRow_f))
                     .then_wrapped([this] (auto&& fut) {
                         if (fut.failed()) {
+                            K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Delivery Txn failed");
                             _failed = true;
                         }
                         return make_ready_future();
@@ -942,6 +944,7 @@ private:
                 return when_all_succeed(std::move(updates_f), std::move(updateCarrierID_f), std::move(delNORow_f))
                 .then_wrapped([this, idx] (auto&& fut) {
                     if (fut.failed()) {
+                        K2LOG_W_EXC(log::tpcc, fut.get_exception(), "Delivery Txn failed");
                         _failed = true;
                     }
                     return make_ready_future();
@@ -956,7 +959,7 @@ private:
         return _client.createQuery(tpccCollectionName, "neworder")
         .then([this, idx](auto&& response) mutable {
             if (!response.status.is2xxOK()) {
-                K2LOG_I(log::tpcc, "DeliveryT getOrderID createQuery failed, status: {}", response.status);
+                K2LOG_W(log::tpcc, "DeliveryT getOrderID createQuery failed, status: {}", response.status);
                 _failed = true;
                 return make_ready_future<bool>(false);
             }
@@ -979,7 +982,7 @@ private:
                 return _txn.query(query_oid)
                 .then([this, idx, &query_oid] (auto&& response) mutable {
                     if (!response.status.is2xxOK()) {
-                        K2LOG_I(log::tpcc, "DeliveryT getOrderID query response Error, status: {}", response.status);
+                        K2LOG_W(log::tpcc, "DeliveryT getOrderID query response Error, status: {}", response.status);
                         _failed = true;
                         return make_ready_future<bool>(false);
                     }
