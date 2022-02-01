@@ -139,12 +139,12 @@ public:
 
     uint64_t ID;
     std::vector<String> fields;
-    static inline dto::Schema ycsb_schema;
-    static inline dto::Schema ycsb_metadata_schema;
+    static inline thread_local dto::Schema ycsb_schema;
+    static inline thread_local dto::Schema ycsb_metadata_schema;
     static inline thread_local std::shared_ptr<dto::Schema> schema; // schema required in this format for creating SKV record
     static inline thread_local std::shared_ptr<dto::Schema> metaschema; // schema required in this format for creating SKV record
     static const inline String collectionName{"YCSB"};
-    static inline std::vector<String> _fieldNames;
+    static inline thread_local std::vector<String> _fieldNames;
 
     static inline seastar::future<> onSetupComplete(K23SIClient& client) {
         return client.beginTxn(K2TxnOptions{})
@@ -178,7 +178,7 @@ public:
 
     static inline seastar::future<> waitSchemasLoaded(K23SIClient& client) {
         return seastar::do_with(
-            Deadline(20s),
+            Deadline(400s),
             false,
             [&client](auto& deadline, auto& loaded) mutable {
                 return seastar::do_until(
@@ -189,7 +189,7 @@ public:
                         return _getSchemasLoaded(client)
                         .then([&loaded](bool result) mutable {
                             loaded = result;
-                            if (!loaded) return seastar::sleep(100ms);
+                            if (!loaded) return seastar::sleep(300ms);
                             return seastar::make_ready_future();
                         });
                     })

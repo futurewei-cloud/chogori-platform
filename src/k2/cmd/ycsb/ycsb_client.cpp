@@ -139,12 +139,18 @@ public:  // application lifespan
         _global_id = (seastar::smp::count * _instance_id()) + seastar::this_shard_id();
 
         _num_keys = _num_records() + _num_inserts(); // key space is expanded to include expected inserts
+
         YCSBData::generateSchema(_num_fields());
         setupSchemaPointers();
 
         registerMetrics();
 
-        _benchFuture = _client.start().then([this] () { return _benchmark(); })
+        // This initial sleep is required because without it the reactor stall cased by the key
+        // generation will interfere with the TSO client's startup
+        _benchFuture = seastar::sleep(5s)
+        .then([this] () {
+            return  _client.start().then([this] () { return _benchmark(); });
+        })
         .handle_exception([this](auto exc) {
             K2LOG_W_EXC(log::ycsb, exc, "Unable to execute benchmark");
             _stopped = true;
@@ -458,6 +464,7 @@ int main(int argc, char** argv) {;
         ("writes_per_load_txn", bpo::value<size_t>()->default_value(10), "The number of writes to do in the load phase between txn commit calls")
         ("cpo_request_timeout", bpo::value<ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<ParseableDuration>(), "CPO request backoff")
+        ("create_collection_deadline", bpo::value<ParseableDuration>(), "Collection creation and assignment deadline")
         ("num_records",bpo::value<size_t>()->default_value(5000),"How many records to load")
         ("num_records_insert",bpo::value<size_t>()->default_value(50),"How many records expected to be inserted during workloads")
         ("field_length",bpo::value<uint32_t>()->default_value(10),"The size of all fields in the table")

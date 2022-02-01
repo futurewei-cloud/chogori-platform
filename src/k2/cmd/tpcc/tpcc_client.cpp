@@ -264,7 +264,7 @@ private:
                 };
 
                 return _client.makeCollection(std::move(metadata),
-                                                getRangeEnds(_warehouse_tables_num_nodes()-_item_table_num_nodes(),
+                                                getRangeEnds(_warehouse_tables_num_nodes(),
                                                 _max_warehouses()));
             })
             .then([this] (Status&& status) {

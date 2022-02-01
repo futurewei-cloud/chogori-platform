@@ -934,6 +934,7 @@ private:
                     .then_wrapped([this] (auto&& fut) {
                         if (fut.failed()) {
                             _failed = true;
+                            fut.ignore_ready_future(); // May fail expectedly if there are no new orders
                         }
                         return make_ready_future();
                     });
@@ -943,6 +944,7 @@ private:
                 .then_wrapped([this, idx] (auto&& fut) {
                     if (fut.failed()) {
                         _failed = true;
+                        fut.ignore_ready_future(); // May fail expectedly if there are no new orders
                     }
                     return make_ready_future();
                 });
@@ -966,6 +968,7 @@ private:
                 // 1) just return the lowest SKVRecord; 2) add Projection fields (i.e. oid) as needed;
                 query_oid.startScanRecord.serializeNext<int16_t>(_w_id);
                 query_oid.startScanRecord.serializeNext<int16_t>(_d_id[idx]);
+                query_oid.startScanRecord.serializeNext<int64_t>(_saved_noid);
                 query_oid.endScanRecord.serializeNext<int16_t>(_w_id);
                 query_oid.endScanRecord.serializeNext<int16_t>(_d_id[idx] + 1);
                 query_oid.setLimit(1);
@@ -990,6 +993,7 @@ private:
                         std::optional<int64_t> orderIDOpt = rec.deserializeField<int64_t>("OID");
                         K2ASSERT(log::tpcc, orderIDOpt, "DeliveryT getOrderID() retrieved null value.");
                         _NO_O_ID[idx] = *orderIDOpt;
+                        _saved_noid = *orderIDOpt;
 
                         return make_ready_future<bool>(true);
                     } else {
@@ -1047,6 +1051,9 @@ private:
                 return _txn.query(query_cid)
                 .then([this, idx] (auto&& response) {
                     CHECK_READ_STATUS(response);
+                    if (response.records.size() == 0) {
+                        return make_exception_future<>(std::runtime_error("Order not found"));
+                    }
 
                     // get customer ID
                     dto::SKVRecord& rec = response.records[0];
@@ -1173,6 +1180,9 @@ private:
                 return _txn.query(query_customer)
                 .then([this, idx] (auto&& response) {
                     CHECK_READ_STATUS(response);
+                    if (response.records.size() == 0) {
+                        return make_exception_future<>(std::runtime_error("Customer not found"));
+                    }
 
                     dto::SKVRecord& rec = response.records[0];
                     std::optional<std::decimal::decimal64> balanceOpt = rec.deserializeField<std::decimal::decimal64>("Balance");
@@ -1203,7 +1213,6 @@ private:
     std::vector<int16_t> _d_id;
     std::vector<int32_t> _o_carrier_id;
     std::vector<int16_t> _o_line_count = std::vector<int16_t>(10, -1); // Count how many Order Lines for each Order
-
     ConfigVar<int16_t> _districts_per_warehouse{"districts_per_warehouse"};
 
 private:
@@ -1211,6 +1220,9 @@ private:
     std::vector<int64_t> _NO_O_ID = std::vector<int64_t>(10, -1); // NEW-ORDER table info: order ID
     std::vector<int32_t> _O_C_ID = std::vector<int32_t>(10, -1); // ORDER table info: customer ID
     std::vector<std::decimal::decimal64> _OL_SUM_AMOUNT = std::vector<std::decimal::decimal64>(10, -1); // ORDER-LINE table info: sum of all amount
+
+    // Save the next expected new order id to avoid scans over deleted records
+    static inline int64_t _saved_noid = 0;
 };
 
 class StockLevelT : public TPCCTxn
