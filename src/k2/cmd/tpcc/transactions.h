@@ -1181,7 +1181,7 @@ private:
                 .then([this, idx] (auto&& response) {
                     CHECK_READ_STATUS(response);
                     if (response.records.size() == 0) {
-                        return make_exception_future<>(std::runtime_error("Order not found"));
+                        return make_exception_future<>(std::runtime_error("Customer not found"));
                     }
 
                     dto::SKVRecord& rec = response.records[0];
