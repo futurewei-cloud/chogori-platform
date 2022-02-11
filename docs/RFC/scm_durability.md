@@ -21,24 +21,21 @@ Benefits:
 
 ## SCM Data format and GC
 
-In simplest form, a large circular buffer for SVKRecord data, and a duplicated indexer on SCM that mirrors DRAM indexer but is not updated with read timestamps. GC is done locally and on each replica and the leader. 
-GC operates from the back of the circular buffer as records go outside of the retention window. Records that are outside the retention window but are the only copy for that key are copied to the front of the circular buffer.
+On SCM:
+1. Write-Ahead Operation w/ index (single value)
+2. Fence+flush
+3. Persistent indexer update using general purpose or SCM-tuned allocator
+5. Last index written to SCM (single value)
+6. Fence+flush
 
-A write operation:
-1. ntstore SKVRecord on SCM
-2. mem fence
-3. SCM indexer update, which includes circular buffer pointers inline
-4. DRAM circular buffer pointers update
-5. DRAM indexer update
+If replica failure, leader notifies on next operation, then on other replica:
+1. Start full WAL including data on SCM (e.g. deque)
+2. Freeze SCM indexer, DRAM indexer updates as normal
+3. Full SCM state minus WAL bulk copied to new replica (RDMA)
+4. WAL replayed on new replica and old replica for SCM state, meanwhile new replica is also buffering requests from leader to be replayed in correct order
+5. New replica notifies old replica and leader when it is caught up.
 
-Possible optimizations:
-- GC for aborted WIs
-- Optimize indexer for SCM. Maybe data structure or making it so that it can tolerate some incosistency that would be recovered from the records in the circular buffer area.
-- A static data area for records that are outside retention window but are the only existing record.
-
-Recovery from SCM:
-- Can server requests immediately from SCM indexer
-- Asynchronously rebuild DRAM indexer
+Snapshoting not needed but could reduce data needed for step 3 by reducing fragmentation, maybe need to look into a specialized allocator.
 
 ## Leader failure
 
