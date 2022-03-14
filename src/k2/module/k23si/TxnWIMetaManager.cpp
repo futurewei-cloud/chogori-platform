@@ -73,6 +73,10 @@ TxnWIMeta* TxnWIMetaManager::getTxnWIMeta(dto::Timestamp ts) {
     return nullptr;
 }
 
+const std::unordered_map<dto::Timestamp, TxnWIMeta>& TxnWIMetaManager::twims() const {
+    return _twims;
+}
+
 seastar::future<> TxnWIMetaManager::start(dto::Timestamp rts, std::shared_ptr<Persistence> persistence, const String& cpoEndpoint) {
     K2LOG_D(log::skvsvr, "starting");
     _cpo.init(cpoEndpoint);

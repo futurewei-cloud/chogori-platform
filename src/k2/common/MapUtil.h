@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright(c) 2020 Futurewei Cloud
+Copyright(c) 2022 Futurewei Cloud
 
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
@@ -20,38 +20,33 @@ Copyright(c) 2020 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-
 #pragma once
-#include <vector>
 
 namespace k2 {
 
-// base recursion - no args to append
-template <typename T>
-void _append_vec(std::vector<T>&) {}
+// return a tuple of iterators to the elements before, at, and after the given key.
+template <typename KeyT, typename MapT>
+auto keyRange(const KeyT& key, MapT& mm) {
+    auto end = mm.end();
+    // gives iterators (lower, upper)
+    // lower is an interator to the first element, not less than key
+    // upper is an iterator to the first element greater than key
+    auto [at, after] = mm.equal_range(key);
 
-// Append rvalues to a vector with variadic template expansion
-template <typename T, typename... ObjT>
-void _append_vec(std::vector<T>& v, T&& obj, ObjT&&... objs) {
-    v.push_back(std::forward<T>(obj));
-    _append_vec(v, std::forward<ObjT>(objs)...);
+    // to get the element before "key", we need to rewind "at"
+    auto before = at != end ? at : after;
+    if (before != mm.begin()) {
+        // this is only safe to do if we do have some elements present
+        --before;
+    } else {
+        // we can't rewind begin. Set it to end() directly
+        before = mm.end();
+    }
+
+    // if key exists, "at" and "after" will be different
+    auto found = at == after ? end : at;
+
+    return std::tuple(before, found, after);
 }
 
-template <typename T, typename... ObjT>
-void append_vec(std::vector<T>& v, ObjT&&... objs) {
-    constexpr std::size_t sz = std::tuple_size<std::tuple<ObjT...>>::value;
-    v.reserve(sz);
-    _append_vec(v, std::forward<ObjT>(objs)...);
-}
-
-// create a vector using rvalues of type. This is needed to aid in creating rvalue vectors from
-// non-copyable types since the standard lib initializer list doesn't support non-copyable types
-template <typename T, typename... ObjT>
-std::vector<T> make_vec(ObjT&&... objs) {
-    std::vector<T> result;
-    constexpr std::size_t sz = std::tuple_size<std::tuple<ObjT...>>::value;
-    result.reserve(sz);
-    append_vec(result, std::forward<ObjT>(objs)...);
-    return result;
-}
 }
