@@ -44,6 +44,15 @@ namespace k2 {
 // the type holding multiple committed versions of a key
 typedef std::deque<dto::DataRecord> VersionsT;
 
+// A key in the indexer. Since this is a schema-aware indexer, we only need to store the pkey and the rkey
+struct IndexerKey {
+    String partitionKey;
+    String rangeKey;
+    int compare(const IndexerKey& o) const noexcept;
+    bool operator<(const IndexerKey& o) const noexcept;
+    K2_DEF_FMT(IndexerKey, partitionKey, rangeKey);
+};
+
 // This struct is the "value" we store for each key in the indexer and represents
 // all versions (in MVCC terms) which we have for that key
 struct VersionSet {
@@ -73,9 +82,9 @@ struct KeyIndexer {
     dto::Timestamp lastReadTimeHigh{dto::Timestamp::ZERO};
     // the type holding versions for all keys, i.e. the implementation for this key indexer
     #if K2_MODULE_POOL_ALLOCATOR == 1
-    typedef std::map<dto::Key, VersionSet, std::less<dto::Key>, __gnu_cxx::__pool_alloc<std::pair<dto::Key, VersionSet>>> KeyIndexerT;
+    typedef std::map<IndexerKey, VersionSet, std::less<IndexerKey>, __gnu_cxx::__pool_alloc<std::pair<IndexerKey, VersionSet>>> KeyIndexerT;
     #else
-    typedef std::map<dto::Key, VersionSet> KeyIndexerT;
+    typedef std::map<IndexerKey, VersionSet> KeyIndexerT;
     #endif
     // the implementation container for storing key->vset
     KeyIndexerT impl;
@@ -83,7 +92,7 @@ struct KeyIndexer {
     typedef KeyIndexerT::iterator iterator;
 };
 
-// The indexer for K2 records. It stores records, mapped as: dto::Key --> dto::DataRecord
+// The indexer for K2 records. It stores records, mapped as: IndexerKey --> dto::DataRecord
 class Indexer {
 public: // lifecycle
     // The Indexer must be started with a timestamp which indicates when it was created.
@@ -105,7 +114,7 @@ public: // API
 
     // Returns an Iterator for the given key, preset to iterate in the given direction.
     // The iterator only iterates over keys in the same schema as the given key
-    Iterator iterate(const dto::Key& key, bool reverse=false);
+    Iterator find(const dto::Key& key, bool reverse=false);
 
     // creates a new key indexer for the given schema.
     void createSchema(const dto::Schema& schema);
@@ -126,14 +135,14 @@ private:
 // - allows accessing specific keys
 // - supports directional scan operations
 // - tracks key or range observations to aid the K23SI transactional consistency
-// Iterators are vended by the iterate() API of the indexer
+// Iterators are vended by the find() API of the indexer
 class Indexer::Iterator {
 public:
     // A new Iterator is created with iterators for the keys before, at, and after the key for
     // which we created the Iterator.
     // We also need to have a reference to the underlying KeyIndexer which is being iterated
     // as well as the direction of iteration.
-    Iterator(KeyIndexer::iterator beforeIt, KeyIndexer::iterator foundIt, KeyIndexer::iterator afterIt, KeyIndexer& si, bool reverse);
+    Iterator(KeyIndexer::iterator beforeIt, KeyIndexer::iterator foundIt, KeyIndexer::iterator afterIt, KeyIndexer& si, bool reverse, String schemaName);
 
 public: // APIs
     // returns the time of the last observation(read) on the key associated with the current Iterator position
@@ -180,7 +189,7 @@ public: // APIs
 
     // If there is data, returns the key for the current Iterator position.
     // Otherwise it returns a key with empty contents.
-    const dto::Key& getKey() const;
+    dto::Key getKey() const;
 
 private:
     // iterators pointing into the KeyIndexer for the keys:
@@ -195,6 +204,9 @@ private:
 
     // the direction in which we're iterating
     bool _reverse{false};
+
+    // the name of the schema we're iterating
+    String _schemaName;
 }; // class Iterator
 
 } // namespace k2

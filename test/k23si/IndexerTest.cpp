@@ -31,7 +31,7 @@ SCENARIO("test01 empty indexer") {
     auto indexer = Indexer();
     indexer.start(dto::Timestamp(100000, 1, 1000)).get0();
     REQUIRE(indexer.size() == 0);
-    REQUIRE_THROWS(indexer.iterate(dto::Key{}));
+    REQUIRE_THROWS(indexer.find(dto::Key{}));
 }
 
 SCENARIO("test02 empty schema") {
@@ -48,7 +48,7 @@ SCENARIO("test02 empty schema") {
     indexer.createSchema(sch);
     REQUIRE(indexer.size() == 0);
     {
-        auto iter = indexer.iterate(k1);
+        auto iter = indexer.find(k1);
         REQUIRE(!iter.hasData());
         REQUIRE(iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
@@ -64,7 +64,7 @@ SCENARIO("test02 empty schema") {
         REQUIRE(iter.getLastReadTime() == newer);
     }
     {
-        auto iter = indexer.iterate(k1, true);
+        auto iter = indexer.find(k1, true);
         REQUIRE(!iter.hasData());
         REQUIRE(iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
@@ -98,7 +98,7 @@ SCENARIO("test03 add, abort, commit new key") {
     indexer.createSchema(sch);
     REQUIRE(indexer.size() == 0);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         dto::DataRecord rec;
         rec.isTombstone = false;
         rec.timestamp = newest;
@@ -121,7 +121,7 @@ SCENARIO("test03 add, abort, commit new key") {
     }
     REQUIRE(indexer.size() == 1);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() != nullptr);
@@ -143,7 +143,7 @@ SCENARIO("test03 add, abort, commit new key") {
     }
     REQUIRE(indexer.size() == 0);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         REQUIRE(!iter.hasData());
         REQUIRE(iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
@@ -168,7 +168,7 @@ SCENARIO("test03 add, abort, commit new key") {
     }
     REQUIRE(indexer.size() == 1);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() != nullptr);
@@ -206,7 +206,7 @@ SCENARIO("test04 add, abort, commit with existing key") {
     indexer.createSchema(sch);
     REQUIRE(indexer.size() == 0);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         dto::DataRecord rec;
         rec.isTombstone = false;
         rec.timestamp = newer;
@@ -217,7 +217,7 @@ SCENARIO("test04 add, abort, commit with existing key") {
     }
     REQUIRE(indexer.size() == 1);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         dto::DataRecord rec;
         rec.isTombstone = false;
         rec.timestamp = newest;
@@ -234,7 +234,7 @@ SCENARIO("test04 add, abort, commit with existing key") {
     }
     REQUIRE(indexer.size() == 1);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         iter.observeAt(newer);
         iter.abortWI();
         REQUIRE(iter.hasData());
@@ -248,7 +248,7 @@ SCENARIO("test04 add, abort, commit with existing key") {
     }
     REQUIRE(indexer.size() == 1);
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         dto::DataRecord rec;
         rec.isTombstone = false;
         rec.timestamp = newest;
@@ -284,7 +284,7 @@ SCENARIO("test05 read in multiple versions") {
 
     indexer.createSchema(sch);
     {   // insert data
-        auto iter = indexer.iterate(k1);
+        auto iter = indexer.find(k1);
         {
             dto::DataRecord rec;
             rec.isTombstone = false;
@@ -316,7 +316,7 @@ SCENARIO("test05 read in multiple versions") {
     }
 
     {
-        auto iter = indexer.iterate(k1);
+        auto iter = indexer.find(k1);
         REQUIRE(iter.hasData());
         REQUIRE(iter.getWI()->data.timestamp == newest);
         REQUIRE(iter.getLastCommittedTime() == newer);
@@ -382,7 +382,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
     dto::Key k3{.schemaName = sch.name, .partitionKey = "KeyACA", .rangeKey = "rKey1"};
     dto::Key k3_p{.schemaName = sch.name, .partitionKey = "KeyACB", .rangeKey = "rKey1"};
     {
-        auto iter = indexer.iterate(k1);
+        auto iter = indexer.find(k1);
         dto::DataRecord rec;
         rec.isTombstone = false;
         rec.timestamp = ts[0];
@@ -391,7 +391,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
     }
 
     {
-        auto iter = indexer.iterate(k2);
+        auto iter = indexer.find(k2);
         dto::DataRecord rec;
         rec.isTombstone = false;
         rec.timestamp = ts[0];
@@ -400,7 +400,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
     }
 
     {
-        auto iter = indexer.iterate(k3);
+        auto iter = indexer.find(k3);
         dto::DataRecord rec;
         rec.isTombstone = false;
         rec.timestamp = ts[0];
@@ -410,7 +410,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
 
     {
         // iterate forward
-        auto iter = indexer.iterate(k3_p);
+        auto iter = indexer.find(k3_p);
         REQUIRE(!iter.hasData());
         REQUIRE(iter.atEnd());
     }
@@ -419,7 +419,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         // expected observations at edges, and actual data in-between
         // observations:  t0| t0, t0, t0 | t0
         // iterate forward
-        auto iter = indexer.iterate(k0);
+        auto iter = indexer.find(k0);
         REQUIRE(!iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
@@ -461,7 +461,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
 
     {
         // iterate in reverse
-        auto iter = indexer.iterate(k0, true);
+        auto iter = indexer.find(k0, true);
         REQUIRE(!iter.hasData());
         REQUIRE(iter.atEnd());
         REQUIRE(iter.getLastReadTime() == ts[1]); // we updated this
@@ -469,7 +469,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
 
     {
         // iterate in reverse
-        auto iter = indexer.iterate(k3_p, true);
+        auto iter = indexer.find(k3_p, true);
         REQUIRE(!iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
@@ -512,31 +512,31 @@ SCENARIO("test 06 multi-key iterate and observation") {
     {
         // point checks
         {
-            auto iter = indexer.iterate(k0);
+            auto iter = indexer.find(k0);
             REQUIRE(iter.getLastReadTime() == ts[10]);
         }
         {
-            auto iter = indexer.iterate(k1);
+            auto iter = indexer.find(k1);
             REQUIRE(iter.getLastReadTime() == ts[10]);
         }
         {
-            auto iter = indexer.iterate(k1_p);
+            auto iter = indexer.find(k1_p);
             REQUIRE(iter.getLastReadTime() == ts[8]);
         }
         {
-            auto iter = indexer.iterate(k2);
+            auto iter = indexer.find(k2);
             REQUIRE(iter.getLastReadTime() == ts[8]);
         }
         {
-            auto iter = indexer.iterate(k2_p);
+            auto iter = indexer.find(k2_p);
             REQUIRE(iter.getLastReadTime() == ts[7]);
         }
         {
-            auto iter = indexer.iterate(k3);
+            auto iter = indexer.find(k3);
             REQUIRE(iter.getLastReadTime() == ts[7]);
         }
         {
-            auto iter = indexer.iterate(k3_p);
+            auto iter = indexer.find(k3_p);
             REQUIRE(iter.getLastReadTime() == ts[6]);
         }
 

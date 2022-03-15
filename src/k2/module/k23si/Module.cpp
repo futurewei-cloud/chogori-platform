@@ -446,7 +446,7 @@ void K23SIPartitionModule::_scanAdvance(Indexer::Iterator& iter, const dto::K23S
 // Helper for handleQuery. Returns an iterator to start the scan at, accounting for
 // desired schema and (eventually) reverse direction scan
 Indexer::Iterator K23SIPartitionModule::_initializeScan(const dto::K23SIQueryRequest& request) {
-    auto iter = _indexer.iterate(request.key, request.reverseDirection);
+    auto iter = _indexer.find(request.key, request.reverseDirection);
     iter.observeAt(request.mtr.timestamp);
     if (!iter.hasData() || // this key didn't exist in the indexer
         request.exclusiveKey) { // key is found, but we're asked to start with the next key in sequence
@@ -664,7 +664,7 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
                 request.mtr, request.key);
 
     // find the record we should return
-    auto iter = _indexer.iterate(request.key);
+    auto iter = _indexer.find(request.key);
     iter.observeAt(request.mtr.timestamp);
     auto [rec, conflict] = iter.getDataRecordAt(request.mtr.timestamp);
 
@@ -1065,7 +1065,7 @@ K23SIPartitionModule::_processWrite(dto::K23SIWriteRequest&& request, FastDeadli
         // we may come here after a TRH create. Make sure to flush that
         return RPCResponse(std::move(status), dto::K23SIWriteResponse{});
     }
-    auto iter = _indexer.iterate(request.key);
+    auto iter = _indexer.find(request.key);
     if (auto status = _validateStaleWrite(request, iter); !status.is2xxOK()) {
         K2LOG_D(log::skvsvr, "rejecting write {} due to {}", request, status);
         // we may come here after a TRH create. Make sure to flush that
@@ -1257,7 +1257,7 @@ K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23
             }
 
             // update the write intent if necessary
-            auto iter = _indexer.iterate(key);
+            auto iter = _indexer.find(key);
             if (!iter.hasData()) {
                 return seastar::make_ready_future<Status>(response.allowChallengerRetry ? dto::K23SIStatus::OK : dto::K23SIStatus::AbortConflict);
             }
@@ -1340,7 +1340,7 @@ Status K23SIPartitionModule::_finalizeTxnWIs(dto::Timestamp txnts, dto::EndActio
     }
     K2ASSERT(log::skvsvr, twim->isCommitted() || twim->isAborted(), "Twim {} has not ended yet", *twim);
     for (auto& key: twim->writeKeys) {
-        auto iter = _indexer.iterate(key);
+        auto iter = _indexer.find(key);
         auto* wi = iter.getWI();
         K2ASSERT(log::skvsvr, wi!=nullptr,
                  "TWIM {} has registered WI for key{}, but key does not have a WI", *twim, key);
@@ -1392,7 +1392,7 @@ seastar::future<std::tuple<Status, dto::K23SIInspectRecordsResponse>>
 K23SIPartitionModule::handleInspectRecords(dto::K23SIInspectRecordsRequest&& request) {
     K2LOG_D(log::skvsvr, "handleInspectRecords for: {}", request.key);
 
-    auto iter = _indexer.iterate(request.key);
+    auto iter = _indexer.find(request.key);
 
     if (!iter.hasData()) {
         return RPCResponse(dto::K23SIStatus::KeyNotFound("Key not found in indexer"), dto::K23SIInspectRecordsResponse{});
@@ -1418,7 +1418,7 @@ K23SIPartitionModule::handleInspectWIs(dto::K23SIInspectWIsRequest&&) {
     std::vector<dto::WriteIntent> records;
     for (auto it=_twimMgr.twims().begin(); it != _twimMgr.twims().end(); ++it) {
         for (auto kit = it->second.writeKeys.begin(); kit != it->second.writeKeys.end(); ++kit) {
-            auto iter = _indexer.iterate(*kit);
+            auto iter = _indexer.find(*kit);
             auto* wi = iter.getWI();
             if (!wi) {
                 continue;
@@ -1455,7 +1455,7 @@ K23SIPartitionModule::handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& req
     const auto& si = _indexer.getSchemaIndexer();
     for (auto it = si.cbegin(); it != si.cend(); ++it) {
         for (auto kit = it->second.impl.cbegin(); kit != it->second.impl.cend(); ++kit) {
-            keys.push_back(kit->first);
+            keys.push_back(dto::Key{.schemaName=it->first, .partitionKey=kit->first.partitionKey, .rangeKey=kit->first.rangeKey});
         }
     }
 
