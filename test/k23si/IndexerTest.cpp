@@ -49,8 +49,8 @@ SCENARIO("test02 empty schema") {
     REQUIRE(indexer.size() == 0);
     {
         auto iter = indexer.iterate(k1);
-        REQUIRE(iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 0);
@@ -65,8 +65,8 @@ SCENARIO("test02 empty schema") {
     }
     {
         auto iter = indexer.iterate(k1, true);
-        REQUIRE(iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 0);
@@ -104,8 +104,8 @@ SCENARIO("test03 add, abort, commit new key") {
         rec.timestamp = newest;
 
         iter.addWI(k2, std::move(rec), 10);
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() != nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 1);
@@ -122,8 +122,8 @@ SCENARIO("test03 add, abort, commit new key") {
     REQUIRE(indexer.size() == 1);
     {
         auto iter = indexer.iterate(k2);
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() != nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 1);
@@ -133,8 +133,8 @@ SCENARIO("test03 add, abort, commit new key") {
         REQUIRE(iter.getKey() == k2);
 
         iter.abortWI();
-        REQUIRE(iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 0);
@@ -144,8 +144,8 @@ SCENARIO("test03 add, abort, commit new key") {
     REQUIRE(indexer.size() == 0);
     {
         auto iter = indexer.iterate(k2);
-        REQUIRE(iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 0);
@@ -157,8 +157,8 @@ SCENARIO("test03 add, abort, commit new key") {
         rec.timestamp = newest;
 
         iter.addWI(k2, std::move(rec), 10);
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() != nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 1);
@@ -169,8 +169,8 @@ SCENARIO("test03 add, abort, commit new key") {
     REQUIRE(indexer.size() == 1);
     {
         auto iter = indexer.iterate(k2);
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() != nullptr);
         REQUIRE(iter.getLastCommittedTime() == dto::Timestamp::ZERO);
         REQUIRE(iter.getAllDataRecords().size() == 1);
@@ -178,8 +178,8 @@ SCENARIO("test03 add, abort, commit new key") {
         REQUIRE(iter.getLatestDataRecord() != nullptr);
 
         iter.commitWI();
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastCommittedTime() == newest);
         REQUIRE(iter.getAllDataRecords().size() == 1);
@@ -223,8 +223,8 @@ SCENARIO("test04 add, abort, commit with existing key") {
         rec.timestamp = newest;
 
         iter.addWI(k2, std::move(rec), 11);
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() != nullptr);
         REQUIRE(iter.getLastCommittedTime() == newer);
         REQUIRE(iter.getAllDataRecords().size() == 2);
@@ -237,8 +237,8 @@ SCENARIO("test04 add, abort, commit with existing key") {
         auto iter = indexer.iterate(k2);
         iter.observeAt(newer);
         iter.abortWI();
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastCommittedTime() == newer);
         REQUIRE(iter.getAllDataRecords().size() == 1);
@@ -255,8 +255,8 @@ SCENARIO("test04 add, abort, commit with existing key") {
 
         iter.addWI(k2, std::move(rec), 11);
         iter.commitWI();
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastCommittedTime() == newest);
         REQUIRE(iter.getAllDataRecords().size() == 2);
@@ -317,7 +317,7 @@ SCENARIO("test05 read in multiple versions") {
 
     {
         auto iter = indexer.iterate(k1);
-        REQUIRE(!iter.empty());
+        REQUIRE(iter.hasData());
         REQUIRE(iter.getWI()->data.timestamp == newest);
         REQUIRE(iter.getLastCommittedTime() == newer);
         REQUIRE(iter.getAllDataRecords().size() == 4);
@@ -411,8 +411,8 @@ SCENARIO("test 06 multi-key iterate and observation") {
     {
         // iterate forward
         auto iter = indexer.iterate(k3_p);
-        REQUIRE(iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
     }
 
     {
@@ -420,110 +420,124 @@ SCENARIO("test 06 multi-key iterate and observation") {
         // observations:  t0| t0, t0, t0 | t0
         // iterate forward
         auto iter = indexer.iterate(k0);
-        REQUIRE(iter.empty());
-        REQUIRE(iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
         REQUIRE(iter.getLastReadTime() == ts[0]);
         iter.observeAt(ts[1]);
         // observations:  t1| t1, t0, t0 | t0
 
-        iter.next();
-        REQUIRE(!iter.empty());
-        REQUIRE(iter.hasNext());
+        iter.increment();
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k1);
         REQUIRE(iter.getLastReadTime() == ts[1]);
         iter.observeAt(ts[2]);
         // observations:  t1| t2, t0, t0 | t0
 
-        iter.next();
-        REQUIRE(!iter.empty());
-        REQUIRE(iter.hasNext());
+        iter.increment();
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k2);
         REQUIRE(iter.getLastReadTime() == ts[0]);
         iter.observeAt(ts[3]);
         // observations:  t1| t2, t3, t0 | t0
 
-        iter.next();
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        iter.increment();
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k3);
         REQUIRE(iter.getLastReadTime() == ts[0]);
         iter.observeAt(ts[4]);
         // observations:  t1| t2, t3, t4 | t0
+
+        iter.increment();
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
+        REQUIRE(iter.getLastReadTime() == ts[0]);
+        iter.observeAt(ts[5]);
+        // observations:  t1| t2, t3, t4 | t5
     }
 
     {
         // iterate in reverse
         auto iter = indexer.iterate(k0, true);
-        REQUIRE(iter.empty());
-        REQUIRE(!iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
         REQUIRE(iter.getLastReadTime() == ts[1]); // we updated this
     }
 
     {
         // iterate in reverse
         auto iter = indexer.iterate(k3_p, true);
-        REQUIRE(iter.empty());
-        REQUIRE(iter.hasNext());
+        REQUIRE(!iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getWI() == nullptr);
-        REQUIRE(iter.getLastReadTime() == ts[0]);
-        iter.observeAt(ts[5]);
-        // observations:  t1| t2, t3, t5 | t5
-
-        iter.next();
-        REQUIRE(!iter.empty());
-        REQUIRE(iter.hasNext());
-        REQUIRE(iter.getKey() == k3);
         REQUIRE(iter.getLastReadTime() == ts[5]);
         iter.observeAt(ts[6]);
-        // observations:  t1| t2, t3, t6 | t5
+        // observations:  t1| t2, t3, t6 | t6
 
-        iter.next();
-        REQUIRE(!iter.empty());
-        REQUIRE(iter.hasNext());
+        iter.increment();
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
+        REQUIRE(iter.getKey() == k3);
+        REQUIRE(iter.getLastReadTime() == ts[6]);
+        iter.observeAt(ts[7]);
+        // observations:  t1| t2, t3, t7 | t6
+
+        iter.increment();
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k2);
         REQUIRE(iter.getLastReadTime() == ts[3]);
-        iter.observeAt(ts[7]);
-        // observations:  t1| t2, t7, t6 | t5
+        iter.observeAt(ts[8]);
+        // observations:  t1| t2, t8, t7 | t6
 
-        iter.next();
-        REQUIRE(!iter.empty());
-        REQUIRE(!iter.hasNext());
+        iter.increment();
+        REQUIRE(iter.hasData());
+        REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k1);
         REQUIRE(iter.getLastReadTime() == ts[2]);
-        iter.observeAt(ts[8]);
-        // observations:  t1| t8, t7, t6 | t5
+        iter.observeAt(ts[9]);
+        // observations:  t1| t9, t8, t7 | t6
+
+        iter.increment();
+        REQUIRE(!iter.hasData());
+        REQUIRE(iter.atEnd());
+        REQUIRE(iter.getLastReadTime() == ts[1]);
+        iter.observeAt(ts[10]);
+        // observations:  t10| t10, t8, t7 | t6
     }
 
     {
         // point checks
         {
             auto iter = indexer.iterate(k0);
-            REQUIRE(iter.getLastReadTime() == ts[1]);
+            REQUIRE(iter.getLastReadTime() == ts[10]);
         }
         {
             auto iter = indexer.iterate(k1);
-            REQUIRE(iter.getLastReadTime() == ts[8]);
+            REQUIRE(iter.getLastReadTime() == ts[10]);
         }
         {
             auto iter = indexer.iterate(k1_p);
-            REQUIRE(iter.getLastReadTime() == ts[7]);
+            REQUIRE(iter.getLastReadTime() == ts[8]);
         }
         {
             auto iter = indexer.iterate(k2);
-            REQUIRE(iter.getLastReadTime() == ts[7]);
+            REQUIRE(iter.getLastReadTime() == ts[8]);
         }
         {
             auto iter = indexer.iterate(k2_p);
-            REQUIRE(iter.getLastReadTime() == ts[6]);
+            REQUIRE(iter.getLastReadTime() == ts[7]);
         }
         {
             auto iter = indexer.iterate(k3);
-            REQUIRE(iter.getLastReadTime() == ts[6]);
+            REQUIRE(iter.getLastReadTime() == ts[7]);
         }
         {
             auto iter = indexer.iterate(k3_p);
-            REQUIRE(iter.getLastReadTime() == ts[5]);
+            REQUIRE(iter.getLastReadTime() == ts[6]);
         }
 
     }

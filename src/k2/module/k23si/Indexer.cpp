@@ -1,3 +1,26 @@
+/*
+MIT License
+
+Copyright(c) 2022 Futurewei Cloud
+
+    Permission is hereby granted,
+    free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
+
+    The above copyright notice and this permission notice shall be included in all copies
+    or
+    substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS",
+    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+    DAMAGES OR OTHER
+    LIABILITY,
+    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
+
 #include "Indexer.h"
 
 #include <k2/common/MapUtil.h>
@@ -173,7 +196,6 @@ void Indexer::Iterator::addWI(const dto::Key& key, dto::DataRecord&& rec, uint64
     else {
         K2ASSERT(log::skvsvr, getKey() == key, "Key mismatch while adding key: have={}, given={}", getKey(), key);
     }
-    K2ASSERT(log::skvsvr, !_foundIt->second.WI.has_value(), "Unable to insert WI due to previous WI present: {}", _foundIt->second.WI.value());
     _foundIt->second.WI.emplace(std::move(rec), request_id);
 }
 
@@ -211,45 +233,52 @@ void Indexer::Iterator::observeAt(dto::Timestamp ts) {
     }
 }
 
-bool Indexer::Iterator::empty() const {
-    return _foundIt == _si.impl.end() || _foundIt->second.empty();
+bool Indexer::Iterator::hasData() const {
+    return _foundIt != _si.impl.end() && !_foundIt->second.empty();
 }
 
-void Indexer::Iterator::next() {
-    if (!_reverse && _afterIt != _si.impl.end()) {
+void Indexer::Iterator::increment() {
+    if (atEnd()) {
+        return;
+    }
+    auto end = _si.impl.end();
+    if (!_reverse) {
         // forward direction
-        if (_foundIt != _si.impl.end()) {
+        if (_foundIt != end) {
             // only move our _beforeIt if _foundIt actually was pointing to an element.
             _beforeIt = _foundIt;
         }
         _foundIt = _afterIt;
-        ++_afterIt;
+        if (_afterIt != end) {
+            ++_afterIt;
+        }
     }
-    else if (_reverse && _beforeIt != _si.impl.end()) {
+    else if (_reverse) {
         // reverse direction
-        if (_foundIt != _si.impl.end()) {
+        if (_foundIt != end) {
             // only move our _afterIt if _foundIt actually was pointing to an element.
             _afterIt = _foundIt;
         }
         _foundIt = _beforeIt;
-        if (_beforeIt != _si.impl.begin()) {
+        if (_beforeIt != _si.impl.begin() && _beforeIt != end) {
             // this is only safe to do if we are not at begin()
             --_beforeIt;
         } else {
             // we can't rewind begin. Set it to end() directly
-            _beforeIt = _si.impl.end();
+            _beforeIt = end;
         }
     }
 }
 
-bool Indexer::Iterator::hasNext() const {
-    return (_reverse && _beforeIt != _si.impl.end()) ||
-           (!_reverse && _afterIt != _si.impl.end());
+bool Indexer::Iterator::atEnd() const {
+    auto end = _si.impl.end();
+    return _foundIt == end &&
+           ((_reverse && _beforeIt == end) || (!_reverse && _afterIt == end));
 }
 
 const dto::Key& Indexer::Iterator::getKey() const {
-    K2ASSERT(log::skvsvr, _foundIt != _si.impl.end(), "getKey invoked on an empty iterator");
-    return _foundIt->first;
+    static const dto::Key zkey;
+    return _foundIt == _si.impl.end() ? zkey : _foundIt->first;
 }
 // *********************** end Indexer::Iterator API
 

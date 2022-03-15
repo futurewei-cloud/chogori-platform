@@ -170,15 +170,16 @@ public: // APIs
     void observeAt(dto::Timestamp ts);
 
     // use to determine if the current Iterator position contains any data records (wi or committed)
-    bool empty() const;
+    bool hasData() const;
 
     // move on to the next position
-    void next();
+    void increment();
 
-    // determine if there is a next position to move to.
-    bool hasNext() const;
+    // determine if we're at the end of iteration
+    bool atEnd() const;
 
-    // If not empty(), returns the key for the current Iterator position. Otherwise the key with empty contents.
+    // If there is data, returns the key for the current Iterator position.
+    // Otherwise it returns a key with empty contents.
     const dto::Key& getKey() const;
 
 private:

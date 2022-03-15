@@ -35,7 +35,7 @@ auto keyRange(const KeyT& key, MapT& mm) {
 
     // to get the element before "key", we need to rewind "at"
     auto before = at != end ? at : after;
-    if (before != mm.begin()) {
+    if (before != mm.begin() && mm.size() > 0) {
         // this is only safe to do if we do have some elements present
         --before;
     } else {

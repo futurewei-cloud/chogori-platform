@@ -437,8 +437,8 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
 // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must
 // point to a record with the target schema
 void K23SIPartitionModule::_scanAdvance(Indexer::Iterator& iter, const dto::K23SIQueryRequest& request) {
-    if (iter.hasNext()) {
-        iter.next();
+    if (!iter.atEnd()) {
+        iter.increment();
         iter.observeAt(request.mtr.timestamp);
     }
 }
@@ -448,7 +448,7 @@ void K23SIPartitionModule::_scanAdvance(Indexer::Iterator& iter, const dto::K23S
 Indexer::Iterator K23SIPartitionModule::_initializeScan(const dto::K23SIQueryRequest& request) {
     auto iter = _indexer.iterate(request.key, request.reverseDirection);
     iter.observeAt(request.mtr.timestamp);
-    if (iter.empty() || // this key didn't exist in the indexer
+    if (!iter.hasData() || // this key didn't exist in the indexer
         request.exclusiveKey) { // key is found, but we're asked to start with the next key in sequence
         _scanAdvance(iter, request);
     }
@@ -458,10 +458,11 @@ Indexer::Iterator K23SIPartitionModule::_initializeScan(const dto::K23SIQueryReq
 // Helper for handleQuery. Checks to see if the indexer scan should stop.
 bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request,
                                        size_t response_size) {
-    // if the iterator is empty, we're past all keys in the index
-    if (iter.empty()) {
+    // we're at end of iteration
+    if (iter.atEnd()) {
         return true;
     }
+
     if (iter.getKey() == request.key) {
         // Start key as inclusive overrides end key as exclusive
         return false;
@@ -492,16 +493,16 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& it
     // 3. Iterator is at end() and partition bounds contains endKey
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
         // Test for past user endKey:
-        (!iter.empty() &&
+        (!iter.atEnd() &&
             (request.reverseDirection ? iter.getKey() <= request.endKey : iter.getKey() >= request.endKey && request.endKey.partitionKey != "")) ||
         // Test for partition bounds contains endKey and we are at end()
-        (iter.empty() &&
+        (iter.atEnd() &&
             (request.reverseDirection ?
             _partition().keyRangeV.startKey <= request.endKey.partitionKey :
             request.endKey.partitionKey <= _partition().keyRangeV.endKey && request.endKey.partitionKey != ""))) {
         return dto::Key();
     }
-    else if (!iter.empty()) {
+    else if (!iter.atEnd()) {
         // This is the paginated case
         response.exclusiveToken = false;
         return iter.getKey();
@@ -678,8 +679,8 @@ K23SIPartitionModule::handleRead(dto::K23SIReadRequest&& request, FastDeadline d
             });
     }
 
-    // happy case: committed, txn is reading its own write, or there is no matching version
     if (rec == nullptr || rec->isTombstone) {
+        // no version matches the incoming timestamp (or the version was a tombstone)
         return RPCResponse(dto::K23SIStatus::KeyNotFound("read did not find key"), dto::K23SIReadResponse{});
     }
 
@@ -1257,7 +1258,7 @@ K23SIPartitionModule::_doPush(dto::Key key, dto::Timestamp incumbentId, dto::K23
 
             // update the write intent if necessary
             auto iter = _indexer.iterate(key);
-            if (iter.empty()) {
+            if (!iter.hasData()) {
                 return seastar::make_ready_future<Status>(response.allowChallengerRetry ? dto::K23SIStatus::OK : dto::K23SIStatus::AbortConflict);
             }
 
@@ -1393,7 +1394,7 @@ K23SIPartitionModule::handleInspectRecords(dto::K23SIInspectRecordsRequest&& req
 
     auto iter = _indexer.iterate(request.key);
 
-    if (iter.empty()) {
+    if (!iter.hasData()) {
         return RPCResponse(dto::K23SIStatus::KeyNotFound("Key not found in indexer"), dto::K23SIInspectRecordsResponse{});
     }
 
