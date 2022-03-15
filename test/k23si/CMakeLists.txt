@@ -23,7 +23,7 @@ target_link_libraries (skv_client_test PRIVATE tso_client k23si_client cpo_clien
 target_link_libraries (query_test PRIVATE tso_client k23si_client cpo_client appbase dto transport Seastar::seastar)
 target_link_libraries (expression_test PRIVATE dto transport Seastar::seastar)
 
-add_test(NAME readcache COMMAND indexer_test)
+add_test(NAME indexer COMMAND indexer_test)
 add_test(NAME skv_record COMMAND skv_record_test)
 add_test(NAME key_encoding COMMAND key_encoding_test)
 add_test(NAME skv_ser COMMAND skv_ser_test)
