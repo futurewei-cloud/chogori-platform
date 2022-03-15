@@ -462,16 +462,17 @@ bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto:
     if (iter.atEnd()) {
         return true;
     }
+    auto ikey = iter.getKey();
 
-    if (iter.getKey() == request.key) {
+    if (ikey == request.key) {
         // Start key as inclusive overrides end key as exclusive
         return false;
     }
-    if (!request.reverseDirection && iter.getKey() >= request.endKey &&
+    if (!request.reverseDirection && ikey >= request.endKey &&
                request.endKey.partitionKey != "") {
         return true;
     }
-    if (request.reverseDirection && iter.getKey() <= request.endKey) {
+    if (request.reverseDirection && ikey <= request.endKey) {
         return true;
     } else if (request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) {
         return true;
@@ -485,6 +486,7 @@ bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto:
 // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
 dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& iter,
                     const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response, size_t response_size) {
+    auto ikey = iter.getKey();
     // NB: In all checks below, iter.empty signifies that we're past the last
     // key available from the iterator.
     // Three cases where scan is for sure done:
@@ -494,7 +496,7 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& it
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
         // Test for past user endKey:
         (!iter.atEnd() &&
-            (request.reverseDirection ? iter.getKey() <= request.endKey : iter.getKey() >= request.endKey && request.endKey.partitionKey != "")) ||
+            (request.reverseDirection ? ikey <= request.endKey : ikey >= request.endKey && request.endKey.partitionKey != "")) ||
         // Test for partition bounds contains endKey and we are at end()
         (iter.atEnd() &&
             (request.reverseDirection ?
@@ -505,7 +507,7 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& it
     else if (!iter.atEnd()) {
         // This is the paginated case
         response.exclusiveToken = false;
-        return iter.getKey();
+        return ikey;
     }
 
     // This is the multi-partition case
@@ -618,14 +620,15 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         if (response.results.size() >= _config.queryPushLimit()) {
             break;
         }
+        auto ikey = iter.getKey();
         K2LOG_D(log::skvsvr, "query from txn {}, updates read cache for key range {} - {}",
-                request.mtr, request.key, iter.getKey());
+                request.mtr, request.key, ikey);
 
         // TODO we can test the filter condition against the WI and last committed version and possibly
         // avoid a push
 
         K2LOG_D(log::skvsvr, "About to PUSH in query request");
-        request.key = iter.getKey();  // if we retry, do so with the key we're currently iterating on
+        request.key = std::move(ikey);  // if we retry, do so with the key we're currently iterating on
         request.exclusiveKey=false; // re-process the key
 
         // add metrics

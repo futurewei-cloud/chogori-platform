@@ -209,8 +209,8 @@ void Indexer::Iterator::addWI(const dto::Key& key, dto::DataRecord&& rec, uint64
         K2LOG_D(log::skvsvr, "Created new key {}", key);
     }
     else {
-        auto ourKey = getKey();
-        K2ASSERT(log::skvsvr, ourKey.partitionKey == key.partitionKey && ourKey.rangeKey == key.rangeKey, "Key mismatch while adding key: have={}, given={}", getKey(), key);
+        const IndexerKey& ourKey = _foundIt->first;
+        K2ASSERT(log::skvsvr, ourKey.partitionKey == key.partitionKey && ourKey.rangeKey == key.rangeKey, "Key mismatch while adding key: have={}, given={}", ourKey, key);
     }
     _foundIt->second.WI.emplace(std::move(rec), request_id);
 }
@@ -221,7 +221,7 @@ void Indexer::Iterator::abortWI() {
         if (_foundIt->second.committed.empty()) {
             auto lastObservedAt = _foundIt->second.lastReadTime;
             // this entire entry can now be removed as it has no WI and no committed data
-            K2LOG_D(log::skvsvr, "Removing empty entry for key={}, lastObserved=", getKey(), lastObservedAt);
+            K2LOG_D(log::skvsvr, "Removing empty entry for key={}, lastObserved=", _foundIt->first, lastObservedAt);
             _si.impl.erase(_foundIt);
             _foundIt = _si.impl.end();
             // update the neighbors with our timestamp
