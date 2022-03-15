@@ -90,5 +90,25 @@ bool Timestamp::operator!=(const Timestamp& other) const noexcept {
     return !operator==(other);
 }
 
+void Timestamp::minEq(const Timestamp& other) {
+    if (compareCertain(other) == GT) {
+        operator=(other);
+    }
+}
+
+void Timestamp::maxEq(const Timestamp& other) {
+    if (compareCertain(other) == LT) {
+        operator=(other);
+    }
+}
+
+Timestamp Timestamp::min(const Timestamp& other) const {
+    return compareCertain(other) == Timestamp::LT ? (*this) : other;
+}
+
+Timestamp Timestamp::max(const Timestamp& other) const {
+    return compareCertain(other) == Timestamp::GT ? (*this) : other;
+}
+
 } // ns dto
 } // ns k2

@@ -23,63 +23,22 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <map>
-#include <unordered_map>
-#include <deque>
-#if K2_MODULE_POOL_ALLOCATOR == 1
-// this can only work on GCC > 4
-#include <ext/pool_allocator.h>
-#endif
-
 #include <k2/appbase/AppEssentials.h>
+#include <k2/common/Chrono.h>
+#include <k2/cpo/client/Client.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/K23SIInspect.h>
-#include <k2/common/Chrono.h>
-#include <k2/cpo/client/Client.h>
 #include <k2/tso/client/Client.h>
 
-#include "ReadCache.h"
+#include "Config.h"
+#include "Indexer.h"
+#include "Log.h"
+#include "Persistence.h"
 #include "TxnManager.h"
 #include "TxnWIMetaManager.h"
-#include "Config.h"
-#include "Persistence.h"
-#include "Log.h"
 
 namespace k2 {
-
-
-// the type holding multiple committed versions of a key
-typedef std::deque<dto::DataRecord> VersionsT;
-
-struct VersionSet {
-    // If there is a WI, that means that we also have a TxnWIMeta with the twimMgr.
-    // The invariant we maintain is
-    // if there is a WI set, then: the local twim's state is in InProgress (use isInProgress() to check)
-    // The implementation logic then just has to look for the presense of this WI to determine if a push is needed.
-    // After a PUSH operation, if we determine that the incumbent should be finalized(committed/aborted), we
-    // just take care of the WI which triggered the PUSH. This is needed to make room for a new WI in cases of
-    // Write-Write PUSH. We still rely on the TRH to take care of the full finalization for the rest of the WIs.
-    //
-    // For optimization purposes, if we determine that the incumbent should be finalized, we update its state.
-    // Future PUSH operations for this txn (from other WIs on this node) will be determined locally.
-    // This allows us to
-    // - perform finalization in a rate-limited fashion (i.e. have only some WIs finalized for a txn)
-    // - finalize out WIs which actively trigger a conflict, without requiring finalization for the entire txn.
-    std::optional<dto::WriteIntent> WI;
-    VersionsT committed;
-    bool empty() const {
-        return !WI.has_value() && committed.empty();
-    }
-};
-
-// the type holding versions for all keys, i.e. the indexer
-#if K2_MODULE_POOL_ALLOCATOR == 1
-typedef std::map<dto::Key, VersionSet, std::less<dto::Key>, __gnu_cxx::__pool_alloc<std::pair<dto::Key, VersionSet>>> IndexerT;
-#else
-typedef std::map<dto::Key, VersionSet> IndexerT;
-#endif
-typedef IndexerT::iterator IndexerIterator;
 
 class K23SIPartitionModule {
 public: // lifecycle
@@ -167,17 +126,16 @@ private: // methods
 
     // validate writes are not stale - older than the newest committed write or past a recent read.
     // return true if request is valid
-    template <typename RequestT>
-    Status _validateStaleWrite(const RequestT& req, const VersionSet& versions);
+    Status _validateStaleWrite(const dto::K23SIWriteRequest& request, const Indexer::Iterator& iter);
 
     // validate an incoming write request
-    Status _validateWriteRequest(const dto::K23SIWriteRequest& request, const VersionSet& versions);
+    Status _validateWriteRequest(const dto::K23SIWriteRequest& request);
 
     template <class RequestT>
     Status _validateReadRequest(const RequestT& request) const;
 
     // helper method used to create and persist a WriteIntent
-    Status _createWI(dto::K23SIWriteRequest&& request, VersionSet& versions);
+    Status _createWI(dto::K23SIWriteRequest&& request, Indexer::Iterator& iter);
 
     // helper method used to make a projection SKVRecord payload
     bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
@@ -197,35 +155,21 @@ private: // methods
     // judge whether fieldIdx is in fieldsForPartialUpdate. return true if yes(is in fieldsForPartialUpdate).
     bool _isUpdatedField(uint32_t fieldIdx, std::vector<uint32_t> fieldsForPartialUpdate);
 
-    // Helper for iterating over the indexer, modifies it to end() if iterator would go past the target schema
-    // or if it would go past begin() for reverse scan. Starting iterator must not be end() and must
-    // point to a record with the target schema
-    void _scanAdvance(IndexerIterator& it, bool reverseDirection, const String& schema);
+    // Helper for iterating over the indexer. Advances to the next iterator position and registers an observation
+    void _scanAdvance(Indexer::Iterator& iter, const dto::K23SIQueryRequest& request);
 
-    // Helper for handleQuery. Returns an iterator to start the scan at, accounting for
-    // desired schema and (eventually) reverse direction scan
-    IndexerIterator _initializeScan(const dto::Key& start, bool reverse, bool exclusiveKey);
+    // Helper for handleQuery. Returns a directional Iterator to start the scan at, accounting for
+    // desired schema and reverse direction scan
+    Indexer::Iterator _initializeScan(const dto::K23SIQueryRequest& request);
 
     // Helper for handleQuery. Checks to see if the indexer scan should stop.
-    bool _isScanDone(const IndexerIterator& it, const dto::K23SIQueryRequest& request, size_t response_size);
+    bool _isScanDone(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request, size_t response_size);
 
     // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
-    dto::Key _getContinuationToken(const IndexerIterator& it, const dto::K23SIQueryRequest& request,
+    dto::Key _getContinuationToken(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request,
                                             dto::K23SIQueryResponse& response, size_t response_size);
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
-
-    // the the data record in the version set which is not newer than the given timestsamp
-    // The returned pointer is invalid if any modifications are made to the indexer. Will also
-    // return the current WI if it matches exactly the given timestamp. In other words, it
-    // returns a record that is valid to return for to a read request for the given timestamp.
-    dto::DataRecord* _getDataRecordForRead(VersionSet& versions, dto::Timestamp& timestamp);
-
-    // For a given challenger timestamp and key, check if a push is needed against a WI
-    bool _checkPushForRead(const VersionSet& versions, const dto::Timestamp& timestamp);
-
-    // Helper to remove a WI and delete the key from the indexer of there are no committed records
-    void _removeWI(IndexerIterator it);
 
     seastar::future<> _registerVerbs();
 
@@ -257,19 +201,14 @@ private:  // members
     // the partition we're assigned
     dto::OwnerPartition _partition;
 
-    // to store data. The deque contains versions of a key, sorted in decreasing order of their ts.end.
-    // (newest item is at front of the deque)
-    // Duplicates are not allowed
-    IndexerT _indexer;
+    // the data indexer
+    Indexer _indexer;
 
     // manage transaction records as a coordinator
     TxnManager _txnMgr;
 
     // manage write intent metadata records as a participant
     TxnWIMetaManager _twimMgr;
-
-    // read cache for keeping track of latest reads
-    std::unique_ptr<ReadCache<dto::Key, dto::Timestamp>> _readCache;
 
     // schema name -> (schema version -> schema)
     std::unordered_map<String, std::unordered_map<uint32_t, std::shared_ptr<dto::Schema>>> _schemas;
@@ -279,9 +218,6 @@ private:  // members
 
     // the timestamp of the end of the retention window. We do not allow operations to occur before this timestamp
     dto::Timestamp _retentionTimestamp;
-
-    // the start time for this partition.
-    dto::Timestamp _startTs;
 
     // timer used to refresh the retention timestamp from the TSO
     PeriodicTimer _retentionUpdateTimer;

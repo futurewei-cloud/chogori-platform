@@ -35,6 +35,20 @@ namespace nsbi = boost::intrusive;
 
 //- keeps the list of keys to finalize at a particular transaction participant
 //- holds a reference to the TxnRecord (via the trh and mtr) used for PUSH operations
+// The invariants we maintain are:
+// * If there is a WI for a given key in the indexer
+//      - we also have a TxnWIMeta with the twimMgr
+//      - the local twim's state is in InProgress (use isInProgress() to check)
+// The implementation logic then just has to look for the presense of this WI to determine if a push is needed.
+// After a PUSH operation, if we determine that the incumbent should be finalized(committed/aborted), we
+// just take care of the WI which triggered the PUSH. This is needed to make room for a new WI in cases of
+// Write-Write PUSH. We still rely on the TRH to take care of the full finalization for the rest of the WIs.
+//
+// For optimization purposes, if we determine that the incumbent should be finalized, we update its state.
+// Future PUSH operations for this txn (from other WIs on this node) will be determined locally.
+// This allows us to
+// - perform finalization in a rate-limited fashion (i.e. have only some WIs finalized for a txn)
+// - finalize out WIs which actively trigger a conflict, without requiring finalization for the entire txn.
 struct TxnWIMeta {
     dto::Key trh;
     String trhCollection;
@@ -67,6 +81,9 @@ public:
 
     // Returns the TxnWIMeta for the given id, or null if no such record exists
     TxnWIMeta* getTxnWIMeta(dto::Timestamp ts);
+
+    // Provide access to all twims in this manager
+    const std::unordered_map<dto::Timestamp, TxnWIMeta>& twims() const;
 
     // When started, we need to be told:
     // - the current retentionTimestamp

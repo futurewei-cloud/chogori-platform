@@ -82,6 +82,18 @@ public:
         return printTime(TimePoint{} + 1ns*_tEndTSECount);
     }
 
+    // set this timestamp to min of this and other, based on certain comparison
+    void minEq(const Timestamp& other);
+
+    // set this timestamp to max of this and other, based on certain comparison
+    void maxEq(const Timestamp& other);
+
+    // return the min of this and other
+    Timestamp min(const Timestamp& other) const;
+
+    // return the max of this and other
+    Timestamp max(const Timestamp& other) const;
+
 private:
     uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE in TAI
     uint32_t _tsoId = 0;
