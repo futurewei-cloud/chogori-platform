@@ -438,7 +438,7 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
 // point to a record with the target schema
 void K23SIPartitionModule::_scanAdvance(Indexer::Iterator& iter, const dto::K23SIQueryRequest& request) {
     if (!iter.atEnd()) {
-        iter.increment();
+        iter.next();
         iter.observeAt(request.mtr.timestamp);
     }
 }

@@ -173,9 +173,9 @@ public: // APIs
     bool hasData() const;
 
     // move on to the next position
-    void increment();
+    void next();
 
-    // determine if we're at the end of iteration
+    // determine if we're at the end of iteration - the current position is past the last element
     bool atEnd() const;
 
     // If there is data, returns the key for the current Iterator position.

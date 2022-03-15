@@ -237,7 +237,7 @@ bool Indexer::Iterator::hasData() const {
     return _foundIt != _si.impl.end() && !_foundIt->second.empty();
 }
 
-void Indexer::Iterator::increment() {
+void Indexer::Iterator::next() {
     if (atEnd()) {
         return;
     }

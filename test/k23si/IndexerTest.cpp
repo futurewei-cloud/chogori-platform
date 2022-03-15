@@ -427,7 +427,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[1]);
         // observations:  t1| t1, t0, t0 | t0
 
-        iter.increment();
+        iter.next();
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k1);
@@ -435,7 +435,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[2]);
         // observations:  t1| t2, t0, t0 | t0
 
-        iter.increment();
+        iter.next();
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k2);
@@ -443,7 +443,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[3]);
         // observations:  t1| t2, t3, t0 | t0
 
-        iter.increment();
+        iter.next();
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k3);
@@ -451,7 +451,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[4]);
         // observations:  t1| t2, t3, t4 | t0
 
-        iter.increment();
+        iter.next();
         REQUIRE(!iter.hasData());
         REQUIRE(iter.atEnd());
         REQUIRE(iter.getLastReadTime() == ts[0]);
@@ -477,7 +477,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[6]);
         // observations:  t1| t2, t3, t6 | t6
 
-        iter.increment();
+        iter.next();
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k3);
@@ -485,7 +485,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[7]);
         // observations:  t1| t2, t3, t7 | t6
 
-        iter.increment();
+        iter.next();
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k2);
@@ -493,7 +493,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[8]);
         // observations:  t1| t2, t8, t7 | t6
 
-        iter.increment();
+        iter.next();
         REQUIRE(iter.hasData());
         REQUIRE(!iter.atEnd());
         REQUIRE(iter.getKey() == k1);
@@ -501,7 +501,7 @@ SCENARIO("test 06 multi-key iterate and observation") {
         iter.observeAt(ts[9]);
         // observations:  t1| t9, t8, t7 | t6
 
-        iter.increment();
+        iter.next();
         REQUIRE(!iter.hasData());
         REQUIRE(iter.atEnd());
         REQUIRE(iter.getLastReadTime() == ts[1]);
