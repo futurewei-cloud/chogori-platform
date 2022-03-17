@@ -23,3 +23,40 @@ Zipfian requests, 95\% read 5\% write: **250K/second**
 Uniform requests, 50\% read 50\% write: **1.28M/second**
 
 Uniform requests, 95\% read 5\% write: **2.27M/second**
+
+# Perf (latencies with percentiles 50/90/99/999)
+| Metric | 2022/01/30 | 2022/03/16 |
+| --- | --- | --- |
+| <b style="color: #008800">TPCC {43,4,4,45,4}</b> |||
+| txn/sec | 112K | 141K |
+| NewOrder latency | 708/1010/1770/3240 | 478/680/1280/2550 |
+| Abort rate/sec | 5.16K | 6.21 |
+| server-side read rate/sec | 2.78M | 3.45M |
+| server-side read latency | 2.96/6.96/11.2/16.5 | 1.05/1.82/2.52/6.43 |
+| server-side query rate/sec | 221K | 277K |
+| server-side query latency | 8.55/24.1/125/179 | 3.44/17.8/113/169 |
+| server-side write rate/sec | 2.54M | 3.17M |
+| server-side write latency | 226/1410/2200/3010 | 165/1120/2000/2830 |
+| PUSH latency | 1.3/2.0/2.44/2.48 | 1.3/1.85/2.38/2.48 |
+| Flush latency | 204/1400/2170/2940 | 204/1400/2170/2940 |
+| TSO call rate/sec | 117K | 145K |
+| TSO latency | 8.47/10.4/15.1/20.1 | 8.53/10.5/15.3/20.4 |
+| |
+| |
+| |
+| <b style="color: #008800">YCSB {95,5,uniform}</b> |||
+| Txn/sec |  | 2.55M |
+| Abort rate/sec |  | <5 |
+| Client read latency |  | 27.9/33.3/42.2/52.9 |
+| TSO call rate/sec | | 2.55M
+| TSO latency |  | 9.35/12.4/17.2/22 |
+| |
+| |
+| |
+| <b style="color: #008800">YCSB {95,5,szipfian}</b> |||
+| Txn/sec |  | 245K |
+| Abort rate/sec |  | 1.75K |
+| Client read latency |  | 26/32/48/89 |
+| TSO call rate/sec| | 245K | 
+| TSO latency |  | 8/10/16/25 |
+
