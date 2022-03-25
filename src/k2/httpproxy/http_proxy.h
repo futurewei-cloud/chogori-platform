@@ -21,18 +21,21 @@ Copyright(c) 2021 Futurewei Cloud
     SOFTWARE.
 */
 
+#pragma once
 
 #include <optional>
 
-#include <k2/appbase/AppEssentials.h>
-#include <k2/appbase/Appbase.h>
+#include <seastar/core/sleep.hh>
+
 #include <k2/infrastructure/APIServer.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/tso/client/Client.h>
+#include <k2/common/Log.h>
 
-#include <seastar/core/sleep.hh>
+namespace k2::log {
+inline thread_local k2::logging::Logger httpproxy("k2::httpproxy");
+}
 
-#include "Log.h"
 namespace k2 {
 using namespace dto;
 
@@ -135,9 +138,9 @@ void serializeFieldFromRecord<k2::dto::FieldType>(const k2::SchemaField& field,
     throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
 }
 
-class HTTPClient {
+class HTTPProxy {
 public:  // application lifespan
-    HTTPClient():
+    HTTPProxy():
         _client(k2::K23SIClientConfig()) {
     }
 
@@ -160,7 +163,7 @@ public:  // application lifespan
         auto _startFut = seastar::make_ready_future<>();
         _startFut = _startFut.then([this] {return _client.start();});
         if (myid == 0) {
-            K2LOG_I(k2::log::httpclient, "Creating collection...");
+            K2LOG_I(k2::log::httpproxy, "Creating collection...");
             _startFut = _startFut.then([this] {
                 k2::dto::CollectionMetadata meta {
                     .name = collname,
@@ -176,8 +179,8 @@ public:  // application lifespan
                 };
                 return _client.makeCollection(std::move(meta))
                 .then([this] (Status&& status) {
-                    K2ASSERT(k2::log::httpclient, status.is2xxOK(), "Failed to create collection");
-                    K2LOG_I(k2::log::httpclient, "Creating schema...");
+                    K2ASSERT(k2::log::httpproxy, status.is2xxOK(), "Failed to create collection");
+                    K2LOG_I(k2::log::httpproxy, "Creating schema...");
                     return _client.createSchema(collname, _schema);
                 }).discard_result();
             });
@@ -211,7 +214,7 @@ private:
         (void) request;
         return _client.beginTxn(k2::K2TxnOptions())
         .then([this] (auto&& txn) {
-            K2LOG_D(k2::log::httpclient, "begin txn: {}", txn.mtr());
+            K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
             _txns[_txnID++] = std::move(txn);
             nlohmann::json response;
             nlohmann::json status;
@@ -373,7 +376,7 @@ private:
     }
 
     void _registerAPI() {
-        K2LOG_I(k2::log::httpclient, "Registering HTTP API observers...");
+        K2LOG_I(k2::log::httpproxy, "Registering HTTP API observers...");
         k2::APIServer& api_server = k2::AppBase().getDist<k2::APIServer>().local();
 
         api_server.registerRawAPIObserver("BeginTxn", "Begin a txn, returning a numeric txn handle", [this](nlohmann::json&& request) {
@@ -435,21 +438,6 @@ private:
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
     std::vector<seastar::future<>> _endFuts;
     ConfigVar<uint32_t> _numPartitions{"num_partitions"};
-};  // class HTTPClient
+};  // class HTTPProxy
 
 } // namespace k2
-
-int main(int argc, char** argv) {
-    k2::App app("K23SIBenchClient");
-    app.addApplet<k2::APIServer>();
-    app.addApplet<k2::tso::TSOClient>();
-    app.addApplet<k2::HTTPClient>();
-    app.addOptions()
-        // config for dependencies
-        ("num_partitions", bpo::value<uint32_t>(), "Number of k2 nodes to use for the collection")
-        ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
-        ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
-        ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
-        ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff");
-    return app.start(argc, argv);
-}
