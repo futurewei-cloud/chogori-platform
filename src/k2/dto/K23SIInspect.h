@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
-#include <k2/transport/Status.h>
+#include <k2/dto/shared/Status.h>
 
 namespace k2 {
 namespace dto {

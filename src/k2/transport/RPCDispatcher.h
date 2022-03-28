@@ -39,7 +39,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/config/Config.h>
 #include "RPCProtocolFactory.h"
 #include "Request.h"
-#include "Status.h"
+#include <k2/dto/shared/Status.h>
 #include "Log.h"
 
 namespace k2 {

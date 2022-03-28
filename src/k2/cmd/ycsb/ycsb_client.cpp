@@ -26,7 +26,7 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
-#include <k2/dto/FieldTypes.h>
+#include <k2/dto/shared/FieldTypes.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/RetryStrategy.h>
 #include <k2/tso/client/Client.h>

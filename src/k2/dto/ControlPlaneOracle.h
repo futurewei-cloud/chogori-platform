@@ -23,10 +23,10 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <k2/transport/Status.h>
+#include <k2/dto/shared/Status.h>
+#include <k2/dto/shared/Schema.h>
 
 #include "Collection.h"
-#include "FieldTypes.h"
 #include "Timestamp.h"
 
 #include "Log.h"
@@ -84,44 +84,6 @@ struct CollectionDropRequest {
 struct CollectionDropResponse {
     K2_PAYLOAD_EMPTY;
     K2_DEF_FMT(CollectionDropResponse);
-};
-
-struct SchemaField {
-    FieldType type;
-    String name;
-    // Ascending or descending sort order. Currently only relevant for
-    // key fields, but could be used for secondary index in the future
-    bool descending = false;
-    // NULL first or last in sort order. Relevant for key fields and
-    // for open-ended filter predicates
-    bool nullLast = false;
-
-    K2_PAYLOAD_FIELDS(type, name, descending, nullLast);
-    K2_DEF_FMT(SchemaField, type, name, descending, nullLast);
-};
-
-struct Schema {
-    String name;
-    uint32_t version = 0;
-    std::vector<SchemaField> fields;
-
-    // All key fields must come before all value fields (by index), so that a key can be
-    // constructed for a read request without knowing the schema version
-    std::vector<uint32_t> partitionKeyFields;
-    std::vector<uint32_t> rangeKeyFields;
-    void setKeyFieldsByName(const std::vector<String>& keys, std::vector<uint32_t>& keyFields);
-    void setPartitionKeyFieldsByName(const std::vector<String>& keys);
-    void setRangeKeyFieldsByName(const std::vector<String>& keys);
-
-    // Checks if the schema itself is well-formed (e.g. fields and fieldNames sizes match)
-    // and returns a 400 status if not
-    Status basicValidation() const;
-    // Used to make sure that the partition and range key definitions do not change between versions
-    Status canUpgradeTo(const dto::Schema& other) const;
-
-    K2_PAYLOAD_FIELDS(name, version, fields, partitionKeyFields, rangeKeyFields);
-
-    K2_DEF_FMT(Schema, name, version, fields, partitionKeyFields, rangeKeyFields);
 };
 
 // Request to create a schema and attach it to a collection

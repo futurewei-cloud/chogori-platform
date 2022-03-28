@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright(c) 2020 Futurewei Cloud
+Copyright(c) 2022 Futurewei Cloud
 
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
@@ -24,11 +24,12 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <cstdint>
-#include <cstring>
 #include <decimal/decimal>
 
+#ifdef K2_PLATFORM_COMPILE
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
+#endif
 
 namespace k2 {
 namespace dto {
@@ -77,26 +78,6 @@ enum class FieldType : uint8_t {
 template <typename T>
 FieldType TToFieldType();
 
-// Converts a field type to a string suitable for being part of a key
-template<typename T>
-String FieldToKeyString(const T&);
-
-// these types are supported as key fields
-template<> String FieldToKeyString<int16_t>(const int16_t&);
-template<> String FieldToKeyString<int32_t>(const int32_t&);
-template<> String FieldToKeyString<int64_t>(const int64_t&);
-template<> String FieldToKeyString<String>(const String&);
-template<> String FieldToKeyString<bool>(const bool&);
-
-// all other types are not supported as key fields
-template <typename T>
-String FieldToKeyString(const T&) {
-    throw FieldNotSupportedAsKeyException(fmt::format("Key encoding for {} not implemented yet", TToFieldType<T>()));
-}
-
-String NullFirstToKeyString();
-String NullLastToKeyString();
-
 // To prevent NaN in fields
 template <typename T>
 bool isNan(const T& field){
@@ -120,6 +101,17 @@ bool isNan(const T& field){
 
     return false;
 }
+
+template <> inline FieldType TToFieldType<String>() { return FieldType::STRING; }
+template <> inline FieldType TToFieldType<int16_t>() { return FieldType::INT16T; }
+template <> inline FieldType TToFieldType<int32_t>() { return FieldType::INT32T; }
+template <> inline FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
+template <> inline FieldType TToFieldType<float>() { return FieldType::FLOAT; }
+template <> inline FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
+template <> inline FieldType TToFieldType<bool>() { return FieldType::BOOL; }
+template <> inline FieldType TToFieldType<std::decimal::decimal64>() { return FieldType::DECIMAL64; }
+template <> inline FieldType TToFieldType<std::decimal::decimal128>() { return FieldType::DECIMAL128; }
+template <> inline FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }
 
 } // ns dto
 } // ns k2

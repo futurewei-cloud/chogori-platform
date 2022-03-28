@@ -26,7 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <optional>
 
 #include <k2/dto/Collection.h>
-#include <k2/dto/FieldTypes.h>
+#include <k2/dto/shared/FieldTypes.h>
+#include <k2/dto/FieldEncoding.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include "Log.h"
 namespace k2 {

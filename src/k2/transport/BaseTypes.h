@@ -28,10 +28,10 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/net/socket_defs.hh> // for socket_address
 #include <seastar/core/future.hh>
 
-#include "Payload.h"
 #include <k2/common/Common.h>
+#include <k2/dto/shared/Status.h>
+#include "Payload.h"
 #include "Request.h"
-#include "Status.h"
 #include "TXEndpoint.h"
 
 namespace k2 {

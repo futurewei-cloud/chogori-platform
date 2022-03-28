@@ -32,8 +32,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/Collection.h>
 #include <k2/dto/K23SI.h>
 #include <k2/dto/MessageVerbs.h>
+#include <k2/dto/shared/Status.h>
 #include <k2/transport/PayloadSerialization.h>
-#include <k2/transport/Status.h>
 #include <k2/tso/client/Client.h>
 
 #include <random>

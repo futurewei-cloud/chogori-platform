@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "AutoRRDMARPCProtocol.h"
 #include "DiscoveryDTO.h"
-#include "Status.h"
+#include <k2/dto/shared/Status.h>
 
 namespace k2 {
 

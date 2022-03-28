@@ -30,8 +30,8 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/LogStream.h>
+#include <k2/dto/shared/Status.h>
 #include <k2/transport/Prometheus.h>
-#include <k2/transport/Status.h>
 #include <k2/common/Timer.h>
 
 #include "Log.h"

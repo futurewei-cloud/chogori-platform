@@ -28,7 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Log.h>
 #include <k2/common/Common.h>
 
-#include "FieldTypes.h"
+#include "FieldEncoding.h"
 
 namespace k2 {
 namespace dto {
@@ -39,17 +39,6 @@ static constexpr char ESCAPED_NULL = 0xFF;
 // + > -, and not using the above constants just for potentially easier decoding
 static constexpr char SIGN_POS = 0x03;
 static constexpr char SIGN_NEG = 0x02;
-
-template <> FieldType TToFieldType<String>() { return FieldType::STRING; }
-template <> FieldType TToFieldType<int16_t>() { return FieldType::INT16T; }
-template <> FieldType TToFieldType<int32_t>() { return FieldType::INT32T; }
-template <> FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
-template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
-template <> FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
-template <> FieldType TToFieldType<bool>() { return FieldType::BOOL; }
-template <> FieldType TToFieldType<std::decimal::decimal64>() { return FieldType::DECIMAL64; }
-template <> FieldType TToFieldType<std::decimal::decimal128>() { return FieldType::DECIMAL128; }
-template <> FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }
 
 // All conversion assume ascending ordering
 

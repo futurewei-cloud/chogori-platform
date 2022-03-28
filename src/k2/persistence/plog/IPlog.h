@@ -26,8 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/PayloadSerialization.h>
 #include "plog_client.h"
 #include <seastar/core/sharded.hh>
+#include <k2/dto/shared/Status.h>
 #include <k2/transport/Payload.h>
-#include <k2/transport/Status.h>
 
 namespace k2
 {

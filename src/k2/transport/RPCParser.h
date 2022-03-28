@@ -32,7 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/Common.h>
 #include <k2/common/Log.h>
 #include "Payload.h"
-#include "Status.h"
+#include <k2/dto/shared/Status.h>
 
 namespace k2 {
 

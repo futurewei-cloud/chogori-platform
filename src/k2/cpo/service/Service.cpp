@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/Appbase.h>
 #include <k2/infrastructure/APIServer.h>
 #include <k2/transport/Payload.h>  // for payload construction
-#include <k2/transport/Status.h>  // for RPC
+#include <k2/dto/shared/Status.h>  // for RPC
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 #include <k2/dto/ControlPlaneOracle.h> // our DTO
 #include <k2/dto/AssignmentManager.h> // our DTO

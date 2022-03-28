@@ -23,7 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Client.h"
 
-#include <k2/dto/FieldTypes.h>
+#include <k2/dto/shared/FieldTypes.h>
 
 namespace k2::cpo {
 

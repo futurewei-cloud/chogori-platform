@@ -12,6 +12,10 @@ else()
     set(K2_VERBOSE_LOGGING 0)
 endif()
 
+# Used to support shared header files that may also be compiled as part of a different project. If this
+# variable is false then certain macros such as logging are redefined.
+add_compile_definitions(K2_PLATFORM_COMPILE=1)
+
 add_compile_definitions(K2_VERBOSE_LOGGING=${K2_VERBOSE_LOGGING})
 
 # K2_MODULE_POOL_ALLOCATOR enables pool allocator for the module indexer. By default it is disabled

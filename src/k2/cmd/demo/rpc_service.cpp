@@ -24,8 +24,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/common/Common.h>
+#include <k2/dto/shared/Status.h>
 #include <k2/transport/PayloadSerialization.h>
-#include <k2/transport/Status.h>
 #include <seastar/core/sleep.hh>
 
 namespace k2 {
@@ -86,7 +86,7 @@ public:  // application lifespan
                 response.value = iter->second;
             }
             else {
-                return RPCResponse(Statuses::S404_Not_Found("key not found"), std::move(response));      
+                return RPCResponse(Statuses::S404_Not_Found("key not found"), std::move(response));
             }
             return RPCResponse(Statuses::S200_OK("get accepted"), std::move(response));
         });
@@ -111,7 +111,7 @@ public:
             K2LOG_I(log::rpcsvc, "found endpoint: {}", ep->url);
             return RPC().callRPC<PUT_Request, PUT_Response>(MessageVerbs::PUT, request, *ep, 1s);
         })
-        .then([](auto&& resp) { 
+        .then([](auto&& resp) {
             K2LOG_I(log::rpcsvc, "Received PUT response with status: {}", std::get<0>(resp));
 
             K2LOG_I(log::rpcsvc, "getting record");
@@ -121,7 +121,7 @@ public:
         })
         .then([](auto&& resp) {
             K2LOG_I(log::rpcsvc, "Received GET response with status: {}, value={}", std::get<0>(resp), std::get<1>(resp).value);
-            
+
             K2LOG_I(log::rpcsvc, "record should not found");
             GET_Request request{.key = "Key2"};
             return RPC().callRPC<GET_Request, GET_Response>(MessageVerbs::GET, request,

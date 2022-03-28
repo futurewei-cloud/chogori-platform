@@ -32,7 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/AssignmentManager.h>
 #include <k2/dto/PersistenceCluster.h>
 #include <k2/dto/LogStream.h>
-#include <k2/transport/Status.h>
+#include <k2/dto/shared/Status.h>
 
 #include "Log.h"
 #include "HealthMonitor.h"

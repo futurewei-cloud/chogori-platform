@@ -34,9 +34,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/PersistenceCluster.h>
+#include <k2/dto/shared/Status.h>
 #include <k2/transport/RPCDispatcher.h>
 #include <k2/transport/RPCTypes.h>
-#include <k2/transport/Status.h>
 #include <k2/transport/TXEndpoint.h>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>

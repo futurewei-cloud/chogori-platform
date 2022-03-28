@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
-#include <k2/transport/Status.h>
+#include <k2/dto/shared/Status.h>
 
 #include "Collection.h"
 #include "ControlPlaneOracle.h"

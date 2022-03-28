@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/common/VecUtil.h>
 #include <k2/transport/Payload.h>
 #include <k2/transport/PayloadSerialization.h>
-#include "FieldTypes.h"
+#include <k2/dto/shared/FieldTypes.h>
 #include "SKVRecord.h"
 #include "Log.h"
 

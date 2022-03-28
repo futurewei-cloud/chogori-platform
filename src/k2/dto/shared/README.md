@@ -1,0 +1,1 @@
+Header files in the dto/shared directory are used by both core chogori-platform binaries (e.g. nodepool, CPO, etc) and by header-only libraries that are part of chogori-platform but are compiled as part of a project that includes them. Files in this shared directory should all include "shared.h" which will conditionally redefine macros in the file for compatibility.

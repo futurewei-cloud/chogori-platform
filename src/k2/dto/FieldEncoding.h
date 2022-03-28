@@ -23,38 +23,37 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-// third-party
-#include <seastar/core/distributed.hh>
-#include <seastar/core/future.hh>  // for future stuff
+#include <cstdint>
+#include <cstring>
+#include <decimal/decimal>
 
-#include <k2/dto/shared/Status.h>
-#include <k2/dto/AssignmentManager.h>
-#include <k2/dto/Timestamp.h>
-#include <k2/module/k23si/Module.h>
+#include <k2/common/Log.h>
+#include <k2/common/Common.h>
+#include <k2/dto/shared/FieldTypes.h>
 
 namespace k2 {
-namespace log {
-inline thread_local k2::logging::Logger amgr("k2::assignment_manager");
+namespace dto {
+
+// Converts a field type to a string suitable for being part of a key
+template<typename T>
+String FieldToKeyString(const T&);
+
+// these types are supported as key fields
+template<> String FieldToKeyString<int16_t>(const int16_t&);
+template<> String FieldToKeyString<int32_t>(const int32_t&);
+template<> String FieldToKeyString<int64_t>(const int64_t&);
+template<> String FieldToKeyString<String>(const String&);
+template<> String FieldToKeyString<bool>(const bool&);
+
+// all other types are not supported as key fields
+template <typename T>
+String FieldToKeyString(const T&) {
+    throw FieldNotSupportedAsKeyException(fmt::format("Key encoding for {} not implemented yet", TToFieldType<T>()));
 }
 
-class AssignmentManager {
-public:  // application lifespan
-    AssignmentManager();
-    ~AssignmentManager();
+String NullFirstToKeyString();
+String NullLastToKeyString();
 
-    // required for seastar::distributed interface
-    seastar::future<> gracefulStop();
-    seastar::future<> start();
+} // ns dto
+} // ns k2
 
-    seastar::future<std::tuple<Status, dto::AssignmentCreateResponse>>
-    handleAssign(dto::AssignmentCreateRequest&& request);
-
-    seastar::future<std::tuple<Status, dto::AssignmentOffloadResponse>>
-    handleOffload(dto::AssignmentOffloadRequest&& request);
-
-private:
-    std::unique_ptr<K23SIPartitionModule> _pmodule;
-    String _collectionName;
-};  // class AssignmentManager
-
-} // namespace k2

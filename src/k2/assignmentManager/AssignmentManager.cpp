@@ -28,7 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/ControlPlaneOracle.h>   // our DTO
 #include <k2/dto/MessageVerbs.h>         // our DTO
 #include <k2/transport/RPCDispatcher.h>  // for RPC
-#include <k2/transport/Status.h>         // for RPC
+#include <k2/dto/shared/Status.h>         // for RPC
 #include <k2/transport/Discovery.h>      // for selectBestEndpointString
 
 namespace k2 {
