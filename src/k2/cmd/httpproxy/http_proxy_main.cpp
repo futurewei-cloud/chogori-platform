@@ -23,7 +23,9 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
-#include <k2/httpproxy/http_proxy.h>
+#include <k2/infrastructure/APIServer.h>
+#include <k2/tso/client/Client.h>
+#include <k2/httpproxy/HTTPProxy.h>
 
 int main(int argc, char** argv) {
     k2::App app("K23SIBenchProxy");
