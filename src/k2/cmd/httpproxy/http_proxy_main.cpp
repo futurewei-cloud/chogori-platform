@@ -28,7 +28,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/httpproxy/HTTPProxy.h>
 
 int main(int argc, char** argv) {
-    k2::App app("K23SIBenchProxy");
+    k2::App app("HttpProxy");
     app.addApplet<k2::APIServer>();
     app.addApplet<k2::tso::TSOClient>();
     app.addApplet<k2::HTTPProxy>();
