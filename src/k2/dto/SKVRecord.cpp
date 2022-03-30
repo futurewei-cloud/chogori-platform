@@ -25,10 +25,24 @@ Copyright(c) 2020 Futurewei Cloud
 #include <optional>
 
 #include <k2/appbase/AppEssentials.h>
+#include <k2/dto/Collection.h>
 #include <k2/dto/SKVRecord.h>
+#include <k2/dto/FieldEncoding.h>
+
+#include "Log.h"
 
 namespace k2 {
 namespace dto {
+
+String SKVRecord::getPrintableString() const {
+    return fmt::format(
+        "{{collectionName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
+        collectionName,
+        storage.excludedFields,
+        schema ? const_cast<SKVRecord*>(this)->getKey() : dto::Key{},
+        partitionKeys,
+        rangeKeys);
+}
 
 void SKVRecord::serializeNull() {
     if (fieldCursor >= schema->fields.size()) {
@@ -54,6 +68,87 @@ void SKVRecord::serializeNull() {
     storage.excludedFields[fieldCursor] = true;
     ++fieldCursor;
 }
+
+template <typename T>
+void SKVRecord::serializeNext(T field) {
+    if(isNan<T>(field)){
+        throw NaNError("NaN type in serialization");
+    }
+
+    FieldType ft = TToFieldType<T>();
+    if (fieldCursor >= schema->fields.size() || ft != schema->fields[fieldCursor].type) {
+        throw TypeMismatchException("Schema not followed in record serialization");
+    }
+
+    for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
+        if (schema->partitionKeyFields[i] == fieldCursor) {
+            partitionKeys[i] = FieldToKeyString<T>(field);
+        }
+    }
+
+    for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
+        if (schema->rangeKeyFields[i] == fieldCursor) {
+            rangeKeys[i] = FieldToKeyString<T>(field);
+        }
+    }
+
+    storage.fieldData.write(field);
+    ++fieldCursor;
+}
+
+// Explicit instantiation for all of the FieldType types, which allows us to have the template
+// definiation in the .cpp file
+template void SKVRecord::serializeNext<String>(String);
+template void SKVRecord::serializeNext<int16_t>(int16_t);
+template void SKVRecord::serializeNext<int32_t>(int32_t);
+template void SKVRecord::serializeNext<int64_t>(int64_t);
+template void SKVRecord::serializeNext<float>(float);
+template void SKVRecord::serializeNext<double>(double);
+template void SKVRecord::serializeNext<bool>(bool);
+template void SKVRecord::serializeNext<std::decimal::decimal64>(std::decimal::decimal64);
+template void SKVRecord::serializeNext<std::decimal::decimal128>(std::decimal::decimal128);
+
+template <typename T>
+std::optional<T> SKVRecord::deserializeField(uint32_t fieldIndex) {
+    FieldType ft = TToFieldType<T>();
+    std::optional<T> null_val = std::nullopt;
+
+    if (fieldIndex >= schema->fields.size() || ft != schema->fields[fieldIndex].type) {
+
+        throw TypeMismatchException(fmt::format("schema not followed in record deserialization for index {}", fieldIndex));
+    }
+
+    if (fieldIndex != fieldCursor) {
+        seekField(fieldIndex);
+    }
+
+    ++fieldCursor;
+
+    if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldIndex]) {
+        return null_val;
+    }
+
+    T value;
+    bool success = storage.fieldData.read(value);
+    if (!success) {
+        throw DeserializationError("Deserialization of payload in SKVRecord failed");
+    }
+
+    return value;
+}
+
+// Explicit instantiation for all of the FieldType types, which allows us to have the template
+// definiation in the .cpp file
+template std::optional<String> SKVRecord::deserializeField<String>(uint32_t);
+template std::optional<int16_t> SKVRecord::deserializeField<int16_t>(uint32_t);
+template std::optional<int32_t> SKVRecord::deserializeField<int32_t>(uint32_t);
+template std::optional<int64_t> SKVRecord::deserializeField<int64_t>(uint32_t);
+template std::optional<float> SKVRecord::deserializeField<float>(uint32_t);
+template std::optional<double> SKVRecord::deserializeField<double>(uint32_t);
+template std::optional<bool> SKVRecord::deserializeField<bool>(uint32_t);
+template std::optional<std::decimal::decimal64> SKVRecord::deserializeField<std::decimal::decimal64>(uint32_t);
+template std::optional<std::decimal::decimal128> SKVRecord::deserializeField<std::decimal::decimal128>(uint32_t);
+
 
 // NoOp function to be used with the convience macros to get document fields
 template <typename T>
@@ -94,7 +189,7 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
 // We expose the storage in case the user wants to write it to file or otherwise
 // store it on their own. For normal K23SI operations the user does not need to touch this.
 // The user can later use the Storage-based constructor of the SKVRecord recreate a usable record.
-const SKVRecord::Storage& SKVRecord::getStorage() {
+const SKVStorage& SKVRecord::getStorage() {
     return storage;
 }
 
@@ -108,7 +203,7 @@ SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
 }
 
 // The constructor for an SKVRecord that is created by the SKV client to be returned to the user in a response
-SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyAvail) :
+SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, SKVStorage&& storage, bool keyAvail) :
         schema(s), collectionName(collection), storage(std::move(storage)), keyValuesAvailable(keyAvail),
         keyStringsConstructed(false) {}
 
@@ -221,22 +316,6 @@ dto::Key SKVRecord::getKey() {
     };
 }
 
-SKVRecord::Storage SKVRecord::Storage::share() {
-    return SKVRecord::Storage {
-        excludedFields,
-        fieldData.shareAll(),
-        schemaVersion
-    };
-}
-
-SKVRecord::Storage SKVRecord::Storage::copy() {
-    return SKVRecord::Storage {
-        excludedFields,
-        fieldData.copy(),
-        schemaVersion
-    };
-}
-
 SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_ptr<Schema> other_schema) {
     // Check schema compatibility (same number of fields and same types in order)
     if (other_schema->fields.size() != schema->fields.size()) {
@@ -266,7 +345,7 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
     }
 
     size_t num_keys = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
-    SKVRecord::Storage key_storage = storage.share();
+    SKVStorage key_storage = storage.share();
 
     // If size() == 0 then all fields were included, so resize the key_storage excluded fields
     if (key_storage.excludedFields.size() == 0) {
@@ -292,7 +371,7 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
 
 // deepCopies an SKVRecord including copying (not sharing) the storage payload
 SKVRecord SKVRecord::deepCopy() {
-    Storage new_storage = storage.copy();
+    SKVStorage new_storage = storage.copy();
     return SKVRecord(collectionName, schema, std::move(new_storage), keyValuesAvailable);
 }
 

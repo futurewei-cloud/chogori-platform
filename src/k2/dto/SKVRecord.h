@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright(c) 2020 Futurewei Cloud
+Copyright(c) 2022 Futurewei Cloud
 
     Permission is hereby granted,
     free of charge, to any person obtaining a copy of this software and associated documentation files(the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and / or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions :
@@ -25,18 +25,36 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <optional>
 
-#include <k2/dto/Collection.h>
 #include <k2/dto/shared/FieldTypes.h>
-#include <k2/dto/FieldEncoding.h>
-#include <k2/dto/ControlPlaneOracle.h>
-#include "Log.h"
+#include <k2/dto/shared/Schema.h>
+
+#ifdef K2_PLATFORM_COMPILE
+#include <k2/dto/SKVStorage.h>
+#else
+#include "SKVStorage.h" // Must be provided by user
+#endif
+
 namespace k2 {
 
 class K2TxnHandle;
 class txn_testing;
 class K23SITest;
 
+// Following templates are here to support constructing SKVRecords from user-defined types
+template <class T, class R = void>
+struct skv_enable_if_type { typedef R type; };
+
+template <typename T, typename = void>
+struct IsSKVRecordSerializableTypeTrait : std::false_type {};
+
+template <typename T>
+struct IsSKVRecordSerializableTypeTrait<T, typename skv_enable_if_type<typename T::__K2SKVRecordSerializableTraitTag__>::type> : std::true_type {};
+
+
 namespace dto {
+
+struct Key;
+struct SKVStorage;
 
 // Thrown when a field is not found in the schema
 struct NoFieldFoundException : public std::exception {
@@ -70,31 +88,7 @@ class SKVRecord {
 public:
     // The record must be serialized in order. Schema will be enforced
     template <typename T>
-    void serializeNext(T field) {
-        if(isNan<T>(field)){
-            throw NaNError("NaN type in serialization");
-        }
-
-        FieldType ft = TToFieldType<T>();
-        if (fieldCursor >= schema->fields.size() || ft != schema->fields[fieldCursor].type) {
-            throw TypeMismatchException("Schema not followed in record serialization");
-        }
-
-        for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
-            if (schema->partitionKeyFields[i] == fieldCursor) {
-                partitionKeys[i] = FieldToKeyString<T>(field);
-            }
-        }
-
-        for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
-            if (schema->rangeKeyFields[i] == fieldCursor) {
-                rangeKeys[i] = FieldToKeyString<T>(field);
-            }
-        }
-
-        storage.fieldData.write(field);
-        ++fieldCursor;
-    }
+    void serializeNext(T field);
 
     // Serializing a Null value on the next field, for optional fields or partial updates
     void serializeNull();
@@ -104,11 +98,11 @@ public:
     template <typename T, typename... ArgsT>
     void writeMany(T& value, ArgsT&... args) {
         // For nested type support
-        if constexpr(isPayloadSerializableType<T>()) {
+        if constexpr(IsSKVRecordSerializableTypeTrait<T>()) {
             value.__writeFields(*this);
             writeMany(args...);
         } else {
-            if (!value) {
+            if (!value.has_value()) {
                 serializeNull();
             } else {
                 serializeNext<typename std::decay_t<decltype(value)>::value_type>(*value);
@@ -134,33 +128,7 @@ public:
     void seekField(uint32_t fieldIndex);
 
     template <typename T>
-    std::optional<T> deserializeField(uint32_t fieldIndex) {
-        FieldType ft = TToFieldType<T>();
-        std::optional<T> null_val = std::nullopt;
-
-        if (fieldIndex >= schema->fields.size() || ft != schema->fields[fieldIndex].type) {
-
-            throw TypeMismatchException(fmt::format("schema not followed in record deserialization for index {}", fieldIndex));
-        }
-
-        if (fieldIndex != fieldCursor) {
-            seekField(fieldIndex);
-        }
-
-        ++fieldCursor;
-
-        if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldIndex]) {
-            return null_val;
-        }
-
-        T value;
-        bool success = storage.fieldData.read(value);
-        if (!success) {
-            throw DeserializationError("Deserialization of payload in SKVRecord failed");
-        }
-
-        return value;
-    }
+    std::optional<T> deserializeField(uint32_t fieldIndex);
 
     template <typename T>
     std::optional<T> deserializeNext() {
@@ -172,7 +140,7 @@ public:
     template <typename T, typename... ArgsT>
     void readMany(T& value, ArgsT&... args) {
         // For nested type support
-        if constexpr(isPayloadSerializableType<T>()) {
+        if constexpr(IsSKVRecordSerializableTypeTrait<T>()) {
             value.__readFields(*this);
             readMany(args...);
         } else {
@@ -194,31 +162,17 @@ public:
     String getRangeKey();
     dto::Key getKey();
 
-    // These are fields actually stored by the Chogori storage node, and returned
-    // by a read request
-    struct Storage {
-        // Bitmap of fields that are excluded because they are optional or this is for a partial update
-        std::vector<bool> excludedFields;
-        Payload fieldData;
-        uint32_t schemaVersion = 0;
-
-        Storage share();
-        Storage copy();
-        K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaVersion);
-        K2_DEF_FMT(Storage, excludedFields, schemaVersion);
-    };
-
     // We expose the storage in case the user wants to write it to file or otherwise
     // store it on their own. For normal K23SI operations the user does not need to touch this.
     // The user can later use the Storage-based constructor of the SKVRecord recreate a usable record.
-    const Storage& getStorage();
+    const SKVStorage& getStorage();
 
     SKVRecord() = default;
     // The constructor for an SKVRecord that a user of the SKV client would use to create a request
     SKVRecord(const String& collection, std::shared_ptr<Schema> s);
     // The constructor for an SKVRecord that is created by the SKV client to be returned to the
     // user in a response
-    SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
+    SKVRecord(const String& collection, std::shared_ptr<Schema> s, SKVStorage&& storage, bool keyValuesAvailable);
 
     SKVRecord cloneToOtherSchema(const String& collection, std::shared_ptr<Schema> other_schema);
     // deepCopies an SKVRecord including copying (not sharing) the storage payload
@@ -227,18 +181,14 @@ public:
     // This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
     SKVRecord getSKVKeyRecord();
 
+    String getPrintableString() const;
+
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
-        return os << fmt::format(
-            "{{collectionName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
-            rec.collectionName,
-            rec.storage.excludedFields,
-            rec.schema ? const_cast<SKVRecord&>(rec).getKey() : dto::Key{},
-            rec.partitionKeys,
-            rec.rangeKeys);
+        return os << rec.getPrintableString();
     }
 
     void friend inline to_json(nlohmann::json& j, const SKVRecord& o) {
-        j = nlohmann::json{{ "skv_record", fmt::format("{}", o) }};
+        j = nlohmann::json{{ "skv_record", o.getPrintableString() }};
     }
 
     void friend inline from_json(const nlohmann::json&, SKVRecord&) {
@@ -249,7 +199,8 @@ private:
     void constructKeyStrings();
     template <typename T>
     void makeKeyString(std::optional<T> value, const String& fieldName, int tmp);
-    Storage storage;
+    // The data actually stored on the K2 storage nodes and returned by a read request
+    SKVStorage storage;
 
     std::vector<String> partitionKeys;
     std::vector<String> rangeKeys;
@@ -328,9 +279,9 @@ private:
 // This macro is used to implement the templated read and write operations that
 // automatically convert an SKVRecrod to a user-defined type. Fields must be declared
 // in order of the schema and each primitive field must be wrapped in std::optional. It
-// borrows the PayloadSerializableTrait machinery for nested support.
+// supports nested types with the trait tag.
 #define SKV_RECORD_FIELDS(...)                                 \
-    struct __K2PayloadSerializableTraitTag__ {};               \
+    struct __K2SKVRecordSerializableTraitTag__ {};               \
     void __writeFields(k2::dto::SKVRecord& __record__) const { \
         __record__.writeMany(__VA_ARGS__);                     \
     }                                                          \
