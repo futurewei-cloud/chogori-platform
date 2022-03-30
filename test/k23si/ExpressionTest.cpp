@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include<vector>
 #include <k2/dto/Expression.h>
-#include <k2/dto/SKVRecord.h>
+#include <k2/dto/shared/SKVRecord.h>
 #include "catch2/catch.hpp"
 namespace k2d = k2::dto;
 namespace k2e = k2::dto::expression;

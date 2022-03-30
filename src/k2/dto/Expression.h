@@ -31,7 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/transport/Payload.h>
 #include <k2/transport/PayloadSerialization.h>
 #include <k2/dto/shared/FieldTypes.h>
-#include "SKVRecord.h"
+#include <k2/dto/shared/SKVRecord.h>
 #include "Log.h"
 
 namespace k2 {

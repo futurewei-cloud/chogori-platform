@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #define CATCH_CONFIG_MAIN
 
 #include <cstdarg>
-#include <k2/dto/SKVRecord.h>
+#include <k2/dto/shared/SKVRecord.h>
 
 #include "catch2/catch.hpp"
 

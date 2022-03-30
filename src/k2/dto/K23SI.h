@@ -28,7 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Collection.h"
 #include "ControlPlaneOracle.h"
-#include "SKVRecord.h"
+#include <k2/dto/shared/SKVRecord.h>
 #include "Timestamp.h"
 #include "Expression.h"
 

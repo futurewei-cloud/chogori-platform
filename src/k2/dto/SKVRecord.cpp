@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/Collection.h>
-#include <k2/dto/SKVRecord.h>
+#include <k2/dto/shared/SKVRecord.h>
 #include <k2/dto/FieldEncoding.h>
 
 #include "Log.h"
