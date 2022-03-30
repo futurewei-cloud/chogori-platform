@@ -37,27 +37,24 @@ struct SKVStorage {
     Payload fieldData;
     uint32_t schemaVersion = 0;
 
-    SKVStorage share();
-    SKVStorage copy();
+    SKVStorage share() {
+        return SKVStorage {
+            excludedFields,
+            fieldData.shareAll(),
+            schemaVersion
+        };
+    }
+    SKVStorage copy() {
+        return SKVStorage {
+            excludedFields,
+            fieldData.copy(),
+            schemaVersion
+        };
+    }
+
     K2_PAYLOAD_FIELDS(excludedFields, fieldData, schemaVersion);
     K2_DEF_FMT(SKVStorage, excludedFields, schemaVersion);
 };
-
-SKVStorage SKVStorage::share() {
-    return SKVStorage {
-        excludedFields,
-        fieldData.shareAll(),
-        schemaVersion
-    };
-}
-
-SKVStorage SKVStorage::copy() {
-    return SKVStorage {
-        excludedFields,
-        fieldData.copy(),
-        schemaVersion
-    };
-}
 
 } // ns dto
 } // ns k2

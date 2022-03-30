@@ -532,7 +532,7 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& it
 // the caller should return the status in the query response. Otherwise bool in tuple is whether
 // the filter passed
 std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryRequest& request,
-                                                              dto::SKVRecord::Storage& storage) {
+                                                              dto::SKVStorage& storage) {
     // We know the schema name exists because it is validated at the beginning of handleQuery
     auto schemaIt = _schemas.find(request.key.schemaName);
     auto versionIt = schemaIt->second.find(storage.schemaVersion);
@@ -601,7 +601,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
                     response.results.push_back(record->value.share());
                 } else {
                     // serialize partial SKVRecord according to projection
-                    dto::SKVRecord::Storage storage;
+                    dto::SKVStorage storage;
                     bool success = _makeProjection(record->value, request, storage);
                     if (!success) {
                         K2LOG_W(log::skvsvr, "Error making projection!");
@@ -959,8 +959,8 @@ bool K23SIPartitionModule::_parsePartialRecord(dto::K23SIWriteRequest& request, 
     return true;
 }
 
-bool K23SIPartitionModule::_makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request,
-        dto::SKVRecord::Storage& projectionRec) {
+bool K23SIPartitionModule::_makeProjection(dto::SKVStorage& fullRec, dto::K23SIQueryRequest& request,
+        dto::SKVStorage& projectionRec) {
     auto schemaIt = _schemas.find(request.key.schemaName);
     auto schemaVer = schemaIt->second.find(fullRec.schemaVersion);
     dto::Schema& schema = *(schemaVer->second);

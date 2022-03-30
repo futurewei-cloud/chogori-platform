@@ -24,6 +24,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include "k23si_client.h"
 #include "query.h"
 
+#include <k2/dto/FieldEncoding.h>
+
 namespace k2 {
 
 K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, cpo::CPOClient* cpo, K23SIClient* client, Duration d) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _valid(true), _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(Clock::now()) {

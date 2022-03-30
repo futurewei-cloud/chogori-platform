@@ -95,7 +95,7 @@ seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, c
     std::vector<seastar::future<>> futures;
     QueryResult* result = new QueryResult(std::move(status));
 
-    for (dto::SKVRecord::Storage& storage : response.results) {
+    for (dto::SKVStorage& storage : response.results) {
         futures.push_back(client->getSchema(query.request.collectionName,
                     query.schema->name, storage.schemaVersion)
         .then([&query, result, s=std::move(storage)] (GetSchemaResult&& get_response) mutable {

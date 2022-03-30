@@ -24,6 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/cpo/client/Client.h>
+#include <k2/dto/FieldEncoding.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <seastar/core/sleep.hh>
 #include "Log.h"

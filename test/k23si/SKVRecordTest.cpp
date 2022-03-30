@@ -235,10 +235,10 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
     // Testing a typical use-case of getSKVKeyRecord where the storage is serialized
     // to payload and then read back later
     k2::dto::SKVRecord key_record = doc.getSKVKeyRecord();
-    const k2::dto::SKVRecord::Storage& storage = key_record.getStorage();
+    const k2::dto::SKVStorage& storage = key_record.getStorage();
     k2::Payload payload(k2::Payload::DefaultAllocator());
     payload.write(storage);
-    k2::dto::SKVRecord::Storage read_storage{};
+    k2::dto::SKVStorage read_storage{};
     payload.seek(0);
     payload.read(read_storage);
     k2::dto::SKVRecord reconstructed("collection", std::make_shared<k2::dto::Schema>(schema),

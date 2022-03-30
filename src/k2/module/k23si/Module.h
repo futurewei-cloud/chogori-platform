@@ -138,7 +138,7 @@ private: // methods
     Status _createWI(dto::K23SIWriteRequest&& request, Indexer::Iterator& iter);
 
     // helper method used to make a projection SKVRecord payload
-    bool _makeProjection(dto::SKVRecord::Storage& fullRec, dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& projectionRec);
+    bool _makeProjection(dto::SKVStorage& fullRec, dto::K23SIQueryRequest& request, dto::SKVStorage& projectionRec);
 
     // method to parse the partial record to full record, return turn if parse successful
     bool _parsePartialRecord(dto::K23SIWriteRequest& request, dto::DataRecord& previous);
@@ -169,7 +169,7 @@ private: // methods
     dto::Key _getContinuationToken(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request,
                                             dto::K23SIQueryResponse& response, size_t response_size);
 
-    std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
+    std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVStorage& storage);
 
     seastar::future<> _registerVerbs();
 
