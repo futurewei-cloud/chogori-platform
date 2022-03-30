@@ -24,10 +24,12 @@ Copyright(c) 2022 Futurewei Cloud
 #pragma once
 
 #include <cstdint>
+#include <cmath>
 #include <decimal/decimal>
+#include <ostream>
 
+#include <k2/dto/shared/Shared.h>
 #ifdef K2_PLATFORM_COMPILE
-#include <k2/common/Log.h>
 #include <k2/common/Common.h>
 #endif
 

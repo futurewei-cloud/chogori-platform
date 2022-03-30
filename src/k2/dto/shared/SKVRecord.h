@@ -24,14 +24,22 @@ Copyright(c) 2022 Futurewei Cloud
 #pragma once
 
 #include <optional>
+#include <memory>
+
+#include <nlohmann/json.hpp>
+// disable unicode formatting for a bit more speed
+#undef FMT_UNICODE
+#define FMT_UNICODE 0
+#include <fmt/compile.h>
+#include <fmt/printf.h>
+
+#include <k2/dto/shared/Shared.h>
 
 #include <k2/dto/shared/FieldTypes.h>
 #include <k2/dto/shared/Schema.h>
 
 #ifdef K2_PLATFORM_COMPILE
 #include <k2/dto/SKVStorage.h>
-#else
-#include "SKVStorage.h" // Must be provided by user
 #endif
 
 namespace k2 {
