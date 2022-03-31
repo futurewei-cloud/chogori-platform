@@ -37,10 +37,10 @@ private:
     static void serializeRecordFromJSON(k2::dto::SKVRecord& record, nlohmann::json&& jsonRecord);
     static nlohmann::json serializeJSONFromRecord(k2::dto::SKVRecord& record);
 
-    seastar::future<nlohmann::json> _handleBegin(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
+    seastar::future<String> _handleBegin(nlohmann::json&& request);
+    seastar::future<String> _handleEnd(nlohmann::json&& request);
+    seastar::future<String> _handleRead(nlohmann::json&& request);
+    seastar::future<String> _handleWrite(nlohmann::json&& request);
     void _registerAPI();
     void _registerMetrics();
 

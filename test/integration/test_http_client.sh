@@ -53,7 +53,6 @@ function finish {
   echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
-
 sleep 5
 
 echo ">>> Starting http test ..."

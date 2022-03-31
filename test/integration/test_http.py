@@ -39,7 +39,6 @@ class TestBasicTxn(unittest.TestCase):
         url = args.http + "/api/BeginTxn"
         r = requests.post(url, data=json.dumps(data))
         result = r.json()
-        result = result[0][0]
         print(result)
         self.assertEqual(result["status"]["code"], 201);
         ID = result["txnID"]
@@ -50,7 +49,6 @@ class TestBasicTxn(unittest.TestCase):
         url = args.http + "/api/Write"
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
-        result = result[0][0]
         print(result)
         self.assertEqual(result["status"]["code"], 201);
 
@@ -60,7 +58,6 @@ class TestBasicTxn(unittest.TestCase):
         url = args.http + "/api/Read"
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
-        result = result[0][0]
         print(result)
         self.assertEqual(result["status"]["code"], 200);
 
@@ -69,12 +66,11 @@ class TestBasicTxn(unittest.TestCase):
         url = args.http + "/api/EndTxn"
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
-        result = result[0][0]
         print(result)
         self.assertEqual(result["status"]["code"], 200);
 
     # Helper method to populate and send request with default values
-    def sendReq(self, api, txn, partitionKeyName="partitionKey", partition="ptest2",
+    def sendReq(self, api, txn=-1, partitionKeyName="partitionKey", partition="ptest2",
                 rangeKeyName="rangeKey", range_key="rtest2",
                 dataFieldName="data", data="mydata2",
                 coll="HTTPClient", schema="test_schema", ver=1):
@@ -90,45 +86,35 @@ class TestBasicTxn(unittest.TestCase):
         elif api == "/api/EndTxn":
             # Commit
             request = {"txnID": txn, "commit": True}
-            print(request)
         else:
             raise ValueError('Invalid api' + api)
 
         url = args.http + api
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
-        print(result)
+        print(api + ": " + r.text)
         return result
 
-    def test_schema_validation(self):
+    def test_validation(self):
         # Begin Txn
-        data = {}
-        url = args.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        result = result[0][0]
-        print(result)
-        self.assertEqual(result["status"]["code"], 201);
+        result = self.sendReq("/api/BeginTxn")        
+        self.assertEqual(result["status"]["code"], 201)
         ID = result["txnID"]
 
         # Write with bad Txn ID, should fail
         result = self.sendReq("/api/Write", ID+1)
-        result = result[0]
         self.assertEqual(result["status"]["code"], 400)
 
         # Write with bad collectionName, should fail
         result = self.sendReq("/api/Write", ID, coll="HTTPClient1")
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 404)
 
         # Write with bad schemaName, should fail
         result = self.sendReq("/api/Write", ID, schema="test_schema1")
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 404)
 
         # Write with bad schemaVersion, should fail
         result = self.sendReq("/api/Write", ID, ver=2)
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 404)
 
         # Write with bad partition value data type, should fail
@@ -145,27 +131,22 @@ class TestBasicTxn(unittest.TestCase):
 
         # Try read data written by failed requests, should fail
         result = self.sendReq("/api/Read", ID)
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 404)
 
         # Do a valid write, should succeed
         result = self.sendReq("/api/Write", ID)
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 201)
 
         # Read with bad Txn ID, should fail
         result = self.sendReq("/api/Read", ID+1)
-        result = result[0]
         self.assertEqual(result["status"]["code"], 400)
 
         # Read with bad collectionName, should fail
         result = self.sendReq("/api/Read", ID, coll="HTTPClient1")
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 404)
 
         # Read with bad schemaName, should fail
         result = self.sendReq("/api/Read", ID, schema="test_schema1")
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 404)
 
         # Read with bad partition data type, should fail
@@ -178,91 +159,62 @@ class TestBasicTxn(unittest.TestCase):
 
         # Do a valid read, should succeed
         result = self.sendReq("/api/Read", ID)
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 200)
 
         # Commit, with bad Txn ID, should fail
         result = self.sendReq("/api/EndTxn", ID+1)
-        result = result[0]
         self.assertEqual(result["status"]["code"], 400)
 
         # Commit, should succeed
         result = self.sendReq("/api/EndTxn", ID)
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 200)
 
         # Commit again, should fail
         result = self.sendReq("/api/EndTxn", ID)
-        result = result[0]
         self.assertEqual(result["status"]["code"], 400)
 
     # Test read write conflict between two transactions
     def test_read_write_txn(self):
         # Begin Txn
-        data = {}
-        url = args.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        result = result[0][0]
-        print(result)
+        result = self.sendReq("/api/BeginTxn")
         self.assertEqual(result["status"]["code"], 201)
         ID = result["txnID"]
 
         # Write initial data
         result = self.sendReq("/api/Write", ID, partition="ptest3", data="data3")
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 201)
 
         # Commit initial data
         result = self.sendReq("/api/EndTxn", ID)
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 200)
 
         # Begin Txn 1
-        data = {}
-        url = args.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        result = result[0][0]
-        print(result)
+        result = self.sendReq("/api/BeginTxn")
         self.assertEqual(result["status"]["code"], 201)
         txnId1 = result["txnID"]
 
-        # Read by Txn 1
-        result = self.sendReq("/api/Read", txnId1, partition="ptest3")
-        result = result[0][0]
-        self.assertEqual(result["status"]["code"], 200)
-
         # Begin Txn 2
-        data = {}
-        url = args.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        result = result[0][0]
-        print(result)
+        result = self.sendReq("/api/BeginTxn")
         self.assertEqual(result["status"]["code"], 201)
         txnId2 = result["txnID"]
 
-        # Update data by Txn 2
-        result = self.sendReq("/api/Write", txnId2, partition="ptest3", data="data4")
-        result = result[0][0]
-        self.assertEqual(result["status"]["code"], 201)
+        # Read by Txn 2
+        result = self.sendReq("/api/Read", txnId2, partition="ptest3")
+        self.assertEqual(result["status"]["code"], 200)
+
+        # Update data by Txn 1, should fail with 403: write request cannot be allowed as
+        # this key (or key range) has been observed by another transaction.
+        result = self.sendReq("/api/Write", txnId1, partition="ptest3", data="data4")
+        self.assertEqual(result["status"]["code"], 403)
+
+        # Commit Txn 1, same error as write request
+        result = self.sendReq("/api/EndTxn", txnId1)
+        self.assertEqual(result["status"]["code"], 403)
 
         # Commit Txn 2
         result = self.sendReq("/api/EndTxn", txnId2)
-        result = result[0][0]
         self.assertEqual(result["status"]["code"], 200)
 
-        # Read again by Txn 1
-        result = self.sendReq("/api/Read", txnId1, partition="ptest3")
-        result = result[0][0]
-        self.assertEqual(result["status"]["code"], 200)
-
-        # Commit Txn 1
-        result = self.sendReq("/api/EndTxn", txnId1)
-        # It somehow returns result in one array instead of nested array
-        result = result[0]
-        self.assertEqual(result["status"]["code"], 200)
 
 del sys.argv[1:]
 unittest.main()
