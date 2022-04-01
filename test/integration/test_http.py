@@ -27,10 +27,12 @@ SOFTWARE.
 import argparse, unittest, sys
 import requests, json
 from urllib.parse import urlparse
+from skvclient import SKVClient, Txn, DBLoc
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--http", help="HTTP API URL")
 args = parser.parse_args()
+
 
 class TestBasicTxn(unittest.TestCase):
     def test_basicTxn(self):
@@ -41,11 +43,11 @@ class TestBasicTxn(unittest.TestCase):
         result = r.json()
         print(result)
         self.assertEqual(result["status"]["code"], 201);
-        ID = result["txnID"]
+        txnId = result["txnID"]
 
         # Write
         record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
-        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": ID, "schemaVersion": 1, "record": record}
+        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": txnId, "schemaVersion": 1, "record": record}
         url = args.http + "/api/Write"
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
@@ -54,7 +56,7 @@ class TestBasicTxn(unittest.TestCase):
 
         # Read
         record = {"partitionKey": "test1", "rangeKey": "test1"}
-        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": ID, "record": record}
+        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": txnId, "record": record}
         url = args.http + "/api/Read"
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
@@ -62,159 +64,135 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(result["status"]["code"], 200);
 
         # Commit
-        request = {"txnID": ID, "commit": True}
+        request = {"txnID": txnId, "commit": True}
         url = args.http + "/api/EndTxn"
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
         print(result)
         self.assertEqual(result["status"]["code"], 200);
 
-    # Helper method to populate and send request with default values
-    def sendReq(self, api, txn=-1, partitionKeyName="partitionKey", partition="ptest2",
-                rangeKeyName="rangeKey", range_key="rtest2",
-                dataFieldName="data", data="mydata2",
-                coll="HTTPClient", schema="test_schema", ver=1):
-        if api ==  "/api/BeginTxn":
-            request = {}
-        elif api == "/api/Write":
-            record = {partitionKeyName: partition, rangeKeyName: range_key,
-                      dataFieldName: data}
-            request = {"collectionName": coll, "schemaName": schema, "txnID": txn, "schemaVersion": ver, "record": record}
-        elif api == "/api/Read":
-            record = {partitionKeyName: partition, rangeKeyName: range_key}
-            request = {"collectionName": coll, "schemaName": schema, "txnID": txn, "schemaVersion": ver, "record": record}
-        elif api == "/api/EndTxn":
-            # Commit
-            request = {"txnID": txn, "commit": True}
-        else:
-            raise ValueError('Invalid api' + api)
-
-        url = args.http + api
-        r = requests.post(url, data=json.dumps(request))
-        result = r.json()
-        print(api + ": " + r.text)
-        return result
 
     def test_validation(self):
-        # Begin Txn
-        result = self.sendReq("/api/BeginTxn")        
-        self.assertEqual(result["status"]["code"], 201)
-        ID = result["txnID"]
+        db = SKVClient(args.http)
+        # Create a location object
+        loc = DBLoc(partition_key_name="partitionKey", range_key_name="rangeKey",
+            partition_key="ptest2", range_key="rtest2",
+            schema="test_schema", coll="HTTPClient", schema_version=1)
+        additional_data =  { "data" :"data1"}
 
-        # Write with bad Txn ID, should fail
-        result = self.sendReq("/api/Write", ID+1)
-        self.assertEqual(result["status"]["code"], 400)
+        # Get a txn
+        status, txn = db.begin_txn()
+        self.assertEqual(status.code, 201)
 
-        # Write with bad collectionName, should fail
-        result = self.sendReq("/api/Write", ID, coll="HTTPClient1")
-        self.assertEqual(result["status"]["code"], 404)
+        # Write/read with bad collection name, should fail
+        bad_loc = loc.get_new(coll="HTTPClient1")
+        status = txn.write(bad_loc, additional_data)
+        self.assertEqual(status.code, 404)
+        status, record = txn.read(bad_loc)
+        self.assertEqual(status.code, 404)
 
-        # Write with bad schemaName, should fail
-        result = self.sendReq("/api/Write", ID, schema="test_schema1")
-        self.assertEqual(result["status"]["code"], 404)
+        # Write/Read with bad schemaName, should fail
+        bad_loc = loc.get_new(schema="test_schema1")
+        status = txn.write(bad_loc, additional_data)
+        self.assertEqual(status.code, 404)
+        status, record = txn.read(bad_loc)
+        self.assertEqual(status.code, 404)
 
-        # Write with bad schemaVersion, should fail
-        result = self.sendReq("/api/Write", ID, ver=2)
-        self.assertEqual(result["status"]["code"], 404)
+        # Write with bad schema version, should fail
+        bad_loc = loc.get_new(schema_version=2)
+        status = txn.write(bad_loc, additional_data)
+        self.assertEqual(status.code, 404)
 
-        # Write with bad partition value data type, should fail
-        result = self.sendReq("/api/Write", ID, partition=1)
-        self.assertEqual(result["code"], 500)
+        # Write/Read with bad partition key data type, should fail
+        bad_loc = loc.get_new(partition_key=1)
+        status = txn.write(bad_loc, additional_data)
+        self.assertEqual(status.code, 500)
+        status, _ = txn.read(bad_loc)
+        self.assertEqual(status.code, 500)
 
-        # Write with bad range data type, should fail
-        result = self.sendReq("/api/Write", ID, range_key=1)
-        self.assertEqual(result["code"], 500)
+        # Write/Read with bad range key data type, should fail
+        bad_loc = loc.get_new(range_key=1)
+        status = txn.write(bad_loc, additional_data)
+        self.assertEqual(status.code, 500)
 
         # Write with bad data field data type, should fail
-        result = self.sendReq("/api/Write", ID, data=1)
-        self.assertEqual(result["code"], 500)
+        status = txn.write(loc, {"data": 1})
+        self.assertEqual(status.code, 500)
 
-        # Try read data written by failed requests, should fail
-        result = self.sendReq("/api/Read", ID)
-        self.assertEqual(result["status"]["code"], 404)
+        # Do a valid write/read, should succeed
+        status = txn.write(loc, additional_data)
+        self.assertEqual(status.code, 201)
+        status, record = txn.read(loc)
+        self.assertEqual(status.code, 200)
+        self.assertEqual(record["data"], "data1")
+        self.assertEqual(record["partitionKey"], "ptest2")
+        self.assertEqual(record["rangeKey"], "rtest2")
 
-        # Do a valid write, should succeed
-        result = self.sendReq("/api/Write", ID)
-        self.assertEqual(result["status"]["code"], 201)
+        # End transaction, should succeed
+        status = txn.end()
+        self.assertEqual(status.code, 200)
+        # End transaction again, should fail
+        status = txn.end()
+        self.assertEqual(status.code, 400)
 
-        # Read with bad Txn ID, should fail
-        result = self.sendReq("/api/Read", ID+1)
-        self.assertEqual(result["status"]["code"], 400)
+        # Read write using bad Txn ID, Create a txn object with bad txn Id
+        badTxn = Txn(db, 10000)
+        status = badTxn.write(loc, additional_data)
+        self.assertEqual(status.code, 400)
+        status, _ = badTxn.read(loc)
+        self.assertEqual(status.code, 400)
+        status = badTxn.end()
+        self.assertEqual(status.code, 400)
 
-        # Read with bad collectionName, should fail
-        result = self.sendReq("/api/Read", ID, coll="HTTPClient1")
-        self.assertEqual(result["status"]["code"], 404)
-
-        # Read with bad schemaName, should fail
-        result = self.sendReq("/api/Read", ID, schema="test_schema1")
-        self.assertEqual(result["status"]["code"], 404)
-
-        # Read with bad partition data type, should fail
-        result = self.sendReq("/api/Read", ID, partition=3)
-        self.assertEqual(result["code"], 500)
-
-        # Read with bad range data type, should fail
-        result = self.sendReq("/api/Read", ID, range_key=3)
-        self.assertEqual(result["code"], 500)
-
-        # Do a valid read, should succeed
-        result = self.sendReq("/api/Read", ID)
-        self.assertEqual(result["status"]["code"], 200)
-
-        # Commit, with bad Txn ID, should fail
-        result = self.sendReq("/api/EndTxn", ID+1)
-        self.assertEqual(result["status"]["code"], 400)
-
-        # Commit, should succeed
-        result = self.sendReq("/api/EndTxn", ID)
-        self.assertEqual(result["status"]["code"], 200)
-
-        # Commit again, should fail
-        result = self.sendReq("/api/EndTxn", ID)
-        self.assertEqual(result["status"]["code"], 400)
 
     # Test read write conflict between two transactions
     def test_read_write_txn(self):
-        # Begin Txn
-        result = self.sendReq("/api/BeginTxn")
-        self.assertEqual(result["status"]["code"], 201)
-        ID = result["txnID"]
+        db = SKVClient(args.http)
+        # Create a location object
+        loc = DBLoc(partition_key_name="partitionKey", range_key_name="rangeKey",
+            partition_key="ptest3", range_key="rtest3",
+            schema="test_schema", coll="HTTPClient", schema_version=1)
+        additional_data =  { "data" :"data3"}
+
+        # Populate initial data, Begin Txn
+        status, txn = db.begin_txn()
+        self.assertEqual(status.code, 201)
 
         # Write initial data
-        result = self.sendReq("/api/Write", ID, partition="ptest3", data="data3")
-        self.assertEqual(result["status"]["code"], 201)
+        status = txn.write(loc, additional_data)
+        self.assertEqual(status.code, 201)
 
         # Commit initial data
-        result = self.sendReq("/api/EndTxn", ID)
-        self.assertEqual(result["status"]["code"], 200)
+        status = txn.end()
+        self.assertEqual(status.code, 200)
 
         # Begin Txn 1
-        result = self.sendReq("/api/BeginTxn")
-        self.assertEqual(result["status"]["code"], 201)
-        txnId1 = result["txnID"]
+        status, txn1 = db.begin_txn()
+        self.assertEqual(status.code, 201)
 
         # Begin Txn 2
-        result = self.sendReq("/api/BeginTxn")
-        self.assertEqual(result["status"]["code"], 201)
-        txnId2 = result["txnID"]
+        status, txn2 = db.begin_txn()
+        self.assertEqual(status.code, 201)
 
         # Read by Txn 2
-        result = self.sendReq("/api/Read", txnId2, partition="ptest3")
-        self.assertEqual(result["status"]["code"], 200)
+        status, record = txn2.read(loc)
+        self.assertEqual(status.code, 200)
+        self.assertEqual(record["data"], "data3")
+        self.assertEqual(record["partitionKey"], "ptest3")
+        self.assertEqual(record["rangeKey"], "rtest3")
 
         # Update data by Txn 1, should fail with 403: write request cannot be allowed as
         # this key (or key range) has been observed by another transaction.
-        result = self.sendReq("/api/Write", txnId1, partition="ptest3", data="data4")
-        self.assertEqual(result["status"]["code"], 403)
+        status = txn1.write(loc, additional_data)
+        self.assertEqual(status.code, 403)
 
         # Commit Txn 1, same error as write request
-        result = self.sendReq("/api/EndTxn", txnId1)
-        self.assertEqual(result["status"]["code"], 403)
+        status = txn1.end()
+        self.assertEqual(status.code, 403)
 
-        # Commit Txn 2
-        result = self.sendReq("/api/EndTxn", txnId2)
-        self.assertEqual(result["status"]["code"], 200)
-
+        # Commit Txn 2, should succeed
+        status = txn2.end()
+        self.assertEqual(status.code, 200)
 
 del sys.argv[1:]
 unittest.main()
