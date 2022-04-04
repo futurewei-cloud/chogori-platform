@@ -49,7 +49,7 @@ class DBLoc:
              schema_version=1)
           # Write
           txn.write(loc, data1="data 1", data2="data 2")
-          # Write to a differnt range key but oher parameters same
+          # Write to a differnt range key but other parameters same
           txn.write(loc.get_new(range_key="rkey2"), data1="data 3", data2="data 4")
     """
 
@@ -106,7 +106,7 @@ class Txn:
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self._txn_id, "record": record}
         result = self._send_req("/api/Read", request)
-        return Status(result), (result["record"] if "record" in result else None)
+        return Status(result), result.get("record")
 
     def end(self, commit=True):
         request = {"txnID": self._txn_id, "commit": commit}
@@ -125,5 +125,5 @@ class SKVClient:
         result = r.json()
         print(result)
         status = Status(result)
-        txn = Txn(self, result["txnID"])
+        txn = Txn(self, result.get("txnID"))
         return status, txn
