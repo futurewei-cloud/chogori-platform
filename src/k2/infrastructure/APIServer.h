@@ -56,7 +56,7 @@ public:
                 // in << operator implementation.
                 // https://json.nlohmann.me/api/basic_json/operator_ltlt/#operatorbasic_json
                 return os.write(json.dump())
-                .then([& os] {
+                .finally([& os] {
                     return os.close();
                 });
             });
