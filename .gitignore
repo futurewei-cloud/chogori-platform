@@ -9,4 +9,5 @@ deps/
 *.iml
 k2b
 cluster/__pycache__/
+test/integration/__pycache__/
 *.log

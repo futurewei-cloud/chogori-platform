@@ -40,7 +40,7 @@ using APIRawObserver_t = std::function<seastar::future<nlohmann::json>(nlohmann:
 // Helper class for registering HTTP routes
 class api_route_handler : public seastar::httpd::handler_base  {
 public:
-    api_route_handler(std::function<seastar::future<String>(const std::string&)> h) : _handler(std::move(h)) {}
+    api_route_handler(std::function<seastar::future<nlohmann::json>(const String&)> h) : _handler(std::move(h)) {}
 
     seastar::future<std::unique_ptr<seastar::httpd::reply>> handle(const String& path,
         std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override {
@@ -49,14 +49,25 @@ public:
         // seastar returns a 200 status code by default, which is what we want. The k2 status code will
         // be embedded in the returned json object
         return _handler(req->content)
-        .then([rep=std::move(rep)] (String&& json) mutable {
-            rep->write_body("json", json);
+        .then([rep=std::move(rep)] (nlohmann::json&& json) mutable {
+            rep->write_body("json",  [json=std::move(json)] (auto&& os)  mutable {
+                return do_with(std::move(os),  json=std::move(json), [] (auto& os, auto& json) {
+                    // Using json dump to write instead of << operator because seastar dosn't
+                    // implement << operator. Also nlohmann::json just uses dump() method internally.
+                    // in << operator implementation.
+                    // https://json.nlohmann.me/api/basic_json/operator_ltlt/#operatorbasic_json
+                    return os.write(json.dump())
+                    .finally([& os] {
+                        return os.close();
+                    });
+                });
+            });
             return seastar::make_ready_future<std::unique_ptr<seastar::httpd::reply>>(std::move(rep));
         });
     }
 
 private:
-    std::function<seastar::future<String>(const std::string&)> _handler;
+    std::function<seastar::future<nlohmann::json>(const String&)> _handler;
 };
 
 // This class is used to setup a Json API over HTTP and provide convience methods to expose API methods.
@@ -82,7 +93,7 @@ public:
         _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
 
         _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
-        [observer=std::move(observer)] (const std::string& jsonRequest) {
+        [observer=std::move(observer)] (const String& jsonRequest) {
            Request_t request = nlohmann::json::parse(jsonRequest);
            return observer(std::move(request))
            .then([] (std::tuple<k2::Status, Response_t>&& fullResponse) {
@@ -90,7 +101,7 @@ public:
               nlohmann::json jsonResponse;
               jsonResponse["status"] = status;
               jsonResponse["response"] = response;
-              return seastar::make_ready_future<String>(String(jsonResponse.dump()));
+              return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
            });
         }));
     }
@@ -99,12 +110,9 @@ public:
         _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
 
         _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
-        [observer=std::move(observer)] (const std::string& jsonRequest) {
-           nlohmann::json request = nlohmann::json::parse(jsonRequest);
-           return observer(std::move(request))
-           .then([] (nlohmann::json&& response) {
-              return seastar::make_ready_future<String>(String(response.dump()));
-           });
+        [observer=std::move(observer)] (const String& jsonRequest) {
+           nlohmann::json request = nlohmann::json::parse(jsonRequest.cbegin(), jsonRequest.cend());
+           return observer(std::move(request));
         }));
     }
 
@@ -121,5 +129,4 @@ private:
     seastar::future<> add_routes();
     String get_current_routes();
 }; // class APIServer
-
 } // k2 namespace
