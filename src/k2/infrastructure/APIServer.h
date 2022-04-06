@@ -51,13 +51,15 @@ public:
         return _handler(req->content)
         .then([rep=std::move(rep)] (nlohmann::json&& json) mutable {
             rep->write_body("json",  [json=std::move(json)] (auto&& os)  {
-                // Using json dump to write instead of << operator because seastar dosn't
-                // implement << operator. Also nlohmann::json just uses dump() method internally.
-                // in << operator implementation.
-                // https://json.nlohmann.me/api/basic_json/operator_ltlt/#operatorbasic_json
-                return os.write(json.dump())
-                .finally([& os] {
-                    return os.close();
+                return do_with(std::move(os),  [json=std::move(json)] (auto& os) {
+                    // Using json dump to write instead of << operator because seastar dosn't
+                    // implement << operator. Also nlohmann::json just uses dump() method internally.
+                    // in << operator implementation.
+                    // https://json.nlohmann.me/api/basic_json/operator_ltlt/#operatorbasic_json
+                    return os.write(json.dump())
+                    .finally([& os] {
+                        return os.close();
+                    });
                 });
             });
             return seastar::make_ready_future<std::unique_ptr<seastar::httpd::reply>>(std::move(rep));
@@ -99,7 +101,7 @@ public:
               nlohmann::json jsonResponse;
               jsonResponse["status"] = status;
               jsonResponse["response"] = response;
-              return seastar::make_ready_future<nlohmann::json>(jsonResponse);
+              return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
            });
         }));
     }
@@ -127,5 +129,4 @@ private:
     seastar::future<> add_routes();
     String get_current_routes();
 }; // class APIServer
-
 } // k2 namespace

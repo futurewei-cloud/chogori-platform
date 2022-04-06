@@ -85,7 +85,6 @@ class Txn:
         url = self._client.http + api
         r = requests.post(url, data=json.dumps(request))
         result = r.json()
-        print(result)
         return result
 
     def write(self, loc: DBLoc, additional_data={}) -> Status:
@@ -123,7 +122,6 @@ class SKVClient:
         url = self.http + "/api/BeginTxn"
         r = requests.post(url, data=json.dumps(data))
         result = r.json()
-        print(result)
         status = Status(result)
         txn = Txn(self, result.get("txnID"))
         return status, txn
