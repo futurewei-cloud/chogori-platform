@@ -213,7 +213,7 @@ seastar::future<> HTTPProxy::start() {
     return _startFut;
 }
 
-seastar::future<String> HTTPProxy::_handleBegin(nlohmann::json&& request) {
+seastar::future<nlohmann::json> HTTPProxy::_handleBegin(nlohmann::json&& request) {
     (void) request;
     return _client.beginTxn(k2::K2TxnOptions())
     .then([this] (auto&& txn) {
@@ -225,11 +225,11 @@ seastar::future<String> HTTPProxy::_handleBegin(nlohmann::json&& request) {
         status["code"] = 201;
         response["status"] = status;
         response["txnID"] = _txnID - 1;
-        return seastar::make_ready_future<String>(response.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
     });
 }
 
-seastar::future<String> HTTPProxy::_handleEnd(nlohmann::json&& request) {
+seastar::future<nlohmann::json> HTTPProxy::_handleEnd(nlohmann::json&& request) {
     uint64_t id;
     bool commit;
     nlohmann::json response;
@@ -241,7 +241,7 @@ seastar::future<String> HTTPProxy::_handleEnd(nlohmann::json&& request) {
         status["message"] = "Bad json for end request";
         status["code"] = 400;
         response["status"] = status;
-        return seastar::make_ready_future<String>(response.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
     std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
@@ -250,7 +250,7 @@ seastar::future<String> HTTPProxy::_handleEnd(nlohmann::json&& request) {
         status["message"] = "Could not find txnID for end request";
         status["code"] = 400;
         response["status"] = status;
-        return seastar::make_ready_future<String>(response.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
     return it->second.end(commit)
@@ -258,11 +258,11 @@ seastar::future<String> HTTPProxy::_handleEnd(nlohmann::json&& request) {
         nlohmann::json r;
         r["status"] = result.status;
         _txns.erase(id);
-        return seastar::make_ready_future<String>(r.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(r));
     });
 }
 
-seastar::future<String> HTTPProxy::_handleRead(nlohmann::json&& request) {
+seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request) {
     std::string collectionName;
     std::string schemaName;
     uint64_t id;
@@ -283,7 +283,7 @@ seastar::future<String> HTTPProxy::_handleRead(nlohmann::json&& request) {
         status["message"] = "Bad json for read request";
         status["code"] = 400;
         response["status"] = status;
-        return seastar::make_ready_future<String>(response.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
     std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
@@ -292,7 +292,7 @@ seastar::future<String> HTTPProxy::_handleRead(nlohmann::json&& request) {
         status["message"] = "Could not find txnID for read request";
         status["code"] = 400;
         response["status"] = status;
-        return seastar::make_ready_future<String>(response.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
     return _client.getSchema(collectionName, schemaName, k2::K23SIClient::ANY_VERSION)
@@ -301,7 +301,7 @@ seastar::future<String> HTTPProxy::_handleRead(nlohmann::json&& request) {
         if(!result.status.is2xxOK()) {
             nlohmann::json resp;
             resp["status"] = result.status;
-            return seastar::make_ready_future<String>(resp.dump());
+            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
         }
 
         k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
@@ -313,16 +313,16 @@ seastar::future<String> HTTPProxy::_handleRead(nlohmann::json&& request) {
             resp["status"] = result.status;
 
             if(!result.status.is2xxOK()) {
-                return seastar::make_ready_future<String>(resp.dump());
+                return seastar::make_ready_future<nlohmann::json>(std::move(resp));
             }
 
             resp["record"] = serializeJSONFromRecord(result.value);
-            return seastar::make_ready_future<String>(resp.dump());
+            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
         });
     });
 }
 
-seastar::future<String> HTTPProxy::_handleWrite(nlohmann::json&& request) {
+seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request) {
     std::string collectionName;
     std::string schemaName;
     uint64_t id;
@@ -345,7 +345,7 @@ seastar::future<String> HTTPProxy::_handleWrite(nlohmann::json&& request) {
         status["message"] = "Bad json for write request";
         status["code"] = 400;
         response["status"] = status;
-        return seastar::make_ready_future<String>(response.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
     std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
@@ -354,7 +354,7 @@ seastar::future<String> HTTPProxy::_handleWrite(nlohmann::json&& request) {
         status["message"] = "Could not find txnID for write request";
         status["code"] = 400;
         response["status"] = status;
-        return seastar::make_ready_future<String>(response.dump());
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
     return _client.getSchema(collectionName, schemaName, schemaVersion)
@@ -363,7 +363,7 @@ seastar::future<String> HTTPProxy::_handleWrite(nlohmann::json&& request) {
         if(!result.status.is2xxOK()) {
             nlohmann::json resp;
             resp["status"] = result.status;
-            return seastar::make_ready_future<String>(resp.dump());
+            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
         }
 
         k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
@@ -373,7 +373,7 @@ seastar::future<String> HTTPProxy::_handleWrite(nlohmann::json&& request) {
         .then([] (k2::WriteResult&& result) {
             nlohmann::json resp;
             resp["status"] = result.status;
-            return seastar::make_ready_future<String>(resp.dump());
+            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
         });
     });
 }

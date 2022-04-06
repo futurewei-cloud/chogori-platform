@@ -35,12 +35,12 @@ namespace log {
 inline thread_local k2::logging::Logger apisvr("k2::api_server");
 }
 
-using APIRawObserver_t = std::function<seastar::future<String>(nlohmann::json&& request)>;
+using APIRawObserver_t = std::function<seastar::future<nlohmann::json>(nlohmann::json&& request)>;
 
 // Helper class for registering HTTP routes
 class api_route_handler : public seastar::httpd::handler_base  {
 public:
-    api_route_handler(std::function<seastar::future<String>(const std::string&)> h) : _handler(std::move(h)) {}
+    api_route_handler(std::function<seastar::future<nlohmann::json>(const String&)> h) : _handler(std::move(h)) {}
 
     seastar::future<std::unique_ptr<seastar::httpd::reply>> handle(const String& path,
         std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override {
@@ -49,14 +49,14 @@ public:
         // seastar returns a 200 status code by default, which is what we want. The k2 status code will
         // be embedded in the returned json object
         return _handler(req->content)
-        .then([rep=std::move(rep)] (String&& json) mutable {
-            rep->write_body("json", json);
+        .then([rep=std::move(rep)] (nlohmann::json&& json) mutable {
+            rep->write_body("json",  String(json.dump()));
             return seastar::make_ready_future<std::unique_ptr<seastar::httpd::reply>>(std::move(rep));
         });
     }
 
 private:
-    std::function<seastar::future<String>(const std::string&)> _handler;
+    std::function<seastar::future<nlohmann::json>(const String&)> _handler;
 };
 
 // This class is used to setup a Json API over HTTP and provide convience methods to expose API methods.
@@ -82,7 +82,7 @@ public:
         _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
 
         _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
-        [observer=std::move(observer)] (const std::string& jsonRequest) {
+        [observer=std::move(observer)] (const String& jsonRequest) {
            Request_t request = nlohmann::json::parse(jsonRequest);
            return observer(std::move(request))
            .then([] (std::tuple<k2::Status, Response_t>&& fullResponse) {
@@ -90,7 +90,7 @@ public:
               nlohmann::json jsonResponse;
               jsonResponse["status"] = status;
               jsonResponse["response"] = response;
-              return seastar::make_ready_future<String>(String(jsonResponse.dump()));
+              return seastar::make_ready_future<nlohmann::json>(jsonResponse);
            });
         }));
     }
@@ -99,8 +99,8 @@ public:
         _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
 
         _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
-        [observer=std::move(observer)] (const std::string& jsonRequest) {
-           nlohmann::json request = nlohmann::json::parse(jsonRequest);
+        [observer=std::move(observer)] (const String& jsonRequest) {
+           nlohmann::json request = nlohmann::json::parse(jsonRequest.cbegin(), jsonRequest.cend());
            return observer(std::move(request));
         }));
     }
