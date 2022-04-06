@@ -50,8 +50,8 @@ public:
         // be embedded in the returned json object
         return _handler(req->content)
         .then([rep=std::move(rep)] (nlohmann::json&& json) mutable {
-            rep->write_body("json",  [json=std::move(json)] (auto&& os)  {
-                return do_with(std::move(os),  [json=std::move(json)] (auto& os) {
+            rep->write_body("json",  [json=std::move(json)] (auto&& os)  mutable {
+                return do_with(std::move(os),  json=std::move(json), [] (auto& os, auto& json) {
                     // Using json dump to write instead of << operator because seastar dosn't
                     // implement << operator. Also nlohmann::json just uses dump() method internally.
                     // in << operator implementation.
