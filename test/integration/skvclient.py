@@ -26,6 +26,7 @@ from typing import Tuple
 import requests, json
 from urllib.parse import urlparse
 import copy
+from enum import Enum
 
 class Status:
     "Status returned from HTTP Proxy"
@@ -111,6 +112,35 @@ class Txn:
         request = {"txnID": self._txn_id, "commit": commit}
         return Status(self._send_req("/api/EndTxn", request))
 
+class FieldType(str, Enum):
+    NULL_T: str     = "null"
+    STRING: str     = "string"
+    INT32T: str     = "int32"
+    INT64T: str     = "int64"
+    FLOAT: str      = "float"
+    DOUBLE: str     = "double"
+    BOOL: str       = "bool"
+    DECIMAL64: str  = "decimal64"
+    DECIMAL168: str = "decimal128"
+
+class SchemaField (dict):
+    def __init__(self, fieldType: FieldType, fieldName: str,
+        descending: bool= False, nullLast: bool = False):
+        dict.__init__(self, fieldType = fieldType, fieldName = fieldName,
+        descending = descending, nullLast = nullLast)
+
+class Schema (dict):
+    def __init__(self, schemaName: str, schemaVersion: int,
+        schemaFields: [FieldType], partitionKeys: [str], rangeKeys: [str]):
+        dict.__init__(self, schemaName = schemaName, schemaVersion = schemaVersion,
+        schemaFields = schemaFields,
+        partitionKeys = partitionKeys, rangeKeys = rangeKeys)
+
+class SchemaReq:
+    def __init__(self, collectionName:str, schema:Schema):
+        self.collectionName = collectionName
+        self.schema = schema
+
 class SKVClient:
     "SKV DB client"
 
@@ -125,3 +155,11 @@ class SKVClient:
         status = Status(result)
         txn = Txn(self, result.get("txnID"))
         return status, txn
+
+    def create_schema(self, collectionName: str, schema: Schema) -> Status:
+        url = self.http + "/api/CreateSchema"
+        req = {"collectionName": collectionName, "schema": schema}
+        r = requests.post(url, data=json.dumps(req))
+        result = r.json()
+        status = Status(result)
+        return status

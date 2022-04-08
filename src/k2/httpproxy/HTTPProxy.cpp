@@ -378,6 +378,107 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
     });
 }
 
+dto::SchemaField serializeSchemaFieldFromJson(const nlohmann::json& jsonField) {
+    dto::FieldType type = k2::dto::FieldType::NOT_KNOWN;
+    std::string typeString;
+    std::string name;
+    bool descending;
+    bool nullLast;
+    static const std::pair<k2::dto::FieldType, std::string> fieldTypes[] = {
+        {k2::dto::FieldType::NULL_T, "null"},
+        {k2::dto::FieldType::STRING, "string"},
+        {k2::dto::FieldType::INT32T, "int32"},
+        {k2::dto::FieldType::INT64T, "int64"},
+        {k2::dto::FieldType::FLOAT, "float"},
+        {k2::dto::FieldType::DOUBLE, "double"},
+        {k2::dto::FieldType::BOOL, "bool"},
+        {k2::dto::FieldType::DECIMAL64, "decimal64"},
+        {k2::dto::FieldType::DECIMAL128, "decimal128"},
+    };
+    jsonField.at("fieldName").get_to(name);
+    jsonField.at("fieldType").get_to(typeString);
+    for (const auto& ftype:  fieldTypes) {
+        if (ftype.second == typeString) {
+            type = ftype.first;
+        }
+    }
+    if (type == k2::dto::FieldType::NOT_KNOWN) {
+        throw std::runtime_error("Bad request: invalid field type " + typeString);
+    }
+    jsonField.at("descending").get_to(descending);
+    jsonField.at("nullLast").get_to(nullLast);
+    return dto::SchemaField {type, std::move(name), descending, nullLast};
+}
+
+seastar::future<nlohmann::json> HTTPProxy::_handleCreateSchema(nlohmann::json&& request) {
+    std::string collectionName;
+    std::string schemaName;
+    uint32_t schemaVersion;
+    std::vector<SchemaField> schemaFields;
+    std::vector<String> partitionKeys;
+    std::vector<String> rangeKeys;
+
+    try {
+        K2LOG_I(k2::log::httpproxy, "Received request {}",  request.dump());
+
+        request.at("collectionName").get_to(collectionName);
+        if (!request.contains("schema")) {
+            throw std::runtime_error("Bad request: schema field not found");
+        }
+        auto& schema = request.at("schema");
+        schema.at("schemaName").get_to(schemaName);
+        schema.at("schemaVersion").get_to(schemaVersion);
+
+        bool found = schema.contains("schemaFields");
+        if (!found) {
+            throw std::runtime_error("Bad request");
+        }
+        const auto& fields = schema.at("schemaFields");
+        for (const auto& field: fields) {
+            schemaFields.push_back(serializeSchemaFieldFromJson(field));
+        }
+        if (schema.contains("partitionKeys")) {
+            for (const auto& key: schema["partitionKeys"]) {
+                partitionKeys.push_back(key.get<std::string>());
+            }
+        }
+        if (schema.contains("rangeKeys")) {
+            for (const auto& key: schema["rangeKeys"]) {
+                rangeKeys.push_back(key.get<std::string>());
+            }
+        }
+    } catch (std::exception& ex) {
+        nlohmann::json response;
+        nlohmann::json status;
+        status["message"] = ex.what();
+        status["code"] = 400;
+        response["status"] = status;
+        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+    }
+
+    K2LOG_I(k2::log::httpproxy, "Creating schema... coll: {}: name {}, ver {}, fields: {}"
+        ", partitions: {}, range {}", collectionName, schemaName,
+        schemaVersion, schemaFields, partitionKeys, rangeKeys);
+
+    dto::Schema _schema = {
+        .name = std::move(schemaName),
+        .version = schemaVersion,
+        .fields = std::move(schemaFields),
+        .partitionKeyFields = std::vector<uint32_t> {},
+        .rangeKeyFields = std::vector<uint32_t> {},
+    };
+
+    _schema.setPartitionKeyFieldsByName(partitionKeys);
+    _schema.setRangeKeyFieldsByName(rangeKeys);
+    K2LOG_I(k2::log::httpproxy, "Creating schema...");
+    return _client.createSchema(collectionName, _schema)
+    .then([this] (CreateSchemaResult&& result) {
+        nlohmann::json resp;
+        resp["status"] = result.status;
+        return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+    });
+}
+
 void HTTPProxy::_registerAPI() {
     K2LOG_I(k2::log::httpproxy, "Registering HTTP API observers...");
     k2::APIServer& api_server = k2::AppBase().getDist<k2::APIServer>().local();
@@ -393,6 +494,9 @@ void HTTPProxy::_registerAPI() {
     });
     api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
         return _handleWrite(std::move(request));
+    });
+    api_server.registerRawAPIObserver("CreateSchema", "create schema", [this](nlohmann::json&& request) {
+        return _handleCreateSchema(std::move(request));
     });
 }
 

@@ -27,7 +27,7 @@ SOFTWARE.
 import argparse, unittest, sys
 import requests, json
 from urllib.parse import urlparse
-from skvclient import SKVClient, Txn, DBLoc
+from skvclient import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--http", help="HTTP API URL")
@@ -193,6 +193,17 @@ class TestBasicTxn(unittest.TestCase):
         # Commit Txn 2, should succeed
         status = txn2.end()
         self.assertEqual(status.code, 200)
+
+    def test_schema_txn(self):
+        db = SKVClient(args.http)
+        schema = Schema(schemaName='tests', schemaVersion=1,
+            schemaFields=[
+                SchemaField(FieldType.STRING, fieldName='pfield1'),
+                SchemaField(FieldType.INT32T, fieldName='rfield1'),
+                SchemaField(FieldType.STRING, fieldName='datafield1')],
+            partitionKeys=["pfield1"], rangeKeys=["rfield1"])
+        status = db.create_schema("HTTPClient", schema)
+        self.assertEqual(status.code, 200, msg=status.message)
 
 del sys.argv[1:]
 unittest.main()
