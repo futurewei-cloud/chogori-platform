@@ -43,29 +43,8 @@ public:
     api_route_handler(std::function<seastar::future<nlohmann::json>(const String&)> h) : _handler(std::move(h)) {}
 
     seastar::future<std::unique_ptr<seastar::httpd::reply>> handle(const String& path,
-        std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override {
-        (void) path;
-
-        // seastar returns a 200 status code by default, which is what we want. The k2 status code will
-        // be embedded in the returned json object
-        return _handler(req->content)
-        .then([rep=std::move(rep)] (nlohmann::json&& json) mutable {
-            rep->write_body("json",  [json=std::move(json)] (auto&& os)  mutable {
-                return do_with(std::move(os),  json=std::move(json), [] (auto& os, auto& json) {
-                    // Using json dump to write instead of << operator because seastar dosn't
-                    // implement << operator. Also nlohmann::json just uses dump() method internally.
-                    // in << operator implementation.
-                    // https://json.nlohmann.me/api/basic_json/operator_ltlt/#operatorbasic_json
-                    return os.write(json.dump())
-                    .finally([& os] {
-                        return os.close();
-                    });
-                });
-            });
-            return seastar::make_ready_future<std::unique_ptr<seastar::httpd::reply>>(std::move(rep));
-        });
-    }
-
+        std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override;
+        
 private:
     std::function<seastar::future<nlohmann::json>(const String&)> _handler;
 };
@@ -106,16 +85,7 @@ public:
         }));
     }
 
-    void registerRawAPIObserver(String pathSuffix, String description, APIRawObserver_t observer) {
-        _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
-
-        _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
-        [observer=std::move(observer)] (const String& jsonRequest) {
-           nlohmann::json request = nlohmann::json::parse(jsonRequest.cbegin(), jsonRequest.cend());
-           return observer(std::move(request));
-        }));
-    }
-
+    void registerRawAPIObserver(String pathSuffix, String description, APIRawObserver_t observer);
     void deregisterAPIObserver(String pathSuffix);
 
 private:
