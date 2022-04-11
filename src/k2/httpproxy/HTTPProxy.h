@@ -41,7 +41,9 @@ private:
     seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleCreateSchema(nlohmann::json&& request);
+    seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
+        dto::CreateSchemaRequest&& request);
+    seastar::future<nlohmann::json> _handleGetSchema(nlohmann::json&& request);
 
     void _registerAPI();
     void _registerMetrics();

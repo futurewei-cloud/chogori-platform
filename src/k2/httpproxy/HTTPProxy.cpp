@@ -378,103 +378,42 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
     });
 }
 
-dto::SchemaField serializeSchemaFieldFromJson(const nlohmann::json& jsonField) {
-    dto::FieldType type = k2::dto::FieldType::NOT_KNOWN;
-    std::string typeString;
-    std::string name;
-    bool descending;
-    bool nullLast;
-    static const std::pair<k2::dto::FieldType, std::string> fieldTypes[] = {
-        {k2::dto::FieldType::NULL_T, "null"},
-        {k2::dto::FieldType::STRING, "string"},
-        {k2::dto::FieldType::INT32T, "int32"},
-        {k2::dto::FieldType::INT64T, "int64"},
-        {k2::dto::FieldType::FLOAT, "float"},
-        {k2::dto::FieldType::DOUBLE, "double"},
-        {k2::dto::FieldType::BOOL, "bool"},
-        {k2::dto::FieldType::DECIMAL64, "decimal64"},
-        {k2::dto::FieldType::DECIMAL128, "decimal128"},
-    };
-    jsonField.at("fieldName").get_to(name);
-    jsonField.at("fieldType").get_to(typeString);
-    for (const auto& ftype:  fieldTypes) {
-        if (ftype.second == typeString) {
-            type = ftype.first;
-        }
-    }
-    if (type == k2::dto::FieldType::NOT_KNOWN) {
-        throw std::runtime_error("Bad request: invalid field type " + typeString);
-    }
-    jsonField.at("descending").get_to(descending);
-    jsonField.at("nullLast").get_to(nullLast);
-    return dto::SchemaField {type, std::move(name), descending, nullLast};
+seastar::future<std::tuple<k2::Status,dto::CreateSchemaResponse>> HTTPProxy::_handleCreateSchema(
+    dto::CreateSchemaRequest&& request) {
+    K2LOG_D(k2::log::httpproxy, "Received schema request {}", request);
+    return _client.createSchema(std::move(request.collectionName), std::move(request.schema))
+        .then([] (CreateSchemaResult&& result) {
+            return seastar::make_ready_future<std::tuple<k2::Status,dto::CreateSchemaResponse>>(
+                // Sending empty response as CreateSchemaResult doesn't have any other field than Status
+                std::make_pair(result.status, dto::CreateSchemaResponse()));
+        });
 }
 
-seastar::future<nlohmann::json> HTTPProxy::_handleCreateSchema(nlohmann::json&& request) {
+// Implement get schema using Raw api as there is no cpo request object to get a single schema
+seastar::future<nlohmann::json> HTTPProxy::_handleGetSchema(nlohmann::json&& request) {
     std::string collectionName;
     std::string schemaName;
-    uint32_t schemaVersion;
-    std::vector<SchemaField> schemaFields;
-    std::vector<String> partitionKeys;
-    std::vector<String> rangeKeys;
+    uint64_t schemaVersion;
 
     try {
-        K2LOG_I(k2::log::httpproxy, "Received request {}",  request.dump());
-
         request.at("collectionName").get_to(collectionName);
-        if (!request.contains("schema")) {
-            throw std::runtime_error("Bad request: schema field not found");
-        }
-        auto& schema = request.at("schema");
-        schema.at("schemaName").get_to(schemaName);
-        schema.at("schemaVersion").get_to(schemaVersion);
-
-        bool found = schema.contains("schemaFields");
-        if (!found) {
-            throw std::runtime_error("Bad request");
-        }
-        const auto& fields = schema.at("schemaFields");
-        for (const auto& field: fields) {
-            schemaFields.push_back(serializeSchemaFieldFromJson(field));
-        }
-        if (schema.contains("partitionKeys")) {
-            for (const auto& key: schema["partitionKeys"]) {
-                partitionKeys.push_back(key.get<std::string>());
-            }
-        }
-        if (schema.contains("rangeKeys")) {
-            for (const auto& key: schema["rangeKeys"]) {
-                rangeKeys.push_back(key.get<std::string>());
-            }
-        }
-    } catch (std::exception& ex) {
-        nlohmann::json response;
+        request.at("schemaName").get_to(schemaName);
+        request.at("schemaVersion").get_to(schemaVersion);
+    } catch (std::exception& e) {
         nlohmann::json status;
-        status["message"] = ex.what();
+        nlohmann::json response;
+        status["message"] = std::string("Bad json for get schema request: ") + e.what();
         status["code"] = 400;
         response["status"] = status;
         return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
-
-    K2LOG_I(k2::log::httpproxy, "Creating schema... coll: {}: name {}, ver {}, fields: {}"
-        ", partitions: {}, range {}", collectionName, schemaName,
-        schemaVersion, schemaFields, partitionKeys, rangeKeys);
-
-    dto::Schema _schema = {
-        .name = std::move(schemaName),
-        .version = schemaVersion,
-        .fields = std::move(schemaFields),
-        .partitionKeyFields = std::vector<uint32_t> {},
-        .rangeKeyFields = std::vector<uint32_t> {},
-    };
-
-    _schema.setPartitionKeyFieldsByName(partitionKeys);
-    _schema.setRangeKeyFieldsByName(rangeKeys);
-    K2LOG_I(k2::log::httpproxy, "Creating schema...");
-    return _client.createSchema(collectionName, _schema)
-    .then([this] (CreateSchemaResult&& result) {
+    return _client.getSchema(collectionName, schemaName, schemaVersion)
+    .then([](k2::GetSchemaResult&& result) mutable {
         nlohmann::json resp;
         resp["status"] = result.status;
+        if (result.schema) {
+            resp["schema"] = *result.schema;
+        }
         return seastar::make_ready_future<nlohmann::json>(std::move(resp));
     });
 }
@@ -495,7 +434,12 @@ void HTTPProxy::_registerAPI() {
     api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
         return _handleWrite(std::move(request));
     });
-    api_server.registerRawAPIObserver("CreateSchema", "create schema", [this](nlohmann::json&& request) {
+    api_server.registerRawAPIObserver("GetSchema", "handle get schema", [this](nlohmann::json&& request) {
+        return _handleGetSchema(std::move(request));
+    });
+
+    api_server.registerAPIObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>("CreateSchema",
+        "create schema",  [this] (dto::CreateSchemaRequest&& request) {
         return _handleCreateSchema(std::move(request));
     });
 }

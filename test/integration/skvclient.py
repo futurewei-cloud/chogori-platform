@@ -112,29 +112,29 @@ class Txn:
         request = {"txnID": self._txn_id, "commit": commit}
         return Status(self._send_req("/api/EndTxn", request))
 
-class FieldType(str, Enum):
-    NULL_T: str     = "null"
-    STRING: str     = "string"
-    INT32T: str     = "int32"
-    INT64T: str     = "int64"
-    FLOAT: str      = "float"
-    DOUBLE: str     = "double"
-    BOOL: str       = "bool"
-    DECIMAL64: str  = "decimal64"
-    DECIMAL168: str = "decimal128"
+class FieldType(int, Enum):
+    NULL_T:     int     = 0
+    STRING:     int     = 1
+    INT32T:     int     = 2
+    INT64T:     int     = 3
+    FLOAT:      int     = 4
+    DOUBLE:     int     = 5
+    BOOL:       int     = 6
+    DECIMAL64:  int     = 7
+    DECIMAL168: int     = 8
 
 class SchemaField (dict):
-    def __init__(self, fieldType: FieldType, fieldName: str,
+    def __init__(self, type: FieldType, name: str,
         descending: bool= False, nullLast: bool = False):
-        dict.__init__(self, fieldType = fieldType, fieldName = fieldName,
+        dict.__init__(self, type = type, name = name,
         descending = descending, nullLast = nullLast)
 
 class Schema (dict):
-    def __init__(self, schemaName: str, schemaVersion: int,
-        schemaFields: [FieldType], partitionKeys: [str], rangeKeys: [str]):
-        dict.__init__(self, schemaName = schemaName, schemaVersion = schemaVersion,
-        schemaFields = schemaFields,
-        partitionKeys = partitionKeys, rangeKeys = rangeKeys)
+    def __init__(self, name: str, version: int,
+        fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [str]):
+        dict.__init__(self, name = name, version = version,
+        fields = fields,
+        partitionKeyFields = partitionKeyFields, rangeKeyFields = rangeKeyFields)
 
 class SchemaReq:
     def __init__(self, collectionName:str, schema:Schema):
@@ -157,9 +157,27 @@ class SKVClient:
         return status, txn
 
     def create_schema(self, collectionName: str, schema: Schema) -> Status:
+        'Create schema'
         url = self.http + "/api/CreateSchema"
         req = {"collectionName": collectionName, "schema": schema}
-        r = requests.post(url, data=json.dumps(req))
+        return self.create_schema_json(json.dumps(req))
+
+    def create_schema_json(self, json_data: str) -> Status:
+        'Create schema from raw json request string'
+        url = self.http + "/api/CreateSchema"
+        r = requests.post(url, data=json_data)
         result = r.json()
         status = Status(result)
         return status
+
+    def get_schema(self, collectionName: str, schemaName: str, schemaVersion: int):
+        url = self.http + "/api/GetSchema"
+        data = {"collectionName": collectionName, "schemaName": schemaName,
+            "schemaVersion": schemaVersion}
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        status = Status(result)
+        if "schema" in result:
+            schema = Schema(**result["schema"])
+            return status, schema
+        return status, None

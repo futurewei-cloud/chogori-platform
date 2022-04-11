@@ -194,16 +194,44 @@ class TestBasicTxn(unittest.TestCase):
         status = txn2.end()
         self.assertEqual(status.code, 200)
 
-    def test_schema_txn(self):
+    def test_schema(self):
         db = SKVClient(args.http)
-        schema = Schema(schemaName='tests', schemaVersion=1,
-            schemaFields=[
-                SchemaField(FieldType.STRING, fieldName='pfield1'),
-                SchemaField(FieldType.INT32T, fieldName='rfield1'),
-                SchemaField(FieldType.STRING, fieldName='datafield1')],
-            partitionKeys=["pfield1"], rangeKeys=["rfield1"])
+        schema = Schema(name='tests', version=1,
+            fields=[
+                SchemaField(FieldType.STRING, 'pkey1'),
+                SchemaField(FieldType.INT32T, 'rkey1'),
+                SchemaField(FieldType.STRING, 'datafield1')],
+            partitionKeyFields=[0], rangeKeyFields=[1])
         status = db.create_schema("HTTPClient", schema)
         self.assertEqual(status.code, 200, msg=status.message)
+
+        status, schema1 = db.get_schema("HTTPClient", "tests", 1)
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(schema, schema1)
+
+        # Create a location object
+        loc = DBLoc(partition_key_name="pkey1", range_key_name="rkey1",
+            partition_key="ptest4", range_key=4,
+            schema="tests", coll="HTTPClient", schema_version=1)
+        additional_data =  { "datafield1" :"data4"}
+
+        # Populate initial data, Begin Txn
+        status, txn = db.begin_txn()
+        self.assertEqual(status.code, 201)
+
+        # Write initial data
+        status = txn.write(loc, additional_data)
+        self.assertEqual(status.code, 201)
+
+        status, record = txn.read(loc)
+        self.assertEqual(status.code, 200)
+        self.assertEqual(record["datafield1"], "data4")
+        self.assertEqual(record["pkey1"], "ptest4")
+        self.assertEqual(record["rkey1"], 4)
+
+        # Commit Txn, should succeed
+        status = txn.end()
+        self.assertEqual(status.code, 200)
 
 del sys.argv[1:]
 unittest.main()
