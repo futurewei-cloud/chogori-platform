@@ -177,7 +177,7 @@ class SKVClient:
         r = requests.post(url, data=json.dumps(data))
         result = r.json()
         status = Status(result)
-        if "schema" in result:
-            schema = Schema(**result["schema"])
+        if "response" in result:
+            schema = Schema(**result["response"])
             return status, schema
         return status, None

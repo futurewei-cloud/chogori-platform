@@ -26,6 +26,18 @@ Copyright(c) 2022 Futurewei Cloud
 #include <k2/module/k23si/client/k23si_client.h>
 
 namespace k2 {
+namespace dto {
+// Request to get a schema
+struct GetSchemaRequest {
+    String collectionName;
+    String schemaName;
+    uint32_t schemaVersion = 0;
+
+    K2_PAYLOAD_FIELDS(collectionName, schemaName, schemaVersion);
+    K2_DEF_FMT(GetSchemaRequest, collectionName, schemaName, schemaVersion);
+};
+}
+
 
 class HTTPProxy {
 public:  // application lifespan
@@ -43,7 +55,7 @@ private:
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
     seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
         dto::CreateSchemaRequest&& request);
-    seastar::future<nlohmann::json> _handleGetSchema(nlohmann::json&& request);
+    seastar::future<std::tuple<k2::Status, dto::Schema>> _handleGetSchema(dto::GetSchemaRequest&& request);
 
     void _registerAPI();
     void _registerMetrics();

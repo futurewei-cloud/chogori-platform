@@ -380,7 +380,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
 
 seastar::future<std::tuple<k2::Status,dto::CreateSchemaResponse>> HTTPProxy::_handleCreateSchema(
     dto::CreateSchemaRequest&& request) {
-    K2LOG_D(k2::log::httpproxy, "Received schema request {}", request);
+    K2LOG_D(k2::log::httpproxy, "Received create schema request {}", request);
     return _client.createSchema(std::move(request.collectionName), std::move(request.schema))
         .then([] (CreateSchemaResult&& result) {
             return seastar::make_ready_future<std::tuple<k2::Status,dto::CreateSchemaResponse>>(
@@ -389,32 +389,17 @@ seastar::future<std::tuple<k2::Status,dto::CreateSchemaResponse>> HTTPProxy::_ha
         });
 }
 
-// Implement get schema using Raw api as there is no cpo request object to get a single schema
-seastar::future<nlohmann::json> HTTPProxy::_handleGetSchema(nlohmann::json&& request) {
-    std::string collectionName;
-    std::string schemaName;
-    uint64_t schemaVersion;
-
-    try {
-        request.at("collectionName").get_to(collectionName);
-        request.at("schemaName").get_to(schemaName);
-        request.at("schemaVersion").get_to(schemaVersion);
-    } catch (std::exception& e) {
-        nlohmann::json status;
-        nlohmann::json response;
-        status["message"] = std::string("Bad json for get schema request: ") + e.what();
-        status["code"] = 400;
-        response["status"] = status;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
-    }
-    return _client.getSchema(collectionName, schemaName, schemaVersion)
+seastar::future<std::tuple<k2::Status, dto::Schema>> HTTPProxy::_handleGetSchema(dto::GetSchemaRequest&& request) {
+    K2LOG_D(k2::log::httpproxy, "Received get schema request {}", request);
+    return _client.getSchema(std::move(request.collectionName), std::move(request.schemaName), request.schemaVersion)
     .then([](k2::GetSchemaResult&& result) mutable {
-        nlohmann::json resp;
-        resp["status"] = result.status;
-        if (result.schema) {
-            resp["schema"] = *result.schema;
+        if (!result.schema) {
+            return seastar::make_ready_future<std::tuple<k2::Status, dto::Schema>>(
+                std::make_pair(result.status, dto::Schema()));
+        } else {
+            return seastar::make_ready_future<std::tuple<k2::Status, dto::Schema>>(
+                std::make_pair(result.status, *result.schema));
         }
-        return seastar::make_ready_future<nlohmann::json>(std::move(resp));
     });
 }
 
@@ -434,10 +419,11 @@ void HTTPProxy::_registerAPI() {
     api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
         return _handleWrite(std::move(request));
     });
-    api_server.registerRawAPIObserver("GetSchema", "handle get schema", [this](nlohmann::json&& request) {
+
+    api_server.registerAPIObserver<dto::GetSchemaRequest, dto::Schema>("GetSchema",
+        "get schema",  [this] (dto::GetSchemaRequest&& request) {
         return _handleGetSchema(std::move(request));
     });
-
     api_server.registerAPIObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>("CreateSchema",
         "create schema",  [this] (dto::CreateSchemaRequest&& request) {
         return _handleCreateSchema(std::move(request));
