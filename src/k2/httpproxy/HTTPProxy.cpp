@@ -295,7 +295,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
-    return _client.getSchema(collectionName, schemaName, k2::K23SIClient::ANY_VERSION)
+    return _client.getSchema(collectionName, schemaName, dto::ANY_VERSION)
     .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
                                             (k2::GetSchemaResult&& result) mutable {
         if(!result.status.is2xxOK()) {
