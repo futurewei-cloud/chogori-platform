@@ -393,10 +393,10 @@ seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::g
         });
     }
 
-    if (sIt->second.size() > 0 && schemaVersion == dto::ANY_VERSION) {
+    if (sIt->second.size() > 0 && schemaVersion == dto::ANY_SCHEMA_VERSION) {
         std::shared_ptr<dto::Schema> foundSchema = sIt->second.begin()->second;
         return RPCResponse(Statuses::S200_OK("Found schema"), std::move(foundSchema));
-    } else if (schemaVersion == dto::ANY_VERSION && doCPORefresh) {
+    } else if (schemaVersion == dto::ANY_SCHEMA_VERSION && doCPORefresh) {
         return refreshSchemaCache(collectionName)
         .then([this, collectionName, schemaName, schemaVersion] (Status&& status) {
             if (!status.is2xxOK()) {
@@ -405,7 +405,7 @@ seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::g
 
             return getSchemaInternal(collectionName, schemaName, schemaVersion, false);
         });
-    } else if (schemaVersion == dto::ANY_VERSION) {
+    } else if (schemaVersion == dto::ANY_SCHEMA_VERSION) {
         return RPCResponse(Statuses::S404_Not_Found("Could not find schema after CPO refresh"), std::shared_ptr<dto::Schema>());
     }
 
@@ -428,7 +428,7 @@ seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::g
 }
 
 seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collectionName, const String& schemaName) {
-    return getSchema(collectionName, schemaName, dto::ANY_VERSION)
+    return getSchema(collectionName, schemaName, dto::ANY_SCHEMA_VERSION)
     .then([collectionName] (auto&& response) {
         if (!response.status.is2xxOK()) {
             return CreateQueryResult{std::move(response.status), Query()};

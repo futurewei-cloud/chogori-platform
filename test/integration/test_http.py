@@ -27,7 +27,9 @@ SOFTWARE.
 import argparse, unittest, sys
 import requests, json
 from urllib.parse import urlparse
-from skvclient import *
+from skvclient import (Status, DBLoc, Txn, FieldType, SchemaField,
+    Schema, CollectionCapacity, HashScheme, StorageDriver,
+    CollectionMetadata, SKVClient)
 from datetime import timedelta
 
 parser = argparse.ArgumentParser()

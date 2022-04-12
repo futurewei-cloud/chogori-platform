@@ -295,7 +295,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
-    return _client.getSchema(collectionName, schemaName, dto::ANY_VERSION)
+    return _client.getSchema(collectionName, schemaName, ANY_SCHEMA_VERSION)
     .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
                                             (k2::GetSchemaResult&& result) mutable {
         if(!result.status.is2xxOK()) {
@@ -378,29 +378,29 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
     });
 }
 
-seastar::future<std::tuple<k2::Status,dto::CreateSchemaResponse>> HTTPProxy::_handleCreateSchema(
-    dto::CreateSchemaRequest&& request) {
-    K2LOG_D(k2::log::httpproxy, "Received create schema request {}", request);
+seastar::future<std::tuple<Status, CreateSchemaResponse>> HTTPProxy::_handleCreateSchema(
+    CreateSchemaRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received create schema request {}", request);
     return _client.createSchema(std::move(request.collectionName), std::move(request.schema))
         .then([] (CreateSchemaResult&& result) {
-            return RPCResponse(std::move(result.status), dto::CreateSchemaResponse{});
+            return RPCResponse(std::move(result.status), CreateSchemaResponse{});
         });
 }
 
-seastar::future<std::tuple<k2::Status, dto::Schema>> HTTPProxy::_handleGetSchema(dto::GetSchemaRequest&& request) {
-    K2LOG_D(k2::log::httpproxy, "Received get schema request {}", request);
+seastar::future<std::tuple<Status, Schema>> HTTPProxy::_handleGetSchema(GetSchemaRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received get schema request {}", request);
     return _client.getSchema(std::move(request.collectionName), std::move(request.schemaName), request.schemaVersion)
-    .then([](k2::GetSchemaResult&& result) {
-        return RPCResponse(std::move(result.status), result.schema ?  *result.schema : dto::Schema{});
+    .then([](GetSchemaResult&& result) {
+        return RPCResponse(std::move(result.status), result.schema ?  *result.schema : Schema{});
     });
 }
 
-seastar::future<std::tuple<k2::Status, dto::CollectionCreateResponse>> HTTPProxy::_handleCreateCollection(
-    dto::CollectionCreateRequest&& request) {
-    K2LOG_D(k2::log::httpproxy, "Received create collection request {}", request);
+seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handleCreateCollection(
+    CollectionCreateRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received create collection request {}", request);
     return _client.makeCollection(std::move(request.metadata), std::move(request.rangeEnds))
     .then([] (Status&& status) {
-        return RPCResponse(std::move(status), dto::CollectionCreateResponse());
+        return RPCResponse(std::move(status), CollectionCreateResponse());
     });
 }
 
@@ -421,16 +421,16 @@ void HTTPProxy::_registerAPI() {
         return _handleWrite(std::move(request));
     });
 
-    api_server.registerAPIObserver<dto::GetSchemaRequest, dto::Schema>("GetSchema",
-        "get schema",  [this] (dto::GetSchemaRequest&& request) {
+    api_server.registerAPIObserver<GetSchemaRequest, Schema>("GetSchema",
+        "get schema",  [this] (GetSchemaRequest&& request) {
         return _handleGetSchema(std::move(request));
     });
-    api_server.registerAPIObserver<dto::CreateSchemaRequest, dto::CreateSchemaResponse>("CreateSchema",
-        "create schema",  [this] (dto::CreateSchemaRequest&& request) {
+    api_server.registerAPIObserver<CreateSchemaRequest, CreateSchemaResponse>("CreateSchema",
+        "create schema",  [this] (CreateSchemaRequest&& request) {
         return _handleCreateSchema(std::move(request));
     });
-    api_server.registerAPIObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>("CreateCollection",
-        "create collection",  [this] (dto::CollectionCreateRequest&& request) {
+    api_server.registerAPIObserver<CollectionCreateRequest, CollectionCreateResponse>("CreateCollection",
+        "create collection",  [this] (CollectionCreateRequest&& request) {
         return _handleCreateCollection(std::move(request));
     });
 
