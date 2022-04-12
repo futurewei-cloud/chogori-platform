@@ -72,7 +72,6 @@ private:
     uint64_t _txnID = 0;
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
     std::vector<seastar::future<>> _endFuts;
-    ConfigVar<uint32_t> _numPartitions{"num_partitions"};
 };  // class HTTPProxy
 
 } // namespace k2

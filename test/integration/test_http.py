@@ -38,6 +38,30 @@ args = parser.parse_args()
 
 
 class TestBasicTxn(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        "Create common schema and collection used by multiple test cases"
+        SEC_TO_MICRO = 1000000
+        metadata = CollectionMetadata(name = 'HTTPClient',
+            hashScheme = HashScheme("HashCRC32C"),
+            storageDriver = StorageDriver("K23SI"),
+            capacity = CollectionCapacity(minNodes = 2),
+            retentionPeriod = int(timedelta(hours=5).total_seconds()*SEC_TO_MICRO)
+        )
+        db = SKVClient(args.http)
+        status = db.create_collection(metadata)
+        if status.code != 200:
+            raise Exception(status.message)
+        schema = Schema(name='test_schema', version=1,
+            fields=[
+                SchemaField(FieldType.STRING, 'partitionKey'),
+                SchemaField(FieldType.STRING, 'rangeKey'),
+                SchemaField(FieldType.STRING, 'data')],
+            partitionKeyFields=[0], rangeKeyFields=[1])
+        status = db.create_schema("HTTPClient", schema)
+        if status.code != 200:
+            raise Exception(status.message)
+
     def test_basicTxn(self):
         # Begin Txn
         data = {}

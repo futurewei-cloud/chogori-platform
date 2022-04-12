@@ -35,22 +35,6 @@ inline thread_local k2::logging::Logger httpproxy("k2::httpproxy");
 namespace k2 {
 using namespace dto;
 
-const char* collname="HTTPClient";
-k2::dto::Schema _schema {
-    .name = "test_schema",
-    .version = 1,
-    .fields = std::vector<k2::dto::SchemaField> {
-     {k2::dto::FieldType::STRING, "partitionKey", false, false},
-     {k2::dto::FieldType::STRING, "rangeKey", false, false},
-     {k2::dto::FieldType::STRING, "data", false, false}
-    },
-    .partitionKeyFields = std::vector<uint32_t> { 0 },
-    .rangeKeyFields = std::vector<uint32_t> { 1 },
-};
-static thread_local std::shared_ptr<k2::dto::Schema> schemaPtr;
-
-using namespace dto;
-
 template <typename T>
 void serializeFieldFromJSON(const k2::SchemaField& field, k2::SKVRecord& record,
                                    const nlohmann::json& jsonRecord) {
@@ -182,34 +166,8 @@ seastar::future<> HTTPProxy::gracefulStop() {
 seastar::future<> HTTPProxy::start() {
     _stopped = false;
     _registerAPI();
-    auto myid = seastar::this_shard_id();
-    schemaPtr = std::make_shared<k2::dto::Schema>(_schema);
     auto _startFut = seastar::make_ready_future<>();
     _startFut = _startFut.then([this] {return _client.start();});
-    if (myid == 0) {
-        K2LOG_I(k2::log::httpproxy, "Creating collection...");
-        _startFut = _startFut.then([this] {
-            k2::dto::CollectionMetadata meta {
-                .name = collname,
-                .hashScheme = dto::HashScheme::HashCRC32C,
-                .storageDriver = dto::StorageDriver::K23SI,
-                .capacity{
-                    .dataCapacityMegaBytes = 0,
-                    .readIOPs = 0,
-                    .writeIOPs = 0,
-                    .minNodes = _numPartitions()
-                },
-                .retentionPeriod = 5h,
-            };
-            return _client.makeCollection(std::move(meta))
-            .then([this] (Status&& status) {
-                K2ASSERT(k2::log::httpproxy, status.is2xxOK(), "Failed to create collection");
-                K2LOG_I(k2::log::httpproxy, "Creating schema...");
-                return _client.createSchema(collname, _schema);
-            }).discard_result();
-        });
-    }
-
     return _startFut;
 }
 
