@@ -136,10 +136,31 @@ class Schema (dict):
         fields = fields,
         partitionKeyFields = partitionKeyFields, rangeKeyFields = rangeKeyFields)
 
-class SchemaReq:
-    def __init__(self, collectionName:str, schema:Schema):
-        self.collectionName = collectionName
-        self.schema = schema
+class CollectionCapacity(dict):
+    def __init__(self, dataCapacityMegaBytes: int = 0, readIOPs: int = 0,
+        writeIOPs: int = 0, minNodes: int = 0):
+        dict.__init__(self,
+            dataCapacityMegaBytes = dataCapacityMegaBytes,
+            readIOPs = readIOPs,
+            writeIOPs = writeIOPs,
+            minNodes = minNodes)
+
+class HashScheme(dict):
+    def __init__(self, value:str):
+        dict.__init__(self, value=value)
+
+class StorageDriver(dict):
+    def __init__(self, value:str):
+        dict.__init__(self, value=value)
+
+class CollectionMetadata (dict):
+    def __init__(self, name: str, hashScheme: HashScheme,
+        storageDriver: StorageDriver, capacity: CollectionCapacity,
+        retentionPeriod: int = 0, heartbeatDeadline: int = 0, deleted: bool = False):
+        dict.__init__(self,
+            name = name, hashScheme = hashScheme, storageDriver = storageDriver,
+            capacity = capacity, retentionPeriod = retentionPeriod, 
+            heartbeatDeadline = heartbeatDeadline, deleted=deleted)
 
 class SKVClient:
     "SKV DB client"
@@ -170,7 +191,8 @@ class SKVClient:
         status = Status(result)
         return status
 
-    def get_schema(self, collectionName: str, schemaName: str, schemaVersion: int):
+    def get_schema(self, collectionName: str, schemaName: str,
+        schemaVersion: int = -1) -> Tuple[Status, Schema]:
         url = self.http + "/api/GetSchema"
         data = {"collectionName": collectionName, "schemaName": schemaName,
             "schemaVersion": schemaVersion}
@@ -181,3 +203,12 @@ class SKVClient:
             schema = Schema(**result["response"])
             return status, schema
         return status, None
+
+    def create_collection(self, metadata: CollectionMetadata) -> Status:
+        url = self.http + "/api/CreateCollection"
+        rangeEnds: [str] = []
+        data = {"metadata": metadata, "rangeEnds": rangeEnds}
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        status = Status(result)
+        return status

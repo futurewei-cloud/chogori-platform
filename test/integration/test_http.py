@@ -28,6 +28,7 @@ import argparse, unittest, sys
 import requests, json
 from urllib.parse import urlparse
 from skvclient import *
+from datetime import timedelta
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--http", help="HTTP API URL")
@@ -194,28 +195,42 @@ class TestBasicTxn(unittest.TestCase):
         status = txn2.end()
         self.assertEqual(status.code, 200)
 
-    def test_schema(self):
+    def test_collection_schema_basic(self):
         db = SKVClient(args.http)
+        SEC_TO_MICRO = 1000000
+        metadata = CollectionMetadata(name = 'HTTPProxy1',
+            hashScheme = HashScheme("HashCRC32C"),
+            storageDriver = StorageDriver("K23SI"),
+            capacity = CollectionCapacity(minNodes = 1),
+            retentionPeriod = int(timedelta(hours=5).total_seconds()*SEC_TO_MICRO)
+        )
+        status = db.create_collection(metadata)
+        self.assertEqual(status.code, 200, msg=status.message)
+
         schema = Schema(name='tests', version=1,
             fields=[
                 SchemaField(FieldType.STRING, 'pkey1'),
                 SchemaField(FieldType.INT32T, 'rkey1'),
                 SchemaField(FieldType.STRING, 'datafield1')],
             partitionKeyFields=[0], rangeKeyFields=[1])
-        status = db.create_schema("HTTPClient", schema)
+        status = db.create_schema("HTTPProxy1", schema)
         self.assertEqual(status.code, 200, msg=status.message)
 
-        status, schema1 = db.get_schema("HTTPClient", "tests", 1)
+        status, schema1 = db.get_schema("HTTPProxy1", "tests", 1)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(schema, schema1)
+
+        # Get a non existing schema, should fail
+        status, _ = db.get_schema("HTTPProxy1", "tests_1", 1)
+        self.assertEqual(status.code, 404, msg=status.message)
 
         # Create a location object
         loc = DBLoc(partition_key_name="pkey1", range_key_name="rkey1",
             partition_key="ptest4", range_key=4,
-            schema="tests", coll="HTTPClient", schema_version=1)
+            schema="tests", coll="HTTPProxy1", schema_version=1)
         additional_data =  { "datafield1" :"data4"}
 
-        # Populate initial data, Begin Txn
+        # Populate data, Begin Txn
         status, txn = db.begin_txn()
         self.assertEqual(status.code, 201)
 
@@ -232,6 +247,51 @@ class TestBasicTxn(unittest.TestCase):
         # Commit Txn, should succeed
         status = txn.end()
         self.assertEqual(status.code, 200)
+
+    def test_create_schema_validation(self):
+        db = SKVClient(args.http)
+        # Create schema with no field, should fail
+        schema = Schema(name='tests2', version=1,
+            fields=[], partitionKeyFields=[], rangeKeyFields=[])
+
+        status = db.create_schema("HTTPClient", schema)
+        self.assertEqual(status.code, 400, msg=status.message)
+
+        # No partition Key, should fail
+        schema = Schema(name='tests2', version=1,
+            fields=[
+                SchemaField(FieldType.STRING, 'pkey1'),
+                SchemaField(FieldType.INT32T, 'rkey1'),
+                SchemaField(FieldType.STRING, 'datafield1')],
+            partitionKeyFields=[], rangeKeyFields=[1])
+
+        status = db.create_schema("HTTPClient", schema)
+        self.assertEqual(status.code, 400, msg=status.message)
+
+        # Duplicate Key, should fail
+        schema = Schema(name='tests2', version=1,
+            fields=[
+                SchemaField(FieldType.STRING, 'pkey1'),
+                SchemaField(FieldType.INT32T, 'pkey1'),
+                SchemaField(FieldType.STRING, 'datafield1')],
+            partitionKeyFields=[0], rangeKeyFields=[])
+
+        status = db.create_schema("HTTPClient", schema)
+        self.assertEqual(status.code, 400, msg=status.message)
+
+        schema = Schema(name='tests2', version=1,
+            fields=[
+                SchemaField(FieldType.STRING, 'pkey1'),
+                SchemaField(FieldType.INT32T, 'rkey1'),
+                SchemaField(FieldType.STRING, 'datafield1')],
+            partitionKeyFields=[0], rangeKeyFields=[1])
+
+        status = db.create_schema("HTTPClient", schema)
+        self.assertEqual(status.code, 200, msg=status.message)
+
+        # Create the same schema again, should fail
+        status = db.create_schema("HTTPClient", schema)
+        self.assertEqual(status.code, 403, msg=status.message)
 
 del sys.argv[1:]
 unittest.main()

@@ -383,23 +383,24 @@ seastar::future<std::tuple<k2::Status,dto::CreateSchemaResponse>> HTTPProxy::_ha
     K2LOG_D(k2::log::httpproxy, "Received create schema request {}", request);
     return _client.createSchema(std::move(request.collectionName), std::move(request.schema))
         .then([] (CreateSchemaResult&& result) {
-            return seastar::make_ready_future<std::tuple<k2::Status,dto::CreateSchemaResponse>>(
-                // Sending empty response as CreateSchemaResult doesn't have any other field than Status
-                std::make_pair(result.status, dto::CreateSchemaResponse()));
+            return RPCResponse(std::move(result.status), dto::CreateSchemaResponse{});
         });
 }
 
 seastar::future<std::tuple<k2::Status, dto::Schema>> HTTPProxy::_handleGetSchema(dto::GetSchemaRequest&& request) {
     K2LOG_D(k2::log::httpproxy, "Received get schema request {}", request);
     return _client.getSchema(std::move(request.collectionName), std::move(request.schemaName), request.schemaVersion)
-    .then([](k2::GetSchemaResult&& result) mutable {
-        if (!result.schema) {
-            return seastar::make_ready_future<std::tuple<k2::Status, dto::Schema>>(
-                std::make_pair(result.status, dto::Schema()));
-        } else {
-            return seastar::make_ready_future<std::tuple<k2::Status, dto::Schema>>(
-                std::make_pair(result.status, *result.schema));
-        }
+    .then([](k2::GetSchemaResult&& result) {
+        return RPCResponse(std::move(result.status), result.schema ?  *result.schema : dto::Schema{});
+    });
+}
+
+seastar::future<std::tuple<k2::Status, dto::CollectionCreateResponse>> HTTPProxy::_handleCreateCollection(
+    dto::CollectionCreateRequest&& request) {
+    K2LOG_D(k2::log::httpproxy, "Received create collection request {}", request);
+    return _client.makeCollection(std::move(request.metadata), std::move(request.rangeEnds))
+    .then([] (Status&& status) {
+        return RPCResponse(std::move(status), dto::CollectionCreateResponse());
     });
 }
 
@@ -428,6 +429,11 @@ void HTTPProxy::_registerAPI() {
         "create schema",  [this] (dto::CreateSchemaRequest&& request) {
         return _handleCreateSchema(std::move(request));
     });
+    api_server.registerAPIObserver<dto::CollectionCreateRequest, dto::CollectionCreateResponse>("CreateCollection",
+        "create collection",  [this] (dto::CollectionCreateRequest&& request) {
+        return _handleCreateCollection(std::move(request));
+    });
+
 }
 
 void HTTPProxy::_registerMetrics() {
