@@ -242,7 +242,7 @@ seastar::future<> runScenario01() {
                     return seastar::make_ready_future<>();
                 })
                 .then([this] () {
-                    return _client.getSchema(collname1, "1_schema", K23SIClient::ANY_VERSION);
+                    return _client.getSchema(collname1, "1_schema", dto::ANY_SCHEMA_VERSION);
                 })
                 .then([this, &txnHandle] (auto&& response) {
                     auto& [status, schemaPtr] = response;

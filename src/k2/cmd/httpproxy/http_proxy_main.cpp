@@ -34,7 +34,6 @@ int main(int argc, char** argv) {
     app.addApplet<k2::HTTPProxy>();
     app.addOptions()
         // config for dependencies
-        ("num_partitions", bpo::value<uint32_t>(), "Number of k2 nodes to use for the collection")
         ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")

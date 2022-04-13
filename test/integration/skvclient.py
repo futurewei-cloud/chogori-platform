@@ -26,6 +26,7 @@ from typing import Tuple
 import requests, json
 from urllib.parse import urlparse
 import copy
+from enum import Enum
 
 class Status:
     "Status returned from HTTP Proxy"
@@ -111,6 +112,56 @@ class Txn:
         request = {"txnID": self._txn_id, "commit": commit}
         return Status(self._send_req("/api/EndTxn", request))
 
+class FieldType(int, Enum):
+    NULL_T:     int     = 0
+    STRING:     int     = 1
+    INT32T:     int     = 2
+    INT64T:     int     = 3
+    FLOAT:      int     = 4
+    DOUBLE:     int     = 5
+    BOOL:       int     = 6
+    DECIMAL64:  int     = 7
+    DECIMAL168: int     = 8
+
+class SchemaField (dict):
+    def __init__(self, type: FieldType, name: str,
+        descending: bool= False, nullLast: bool = False):
+        dict.__init__(self, type = type, name = name,
+        descending = descending, nullLast = nullLast)
+
+class Schema (dict):
+    def __init__(self, name: str, version: int,
+        fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [str]):
+        dict.__init__(self, name = name, version = version,
+        fields = fields,
+        partitionKeyFields = partitionKeyFields, rangeKeyFields = rangeKeyFields)
+
+class CollectionCapacity(dict):
+    def __init__(self, dataCapacityMegaBytes: int = 0, readIOPs: int = 0,
+        writeIOPs: int = 0, minNodes: int = 0):
+        dict.__init__(self,
+            dataCapacityMegaBytes = dataCapacityMegaBytes,
+            readIOPs = readIOPs,
+            writeIOPs = writeIOPs,
+            minNodes = minNodes)
+
+class HashScheme(dict):
+    def __init__(self, value:str):
+        dict.__init__(self, value=value)
+
+class StorageDriver(dict):
+    def __init__(self, value:str):
+        dict.__init__(self, value=value)
+
+class CollectionMetadata (dict):
+    def __init__(self, name: str, hashScheme: HashScheme,
+        storageDriver: StorageDriver, capacity: CollectionCapacity,
+        retentionPeriod: int = 0, heartbeatDeadline: int = 0, deleted: bool = False):
+        dict.__init__(self,
+            name = name, hashScheme = hashScheme, storageDriver = storageDriver,
+            capacity = capacity, retentionPeriod = retentionPeriod, 
+            heartbeatDeadline = heartbeatDeadline, deleted=deleted)
+
 class SKVClient:
     "SKV DB client"
 
@@ -125,3 +176,39 @@ class SKVClient:
         status = Status(result)
         txn = Txn(self, result.get("txnID"))
         return status, txn
+
+    def create_schema(self, collectionName: str, schema: Schema) -> Status:
+        'Create schema'
+        url = self.http + "/api/CreateSchema"
+        req = {"collectionName": collectionName, "schema": schema}
+        return self.create_schema_json(json.dumps(req))
+
+    def create_schema_json(self, json_data: str) -> Status:
+        'Create schema from raw json request string'
+        url = self.http + "/api/CreateSchema"
+        r = requests.post(url, data=json_data)
+        result = r.json()
+        status = Status(result)
+        return status
+
+    def get_schema(self, collectionName: str, schemaName: str,
+        schemaVersion: int = -1) -> Tuple[Status, Schema]:
+        url = self.http + "/api/GetSchema"
+        data = {"collectionName": collectionName, "schemaName": schemaName,
+            "schemaVersion": schemaVersion}
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        status = Status(result)
+        if "response" in result:
+            schema = Schema(**result["response"])
+            return status, schema
+        return status, None
+
+    def create_collection(self, metadata: CollectionMetadata) -> Status:
+        url = self.http + "/api/CreateCollection"
+        rangeEnds: [str] = []
+        data = {"metadata": metadata, "rangeEnds": rangeEnds}
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        status = Status(result)
+        return status

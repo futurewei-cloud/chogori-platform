@@ -35,22 +35,6 @@ inline thread_local k2::logging::Logger httpproxy("k2::httpproxy");
 namespace k2 {
 using namespace dto;
 
-const char* collname="HTTPClient";
-k2::dto::Schema _schema {
-    .name = "test_schema",
-    .version = 1,
-    .fields = std::vector<k2::dto::SchemaField> {
-     {k2::dto::FieldType::STRING, "partitionKey", false, false},
-     {k2::dto::FieldType::STRING, "rangeKey", false, false},
-     {k2::dto::FieldType::STRING, "data", false, false}
-    },
-    .partitionKeyFields = std::vector<uint32_t> { 0 },
-    .rangeKeyFields = std::vector<uint32_t> { 1 },
-};
-static thread_local std::shared_ptr<k2::dto::Schema> schemaPtr;
-
-using namespace dto;
-
 template <typename T>
 void serializeFieldFromJSON(const k2::SchemaField& field, k2::SKVRecord& record,
                                    const nlohmann::json& jsonRecord) {
@@ -182,34 +166,8 @@ seastar::future<> HTTPProxy::gracefulStop() {
 seastar::future<> HTTPProxy::start() {
     _stopped = false;
     _registerAPI();
-    auto myid = seastar::this_shard_id();
-    schemaPtr = std::make_shared<k2::dto::Schema>(_schema);
     auto _startFut = seastar::make_ready_future<>();
     _startFut = _startFut.then([this] {return _client.start();});
-    if (myid == 0) {
-        K2LOG_I(k2::log::httpproxy, "Creating collection...");
-        _startFut = _startFut.then([this] {
-            k2::dto::CollectionMetadata meta {
-                .name = collname,
-                .hashScheme = dto::HashScheme::HashCRC32C,
-                .storageDriver = dto::StorageDriver::K23SI,
-                .capacity{
-                    .dataCapacityMegaBytes = 0,
-                    .readIOPs = 0,
-                    .writeIOPs = 0,
-                    .minNodes = _numPartitions()
-                },
-                .retentionPeriod = 5h,
-            };
-            return _client.makeCollection(std::move(meta))
-            .then([this] (Status&& status) {
-                K2ASSERT(k2::log::httpproxy, status.is2xxOK(), "Failed to create collection");
-                K2LOG_I(k2::log::httpproxy, "Creating schema...");
-                return _client.createSchema(collname, _schema);
-            }).discard_result();
-        });
-    }
-
     return _startFut;
 }
 
@@ -295,7 +253,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         return seastar::make_ready_future<nlohmann::json>(std::move(response));
     }
 
-    return _client.getSchema(collectionName, schemaName, k2::K23SIClient::ANY_VERSION)
+    return _client.getSchema(collectionName, schemaName, ANY_SCHEMA_VERSION)
     .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
                                             (k2::GetSchemaResult&& result) mutable {
         if(!result.status.is2xxOK()) {
@@ -378,6 +336,32 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
     });
 }
 
+seastar::future<std::tuple<Status, CreateSchemaResponse>> HTTPProxy::_handleCreateSchema(
+    CreateSchemaRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received create schema request {}", request);
+    return _client.createSchema(std::move(request.collectionName), std::move(request.schema))
+        .then([] (CreateSchemaResult&& result) {
+            return RPCResponse(std::move(result.status), CreateSchemaResponse{});
+        });
+}
+
+seastar::future<std::tuple<Status, Schema>> HTTPProxy::_handleGetSchema(GetSchemaRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received get schema request {}", request);
+    return _client.getSchema(std::move(request.collectionName), std::move(request.schemaName), request.schemaVersion)
+    .then([](GetSchemaResult&& result) {
+        return RPCResponse(std::move(result.status), result.schema ?  *result.schema : Schema{});
+    });
+}
+
+seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handleCreateCollection(
+    CollectionCreateRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received create collection request {}", request);
+    return _client.makeCollection(std::move(request.metadata), std::move(request.rangeEnds))
+    .then([] (Status&& status) {
+        return RPCResponse(std::move(status), CollectionCreateResponse());
+    });
+}
+
 void HTTPProxy::_registerAPI() {
     K2LOG_I(k2::log::httpproxy, "Registering HTTP API observers...");
     k2::APIServer& api_server = k2::AppBase().getDist<k2::APIServer>().local();
@@ -394,6 +378,20 @@ void HTTPProxy::_registerAPI() {
     api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
         return _handleWrite(std::move(request));
     });
+
+    api_server.registerAPIObserver<GetSchemaRequest, Schema>("GetSchema",
+        "get schema",  [this] (GetSchemaRequest&& request) {
+        return _handleGetSchema(std::move(request));
+    });
+    api_server.registerAPIObserver<CreateSchemaRequest, CreateSchemaResponse>("CreateSchema",
+        "create schema",  [this] (CreateSchemaRequest&& request) {
+        return _handleCreateSchema(std::move(request));
+    });
+    api_server.registerAPIObserver<CollectionCreateRequest, CollectionCreateResponse>("CreateCollection",
+        "create collection",  [this] (CollectionCreateRequest&& request) {
+        return _handleCreateCollection(std::move(request));
+    });
+
 }
 
 void HTTPProxy::_registerMetrics() {

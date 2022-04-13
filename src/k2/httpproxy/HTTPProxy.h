@@ -41,6 +41,13 @@ private:
     seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
+    seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
+        dto::CreateSchemaRequest&& request);
+    seastar::future<std::tuple<k2::Status, dto::Schema>> _handleGetSchema(
+        dto::GetSchemaRequest&& request);
+    seastar::future<std::tuple<k2::Status, dto::CollectionCreateResponse>> _handleCreateCollection(
+        dto::CollectionCreateRequest&& request);
+
     void _registerAPI();
     void _registerMetrics();
 
@@ -65,7 +72,6 @@ private:
     uint64_t _txnID = 0;
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
     std::vector<seastar::future<>> _endFuts;
-    ConfigVar<uint32_t> _numPartitions{"num_partitions"};
 };  // class HTTPProxy
 
 } // namespace k2

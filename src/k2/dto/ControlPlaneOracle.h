@@ -139,6 +139,18 @@ struct CreateSchemaResponse {
     K2_DEF_FMT(CreateSchemaResponse);
 };
 
+static inline constexpr int64_t ANY_SCHEMA_VERSION = -1;
+
+// Request to get a schema
+struct GetSchemaRequest {
+    String collectionName;
+    String schemaName;
+    int64_t schemaVersion{ANY_SCHEMA_VERSION};
+
+    K2_PAYLOAD_FIELDS(collectionName, schemaName, schemaVersion);
+    K2_DEF_FMT(GetSchemaRequest, collectionName, schemaName, schemaVersion);
+};
+
 // Get all versions of all schemas associated with a collection
 struct GetSchemasRequest {
     String collectionName;

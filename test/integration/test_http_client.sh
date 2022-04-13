@@ -22,7 +22,7 @@ tso_child_pid=$!
 
 sleep 2
 
-./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --num_partitions=3 --cpo ${CPO} &
+./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --cpo ${CPO} &
 http_child_pid=$!
 
 function finish {
