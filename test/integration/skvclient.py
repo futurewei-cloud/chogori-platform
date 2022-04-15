@@ -27,6 +27,7 @@ import requests, json
 from urllib.parse import urlparse
 import copy
 from enum import Enum
+from typing import List
 
 class Status:
     "Status returned from HTTP Proxy"
@@ -71,6 +72,13 @@ class DBLoc:
         obj.__dict__.update(kwargs)
         return obj
 
+class Query:
+    def __init__(self, query_id: int):
+        self.query_id = query_id
+        self.done = False
+
+ListOfDict = List[dict]
+
 class Txn:
     "Transaction Object"
 
@@ -107,6 +115,25 @@ class Txn:
             "txnID" : self._txn_id, "record": record}
         result = self._send_req("/api/Read", request)
         return Status(result), result.get("record")
+
+    def query(self, query: Query) -> Tuple[Status, ListOfDict]:
+        request = {"txnID" : self._txn_id, "queryID": query.query_id}
+        result = self._send_req("/api/Query", request)
+        recores:dict = []
+        if "response" in result:
+            query.done = result["response"]["done"]
+            records = result["response"]["records"]
+        return Status(result), records
+
+    def queryAll(self, query: Query) ->Tuple[Status, ListOfDict]:
+        records: [dict] = []
+        while not query.done:
+            status, r = self.query(query)
+            if status.code != 200:
+                return status, records
+            records += r
+        status = self._client.close_query(query)
+        return status, records
 
     def end(self, commit=True):
         request = {"txnID": self._txn_id, "commit": commit}
@@ -204,11 +231,34 @@ class SKVClient:
             return status, schema
         return status, None
 
-    def create_collection(self, metadata: CollectionMetadata) -> Status:
+    def create_collection(self, metadata: CollectionMetadata, rangeEnds: [str] = []) -> Status:
         url = self.http + "/api/CreateCollection"
-        rangeEnds: [str] = []
         data = {"metadata": metadata, "rangeEnds": rangeEnds}
         r = requests.post(url, data=json.dumps(data))
         result = r.json()
         status = Status(result)
         return status
+
+    def create_query(self, collectionName: str,
+        schemaName: str, start: dict = None, end: dict = None) -> Tuple[Status, Query]:
+        url = self.http + "/api/CreateQuery"
+        data = {"collectionName": collectionName,
+            "schemaName": schemaName}
+        if start:
+            data["startScanRecord"] = start
+        if end:
+            data["endScanRecord"] = end
+
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        status = Status(result)
+        if "response" in result:
+            return status, Query(result["response"]["queryID"])
+        return status, None
+
+    def close_query(self, query: Query) -> Status:
+        url = self.http + "/api/CloseQuery"
+        data = {"queryID": query.query_id}
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        return Status(result)

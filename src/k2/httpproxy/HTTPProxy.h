@@ -27,6 +27,60 @@ Copyright(c) 2022 Futurewei Cloud
 
 namespace k2 {
 
+// Request to create and configure a query
+struct CreateQueryRequest {
+    String collectionName;
+    String schemaName;
+
+    // After parsing, store json instead of SKVRecord as skvrecord
+    // not compatible with seastar future.
+    nlohmann::json startScanRecord;
+    nlohmann::json endScanRecord;
+    int32_t limit = 0;
+    bool reverse = false;
+};
+
+// Use custom parser as nlohmann::json not supported by K2_PAYLOAD_FIELDS macros
+void from_json(const nlohmann::json& j, CreateQueryRequest& q);
+
+struct CreateQueryResponse {
+    uint64_t queryID;
+
+    K2_PAYLOAD_FIELDS(queryID);
+    K2_DEF_FMT(CreateQueryResponse, queryID);
+};
+
+struct QueryRequest {
+    uint64_t txnID;
+    uint64_t queryID;
+
+    K2_PAYLOAD_FIELDS(txnID, queryID);
+    K2_DEF_FMT(QueryRequest, txnID, queryID);
+};
+
+// Use custom serializer for response as SKVRecords doesn't have
+// serializer defined
+struct QueryResponse {
+    std::vector<nlohmann::json> records;
+    bool done;
+};
+
+void to_json(nlohmann::json& j, const QueryResponse& q);
+
+struct CloseQueryRequest {
+    uint64_t queryID;
+
+    K2_PAYLOAD_FIELDS(queryID);
+    K2_DEF_FMT(CloseQueryRequest, queryID);
+};
+
+// Will use this struct for any api returning empty response.
+struct EmptyResponse {
+    K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(EmptyResponse);
+};
+
+
 class HTTPProxy {
 public:  // application lifespan
     HTTPProxy();
@@ -41,12 +95,20 @@ private:
     seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
+
     seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
         dto::CreateSchemaRequest&& request);
     seastar::future<std::tuple<k2::Status, dto::Schema>> _handleGetSchema(
         dto::GetSchemaRequest&& request);
     seastar::future<std::tuple<k2::Status, dto::CollectionCreateResponse>> _handleCreateCollection(
         dto::CollectionCreateRequest&& request);
+    seastar::future<std::tuple<k2::Status, CreateQueryResponse>> _handleCreateQuery(
+        CreateQueryRequest&& request);
+    seastar::future<std::tuple<k2::Status, QueryResponse>> _handleQuery(
+        QueryRequest&& request);
+    seastar::future<std::tuple<k2::Status, EmptyResponse>> _handleCloseQuery(
+        CloseQueryRequest&& request);
+
 
     void _registerAPI();
     void _registerMetrics();
@@ -70,7 +132,10 @@ private:
     bool _stopped = true;
     k2::K23SIClient _client;
     uint64_t _txnID = 0;
+    uint64_t _queryID = 0;
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
+    // Store in progress queries
+    std::unordered_map<uint64_t, Query> _queries;
     std::vector<seastar::future<>> _endFuts;
 };  // class HTTPProxy
 

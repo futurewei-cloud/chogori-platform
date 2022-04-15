@@ -362,6 +362,83 @@ seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handle
     });
 }
 
+seastar::future<std::tuple<k2::Status, CreateQueryResponse>> HTTPProxy::_handleCreateQuery(CreateQueryRequest&& request) {
+    return _client.createQuery(request.collectionName, request.schemaName)
+    .then([this, req=std::move(request)] (auto&& result) mutable {
+        if(!result.status.is2xxOK()) {
+            return RPCResponse(std::move(result.status), CreateQueryResponse{0});
+        }
+        K2LOG_D(log::httpproxy, "begin query {}", result);
+        if (!req.startScanRecord.is_null()) {
+            serializeRecordFromJSON(result.query.startScanRecord, std::move(req.startScanRecord));
+        }
+        if (!req.endScanRecord.is_null()) {
+            serializeRecordFromJSON(result.query.endScanRecord, std::move(req.endScanRecord));
+        }
+        if (req.limit != 0) {
+            result.query.setLimit(req.limit);
+        }
+        if (req.reverse) {
+            result.query.setReverseDirection(req.reverse);
+        }
+        _queries[_queryID++] = std::move(result.query);
+        return RPCResponse(std::move(result.status), CreateQueryResponse{_queryID - 1});
+    });
+}
+
+void to_json(nlohmann::json& j, const QueryResponse& q) {
+    j = nlohmann::json{{"records", q.records} };
+    j["done"] = q.done;
+}
+
+void from_json(const nlohmann::json& j, CreateQueryRequest& q) {
+    j.at("collectionName").get_to(q.collectionName);
+    j.at("schemaName").get_to(q.schemaName);
+
+    if (j.contains("startScanRecord")) {
+        q.startScanRecord = j.at("startScanRecord");
+    }
+    if (j.contains("endScanRecord")) {
+        q.endScanRecord = j.at("endScanRecord");
+    }
+    if (j.contains("limit")) {
+        j.at("limit").get_to(q.limit);
+    }
+    if (j.contains("reverse")) {
+        j.at("reverse").get_to(q.reverse);
+    }
+}
+
+seastar::future<std::tuple<k2::Status, QueryResponse>> HTTPProxy::_handleQuery(QueryRequest&& request) {
+    if (_txns.find(request.txnID) == _txns.end()) {
+        return RPCResponse(Status{400, "Could not find txnID for query request"}, QueryResponse());
+    }
+    if (_queries.find(request.queryID) == _queries.end()) {
+        return RPCResponse(Status{400, "Could not find queryID for query request"}, QueryResponse());
+    }
+    return _txns[request.txnID].query(_queries[request.queryID])
+    .then([this, req=std::move(request)](QueryResult&& result) {
+        if(!result.status.is2xxOK()) {
+            return RPCResponse(std::move(result.status),  QueryResponse());
+        }
+        QueryResponse response;
+        for (auto& record: result.records) {
+            response.records.push_back(serializeJSONFromRecord(record));
+        }
+        if (_queries[req.queryID].isDone()) {
+            response.done = true;
+        }
+        return RPCResponse(std::move(result.status), std::move(response));
+    });
+}
+
+seastar::future<std::tuple<k2::Status, EmptyResponse>> HTTPProxy::_handleCloseQuery(CloseQueryRequest&& request) {
+    auto num_erased = _queries.erase(request.queryID);
+    return RPCResponse(num_erased > 0 ?
+        Status{200, "Successful"} : Status{400, "Could not find queryID"},
+        EmptyResponse{});
+}
+
 void HTTPProxy::_registerAPI() {
     K2LOG_I(k2::log::httpproxy, "Registering HTTP API observers...");
     k2::APIServer& api_server = k2::AppBase().getDist<k2::APIServer>().local();
@@ -390,6 +467,18 @@ void HTTPProxy::_registerAPI() {
     api_server.registerAPIObserver<CollectionCreateRequest, CollectionCreateResponse>("CreateCollection",
         "create collection",  [this] (CollectionCreateRequest&& request) {
         return _handleCreateCollection(std::move(request));
+    });
+    api_server.registerAPIObserver<CreateQueryRequest, CreateQueryResponse>("CreateQuery",
+        "create query",  [this] (CreateQueryRequest&& request) {
+        return _handleCreateQuery(std::move(request));
+    });
+    api_server.registerAPIObserver<QueryRequest, QueryResponse>("Query",
+        "query",  [this] (QueryRequest&& request) {
+        return _handleQuery(std::move(request));
+    });
+    api_server.registerAPIObserver<CloseQueryRequest, EmptyResponse>("CloseQuery",
+        "query",  [this] (CloseQueryRequest&& request) {
+        return _handleCloseQuery(std::move(request));
     });
 
 }
