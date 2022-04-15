@@ -165,6 +165,38 @@ class FieldType(int, Enum):
     BOOL:       int     = 6
     DECIMAL64:  int     = 7
     DECIMAL168: int     = 8
+    NOT_KNOWN:  int     = 254
+
+
+class Operations(str, Enum):
+    EQ:            str = "EQ"
+    GT:            str = "GT"
+    GTE:           str = "GTE"
+    LT:            str = "LT"
+    LTE:           str = "LTE"
+    IS_NULL:       str = "IS_NULL"
+    IS_EXACT_TYPE: str = "IS_EXACT_TYPE"
+    STARTS_WITH:   str = "STARTS_WITH"
+    CONTAINS:      str = "CONTAINS"
+    ENDS_WITH:     str = "ENDS_WITH"
+    AND:           str = "AND"
+    OR:            str = "OR"
+    XOR:           str = "XOR"
+    NOT:           str = "NOT"
+    UNKNOWN:       str = "UNKNOWN"
+
+class Operation(dict):
+    def __init__(self, value:Operations):
+        dict.__init__(self, value=value)
+
+
+class Value(dict):
+    def __init__(self, fieldName: str = "", type: FieldType = FieldType.NOT_KNOWN, literal:object = "REFERENCE" ):
+        dict.__init__(self, fieldName = fieldName, type = type, literal = literal)
+
+class Expression(dict):
+    def __init__(self, op: Operation, values: [Value], sub: ['Expression'] = []):
+        dict.__init__(self, op=op, valueChildren = values, expressionChildren = sub)
 
 class SchemaField (dict):
     def __init__(self, type: FieldType, name: str,
@@ -261,6 +293,7 @@ class SKVClient:
 
     def create_query(self, collectionName: str,
         schemaName: str, start: dict = None, end: dict = None,
+        filter: Expression = None,
         limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
         url = self.http + "/api/CreateQuery"
         data = {"collectionName": collectionName,
@@ -273,6 +306,8 @@ class SKVClient:
             data["limit"] = limit
         if reverse:
             data["reverse"] = reverse
+        if filter:
+            data["filter"] = filter
 
         r = requests.post(url, data=json.dumps(data))
         result = r.json()

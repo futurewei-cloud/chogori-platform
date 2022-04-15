@@ -118,9 +118,7 @@ struct Value {
             {"literal", k2::HexCodec::encode(lit.str())}
         };
     }
-    friend void from_json(const nlohmann::json&, Value&) {
-        throw std::runtime_error("Value type does not support construct from json");
-    }
+    friend void from_json(const nlohmann::json&, Value&);
 
     friend std::ostream& operator<<(std::ostream&os, const Value& v) {
         nlohmann::json j = v;

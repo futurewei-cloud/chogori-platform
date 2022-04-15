@@ -29,7 +29,8 @@ import requests, json
 from urllib.parse import urlparse
 from skvclient import (Status, DBLoc, Txn, FieldType, SchemaField,
     Schema, CollectionCapacity, HashScheme, StorageDriver,
-    CollectionMetadata, SKVClient, FieldSpec)
+    CollectionMetadata, SKVClient, FieldSpec, Expression, Operation,
+    Value, Operations)
 from datetime import timedelta
 
 parser = argparse.ArgumentParser()
@@ -355,6 +356,12 @@ class TestBasicTxn(unittest.TestCase):
             partition_key=["default", "a"], range_key="rtestq",
             schema="query_test", coll="query_collection", schema_version=1)
 
+        record1 = {"partition": "default", "partition1": "a",
+            "range" : "rtestq", "data1" : "dataq"}
+        record2 = {"partition": "default", "partition1": "h",
+            "range" : "arq1", "data1" : "adq1"}
+        all_records = [record1, record2]
+
         # Populate initial data, Begin Txn
         status, txn = db.begin_txn()
         self.assertEqual(status.code, 201)
@@ -364,7 +371,6 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 201, msg=status.message)
         status, out = txn.read(loc)
         self.assertEqual(status.code, 200, msg=status.message)
-        record1 = {"partition": "default", "partition1": "a", "range" : "rtestq", "data1" : "dataq"}
         self.assertEqual(out, record1)
 
         loc1 = loc.get_new(partition_key=["default", "h"], range_key="arq1")
@@ -372,7 +378,6 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 201, msg=status.message)
         status, out = txn.read(loc1)
         self.assertEqual(status.code, 200, msg=status.message)
-        record2 = {"partition": "default", "partition1": "h", "range" : "arq1", "data1" : "adq1"}
         self.assertEqual(out, record2)
 
         # Commit initial data
@@ -382,13 +387,25 @@ class TestBasicTxn(unittest.TestCase):
         status, txn = db.begin_txn()
         self.assertEqual(status.code, 201)
 
-        all_records = [record1, record2]
-
         status, query_id = db.create_query("query_collection", "query_test")
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records)
+
+        # Do the same query but with filter data1=data1, should return only
+        # one result
+        filter = Expression(Operation(Operations.EQ),
+            values = [
+                Value("data1"),
+                Value(type=FieldType.STRING, literal="dataq")
+            ])
+        status, query_id = db.create_query("query_collection",
+            "query_test", filter=filter)
+        self.assertEqual(status.code, 200, msg=status.message)
+        status, records = txn.queryAll(query_id)
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(records, [record1])
 
         status, query_id = db.create_query("query_collection", "query_test",
             start = {"partition": "default", "partition1": "h"})
@@ -443,7 +460,6 @@ class TestBasicTxn(unittest.TestCase):
         field2 = FieldSpec(FieldType.STRING, "d\x00ef")
         status, endspec = db.get_key_string([field1, field2])
         self.assertEqual(status.code, 200, msg=status.message)
-        print(field2)
         self.assertEqual(endspec, "^01default^00^01^01d^00^ffef^00^01")
 
         field3 = FieldSpec(FieldType.INT32T, 10)

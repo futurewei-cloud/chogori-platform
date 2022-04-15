@@ -26,6 +26,29 @@ namespace k2 {
 namespace dto {
 namespace expression {
 
+template <class T> void setPayloadValue(Value& target,  const nlohmann::json& jsonval) {
+    T val;
+
+    if constexpr  (std::is_same_v<T, std::decimal::decimal64>
+        || std::is_same_v<T, std::decimal::decimal128>) {
+        // No support to deserialize json to std::decimlal yet
+        throw k2::dto::TypeMismatchException("decimal type not supported with JSON interface");
+    } else {
+        jsonval.get_to(val);
+        target.literal.write(val);
+    }
+}
+
+void from_json(const nlohmann::json& j, Value& v) {
+    v.fieldName = j.at("fieldName").get<k2::String>();
+    if (v.fieldName.length() > 0) {
+        // No need to read type and literal from json as it represends a record field
+        return;
+    }
+    v.type = j.at("type").get<dto::FieldType>();
+    K2_DTO_CAST_APPLY_FIELD_VALUE(setPayloadValue, v, j.at("literal"));
+}
+
 // This class wraps a given Value together with particular SKVRecord (and its schema). It is used to perform expression
 // operations according to schema, provided literals, and found reference values.
 struct SchematizedValue {

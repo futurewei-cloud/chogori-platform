@@ -34,6 +34,7 @@ inline thread_local k2::logging::Logger httpproxy("k2::httpproxy");
 
 namespace k2 {
 using namespace dto;
+namespace k2e = k2::dto::expression;
 
 template <typename T>
 void serializeFieldFromJSON(const k2::SchemaField& field, k2::SKVRecord& record,
@@ -404,7 +405,6 @@ seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& 
     return JsonResponse(Statuses::S200_OK(""), nlohmann::json{{"result", output}});
 }
 
-
 seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& jsonReq) {
     std::string collectionName;
     std::string schemaName;
@@ -433,6 +433,10 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         }
         if (req.contains("reverse")) {
             result.query.setReverseDirection(req["reverse"]);
+        }
+        if (req.contains("filter")) {
+             k2e::Expression filter = req["filter"];
+             result.query.setFilterExpression(std::move(filter));
         }
         _queries[_queryID++] = std::move(result.query);
         nlohmann::json resp{{"queryID", _queryID - 1}};
