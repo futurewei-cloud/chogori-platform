@@ -72,6 +72,25 @@ class DBLoc:
         obj.__dict__.update(kwargs)
         return obj
 
+    # Get a data record from partition and range
+    # allowing multiple partitions or ranges
+    def get_fields(self) -> dict:
+        record = {}
+        if isinstance(self.partition_key_name, list):
+            for n, v in zip(self.partition_key_name, self.partition_key):
+                record[n] = v
+        else:
+            record[self.partition_key_name] = self.partition_key
+
+        if isinstance(self.range_key_name, list):
+            for n, v in zip(self.range_key_name, self.range_key):
+                record[n] = v
+        else:
+            record[self.range_key_name] = self.range_key
+
+        return record
+
+
 class Query:
     def __init__(self, query_id: int):
         self.query_id = query_id
@@ -99,8 +118,7 @@ class Txn:
     def write(self, loc: DBLoc, additional_data={}) -> Status:
         "Write to dbloc"
         record = additional_data.copy()
-        record[loc.partition_key_name] = loc.partition_key
-        record[loc.range_key_name] = loc.range_key
+        record.update(loc.get_fields())
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self._txn_id, "schemaVersion": loc.schema_version,
             "record": record}
@@ -108,9 +126,7 @@ class Txn:
         return Status(result)
 
     def read(self, loc: DBLoc) -> Tuple[Status, object] :
-        record = {}
-        record[loc.partition_key_name] = loc.partition_key
-        record[loc.range_key_name] = loc.range_key
+        record = loc.get_fields()
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self._txn_id, "record": record}
         result = self._send_req("/api/Read", request)
@@ -189,6 +205,10 @@ class CollectionMetadata (dict):
             capacity = capacity, retentionPeriod = retentionPeriod, 
             heartbeatDeadline = heartbeatDeadline, deleted=deleted)
 
+class FieldSpec(dict):
+    def __init__(self, type: FieldType, value: object):
+        dict.__init__(self, type = type, value = value)
+
 class SKVClient:
     "SKV DB client"
 
@@ -255,6 +275,15 @@ class SKVClient:
         if "response" in result:
             return status, Query(result["response"]["queryID"])
         return status, None
+
+    def get_key_string(self, fields: [FieldSpec]) -> Tuple[Status, str]:
+        url = self.http + "/api/GetKeyString"
+        req = {"fields": fields}
+        data = json.dumps(req)
+        r = requests.post(url, data=data)
+        result = r.json()
+        output = result["response"]["result"] if "response" in result else None
+        return Status(result), output
 
     def close_query(self, query: Query) -> Status:
         url = self.http + "/api/CloseQuery"

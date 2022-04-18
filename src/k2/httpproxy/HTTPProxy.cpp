@@ -362,73 +362,115 @@ seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handle
     });
 }
 
-seastar::future<std::tuple<k2::Status, CreateQueryResponse>> HTTPProxy::_handleCreateQuery(CreateQueryRequest&& request) {
-    return _client.createQuery(request.collectionName, request.schemaName)
-    .then([this, req=std::move(request)] (auto&& result) mutable {
+inline seastar::future<nlohmann::json> JsonResponse(Status&& status) {
+    nlohmann::json resp;
+    resp["status"] = status;
+    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+}
+
+inline seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
+    nlohmann::json jsonResponse;
+    jsonResponse["status"] = status;
+    jsonResponse["response"] = std::move(response);
+    return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
+}
+
+// Get FieldToKeyString value for a type
+template <class T> void getEscapedString(SchemaField& field, nlohmann::json& jsonval,  String& out) {
+    T val;
+    (void)field;
+    if constexpr  (std::is_same_v<T, std::decimal::decimal64>
+        || std::is_same_v<T, std::decimal::decimal128>) {
+        throw k2::dto::TypeMismatchException("decimal type not supported with JSON interface");
+    } else {
+        jsonval.get_to(val);
+        out = FieldToKeyString<T>(val);
+    }
+}
+
+// Convert [{type: "FieldType", value: "value"}..] to string that can be used in
+// collection range end
+seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
+    String output;
+    if (!request.contains("fields"))
+        return JsonResponse(Status{400, "Invalid json"});
+
+    for (auto& record : request["fields"]) {
+        SchemaField field;
+        record.at("type").get_to(field.type);
+        String out;
+        K2_DTO_CAST_APPLY_FIELD_VALUE(getEscapedString, field, record["value"], out);
+        output += out;
+    }
+    return JsonResponse(Status{200, "success"}, nlohmann::json{{"result", output}});
+}
+
+
+seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& jsonReq) {
+    std::string collectionName;
+    std::string schemaName;
+
+    try {
+        jsonReq.at("collectionName").get_to(collectionName);
+        jsonReq.at("schemaName").get_to(schemaName);
+    } catch(...) {
+        return JsonResponse(Status{400, "Bad json for query request"});
+    }
+
+    return _client.createQuery(collectionName, schemaName)
+    .then([this, req=std::move(jsonReq)] (auto&& result) mutable {
         if(!result.status.is2xxOK()) {
-            return RPCResponse(std::move(result.status), CreateQueryResponse{0});
+            return JsonResponse(std::move(result.status));
         }
         K2LOG_D(log::httpproxy, "begin query {}", result);
-        if (!req.startScanRecord.is_null()) {
-            serializeRecordFromJSON(result.query.startScanRecord, std::move(req.startScanRecord));
+        if (req.contains("startScanRecord")) {
+            serializeRecordFromJSON(result.query.startScanRecord, std::move(req.at("startScanRecord")));
         }
-        if (!req.endScanRecord.is_null()) {
-            serializeRecordFromJSON(result.query.endScanRecord, std::move(req.endScanRecord));
+        if (req.contains("endScanRecord")) {
+            serializeRecordFromJSON(result.query.endScanRecord, std::move(req.at("endScanRecord")));
         }
-        if (req.limit != 0) {
-            result.query.setLimit(req.limit);
+        if (req.contains("limit")) {
+            result.query.setLimit(req["limit"]);
         }
-        if (req.reverse) {
-            result.query.setReverseDirection(req.reverse);
+        if (req.contains("reverse")) {
+            result.query.setReverseDirection(req["reverse"]);
         }
         _queries[_queryID++] = std::move(result.query);
-        return RPCResponse(std::move(result.status), CreateQueryResponse{_queryID - 1});
+        nlohmann::json resp{{"queryID", _queryID - 1}};
+        return JsonResponse(std::move(result.status), std::move(resp));
     });
 }
 
-void to_json(nlohmann::json& j, const QueryResponse& q) {
-    j = nlohmann::json{{"records", q.records} };
-    j["done"] = q.done;
-}
+seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq) {
+    uint64_t txnID;
+    uint64_t queryID;
 
-void from_json(const nlohmann::json& j, CreateQueryRequest& q) {
-    j.at("collectionName").get_to(q.collectionName);
-    j.at("schemaName").get_to(q.schemaName);
+    try {
+        jsonReq.at("txnID").get_to(txnID);
+        jsonReq.at("queryID").get_to(queryID); 
+    } catch(...) {
+        return JsonResponse(Status{400, "Bad json for query request"});
+    }
+    if (_txns.find(txnID) == _txns.end()) {
+        return JsonResponse(Status{400, "Could not find txnID for query request"});
+    }
+    if (_queries.find(queryID) == _queries.end()) {
+        return JsonResponse(Status{400, "Could not find queryID for query request"});
+    }
 
-    if (j.contains("startScanRecord")) {
-        q.startScanRecord = j.at("startScanRecord");
-    }
-    if (j.contains("endScanRecord")) {
-        q.endScanRecord = j.at("endScanRecord");
-    }
-    if (j.contains("limit")) {
-        j.at("limit").get_to(q.limit);
-    }
-    if (j.contains("reverse")) {
-        j.at("reverse").get_to(q.reverse);
-    }
-}
-
-seastar::future<std::tuple<k2::Status, QueryResponse>> HTTPProxy::_handleQuery(QueryRequest&& request) {
-    if (_txns.find(request.txnID) == _txns.end()) {
-        return RPCResponse(Status{400, "Could not find txnID for query request"}, QueryResponse());
-    }
-    if (_queries.find(request.queryID) == _queries.end()) {
-        return RPCResponse(Status{400, "Could not find queryID for query request"}, QueryResponse());
-    }
-    return _txns[request.txnID].query(_queries[request.queryID])
-    .then([this, req=std::move(request)](QueryResult&& result) {
+    return _txns[txnID].query(_queries[queryID])
+    .then([this, queryID](QueryResult&& result) {
         if(!result.status.is2xxOK()) {
-            return RPCResponse(std::move(result.status),  QueryResponse());
+            return JsonResponse(std::move(result.status));
         }
-        QueryResponse response;
+        std::vector<nlohmann::json> records; 
         for (auto& record: result.records) {
-            response.records.push_back(serializeJSONFromRecord(record));
+            records.push_back(serializeJSONFromRecord(record));
         }
-        if (_queries[req.queryID].isDone()) {
-            response.done = true;
-        }
-        return RPCResponse(std::move(result.status), std::move(response));
+        nlohmann::json resp;
+        resp["records"] = std::move(records);
+        resp["done"] = _queries[queryID].isDone();
+        return JsonResponse(std::move(result.status), std::move(resp));
     });
 }
 
@@ -455,6 +497,16 @@ void HTTPProxy::_registerAPI() {
     api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
         return _handleWrite(std::move(request));
     });
+    api_server.registerRawAPIObserver("GetKeyString", "get range end", [this](nlohmann::json&& request) {
+        return _handleGetKeyString(std::move(request));
+    });
+    api_server.registerRawAPIObserver("Query", "query", [this](nlohmann::json&& request) {
+        return _handleQuery(std::move(request));
+    });
+    api_server.registerRawAPIObserver("CreateQuery", "create query", [this](nlohmann::json&& request) {
+        return _handleCreateQuery(std::move(request));
+    });
+
 
     api_server.registerAPIObserver<GetSchemaRequest, Schema>("GetSchema",
         "get schema",  [this] (GetSchemaRequest&& request) {
@@ -467,14 +519,6 @@ void HTTPProxy::_registerAPI() {
     api_server.registerAPIObserver<CollectionCreateRequest, CollectionCreateResponse>("CreateCollection",
         "create collection",  [this] (CollectionCreateRequest&& request) {
         return _handleCreateCollection(std::move(request));
-    });
-    api_server.registerAPIObserver<CreateQueryRequest, CreateQueryResponse>("CreateQuery",
-        "create query",  [this] (CreateQueryRequest&& request) {
-        return _handleCreateQuery(std::move(request));
-    });
-    api_server.registerAPIObserver<QueryRequest, QueryResponse>("Query",
-        "query",  [this] (QueryRequest&& request) {
-        return _handleQuery(std::move(request));
     });
     api_server.registerAPIObserver<CloseQueryRequest, EmptyResponse>("CloseQuery",
         "query",  [this] (CloseQueryRequest&& request) {

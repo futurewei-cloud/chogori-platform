@@ -27,46 +27,6 @@ Copyright(c) 2022 Futurewei Cloud
 
 namespace k2 {
 
-// Request to create and configure a query
-struct CreateQueryRequest {
-    String collectionName;
-    String schemaName;
-
-    // After parsing, store json instead of SKVRecord as skvrecord
-    // not compatible with seastar future.
-    nlohmann::json startScanRecord;
-    nlohmann::json endScanRecord;
-    int32_t limit = 0;
-    bool reverse = false;
-};
-
-// Use custom parser as nlohmann::json not supported by K2_PAYLOAD_FIELDS macros
-void from_json(const nlohmann::json& j, CreateQueryRequest& q);
-
-struct CreateQueryResponse {
-    uint64_t queryID;
-
-    K2_PAYLOAD_FIELDS(queryID);
-    K2_DEF_FMT(CreateQueryResponse, queryID);
-};
-
-struct QueryRequest {
-    uint64_t txnID;
-    uint64_t queryID;
-
-    K2_PAYLOAD_FIELDS(txnID, queryID);
-    K2_DEF_FMT(QueryRequest, txnID, queryID);
-};
-
-// Use custom serializer for response as SKVRecords doesn't have
-// serializer defined
-struct QueryResponse {
-    std::vector<nlohmann::json> records;
-    bool done;
-};
-
-void to_json(nlohmann::json& j, const QueryResponse& q);
-
 struct CloseQueryRequest {
     uint64_t queryID;
 
@@ -95,6 +55,9 @@ private:
     seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
+    seastar::future<nlohmann::json> _handleGetKeyString(nlohmann::json&& request);
+    seastar::future<nlohmann::json> _handleCreateQuery(nlohmann::json&& request);
+    seastar::future<nlohmann::json> _handleQuery(nlohmann::json&& request);
 
     seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
         dto::CreateSchemaRequest&& request);
@@ -102,10 +65,6 @@ private:
         dto::GetSchemaRequest&& request);
     seastar::future<std::tuple<k2::Status, dto::CollectionCreateResponse>> _handleCreateCollection(
         dto::CollectionCreateRequest&& request);
-    seastar::future<std::tuple<k2::Status, CreateQueryResponse>> _handleCreateQuery(
-        CreateQueryRequest&& request);
-    seastar::future<std::tuple<k2::Status, QueryResponse>> _handleQuery(
-        QueryRequest&& request);
     seastar::future<std::tuple<k2::Status, EmptyResponse>> _handleCloseQuery(
         CloseQueryRequest&& request);
 

@@ -29,7 +29,7 @@ import requests, json
 from urllib.parse import urlparse
 from skvclient import (Status, DBLoc, Txn, FieldType, SchemaField,
     Schema, CollectionCapacity, HashScheme, StorageDriver,
-    CollectionMetadata, SKVClient)
+    CollectionMetadata, SKVClient, FieldSpec)
 from datetime import timedelta
 
 parser = argparse.ArgumentParser()
@@ -328,9 +328,17 @@ class TestBasicTxn(unittest.TestCase):
             capacity = CollectionCapacity(minNodes = 2),
             retentionPeriod = int(timedelta(hours=5).total_seconds()*SEC_TO_MICRO)
         )
+
+        status, endspec = db.get_key_string([
+            FieldSpec(FieldType.STRING, "default"),
+            FieldSpec(FieldType.STRING, "d")])
+        self.assertEqual(status.code, 200, msg=status.message)
+        # Not working
+        # self.assertEqual(endspec, "\0x00\0x01default\0x00\0x01d\0x00\0x01")
+
         # TODO: Have range ends calculated by python or http api.
         status = db.create_collection(metadata,
-            rangeEnds = ["0x01d\0x00\0x01", ""])
+            rangeEnds = ["\0x00\0x01default\0x00\0x01d\0x00\0x01", ""])
         self.assertEqual(status.code, 200, msg=status.message)
 
         schema = Schema(name='query_test', version=1,
