@@ -260,7 +260,8 @@ class SKVClient:
         return status
 
     def create_query(self, collectionName: str,
-        schemaName: str, start: dict = None, end: dict = None) -> Tuple[Status, Query]:
+        schemaName: str, start: dict = None, end: dict = None,
+        limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
         url = self.http + "/api/CreateQuery"
         data = {"collectionName": collectionName,
             "schemaName": schemaName}
@@ -268,6 +269,10 @@ class SKVClient:
             data["startScanRecord"] = start
         if end:
             data["endScanRecord"] = end
+        if limit > 0:
+            data["limit"] = limit
+        if reverse:
+            data["reverse"] = reverse
 
         r = requests.post(url, data=json.dumps(data))
         result = r.json()

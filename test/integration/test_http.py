@@ -334,16 +334,17 @@ class TestBasicTxn(unittest.TestCase):
             FieldSpec(FieldType.STRING, "d")])
         self.assertEqual(status.code, 200, msg=status.message)
         # Not working
-        # self.assertEqual(endspec, "\0x00\0x01default\0x00\0x01d\0x00\0x01")
+        self.assertEqual(endspec, "^01default^00^01^01d^00^01")
 
         # TODO: Have range ends calculated by python or http api.
         status = db.create_collection(metadata,
-            rangeEnds = ["\0x00\0x01default\0x00\0x01d\0x00\0x01", ""])
+            rangeEnds = [endspec, ""])
         self.assertEqual(status.code, 200, msg=status.message)
 
         schema = Schema(name='query_test', version=1,
             fields=[
                 SchemaField(FieldType.STRING, 'partition'),
+                SchemaField(FieldType.STRING, 'partition1'),                
                 SchemaField(FieldType.STRING, 'range'),
                 SchemaField(FieldType.STRING, 'data1')],
             partitionKeyFields=[0, 1], rangeKeyFields=[2])
@@ -351,10 +352,9 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 200, msg=status.message)
 
         # Create a location object
-        loc = DBLoc(partition_key_name="partition", range_key_name="range",
-            partition_key="ptestq", range_key="rtestq",
+        loc = DBLoc(partition_key_name=["partition", "partition1"], range_key_name="range",
+            partition_key=["default", "a"], range_key="rtestq",
             schema="query_test", coll="query_collection", schema_version=1)
-        additional_data =  { "data1" :"dataq"}
 
         # Populate initial data, Begin Txn
         status, txn = db.begin_txn()
@@ -363,10 +363,18 @@ class TestBasicTxn(unittest.TestCase):
         # Write initial data
         status = txn.write(loc,  { "data1" :"dataq"})
         self.assertEqual(status.code, 201, msg=status.message)
+        status, out = txn.read(loc)
+        self.assertEqual(status.code, 200, msg=status.message)
+        record1 = {"partition": "default", "partition1": "a", "range" : "rtestq", "data1" : "dataq"}        
+        self.assertEqual(out, record1)
 
-        status = txn.write(loc.get_new(partition_key="apq1", range_key="arq1"),
-             { "data1" :"adq1"})
+        loc1 = loc.get_new(partition_key=["default", "h"], range_key="arq1")
+        status = txn.write(loc1, { "data1" :"adq1"})
         self.assertEqual(status.code, 201, msg=status.message)
+        status, out = txn.read(loc1)
+        self.assertEqual(status.code, 200, msg=status.message)
+        record2 = {"partition": "default", "partition1": "h", "range" : "arq1", "data1" : "adq1"}
+        self.assertEqual(out, record2)
 
         # Commit initial data
         status = txn.end()
@@ -375,30 +383,51 @@ class TestBasicTxn(unittest.TestCase):
         status, txn = db.begin_txn()
         self.assertEqual(status.code, 201)
 
-        all_records = [
-            {"partition": "apq1", "range" : "arq1", "data1" : "adq1"},
-            {"partition": "ptestq", "range" : "rtestq","data1" : "dataq"}
-        ]
+        all_records = [record1, record2]
 
-        status, query_id = db.create_query("query_collection","query_test")
+        status, query_id = db.create_query("query_collection", "query_test")
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records)
 
-        status, query_id = db.create_query("query_collection","query_test",
-            start = {"partition": "ptestq"})
+        status, query_id = db.create_query("query_collection", "query_test",
+            start = {"partition": "default", "partition1": "h"})
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records[1:])
 
-        status, query_id = db.create_query("query_collection","query_test",
-            end = {"partition": "ptestq"})
+        status, query_id = db.create_query("query_collection", "query_test",
+            end = {"partition": "default", "partition1": "h"})
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records[:1])
+
+        status, query_id = db.create_query("query_collection", "query_test", limit = 1)
+        self.assertEqual(status.code, 200, msg=status.message)
+        status, records = txn.queryAll(query_id)
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(records, all_records[:1])
+
+        status, query_id = db.create_query("query_collection", "query_test", reverse = True)
+        self.assertEqual(status.code, 200, msg=status.message)
+        status, records = txn.queryAll(query_id)
+        self.assertEqual(status.code, 200, msg=status.message)
+        copied = all_records.copy()
+        copied.reverse()
+        self.assertEqual(records, copied)
+
+        status, query_id = db.create_query("query_collection", "query_test",
+            limit = 1, reverse = True)
+        self.assertEqual(status.code, 200, msg=status.message)
+        status, records = txn.queryAll(query_id)
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(records,  all_records[1:])
+
+        status = txn.end()
+        self.assertEqual(status.code, 200)
 
 del sys.argv[1:]
 unittest.main()
