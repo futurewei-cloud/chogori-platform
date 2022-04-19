@@ -364,19 +364,19 @@ seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handle
 
 seastar::future<nlohmann::json> JsonResponse(Status&& status) {
     nlohmann::json resp;
-    resp["status"] = status;
+    resp["status"] = std::move(status);
     return seastar::make_ready_future<nlohmann::json>(std::move(resp));
 }
 
 seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
     nlohmann::json jsonResponse;
-    jsonResponse["status"] = status;
+    jsonResponse["status"] = std::move(status);
     jsonResponse["response"] = std::move(response);
     return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
 }
 
 // Get FieldToKeyString value for a type
-template <class T> void getEscapedString(SchemaField& field, nlohmann::json& jsonval,  String& out) {
+template <class T> void getEscapedString(const SchemaField& field, const nlohmann::json& jsonval,  String& out) {
     T val;
     (void)field;
     if constexpr  (std::is_same_v<T, std::decimal::decimal64>
@@ -392,7 +392,7 @@ template <class T> void getEscapedString(SchemaField& field, nlohmann::json& jso
 seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
     String output;
     if (!request.contains("fields"))
-        return JsonResponse(Status{400, "Invalid json"});
+        return JsonResponse(Statuses::S400_Bad_Request("Invalid json"));
 
     for (auto& record : request["fields"]) {
         SchemaField field;
@@ -401,7 +401,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& 
         K2_DTO_CAST_APPLY_FIELD_VALUE(getEscapedString, field, record["value"], out);
         output += out;
     }
-    return JsonResponse(Status{200, "success"}, nlohmann::json{{"result", output}});
+    return JsonResponse(Statuses::S200_OK(""), nlohmann::json{{"result", output}});
 }
 
 
@@ -413,7 +413,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         jsonReq.at("collectionName").get_to(collectionName);
         jsonReq.at("schemaName").get_to(schemaName);
     } catch(...) {
-        return JsonResponse(Status{400, "Bad json for query request"});
+        return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
 
     return _client.createQuery(collectionName, schemaName)
@@ -448,16 +448,19 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
         jsonReq.at("txnID").get_to(txnID);
         jsonReq.at("queryID").get_to(queryID); 
     } catch(...) {
-        return JsonResponse(Status{400, "Bad json for query request"});
+        return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
-    if (_txns.find(txnID) == _txns.end()) {
-        return JsonResponse(Status{400, "Could not find txnID for query request"});
+    auto txnIter = _txns.find(txnID);
+    if (txnIter == _txns.end()) {
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
     }
-    if (_queries.find(queryID) == _queries.end()) {
-        return JsonResponse(Status{400, "Could not find queryID for query request"});
+    auto queryIter = _queries.find(queryID);
+
+    if (queryIter == _queries.end()) {
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find queryID for query request"));
     }
 
-    return _txns[txnID].query(_queries[queryID])
+    return txnIter->second.query(queryIter->second)
     .then([this, queryID](QueryResult&& result) {
         if(!result.status.is2xxOK()) {
             return JsonResponse(std::move(result.status));
