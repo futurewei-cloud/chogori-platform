@@ -148,7 +148,7 @@ class Txn:
             if status.code != 200:
                 return status, records
             records += r
-        status = self._client.close_query(query)
+
         return status, records
 
     def end(self, commit=True):
@@ -269,7 +269,7 @@ class SKVClient:
             data["startScanRecord"] = start
         if end:
             data["endScanRecord"] = end
-        if limit > 0:
+        if limit:
             data["limit"] = limit
         if reverse:
             data["reverse"] = reverse
@@ -289,10 +289,3 @@ class SKVClient:
         result = r.json()
         output = result["response"]["result"] if "response" in result else None
         return Status(result), output
-
-    def close_query(self, query: Query) -> Status:
-        url = self.http + "/api/CloseQuery"
-        data = {"queryID": query.query_id}
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        return Status(result)

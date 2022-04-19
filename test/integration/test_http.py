@@ -333,7 +333,6 @@ class TestBasicTxn(unittest.TestCase):
             FieldSpec(FieldType.STRING, "default"),
             FieldSpec(FieldType.STRING, "d")])
         self.assertEqual(status.code, 200, msg=status.message)
-        # Not working
         self.assertEqual(endspec, "^01default^00^01^01d^00^01")
 
         # TODO: Have range ends calculated by python or http api.
@@ -344,7 +343,7 @@ class TestBasicTxn(unittest.TestCase):
         schema = Schema(name='query_test', version=1,
             fields=[
                 SchemaField(FieldType.STRING, 'partition'),
-                SchemaField(FieldType.STRING, 'partition1'),                
+                SchemaField(FieldType.STRING, 'partition1'),
                 SchemaField(FieldType.STRING, 'range'),
                 SchemaField(FieldType.STRING, 'data1')],
             partitionKeyFields=[0, 1], rangeKeyFields=[2])
@@ -365,7 +364,7 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 201, msg=status.message)
         status, out = txn.read(loc)
         self.assertEqual(status.code, 200, msg=status.message)
-        record1 = {"partition": "default", "partition1": "a", "range" : "rtestq", "data1" : "dataq"}        
+        record1 = {"partition": "default", "partition1": "a", "range" : "rtestq", "data1" : "dataq"}
         self.assertEqual(out, record1)
 
         loc1 = loc.get_new(partition_key=["default", "h"], range_key="arq1")
@@ -426,8 +425,31 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records,  all_records[1:])
 
-        status = txn.end()
-        self.assertEqual(status.code, 200)
+        # Send reverse with invalid type, should fail with type error
+        status, query_id = db.create_query("query_collection", "query_test",
+            limit = 1, reverse = 5)
+        self.assertEqual(status.code, 500, msg=status.message)
+        self.assertIn("type_error", status.message, msg=status.message)
+
+        # Send limit with invalid type, should fail with type error
+        status, query_id = db.create_query("query_collection", "query_test",
+            limit = "test", reverse = False)
+        self.assertEqual(status.code, 500, msg=status.message)
+        self.assertIn("type_error", status.message, msg=status.message)
+
+    def test_key_string(self):
+        db = SKVClient(args.http)
+        field1 = FieldSpec(FieldType.STRING, "default")
+        field2 = FieldSpec(FieldType.STRING, "d\x00ef")
+        status, endspec = db.get_key_string([field1, field2])
+        self.assertEqual(status.code, 200, msg=status.message)
+        print(field2)
+        self.assertEqual(endspec, "^01default^00^01^01d^00^ffef^00^01")
+
+        field3 = FieldSpec(FieldType.INT32T, 10)
+        status, endspec = db.get_key_string([field1, field3])
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(endspec, "^01default^00^01^02^03^00^0a^00^01")
 
 del sys.argv[1:]
 unittest.main()

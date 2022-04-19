@@ -27,20 +27,6 @@ Copyright(c) 2022 Futurewei Cloud
 
 namespace k2 {
 
-struct CloseQueryRequest {
-    uint64_t queryID;
-
-    K2_PAYLOAD_FIELDS(queryID);
-    K2_DEF_FMT(CloseQueryRequest, queryID);
-};
-
-// Will use this struct for any api returning empty response.
-struct EmptyResponse {
-    K2_PAYLOAD_EMPTY;
-    K2_DEF_FMT(EmptyResponse);
-};
-
-
 class HTTPProxy {
 public:  // application lifespan
     HTTPProxy();
@@ -65,9 +51,6 @@ private:
         dto::GetSchemaRequest&& request);
     seastar::future<std::tuple<k2::Status, dto::CollectionCreateResponse>> _handleCreateCollection(
         dto::CollectionCreateRequest&& request);
-    seastar::future<std::tuple<k2::Status, EmptyResponse>> _handleCloseQuery(
-        CloseQueryRequest&& request);
-
 
     void _registerAPI();
     void _registerMetrics();

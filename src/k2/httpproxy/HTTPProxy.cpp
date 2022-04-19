@@ -362,13 +362,13 @@ seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handle
     });
 }
 
-inline seastar::future<nlohmann::json> JsonResponse(Status&& status) {
+seastar::future<nlohmann::json> JsonResponse(Status&& status) {
     nlohmann::json resp;
     resp["status"] = status;
     return seastar::make_ready_future<nlohmann::json>(std::move(resp));
 }
 
-inline seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
+seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
     nlohmann::json jsonResponse;
     jsonResponse["status"] = status;
     jsonResponse["response"] = std::move(response);
@@ -388,8 +388,7 @@ template <class T> void getEscapedString(SchemaField& field, nlohmann::json& jso
     }
 }
 
-// Convert [{type: "FieldType", value: "value"}..] to string that can be used in
-// collection range end
+// Convert [{type: "FieldType", value: "value"}, ..] to string that can be used in collection range end
 seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
     String output;
     if (!request.contains("fields"))
@@ -463,22 +462,22 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
         if(!result.status.is2xxOK()) {
             return JsonResponse(std::move(result.status));
         }
-        std::vector<nlohmann::json> records; 
+
+        std::vector<nlohmann::json> records;
+        records.reserve(result.records.size());
         for (auto& record: result.records) {
             records.push_back(serializeJSONFromRecord(record));
         }
+
+        bool isDone = _queries[queryID].isDone();
+        if (isDone) {
+            _queries.erase(queryID);
+        }
         nlohmann::json resp;
         resp["records"] = std::move(records);
-        resp["done"] = _queries[queryID].isDone();
+        resp["done"] = isDone;
         return JsonResponse(std::move(result.status), std::move(resp));
     });
-}
-
-seastar::future<std::tuple<k2::Status, EmptyResponse>> HTTPProxy::_handleCloseQuery(CloseQueryRequest&& request) {
-    auto num_erased = _queries.erase(request.queryID);
-    return RPCResponse(num_erased > 0 ?
-        Status{200, "Successful"} : Status{400, "Could not find queryID"},
-        EmptyResponse{});
 }
 
 void HTTPProxy::_registerAPI() {
@@ -520,11 +519,6 @@ void HTTPProxy::_registerAPI() {
         "create collection",  [this] (CollectionCreateRequest&& request) {
         return _handleCreateCollection(std::move(request));
     });
-    api_server.registerAPIObserver<CloseQueryRequest, EmptyResponse>("CloseQuery",
-        "query",  [this] (CloseQueryRequest&& request) {
-        return _handleCloseQuery(std::move(request));
-    });
-
 }
 
 void HTTPProxy::_registerMetrics() {
