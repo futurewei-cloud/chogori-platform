@@ -362,6 +362,127 @@ seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handle
     });
 }
 
+seastar::future<nlohmann::json> JsonResponse(Status&& status) {
+    nlohmann::json resp;
+    resp["status"] = std::move(status);
+    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+}
+
+seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
+    nlohmann::json jsonResponse;
+    jsonResponse["status"] = std::move(status);
+    jsonResponse["response"] = std::move(response);
+    return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
+}
+
+// Get FieldToKeyString value for a type
+template <class T> void getEscapedString(const SchemaField& field, const nlohmann::json& jsonval,  String& out) {
+    T val;
+    (void)field;
+    if constexpr  (std::is_same_v<T, std::decimal::decimal64>
+        || std::is_same_v<T, std::decimal::decimal128>) {
+        throw k2::dto::TypeMismatchException("decimal type not supported with JSON interface");
+    } else {
+        jsonval.get_to(val);
+        out = FieldToKeyString<T>(val);
+    }
+}
+
+// Convert [{type: "FieldType", value: "value"}, ..] to string that can be used in collection range end
+seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
+    String output;
+    if (!request.contains("fields"))
+        return JsonResponse(Statuses::S400_Bad_Request("Invalid json"));
+
+    for (auto& record : request["fields"]) {
+        SchemaField field;
+        record.at("type").get_to(field.type);
+        String out;
+        K2_DTO_CAST_APPLY_FIELD_VALUE(getEscapedString, field, record["value"], out);
+        output += out;
+    }
+    return JsonResponse(Statuses::S200_OK(""), nlohmann::json{{"result", output}});
+}
+
+
+seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& jsonReq) {
+    std::string collectionName;
+    std::string schemaName;
+
+    try {
+        jsonReq.at("collectionName").get_to(collectionName);
+        jsonReq.at("schemaName").get_to(schemaName);
+    } catch(...) {
+        return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
+    }
+
+    return _client.createQuery(collectionName, schemaName)
+    .then([this, req=std::move(jsonReq)] (auto&& result) mutable {
+        if(!result.status.is2xxOK()) {
+            return JsonResponse(std::move(result.status));
+        }
+        K2LOG_D(log::httpproxy, "begin query {}", result);
+        if (req.contains("startScanRecord")) {
+            serializeRecordFromJSON(result.query.startScanRecord, std::move(req.at("startScanRecord")));
+        }
+        if (req.contains("endScanRecord")) {
+            serializeRecordFromJSON(result.query.endScanRecord, std::move(req.at("endScanRecord")));
+        }
+        if (req.contains("limit")) {
+            result.query.setLimit(req["limit"]);
+        }
+        if (req.contains("reverse")) {
+            result.query.setReverseDirection(req["reverse"]);
+        }
+        _queries[_queryID++] = std::move(result.query);
+        nlohmann::json resp{{"queryID", _queryID - 1}};
+        return JsonResponse(std::move(result.status), std::move(resp));
+    });
+}
+
+seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq) {
+    uint64_t txnID;
+    uint64_t queryID;
+
+    try {
+        jsonReq.at("txnID").get_to(txnID);
+        jsonReq.at("queryID").get_to(queryID); 
+    } catch(...) {
+        return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
+    }
+    auto txnIter = _txns.find(txnID);
+    if (txnIter == _txns.end()) {
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
+    }
+    auto queryIter = _queries.find(queryID);
+
+    if (queryIter == _queries.end()) {
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find queryID for query request"));
+    }
+
+    return txnIter->second.query(queryIter->second)
+    .then([this, queryID](QueryResult&& result) {
+        if(!result.status.is2xxOK()) {
+            return JsonResponse(std::move(result.status));
+        }
+
+        std::vector<nlohmann::json> records;
+        records.reserve(result.records.size());
+        for (auto& record: result.records) {
+            records.push_back(serializeJSONFromRecord(record));
+        }
+
+        bool isDone = _queries[queryID].isDone();
+        if (isDone) {
+            _queries.erase(queryID);
+        }
+        nlohmann::json resp;
+        resp["records"] = std::move(records);
+        resp["done"] = isDone;
+        return JsonResponse(std::move(result.status), std::move(resp));
+    });
+}
+
 void HTTPProxy::_registerAPI() {
     K2LOG_I(k2::log::httpproxy, "Registering HTTP API observers...");
     k2::APIServer& api_server = k2::AppBase().getDist<k2::APIServer>().local();
@@ -378,6 +499,16 @@ void HTTPProxy::_registerAPI() {
     api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
         return _handleWrite(std::move(request));
     });
+    api_server.registerRawAPIObserver("GetKeyString", "get range end", [this](nlohmann::json&& request) {
+        return _handleGetKeyString(std::move(request));
+    });
+    api_server.registerRawAPIObserver("Query", "query", [this](nlohmann::json&& request) {
+        return _handleQuery(std::move(request));
+    });
+    api_server.registerRawAPIObserver("CreateQuery", "create query", [this](nlohmann::json&& request) {
+        return _handleCreateQuery(std::move(request));
+    });
+
 
     api_server.registerAPIObserver<GetSchemaRequest, Schema>("GetSchema",
         "get schema",  [this] (GetSchemaRequest&& request) {
@@ -391,7 +522,6 @@ void HTTPProxy::_registerAPI() {
         "create collection",  [this] (CollectionCreateRequest&& request) {
         return _handleCreateCollection(std::move(request));
     });
-
 }
 
 void HTTPProxy::_registerMetrics() {

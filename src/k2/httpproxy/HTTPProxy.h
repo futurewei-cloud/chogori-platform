@@ -41,6 +41,10 @@ private:
     seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
+    seastar::future<nlohmann::json> _handleGetKeyString(nlohmann::json&& request);
+    seastar::future<nlohmann::json> _handleCreateQuery(nlohmann::json&& request);
+    seastar::future<nlohmann::json> _handleQuery(nlohmann::json&& request);
+
     seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
         dto::CreateSchemaRequest&& request);
     seastar::future<std::tuple<k2::Status, dto::Schema>> _handleGetSchema(
@@ -70,7 +74,10 @@ private:
     bool _stopped = true;
     k2::K23SIClient _client;
     uint64_t _txnID = 0;
+    uint64_t _queryID = 0;
     std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
+    // Store in progress queries
+    std::unordered_map<uint64_t, Query> _queries;
     std::vector<seastar::future<>> _endFuts;
 };  // class HTTPProxy
 

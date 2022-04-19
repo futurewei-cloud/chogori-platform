@@ -27,6 +27,7 @@ import requests, json
 from urllib.parse import urlparse
 import copy
 from enum import Enum
+from typing import List
 
 class Status:
     "Status returned from HTTP Proxy"
@@ -71,6 +72,32 @@ class DBLoc:
         obj.__dict__.update(kwargs)
         return obj
 
+    # Get a data record from partition and range
+    # allowing multiple partitions or ranges
+    def get_fields(self) -> dict:
+        record = {}
+        if isinstance(self.partition_key_name, list):
+            for n, v in zip(self.partition_key_name, self.partition_key):
+                record[n] = v
+        else:
+            record[self.partition_key_name] = self.partition_key
+
+        if isinstance(self.range_key_name, list):
+            for n, v in zip(self.range_key_name, self.range_key):
+                record[n] = v
+        else:
+            record[self.range_key_name] = self.range_key
+
+        return record
+
+
+class Query:
+    def __init__(self, query_id: int):
+        self.query_id = query_id
+        self.done = False
+
+ListOfDict = List[dict]
+
 class Txn:
     "Transaction Object"
 
@@ -91,8 +118,7 @@ class Txn:
     def write(self, loc: DBLoc, additional_data={}) -> Status:
         "Write to dbloc"
         record = additional_data.copy()
-        record[loc.partition_key_name] = loc.partition_key
-        record[loc.range_key_name] = loc.range_key
+        record.update(loc.get_fields())
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self._txn_id, "schemaVersion": loc.schema_version,
             "record": record}
@@ -100,13 +126,30 @@ class Txn:
         return Status(result)
 
     def read(self, loc: DBLoc) -> Tuple[Status, object] :
-        record = {}
-        record[loc.partition_key_name] = loc.partition_key
-        record[loc.range_key_name] = loc.range_key
+        record = loc.get_fields()
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self._txn_id, "record": record}
         result = self._send_req("/api/Read", request)
         return Status(result), result.get("record")
+
+    def query(self, query: Query) -> Tuple[Status, ListOfDict]:
+        request = {"txnID" : self._txn_id, "queryID": query.query_id}
+        result = self._send_req("/api/Query", request)
+        recores:dict = []
+        if "response" in result:
+            query.done = result["response"]["done"]
+            records = result["response"]["records"]
+        return Status(result), records
+
+    def queryAll(self, query: Query) ->Tuple[Status, ListOfDict]:
+        records: [dict] = []
+        while not query.done:
+            status, r = self.query(query)
+            if status.code != 200:
+                return status, records
+            records += r
+
+        return status, records
 
     def end(self, commit=True):
         request = {"txnID": self._txn_id, "commit": commit}
@@ -162,6 +205,10 @@ class CollectionMetadata (dict):
             capacity = capacity, retentionPeriod = retentionPeriod, 
             heartbeatDeadline = heartbeatDeadline, deleted=deleted)
 
+class FieldSpec(dict):
+    def __init__(self, type: FieldType, value: object):
+        dict.__init__(self, type = type, value = value)
+
 class SKVClient:
     "SKV DB client"
 
@@ -204,11 +251,41 @@ class SKVClient:
             return status, schema
         return status, None
 
-    def create_collection(self, metadata: CollectionMetadata) -> Status:
+    def create_collection(self, metadata: CollectionMetadata, rangeEnds: [str] = []) -> Status:
         url = self.http + "/api/CreateCollection"
-        rangeEnds: [str] = []
         data = {"metadata": metadata, "rangeEnds": rangeEnds}
         r = requests.post(url, data=json.dumps(data))
         result = r.json()
         status = Status(result)
         return status
+
+    def create_query(self, collectionName: str,
+        schemaName: str, start: dict = None, end: dict = None,
+        limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
+        url = self.http + "/api/CreateQuery"
+        data = {"collectionName": collectionName,
+            "schemaName": schemaName}
+        if start:
+            data["startScanRecord"] = start
+        if end:
+            data["endScanRecord"] = end
+        if limit:
+            data["limit"] = limit
+        if reverse:
+            data["reverse"] = reverse
+
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        status = Status(result)
+        if "response" in result:
+            return status, Query(result["response"]["queryID"])
+        return status, None
+
+    def get_key_string(self, fields: [FieldSpec]) -> Tuple[Status, str]:
+        url = self.http + "/api/GetKeyString"
+        req = {"fields": fields}
+        data = json.dumps(req)
+        r = requests.post(url, data=data)
+        result = r.json()
+        output = result["response"]["result"] if "response" in result else None
+        return Status(result), output
