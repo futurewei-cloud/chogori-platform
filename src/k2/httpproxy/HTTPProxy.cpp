@@ -83,9 +83,7 @@ template <typename T>
 void serializeFieldFromRecord(const k2::SchemaField& field, k2::SKVRecord& record,
                                    nlohmann::json& jsonRecord) {
     std::optional<T> value = record.deserializeNext<T>();
-    if (!value.has_value()) {
-        jsonRecord[field.name] = nullptr;
-    } else {
+    if (value.has_value()) {
         jsonRecord[field.name] = *value;
     }
 }
@@ -94,9 +92,7 @@ template <>
 void serializeFieldFromRecord<k2::String>(const k2::SchemaField& field,
                                             k2::SKVRecord& record, nlohmann::json& jsonRecord) {
     std::optional<k2::String> value = record.deserializeNext<k2::String>();
-    if (!value.has_value()) {
-        jsonRecord[field.name] = nullptr;
-    } else {
+    if (value.has_value()) {
         std::string val_str = *value;
         jsonRecord[field.name] = val_str;
     }
@@ -437,6 +433,10 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         if (req.contains("filter")) {
              k2e::Expression filter = req["filter"];
              result.query.setFilterExpression(std::move(filter));
+        }
+        if (req.contains("projection")) {
+            std::vector<String> fieldNames = req.at("projection");
+            result.query.addProjection(std::move(fieldNames));
         }
         _queries[_queryID++] = std::move(result.query);
         nlohmann::json resp{{"queryID", _queryID - 1}};

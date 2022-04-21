@@ -346,7 +346,8 @@ class TestBasicTxn(unittest.TestCase):
                 SchemaField(FieldType.STRING, 'partition'),
                 SchemaField(FieldType.STRING, 'partition1'),
                 SchemaField(FieldType.STRING, 'range'),
-                SchemaField(FieldType.STRING, 'data1')],
+                SchemaField(FieldType.STRING, 'data1'),
+                SchemaField(FieldType.INT32T, 'data2')],                
             partitionKeyFields=[0, 1], rangeKeyFields=[2])
         status = db.create_schema("query_collection", schema)
         self.assertEqual(status.code, 200, msg=status.message)
@@ -357,9 +358,9 @@ class TestBasicTxn(unittest.TestCase):
             schema="query_test", coll="query_collection", schema_version=1)
 
         record1 = {"partition": "default", "partition1": "a",
-            "range" : "rtestq", "data1" : "dataq"}
+            "range" : "rtestq", "data1" : "dataq", "data2": 1}
         record2 = {"partition": "default", "partition1": "h",
-            "range" : "arq1", "data1" : "adq1"}
+            "range" : "arq1", "data1" : "adq1", "data2": 2}
         all_records = [record1, record2]
 
         # Populate initial data, Begin Txn
@@ -367,14 +368,14 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 201)
 
         # Write initial data
-        status = txn.write(loc,  { "data1" :"dataq"})
+        status = txn.write(loc,  { "data1" :"dataq", "data2": 1})
         self.assertEqual(status.code, 201, msg=status.message)
         status, out = txn.read(loc)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(out, record1)
 
         loc1 = loc.get_new(partition_key=["default", "h"], range_key="arq1")
-        status = txn.write(loc1, { "data1" :"adq1"})
+        status = txn.write(loc1, { "data1" :"adq1", "data2": 2})
         self.assertEqual(status.code, 201, msg=status.message)
         status, out = txn.read(loc1)
         self.assertEqual(status.code, 200, msg=status.message)
@@ -406,6 +407,16 @@ class TestBasicTxn(unittest.TestCase):
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, [record1])
+
+        # Same query with projection
+        status, query_id = db.create_query("query_collection",
+            "query_test", projection=["range", "data1"])
+        self.assertEqual(status.code, 200, msg=status.message)
+        status, records = txn.queryAll(query_id)
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(records, [
+            {"range" : "rtestq", "data1" : "dataq"},
+            {"range" : "arq1", "data1" : "adq1"}])
 
         status, query_id = db.create_query("query_collection", "query_test",
             start = {"partition": "default", "partition1": "h"})

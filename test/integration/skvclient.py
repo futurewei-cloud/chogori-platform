@@ -293,6 +293,7 @@ class SKVClient:
 
     def create_query(self, collectionName: str,
         schemaName: str, start: dict = None, end: dict = None,
+        projection: [str] = [],
         filter: Expression = None,
         limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
         url = self.http + "/api/CreateQuery"
@@ -308,6 +309,8 @@ class SKVClient:
             data["reverse"] = reverse
         if filter:
             data["filter"] = filter
+        if projection:
+            data["projection"] = projection
 
         r = requests.post(url, data=json.dumps(data))
         result = r.json()
