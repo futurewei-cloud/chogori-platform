@@ -135,7 +135,7 @@ class Txn:
     def query(self, query: Query) -> Tuple[Status, ListOfDict]:
         request = {"txnID" : self._txn_id, "queryID": query.query_id}
         result = self._send_req("/api/Query", request)
-        recores:dict = []
+        records:dict = []
         if "response" in result:
             query.done = result["response"]["done"]
             records = result["response"]["records"]

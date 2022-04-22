@@ -163,6 +163,18 @@ class TestBasicTxn(unittest.TestCase):
         status = txn.end()
         self.assertEqual(status.code, 400)
 
+        #  Write binary data write/read, should succeed
+        status, txn = db.begin_txn()
+        status = txn.write(loc, {"data": "da\x01ta\x001"})
+        self.assertEqual(status.code, 201)
+        status, record = txn.read(loc)
+        self.assertEqual(status.code, 200)
+        self.assertEqual(record["data"],"da\x01ta\x001")
+        self.assertEqual(record["partitionKey"], "ptest2")
+        self.assertEqual(record["rangeKey"], "rtest2")
+        status = txn.end()
+        self.assertEqual(status.code, 200)
+
         # Read write using bad Txn ID, Create a txn object with bad txn Id
         badTxn = Txn(db, 10000)
         status = badTxn.write(loc, additional_data)
@@ -347,7 +359,7 @@ class TestBasicTxn(unittest.TestCase):
                 SchemaField(FieldType.STRING, 'partition1'),
                 SchemaField(FieldType.STRING, 'range'),
                 SchemaField(FieldType.STRING, 'data1'),
-                SchemaField(FieldType.INT32T, 'data2')],                
+                SchemaField(FieldType.INT32T, 'data2')],
             partitionKeyFields=[0, 1], rangeKeyFields=[2])
         status = db.create_schema("query_collection", schema)
         self.assertEqual(status.code, 200, msg=status.message)
