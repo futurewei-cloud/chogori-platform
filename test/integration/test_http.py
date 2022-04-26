@@ -29,11 +29,12 @@ import requests, json
 from urllib.parse import urlparse
 from skvclient import (Status, DBLoc, Txn, FieldType, SchemaField,
     Schema, CollectionCapacity, HashScheme, StorageDriver,
-    CollectionMetadata, SKVClient, FieldSpec)
+    CollectionMetadata, SKVClient, FieldSpec, MetricsClient)
 from datetime import timedelta
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--http", help="HTTP API URL")
+parser.add_argument("--prometheus", default="http://localhost:8089", help="HTTP Proxy Prometheus port") 
 args = parser.parse_args()
 
 
@@ -450,6 +451,20 @@ class TestBasicTxn(unittest.TestCase):
         status, endspec = db.get_key_string([field1, field3])
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(endspec, "^01default^00^01^02^03^00^0a^00^01")
+
+    def test_metrics(self):
+        "Verify some metrics are populated"
+        mclient = MetricsClient(args.prometheus,
+            ["total_txns", "committed_txns"])
+
+        db = SKVClient(args.http)
+        prev = mclient.refresh()
+        status, txn = db.begin_txn()
+        txn.end()
+        curr = mclient.refresh()
+        self.assertEqual(curr.total_txns, prev.total_txns + 1)
+        self.assertEqual(curr.committed_txns, prev.committed_txns + 1)
+
 
 del sys.argv[1:]
 unittest.main()

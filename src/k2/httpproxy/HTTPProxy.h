@@ -60,6 +60,11 @@ private:
     k2::ExponentialHistogram _writeLatency;
     k2::ExponentialHistogram _txnLatency;
     k2::ExponentialHistogram _endLatency;
+    k2::ExponentialHistogram _queryLatency;
+    k2::ExponentialHistogram _createQueryLatency;
+    k2::ExponentialHistogram _getSchemaLatency;
+    k2::ExponentialHistogram _createSchemaLatency;
+    k2::ExponentialHistogram _createCollectionLatency;
 
     uint64_t _totalTxns=0;
     uint64_t _abortedTxns=0;

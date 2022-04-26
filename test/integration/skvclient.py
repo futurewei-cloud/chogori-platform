@@ -28,6 +28,7 @@ from urllib.parse import urlparse
 import copy
 from enum import Enum
 from typing import List
+import re
 
 class Status:
     "Status returned from HTTP Proxy"
@@ -289,3 +290,27 @@ class SKVClient:
         result = r.json()
         output = result["response"]["result"] if "response" in result else None
         return Status(result), output
+
+
+class MetricsSnapShot:
+    def _set_counter(self, text: str, name: str):
+        expr = "^HttpProxy_session_{}.*\s(\d+)".format(name)
+        match = re.search(expr, text, re.MULTILINE)
+        val = 0 if match is None else int(match.group(1))
+        setattr(self, name, val)
+
+
+class MetricsClient:
+    def __init__(self, url: str, counters: [str]):
+        self.http = url
+        self.counters = counters
+
+    def refresh(self) -> MetricsSnapShot:
+        url = self.http + "/metrics"
+        r = requests.get(url)
+        text = r.text
+        metrics = MetricsSnapShot()
+        for c in self.counters:
+            metrics._set_counter(text, c)
+        return metrics
+
