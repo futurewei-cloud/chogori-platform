@@ -163,18 +163,6 @@ class TestBasicTxn(unittest.TestCase):
         status = txn.end()
         self.assertEqual(status.code, 400)
 
-        #  Write binary data write/read, should succeed
-        status, txn = db.begin_txn()
-        status = txn.write(loc, {"data": "da\x01ta\x001"})
-        self.assertEqual(status.code, 201)
-        status, record = txn.read(loc)
-        self.assertEqual(status.code, 200)
-        self.assertEqual(record["data"],"da\x01ta\x001")
-        self.assertEqual(record["partitionKey"], "ptest2")
-        self.assertEqual(record["rangeKey"], "rtest2")
-        status = txn.end()
-        self.assertEqual(status.code, 200)
-
         # Read write using bad Txn ID, Create a txn object with bad txn Id
         badTxn = Txn(db, 10000)
         status = badTxn.write(loc, additional_data)
@@ -332,8 +320,7 @@ class TestBasicTxn(unittest.TestCase):
         status = db.create_schema("HTTPClient", schema)
         self.assertEqual(status.code, 403, msg=status.message)
 
-    def test_query(self):
-        db = SKVClient(args.http)
+    def create_query_schema(self, db):
         SEC_TO_MICRO = 1000000
         metadata = CollectionMetadata(name = 'query_collection',
             hashScheme = HashScheme("Range"),
@@ -363,6 +350,10 @@ class TestBasicTxn(unittest.TestCase):
             partitionKeyFields=[0, 1], rangeKeyFields=[2])
         status = db.create_schema("query_collection", schema)
         self.assertEqual(status.code, 200, msg=status.message)
+
+    def test_query(self):
+        db = SKVClient(args.http)
+        self.create_query_schema(db)
 
         # Create a location object
         loc = DBLoc(partition_key_name=["partition", "partition1"], range_key_name="range",
@@ -465,6 +456,19 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records,  all_records[1:])
 
+
+        filter = Expression(Operation(Operations.EQ),
+            values = [
+                Value("data1"),
+                Value(type=FieldType.STRING, literal="dataq")
+            ])
+        status, query_id = db.create_query("query_collection",
+            "query_test", filter=filter)
+        self.assertEqual(status.code, 200, msg=status.message)
+        status, records = txn.queryAll(query_id)
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(records, [record1])
+
         # Send reverse with invalid type, should fail with type error
         status, query_id = db.create_query("query_collection", "query_test",
             limit = 1, reverse = 5)
@@ -476,6 +480,47 @@ class TestBasicTxn(unittest.TestCase):
             limit = "test", reverse = False)
         self.assertEqual(status.code, 500, msg=status.message)
         self.assertIn("type_error", status.message, msg=status.message)
+        status = txn.end()
+
+        self.do_test_binary(db)
+
+    def do_test_binary(self, db):
+        # Create a location object
+        loc = DBLoc(partition_key_name=["partition", "partition1"], range_key_name="range",
+            partition_key=["default", "b"], range_key="rtestb",
+            schema="query_test", coll="query_collection", schema_version=1)
+        binary = "\xdb\xff\xdc\x00abc"
+        # record to compare with
+        record1 = {"partition": "default", "partition1": "b",
+            "range" : "rtestb", "data1" : binary, "data2": 3}
+
+        # additinal data to write
+        additional_data =  { "data1" : binary, "data2": 3}
+
+        #  Write binary data, write/read, should succeed
+        status, txn = db.begin_txn()
+        status = txn.write(loc, additional_data)
+        self.assertEqual(status.code, 201)
+        status, record = txn.read(loc)
+        self.assertEqual(status.code, 200)
+        self.assertEqual(record, record1)
+        status = txn.end()
+        self.assertEqual(status.code, 200)
+        # Do the same query but with filter data1=data1, should return only
+        # one result
+        status, txn = db.begin_txn()
+        filter = Expression(Operation(Operations.EQ),
+            values = [
+                Value("data1"),
+                Value(type=FieldType.STRING, literal=binary)
+            ])
+        status, query_id = db.create_query("query_collection",
+            "query_test", filter=filter)
+        self.assertEqual(status.code, 200, msg=status.message)
+        status, records = txn.queryAll(query_id)
+        self.assertEqual(status.code, 200, msg=status.message)
+        self.assertEqual(records, [record1])
+
 
     def test_key_string(self):
         db = SKVClient(args.http)
