@@ -39,6 +39,15 @@ template <class T> void setPayloadValue(Value& target,  const nlohmann::json& js
     }
 }
 
+// Specialization to to avoid hex decoding of k2::String
+template <>
+void setPayloadValue<k2::String>(Value& target,  const nlohmann::json& jsonval) {
+    std::string val;
+    // Use std::string to decode k2::String to avoid hex decoding
+    jsonval.get_to(val);
+    target.literal.write(val);    
+}
+
 void from_json(const nlohmann::json& j, Value& v) {
     v.fieldName = j.at("fieldName").get<k2::String>();
     if (v.fieldName.length() > 0) {

@@ -450,7 +450,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
 
     try {
         jsonReq.at("txnID").get_to(txnID);
-        jsonReq.at("queryID").get_to(queryID); 
+        jsonReq.at("queryID").get_to(queryID);
     } catch(...) {
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }

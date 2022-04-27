@@ -484,26 +484,14 @@ class TestBasicTxn(unittest.TestCase):
 
         self.do_test_binary(db)
 
-    def do_test_binary(self, db):
-        # Create a location object
-        loc = DBLoc(partition_key_name=["partition", "partition1"], range_key_name="range",
-            partition_key=["default", "b"], range_key="rtestb",
-            schema="query_test", coll="query_collection", schema_version=1)
-        binary = "\xdb\xff\xdc\x00abc"
-        # record to compare with
-        record1 = {"partition": "default", "partition1": "b",
-            "range" : "rtestb", "data1" : binary, "data2": 3}
-
-        # additinal data to write
-        additional_data =  { "data1" : binary, "data2": 3}
-
-        #  Write binary data, write/read, should succeed
+    def do_read_write_query(self, db, loc,
+        record_compare, additional_data, binary):
         status, txn = db.begin_txn()
         status = txn.write(loc, additional_data)
         self.assertEqual(status.code, 201)
         status, record = txn.read(loc)
         self.assertEqual(status.code, 200)
-        self.assertEqual(record, record1)
+        self.assertEqual(record, record_compare)
         status = txn.end()
         self.assertEqual(status.code, 200)
         # Do the same query but with filter data1=data1, should return only
@@ -519,8 +507,27 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
-        self.assertEqual(records, [record1])
+        self.assertEqual(records, [record_compare])
 
+    def do_test_binary(self, db):
+        # Create a location object
+        loc = DBLoc(partition_key_name=["partition", "partition1"], range_key_name="range",
+            partition_key=["default", "b"], range_key="rtestb",
+            schema="query_test", coll="query_collection", schema_version=1)
+        binary = "\xdb\xff\xdc\x00abc"
+        # record to compare with
+        record1 = {"partition": "default", "partition1": "b",
+            "range" : "rtestb", "data1" : binary, "data2": 3}
+        # additinal data to write
+        additional_data =  { "data1" : binary, "data2": 3}
+        self.do_read_write_query(db, loc, record1, additional_data, binary)
+
+        binary = "^01default^00^01^01d^00^ffef^00^01"
+        record2 = {"partition": "default", "partition1": "c",
+            "range" : "arq1", "data1" : binary, "data2": 3}
+        loc = loc.get_new(partition_key=["default", "c"], range_key="arq1")
+        additional_data =  { "data1" : binary, "data2": 3}
+        self.do_read_write_query(db, loc, record2, additional_data, binary)
 
     def test_key_string(self):
         db = SKVClient(args.http)
