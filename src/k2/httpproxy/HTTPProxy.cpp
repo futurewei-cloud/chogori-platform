@@ -549,7 +549,6 @@ void HTTPProxy::_registerAPI() {
 void HTTPProxy::_registerMetrics() {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
-    labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
 
     _metric_groups.add_group("session",
     {
