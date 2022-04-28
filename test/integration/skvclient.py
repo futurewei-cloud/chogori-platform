@@ -203,7 +203,7 @@ class CollectionMetadata (dict):
         retentionPeriod: int = 0, heartbeatDeadline: int = 0, deleted: bool = False):
         dict.__init__(self,
             name = name, hashScheme = hashScheme, storageDriver = storageDriver,
-            capacity = capacity, retentionPeriod = retentionPeriod, 
+            capacity = capacity, retentionPeriod = retentionPeriod,
             heartbeatDeadline = heartbeatDeadline, deleted=deleted)
 
 class FieldSpec(dict):
@@ -292,25 +292,49 @@ class SKVClient:
         return Status(result), output
 
 
+class Counter:
+    def __init__(self, module: str, context: str, name: str, short_name=None):
+        self.module = module
+        self.context = context
+        self.name = name
+        self.short_name = short_name if short_name else name
+
+class Histogram (Counter):
+    pass
+
 class MetricsSnapShot:
-    def _set_counter(self, text: str, name: str):
-        expr = "^HttpProxy_session_{}.*\s(\d+)".format(name)
+
+    def _set_counter(self, text: str, c: Counter):
+        name = f"{c.module}_{c.context}_{c.name}"
+        expr = f"^{name}.*\s(\d+)"
         match = re.search(expr, text, re.MULTILINE)
         val = 0 if match is None else int(match.group(1))
-        setattr(self, name, val)
+        setattr(self, c.short_name, val)
 
+    # format HttpProxy_K23SI_client_write_latency_bucket{le="9288586.978427",shard="0"} 7
+    def _set_histogram(self, text: str, h: Histogram):
+        search = f'{h.module}_{h.context}_{h.name}_bucket{{le="+Inf"'
+        escape = re.escape(search)
+        expr = f"^{escape}.*\s(\d+)"
+        match = re.search(expr, text, re.MULTILINE)
+        val = 0 if match is None else int(match.group(1))
+        setattr(self, h.short_name, val)
 
 class MetricsClient:
-    def __init__(self, url: str, counters: [str]):
+    def __init__(self, url: str,
+            metrices: [Counter]):
         self.http = url
-        self.counters = counters
+        self.metrices = metrices
 
     def refresh(self) -> MetricsSnapShot:
         url = self.http + "/metrics"
         r = requests.get(url)
         text = r.text
         metrics = MetricsSnapShot()
-        for c in self.counters:
-            metrics._set_counter(text, c)
+        for m in self.metrices:
+            if isinstance(m, Histogram):
+                metrics._set_histogram(text, m)
+            else:
+                metrics._set_counter(text, m)
         return metrics
 

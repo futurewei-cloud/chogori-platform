@@ -496,81 +496,39 @@ void HTTPProxy::_registerAPI() {
     k2::APIServer& api_server = k2::AppBase().getDist<k2::APIServer>().local();
 
     api_server.registerRawAPIObserver("BeginTxn", "Begin a txn, returning a numeric txn handle", [this](nlohmann::json&& request) {
-        k2::OperationLatencyReporter reporter(_readLatency);
-        return _handleBegin(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
+        return _handleBegin(std::move(request));
     });
     api_server.registerRawAPIObserver("EndTxn", "End a txn", [this](nlohmann::json&& request) {
-        k2::OperationLatencyReporter reporter(_endLatency);
-        return _handleEnd(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
-
+        return _handleEnd(std::move(request));
     });
     api_server.registerRawAPIObserver("Read", "handle read", [this](nlohmann::json&& request) {
-        k2::OperationLatencyReporter reporter(_readLatency);
-        return _handleRead(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
-
+        return _handleRead(std::move(request));
     });
     api_server.registerRawAPIObserver("Write", "handle write", [this](nlohmann::json&& request) {
-        k2::OperationLatencyReporter reporter(_writeLatency);
-        return _handleWrite(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
-
+        return _handleWrite(std::move(request));
     });
     api_server.registerRawAPIObserver("GetKeyString", "get range end", [this](nlohmann::json&& request) {
         return _handleGetKeyString(std::move(request));
     });
     api_server.registerRawAPIObserver("Query", "query", [this](nlohmann::json&& request) {
-        k2::OperationLatencyReporter reporter(_queryLatency);
-        return _handleQuery(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
-
+        return _handleQuery(std::move(request));
     });
     api_server.registerRawAPIObserver("CreateQuery", "create query", [this](nlohmann::json&& request) {
-        k2::OperationLatencyReporter reporter(_createQueryLatency);
-        return _handleCreateQuery(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
-
+        return _handleCreateQuery(std::move(request));
     });
 
 
     api_server.registerAPIObserver<GetSchemaRequest, Schema>("GetSchema",
         "get schema",  [this] (GetSchemaRequest&& request) {
-        k2::OperationLatencyReporter reporter(_getSchemaLatency);
-        return _handleGetSchema(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
+        return _handleGetSchema(std::move(request));
     });
     api_server.registerAPIObserver<CreateSchemaRequest, CreateSchemaResponse>("CreateSchema",
         "create schema",  [this] (CreateSchemaRequest&& request) {
-        k2::OperationLatencyReporter reporter(_createSchemaLatency);
-        return _handleCreateSchema(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
-
+        return _handleCreateSchema(std::move(request));
     });
     api_server.registerAPIObserver<CollectionCreateRequest, CollectionCreateResponse>("CreateCollection",
         "create collection",  [this] (CollectionCreateRequest&& request) {
-        k2::OperationLatencyReporter reporter(_createCollectionLatency);
-        return _handleCreateCollection(std::move(request))
-            .finally([reporter=std::move(reporter)] () mutable{
-                reporter.report();
-            });
+        return _handleCreateCollection(std::move(request));
     });
 }
 
@@ -588,16 +546,6 @@ void HTTPProxy::_registerMetrics() {
         sm::make_counter("success_reads", _successReads, sm::description("Total number of successful reads"), labels),
         sm::make_counter("total_writes", _totalWrites, sm::description("Total number of writes"), labels),
         sm::make_counter("success_writes", _successWrites, sm::description("Total number of successful writes"), labels),
-
-        sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();}, sm::description("Latency of reads"), labels),
-        sm::make_histogram("write_latency", [this]{ return _writeLatency.getHistogram();}, sm::description("Latency of writes"), labels),
-        sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();}, sm::description("Latency of entire txns"), labels),
-        sm::make_histogram("txnend_latency", [this]{ return _endLatency.getHistogram();}, sm::description("Latency of txn end request"), labels),
-        sm::make_histogram("query_latency", [this]{ return _queryLatency.getHistogram();}, sm::description("Latency of query request"), labels),
-        sm::make_histogram("create_query_latency", [this]{ return _createQueryLatency.getHistogram();}, sm::description("Latency of create query request"), labels),
-        sm::make_histogram("get_schema_latency", [this]{ return _getSchemaLatency.getHistogram();}, sm::description("Latency of get schema request"), labels),
-        sm::make_histogram("create_schema_latency", [this]{ return _createSchemaLatency.getHistogram();}, sm::description("Latency of create schema request"), labels),
-        sm::make_histogram("create_coll_latency", [this]{ return _createCollectionLatency.getHistogram();}, sm::description("Latency of creat collection request"), labels),
     });
 }
 }

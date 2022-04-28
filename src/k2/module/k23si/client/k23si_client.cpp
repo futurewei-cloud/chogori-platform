@@ -106,6 +106,7 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::SKVRecord rec
 }
 
 seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, String collection) {
+    k2::OperationLatencyReporter reporter(_client->_readLatency);
     if (!_valid) {
         return seastar::make_exception_future<ReadResult<dto::SKVRecord>>(
                 K23SIClientException("Invalid use of K2TxnHandle"));
@@ -151,7 +152,10 @@ seastar::future<ReadResult<dto::SKVRecord>> K2TxnHandle::read(dto::Key key, Stri
                 return seastar::make_ready_future<ReadResult<dto::SKVRecord>>(
                         ReadResult<dto::SKVRecord>(std::move(s), std::move(skv_record)));
             });
-        }).finally([r = std::move(request)] () { (void)r; });
+        }).finally([r = std::move(request), reporter=std::move(reporter)] () mutable {
+            (void)r;
+            reporter.report();
+        });
 }
 
 
@@ -216,6 +220,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(d
     }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
+    k2::OperationLatencyReporter reporter(_client->_endLatency);
     if (!_valid) {
         return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() an invalid TxnHandle"));
     }
@@ -286,7 +291,10 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
 
                 return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
             });
-        }).finally([request] () { delete request; });
+        }).finally([request, reporter=std::move(reporter)] () mutable {
+            delete request;
+            reporter.report();
+        });
 }
 
 K23SIClient::K23SIClient(const K23SIClientConfig &) :
@@ -301,6 +309,16 @@ K23SIClient::K23SIClient(const K23SIClientConfig &) :
         sm::make_counter("abort_conflicts", abort_conflicts, sm::description("Total K23SI transactions aborted due to conflict"), labels),
         sm::make_counter("abort_too_old", abort_too_old, sm::description("Total K23SI transactions aborted due to retention window expiration"), labels),
         sm::make_counter("heartbeats", heartbeats, sm::description("Total K23SI transaction heartbeats sent"), labels),
+
+        sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();}, sm::description("Latency of reads"), labels),
+        sm::make_histogram("write_latency", [this]{ return _writeLatency.getHistogram();}, sm::description("Latency of writes"), labels),
+        sm::make_histogram("partial_update_latency", [this]{ return _partialUpdateLatency.getHistogram();}, sm::description("Latency of writes"), labels),
+        sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();}, sm::description("Latency of entire txns"), labels),
+        sm::make_histogram("txnend_latency", [this]{ return _endLatency.getHistogram();}, sm::description("Latency of txn end request"), labels),
+        sm::make_histogram("query_latency", [this]{ return _queryLatency.getHistogram();}, sm::description("Latency of query request"), labels),
+        sm::make_histogram("create_query_latency", [this]{ return _createQueryLatency.getHistogram();}, sm::description("Latency of create query request"), labels),
+        sm::make_histogram("get_schema_latency", [this]{ return _getSchemaLatency.getHistogram();}, sm::description("Latency of get schema request"), labels),
+        sm::make_histogram("create_schema_latency", [this]{ return _createSchemaLatency.getHistogram();}, sm::description("Latency of create schema request"), labels),
     });
 }
 
@@ -320,6 +338,7 @@ seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& me
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
+    k2::OperationLatencyReporter reporter(_txnLatency);
     return _tsoClient.getTimestamp()
     .then([this, options] (auto&& ts) {
         dto::K23SI_MTR mtr{
@@ -328,13 +347,21 @@ seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) 
         };
 
         total_txns++;
-        return seastar::make_ready_future<K2TxnHandle>(K2TxnHandle(std::move(mtr), std::move(options), &cpo_client, this, txn_end_deadline()));
+        return seastar::make_ready_future<K2TxnHandle>(
+            K2TxnHandle(std::move(mtr), std::move(options), &cpo_client, this, txn_end_deadline()));
+    })
+    .finally([reporter=std::move(reporter)] () mutable{
+        reporter.report();
     });
 }
 
 seastar::future<CreateSchemaResult> K23SIClient::createSchema(const String& collectionName, dto::Schema schema) {
+    k2::OperationLatencyReporter reporter(_createSchemaLatency);
     return cpo_client.createSchema(collectionName, std::move(schema)).then([](auto&& status) {
         return CreateSchemaResult{.status=std::move(status)};
+    })
+    .finally([reporter=std::move(reporter)] () mutable{
+        reporter.report();
     });
 }
 
@@ -358,10 +385,15 @@ seastar::future<Status> K23SIClient::refreshSchemaCache(const String& collection
 }
 
 seastar::future<GetSchemaResult> K23SIClient::getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion) {
+    k2::OperationLatencyReporter reporter(_getSchemaLatency);
     return getSchemaInternal(collectionName, schemaName, schemaVersion, true).then([](auto&& result) {
         auto&& [status, schema] = std::move(result);
         return GetSchemaResult{.status=std::move(status), .schema=std::move(schema)};
+    })
+    .finally([reporter=std::move(reporter)] () mutable{
+        reporter.report();
     });
+
 }
 
 seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh) {
@@ -428,6 +460,7 @@ seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::g
 }
 
 seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collectionName, const String& schemaName) {
+    k2::OperationLatencyReporter reporter(_createQueryLatency);
     return getSchema(collectionName, schemaName, dto::ANY_SCHEMA_VERSION)
     .then([collectionName] (auto&& response) {
         if (!response.status.is2xxOK()) {
@@ -440,7 +473,11 @@ seastar::future<CreateQueryResult> K23SIClient::createQuery(const String& collec
         query.endScanRecord = dto::SKVRecord(collectionName, query.schema);
         query.request.collectionName = collectionName;
         return CreateQueryResult{Statuses::S200_OK("Created query"), std::move(query)};
+    })
+    .finally([reporter=std::move(reporter)] () mutable{
+        reporter.report();
     });
+
 }
 
 // Called the first time a Query object is used to validate and setup the request object
@@ -519,6 +556,7 @@ void K2TxnHandle::_prepareQueryRequest(Query& query) {
 // Get one set of paginated results for a query. User may need to call again with same query
 // object to get more results
 seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
+    k2::OperationLatencyReporter reporter(_client->_queryLatency);
     if (!_valid) {
         return seastar::make_exception_future<QueryResult>(K23SIClientException("Invalid use of K2TxnHandle"));
     }
@@ -564,7 +602,11 @@ seastar::future<QueryResult> K2TxnHandle::query(Query& query) {
         }
 
         return QueryResult::makeQueryResult(_client, query, std::move(status), std::move(k2response));
+    })
+    .finally([reporter=std::move(reporter)] () mutable{
+        reporter.report();
     });
+
 }
 
 const dto::K23SI_MTR& K2TxnHandle::mtr() const {

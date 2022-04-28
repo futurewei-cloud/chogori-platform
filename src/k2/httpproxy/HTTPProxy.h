@@ -56,22 +56,11 @@ private:
     void _registerMetrics();
 
     sm::metric_groups _metric_groups;
-    k2::ExponentialHistogram _readLatency;
-    k2::ExponentialHistogram _writeLatency;
-    k2::ExponentialHistogram _txnLatency;
-    k2::ExponentialHistogram _endLatency;
-    k2::ExponentialHistogram _queryLatency;
-    k2::ExponentialHistogram _createQueryLatency;
-    k2::ExponentialHistogram _getSchemaLatency;
-    k2::ExponentialHistogram _createSchemaLatency;
-    k2::ExponentialHistogram _createCollectionLatency;
-
     uint64_t _totalTxns=0;
     uint64_t _abortedTxns=0;
     uint64_t _committedTxns=0;
     uint64_t _totalReads = 0;
     uint64_t _successReads = 0;
-    uint64_t _failReads = 0;
     uint64_t _totalWrites = 0;
     uint64_t _successWrites = 0;
     uint64_t _failWrites = 0;
