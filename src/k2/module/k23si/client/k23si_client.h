@@ -159,6 +159,7 @@ public:
     k2::ExponentialHistogram _partialUpdateLatency;
     k2::ExponentialHistogram _txnLatency;
     k2::ExponentialHistogram _endLatency;
+    k2::ExponentialHistogram _txnDuration;
     k2::ExponentialHistogram _queryLatency;
     k2::ExponentialHistogram _createQueryLatency;
     k2::ExponentialHistogram _getSchemaLatency;
@@ -441,6 +442,8 @@ private:
     // the trh key and home collection for this transaction
     std::optional<dto::Key> _trh_key;
     String _trh_collection;
+    // calculate Total txn duration
+    k2::TimePoint _startTime;
 };
 
 // Normal use-case read interface, where the key fields of the user's SKVRecord are

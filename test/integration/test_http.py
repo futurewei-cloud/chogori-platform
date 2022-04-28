@@ -135,18 +135,18 @@ class TestBasicTxn(unittest.TestCase):
         # Write/Read with bad partition key data type, should fail
         bad_loc = loc.get_new(partition_key=1)
         status = txn.write(bad_loc, additional_data)
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
         status, _ = txn.read(bad_loc)
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
 
         # Write/Read with bad range key data type, should fail
         bad_loc = loc.get_new(range_key=1)
         status = txn.write(bad_loc, additional_data)
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
 
         # Write with bad data field data type, should fail
         status = txn.write(loc, {"data": 1})
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
 
         # Do a valid write/read, should succeed
         status = txn.write(loc, additional_data)
@@ -456,10 +456,11 @@ class TestBasicTxn(unittest.TestCase):
     def test_metrics(self):
         "Verify some metrics are populated"
         mclient = MetricsClient(args.prometheus, [
-            Counter("HttpProxy", "session", "committed_txns"),
             Counter("HttpProxy", "session", "open_txns"),
             Counter("HttpProxy", "session", "deserialization_errors"),
-            Histogram("HttpProxy", "K23SI_client", "txn_latency")
+            Histogram("HttpProxy", "K23SI_client", "txn_latency"),
+            Histogram("HttpProxy", "K23SI_client", "txnend_latency"),
+            Histogram("HttpProxy", "K23SI_client", "txn_duration")
             ]
         )
         db = SKVClient(args.http)
@@ -477,16 +478,17 @@ class TestBasicTxn(unittest.TestCase):
         # Write with bad range key data type, should fail
         bad_loc = loc.get_new(range_key=1)
         status = txn.write(bad_loc, additional_data)
-        self.assertEqual(status.code, 500, msg=status.message)
+        self.assertEqual(status.code, 400, msg=status.message)
         curr = mclient.refresh()
         self.assertEqual(curr.deserialization_errors, prev.deserialization_errors+1)
 
-        txn.end()
+        status = txn.end()
+        self.assertEqual(status.code, 200, msg=status.message)
         curr = mclient.refresh()
         self.assertEqual(curr.open_txns, prev.open_txns)
-        self.assertEqual(curr.committed_txns, prev.committed_txns + 1)
         self.assertEqual(curr.txn_latency, prev.txn_latency+1)
-
+        self.assertEqual(curr.txnend_latency, prev.txnend_latency+1)
+        self.assertEqual(curr.txn_duration, prev.txn_duration+1)
 
 del sys.argv[1:]
 unittest.main()

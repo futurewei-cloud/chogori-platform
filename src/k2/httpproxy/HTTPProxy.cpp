@@ -128,6 +128,20 @@ void serializeFieldFromRecord<k2::dto::FieldType>(const k2::SchemaField& field,
     throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
 }
 
+
+seastar::future<nlohmann::json> JsonResponse(Status&& status) {
+    nlohmann::json resp;
+    resp["status"] = std::move(status);
+    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+}
+
+seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
+    nlohmann::json jsonResponse;
+    jsonResponse["status"] = std::move(status);
+    jsonResponse["response"] = std::move(response);
+    return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
+}
+
 void HTTPProxy::serializeRecordFromJSON(k2::SKVRecord& record, nlohmann::json&& jsonRecord) {
     for (const k2::dto::SchemaField& field : record.schema->fields) {
         std::string name = field.name;
@@ -215,8 +229,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleEnd(nlohmann::json&& request) 
     }
 
     return it->second.end(commit)
-    .then([this, id, commit] (k2::EndResult&& result) {
-        if (commit) _committedTxns++; else _abortedTxns++;
+    .then([this, id] (k2::EndResult&& result) {
         nlohmann::json r;
         r["status"] = result.status;
         _txns.erase(id);
@@ -272,7 +285,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
             serializeRecordFromJSON(record, std::move(jsonRecord));
         } catch(nlohmann::json::exception& e) {
             _deserializationErrors++;
-            throw;
+            return JsonResponse(Statuses::S400_Bad_Request(e.what()));
         }
         return _txns[id].read(std::move(record))
         .then([this] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
@@ -339,7 +352,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
             serializeRecordFromJSON(record, std::move(jsonRecord));
         } catch(nlohmann::json::exception& e) {
             _deserializationErrors++;
-            throw;
+            return JsonResponse(Statuses::S400_Bad_Request(e.what()));
         }
 
         return _txns[id].write(record)
@@ -378,19 +391,6 @@ seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handle
     .then([] (Status&& status) {
         return RPCResponse(std::move(status), CollectionCreateResponse());
     });
-}
-
-seastar::future<nlohmann::json> JsonResponse(Status&& status) {
-    nlohmann::json resp;
-    resp["status"] = std::move(status);
-    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
-}
-
-seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
-    nlohmann::json jsonResponse;
-    jsonResponse["status"] = std::move(status);
-    jsonResponse["response"] = std::move(response);
-    return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
 }
 
 // Get FieldToKeyString value for a type
@@ -553,8 +553,6 @@ void HTTPProxy::_registerMetrics() {
 
     _metric_groups.add_group("session",
     {
-        sm::make_counter("aborted_txns", _abortedTxns, sm::description("Total number of aborted transactions"), labels),
-        sm::make_counter("committed_txns", _committedTxns, sm::description("Total number of committed transactions"), labels),
         sm::make_counter("success_reads", _successReads, sm::description("Total number of successful reads"), labels),
         sm::make_counter("success_writes", _successWrites, sm::description("Total number of successful writes"), labels),
         sm::make_counter("deserialization_errors", _deserializationErrors, sm::description("Total number of deserialization errors"), labels),

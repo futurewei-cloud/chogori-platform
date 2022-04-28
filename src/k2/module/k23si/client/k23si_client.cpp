@@ -26,7 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 
-K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, cpo::CPOClient* cpo, K23SIClient* client, Duration d) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _valid(true), _failed(false), _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(Clock::now()) {
+K2TxnHandle::K2TxnHandle(dto::K23SI_MTR&& mtr, K2TxnOptions options, cpo::CPOClient* cpo, K23SIClient* client, Duration d) noexcept : _mtr(std::move(mtr)), _options(std::move(options)), _cpo_client(cpo), _client(client), _valid(true), _failed(false),    _failed_status(Statuses::S200_OK("default fail status")), _txn_end_deadline(d), _start_time(Clock::now()),
+    _startTime(k2::Clock::now()) {
     K2LOG_D(log::skvclient, "ctor, mtr={}", _mtr);
 }
 
@@ -241,6 +242,8 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             return seastar::make_ready_future<EndResult>(EndResult(_failed_status));
         }
 
+        reporter.report();
+        _client->_txnDuration.add(k2::Clock::now() - _startTime);
         return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
     }
 
@@ -291,9 +294,10 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
 
                 return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
             });
-        }).finally([request, reporter=std::move(reporter)] () mutable {
+        }).finally([this, request, reporter=std::move(reporter)] () mutable {
             delete request;
             reporter.report();
+            _client->_txnDuration.add(k2::Clock::now() - _startTime);
         });
 }
 
@@ -315,6 +319,7 @@ K23SIClient::K23SIClient(const K23SIClientConfig &) :
         sm::make_histogram("partial_update_latency", [this]{ return _partialUpdateLatency.getHistogram();}, sm::description("Latency of writes"), labels),
         sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();}, sm::description("Latency of entire txns"), labels),
         sm::make_histogram("txnend_latency", [this]{ return _endLatency.getHistogram();}, sm::description("Latency of txn end request"), labels),
+        sm::make_histogram("txn_duration", [this]{ return _txnDuration.getHistogram();}, sm::description("Duration of txn from begin to end"), labels),
         sm::make_histogram("query_latency", [this]{ return _queryLatency.getHistogram();}, sm::description("Latency of query request"), labels),
         sm::make_histogram("create_query_latency", [this]{ return _createQueryLatency.getHistogram();}, sm::description("Latency of create query request"), labels),
         sm::make_histogram("get_schema_latency", [this]{ return _getSchemaLatency.getHistogram();}, sm::description("Latency of get schema request"), labels),
@@ -338,6 +343,7 @@ seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& me
 }
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
+    // Reporter of begin txn api latency
     k2::OperationLatencyReporter reporter(_txnLatency);
     return _tsoClient.getTimestamp()
     .then([this, options] (auto&& ts) {
