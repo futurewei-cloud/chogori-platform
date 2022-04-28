@@ -176,7 +176,6 @@ seastar::future<nlohmann::json> HTTPProxy::_handleBegin(nlohmann::json&& request
     (void) request;
     return _client.beginTxn(k2::K2TxnOptions())
     .then([this] (auto&& txn) {
-        _totalTxns++;
         K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
         _txns[_txnID++] = std::move(txn);
         nlohmann::json response;
@@ -198,6 +197,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleEnd(nlohmann::json&& request) 
         request.at("txnID").get_to(id);
         request.at("commit").get_to(commit);
     } catch (...) {
+        _deserializationErrors++;
         nlohmann::json status;
         status["message"] = "Bad json for end request";
         status["code"] = 400;
@@ -241,6 +241,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         }
         record = request["record"];
     } catch (...) {
+        _deserializationErrors++;
         nlohmann::json status;
         status["message"] = "Bad json for read request";
         status["code"] = 400;
@@ -267,8 +268,12 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         }
 
         k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
-        serializeRecordFromJSON(record, std::move(jsonRecord));
-        _totalReads++;
+        try {
+            serializeRecordFromJSON(record, std::move(jsonRecord));
+        } catch(nlohmann::json::exception& e) {
+            _deserializationErrors++;
+            throw;
+        }
         return _txns[id].read(std::move(record))
         .then([this] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
             nlohmann::json resp;
@@ -303,6 +308,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
         }
         record = request["record"];
     } catch (...) {
+        _deserializationErrors++;
         nlohmann::json status;
         status["message"] = "Bad json for write request";
         status["code"] = 400;
@@ -329,9 +335,13 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
         }
 
         k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
-        serializeRecordFromJSON(record, std::move(jsonRecord));
+        try {
+            serializeRecordFromJSON(record, std::move(jsonRecord));
+        } catch(nlohmann::json::exception& e) {
+            _deserializationErrors++;
+            throw;
+        }
 
-        _totalWrites++;
         return _txns[id].write(record)
         .then([this] (k2::WriteResult&& result) {
             if(result.status.is2xxOK()) {
@@ -399,8 +409,10 @@ template <class T> void getEscapedString(const SchemaField& field, const nlohman
 // Convert [{type: "FieldType", value: "value"}, ..] to string that can be used in collection range end
 seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
     String output;
-    if (!request.contains("fields"))
+    if (!request.contains("fields")) {
         return JsonResponse(Statuses::S400_Bad_Request("Invalid json"));
+        _deserializationErrors++;
+    }
 
     for (auto& record : request["fields"]) {
         SchemaField field;
@@ -421,6 +433,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         jsonReq.at("collectionName").get_to(collectionName);
         jsonReq.at("schemaName").get_to(schemaName);
     } catch(...) {
+        _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
 
@@ -456,6 +469,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
         jsonReq.at("txnID").get_to(txnID);
         jsonReq.at("queryID").get_to(queryID);
     } catch(...) {
+        _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
     auto txnIter = _txns.find(txnID);
@@ -539,13 +553,14 @@ void HTTPProxy::_registerMetrics() {
 
     _metric_groups.add_group("session",
     {
-        sm::make_counter("total_txns", _totalTxns, sm::description("Total number of transactions"), labels),
         sm::make_counter("aborted_txns", _abortedTxns, sm::description("Total number of aborted transactions"), labels),
         sm::make_counter("committed_txns", _committedTxns, sm::description("Total number of committed transactions"), labels),
-        sm::make_counter("total_reads", _totalReads, sm::description("Total number of reads"), labels),
         sm::make_counter("success_reads", _successReads, sm::description("Total number of successful reads"), labels),
-        sm::make_counter("total_writes", _totalWrites, sm::description("Total number of writes"), labels),
         sm::make_counter("success_writes", _successWrites, sm::description("Total number of successful writes"), labels),
+        sm::make_counter("deserialization_errors", _deserializationErrors, sm::description("Total number of deserialization errors"), labels),
+
+        sm::make_gauge("open_txns", [this]{ return  _txns.size();}, sm::description("Total number of open txn handles"), labels),
+        sm::make_gauge("open_queries", [this]{ return  _queries.size();}, sm::description("Total number of open queries"), labels),
     });
 }
 }

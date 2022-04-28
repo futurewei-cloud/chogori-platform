@@ -456,8 +456,9 @@ class TestBasicTxn(unittest.TestCase):
     def test_metrics(self):
         "Verify some metrics are populated"
         mclient = MetricsClient(args.prometheus, [
-            Counter("HttpProxy", "session", "total_txns"),
             Counter("HttpProxy", "session", "committed_txns"),
+            Counter("HttpProxy", "session", "open_txns"),
+            Counter("HttpProxy", "session", "deserialization_errors"),
             Histogram("HttpProxy", "K23SI_client", "txn_latency")
             ]
         )
@@ -465,11 +466,26 @@ class TestBasicTxn(unittest.TestCase):
 
         prev = mclient.refresh()
         status, txn = db.begin_txn()
+        curr = mclient.refresh()
+        self.assertEqual(curr.open_txns, prev.open_txns+1)
+
+        loc = DBLoc(partition_key_name="partitionKey", range_key_name="rangeKey",
+            partition_key="ptest2", range_key="rtest2",
+            schema="test_schema", coll="HTTPClient", schema_version=1)
+        additional_data =  { "data" :"data1"}
+
+        # Write with bad range key data type, should fail
+        bad_loc = loc.get_new(range_key=1)
+        status = txn.write(bad_loc, additional_data)
+        self.assertEqual(status.code, 500, msg=status.message)
+        curr = mclient.refresh()
+        self.assertEqual(curr.deserialization_errors, prev.deserialization_errors+1)
+
         txn.end()
         curr = mclient.refresh()
-        self.assertEqual(curr.total_txns, prev.total_txns + 1)
+        self.assertEqual(curr.open_txns, prev.open_txns)
         self.assertEqual(curr.committed_txns, prev.committed_txns + 1)
-        self.assertGreater(curr.txn_latency, 0)
+        self.assertEqual(curr.txn_latency, prev.txn_latency+1)
 
 
 del sys.argv[1:]
