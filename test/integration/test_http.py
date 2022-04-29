@@ -72,7 +72,7 @@ class TestBasicTxn(unittest.TestCase):
         result = r.json()
         print(result)
         self.assertEqual(result["status"]["code"], 201);
-        txnId = result["txnID"]
+        txnId = result["response"]["txnID"]
 
         # Write
         record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
@@ -458,8 +458,8 @@ class TestBasicTxn(unittest.TestCase):
         mclient = MetricsClient(args.prometheus, [
             Counter("HttpProxy", "session", "open_txns"),
             Counter("HttpProxy", "session", "deserialization_errors"),
-            Histogram("HttpProxy", "K23SI_client", "txn_latency"),
-            Histogram("HttpProxy", "K23SI_client", "txnend_latency"),
+            Histogram("HttpProxy", "K23SI_client", "txn_begin_latency"),
+            Histogram("HttpProxy", "K23SI_client", "txn_end_latency"),
             Histogram("HttpProxy", "K23SI_client", "txn_duration")
             ]
         )
@@ -486,8 +486,8 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(status.code, 200, msg=status.message)
         curr = mclient.refresh()
         self.assertEqual(curr.open_txns, prev.open_txns)
-        self.assertEqual(curr.txn_latency, prev.txn_latency+1)
-        self.assertEqual(curr.txnend_latency, prev.txnend_latency+1)
+        self.assertEqual(curr.txn_begin_latency, prev.txn_begin_latency+1)
+        self.assertEqual(curr.txn_end_latency, prev.txn_end_latency+1)
         self.assertEqual(curr.txn_duration, prev.txn_duration+1)
 
 del sys.argv[1:]

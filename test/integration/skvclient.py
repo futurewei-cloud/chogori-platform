@@ -131,7 +131,8 @@ class Txn:
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self._txn_id, "record": record}
         result = self._send_req("/api/Read", request)
-        return Status(result), result.get("record")
+        output = result["response"].get("record") if "response" in result else None
+        return Status(result), output
 
     def query(self, query: Query) -> Tuple[Status, ListOfDict]:
         request = {"txnID" : self._txn_id, "queryID": query.query_id}
@@ -222,7 +223,10 @@ class SKVClient:
         r = requests.post(url, data=json.dumps(data))
         result = r.json()
         status = Status(result)
-        txn = Txn(self, result.get("txnID"))
+        if "response" in result:
+            txn = Txn(self, result["response"].get("txnID"))
+        else:
+            txn = None
         return status, txn
 
     def create_schema(self, collectionName: str, schema: Schema) -> Status:

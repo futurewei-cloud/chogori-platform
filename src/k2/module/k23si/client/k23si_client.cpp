@@ -221,7 +221,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(d
     }
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
-    k2::OperationLatencyReporter reporter(_client->_endLatency);
+    k2::OperationLatencyReporter reporter(_client->_txnEndLatency);
     if (!_valid) {
         return seastar::make_exception_future<EndResult>(K23SIClientException("Tried to end() an invalid TxnHandle"));
     }
@@ -317,9 +317,9 @@ K23SIClient::K23SIClient(const K23SIClientConfig &) :
         sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();}, sm::description("Latency of reads"), labels),
         sm::make_histogram("write_latency", [this]{ return _writeLatency.getHistogram();}, sm::description("Latency of writes"), labels),
         sm::make_histogram("partial_update_latency", [this]{ return _partialUpdateLatency.getHistogram();}, sm::description("Latency of writes"), labels),
-        sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();}, sm::description("Latency of entire txns"), labels),
-        sm::make_histogram("txnend_latency", [this]{ return _endLatency.getHistogram();}, sm::description("Latency of txn end request"), labels),
-        sm::make_histogram("txn_duration", [this]{ return _txnDuration.getHistogram();}, sm::description("Duration of txn from begin to end"), labels),
+        sm::make_histogram("txn_begin_latency", [this]{ return _txnBeginLatency.getHistogram();}, sm::description("Latency of txn begin request"), labels),
+        sm::make_histogram("txn_end_latency", [this]{ return _txnEndLatency.getHistogram();}, sm::description("Latency of txn end request"), labels),
+        sm::make_histogram("txn_duration", [this]{ return _txnDuration.getHistogram();}, sm::description("Latency of entire txn from begin to end"), labels),
         sm::make_histogram("query_latency", [this]{ return _queryLatency.getHistogram();}, sm::description("Latency of query request"), labels),
         sm::make_histogram("create_query_latency", [this]{ return _createQueryLatency.getHistogram();}, sm::description("Latency of create query request"), labels),
         sm::make_histogram("get_schema_latency", [this]{ return _getSchemaLatency.getHistogram();}, sm::description("Latency of get schema request"), labels),
@@ -344,7 +344,7 @@ seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& me
 
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
     // Reporter of begin txn api latency
-    k2::OperationLatencyReporter reporter(_txnLatency);
+    k2::OperationLatencyReporter reporter(_txnBeginLatency);
     return _tsoClient.getTimestamp()
     .then([this, options] (auto&& ts) {
         dto::K23SI_MTR mtr{

@@ -157,8 +157,8 @@ public:
     k2::ExponentialHistogram _readLatency;
     k2::ExponentialHistogram _writeLatency;
     k2::ExponentialHistogram _partialUpdateLatency;
-    k2::ExponentialHistogram _txnLatency;
-    k2::ExponentialHistogram _endLatency;
+    k2::ExponentialHistogram _txnBeginLatency;
+    k2::ExponentialHistogram _txnEndLatency;
     k2::ExponentialHistogram _txnDuration;
     k2::ExponentialHistogram _queryLatency;
     k2::ExponentialHistogram _createQueryLatency;
