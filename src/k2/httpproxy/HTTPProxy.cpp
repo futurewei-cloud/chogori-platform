@@ -295,7 +295,6 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
             if(!result.status.is2xxOK()) {
                 return seastar::make_ready_future<nlohmann::json>(std::move(resp));
             }
-            _successReads++;
             resp["record"] = serializeJSONFromRecord(result.value);
             return seastar::make_ready_future<nlohmann::json>(std::move(resp));
         });
@@ -356,10 +355,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
         }
 
         return _txns[id].write(record)
-        .then([this] (k2::WriteResult&& result) {
-            if(result.status.is2xxOK()) {
-                _successWrites++;
-            }
+        .then([] (k2::WriteResult&& result) {
             nlohmann::json resp;
             resp["status"] = result.status;
             return seastar::make_ready_future<nlohmann::json>(std::move(resp));
@@ -410,8 +406,8 @@ template <class T> void getEscapedString(const SchemaField& field, const nlohman
 seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
     String output;
     if (!request.contains("fields")) {
-        return JsonResponse(Statuses::S400_Bad_Request("Invalid json"));
         _deserializationErrors++;
+        return JsonResponse(Statuses::S400_Bad_Request("Invalid json"));
     }
 
     for (auto& record : request["fields"]) {
@@ -552,8 +548,6 @@ void HTTPProxy::_registerMetrics() {
 
     _metric_groups.add_group("session",
     {
-        sm::make_counter("success_reads", _successReads, sm::description("Total number of successful reads"), labels),
-        sm::make_counter("success_writes", _successWrites, sm::description("Total number of successful writes"), labels),
         sm::make_counter("deserialization_errors", _deserializationErrors, sm::description("Total number of deserialization errors"), labels),
 
         sm::make_gauge("open_txns", [this]{ return  _txns.size();}, sm::description("Total number of open txn handles"), labels),

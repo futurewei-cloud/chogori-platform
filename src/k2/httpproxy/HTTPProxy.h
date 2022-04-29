@@ -56,11 +56,6 @@ private:
     void _registerMetrics();
 
     sm::metric_groups _metric_groups;
-    uint64_t _abortedTxns=0;
-    uint64_t _committedTxns=0;
-    uint64_t _successReads = 0;
-    uint64_t _successWrites = 0;
-    uint64_t _failWrites = 0;
     uint64_t _deserializationErrors = 0;
 
     bool _stopped = true;
