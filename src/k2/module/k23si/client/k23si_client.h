@@ -154,6 +154,17 @@ public:
     uint64_t abort_too_old{0};
     uint64_t heartbeats{0};
 
+    k2::ExponentialHistogram _readLatency;
+    k2::ExponentialHistogram _writeLatency;
+    k2::ExponentialHistogram _partialUpdateLatency;
+    k2::ExponentialHistogram _txnBeginLatency;
+    k2::ExponentialHistogram _txnEndLatency;
+    k2::ExponentialHistogram _txnDuration;
+    k2::ExponentialHistogram _queryLatency;
+    k2::ExponentialHistogram _createQueryLatency;
+    k2::ExponentialHistogram _getSchemaLatency;
+    k2::ExponentialHistogram _createSchemaLatency;
+
     cpo::CPOClient cpo_client;
     // collection name -> (schema name -> (schema version -> schemaPtr))
     std::unordered_map<String, std::unordered_map<String, std::unordered_map<uint32_t, std::shared_ptr<dto::Schema>>>> schemas;
@@ -230,6 +241,7 @@ public:
     // read interface
     template <class T>
     seastar::future<ReadResult<T>> read(T record) {
+        k2::OperationLatencyReporter reporter(_client->_readLatency);
         if (!_valid) {
             return seastar::make_exception_future<ReadResult<T>>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
@@ -258,12 +270,16 @@ public:
                 }
 
                 return ReadResult<T>(std::move(status), std::move(userResponseRecord));
-            }).finally([r = std::move(request)] () { (void)r; });
+            }).finally([r = std::move(request), reporter=std::move(reporter)] () mutable {
+                (void)r;
+                reporter.report();
+            });
     }
 
     template <class T>
     seastar::future<WriteResult> write(T& record, bool erase=false,
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None) {
+        k2::OperationLatencyReporter reporter(_client->_writeLatency);
         if (!_valid) {
             return seastar::make_exception_future<WriteResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
@@ -303,6 +319,9 @@ public:
                 }
 
                 return seastar::make_ready_future<WriteResult>(WriteResult(std::move(status), std::move(k2response)));
+            })
+            .finally([reporter=std::move(reporter)] () mutable{
+                reporter.report();
             });
     }
 
@@ -331,6 +350,7 @@ public:
     seastar::future<PartialUpdateResult> partialUpdate(T& record,
                                                        std::vector<uint32_t> fieldsForPartialUpdate,
                                                        dto::Key key=dto::Key()) {
+        k2::OperationLatencyReporter reporter(_client->_partialUpdateLatency);
         if (!_valid) {
             return seastar::make_exception_future<PartialUpdateResult>(K23SIClientException("Invalid use of K2TxnHandle"));
         }
@@ -381,7 +401,11 @@ public:
                 }
 
                 return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(std::move(status)));
+            })
+            .finally([reporter=std::move(reporter)] () mutable{
+                reporter.report();
             });
+
     }
 
     // Get one set of paginated results for a query. User may need to call again with same query
@@ -418,6 +442,8 @@ private:
     // the trh key and home collection for this transaction
     std::optional<dto::Key> _trh_key;
     String _trh_collection;
+    // calculate Total txn duration
+    k2::TimePoint _startTime;
 };
 
 // Normal use-case read interface, where the key fields of the user's SKVRecord are

@@ -128,6 +128,20 @@ void serializeFieldFromRecord<k2::dto::FieldType>(const k2::SchemaField& field,
     throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
 }
 
+
+seastar::future<nlohmann::json> JsonResponse(Status&& status) {
+    nlohmann::json resp;
+    resp["status"] = std::move(status);
+    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+}
+
+seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
+    nlohmann::json jsonResponse;
+    jsonResponse["status"] = std::move(status);
+    jsonResponse["response"] = std::move(response);
+    return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
+}
+
 void HTTPProxy::serializeRecordFromJSON(k2::SKVRecord& record, nlohmann::json&& jsonRecord) {
     for (const k2::dto::SchemaField& field : record.schema->fields) {
         std::string name = field.name;
@@ -165,6 +179,7 @@ seastar::future<> HTTPProxy::gracefulStop() {
 
 seastar::future<> HTTPProxy::start() {
     _stopped = false;
+    _registerMetrics();
     _registerAPI();
     auto _startFut = seastar::make_ready_future<>();
     _startFut = _startFut.then([this] {return _client.start();});
@@ -177,13 +192,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleBegin(nlohmann::json&& request
     .then([this] (auto&& txn) {
         K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
         _txns[_txnID++] = std::move(txn);
-        nlohmann::json response;
-        nlohmann::json status;
-        status["message"] = "Begin txn success";
-        status["code"] = 201;
-        response["status"] = status;
-        response["txnID"] = _txnID - 1;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        return JsonResponse(Statuses::S201_Created("Begin txn success"), nlohmann::json{{"txnID", _txnID - 1}});
     });
 }
 
@@ -191,32 +200,24 @@ seastar::future<nlohmann::json> HTTPProxy::_handleEnd(nlohmann::json&& request) 
     uint64_t id;
     bool commit;
     nlohmann::json response;
+
     try {
         request.at("txnID").get_to(id);
         request.at("commit").get_to(commit);
     } catch (...) {
-        nlohmann::json status;
-        status["message"] = "Bad json for end request";
-        status["code"] = 400;
-        response["status"] = status;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        _deserializationErrors++;
+        return JsonResponse(Statuses::S400_Bad_Request("Bad json for end request"));
     }
 
     std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
     if (it == _txns.end()) {
-        nlohmann::json status;
-        status["message"] = "Could not find txnID for end request";
-        status["code"] = 400;
-        response["status"] = status;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for end request"));
     }
 
     return it->second.end(commit)
     .then([this, id] (k2::EndResult&& result) {
-        nlohmann::json r;
-        r["status"] = result.status;
         _txns.erase(id);
-        return seastar::make_ready_future<nlohmann::json>(std::move(r));
+        return JsonResponse(std::move(result.status));
     });
 }
 
@@ -237,45 +238,37 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         }
         record = request["record"];
     } catch (...) {
-        nlohmann::json status;
-        status["message"] = "Bad json for read request";
-        status["code"] = 400;
-        response["status"] = status;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        _deserializationErrors++;
+        return JsonResponse(Statuses::S400_Bad_Request("Invalid json for read request"));
     }
 
     std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
     if (it == _txns.end()) {
-        nlohmann::json status;
-        status["message"] = "Could not find txnID for read request";
-        status["code"] = 400;
-        response["status"] = status;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for read request"));
     }
 
     return _client.getSchema(collectionName, schemaName, ANY_SCHEMA_VERSION)
     .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
                                             (k2::GetSchemaResult&& result) mutable {
         if(!result.status.is2xxOK()) {
-            nlohmann::json resp;
-            resp["status"] = result.status;
-            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            return JsonResponse(std::move(result.status));
         }
 
         k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
-        serializeRecordFromJSON(record, std::move(jsonRecord));
-
+        try {
+            serializeRecordFromJSON(record, std::move(jsonRecord));
+        } catch(nlohmann::json::exception& e) {
+            _deserializationErrors++;
+            return JsonResponse(Statuses::S400_Bad_Request(e.what()));
+        }
         return _txns[id].read(std::move(record))
-        .then([] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
-            nlohmann::json resp;
-            resp["status"] = result.status;
-
+        .then([this] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
             if(!result.status.is2xxOK()) {
-                return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+                return JsonResponse(std::move(result.status));
             }
-
+            nlohmann::json resp;
             resp["record"] = serializeJSONFromRecord(result.value);
-            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            return JsonResponse(std::move(result.status), std::move(resp));
         });
     });
 }
@@ -299,39 +292,33 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
         }
         record = request["record"];
     } catch (...) {
-        nlohmann::json status;
-        status["message"] = "Bad json for write request";
-        status["code"] = 400;
-        response["status"] = status;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        _deserializationErrors++;
+        return JsonResponse(Statuses::S400_Bad_Request("Bad json for write request"));
     }
 
     std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
     if (it == _txns.end()) {
-        nlohmann::json status;
-        status["message"] = "Could not find txnID for write request";
-        status["code"] = 400;
-        response["status"] = status;
-        return seastar::make_ready_future<nlohmann::json>(std::move(response));
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for write request"));
     }
 
     return _client.getSchema(collectionName, schemaName, schemaVersion)
     .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
                                             (k2::GetSchemaResult&& result) mutable {
         if(!result.status.is2xxOK()) {
-            nlohmann::json resp;
-            resp["status"] = result.status;
-            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            return JsonResponse(std::move(result.status));
         }
 
         k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
-        serializeRecordFromJSON(record, std::move(jsonRecord));
+        try {
+            serializeRecordFromJSON(record, std::move(jsonRecord));
+        } catch(nlohmann::json::exception& e) {
+            _deserializationErrors++;
+            return JsonResponse(Statuses::S400_Bad_Request(e.what()));
+        }
 
         return _txns[id].write(record)
         .then([] (k2::WriteResult&& result) {
-            nlohmann::json resp;
-            resp["status"] = result.status;
-            return seastar::make_ready_future<nlohmann::json>(std::move(resp));
+            return JsonResponse(std::move(result.status));
         });
     });
 }
@@ -362,19 +349,6 @@ seastar::future<std::tuple<Status, CollectionCreateResponse>> HTTPProxy::_handle
     });
 }
 
-seastar::future<nlohmann::json> JsonResponse(Status&& status) {
-    nlohmann::json resp;
-    resp["status"] = std::move(status);
-    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
-}
-
-seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
-    nlohmann::json jsonResponse;
-    jsonResponse["status"] = std::move(status);
-    jsonResponse["response"] = std::move(response);
-    return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
-}
-
 // Get FieldToKeyString value for a type
 template <class T> void getEscapedString(const SchemaField& field, const nlohmann::json& jsonval,  String& out) {
     T val;
@@ -391,8 +365,10 @@ template <class T> void getEscapedString(const SchemaField& field, const nlohman
 // Convert [{type: "FieldType", value: "value"}, ..] to string that can be used in collection range end
 seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
     String output;
-    if (!request.contains("fields"))
+    if (!request.contains("fields")) {
+        _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Invalid json"));
+    }
 
     for (auto& record : request["fields"]) {
         SchemaField field;
@@ -413,6 +389,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         jsonReq.at("collectionName").get_to(collectionName);
         jsonReq.at("schemaName").get_to(schemaName);
     } catch(...) {
+        _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
 
@@ -446,8 +423,9 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
 
     try {
         jsonReq.at("txnID").get_to(txnID);
-        jsonReq.at("queryID").get_to(queryID); 
+        jsonReq.at("queryID").get_to(queryID);
     } catch(...) {
+        _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
     auto txnIter = _txns.find(txnID);
@@ -527,23 +505,13 @@ void HTTPProxy::_registerAPI() {
 void HTTPProxy::_registerMetrics() {
     _metric_groups.clear();
     std::vector<sm::label_instance> labels;
-    labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
-    labels.push_back(sm::label_instance("active_cores", size_t(seastar::smp::count)));
+
     _metric_groups.add_group("session",
     {
-        sm::make_counter("total_txns", _totalTxns, sm::description("Total number of transactions"), labels),
-        sm::make_counter("aborted_txns", _abortedTxns, sm::description("Total number of aborted transactions"), labels),
-        sm::make_counter("committed_txns", _committedTxns, sm::description("Total number of committed transactions"), labels),
-        sm::make_counter("total_reads", _totalReads, sm::description("Total number of reads"), labels),
-        sm::make_counter("success_reads", _successReads, sm::description("Total number of successful reads"), labels),
-        sm::make_counter("fail_reads", _failReads, sm::description("Total number of failed reads"), labels),
-        sm::make_counter("total_writes", _totalWrites, sm::description("Total number of writes"), labels),
-        sm::make_counter("success_writes", _successWrites, sm::description("Total number of successful writes"), labels),
-        sm::make_counter("fail_writes", _failWrites, sm::description("Total number of failed writes"), labels),
-        sm::make_histogram("read_latency", [this]{ return _readLatency.getHistogram();}, sm::description("Latency of reads"), labels),
-        sm::make_histogram("write_latency", [this]{ return _writeLatency.getHistogram();}, sm::description("Latency of writes"), labels),
-        sm::make_histogram("txn_latency", [this]{ return _txnLatency.getHistogram();}, sm::description("Latency of entire txns"), labels),
-        sm::make_histogram("txnend_latency", [this]{ return _endLatency.getHistogram();}, sm::description("Latency of txn end request"), labels)
+        sm::make_counter("deserialization_errors", _deserializationErrors, sm::description("Total number of deserialization errors"), labels),
+
+        sm::make_gauge("open_txns", [this]{ return  _txns.size();}, sm::description("Total number of open txn handles"), labels),
+        sm::make_gauge("open_queries", [this]{ return  _queries.size();}, sm::description("Total number of open queries"), labels),
     });
 }
 }

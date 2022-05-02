@@ -29,11 +29,13 @@ import requests, json
 from urllib.parse import urlparse
 from skvclient import (Status, DBLoc, Txn, FieldType, SchemaField,
     Schema, CollectionCapacity, HashScheme, StorageDriver,
-    CollectionMetadata, SKVClient, FieldSpec)
+    CollectionMetadata, SKVClient, FieldSpec, MetricsClient,
+    Counter, Histogram)
 from datetime import timedelta
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--http", help="HTTP API URL")
+parser.add_argument("--prometheus", default="http://localhost:8089", help="HTTP Proxy Prometheus port")
 args = parser.parse_args()
 
 
@@ -70,7 +72,7 @@ class TestBasicTxn(unittest.TestCase):
         result = r.json()
         print(result)
         self.assertEqual(result["status"]["code"], 201);
-        txnId = result["txnID"]
+        txnId = result["response"]["txnID"]
 
         # Write
         record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
@@ -133,18 +135,18 @@ class TestBasicTxn(unittest.TestCase):
         # Write/Read with bad partition key data type, should fail
         bad_loc = loc.get_new(partition_key=1)
         status = txn.write(bad_loc, additional_data)
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
         status, _ = txn.read(bad_loc)
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
 
         # Write/Read with bad range key data type, should fail
         bad_loc = loc.get_new(range_key=1)
         status = txn.write(bad_loc, additional_data)
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
 
         # Write with bad data field data type, should fail
         status = txn.write(loc, {"data": 1})
-        self.assertEqual(status.code, 500)
+        self.assertEqual(status.code, 400)
 
         # Do a valid write/read, should succeed
         status = txn.write(loc, additional_data)
@@ -450,6 +452,43 @@ class TestBasicTxn(unittest.TestCase):
         status, endspec = db.get_key_string([field1, field3])
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(endspec, "^01default^00^01^02^03^00^0a^00^01")
+
+    def test_metrics(self):
+        "Verify some metrics are populated"
+        mclient = MetricsClient(args.prometheus, [
+            Counter("HttpProxy", "session", "open_txns"),
+            Counter("HttpProxy", "session", "deserialization_errors"),
+            Histogram("HttpProxy", "K23SI_client", "txn_begin_latency"),
+            Histogram("HttpProxy", "K23SI_client", "txn_end_latency"),
+            Histogram("HttpProxy", "K23SI_client", "txn_duration")
+            ]
+        )
+        db = SKVClient(args.http)
+
+        prev = mclient.refresh()
+        status, txn = db.begin_txn()
+        curr = mclient.refresh()
+        self.assertEqual(curr.open_txns, prev.open_txns+1)
+
+        loc = DBLoc(partition_key_name="partitionKey", range_key_name="rangeKey",
+            partition_key="ptest2", range_key="rtest2",
+            schema="test_schema", coll="HTTPClient", schema_version=1)
+        additional_data =  { "data" :"data1"}
+
+        # Write with bad range key data type, should fail
+        bad_loc = loc.get_new(range_key=1)
+        status = txn.write(bad_loc, additional_data)
+        self.assertEqual(status.code, 400, msg=status.message)
+        curr = mclient.refresh()
+        self.assertEqual(curr.deserialization_errors, prev.deserialization_errors+1)
+
+        status = txn.end()
+        self.assertEqual(status.code, 200, msg=status.message)
+        curr = mclient.refresh()
+        self.assertEqual(curr.open_txns, prev.open_txns)
+        self.assertEqual(curr.txn_begin_latency, prev.txn_begin_latency+1)
+        self.assertEqual(curr.txn_end_latency, prev.txn_end_latency+1)
+        self.assertEqual(curr.txn_duration, prev.txn_duration+1)
 
 del sys.argv[1:]
 unittest.main()
