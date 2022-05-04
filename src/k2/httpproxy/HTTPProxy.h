@@ -23,6 +23,7 @@ Copyright(c) 2022 Futurewei Cloud
 
 #pragma once
 
+#include <k2/config/Config.h>
 #include <k2/module/k23si/client/k23si_client.h>
 
 namespace k2 {
@@ -57,15 +58,28 @@ private:
 
     sm::metric_groups _metric_groups;
     uint64_t _deserializationErrors = 0;
+    uint64_t _timedoutTxns = 0;
+    uint64_t _numQueries = 0;
 
     bool _stopped = true;
     k2::K23SIClient _client;
     uint64_t _txnID = 0;
     uint64_t _queryID = 0;
-    std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
-    // Store in progress queries
-    std::unordered_map<uint64_t, Query> _queries;
+
+    struct TxnTracker {
+        k2::K2TxnHandle txn;
+        // Store in progress queries
+        std::unordered_map<uint64_t, Query> queries;
+        // Txn idle expiry timer
+        seastar::timer<> timer;
+
+        // Push back txn idle expiry because of activity
+        void resetTimeout(Duration d);
+    };
+    std::unordered_map<uint64_t, TxnTracker> _txns;
     std::vector<seastar::future<>> _endFuts;
+    // Txn idle timeout
+    ConfigDuration httpproxy_txn_timeout{"httpproxy_txn_timeout", 60s};
 };  // class HTTPProxy
 
 } // namespace k2

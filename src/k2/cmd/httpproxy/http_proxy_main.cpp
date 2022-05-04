@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
         ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
-        ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff");
+        ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
+        ("httpproxy_txn_timeout", bpo::value<k2::ParseableDuration>(), "HTTP Proxy Txn idle timeout");
     return app.start(argc, argv);
 }

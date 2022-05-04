@@ -171,7 +171,12 @@ seastar::future<> HTTPProxy::gracefulStop() {
 
     auto it = _txns.begin();
     for(; it != _txns.end(); ++it) {
-        _endFuts.push_back(it->second.end(false).discard_result());
+        it->second.timer.cancel();
+    }
+
+    it = _txns.begin();
+    for(; it != _txns.end(); ++it) {
+        _endFuts.push_back(it->second.txn.end(false).discard_result());
     }
 
     return seastar::when_all_succeed(_endFuts.begin(), _endFuts.end());
@@ -186,13 +191,41 @@ seastar::future<> HTTPProxy::start() {
     return _startFut;
 }
 
+void HTTPProxy::TxnTracker::resetTimeout(Duration timeout) {
+    timer.rearm(Clock::now() + timeout);
+}
+
 seastar::future<nlohmann::json> HTTPProxy::_handleBegin(nlohmann::json&& request) {
     (void) request;
     return _client.beginTxn(k2::K2TxnOptions())
     .then([this] (auto&& txn) {
         K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
-        _txns[_txnID++] = std::move(txn);
-        return JsonResponse(Statuses::S201_Created("Begin txn success"), nlohmann::json{{"txnID", _txnID - 1}});
+        auto txnid = _txnID++;
+        seastar::timer<> timer([this, txnid] {
+            if (_stopped) return;
+            // Sometime this callback happens during shutdown before gracefull stop is called.
+            // Causing the program to exit with no thread error.
+            // TODO: Detect and fix such condition. 
+            K2LOG_D(log::httpproxy, "Txn timed out for txnid={}", txnid);
+            auto iter = _txns.find(txnid);
+            K2ASSERT(log::httpproxy, iter != _txns.end(), "unable to find txn for timer");
+            _timedoutTxns++;
+            iter->second.txn.end(false)
+            .then_wrapped([this, txnid]  (auto&& fut) {
+                (void)fut;
+                K2LOG_D(log::httpproxy, "Erasing txnid={}", txnid);
+                _numQueries -= _txns[txnid].queries.size();
+                // Following line will also delete the timer calling this callback.
+                // TODO: Delete outside this callback to avoid potential race condition.
+                _txns.erase(txnid);
+
+                return seastar::make_ready_future<>();
+            })
+            .wait();
+        });
+        timer.arm(httpproxy_txn_timeout());
+        _txns.emplace(txnid, TxnTracker{std::move(txn), {}, std::move(timer)});
+        return JsonResponse(Statuses::S201_Created("Begin txn success"), nlohmann::json{{"txnID", txnid}});
     });
 }
 
@@ -209,13 +242,14 @@ seastar::future<nlohmann::json> HTTPProxy::_handleEnd(nlohmann::json&& request) 
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for end request"));
     }
 
-    std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
+    auto it = _txns.find(id);
     if (it == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for end request"));
     }
 
-    return it->second.end(commit)
+    return it->second.txn.end(commit)
     .then([this, id] (k2::EndResult&& result) {
+        // Will automatically cancel the txn timer when destroyed
         _txns.erase(id);
         return JsonResponse(std::move(result.status));
     });
@@ -242,7 +276,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         return JsonResponse(Statuses::S400_Bad_Request("Invalid json for read request"));
     }
 
-    std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
+    auto it = _txns.find(id);
     if (it == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for read request"));
     }
@@ -261,7 +295,9 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
             _deserializationErrors++;
             return JsonResponse(Statuses::S400_Bad_Request(e.what()));
         }
-        return _txns[id].read(std::move(record))
+        auto iter = _txns.find(id);
+        iter->second.resetTimeout(httpproxy_txn_timeout());
+        return iter->second.txn.read(std::move(record))
         .then([this] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
             if(!result.status.is2xxOK()) {
                 return JsonResponse(std::move(result.status));
@@ -296,7 +332,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for write request"));
     }
 
-    std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
+    auto it = _txns.find(id);
     if (it == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for write request"));
     }
@@ -315,8 +351,9 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
             _deserializationErrors++;
             return JsonResponse(Statuses::S400_Bad_Request(e.what()));
         }
-
-        return _txns[id].write(record)
+        auto iter = _txns.find(id);
+        iter->second.resetTimeout(httpproxy_txn_timeout());        
+        return iter->second.txn.write(record)
         .then([] (k2::WriteResult&& result) {
             return JsonResponse(std::move(result.status));
         });
@@ -384,17 +421,23 @@ seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& 
 seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& jsonReq) {
     std::string collectionName;
     std::string schemaName;
+    uint64_t txnID;
 
     try {
         jsonReq.at("collectionName").get_to(collectionName);
         jsonReq.at("schemaName").get_to(schemaName);
+        jsonReq.at("txnID").get_to(txnID);
     } catch(...) {
         _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
-
+    auto txnIter = _txns.find(txnID);
+    if (txnIter == _txns.end()) {
+        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
+    }
+    txnIter->second.resetTimeout(httpproxy_txn_timeout());
     return _client.createQuery(collectionName, schemaName)
-    .then([this, req=std::move(jsonReq)] (auto&& result) mutable {
+    .then([this, txnID, req=std::move(jsonReq)] (auto&& result) mutable {
         if(!result.status.is2xxOK()) {
             return JsonResponse(std::move(result.status));
         }
@@ -411,8 +454,10 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         if (req.contains("reverse")) {
             result.query.setReverseDirection(req["reverse"]);
         }
-        _queries[_queryID++] = std::move(result.query);
-        nlohmann::json resp{{"queryID", _queryID - 1}};
+        auto queryid = _queryID++;
+        _txns[txnID].queries[queryid] = std::move(result.query);
+        _numQueries++;
+        nlohmann::json resp{{"queryID", queryid}};
         return JsonResponse(std::move(result.status), std::move(resp));
     });
 }
@@ -432,14 +477,15 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
     if (txnIter == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
     }
-    auto queryIter = _queries.find(queryID);
+    txnIter->second.resetTimeout(httpproxy_txn_timeout());    
+    auto queryIter = txnIter->second.queries.find(queryID);
 
-    if (queryIter == _queries.end()) {
+    if (queryIter == txnIter->second.queries.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find queryID for query request"));
     }
 
-    return txnIter->second.query(queryIter->second)
-    .then([this, queryID](QueryResult&& result) {
+    return txnIter->second.txn.query(queryIter->second)
+    .then([this, txnID, queryID](QueryResult&& result) {
         if(!result.status.is2xxOK()) {
             return JsonResponse(std::move(result.status));
         }
@@ -449,10 +495,11 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
         for (auto& record: result.records) {
             records.push_back(serializeJSONFromRecord(record));
         }
-
-        bool isDone = _queries[queryID].isDone();
+        auto txnIter = _txns.find(txnID);
+        bool isDone = txnIter->second.queries[queryID].isDone();
         if (isDone) {
-            _queries.erase(queryID);
+            txnIter->second.queries.erase(queryID);
+            _numQueries--;
         }
         nlohmann::json resp;
         resp["records"] = std::move(records);
@@ -509,9 +556,10 @@ void HTTPProxy::_registerMetrics() {
     _metric_groups.add_group("session",
     {
         sm::make_counter("deserialization_errors", _deserializationErrors, sm::description("Total number of deserialization errors"), labels),
+        sm::make_counter("timed_out_txns", _timedoutTxns, sm::description("Total number of txn timed out"), labels),
 
         sm::make_gauge("open_txns", [this]{ return  _txns.size();}, sm::description("Total number of open txn handles"), labels),
-        sm::make_gauge("open_queries", [this]{ return  _queries.size();}, sm::description("Total number of open queries"), labels),
+        sm::make_gauge("open_queries", [this]{ return  _numQueries;}, sm::description("Total number of open queries"), labels),
     });
 }
 }

@@ -32,6 +32,7 @@ from skvclient import (Status, DBLoc, Txn, FieldType, SchemaField,
     CollectionMetadata, SKVClient, FieldSpec, MetricsClient,
     Counter, Histogram)
 from datetime import timedelta
+from time import sleep
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--http", help="HTTP API URL")
@@ -386,33 +387,33 @@ class TestBasicTxn(unittest.TestCase):
 
         all_records = [record1, record2]
 
-        status, query_id = db.create_query("query_collection", "query_test")
+        status, query_id = txn.create_query("query_collection", "query_test")
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records)
 
-        status, query_id = db.create_query("query_collection", "query_test",
+        status, query_id = txn.create_query("query_collection", "query_test",
             start = {"partition": "default", "partition1": "h"})
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records[1:])
 
-        status, query_id = db.create_query("query_collection", "query_test",
+        status, query_id = txn.create_query("query_collection", "query_test",
             end = {"partition": "default", "partition1": "h"})
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records[:1])
 
-        status, query_id = db.create_query("query_collection", "query_test", limit = 1)
+        status, query_id = txn.create_query("query_collection", "query_test", limit = 1)
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(records, all_records[:1])
 
-        status, query_id = db.create_query("query_collection", "query_test", reverse = True)
+        status, query_id = txn.create_query("query_collection", "query_test", reverse = True)
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
         self.assertEqual(status.code, 200, msg=status.message)
@@ -420,7 +421,7 @@ class TestBasicTxn(unittest.TestCase):
         copied.reverse()
         self.assertEqual(records, copied)
 
-        status, query_id = db.create_query("query_collection", "query_test",
+        status, query_id = txn.create_query("query_collection", "query_test",
             limit = 1, reverse = True)
         self.assertEqual(status.code, 200, msg=status.message)
         status, records = txn.queryAll(query_id)
@@ -428,13 +429,13 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(records,  all_records[1:])
 
         # Send reverse with invalid type, should fail with type error
-        status, query_id = db.create_query("query_collection", "query_test",
+        status, query_id = txn.create_query("query_collection", "query_test",
             limit = 1, reverse = 5)
         self.assertEqual(status.code, 500, msg=status.message)
         self.assertIn("type_error", status.message, msg=status.message)
 
         # Send limit with invalid type, should fail with type error
-        status, query_id = db.create_query("query_collection", "query_test",
+        status, query_id = txn.create_query("query_collection", "query_test",
             limit = "test", reverse = False)
         self.assertEqual(status.code, 500, msg=status.message)
         self.assertIn("type_error", status.message, msg=status.message)
@@ -458,6 +459,7 @@ class TestBasicTxn(unittest.TestCase):
         mclient = MetricsClient(args.prometheus, [
             Counter("HttpProxy", "session", "open_txns"),
             Counter("HttpProxy", "session", "deserialization_errors"),
+            Counter("HttpProxy", "session", "timed_out_txns"),
             Histogram("HttpProxy", "K23SI_client", "txn_begin_latency"),
             Histogram("HttpProxy", "K23SI_client", "txn_end_latency"),
             Histogram("HttpProxy", "K23SI_client", "txn_duration")
@@ -489,6 +491,25 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(curr.txn_begin_latency, prev.txn_begin_latency+1)
         self.assertEqual(curr.txn_end_latency, prev.txn_end_latency+1)
         self.assertEqual(curr.txn_duration, prev.txn_duration+1)
+
+        prev = mclient.refresh()
+        status, txn = db.begin_txn()
+        # Sleep 1.2s for txn to timeout
+        sleep(1.2)
+        status = txn.end()
+        self.assertEqual(status.code, 400, msg=status.message)
+        curr = mclient.refresh()
+        self.assertEqual(curr.timed_out_txns, prev.timed_out_txns+1)
+
+        status, txn = db.begin_txn()
+        # Sleep 0.7 and write, it should succeed because within timeout
+        sleep(0.7)
+        status = txn.write(loc, additional_data)
+        self.assertEqual(status.code, 201, msg=status.message)
+        # Sleep additional time, should succeed as time out pushed back because of write
+        sleep(0.7)
+        status = txn.end()
+        self.assertEqual(status.code, 200, msg=status.message)
 
 del sys.argv[1:]
 unittest.main()

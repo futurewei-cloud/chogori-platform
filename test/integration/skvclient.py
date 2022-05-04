@@ -134,6 +134,26 @@ class Txn:
         output = result["response"].get("record") if "response" in result else None
         return Status(result), output
 
+    def create_query(self, collectionName: str,
+        schemaName: str, start: dict = None, end: dict = None,
+        limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
+        data = {"collectionName": collectionName,
+            "schemaName": schemaName, "txnID": self._txn_id}
+        if start:
+            data["startScanRecord"] = start
+        if end:
+            data["endScanRecord"] = end
+        if limit:
+            data["limit"] = limit
+        if reverse:
+            data["reverse"] = reverse
+
+        result = self._send_req("/api/CreateQuery", data)
+        status = Status(result)
+        if "response" in result:
+            return status, Query(result["response"]["queryID"])
+        return status, None
+
     def query(self, query: Query) -> Tuple[Status, ListOfDict]:
         request = {"txnID" : self._txn_id, "queryID": query.query_id}
         result = self._send_req("/api/Query", request)
@@ -263,28 +283,6 @@ class SKVClient:
         result = r.json()
         status = Status(result)
         return status
-
-    def create_query(self, collectionName: str,
-        schemaName: str, start: dict = None, end: dict = None,
-        limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
-        url = self.http + "/api/CreateQuery"
-        data = {"collectionName": collectionName,
-            "schemaName": schemaName}
-        if start:
-            data["startScanRecord"] = start
-        if end:
-            data["endScanRecord"] = end
-        if limit:
-            data["limit"] = limit
-        if reverse:
-            data["reverse"] = reverse
-
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
-        if "response" in result:
-            return status, Query(result["response"]["queryID"])
-        return status, None
 
     def get_key_string(self, fields: [FieldSpec]) -> Tuple[Status, str]:
         url = self.http + "/api/GetKeyString"
