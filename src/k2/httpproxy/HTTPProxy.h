@@ -25,8 +25,11 @@ Copyright(c) 2022 Futurewei Cloud
 
 #include <k2/config/Config.h>
 #include <k2/module/k23si/client/k23si_client.h>
+#include <boost/intrusive/list.hpp>
+#include <k2/common/MapWithExpiry.h>
 
 namespace k2 {
+
 
 class HTTPProxy {
 public:  // application lifespan
@@ -66,18 +69,17 @@ private:
     uint64_t _txnID = 0;
     uint64_t _queryID = 0;
 
-    struct TxnTracker {
+    struct TxnInfo {
         k2::K2TxnHandle txn;
         // Store in progress queries
         std::unordered_map<uint64_t, Query> queries;
-        // Txn idle expiry timer
-        seastar::timer<> timer;
-
-        // Push back txn idle expiry because of activity
-        void resetTimeout(Duration d);
+        // clanup function is required for MapWithExpiry
+        auto cleanup() {
+            return txn.end(false);
+        }
     };
-    std::unordered_map<uint64_t, TxnTracker> _txns;
-    std::vector<seastar::future<>> _endFuts;
+
+    MapWithExpiry<uint64_t, TxnInfo> _txns;
     // Txn idle timeout
     ConfigDuration httpproxy_txn_timeout{"httpproxy_txn_timeout", 60s};
 };  // class HTTPProxy
