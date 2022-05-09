@@ -26,10 +26,14 @@ Copyright(c) 2022 Futurewei Cloud
 #include "Status.h"
 #include "SKVRecord.h"
 
+#include "httplib/httplib.h"
+
 namespace k2 {
 
 class HTTPMessageClient {
 private:
+    httplib::Client client;
+
     enum class Method:uint8_t {
         POST
     };
@@ -72,6 +76,10 @@ private:
         Deleter _deleter;
     };
 public:
+    HTTPMessageClient(std::string server="localhost", int port=30000) {
+        client = httplib::Client(server, port);
+    }
+
     // send a single HTTP message and return the status and expected response object
     template <typename RequestT, typename ResponseT>
     boost::future<Response<ResponseT>> POST(String path, RequestT&& obj) {
@@ -107,12 +115,20 @@ private:
 
     boost::future<Response<Binary>> _doSend(Method method, String path, Binary&& request) {
         // send the payload via http
-        Binary result;
-        Status responseStatus;
+        httplib::Result result;
+        switch (method) {
+            case Method::POST:
+                result = client.Post(path, request.data, request.size, "application/x-msgpack");
+                break;
+            default:
+                throw std::runtime_error("Unknown method for HTTPMessageClient _doSend");
+        }
 
-        // TODO 1. send the given Binary
-        // TODO 2. receive the response from server as `result` and return to caller
-        return make_ready_future(std::move(responseStatus)), std::move(result));
+        Status responseStatus{.code=result->status, .message=""};
+        char* bodyData = result->body.data();
+        size_t bodySize = result->body.size();
+        Binary responseBody(bodyData, bodySize, [std::move(result->body)] (char*) {});
+        return make_ready_future(std::move(responseStatus), std::move(responseBody));
     }
 
     template<typename T>
@@ -166,7 +182,7 @@ public:
     boost::future<Response<QueryResponse>> query(QueryRequest request);
 
 private:
-    HTTPMessageClient _client;
+    HTTPMessageClient& _client;
 };
 
 class SKVClient {
