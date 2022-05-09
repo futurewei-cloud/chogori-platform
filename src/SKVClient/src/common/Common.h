@@ -48,7 +48,6 @@ enum class _K2_ENUM_TYPE_NAME { \
 };
 
 #define K2_SERIALIZABLE(...)                                                \
-    struct __K2PayloadSerializableTraitTag__ {};                            \
     template <typename Payload_T>                                           \
     void k2PackTo(Payload_T& ___k2_payload_local_macro_var___) const {      \
         ___k2_payload_local_macro_var___.writeMany(__VA_ARGS__);            \
