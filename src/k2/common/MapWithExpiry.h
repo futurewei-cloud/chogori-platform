@@ -134,14 +134,9 @@ public:
 
     typedef typename TimestampOrderedMap<KeyT, ValT>::iterator iterator;
 
-    // Check if key is present, with optionally push back expiry if present
-    iterator find(const KeyT &key, bool reorder) {
-        auto iter = _elems.find(key);
-        if (iter == _elems.end()) return iter;
-        if (reorder) _elems.resetTs(iter, getExpiry());
-        return iter;
-    }
-
+    // Move elment to the end of the TS ordered list
+    void reorder(iterator iter) {_elems.resetTs(iter, getExpiry());}
+    iterator find(const KeyT &key) {return _elems.find(key);}
     TimePoint getExpiry() {return ClockT::now() + _timeout;}
     void insert(const KeyT &key, ValT&& val) {_elems.insert(key, std::move(val), getExpiry());}
     void erase(const KeyT &key) {_elems.erase(key);}

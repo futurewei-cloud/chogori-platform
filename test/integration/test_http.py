@@ -494,8 +494,8 @@ class TestBasicTxn(unittest.TestCase):
 
         prev = mclient.refresh()
         status, txn = db.begin_txn()
-        # Sleep 1.2s for txn to timeout
-        sleep(1.2)
+        # Sleep 1.7s for txn to timeout
+        sleep(1.7)
         status = txn.end()
         self.assertEqual(status.code, 400, msg=status.message)
         curr = mclient.refresh()

@@ -218,8 +218,8 @@ seastar::future<nlohmann::json> HTTPProxy::_handleEnd(nlohmann::json&& request) 
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for end request"));
     }
 
-    auto iter = _txns.find(id, false);
-    if (iter == _txns.end()) {
+    auto iter = _txns.find(id);
+    if ( iter == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for end request"));
     }
 
@@ -251,8 +251,10 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         return JsonResponse(Statuses::S400_Bad_Request("Invalid json for read request"));
     }
 
-    if (_txns.find(id, true) == _txns.end()) {
+    if (auto iter  = _txns.find(id); iter == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for read request"));
+    } else {
+        _txns.reorder(iter);
     }
 
     return _client.getSchema(collectionName, schemaName, ANY_SCHEMA_VERSION)
@@ -305,8 +307,10 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for write request"));
     }
 
-    if (_txns.find(id, true) == _txns.end()) {
+    if (auto iter = _txns.find(id); iter == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for write request"));
+    } else {
+        _txns.reorder(iter);
     }
 
     return _client.getSchema(collectionName, schemaName, schemaVersion)
@@ -402,8 +406,10 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
 
-    if (_txns.find(txnID, true) == _txns.end()) {
+    if (auto iter = _txns.find(txnID); iter  == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
+    } else {
+        _txns.reorder(iter);
     }
 
     return _client.createQuery(collectionName, schemaName)
@@ -443,11 +449,12 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
         _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
-    auto iter = _txns.find(txnID, true);
+    auto iter = _txns.find(txnID);
     if (iter == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
     }
 
+    _txns.reorder(iter);
     auto& txnInfo = _txns.getValue(iter);
     auto queryIter = txnInfo.queries.find(queryID);
     if (queryIter == txnInfo.queries.end()) {
