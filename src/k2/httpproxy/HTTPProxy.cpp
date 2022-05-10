@@ -218,11 +218,12 @@ seastar::future<nlohmann::json> HTTPProxy::_handleEnd(nlohmann::json&& request) 
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for end request"));
     }
 
-    if (!_txns.isPresent(id, false)) {
+    auto iter = _txns.find(id, false);
+    if (iter == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for end request"));
     }
 
-    return _txns.at(id).txn.end(commit)
+    return _txns.getValue(iter).txn.end(commit)
     .then([this, id] (k2::EndResult&& result) {
         _txns.erase(id);
         return JsonResponse(std::move(result.status));
@@ -250,7 +251,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
         return JsonResponse(Statuses::S400_Bad_Request("Invalid json for read request"));
     }
 
-    if (!_txns.isPresent(id, true)) {
+    if (_txns.find(id, true) == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for read request"));
     }
 
@@ -268,7 +269,8 @@ seastar::future<nlohmann::json> HTTPProxy::_handleRead(nlohmann::json&& request)
             _deserializationErrors++;
             return JsonResponse(Statuses::S400_Bad_Request(e.what()));
         }
-        return _txns.at(id).txn.read(std::move(record))
+        auto& txnInfo = _txns.at(id);
+        return txnInfo.txn.read(std::move(record))
         .then([this] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
             if(!result.status.is2xxOK()) {
                 return JsonResponse(std::move(result.status));
@@ -303,7 +305,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleWrite(nlohmann::json&& request
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for write request"));
     }
 
-    if (!_txns.isPresent(id, true)) {
+    if (_txns.find(id, true) == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for write request"));
     }
 
@@ -400,7 +402,7 @@ seastar::future<nlohmann::json> HTTPProxy::_handleCreateQuery(nlohmann::json&& j
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
 
-    if (!_txns.isPresent(txnID, true)) {
+    if (_txns.find(txnID, true) == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
     }
 
@@ -441,11 +443,12 @@ seastar::future<nlohmann::json> HTTPProxy::_handleQuery(nlohmann::json&& jsonReq
         _deserializationErrors++;
         return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
     }
-    if (!_txns.isPresent(txnID, true)) {
+    auto iter = _txns.find(txnID, true);
+    if (iter == _txns.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
     }
 
-    auto& txnInfo = _txns.at(txnID);
+    auto& txnInfo = _txns.getValue(iter);
     auto queryIter = txnInfo.queries.find(queryID);
     if (queryIter == txnInfo.queries.end()) {
         return JsonResponse(Statuses::S400_Bad_Request("Could not find queryID for query request"));

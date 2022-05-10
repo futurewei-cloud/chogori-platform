@@ -132,12 +132,14 @@ public:
             });
     }
 
+    typedef typename TimestampOrderedMap<KeyT, ValT>::iterator iterator;
+
     // Check if key is present, with optionally push back expiry if present
-    bool isPresent(const KeyT &key, bool reorder) {
-        auto iter =  _elems.find(key);
-        if (iter == _elems.end()) return false;
+    iterator find(const KeyT &key, bool reorder) {
+        auto iter = _elems.find(key);
+        if (iter == _elems.end()) return iter;
         if (reorder) _elems.resetTs(iter, getExpiry());
-        return true;
+        return iter;
     }
 
     TimePoint getExpiry() {return ClockT::now() + _timeout;}
@@ -145,6 +147,8 @@ public:
     void erase(const KeyT &key) {_elems.erase(key);}
     auto size() {return _elems.size(); }
     ValT& at(const KeyT &key) {return _elems.at(key);}
+    iterator end() {return _elems.end();}
+    ValT& getValue(iterator it) {return it->second.getValue();}
 
 private:
     TimestampOrderedMap<KeyT, ValT> _elems;
@@ -153,5 +157,4 @@ private:
     Duration _timeout = 10s;
 
 };
-
 }
