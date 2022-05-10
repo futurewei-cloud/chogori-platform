@@ -69,10 +69,11 @@ public:
         // Remove from map
         return elems.extract(iter);
     }
-    auto erase(const KeyT &key) {
+    void erase(const KeyT &key) {
         iterator iter = elems.find(key);
+        if (iter == elems.end()) return;
         unlink(iter);
-        return elems.erase(iter);
+        elems.erase(iter);
     }
 
     void resetTs(iterator iter, TimePoint ts) {
