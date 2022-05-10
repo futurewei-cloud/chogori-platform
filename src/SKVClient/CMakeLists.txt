@@ -9,7 +9,7 @@ include_directories(src)
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost REQUIRED COMPONENTS thread) # header only libraries must not be added here
+find_package(Boost COMPONENTS thread system REQUIRED) # header only libraries must not be added here
 find_package(Threads REQUIRED)
 
 add_subdirectory (src)
