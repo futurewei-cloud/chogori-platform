@@ -310,7 +310,8 @@ public:
                 _checkResponseStatus(status);
                 _ongoing_ops--;
 
-                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
+                if ((status.is2xxOK() || status == dto::K23SIStatus::ConditionFailed) &&
+                    !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful write");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr);
                     _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
@@ -392,7 +393,7 @@ public:
                 _checkResponseStatus(status);
                 _ongoing_ops--;
 
-                if (status.is2xxOK() && !_heartbeat_timer.isArmed()) {
+                if ((status.is2xxOK() || status == dto::K23SIStatus::ConditionFailed) && !_heartbeat_timer.isArmed()) {
                     K2ASSERT(log::skvclient, _cpo_client->collections.find(_trh_collection) != _cpo_client->collections.end(), "collection not present after successful partial update");
                     K2LOG_D(log::skvclient, "Starting hb, mtr={}", _mtr)
                     _heartbeat_interval = _cpo_client->collections[_trh_collection]->collection.metadata.heartbeatDeadline / 2;
