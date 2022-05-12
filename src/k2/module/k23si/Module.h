@@ -163,11 +163,11 @@ private: // methods
     Indexer::Iterator _initializeScan(const dto::K23SIQueryRequest& request);
 
     // Helper for handleQuery. Checks to see if the indexer scan should stop.
-    bool _isScanDone(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request, size_t response_size);
+    bool _isScanDone(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request, size_t response_size, uint64_t num_scans);
 
     // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
     dto::Key _getContinuationToken(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request,
-                                            dto::K23SIQueryResponse& response, size_t response_size);
+                                            dto::K23SIQueryResponse& response, size_t response_size, uint64_t num_scans);
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
 

@@ -56,6 +56,10 @@ struct K23SIConfig {
     // Max number of records to return in a single query response
     ConfigVar<uint32_t> paginationLimit{"k23si_query_pagination_limit", 10};
 
+    // Max number of records to scan in a single query request before response sent
+    ConfigVar<uint32_t> scanLimit{"k23si_query_scan_limit", 0};
+
+
     // Min records in response needed to avoid a push during query processing,
     // and instead returning a paginated response early
     // Default is > paginiationLimit so it will always push

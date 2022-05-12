@@ -457,7 +457,7 @@ Indexer::Iterator K23SIPartitionModule::_initializeScan(const dto::K23SIQueryReq
 
 // Helper for handleQuery. Checks to see if the indexer scan should stop.
 bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request,
-                                       size_t response_size) {
+                                       size_t response_size, uint64_t num_scans) {
     // we're at end of iteration
     if (iter.atEnd()) {
         return true;
@@ -478,6 +478,8 @@ bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto:
         return true;
     } else if (response_size == _config.paginationLimit()) {
         return true;
+    } else if (_config.scanLimit() > 0 && num_scans == _config.scanLimit()) {
+        return true;
     }
 
     return false;
@@ -485,7 +487,8 @@ bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto:
 
 // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
 dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& iter,
-                    const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response, size_t response_size) {
+                    const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response,
+                    size_t response_size, uint64_t num_scans) {
     auto ikey = iter.getKey();
     // NB: In all checks below, iter.empty signifies that we're past the last
     // key available from the iterator.
@@ -494,6 +497,8 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& it
     // 2. Iterator is not end() but is >= user endKey
     // 3. Iterator is at end() and partition bounds contains endKey
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
+        // Scan lmit has reached
+        (_config.scanLimit() > 0 && num_scans >= _config.scanLimit()) ||
         // Test for past user endKey:
         (!iter.atEnd() &&
             (request.reverseDirection ? ikey <= request.endKey : ikey >= request.endKey && request.endKey.partitionKey != "")) ||
@@ -574,7 +579,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     }
 
     auto iter = _initializeScan(request);
-    for (; !_isScanDone(iter, request, response.results.size());
+    for (; !_isScanDone(iter, request, response.results.size(), numScans);
                         _scanAdvance(iter, request)) {
         ++numScans;
         auto [record, conflict] = iter.getDataRecordAt(request.mtr.timestamp);
@@ -646,7 +651,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         });
     }
 
-    response.nextToScan = _getContinuationToken(iter, request, response, response.results.size());
+    response.nextToScan = _getContinuationToken(iter, request, response, response.results.size(), numScans);
     K2LOG_D(log::skvsvr, "nextToScan: {}, exclusiveToken: {}", response.nextToScan, response.exclusiveToken);
 
     _queryPageScans.add(numScans);
