@@ -457,7 +457,7 @@ Indexer::Iterator K23SIPartitionModule::_initializeScan(const dto::K23SIQueryReq
 
 // Helper for handleQuery. Checks to see if the indexer scan should stop.
 bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request,
-                                       size_t response_size) {
+                                       size_t response_size, uint64_t num_scans) {
     // we're at end of iteration
     if (iter.atEnd()) {
         return true;
@@ -477,6 +477,8 @@ bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto:
     } else if (request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) {
         return true;
     } else if (response_size == _config.paginationLimit()) {
+        return true;
+    } else if (_config.scanLimit() > 0 && num_scans == _config.scanLimit()) {
         return true;
     }
 
@@ -574,7 +576,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
     }
 
     auto iter = _initializeScan(request);
-    for (; !_isScanDone(iter, request, response.results.size());
+    for (; !_isScanDone(iter, request, response.results.size(), numScans);
                         _scanAdvance(iter, request)) {
         ++numScans;
         auto [record, conflict] = iter.getDataRecordAt(request.mtr.timestamp);

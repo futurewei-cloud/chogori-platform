@@ -5,7 +5,7 @@ source ${topname}/common_defs.sh
 cd ${topname}/../..
 
 # start nodepool
-./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c2 --tcp_endpoints ${EPS[@]:0:2} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_query_pagination_limit 2 &
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c2 --tcp_endpoints ${EPS[@]:0:2} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --k23si_query_pagination_limit 2  --k23si_query_scan_limit 6 &
 nodepool_child_pid=$!
 
 # start persistence
