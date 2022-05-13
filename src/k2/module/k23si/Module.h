@@ -167,7 +167,7 @@ private: // methods
 
     // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
     dto::Key _getContinuationToken(const Indexer::Iterator& iter, const dto::K23SIQueryRequest& request,
-                                            dto::K23SIQueryResponse& response, size_t response_size, uint64_t num_scans);
+                                            dto::K23SIQueryResponse& response, size_t response_size);
 
     std::tuple<Status, bool> _doQueryFilter(dto::K23SIQueryRequest& request, dto::SKVRecord::Storage& storage);
 

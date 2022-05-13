@@ -487,8 +487,7 @@ bool K23SIPartitionModule::_isScanDone(const Indexer::Iterator& iter, const dto:
 
 // Helper for handleQuery. Returns continuation token (aka response.nextToScan)
 dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& iter,
-                    const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response,
-                    size_t response_size, uint64_t num_scans) {
+                    const dto::K23SIQueryRequest& request, dto::K23SIQueryResponse& response, size_t response_size) {
     auto ikey = iter.getKey();
     // NB: In all checks below, iter.empty signifies that we're past the last
     // key available from the iterator.
@@ -496,7 +495,6 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& it
     // 1. Record limit is reached
     // 2. Iterator is not end() but is >= user endKey
     // 3. Iterator is at end() and partition bounds contains endKey
-    (void)num_scans;
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
         // Test for past user endKey:
         (!iter.atEnd() &&
@@ -650,7 +648,7 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         });
     }
 
-    response.nextToScan = _getContinuationToken(iter, request, response, response.results.size(), numScans);
+    response.nextToScan = _getContinuationToken(iter, request, response, response.results.size());
     K2LOG_D(log::skvsvr, "nextToScan: {}, exclusiveToken: {}", response.nextToScan, response.exclusiveToken);
 
     _queryPageScans.add(numScans);
