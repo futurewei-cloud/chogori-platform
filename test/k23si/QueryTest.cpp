@@ -34,8 +34,11 @@ const char* collname = "k23si_test_collection";
 
 // Integration tests for SKV Query operations
 // These assume the "k23si_query_pagination_limit" server option is set to 2
-// and two partitions
+// and "k23si_query_scan_limit" is set to 6 and two partitions
 class QueryTest {
+private:
+
+    int numPartitions = 2;
 
 public:  // application lifespan
     QueryTest() : _client(k2::K23SIClientConfig()) { K2LOG_I(log::k23si, "ctor");}
@@ -107,6 +110,8 @@ public:  // application lifespan
         .then([this] { return runScenario06(); })
         .then([this] { return runScenario07(); })
         .then([this] { return runScenario08(); })
+        .then([this] { return writeAdditionalData(); })
+        .then([this] { return runScenario09(); })
         .then([this] {
             K2LOG_I(log::k23si, "======= All tests passed ========");
             exitcode = 0;
@@ -215,6 +220,7 @@ doQuery(const k2::String& start, const k2::String& end, int32_t limit, bool reve
         });
     });
 }
+
 
 // Write six records with partition2 keys ("a"-"f"), three to each partition
 // Write additional two records with non-default partition1 key
@@ -778,6 +784,90 @@ seastar::future<> runScenario08() {
         .discard_result();
     });
 }
+
+seastar::future<> writeAdditionalData() {
+    K2LOG_I(log::k23si, "QueryTest setup additional data to test scan limit");
+    k2::K2TxnOptions options{};
+    options.syncFinalize = true;
+    return _client.beginTxn(options)
+    .then([this] (k2::K2TxnHandle&& t) {
+        txn = std::move(t);
+        return seastar::make_ready_future<>();
+    })
+    .then([this] () {
+        return _client.getSchema(collname, "schema", 1);
+    })
+    .then([this] (auto&& response) {
+        auto& [status, schemaPtr] = response;
+        K2EXPECT(log::k23si, status.is2xxOK(), true);
+
+        std::vector<seastar::future<>> write_futs;
+        int32_t data = 0;
+
+        for (int i=10; i < 20; i++) {
+            k2::dto::SKVRecord record(collname, schemaPtr);
+            record.serializeNext<k2::String>("default");
+            record.serializeNext<k2::String>(std::to_string(i));
+            record.serializeNext<k2::String>("");
+            record.serializeNext<int32_t>(i);
+            record.serializeNext<int32_t>(data);
+            write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
+                .then([] (auto&& response) {
+                    K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+            );
+            data++;
+        }
+        return seastar::when_all_succeed(write_futs.begin(), write_futs.end());
+    })
+    .then([this] () {
+        return txn.end(true);
+    })
+    .then([](auto&& response) {
+        K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::OK);
+        return seastar::make_ready_future<>();
+    });
+}
+
+template<class T> k2e::Expression getEqualFilter(String field, T value) {
+    std::vector<k2e::Value> values;
+    std::vector<k2e::Expression> exps;
+    values.emplace_back(k2e::makeValueReference(field));
+    values.emplace_back(k2e::makeValueLiteral<T>(std::move(value)));
+    k2e::Expression filter = k2e::makeExpression(k2e::Operation::EQ, std::move(values), std::move(exps));
+    return filter;
+}
+
+// scenario01 but test scan limit
+seastar::future<> runScenario09() {
+    K2LOG_I(log::k23si, "runScenario01");
+
+    auto filter = getEqualFilter<int32_t>("data1", 14);
+    K2LOG_I(log::k23si, "Single partition terminated by end key, actual data 10 to 19");
+    return doQuery("10", "15", -1, false, 1, 1, k2::dto::K23SIStatus::OK, std::move(filter)).discard_result()
+    .then([this] () {
+        auto filter = getEqualFilter<int32_t>("data1", 14);
+        K2LOG_I(log::k23si, "Multi partition full scan");
+        return doQuery("10", "20", -1, false, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter)).discard_result();
+    })
+    .then([this] () {
+        auto filter = getEqualFilter<int32_t>("data1", 14);
+        K2LOG_I(log::k23si, "Multi partition full scan");
+        return doQuery("", "", -1, false, 1, numPartitions+2, k2::dto::K23SIStatus::OK, std::move(filter)).discard_result();
+    })
+    .then([this] () {
+        auto filter = getEqualFilter<int32_t>("data1", 14);
+        K2LOG_I(log::k23si, "Single partition reverse scan");
+        return doQuery("20", "09", -1, true, 1, 2, k2::dto::K23SIStatus::OK, std::move(filter)).discard_result();
+    })
+    .then([this] () {
+        auto filter = getEqualFilter<int32_t>("data1", 14);
+        K2LOG_I(log::k23si, "Multi partition full reversescan");
+        return doQuery("", "", -1, true, 1, numPartitions+2, k2::dto::K23SIStatus::OK, std::move(filter)).discard_result();
+    });
+}
+
 
 // TODO: add test Scenario to deal with query request while change the partition map
 

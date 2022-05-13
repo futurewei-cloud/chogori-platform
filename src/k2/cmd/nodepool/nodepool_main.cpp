@@ -37,6 +37,7 @@ int main(int argc, char** argv) {
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
         ("k23si_query_pagination_limit", bpo::value<uint32_t>(), "Max records to return in a single query response")
+        ("k23si_query_scan_limit", bpo::value<uint32_t>(), "Max records to scan in a single query execution")
         ("k23si_query_push_limit", bpo::value<uint32_t>(), "Min records in response needed to avoid a push during query processing")
         ("k23si_max_push_count", bpo::value<uint32_t>(), "Max push count in handleRead and handleWrite")
         ("k23si_read_cache_size", bpo::value<uint64_t>(), "Max size of read cache")

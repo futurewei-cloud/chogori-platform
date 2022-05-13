@@ -496,9 +496,8 @@ dto::Key K23SIPartitionModule::_getContinuationToken(const Indexer::Iterator& it
     // 1. Record limit is reached
     // 2. Iterator is not end() but is >= user endKey
     // 3. Iterator is at end() and partition bounds contains endKey
+    (void)num_scans;
     if ((request.recordLimit >= 0 && response_size == (uint32_t)request.recordLimit) ||
-        // Scan lmit has reached
-        (_config.scanLimit() > 0 && num_scans >= _config.scanLimit()) ||
         // Test for past user endKey:
         (!iter.atEnd() &&
             (request.reverseDirection ? ikey <= request.endKey : ikey >= request.endKey && request.endKey.partitionKey != "")) ||
