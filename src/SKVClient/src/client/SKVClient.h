@@ -22,64 +22,23 @@ Copyright(c) 2022 Futurewei Cloud
 */
 
 #pragma once
-#include "Common.h"
-#include "SKVRecord.h"
-#include "Status.h"
-#include <skv/httplib/httplib.h>
+#include <common/Common.h>
+#include <dto/SKVRecord.h>
+#include <common/Status.h>
+#include <httplib/httplib.h>
 
 namespace k2 {
 
 class HTTPMessageClient {
-   private:
+private:
     httplib::Client client;
 
     enum class Method : uint8_t {
         POST
     };
-    struct Binary {
-        typedef std::function<void(char*)> Deleter;
-        Deleter deleteDeleter = [](char* d) { delete d; }
 
-        Binary() : Binary(0, 0, deleteDeleter) {}
-
-        template <typename DeleterFunc>
-        Binary(DeleterFunc&& deleter) : Binary(0, 0, std::move(deleter)) {}
-
-        template <typename DeleterFunc>
-        Binary(char* data, size_t size, DeleterFunc&& d) : data(data), size(size), _deleter(std::move(d)) {}
-        Binary(Binary&& o) {
-            data(o.data);
-            size(o.size);
-            _deleter = std::move(o._deleter);
-            o.data = 0;
-            o.size = 0;
-        }
-        Binary(const Binary& o) = delete;
-        Binary& operator=(const Binary& o) = delete;
-        Binary& operator=(Binary&& o) {
-            data(o.data);
-            size(o.size);
-            _deleter = std::move(o._deleter);
-            o.data = 0;
-            o.size = 0;
-            return *this;
-        }
-        ~Binary() {
-            _deleter(data);
-            data = 0;
-            size = 0;
-        }
-        char* data;
-        size_t size;
-
-       private:
-        Deleter _deleter;
-    };
-
-   public:
-    HTTPMessageClient(std::string server = "localhost", int port = 30000) {
-        client = httplib::Client(server, port);
-    }
+public:
+    HTTPMessageClient(std::string server = "localhost", int port = 30000): client(server, port) {}
 
     // send a single HTTP message and return the status and expected response object
     template <typename RequestT, typename ResponseT>

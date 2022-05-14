@@ -22,9 +22,8 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
-#include <k2/common/Common.h>
-#include <k2/transport/PayloadSerialization.h>
-#include <k2/transport/Status.h>
+#include <common/Common.h>
+#include <common/Status.h>
 
 #include "Collection.h"
 #include "ControlPlaneOracle.h"
@@ -57,6 +56,16 @@ inline std::ostream& operator<<(std::ostream& os, const TxnPriority& pri) {
     return os << strpri;
 }
 
+// Minimum Transaction Record - enough to identify a transaction.
+struct K23SI_MTR {
+    Timestamp timestamp; // the TSO timestamp of the transaction
+    TxnPriority priority = TxnPriority::Medium;  // transaction priority: user-defined: used to pick abort victims by K2 (0 is highest)
+    bool operator==(const K23SI_MTR& o) const;
+    bool operator!=(const K23SI_MTR& o) const;
+    size_t hash() const;
+    K2_PAYLOAD_FIELDS(timestamp, priority);
+    K2_DEF_FMT(K23SI_MTR, timestamp, priority);
+};
 struct TxnOptions {
     TxnOptions() noexcept : deadline(Duration(1s)),
                             priority(dto::TxnPriority::Medium) {}
@@ -117,12 +126,12 @@ struct K23SIWriteRequest {
         isDelete(_isDelete), designateTRH(_designateTRH), precondition(_precondition), request_id(id),
         key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
 
-    K2_SERIALIZABLE(pvid, collectionName, mtr, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
     K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
 };
 
 struct K23SIWriteResponse {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(K23SIWriteResponse);
 };
 
@@ -142,7 +151,7 @@ struct K23SIQueryRequest {
     expression::Expression filterExpression; // the filter expression for this query
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_SERIALIZABLE(pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
+    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit, includeVersionMismatch,
                       reverseDirection, filterExpression, projection);
     K2_DEF_FMT(K23SIQueryRequest, pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit,
         includeVersionMismatch, reverseDirection, filterExpression, projection);
@@ -152,7 +161,7 @@ struct K23SIQueryResponse {
     Key nextToScan; // For continuation token
     bool exclusiveToken = false; // whether nextToScan should be excluded or included
     std::vector<SKVRecord::Storage> results;
-    K2_SERIALIZABLE(nextToScan, exclusiveToken, results);
+    K2_PAYLOAD_FIELDS(nextToScan, exclusiveToken, results);
     K2_DEF_FMT(K23SIQueryResponse, nextToScan, exclusiveToken, results);
 };
 
@@ -167,12 +176,12 @@ struct K23SITxnHeartbeatRequest {
     // the MTR for the transaction we want to heartbeat
     K23SI_MTR mtr;
 
-    K2_SERIALIZABLE(pvid, collectionName, key, mtr);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr);
     K2_DEF_FMT(K23SITxnHeartbeatRequest, pvid, collectionName, key, mtr);
 };
 
 struct K23SITxnHeartbeatResponse {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(K23SITxnHeartbeatResponse);
 };
 
@@ -192,7 +201,7 @@ struct K23SITxnPushResponse {
     EndAction incumbentFinalization = EndAction::None;
     bool allowChallengerRetry = false;
 
-    K2_SERIALIZABLE(incumbentFinalization, allowChallengerRetry);
+    K2_PAYLOAD_FIELDS(incumbentFinalization, allowChallengerRetry);
     K2_DEF_FMT(K23SITxnPushResponse, incumbentFinalization, allowChallengerRetry);
 };
 
@@ -218,12 +227,12 @@ struct K23SITxnEndRequest {
     // The interval from end to Finalize for a transaction
     Duration timeToFinalize{0};
 
-    K2_SERIALIZABLE(pvid, collectionName, key, mtr, action, writeRanges, syncFinalize, timeToFinalize);
+    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeRanges, syncFinalize, timeToFinalize);
     K2_DEF_FMT(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, writeRanges, syncFinalize, timeToFinalize);
 };
 
 struct K23SITxnEndResponse {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(K23SITxnEndResponse);
 };
 

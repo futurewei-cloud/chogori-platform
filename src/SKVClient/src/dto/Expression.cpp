@@ -60,9 +60,9 @@ struct SchematizedValue {
             throw TypeMismatchException(fmt::format("bad type in schematized value get: have {}, got {}", type, TToFieldType<T>()));
         }
         if (!val.isReference()) {
-            val.literal.seek(0);
+            MPackReader reader(val.literal);
             T result{};
-            if (val.literal.read(result)) {
+            if (reader.read(result)) {
                 return std::make_tuple(nullLast, std::move(result));
             }
             throw DeserializationError(fmt::format("Unable to deserialize value literal of type {}", TToFieldType<T>()));
@@ -147,7 +147,7 @@ int _compareSValues(SchematizedValue& a, SchematizedValue& b) {
 
 void Expression::copyPayloads() {
     for (Value& value : valueChildren) {
-        Payload copied = value.literal.copy();
+        auto copied = value.literal.copy();
         value.literal = std::move(copied);
     }
 

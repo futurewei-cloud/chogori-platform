@@ -23,11 +23,14 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
+#include <common/Binary.h>
+#include <common/Common.h>
+#include <common/VecUtil.h>
+#include <mpack/MPackSerialization.h>
+
 #include <functional>
 #include <vector>
 
-#include "Common.h"
-#include "VecUtil.h"
 #include "FieldTypes.h"
 #include "SKVRecord.h"
 
@@ -70,15 +73,17 @@ K2_DEF_ENUM(Operation,
 struct Value {
     String fieldName;
     FieldType type = FieldType::NOT_KNOWN;
-    Payload literal{Payload::DefaultAllocator()};
+    Binary literal;
     bool isReference() const { return !fieldName.empty();}
 
-    K2_SERIALIZABLE(fieldName, type, literal);
+    K2_PAYLOAD_FIELDS(fieldName, type, literal);
 
     template<typename T, typename Stream>
     static void _valueStrHelper(const Value& r, Stream& os) {
         T obj;
-        if (!const_cast<Payload*>(&(r.literal))->shareAll().read(obj)) {
+        Binary* b = const_cast<Binary*>(&(r.literal));
+        MPackReader reader(*b);
+        if (!reader.read(obj)) {
             os << TToFieldType<T>() << "_ERROR_READING";
         }
         else {
@@ -86,41 +91,29 @@ struct Value {
         }
     }
 
-    // custom json conversion
-    friend void to_json(nlohmann::json& j, const Value& o) {
+    friend std::ostream& operator<<(std::ostream&os, const Value& val) {
         std::ostringstream otype;
-        otype << o.type;
+        otype << val.type;
 
         std::ostringstream lit;
-        if (o.isReference()) {
+        if (val.isReference()) {
             lit << "REFERENCE";
-        }
-        else {
-            if (o.type != FieldType::NULL_T && o.type != FieldType::NOT_KNOWN && o.type != FieldType::NULL_LAST) {
+        } else {
+            if (val.type != FieldType::NULL_T && val.type != FieldType::NOT_KNOWN && val.type != FieldType::NULL_LAST) {
                 // no need to log the other types - we wrote what they are above.
                 try {
-                    K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, o, lit);
-                }
-                catch (const std::exception& e) {
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, val, lit);
+                } catch (const std::exception& e) {
                     // just in case, log the exception here so that we can do something about it
                     K2LOG_E(log::dto, "Caught exception in expression serialize: {}", e.what());
                     lit << "!!!EXCEPTION!!!: " << e.what();
                 }
             }
         }
-        j = {
-            {"fieldName", o.fieldName},
-            {"type", k2::HexCodec::encode(otype.str())},
-            {"literal", k2::HexCodec::encode(lit.str())}
-        };
-    }
-    friend void from_json(const nlohmann::json&, Value&) {
-        throw std::runtime_error("Value type does not support construct from json");
-    }
-
-    friend std::ostream& operator<<(std::ostream&os, const Value& v) {
-        nlohmann::json j = v;
-        return os << j.dump();
+        return os << "{fieldName: " << val.fieldName
+            << ", type: " << k2::HexCodec::encode(otype.str())
+            << ", literal: " << k2::HexCodec::encode(lit.str())
+            << "}";
     }
 };
 
@@ -145,7 +138,7 @@ struct Expression {
     // memory of the payloads will be allocated in the context of the current thread.
     void copyPayloads();
 
-    K2_SERIALIZABLE(op, valueChildren, expressionChildren);
+    K2_PAYLOAD_FIELDS(op, valueChildren, expressionChildren);
     K2_DEF_FMT(Expression, op, valueChildren, expressionChildren);
 
     // helper methods used to evaluate particular operation
@@ -174,7 +167,9 @@ inline Value makeValueLiteral(T&& literal) {
 
     Value result{};
     result.type = TToFieldType<T>();
-    result.literal.write(literal);
+    MPackWriter writer;
+    writer.write(literal);
+    K2ASSERT(log::dto, writer.flush(result.literal), "Unable to flush writer");
     return result;
 }
 
@@ -194,6 +189,5 @@ inline Expression makeExpression(Operation op, std::vector<Value>&& valueChildre
     };
 }
 
-} // ns filter
-} // ns dto
-} // ns k2
+} // ns expression
+} // ns k2::dto

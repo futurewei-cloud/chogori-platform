@@ -23,8 +23,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include "Chrono.h"
-#include "Common.h"
+#include <common/Chrono.h>
+#include <common/Common.h>
 
 namespace k2::dto {
 // K2Timestamp - a TrueTime uncertainty window and TSOId
@@ -95,7 +95,7 @@ private:
     uint32_t _tStartDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max
 
 public:
-    K2_SERIALIZABLE(_tEndTSECount, _tsoId, _tStartDelta);
+    K2_PAYLOAD_FIELDS(_tEndTSECount, _tsoId, _tStartDelta);
 
     // Zero timestamp
     static const Timestamp ZERO;
@@ -106,8 +106,7 @@ inline const Timestamp Timestamp::INF = Timestamp(std::numeric_limits<uint64_t>:
                                               0,
                                               std::numeric_limits<uint32_t>::max());
 
-} // ns dto
-} // ns k2
+} // ns k2::dto
 
 namespace std {
 template <>

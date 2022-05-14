@@ -25,9 +25,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstdint>
 #include <cstring>
 
-#include <k2/common/Log.h>
-#include <k2/common/Common.h>
-
 #include "FieldTypes.h"
 
 namespace k2 {
@@ -66,7 +63,8 @@ template <> String FieldToKeyString<String>(const String& field) {
     }
 
     // Size is original +1 type byte +1 byte per null and +2 terminator bytes
-    String escapedString(String::initialized_later(), field.size() + foundNulls.size() + 3);
+    String escapedString;
+    escapedString.resize(field.size() + foundNulls.size() + 3);
     size_t originalCursor = 0;
     size_t escapedCursor = 1;
     for (size_t nullPos : foundNulls) {
@@ -102,7 +100,8 @@ template <> String FieldToKeyString<String>(const String& field) {
 template <> String FieldToKeyString<int16_t>(const int16_t& field)
 {
     // type byte + sign byte + 2 bytes + ESCAPE + TERM
-    String s(String::initialized_later(), 6);
+    String s;
+    s.resize(6);
     s[0] = (char) FieldType::INT16T;
 
     if (field >= 0) {
@@ -125,7 +124,8 @@ template <> String FieldToKeyString<int16_t>(const int16_t& field)
 template <> String FieldToKeyString<int64_t>(const int64_t& field)
 {
     // type byte + sign byte + 8 bytes + ESCAPE + TERM
-    String s(String::initialized_later(), 12);
+    String s;
+    s.resize(12);
     s[0] = (char) FieldType::INT64T;
 
     if (field >= 0) {
@@ -159,7 +159,8 @@ template <> String FieldToKeyString<int64_t>(const int64_t& field)
 
 template <> String FieldToKeyString<int32_t>(const int32_t& field) {
     // type byte + sign byte + 4 bytes + ESCAPE + TERM
-    String s(String::initialized_later(), 8);
+    String s;
+    s.resize(8);
     s[0] = (char) FieldType::INT32T;
 
     if (field >= 0) {
@@ -184,7 +185,8 @@ template <> String FieldToKeyString<int32_t>(const int32_t& field) {
 }
 
 template <> String FieldToKeyString<bool>(const bool& field) {
-    String s(String::initialized_later(), 4);
+    String s;
+    s.resize(4);
     s[0] = (char) FieldType::BOOL;
     s[1] = field ? 1 : 0;
     s[2] = ESCAPE;
@@ -193,7 +195,8 @@ template <> String FieldToKeyString<bool>(const bool& field) {
 }
 
 String NullFirstToKeyString() {
-    String s(String::initialized_later(), 3);
+    String s;
+    s.resize(3);
     s[0] = (char) FieldType::NULL_T;
     s[1] = ESCAPE;
     s[2] = TERM;
@@ -201,7 +204,8 @@ String NullFirstToKeyString() {
 }
 
 String NullLastToKeyString() {
-    String s(String::initialized_later(), 3);
+    String s;
+    s.resize(3);
     s[0] = (char) FieldType::NULL_LAST;
     s[1] = ESCAPE;
     s[2] = TERM;

@@ -8,7 +8,7 @@ set_target_properties(common PROPERTIES
     SOVERSION 1
 )
 
-target_link_libraries (common PRIVATE Boost::thread Threads::Threads)
+target_link_libraries (common PRIVATE Boost::thread Threads::Threads fmt::fmt)
 
 # export the library in the common skvTargets
 install(TARGETS common EXPORT skvTargets DESTINATION lib/skv)

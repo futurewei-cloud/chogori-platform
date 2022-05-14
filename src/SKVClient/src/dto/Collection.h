@@ -23,14 +23,13 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include "Common.h"
+#include <common/Chrono.h>
+#include <common/Common.h>
 
 #include <set>
 #include <iostream>
 #include <unordered_map>
 #include <functional>
-
-#include "Log.h"
 
 // Collection-related DTOs
 
@@ -62,7 +61,8 @@ struct Key {
     // partitioning hash used in K2
     size_t partitionHash() const noexcept;
 
-    K2_SERIALIZABLE(schemaName, partitionKey, rangeKey);
+    K2_PAYLOAD_FIELDS(schemaName, partitionKey, rangeKey);
+    K2_DEF_FMT(Key, schemaName, partitionKey, rangeKey);
 };
 
 // the assignment state of a partition
@@ -86,7 +86,7 @@ struct PVID {
     uint64_t assignmentVersion = 0;
     K2_DEF_FMT(PVID, id, rangeVersion, assignmentVersion);
 
-    K2_SERIALIZABLE(id, rangeVersion, assignmentVersion);
+    K2_PAYLOAD_FIELDS(id, rangeVersion, assignmentVersion);
 
     size_t hash() const noexcept;
 
@@ -112,7 +112,7 @@ struct KeyRangeVersion {
     bool operator!=(const KeyRangeVersion& o) const noexcept;
     bool operator<(const KeyRangeVersion& o) const noexcept;
 
-    K2_SERIALIZABLE(startKey, endKey, pvid);
+    K2_PAYLOAD_FIELDS(startKey, endKey, pvid);
     K2_DEF_FMT(KeyRangeVersion, startKey, endKey, pvid);
 };
 
@@ -126,7 +126,7 @@ struct Partition {
     // the current assignment state of the partition
     AssignmentState astate = AssignmentState::NotAssigned;
 
-    K2_SERIALIZABLE(keyRangeV, endpoints, astate);
+    K2_PAYLOAD_FIELDS(keyRangeV, endpoints, astate);
     K2_DEF_FMT(Partition, keyRangeV, endpoints, astate);
 
     // Partitions are ordered based on the ordering of their start keys
@@ -138,7 +138,7 @@ struct Partition {
 struct PartitionMap {
     uint64_t version =0;
     std::vector<Partition> partitions;
-    K2_SERIALIZABLE(version, partitions);
+    K2_PAYLOAD_FIELDS(version, partitions);
     K2_DEF_FMT(PartitionMap, version, partitions);
 };
 
@@ -147,7 +147,7 @@ struct CollectionCapacity {
     uint64_t readIOPs = 0;
     uint64_t writeIOPs = 0;
     uint32_t minNodes = 0;
-    K2_SERIALIZABLE(dataCapacityMegaBytes, readIOPs, writeIOPs, minNodes);
+    K2_PAYLOAD_FIELDS(dataCapacityMegaBytes, readIOPs, writeIOPs, minNodes);
     K2_DEF_FMT(CollectionCapacity, dataCapacityMegaBytes, readIOPs, writeIOPs, minNodes);
 };
 
@@ -170,7 +170,7 @@ struct CollectionMetadata {
     // This is used by the CPO only. If deleted is true the CPO will not return the collection
     // for getCollection RPCs, but the user can try to offload it again.
     bool deleted{false};
-    K2_SERIALIZABLE(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline, deleted);
+    K2_PAYLOAD_FIELDS(name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline, deleted);
     K2_DEF_FMT(CollectionMetadata, name, hashScheme, storageDriver, capacity, retentionPeriod, heartbeatDeadline, deleted);
 };
 
@@ -180,92 +180,8 @@ struct Collection {
     std::unordered_map<String, String> userMetadata;
     CollectionMetadata metadata;
 
-    K2_SERIALIZABLE(partitionMap, userMetadata, metadata);
+    K2_PAYLOAD_FIELDS(partitionMap, userMetadata, metadata);
     K2_DEF_FMT(Collection, partitionMap, userMetadata, metadata);
-};
-
-
-class PartitionGetter {
-public:
-    struct PartitionWithEndpoint {
-        Partition* partition;
-        std::unique_ptr<TXEndpoint> preferredEndpoint;
-        friend std::ostream& operator<<(std::ostream& os, const PartitionWithEndpoint& pwe) {
-            os << "partition: ";
-            if (!pwe.partition) {
-                os << "(null)";
-            }
-            else {
-                os << *pwe.partition;
-            }
-            os << ", preferred endpoint: ";
-            if (!pwe.preferredEndpoint) {
-                os << "(null)";
-            }
-            else {
-                os << *pwe.preferredEndpoint;
-            }
-
-            return os;
-        }
-    };
-
-    PartitionGetter(Collection&& collection);
-    PartitionGetter() = default;
-
-    // Returns the partition and preferred endpoint for the given key.
-    // Hashes key if hashScheme is not range
-    PartitionWithEndpoint& getPartitionForKey(const Key& key, bool reverse = false, bool exclusiveKey = false);
-
-    // Returns the partition and preferred endpoint for the given PVID, or nullptr if no such partition exists
-    PartitionWithEndpoint* getPartitionForPVID(const PVID& pvid);
-
-    const std::vector<Partition>& getAllPartitions() const;
-
-    Collection collection;
-
-private:
-    static PartitionWithEndpoint _getPartitionWithEndpoint(Partition* p);
-
-    struct RangeMapElement {
-        RangeMapElement(const String& k, PartitionWithEndpoint part) : key(k), partition(std::move(part)) {}
-
-        std::reference_wrapper<const String> key;
-        PartitionWithEndpoint partition;
-
-        bool operator<(const RangeMapElement& other) const noexcept {
-            return key.get() < other.key.get();
-        }
-    };
-
-    struct HashMapElement {
-        uint64_t hvalue;
-        PartitionWithEndpoint partition;
-        bool operator<(const HashMapElement& other) const noexcept {
-            return hvalue < other.hvalue;
-        }
-    };
-
-    std::vector<RangeMapElement> _rangePartitionMap;
-    std::vector<HashMapElement> _hashPartitionMap;
-};
-
-// Helper wrapper for Partitions, which allows to establish
-// if a partition owns a key
-class OwnerPartition {
-public:
-    OwnerPartition(Partition&& part, HashScheme scheme);
-    bool owns(const Key& key, const bool reverse = false) const;
-    Partition& operator()() { return _partition; }
-    const Partition& operator()() const { return _partition; }
-    HashScheme getHashScheme() { return _scheme; }
-    K2_DEF_FMT(OwnerPartition, _partition);
-
-private:
-    Partition _partition;
-    HashScheme _scheme;
-    uint64_t _hstart;
-    uint64_t _hend;
 };
 
 } // namespace k2::dto

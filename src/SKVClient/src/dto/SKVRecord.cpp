@@ -24,35 +24,34 @@ Copyright(c) 2020 Futurewei Cloud
 #include <algorithm>
 #include <optional>
 
-#include <k2/appbase/AppEssentials.h>
-#include <k2/dto/SKVRecord.h>
+#include "SKVRecord.h"
 
 namespace k2 {
 namespace dto {
 
-void SKVRecord::serializeNull() {
-    if (fieldCursor >= schema->fields.size()) {
+void SKVRecordBuilder::serializeNull() {
+    if (_record.fieldCursor >= _record.schema->fields.size()) {
         throw NoFieldFoundException();
     }
 
-    for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
-        if (schema->partitionKeyFields[i] == fieldCursor) {
-            partitionKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+    for (size_t i = 0; i < _record.schema->partitionKeyFields.size(); ++i) {
+        if (_record.schema->partitionKeyFields[i] == _record.fieldCursor) {
+            _record.partitionKeys[i] = _record.schema->fields[_record.fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
-    for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
-        if (schema->rangeKeyFields[i] == fieldCursor) {
-            rangeKeys[i] = schema->fields[fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+    for (size_t i = 0; i < _record.schema->rangeKeyFields.size(); ++i) {
+        if (_record.schema->rangeKeyFields[i] == _record.fieldCursor) {
+            _record.rangeKeys[i] = _record.schema->fields[_record.fieldCursor].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
         }
     }
 
-    if (storage.excludedFields.size() == 0) {
-        storage.excludedFields = std::vector<bool>(schema->fields.size(), false);
+    if (_record.storage.excludedFields.size() == 0) {
+        _record.storage.excludedFields = std::vector<bool>(_record.schema->fields.size(), false);
     }
 
-    storage.excludedFields[fieldCursor] = true;
-    ++fieldCursor;
+    _record.storage.excludedFields[_record.fieldCursor] = true;
+    ++_record.fieldCursor;
 }
 
 // NoOp function to be used with the convience macros to get document fields
@@ -78,7 +77,7 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
 
     if (fieldIndex < fieldCursor) {
         fieldCursor = 0;
-        storage.fieldData.seek(0);
+        reader = MPackReader(storage.fieldData);
     }
 
     while(fieldIndex != fieldCursor) {
@@ -102,7 +101,6 @@ const SKVRecord::Storage& SKVRecord::getStorage() {
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
             schema(s), collectionName(collection), keyValuesAvailable(true), keyStringsConstructed(true) {
     storage.schemaVersion = schema->version;
-    storage.fieldData = Payload(Payload::DefaultAllocator());
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
 }
@@ -174,7 +172,8 @@ String SKVRecord::getPartitionKey() {
         return String("");
     }
 
-    String partitionKey(String::initialized_later(), keySize);
+    String partitionKey;
+    partitionKey.resize(keySize);
     size_t position = 0;
     for (const String& key : partitionKeys) {
         std::copy(key.begin(), key.end(), partitionKey.begin() + position);
@@ -201,7 +200,8 @@ String SKVRecord::getRangeKey() {
         return String("");
     }
 
-    String rangeKey(String::initialized_later(), keySize);
+    String rangeKey;
+    rangeKey.resize(keySize);
     size_t position = 0;
     for (const String& key : rangeKeys) {
         std::copy(key.begin(), key.end(), rangeKey.begin() + position);
@@ -224,7 +224,7 @@ dto::Key SKVRecord::getKey() {
 SKVRecord::Storage SKVRecord::Storage::share() {
     return SKVRecord::Storage {
         excludedFields,
-        fieldData.shareAll(),
+        fieldData,
         schemaVersion
     };
 }
@@ -252,11 +252,13 @@ SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_pt
 }
 
 template <typename T>
-void skipFieldDataHelper(SchemaField fieldInfo, Payload& fieldData) {
+void fieldApplier(SchemaField fieldInfo, SKVRecordBuilder& builder, MPackReader& reader) {
     (void) fieldInfo;
-    // TODO change this to payload skip when available
-    T tmp{};
-    fieldData.read(tmp);
+    T field{};
+    if (!reader.read(field)) {
+        throw KeyNotAvailableError("Unable to read key field from buffer");
+    }
+    builder.serializeNext(field);
 }
 
 // This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
@@ -265,29 +267,19 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
         throw KeyNotAvailableError("Cannot create an SKVKeyRecord from record without key values");
     }
 
-    size_t num_keys = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
-    SKVRecord::Storage key_storage = storage.share();
+    SKVRecordBuilder builder(collectionName, schema);
+    MPackReader reader(storage.fieldData);
 
-    // If size() == 0 then all fields were included, so resize the key_storage excluded fields
-    if (key_storage.excludedFields.size() == 0) {
-        key_storage.excludedFields.resize(schema->fields.size(), false);
-    }
-
-    // Exclude all value fields
-    for (size_t i = num_keys; i < key_storage.excludedFields.size(); ++i) {
-        key_storage.excludedFields[i] = true;
-    }
-
-    // Skipping key fields in fieldData so we can truncate the remaining value data in the payload
-    for (size_t i = 0; i < num_keys; ++i) {
-        if (!key_storage.excludedFields[i]) {
-            K2_DTO_CAST_APPLY_FIELD_VALUE(skipFieldDataHelper, schema->fields[i], key_storage.fieldData);
+    for (size_t i = 0; i < schema->partitionKeyFields.size() + schema->rangeKeyFields.size(); ++i) {
+        if (!storage.excludedFields[i]) {
+            K2_DTO_CAST_APPLY_FIELD_VALUE(fieldApplier, schema->fields[i], builder, reader);
+        }
+        else {
+            builder.serializeNull();
         }
     }
-    key_storage.fieldData.truncateToCurrent();
-    key_storage.fieldData.seek(0);
 
-    return SKVRecord(collectionName, schema, std::move(key_storage), true);
+    return builder.build();
 }
 
 // deepCopies an SKVRecord including copying (not sharing) the storage payload

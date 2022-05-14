@@ -27,8 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstring>
 #include <decimal/decimal>
 
-#include <k2/common/Log.h>
-#include <k2/common/Common.h>
+#include <common/Common.h>
 
 namespace k2 {
 namespace dto {

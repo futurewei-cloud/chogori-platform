@@ -22,6 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "ControlPlaneOracle.h"
+#include "Log.h"
 
 namespace k2 {
 namespace dto {

@@ -2,7 +2,7 @@ cmake_minimum_required (VERSION 3.13)
 
 project (skvlib VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
-add_compile_options(-O3 -g -Werror -Wall -Wextra)
+add_compile_options(-O3 -std=c++17 -g -Werror -Wall -Wextra)
 
 include_directories(src)
 
@@ -11,6 +11,7 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost COMPONENTS thread system REQUIRED) # header only libraries must not be added here
 find_package(Threads REQUIRED)
+find_package (fmt REQUIRED)
 
 add_subdirectory (src)
 

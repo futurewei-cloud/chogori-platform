@@ -24,6 +24,14 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <chrono>
 #include <iostream>
+#undef FMT_UNICODE
+#define FMT_UNICODE 0
+
+#include <fmt/compile.h>
+#include <fmt/format.h>
+#include <fmt/printf.h>
+
+#include "FormattingUtils.h"
 
 //
 // duration used in a few places to specify timeouts and such
@@ -84,5 +92,83 @@ private:
     typename ClockT::time_point _deadline;
 };  // class Deadline
 
+struct Timestamp_ts {
+    uint16_t micros;
+    uint16_t millis;
+    uint8_t secs;
+    uint8_t mins;
+    uint8_t hours;
+    uint16_t days;
+};
+
+inline Timestamp_ts toTimestamp_ts(const TimePoint& tp) {
+    auto now = usec(tp).count();
+    auto [quotient1, micros] = std::ldiv(now, 1000);
+    auto [quotient2, millis] = std::ldiv(quotient1, 1000);
+    auto [quotient3, secs] = std::ldiv(quotient2, 60);
+    auto [quotient4, mins] = std::div((int)quotient3, 60);  // the quotient is small enough to fit in an int now
+    auto [days, hours] = std::div(quotient4, 24);
+    return {(uint16_t)micros, (uint16_t)millis, (uint8_t)secs, (uint8_t)mins, (uint8_t)hours, (uint16_t)days};
+}
+
+inline const char* printTime(const TimePoint& tp) {
+    auto ts = toTimestamp_ts(tp);
+    static thread_local char buffer[24];
+    fmt::format_to_n(buffer, sizeof(buffer), "{}", ts);
+    return buffer;
+}
+
 }  // ns k2
+
+// formatters
+template <>
+struct fmt::formatter<k2::Timestamp_ts> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::Timestamp_ts const& ts, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), FMT_COMPILE("{:04}:{:02}:{:02}:{:02}.{:03}.{:03}"), ts.days, ts.hours, ts.mins, ts.secs, ts.millis, ts.micros);
+    }
+};
+
+template <>
+struct fmt::formatter<k2::Duration> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::Duration const& dur, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", k2::TimePoint{} + dur);
+    }
+};
+
+template <>
+struct fmt::formatter<k2::TimePoint> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(k2::TimePoint const& tp, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", k2::toTimestamp_ts(tp));
+    }
+};
+
+
+namespace std {
+inline ostream& operator<<(ostream& os, const k2::TimePoint& o) {
+    fmt::print(os, "{}", o);
+    return os;
+}
+
+inline ostream& operator<<(ostream& os, const k2::Duration& o) {
+    fmt::print(os, "{}", o);
+    return os;
+}
 }

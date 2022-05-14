@@ -109,5 +109,4 @@ Timestamp Timestamp::max(const Timestamp& other) const {
     return compareCertain(other) == Timestamp::GT ? (*this) : other;
 }
 
-} // ns dto
-} // ns k2
+} // ns k2::dto

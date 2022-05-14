@@ -24,7 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include "Common.h"
-#include "Serialization.h"
 
 namespace k2 {
 
@@ -34,7 +33,7 @@ namespace k2 {
 struct Status {
     int code{0};
     String message;
-    K2_SERIALIZABLE(code, message);
+    K2_PAYLOAD_FIELDS(code, message);
     // two Statuses are equal if they have the same code
     bool operator==(const Status& o);
     bool operator!=(const Status& o);
@@ -456,4 +455,13 @@ static const inline Status S529_Site_is_overloaded{.code=529, .message=""};
 static const inline Status S598_Network_read_timeout_error{.code=598, .message=""};
 
 }; // struct status
+
+template <typename ...T>
+using Response = std::tuple<Status, T...>;
+
+// Utility function to generate e response of a given type
+template <typename ...T>
+inline boost::future<Response<T...>> MakeResponse(Status s, T&&... r) {
+    return make_ready_future(Response<T...>(std::move(s), std::forward<T>(r)...));
+}
 } //namespace k2

@@ -23,14 +23,12 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <k2/transport/Status.h>
+#include <common/Status.h>
 
 #include "Collection.h"
 #include "FieldTypes.h"
 #include "Timestamp.h"
-
-#include "Log.h"
-// This file contains DTOs for K2 ControlPlaneOracle
+#include <unordered_set>
 
 namespace k2::dto {
 
@@ -49,13 +47,13 @@ struct CollectionCreateRequest {
     // endpoints for each partition.
     std::vector<String> rangeEnds;
 
-    K2_SERIALIZABLE(metadata, rangeEnds);
+    K2_PAYLOAD_FIELDS(metadata, rangeEnds);
     K2_DEF_FMT(CollectionCreateRequest, metadata, rangeEnds);
 };
 
 // Response to CollectionCreateRequest
 struct CollectionCreateResponse {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(CollectionCreateResponse);
 };
 
@@ -63,7 +61,7 @@ struct CollectionCreateResponse {
 struct CollectionGetRequest {
     // The name of the collection to get
     String name;
-    K2_SERIALIZABLE(name);
+    K2_PAYLOAD_FIELDS(name);
     K2_DEF_FMT(CollectionGetRequest, name);
 };
 
@@ -71,18 +69,18 @@ struct CollectionGetRequest {
 struct CollectionGetResponse {
     // The collection we found
     Collection collection;
-    K2_SERIALIZABLE(collection);
+    K2_PAYLOAD_FIELDS(collection);
     K2_DEF_FMT(CollectionGetResponse, collection);
 };
 
 struct CollectionDropRequest {
     String name;
-    K2_SERIALIZABLE(name);
+    K2_PAYLOAD_FIELDS(name);
     K2_DEF_FMT(CollectionDropRequest, name);
 };
 
 struct CollectionDropResponse {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(CollectionDropResponse);
 };
 
@@ -96,7 +94,7 @@ struct SchemaField {
     // for open-ended filter predicates
     bool nullLast = false;
 
-    K2_SERIALIZABLE(type, name, descending, nullLast);
+    K2_PAYLOAD_FIELDS(type, name, descending, nullLast);
     K2_DEF_FMT(SchemaField, type, name, descending, nullLast);
 };
 
@@ -119,7 +117,7 @@ struct Schema {
     // Used to make sure that the partition and range key definitions do not change between versions
     Status canUpgradeTo(const dto::Schema& other) const;
 
-    K2_SERIALIZABLE(name, version, fields, partitionKeyFields, rangeKeyFields);
+    K2_PAYLOAD_FIELDS(name, version, fields, partitionKeyFields, rangeKeyFields);
 
     K2_DEF_FMT(Schema, name, version, fields, partitionKeyFields, rangeKeyFields);
 };
@@ -129,13 +127,13 @@ struct Schema {
 struct CreateSchemaRequest {
     String collectionName;
     Schema schema;
-    K2_SERIALIZABLE(collectionName, schema);
+    K2_PAYLOAD_FIELDS(collectionName, schema);
     K2_DEF_FMT(CreateSchemaRequest, collectionName, schema);
 };
 
 // Response to CreateSchemaRequest
 struct CreateSchemaResponse {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(CreateSchemaResponse);
 };
 
@@ -147,42 +145,42 @@ struct GetSchemaRequest {
     String schemaName;
     int64_t schemaVersion{ANY_SCHEMA_VERSION};
 
-    K2_SERIALIZABLE(collectionName, schemaName, schemaVersion);
+    K2_PAYLOAD_FIELDS(collectionName, schemaName, schemaVersion);
     K2_DEF_FMT(GetSchemaRequest, collectionName, schemaName, schemaVersion);
 };
 
 // Get all versions of all schemas associated with a collection
 struct GetSchemasRequest {
     String collectionName;
-    K2_SERIALIZABLE(collectionName);
+    K2_PAYLOAD_FIELDS(collectionName);
     K2_DEF_FMT(GetSchemasRequest, collectionName);
 };
 
 struct GetSchemasResponse {
     std::vector<Schema> schemas;
-    K2_SERIALIZABLE(schemas);
+    K2_PAYLOAD_FIELDS(schemas);
     K2_DEF_FMT(GetSchemasResponse, schemas);
 };
 
 struct GetTSOEndpointsRequest {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(GetTSOEndpointsRequest);
 };
 
 struct GetTSOEndpointsResponse {
     std::vector<String> endpoints;
-    K2_SERIALIZABLE(endpoints);
+    K2_PAYLOAD_FIELDS(endpoints);
     K2_DEF_FMT(GetTSOEndpointsResponse, endpoints);
 };
 
 struct GetPersistenceEndpointsRequest {
-    K2_PAYLOAD_EMPTY;
+    K2_PAYLOAD_FIELDS();
     K2_DEF_FMT(GetPersistenceEndpointsRequest);
 };
 
 struct GetPersistenceEndpointsResponse {
     std::vector<String> endpoints;
-    K2_SERIALIZABLE(endpoints);
+    K2_PAYLOAD_FIELDS(endpoints);
     K2_DEF_FMT(GetPersistenceEndpointsResponse, endpoints);
 };
 
@@ -196,7 +194,7 @@ struct HeartbeatRequest {
     Duration interval;
     uint32_t deadThreshold;
 
-    K2_SERIALIZABLE(lastToken, interval, deadThreshold);
+    K2_PAYLOAD_FIELDS(lastToken, interval, deadThreshold);
     K2_DEF_FMT(HeartbeatRequest, lastToken, interval, deadThreshold);
 };
 
@@ -210,7 +208,7 @@ struct HeartbeatResponse {
     std::vector<String> endpoints;
     // The target uses this to determine if its responses are succeeding or if it needs to die.
     uint64_t echoToken;
-    K2_SERIALIZABLE(ID, roleMetadata, endpoints, echoToken);
+    K2_PAYLOAD_FIELDS(ID, roleMetadata, endpoints, echoToken);
     K2_DEF_FMT(HeartbeatResponse, ID, roleMetadata, endpoints, echoToken);
 };
 
