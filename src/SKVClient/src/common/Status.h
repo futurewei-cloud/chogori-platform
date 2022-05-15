@@ -464,4 +464,9 @@ template <typename ...T>
 inline boost::future<Response<T...>> MakeResponse(Status s, T&&... r) {
     return make_ready_future(Response<T...>(std::move(s), std::forward<T>(r)...));
 }
+// Utility function to generate e response of a given type
+template <typename... T>
+inline boost::future<Response<T...>> MakeResponse(Response<T...>&& resp) {
+    return make_ready_future(std::forward(resp));
+}
 } //namespace k2

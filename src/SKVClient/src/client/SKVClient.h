@@ -23,8 +23,11 @@ Copyright(c) 2022 Futurewei Cloud
 
 #pragma once
 #include <common/Common.h>
-#include <dto/SKVRecord.h>
 #include <common/Status.h>
+#include <dto/Collection.h>
+#include <dto/ControlPlaneOracle.h>
+#include <dto/K23SI.h>
+#include <dto/SKVRecord.h>
 #include <httplib/httplib.h>
 
 namespace k2 {
@@ -43,117 +46,95 @@ public:
     // send a single HTTP message and return the status and expected response object
     template <typename RequestT, typename ResponseT>
     boost::future<Response<ResponseT>> POST(String path, RequestT&& obj) {
-        return _makeCall<RequestT, ResponseT>(Method::POST, path, obj);
+        return _makeCall<RequestT, ResponseT>(Method::POST, std::move(path), std::move(obj));
     }
 
-   private:
+private:
     // helper method. Make the given http call, to the given path with the given request object.
     template <typename RequestT, typename ResponseT>
-    boost::future<Response<ResponseT>> _makeCall(Method method, String path, RequestT&& obj) {
-        auto&& [status, buf] = _serialize(obj);
+    boost::future<Response<ResponseT>> _makeCall(Method method, String path, RequestT&& reqObj) {
+        auto&& [status, buf] = _serialize(reqObj);
         if (!status.is2xxOK()) {
             return MakeResponse(std::move(status), ResponseT{});
         }
         return _doSend(method, path, std::move(buf))
-            .then([](auto&& fut) {
+            .then([this](auto&& fut) {
                 auto&& [status, buf] = fut.get();
                 if (!status.is2xxOK()) {
-                    return MakeResponse(std::move(status), ResponseT{});
+                    return Response<ResponseT>(std::move(status), ResponseT{});
                 }
-                struct ExpResponse {
-                    ResponseT obj;
-                    Status status;
-                };
-                auto&& [desStatus, resp] = _deserialize<ExpResponse>(buf);
+                auto&& [desStatus, resp] = _deserialize<Response<ResponseT>>(buf);
                 if (!desStatus.is2xxOK()) {
-                    return MakeResponse(std::move(desStatus), std::move(obj));
+                    return Response<ResponseT>(std::move(desStatus), ResponseT{});
                 }
-
-                return MakeResponse(std::move(resp.status), std::move(resp.obj));
+                return std::move(resp);
             });
+    }
+    Response<Binary> _processResponse(httplib::Result&& result) {
+        Status responseStatus{.code = result->status, .message = result->reason};
+        char* bodyData = result->body.data();
+        size_t bodySize = result->body.size();
+        Binary responseBody(bodyData, bodySize, [str=std::move(result->body)]() {});
+        return {std::move(responseStatus), std::move(responseBody)};
     }
 
     boost::future<Response<Binary>> _doSend(Method method, String path, Binary&& request) {
         // send the payload via http
-        httplib::Result result;
         switch (method) {
             case Method::POST:
-                result = client.Post(path, request.data, request.size, "application/x-msgpack");
-                break;
+                return make_ready_future(_processResponse(client.Post(path.c_str(), request.data(), request.size(), "application/x-msgpack")));
             default:
                 throw std::runtime_error("Unknown method for HTTPMessageClient _doSend");
         }
-
-        Status responseStatus{.code = result->status, .message = ""};
-        char* bodyData = result->body.data();
-        size_t bodySize = result->body.size();
-        Binary responseBody(bodyData, bodySize, [std::move(result->body)](char*) {});
-        return make_ready_future(std::move(responseStatus), std::move(responseBody));
     }
 
     template <typename T>
     Response<Binary> _serialize(T& obj) {
-        Binary buf([](char* ptr) { MPACK_FREE(ptr); });
-        mpack_writer_t writer;
-        mpack_writer_init_growable(&writer, &buf.data, &buf.size);
-
-        // write the object
-        obj.k2PackTo(&writer);
-
-        // destroying the writer detects errors and sets the data pointer.
-        // data will be NULL if there is an error - we aren't responsible for free-ing it in this case
-        if (mpack_writer_destroy(&writer) != mpack_ok) {
-            return MakeResponse(Statuses::S400_Bad_Request("Unable to serialize object"), std::move(buf));
+        MPackWriter writer;
+        writer.write(obj);
+        Binary buf;
+        if (!writer.flush(buf)) {
+            return {Statuses::S400_Bad_Request("Unable to serialize object"), std::move(buf)};
         }
-        return MakeResponse(Statuses::S200_OK(), std::move(buf));
+        return {Statuses::S200_OK, std::move(buf)};
     }
 
     template <typename T>
     Response<T> _deserialize(Binary& buf) {
-        mpack_tree_t tree;
-        mpack_tree_init_data(&tree, buf.data, buf.size);
-        mpack_tree_parse(&tree);
-        mpack_node_t root = mpack_tree_root(&tree);
-
+        MPackReader reader(buf);
         T obj;
-        if (!obj.k2UnpackFrom(root)) {
-            return MakeResponse(Statuses::S500_Internal_Server_Error("Unable to parse response from server"), T{});
+        if (!reader.read(obj)) {
+            return {Statuses::S400_Bad_Request("Unable to deserialize buffer"), T{}};
         }
-
-        // clean up and check for errors
-        if (mpack_tree_destroy(&tree) != mpack_ok) {
-            return MakeResponse(Statuses::S400_Bad_Request("Unable to deserialize buffer"), T{});
-        }
-        return MakeResponse(Statuses::S200_OK(), std::move(obj));
+        return {Statuses::S200_OK, std::move(obj)};
     }
 };
 
 class TxnHandle {
-   public:
-    TxnHandle(TxnId id) {}
-    TxnHandle() {}
-    boost::future<Response<EndTxnResponse>> endTxn(EndTxnRequest request) {
-        _client.POST<EndTxnRequest, EndTxnResponse>("/api/v1/endTxn", std::move(request));
+public:
+    TxnHandle(HTTPMessageClient& client, dto::TxnId id):_client(client), _id(id) {}
+    boost::future<Response<dto::K23SITxnEndResponse>> endTxn(dto::K23SITxnEndRequest request) {
+        return _client.POST<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>("/api/v1/endTxn", std::move(request));
     }
-    boost::future<Response<ReadResponse>> read(ReadRequest request);
-    boost::future<Response<WriteResponse>> write(WriteRequest request);
-    boost::future<Response<UpdateResponse>> update(UpdateRequest request);
-    boost::future<Response<CreateQueryResponse>> createQuery(CreateQueryRequest request);
-    boost::future<Response<QueryResponse>> query(QueryRequest request);
+    boost::future<Response<dto::K23SIReadResponse>> read(dto::K23SIReadRequest request);
+    boost::future<Response<dto::K23SIWriteResponse>> write(dto::K23SIWriteRequest request);
+    boost::future<Response<dto::K23SICreateQueryResponse>> createQuery(dto::K23SICreateQueryRequest request);
+    boost::future<Response<dto::K23SIQueryResponse>> query(dto::K23SIQueryRequest request);
 
    private:
     HTTPMessageClient& _client;
+    dto::TxnId _id;
 };
 
 class SKVClient {
-   public:
+public:
     SKVClient() {}
     ~SKVClient() {}
-    boost::future<Response<CreateSchemaResponse>> createSchema(CreateSchemaRequest request);
-    boost::future<Response<GetSchemaResponse>> getSchema(GetSchemaRequest request);
-    boost::future<Response<CreateCollectionResponse>> createCollection(CreateCollectionRequest request);
-    boost::future<Response<GetCollectionResponse>> getCollection(GetCollectionRequest request);
-    boost::future<Response<TxnHandle>> beginTxn(BeginTxnRequest request);
+    boost::future<Response<dto::CreateSchemaResponse>> createSchema(dto::CreateSchemaRequest request);
+    boost::future<Response<dto::GetSchemaResponse>> getSchema(dto::GetSchemaRequest request);
+    boost::future<Response<dto::CollectionCreateResponse>> createCollection(dto::CollectionCreateRequest request);
+    boost::future<Response<dto::CollectionGetResponse>> getCollection(dto::CollectionGetRequest request);
+    boost::future<Response<dto::K23SIBeginTxnResponse>> beginTxn(dto::K23SIBeginTxnRequest request);
 
    private:
     HTTPMessageClient _client;

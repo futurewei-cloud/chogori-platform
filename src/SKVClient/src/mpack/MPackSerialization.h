@@ -204,6 +204,14 @@ private:
         return true;
     }
 
+    template <typename ...T>
+    bool _readFromNode(std::tuple<T...>& val) {
+        return std::apply([this](auto&&... args) mutable {
+            return ((MPackStructReader(_node, _source).read(args)) && ...);
+            },
+            val);
+    }
+
     template <typename T>
     std::enable_if_t<isMapLikeType<T>::value, bool>
     _readFromNode(T& val) {
@@ -356,6 +364,13 @@ public:
         for (const auto& el: val) {
             write(el);
         }
+        mpack_finish_array(&_writer);
+    }
+
+    template <typename ...T>
+    void write(const std::tuple<T...>& val) {
+        mpack_start_array(&_writer, (uint32_t)std::tuple_size_v<std::tuple<T...>>);
+        std::apply([this](auto&&... args) { write(args...); }, val);
         mpack_finish_array(&_writer);
     }
 

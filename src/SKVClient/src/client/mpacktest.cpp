@@ -156,6 +156,7 @@ struct Ex3 {
     std::unordered_map<k2::String, Ex2> b1;
     std::set<k2::String> b2;
     std::unordered_set<k2::String> b3;
+    std::tuple<int, Ex1, Ex2, k2::String, std::map<int, Ex2>> b4;
     uint8_t c;
     int8_t d;
     uint16_t e;
@@ -169,8 +170,8 @@ struct Ex3 {
     k2::Binary m;
     K2_DEF_ENUM_IC(Action, A1, A2);
     Action n;
-    K2_PAYLOAD_FIELDS(a, a1, a2, b, b1, b2, b3, c, d, e, f, g, h, i, j, k, l, m, n);
-    K2_DEF_FMT(Ex3, a, a1, a2, b, b1, b2, b3, c, d, e, f, g, h, i, j, k, l, m, n);
+    K2_PAYLOAD_FIELDS(a, a1, a2, b, b1, b2, b3, b4, c, d, e, f, g, h, i, j, k, l, m, n);
+    K2_DEF_FMT(Ex3, a, a1, a2, b, b1, b2, b3, b4, c, d, e, f, g, h, i, j, k, l, m, n);
 };
 
 void test3() {

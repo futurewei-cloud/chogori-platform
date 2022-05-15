@@ -149,6 +149,12 @@ struct GetSchemaRequest {
     K2_DEF_FMT(GetSchemaRequest, collectionName, schemaName, schemaVersion);
 };
 
+struct GetSchemaResponse {
+    Schema schema;
+    K2_PAYLOAD_FIELDS(schema);
+    K2_DEF_FMT(GetSchemaResponse, schema);
+};
+
 // Get all versions of all schemas associated with a collection
 struct GetSchemasRequest {
     String collectionName;
@@ -160,56 +166,6 @@ struct GetSchemasResponse {
     std::vector<Schema> schemas;
     K2_PAYLOAD_FIELDS(schemas);
     K2_DEF_FMT(GetSchemasResponse, schemas);
-};
-
-struct GetTSOEndpointsRequest {
-    K2_PAYLOAD_FIELDS();
-    K2_DEF_FMT(GetTSOEndpointsRequest);
-};
-
-struct GetTSOEndpointsResponse {
-    std::vector<String> endpoints;
-    K2_PAYLOAD_FIELDS(endpoints);
-    K2_DEF_FMT(GetTSOEndpointsResponse, endpoints);
-};
-
-struct GetPersistenceEndpointsRequest {
-    K2_PAYLOAD_FIELDS();
-    K2_DEF_FMT(GetPersistenceEndpointsRequest);
-};
-
-struct GetPersistenceEndpointsResponse {
-    std::vector<String> endpoints;
-    K2_PAYLOAD_FIELDS(endpoints);
-    K2_DEF_FMT(GetPersistenceEndpointsResponse, endpoints);
-};
-
-struct HeartbeatRequest {
-    // The target uses this to determine if its responses are succeeding or if it needs to die.
-    uint64_t lastToken;
-
-    // Time between heartbeats and how many lost heartbeats are needed to consider a target dead.
-    // This is needed as part of the request so that targets can monitor if they should soft shutdown and
-    // so that this information can be controlled by the CPO rather than part of the target config.
-    Duration interval;
-    uint32_t deadThreshold;
-
-    K2_PAYLOAD_FIELDS(lastToken, interval, deadThreshold);
-    K2_DEF_FMT(HeartbeatRequest, lastToken, interval, deadThreshold);
-};
-
-struct HeartbeatResponse {
-    // The instance ID, unique in the cluster at a given moment in time
-    String ID;
-    // Role specific metadata, such as collection assignment status for a nodepool.
-    // This is only used for logging and debugging.
-    String roleMetadata;
-    // Available endpoints that this instance can be reached at
-    std::vector<String> endpoints;
-    // The target uses this to determine if its responses are succeeding or if it needs to die.
-    uint64_t echoToken;
-    K2_PAYLOAD_FIELDS(ID, roleMetadata, endpoints, echoToken);
-    K2_DEF_FMT(HeartbeatResponse, ID, roleMetadata, endpoints, echoToken);
 };
 
 }  // namespace k2::dto

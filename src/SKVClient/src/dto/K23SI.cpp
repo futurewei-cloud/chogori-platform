@@ -36,5 +36,69 @@ size_t K23SI_MTR::hash() const {
     return hash_combine(timestamp, priority);
 }
 
+void Query::setFilterExpression(dto::expression::Expression&& root) {
+    request.filterExpression = std::move(root);
+}
+
+void Query::setReverseDirection(bool reverseDirection) {
+    request.reverseDirection = reverseDirection;
+}
+
+void Query::setIncludeVersionMismatch(bool includeVersionMismatch) {
+    request.includeVersionMismatch = includeVersionMismatch;
+}
+
+void Query::setLimit(int32_t limit) {
+    request.recordLimit = limit;
+}
+
+void Query::addProjection(const String& fieldName) {
+    request.projection.push_back(fieldName);
+    checkKeysProjected();
+}
+
+void Query::addProjection(const std::vector<String>& fieldNames) {
+    for (const String& name : fieldNames) {
+        request.projection.push_back(name);
+    }
+    checkKeysProjected();
+}
+
+void Query::checkKeysProjected() {
+    keysProjected = false;
+    for (uint32_t idx : schema->partitionKeyFields) {
+        String& name = schema->fields[idx].name;
+        bool found = false;
+        for (const String& projected : request.projection) {
+            if (projected == name) {
+                found = true;
+            }
+        }
+
+        if (!found) {
+            return;
+        }
+    }
+    for (uint32_t idx : schema->rangeKeyFields) {
+        String& name = schema->fields[idx].name;
+        bool found = false;
+        for (const String& projected : request.projection) {
+            if (projected == name) {
+                found = true;
+            }
+        }
+
+        if (!found) {
+            return;
+        }
+    }
+
+    keysProjected = true;
+}
+
+bool Query::isDone() {
+    return done;
+}
+
 } // ns dto
 } // ns k2

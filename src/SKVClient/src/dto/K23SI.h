@@ -68,11 +68,21 @@ struct K23SI_MTR {
 };
 struct TxnOptions {
     TxnOptions() noexcept : deadline(Duration(1s)),
-                            priority(dto::TxnPriority::Medium) {}
+                            priority(TxnPriority::Medium) {}
 
     Deadline<> deadline;
-    dto::TxnPriority priority;
+    TxnPriority priority;
     bool syncFinalize = false;
+};
+
+struct K23SIBeginTxnRequest {
+    K2_PAYLOAD_FIELDS();
+    K2_DEF_FMT(K23SIBeginTxnRequest);
+};
+
+struct K23SIBeginTxnResponse {
+    K2_PAYLOAD_FIELDS();
+    K2_DEF_FMT(K23SIBeginTxnResponse);
 };
 
 // The main READ DTO.
@@ -81,11 +91,15 @@ struct K23SIReadRequest {
     TxnId txnId;       // the txnid for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     SKVRecord key;  // the key to read
+    K2_PAYLOAD_FIELDS(collectionName, txnId, key);
+    K2_DEF_FMT(K23SIReadRequest, collectionName, txnId, key);
 };
 
 // The response for READs
 struct K23SIReadResponse {
     SKVRecord record;
+    K2_PAYLOAD_FIELDS(record);
+    K2_DEF_FMT(K23SIReadResponse, record);
 };
 
 K2_DEF_ENUM(ExistencePrecondition,
@@ -163,6 +177,59 @@ struct K23SIQueryResponse {
     std::vector<SKVRecord::Storage> results;
     K2_PAYLOAD_FIELDS(nextToScan, exclusiveToken, results);
     K2_DEF_FMT(K23SIQueryResponse, nextToScan, exclusiveToken, results);
+};
+
+// Represents a new or in-progress query (aka read scan with predicate and projection)
+class Query {
+public:
+    void setFilterExpression(expression::Expression&& root);
+    void setReverseDirection(bool reverseDirection);
+    void setIncludeVersionMismatch(bool includeVersionMismatch);
+    void setLimit(int32_t limit);
+
+    void addProjection(const String& fieldName);
+    void addProjection(const std::vector<String>& fieldNames);
+
+    bool isDone();  // If false, more results may be available
+
+    // Recursively copies the payloads if the expression's values and children. This is used so that the
+    // memory of the payloads will be allocated in the context of the current thread.
+    void copyPayloads() { request.filterExpression.copyPayloads(); }
+
+    // The user must specify the inclusive start and exclusive end keys for the range scan, but the client
+    // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an
+    // appropriate schema by the client createQuery function. The user is then expected to serialize the
+    // key fields into the SKVRecords, similar to a single key read request.
+    //
+    // They must be a fully specified prefix of the key fields. For example, if the key fields are defined
+    // as {ID, NAME, TIMESTAMP} then {ID = 1, TIMESTAMP = 10} is not a valid start or end scanRecord, but
+    // {ID = 1, NAME = J} is valid.
+    SKVRecord startScanRecord;
+    SKVRecord endScanRecord;
+    K2_DEF_FMT(Query, startScanRecord, endScanRecord, done, inprogress, keysProjected, request);
+    std::shared_ptr<Schema> schema = nullptr;
+    K2_PAYLOAD_FIELDS(startScanRecord, endScanRecord, done, inprogress, keysProjected, request);
+
+private:
+    void checkKeysProjected();
+
+    bool done = false;
+    bool inprogress = false;  // Used to prevent user from changing predicates after query has started
+    bool keysProjected = true;
+    K23SIQueryRequest request;
+};
+
+struct K23SICreateQueryRequest {
+    String collectionName;
+    String schemaName;
+    K2_PAYLOAD_FIELDS(collectionName, schemaName);
+    K2_DEF_FMT(K23SICreateQueryRequest, collectionName, schemaName);
+};
+
+struct K23SICreateQueryResponse {
+    Query query;    // the query if the response was OK
+    K2_PAYLOAD_FIELDS(query);
+    K2_DEF_FMT(K23SICreateQueryResponse, query);
 };
 
 struct K23SITxnHeartbeatRequest {
