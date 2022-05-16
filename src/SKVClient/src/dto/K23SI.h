@@ -31,7 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Timestamp.h"
 #include "Expression.h"
 
-namespace k2::dto {
+namespace skv::http::dto {
 using TxnId = uint64_t;
 
 // common transaction priorities
@@ -303,4 +303,4 @@ struct K23SITxnEndResponse {
     K2_DEF_FMT(K23SITxnEndResponse);
 };
 
-} // ns k2::dto
+} // ns skv::http::dto

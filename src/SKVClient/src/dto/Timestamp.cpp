@@ -23,7 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Timestamp.h"
 
-namespace k2::dto {
+namespace skv::http::dto {
 Timestamp::Timestamp(uint64_t tEndTSECount, uint32_t tsoId, uint32_t tStartDelta):
     _tEndTSECount(tEndTSECount),
     _tsoId(tsoId),
@@ -109,4 +109,4 @@ Timestamp Timestamp::max(const Timestamp& other) const {
     return compareCertain(other) == Timestamp::GT ? (*this) : other;
 }
 
-} // ns k2::dto
+} // ns skv::http::dto

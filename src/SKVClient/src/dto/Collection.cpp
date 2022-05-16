@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Collection.h"
 
-namespace k2::dto {
+namespace skv::http::dto {
 
 int Key::compare(const Key& o) const noexcept {
     auto scomp = schemaName.compare(o.schemaName);
@@ -94,4 +94,4 @@ bool PVID::operator!=(const PVID& o) const noexcept {
 size_t PVID::hash() const noexcept {
     return hash_combine(id, rangeVersion, assignmentVersion);
 }
-}  // namespace k2::dto
+}  // namespace skv::http::dto

@@ -50,8 +50,8 @@ Copyright(c) 2020 Futurewei Cloud
         auto __K2LOG_id = pthread_self();                    \
         fmt::print(K2LOG_STREAM,                                                                             \
                    FMT_STRING("[{}]-{}-[{}]-({}) [{}] [{}:{} @{}] " fmt_str "\n"),                           \
-                   k2::Clock::now(), k2::logging::Logger::procName, __K2LOG_id, module,                              \
-                   k2::logging::LogLevelNames[to_integral(level)], __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+                   skv::http::Clock::now(), skv::http::logging::Logger::procName, __K2LOG_id, module,                              \
+                   skv::http::logging::LogLevelNames[to_integral(level)], __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); \
         K2LOG_STREAM << std::flush;                                                                          \
     }
 
@@ -62,19 +62,19 @@ Copyright(c) 2020 Futurewei Cloud
 
 // allow verbose logging to be compiled-out
 #if K2_VERBOSE_LOGGING == 1
-#define K2LOG_V(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_V(logger, fmt_str, ...) K2LOG_LEVEL_FMT(skv::http::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__);
 #else
 #define K2LOG_V(logger, fmt_str, ...)                                                    \
     if (0) {                                                                             \
-        K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__); \
+        K2LOG_LEVEL_FMT(skv::http::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__); \
     }
 #endif
 
-#define K2LOG_D(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::DEBUG, logger, fmt_str, ##__VA_ARGS__);
-#define K2LOG_I(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::INFO, logger, fmt_str, ##__VA_ARGS__);
-#define K2LOG_W(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::WARN, logger, fmt_str, ##__VA_ARGS__);
-#define K2LOG_E(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::ERROR, logger, fmt_str, ##__VA_ARGS__);
-#define K2LOG_F(logger, fmt_str, ...) K2LOG_LEVEL_FMT(k2::logging::LogLevel::FATAL, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_D(logger, fmt_str, ...) K2LOG_LEVEL_FMT(skv::http::logging::LogLevel::DEBUG, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_I(logger, fmt_str, ...) K2LOG_LEVEL_FMT(skv::http::logging::LogLevel::INFO, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_W(logger, fmt_str, ...) K2LOG_LEVEL_FMT(skv::http::logging::LogLevel::WARN, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_E(logger, fmt_str, ...) K2LOG_LEVEL_FMT(skv::http::logging::LogLevel::ERROR, logger, fmt_str, ##__VA_ARGS__);
+#define K2LOG_F(logger, fmt_str, ...) K2LOG_LEVEL_FMT(skv::http::logging::LogLevel::FATAL, logger, fmt_str, ##__VA_ARGS__);
 
 #ifndef NDEBUG
 // assertion macros which can be compiled-out
@@ -105,7 +105,7 @@ Copyright(c) 2020 Futurewei Cloud
         K2LOG_W(logger, fmt_str ": caught unknown exception", ##__VA_ARGS__);      \
     }
 
-namespace k2 {
+namespace skv::http {
 namespace logging {
 
 K2_DEF_ENUM(LogLevel,
@@ -167,4 +167,4 @@ public:
 };
 
 }  // namespace logging
-}  // namespace k2
+}  // namespace skv::http

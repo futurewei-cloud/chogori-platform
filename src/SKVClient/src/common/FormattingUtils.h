@@ -43,7 +43,7 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
 // Intrusive formatting for classes
 // Generates formatting and from/to json conversion methods for a given _K2_CTYPE_ARG, in a given namespace
 // e.g. usage:
-// namespace k2 {
+// namespace skv::http {
 // struct GetSchemaRequest() {
 //    String schemaName;
 //    K2_DEF_FMT(GetSchemaRequest, schemaName)
@@ -65,7 +65,7 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
 
 // Generating enums with formatting. the _IC version is to be used when inside a class.
 // e.g.
-// namespace k2 {
+// namespace skv::http {
 // K2_DEF_ENUM(TxnStatus, Created, Aborted, Committed) )
 // }
 #define K2_DEF_ENUM_IC(_K2_ENUM_TYPE_NAME, ...)                                                     \
@@ -74,7 +74,7 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
     };                                                                                              \
     inline static const char* const _K2_ENUM_TYPE_NAME##Names[] = {                                 \
         _K2_TO_STRING_LIST(__VA_ARGS__)};                                                           \
-    inline static _K2_ENUM_TYPE_NAME _K2_ENUM_TYPE_NAME##FromStr(const k2::String& str) {           \
+    inline static _K2_ENUM_TYPE_NAME _K2_ENUM_TYPE_NAME##FromStr(const skv::http::String& str) {           \
         _K2_ENUM_IF_STMT(_K2_ENUM_TYPE_NAME, ##__VA_ARGS__);                                        \
         std::string s = fmt::format("unsupported value:{} in enum {}", str, #_K2_ENUM_TYPE_NAME);   \
         throw std::runtime_error(s.c_str());                                                        \
@@ -95,7 +95,7 @@ inline auto to_integral(T e) { return static_cast<std::underlying_type_t<T>>(e);
     };                                                                                              \
     inline static const char* const _K2_ENUM_TYPE_NAME##Names[] = {                                 \
         _K2_TO_STRING_LIST(__VA_ARGS__)};                                                           \
-    inline static _K2_ENUM_TYPE_NAME _K2_ENUM_TYPE_NAME##FromStr(const k2::String& str) {           \
+    inline static _K2_ENUM_TYPE_NAME _K2_ENUM_TYPE_NAME##FromStr(const skv::http::String& str) {           \
         _K2_ENUM_IF_STMT(_K2_ENUM_TYPE_NAME, ##__VA_ARGS__);                                        \
         std::string s = fmt::format("unsupported value:{} in enum {}", str, #_K2_ENUM_TYPE_NAME);   \
         throw std::runtime_error(s.c_str());                                                        \

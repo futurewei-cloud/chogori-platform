@@ -24,6 +24,6 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include <common/Log.h>
 
-namespace k2::log {
-inline thread_local k2::logging::Logger dto("k2::dto");
+namespace skv::http::log {
+inline thread_local skv::http::logging::Logger dto("skv::http::dto");
 }

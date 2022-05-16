@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <vector>
 
-namespace k2 {
+namespace skv::http {
 
 // base recursion - no args to append
 template <typename T>

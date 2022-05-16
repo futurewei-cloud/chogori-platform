@@ -29,9 +29,9 @@ Copyright(c) 2022 Futurewei Cloud
 
 #include "mpack.h"
 
-namespace k2 {
+namespace skv::http {
 namespace log {
-    inline thread_local k2::logging::Logger mpack("k2::mpack");
+    inline thread_local skv::http::logging::Logger mpack("skv::http::MPack");
 }
 
 class MPackNodeReader {
@@ -42,10 +42,15 @@ public:
     template <typename T>
     bool read(T& obj) {
         if (mpack_node_is_nil(_node)) {
+            K2LOG_D(log::mpack, "unable to read type {} since node is nil", type_name<T>());
             return false;
         }
 
-        return _readFromNode(obj);
+        if (!_readFromNode(obj)) {
+            K2LOG_D(log::mpack, "unable to read type {} from node type {} with error {}", type_name<T>(), mpack_node_type(_node), mpack_node_error(_node));
+            return false;
+        }
+        return true;
     }
 
     // read a value that can be optional (can be nil in the mpack stream)
@@ -58,6 +63,7 @@ public:
         // value is not Nil so we'd better be able to read it as T
         T val;
         if (!_readFromNode(val)) {
+            K2LOG_D(log::mpack, "unable to read type {} from node type {} with error {}", type_name<T>(), mpack_node_type(_node), mpack_node_error(_node));
             return false;
         }
         obj = std::make_optional<T>(std::move(val));
@@ -170,7 +176,7 @@ private:
             return false;
         }
 
-        // TODO share ownership so we can avoid copy here
+        // we can't share ownership with string so have to copy here
         val = String(data, sz);
         return true;
     }
@@ -182,7 +188,7 @@ private:
             return false;
         }
 
-        // TODO share ownership so we can avoid copy here
+        // share ownership so we can avoid copy here
         val = Binary(const_cast<char*>(data), sz, _source);
         return true;
     }
@@ -191,10 +197,11 @@ private:
     std::enable_if_t<isVectorLikeType<T>::value, bool>
     _readFromNode(T& val) {
         size_t sz = mpack_node_array_length(_node);
+        MPackStructReader sreader(_node, _source);
+
         for (size_t i = 0; i < sz; i++) {
             auto it = val.end();
             typename T::value_type v;
-            MPackStructReader sreader(_node, _source);
             if (!sreader.read(v)) {
                 val.clear();
                 return false;
@@ -206,8 +213,8 @@ private:
 
     template <typename ...T>
     bool _readFromNode(std::tuple<T...>& val) {
-        return std::apply([this](auto&&... args) mutable {
-            return ((MPackStructReader(_node, _source).read(args)) && ...);
+        return std::apply([this, reader=MPackStructReader(_node, _source)] (auto&&... args) mutable {
+            return ((reader.read(args)) && ...);
             },
             val);
     }
@@ -311,6 +318,7 @@ public:
         mpack_tree_parse(&_tree);
         auto node = mpack_tree_root(&_tree);
         if (mpack_tree_error(&_tree) != mpack_ok) {
+            K2LOG_D(log::mpack, "unable to read type {} with error {}", type_name<T>(), mpack_tree_error(&_tree));
             return false;
         }
         MPackNodeReader reader(node, _binary);
@@ -328,6 +336,7 @@ public:
     }
 
     void write(const Binary& val) {
+        K2LOG_V(log::mpack, "writing binary {}", val);
         K2ASSERT(log::mpack, val.size() < std::numeric_limits<uint32_t>::max(), "cannot write binary of size {}", val.size());
         mpack_write_bin(&_writer, val.data(), (uint32_t)val.size());
     }
@@ -335,6 +344,7 @@ public:
     template <typename T>
     void write(const std::optional<T>& obj) {
         if (!obj) {
+            K2LOG_V(log::mpack, "writing nil optional of type {}", type_name<T>());
             mpack_write_nil(&_writer);
         } else {
             write(*obj);
@@ -352,6 +362,7 @@ public:
     template <typename T>
     std::enable_if_t<isPayloadSerializableType<T>::value, void>
     write(const T& val) {
+        K2LOG_V(log::mpack, "writing serializable type {}", val);
         mpack_start_array(&_writer, val.__k2GetNumberOfPackedFields());
         val.__k2PackTo(*this);
         mpack_finish_array(&_writer);
@@ -360,6 +371,7 @@ public:
     template <typename T>
     std::enable_if_t<isVectorLikeType<T>::value, void>
     write(const T& val) {
+        K2LOG_V(log::mpack, "writing vector-like of type {} and size {}", type_name<T>(), val.size());
         mpack_start_array(&_writer, val.size());
         for (const auto& el: val) {
             write(el);
@@ -369,14 +381,16 @@ public:
 
     template <typename ...T>
     void write(const std::tuple<T...>& val) {
+        K2LOG_V(log::mpack, "writing tuple of type {} and size {}", type_name<std::tuple<T...>>(), std::tuple_size_v<std::tuple<T...>>);
         mpack_start_array(&_writer, (uint32_t)std::tuple_size_v<std::tuple<T...>>);
-        std::apply([this](auto&&... args) { write(args...); }, val);
+        std::apply([this](const auto&... args) { write(args...); }, val);
         mpack_finish_array(&_writer);
     }
 
     template <typename T>
     std::enable_if_t<isMapLikeType<T>::value, void>
     write(const T& val) {
+        K2LOG_V(log::mpack, "writing map-like of type {} and size {}", type_name<T>(), val.size());
         mpack_start_array(&_writer, val.size());
         for (const auto& [k,v] : val) {
             mpack_start_array(&_writer, 2);
@@ -388,50 +402,65 @@ public:
     }
 
     void write(int8_t value) {
+        K2LOG_V(log::mpack, "writing int8 type {}", value);
         mpack_write_i8(&_writer, value);
     }
     void write(uint8_t value) {
+        K2LOG_V(log::mpack, "writing uint8 type {}", value);
         mpack_write_u8(&_writer, value);
     }
     void write(int16_t value) {
+        K2LOG_V(log::mpack, "writing int16 type {}", value);
         mpack_write_i16(&_writer, value);
     }
     void write(uint16_t value) {
+        K2LOG_V(log::mpack, "writing uint16 type {}", value);
         mpack_write_u16(&_writer, value);
     }
     void write(int32_t value) {
+        K2LOG_V(log::mpack, "writing int32 type {}", value);
         mpack_write_i32(&_writer, value);
     }
     void write(uint32_t value) {
+        K2LOG_V(log::mpack, "writing uint32 type {}", value);
         mpack_write_u32(&_writer, value);
     }
     void write(int64_t value) {
+        K2LOG_V(log::mpack, "writing int64 type {}", value);
         mpack_write_i64(&_writer, value);
     }
     void write(uint64_t value) {
+        K2LOG_V(log::mpack, "writing uint64 type {}", value);
         mpack_write_u64(&_writer, value);
     }
     void write(bool value) {
+        K2LOG_V(log::mpack, "writing bool type {}", value);
         mpack_write_bool(&_writer, value);
     }
     void write(float value) {
+        K2LOG_V(log::mpack, "writing float type {}", value);
         mpack_write_float(&_writer, value);
     }
     void write(double value) {
+        K2LOG_V(log::mpack, "writing double type {}", value);
         mpack_write_double(&_writer, value);
     }
     void write(const Duration& dur) {
+        K2LOG_V(log::mpack, "writing duration type {}", dur);
         write(dur.count());  // write the tick count
     }
     void write(const std::decimal::decimal64& value) {
+        K2LOG_V(log::mpack, "writing decimal64 type {}", value);
         std::decimal::decimal64::__decfloat64 data = const_cast<std::decimal::decimal64&>(value).__getval();
         mpack_write_bin(&_writer, (const char*)&data, sizeof(data));
     }
     void write(const std::decimal::decimal128& value) {
+        K2LOG_V(log::mpack, "writing decimal128 type {}", value);
         std::decimal::decimal128::__decfloat128 data = const_cast<std::decimal::decimal128&>(value).__getval();
         mpack_write_bin(&_writer, (const char*)&data, sizeof(data));
     }
     void write(const String& val) {
+        K2LOG_V(log::mpack, "writing string type {}", val);
         K2ASSERT(log::mpack, val.size() < std::numeric_limits<uint32_t>::max(), "cannot write binary of size {}", val.size());
         mpack_write_bin(&_writer, val.data(), (uint32_t)val.size());
     }
@@ -439,11 +468,14 @@ public:
     template <typename T>
     std::enable_if_t<std::is_enum<T>::value, void>
     write(const T value) {
+        K2LOG_V(log::mpack, "writing enum type {}", value);
         mpack_write_bin(&_writer, (const char*)&value, sizeof(value));
     }
 
     void write(){
+        K2LOG_V(log::mpack, "writing base case");
     }
+
 private:
     mpack_writer_t &_writer;
 };

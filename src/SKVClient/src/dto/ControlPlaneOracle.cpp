@@ -24,8 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "ControlPlaneOracle.h"
 #include "Log.h"
 
-namespace k2 {
-namespace dto {
+namespace skv::http::dto {
 
 void Schema::setKeyFieldsByName(const std::vector<String>& keys, std::vector<uint32_t>& keyFields) {
     for (const String& keyName : keys) {
@@ -168,5 +167,4 @@ Status Schema::canUpgradeTo(const dto::Schema& other) const {
     return Statuses::S200_OK("Upgrade compatible");
 }
 
-}  // namespace dto
-}  // namespace k2
+}  // namespace skv::http::dto

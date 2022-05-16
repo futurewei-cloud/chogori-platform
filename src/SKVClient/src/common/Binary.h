@@ -24,10 +24,9 @@ Copyright(c) 2022 Futurewei Cloud
 #include <functional>
 #include "Common.h"
 
-namespace k2 {
+namespace skv::http {
 class Binary {
     typedef std::function<void()> Deleter;
-
 public:
     Binary():_data(0),_size(0){};
 
@@ -37,14 +36,12 @@ public:
 
     // create a binary wrapping the given data and size. The deleter will be invoked when all shared instances are gone
     Binary(char* data, size_t size, Deleter d):
-        Binary(data, size, std::make_shared<_SharedState>(std::move(d)) ) {
+        Binary(data, size, std::make_shared<_SharedState>(std::move(d))) {
     }
 
     // wrap a binary around the given string.
-    Binary(String str) {
-        char* data = str.data();
-        size_t size = str.size();
-        Binary(data, size, [str = std::move(str)] {});
+    Binary(String&& str):_data(str.data()), _size(str.size()) {
+        this->_state = std::make_shared<_SharedState>([str=std::move(str)] {});
     }
 
     Binary(const Binary& o) = default;

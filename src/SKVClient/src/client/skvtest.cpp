@@ -24,6 +24,6 @@ Copyright(c) 2022 Futurewei Cloud
 #include <string>
 #include "SKVClient.h"
 int main() {
-    k2::SKVClient client;
+    skv::http::Client client;
     return 0;
 }

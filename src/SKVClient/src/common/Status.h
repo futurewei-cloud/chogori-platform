@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Common.h"
 
-namespace k2 {
+namespace skv::http {
 
 // A status in K2 follows established HTTP codes. API writers should use the status generators below to produce
 // status codes as desired. The code and description are standard HTTP, but a custom message can be also delivered
@@ -469,4 +469,4 @@ template <typename... T>
 inline boost::future<Response<T...>> MakeResponse(Response<T...>&& resp) {
     return make_ready_future(std::forward(resp));
 }
-} //namespace k2
+} //namespace skv::http

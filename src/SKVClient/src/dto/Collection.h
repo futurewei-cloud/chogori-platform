@@ -33,7 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 // Collection-related DTOs
 
-namespace k2::dto {
+namespace skv::http::dto {
 
 // A key for data in K2. We use the partitionKey when determining which partition will own the data, but
 // we store the data against a compound key of ${partitionKey}:${rangeKey} to allow user ability to group records
@@ -184,27 +184,27 @@ struct Collection {
     K2_DEF_FMT(Collection, partitionMap, userMetadata, metadata);
 };
 
-} // namespace k2::dto
+} // namespace skv::http::dto
 
 // Define std::hash so that we can use them in hash maps/sets
 namespace std {
 template <>
-struct hash<k2::dto::Key> {
-    size_t operator()(const k2::dto::Key& key) const {
+struct hash<skv::http::dto::Key> {
+    size_t operator()(const skv::http::dto::Key& key) const {
         return key.hash();
    }
 }; // hash
 
 template <>
-struct hash<k2::dto::PVID> {
-    size_t operator()(const k2::dto::PVID& pvid) const {
+struct hash<skv::http::dto::PVID> {
+    size_t operator()(const skv::http::dto::PVID& pvid) const {
         return pvid.hash();
     }
 }; // hash
 
 template <>
-struct hash<k2::dto::KeyRangeVersion> {
-    size_t operator()(const k2::dto::KeyRangeVersion& range) const {
+struct hash<skv::http::dto::KeyRangeVersion> {
+    size_t operator()(const skv::http::dto::KeyRangeVersion& range) const {
         return range.hash();
     }
 };  // hash

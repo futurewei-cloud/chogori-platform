@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Timestamp.h"
 #include <unordered_set>
 
-namespace k2::dto {
+namespace skv::http::dto {
 
 struct CPOClientException : public std::exception {
     String what_str;
@@ -168,4 +168,4 @@ struct GetSchemasResponse {
     K2_DEF_FMT(GetSchemasResponse, schemas);
 };
 
-}  // namespace k2::dto
+}  // namespace skv::http::dto

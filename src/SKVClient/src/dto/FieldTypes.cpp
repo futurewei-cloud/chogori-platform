@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "FieldTypes.h"
 
-namespace k2 {
+namespace skv::http {
 namespace dto {
 
 static constexpr char ESCAPE = '\0';

@@ -22,7 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "Status.h"
-namespace k2 {
+namespace skv::http {
 
 bool Status::operator==(const Status& o) { return code == o.code; }
 
@@ -228,4 +228,4 @@ String Status::getDescription() const {
     }
 }
 
-} // namespace k2
+} // namespace skv::http

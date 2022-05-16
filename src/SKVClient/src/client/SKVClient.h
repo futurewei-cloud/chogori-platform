@@ -30,7 +30,7 @@ Copyright(c) 2022 Futurewei Cloud
 #include <dto/SKVRecord.h>
 #include <httplib/httplib.h>
 
-namespace k2 {
+namespace skv::http {
 
 class HTTPMessageClient {
 private:
@@ -121,23 +121,23 @@ public:
     boost::future<Response<dto::K23SICreateQueryResponse>> createQuery(dto::K23SICreateQueryRequest request);
     boost::future<Response<dto::K23SIQueryResponse>> query(dto::K23SIQueryRequest request);
 
-   private:
+private:
     HTTPMessageClient& _client;
     dto::TxnId _id;
 };
 
-class SKVClient {
+class Client {
 public:
-    SKVClient() {}
-    ~SKVClient() {}
+    Client() {}
+    ~Client() {}
     boost::future<Response<dto::CreateSchemaResponse>> createSchema(dto::CreateSchemaRequest request);
     boost::future<Response<dto::GetSchemaResponse>> getSchema(dto::GetSchemaRequest request);
     boost::future<Response<dto::CollectionCreateResponse>> createCollection(dto::CollectionCreateRequest request);
     boost::future<Response<dto::CollectionGetResponse>> getCollection(dto::CollectionGetRequest request);
     boost::future<Response<dto::K23SIBeginTxnResponse>> beginTxn(dto::K23SIBeginTxnRequest request);
 
-   private:
+private:
     HTTPMessageClient _client;
 };
 
-}  // namespace k2
+}  // namespace skv::http

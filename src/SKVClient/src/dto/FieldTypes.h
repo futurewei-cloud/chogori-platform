@@ -29,7 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <common/Common.h>
 
-namespace k2 {
+namespace skv::http {
 namespace dto {
 
 struct SKVKeyEncodingException : public std::exception {
@@ -126,71 +126,71 @@ bool isNan(const T& field){
 #define K2_DTO_CAST_APPLY_FIELD_VALUE(func, a, ...)                 \
     do {                                                            \
         switch ((a).type) {                                         \
-            case k2::dto::FieldType::STRING: {                      \
-                func<k2::String>((a), __VA_ARGS__);                 \
+            case skv::http::dto::FieldType::STRING: {                      \
+                func<skv::http::String>((a), __VA_ARGS__);                 \
             } break;                                                \
-            case k2::dto::FieldType::INT16T: {                      \
+            case skv::http::dto::FieldType::INT16T: {                      \
                 func<int16_t>((a), __VA_ARGS__);                    \
             } break;                                                \
-            case k2::dto::FieldType::INT32T: {                      \
+            case skv::http::dto::FieldType::INT32T: {                      \
                 func<int32_t>((a), __VA_ARGS__);                    \
             } break;                                                \
-            case k2::dto::FieldType::INT64T: {                      \
+            case skv::http::dto::FieldType::INT64T: {                      \
                 func<int64_t>((a), __VA_ARGS__);                    \
             } break;                                                \
-            case k2::dto::FieldType::FLOAT: {                       \
+            case skv::http::dto::FieldType::FLOAT: {                       \
                 func<float>((a), __VA_ARGS__);                      \
             } break;                                                \
-            case k2::dto::FieldType::DOUBLE: {                      \
+            case skv::http::dto::FieldType::DOUBLE: {                      \
                 func<double>((a), __VA_ARGS__);                     \
             } break;                                                \
-            case k2::dto::FieldType::BOOL: {                        \
+            case skv::http::dto::FieldType::BOOL: {                        \
                 func<bool>((a), __VA_ARGS__);                       \
             } break;                                                \
-            case k2::dto::FieldType::DECIMAL64: {                   \
+            case skv::http::dto::FieldType::DECIMAL64: {                   \
                 func<std::decimal::decimal64>((a), __VA_ARGS__);    \
             } break;                                                \
-            case k2::dto::FieldType::DECIMAL128: {                  \
+            case skv::http::dto::FieldType::DECIMAL128: {                  \
                 func<std::decimal::decimal128>((a), __VA_ARGS__);   \
             } break;                                                \
-            case k2::dto::FieldType::FIELD_TYPE: {                  \
-                func<k2::dto::FieldType>((a), __VA_ARGS__);         \
+            case skv::http::dto::FieldType::FIELD_TYPE: {                  \
+                func<skv::http::dto::FieldType>((a), __VA_ARGS__);         \
             } break;                                                \
             default:                                                \
                 auto msg = fmt::format(                             \
                     "cannot apply field of type {}", (a).type);     \
-                throw k2::dto::TypeMismatchException(msg);          \
+                throw skv::http::dto::TypeMismatchException(msg);          \
         }                                                           \
     } while (0)
 
 namespace std {
-    inline std::ostream& operator<<(std::ostream& os, const k2::dto::FieldType& ftype) {
+    inline std::ostream& operator<<(std::ostream& os, const skv::http::dto::FieldType& ftype) {
         switch(ftype) {
-        case k2::dto::FieldType::NULL_T:
+        case skv::http::dto::FieldType::NULL_T:
             return os << "NULL";
-        case k2::dto::FieldType::STRING:
+        case skv::http::dto::FieldType::STRING:
             return os << "STRING";
-        case k2::dto::FieldType::INT16T:
+        case skv::http::dto::FieldType::INT16T:
             return os << "INT16T";
-        case k2::dto::FieldType::INT32T:
+        case skv::http::dto::FieldType::INT32T:
             return os << "INT32T";
-        case k2::dto::FieldType::INT64T:
+        case skv::http::dto::FieldType::INT64T:
             return os << "INT64T";
-        case k2::dto::FieldType::FLOAT:
+        case skv::http::dto::FieldType::FLOAT:
             return os << "FLOAT";
-        case k2::dto::FieldType::DOUBLE:
+        case skv::http::dto::FieldType::DOUBLE:
             return os << "DOUBLE";
-        case k2::dto::FieldType::BOOL:
+        case skv::http::dto::FieldType::BOOL:
             return os << "BOOL";
-        case k2::dto::FieldType::DECIMAL64:
+        case skv::http::dto::FieldType::DECIMAL64:
             return os << "DECIMAL64";
-        case k2::dto::FieldType::DECIMAL128:
+        case skv::http::dto::FieldType::DECIMAL128:
             return os << "DECIMAL128";
-        case k2::dto::FieldType::FIELD_TYPE:
+        case skv::http::dto::FieldType::FIELD_TYPE:
             return os << "FIELD_TYPE";
-        case k2::dto::FieldType::NOT_KNOWN:
+        case skv::http::dto::FieldType::NOT_KNOWN:
             return os << "NOT_KNOWN";
-        case k2::dto::FieldType::NULL_LAST:
+        case skv::http::dto::FieldType::NULL_LAST:
             return os << "NULL_LAST";
         default:
             return os << "UNKNOWN_FIELD_TYPE";

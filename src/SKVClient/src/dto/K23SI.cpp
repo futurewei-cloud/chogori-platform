@@ -22,8 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "K23SI.h"
-namespace k2 {
-namespace dto {
+namespace skv::http::dto {
 
 bool K23SI_MTR::operator==(const K23SI_MTR& o) const {
     return timestamp == o.timestamp && priority == o.priority;
@@ -101,4 +100,3 @@ bool Query::isDone() {
 }
 
 } // ns dto
-} // ns k2

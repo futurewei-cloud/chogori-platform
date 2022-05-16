@@ -31,6 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <map>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -63,7 +64,7 @@ auto make_exc_future(std::exception_ptr p) {
     return prom.get_future();
 }
 
-namespace k2 {
+namespace skv::http {
 
 using String = std::string;
 
@@ -198,18 +199,30 @@ inline size_t hash_combine(const T& v, Rest&&... rest) {
     return seed;
 }
 
+// return the string version of a type
+template <typename T>
+constexpr auto type_name() {
+    std::string_view name, prefix, suffix;
+    name = __PRETTY_FUNCTION__;
+    prefix = "constexpr auto type_name() [with T = ";
+    suffix = "]";
+    name.remove_prefix(prefix.size());
+    name.remove_suffix(suffix.size());
+    return name;
+}
+
 } // ns k2
 
 template <>  // fmt support
-struct fmt::formatter<k2::String> {
+struct fmt::formatter<skv::http::String> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
         return ctx.begin();
     }
 
     template <typename FormatContext>
-    auto format(k2::String const& str, FormatContext& ctx) {
-        k2::String encoded = k2::HexCodec::encode(str);
+    auto format(skv::http::String const& str, FormatContext& ctx) {
+        skv::http::String encoded = skv::http::HexCodec::encode(str);
         return fmt::format_to(ctx.out(), "{}", encoded.data());
     }
 };
@@ -275,6 +288,23 @@ struct fmt::formatter<std::unordered_set<bool>> {
             } else {
                 fmt::format_to(ctx.out(), "{}, ", *it);
             }
+        }
+        return fmt::format_to(ctx.out(), "}}");
+    }
+};
+
+template <typename T>  // fmt support
+struct fmt::formatter<std::optional<T>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(std::optional<T> const& opt, FormatContext& ctx) {
+        fmt::format_to(ctx.out(), "{{");
+        if (opt.has_value()) {
+            fmt::format_to(ctx.out(), "{}", *opt);
         }
         return fmt::format_to(ctx.out(), "}}");
     }

@@ -22,9 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "Expression.h"
-namespace k2 {
-namespace dto {
-namespace expression {
+namespace skv::http::dto::expression {
 
 // This class wraps a given Value together with particular SKVRecord (and its schema). It is used to perform expression
 // operations according to schema, provided literals, and found reference values.
@@ -471,6 +469,4 @@ bool Expression::NOT_handler(SKVRecord& rec) {
     return !expressionChildren[0].evaluate(rec);
 }
 
-} // ns expression
-} // dto
-} // k2
+} // ns

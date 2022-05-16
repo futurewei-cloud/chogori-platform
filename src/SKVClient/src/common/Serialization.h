@@ -54,7 +54,7 @@ Copyright(c) 2020 Futurewei Cloud
     }
 
 
-namespace k2 {
+namespace skv::http {
 //
 //  Serialization traits
 //

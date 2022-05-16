@@ -26,8 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "SKVRecord.h"
 
-namespace k2 {
-namespace dto {
+namespace skv::http::dto {
 
 void SKVRecordBuilder::serializeNull() {
     if (_record.fieldCursor >= _record.schema->fields.size()) {
@@ -289,4 +288,3 @@ SKVRecord SKVRecord::deepCopy() {
 }
 
 } // ns dto
-} // ns k2

@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <common/Chrono.h>
 #include <common/Common.h>
 
-namespace k2::dto {
+namespace skv::http::dto {
 // K2Timestamp - a TrueTime uncertainty window and TSOId
 // internally keep TEndTSECount and tStartDelta for efficient serialization and comparison
 class Timestamp{
@@ -106,13 +106,31 @@ inline const Timestamp Timestamp::INF = Timestamp(std::numeric_limits<uint64_t>:
                                               0,
                                               std::numeric_limits<uint32_t>::max());
 
-} // ns k2::dto
+} // ns skv::http::dto
+
+template <>
+struct fmt::formatter<skv::http::dto::Timestamp> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(skv::http::dto::Timestamp const& tp, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "ts={}, tso_id={}",
+            skv::http::toTimestamp_ts(skv::http::TimePoint{} + 1ns * tp.tEndTSECount()), tp.tsoId());
+    }
+};
 
 namespace std {
+inline ostream& operator<<(ostream& os, const skv::http::dto::Timestamp& o) {
+    fmt::print(os, "{}", o);
+    return os;
+}
 template <>
-struct hash<k2::dto::Timestamp> {
-    size_t operator()(const k2::dto::Timestamp& ts) const {
+struct hash<skv::http::dto::Timestamp> {
+    size_t operator()(const skv::http::dto::Timestamp& ts) const {
         return ts.hash();
    }
 }; // hash
-} // ns std
+}  // namespace std

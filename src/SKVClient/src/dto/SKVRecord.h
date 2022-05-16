@@ -31,7 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "ControlPlaneOracle.h"
 #include <mpack/MPackSerialization.h>
 
-namespace k2 {
+namespace skv::http {
 
 class K2TxnHandle;
 class txn_testing;
@@ -104,7 +104,7 @@ public:
             return null_val;
         }
 
-        T value;
+        T value{};
         bool success = reader.read(value);
         if (!success) {
             throw DeserializationError("Deserialization of payload in SKVRecord failed");
@@ -200,9 +200,9 @@ public:
     bool keyStringsConstructed = false; // Whether the encoded keys are already in the vectors above
     MPackReader reader;
 
-    friend class k2::K2TxnHandle;
-    friend class k2::txn_testing;
-    friend class k2::K23SITest;
+    friend class skv::http::K2TxnHandle;
+    friend class skv::http::txn_testing;
+    friend class skv::http::K23SITest;
     friend class SKVRecordBuilder;
 private:
     SKVRecord(const String& collection, std::shared_ptr<Schema> s);
@@ -285,49 +285,49 @@ private:
     do {                                                                                                              \
         auto& field = (record).schema->fields[(record).getFieldCursor()];                                             \
         switch (field.type) {                                                                                         \
-            case k2::dto::FieldType::STRING: {                                                                        \
-                std::optional<k2::String> value = (record).deserializeNext<k2::String>();                             \
-                func<k2::String>(std::move(value), field.name, __VA_ARGS__);                                          \
+            case skv::http::dto::FieldType::STRING: {                                                                        \
+                std::optional<skv::http::String> value = (record).deserializeNext<skv::http::String>();                             \
+                func<skv::http::String>(std::move(value), field.name, __VA_ARGS__);                                          \
             } break;                                                                                                  \
-            case k2::dto::FieldType::INT16T: {                                                                        \
+            case skv::http::dto::FieldType::INT16T: {                                                                        \
                 std::optional<int16_t> value = (record).deserializeNext<int16_t>();                                   \
                 func<int16_t>(std::move(value), field.name, __VA_ARGS__);                                             \
             } break;                                                                                                  \
-            case k2::dto::FieldType::INT32T: {                                                                        \
+            case skv::http::dto::FieldType::INT32T: {                                                                        \
                 std::optional<int32_t> value = (record).deserializeNext<int32_t>();                                   \
                 func<int32_t>(std::move(value), field.name, __VA_ARGS__);                                             \
             } break;                                                                                                  \
-            case k2::dto::FieldType::INT64T: {                                                                        \
+            case skv::http::dto::FieldType::INT64T: {                                                                        \
                 std::optional<int64_t> value = (record).deserializeNext<int64_t>();                                   \
                 func<int64_t>(std::move(value), field.name, __VA_ARGS__);                                             \
             } break;                                                                                                  \
-            case k2::dto::FieldType::FLOAT: {                                                                         \
+            case skv::http::dto::FieldType::FLOAT: {                                                                         \
                 std::optional<float> value = (record).deserializeNext<float>();                                       \
                 func<float>(std::move(value), field.name, __VA_ARGS__);                                               \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DOUBLE: {                                                                        \
+            case skv::http::dto::FieldType::DOUBLE: {                                                                        \
                 std::optional<double> value = (record).deserializeNext<double>();                                     \
                 func<double>(std::move(value), field.name, __VA_ARGS__);                                              \
             } break;                                                                                                  \
-            case k2::dto::FieldType::BOOL: {                                                                          \
+            case skv::http::dto::FieldType::BOOL: {                                                                          \
                 std::optional<bool> value = (record).deserializeNext<bool>();                                         \
                 func<bool>(std::move(value), field.name, __VA_ARGS__);                                                \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DECIMAL64: {                                                                     \
+            case skv::http::dto::FieldType::DECIMAL64: {                                                                     \
                 std::optional<std::decimal::decimal64> value = (record).deserializeNext<std::decimal::decimal64>();   \
                 func<std::decimal::decimal64>(std::move(value), field.name, __VA_ARGS__);                             \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DECIMAL128: {                                                                    \
+            case skv::http::dto::FieldType::DECIMAL128: {                                                                    \
                 std::optional<std::decimal::decimal128> value = (record).deserializeNext<std::decimal::decimal128>(); \
                 func<std::decimal::decimal128>(std::move(value), field.name, __VA_ARGS__);                            \
             } break;                                                                                                  \
-            case k2::dto::FieldType::FIELD_TYPE: {                                                                    \
-                std::optional<k2::dto::FieldType> value = (record).deserializeNext<k2::dto::FieldType>();             \
-                func<k2::dto::FieldType>(std::move(value), field.name, __VA_ARGS__);                                  \
+            case skv::http::dto::FieldType::FIELD_TYPE: {                                                                    \
+                std::optional<skv::http::dto::FieldType> value = (record).deserializeNext<skv::http::dto::FieldType>();             \
+                func<skv::http::dto::FieldType>(std::move(value), field.name, __VA_ARGS__);                                  \
             } break;                                                                                                  \
             default:                                                                                                  \
                 auto msg = fmt::format("unknown type {} for field {}", field.type, field.name);                       \
-                throw k2::dto::TypeMismatchException(msg);                                                            \
+                throw skv::http::dto::TypeMismatchException(msg);                                                            \
         }                                                                                                             \
     } while (0)
 
@@ -345,10 +345,10 @@ private:
 // borrows the PayloadSerializableTrait machinery for nested support.
 #define SKV_RECORD_FIELDS(...)                                 \
     struct __K2PayloadSerializableTraitTag__ {};               \
-    void __writeFields(k2::dto::SKVRecord& __record__) const { \
+    void __writeFields(skv::http::dto::SKVRecord& __record__) const { \
         __record__.writeMany(__VA_ARGS__);                     \
     }                                                          \
-    void __readFields(k2::dto::SKVRecord& __record__) {        \
+    void __readFields(skv::http::dto::SKVRecord& __record__) {        \
         return __record__.readMany(__VA_ARGS__);               \
     }
 

@@ -34,7 +34,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "FieldTypes.h"
 #include "SKVRecord.h"
 
-namespace k2::dto {
+namespace skv::http::dto {
 
 // Thrown if the expression is found to be semantically invalid
 struct InvalidExpressionException : public std::exception {
@@ -111,8 +111,8 @@ struct Value {
             }
         }
         return os << "{fieldName: " << val.fieldName
-            << ", type: " << k2::HexCodec::encode(otype.str())
-            << ", literal: " << k2::HexCodec::encode(lit.str())
+            << ", type: " << skv::http::HexCodec::encode(otype.str())
+            << ", literal: " << skv::http::HexCodec::encode(lit.str())
             << "}";
     }
 };
@@ -190,4 +190,4 @@ inline Expression makeExpression(Operation op, std::vector<Value>&& valueChildre
 }
 
 } // ns expression
-} // ns k2::dto
+} // ns skv::http::dto

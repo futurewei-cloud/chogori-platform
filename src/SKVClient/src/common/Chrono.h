@@ -39,7 +39,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 using namespace std::chrono_literals;  // so that we can type "1ms"
 
-namespace k2 {
+namespace skv::http {
 
 typedef std::chrono::steady_clock Clock;
 typedef Clock::duration Duration;
@@ -122,52 +122,52 @@ inline const char* printTime(const TimePoint& tp) {
 
 // formatters
 template <>
-struct fmt::formatter<k2::Timestamp_ts> {
+struct fmt::formatter<skv::http::Timestamp_ts> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
         return ctx.begin();
     }
 
     template <typename FormatContext>
-    auto format(k2::Timestamp_ts const& ts, FormatContext& ctx) {
+    auto format(skv::http::Timestamp_ts const& ts, FormatContext& ctx) {
         return fmt::format_to(ctx.out(), FMT_COMPILE("{:04}:{:02}:{:02}:{:02}.{:03}.{:03}"), ts.days, ts.hours, ts.mins, ts.secs, ts.millis, ts.micros);
     }
 };
 
 template <>
-struct fmt::formatter<k2::Duration> {
+struct fmt::formatter<skv::http::Duration> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
         return ctx.begin();
     }
 
     template <typename FormatContext>
-    auto format(k2::Duration const& dur, FormatContext& ctx) {
-        return fmt::format_to(ctx.out(), "{}", k2::TimePoint{} + dur);
+    auto format(skv::http::Duration const& dur, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", skv::http::TimePoint{} + dur);
     }
 };
 
 template <>
-struct fmt::formatter<k2::TimePoint> {
+struct fmt::formatter<skv::http::TimePoint> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
         return ctx.begin();
     }
 
     template <typename FormatContext>
-    auto format(k2::TimePoint const& tp, FormatContext& ctx) {
-        return fmt::format_to(ctx.out(), "{}", k2::toTimestamp_ts(tp));
+    auto format(skv::http::TimePoint const& tp, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", skv::http::toTimestamp_ts(tp));
     }
 };
 
 
 namespace std {
-inline ostream& operator<<(ostream& os, const k2::TimePoint& o) {
+inline ostream& operator<<(ostream& os, const skv::http::TimePoint& o) {
     fmt::print(os, "{}", o);
     return os;
 }
 
-inline ostream& operator<<(ostream& os, const k2::Duration& o) {
+inline ostream& operator<<(ostream& os, const skv::http::Duration& o) {
     fmt::print(os, "{}", o);
     return os;
 }
