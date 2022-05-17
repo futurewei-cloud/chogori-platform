@@ -22,7 +22,7 @@ Copyright(c) 2021 Futurewei Cloud
 */
 #pragma once
 
-#include <common/Log.h>
+#include <skv/common/Log.h>
 
 namespace skv::http::log {
 inline thread_local skv::http::logging::Logger dto("skv::http::dto");
