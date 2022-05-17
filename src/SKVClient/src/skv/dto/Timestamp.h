@@ -23,8 +23,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <common/Chrono.h>
-#include <common/Common.h>
+#include <skv/common/Chrono.h>
+#include <skv/common/Common.h>
 
 namespace skv::http::dto {
 // K2Timestamp - a TrueTime uncertainty window and TSOId

@@ -22,13 +22,13 @@ Copyright(c) 2022 Futurewei Cloud
 */
 
 #pragma once
-#include <common/Common.h>
-#include <common/Status.h>
-#include <dto/Collection.h>
-#include <dto/ControlPlaneOracle.h>
-#include <dto/K23SI.h>
-#include <dto/SKVRecord.h>
-#include <httplib/httplib.h>
+#include <skv/common/Common.h>
+#include <skv/common/Status.h>
+#include <skv/dto/Collection.h>
+#include <skv/dto/ControlPlaneOracle.h>
+#include <skv/dto/K23SI.h>
+#include <skv/dto/SKVRecord.h>
+#include <skv/httplib/httplib.h>
 
 namespace skv::http {
 

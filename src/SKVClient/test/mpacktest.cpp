@@ -20,7 +20,7 @@ Copyright(c) 2022 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-#include <mpack/MPackSerialization.h>
+#include <skv/mpack/MPackSerialization.h>
 
 #include <iostream>
 #include <string>
@@ -317,18 +317,51 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         REQUIRE(ex.a2[1].b4[3] == 8);
         REQUIRE(ex.a2[1].b4[4] == 9);
         REQUIRE(ex.a2[1].b5 == std::tuple<int, int>(402, 502));
-        /*
-    std::map<skv::http::String, Ex2> b;
-    std::unordered_map<skv::http::String, Ex2> b1;
-    std::set<skv::http::String> b2;
-    std::unordered_set<skv::http::String> b3;
-    */
+
+        REQUIRE(ex.b.size() == 2);
+        REQUIRE(ex.b["el1"].a == 1021);
+        REQUIRE(ex.b["el1"].b == "10421");
+        REQUIRE(ex.b["el1"].b2 == std::vector<skv::http::String>({"10521", "10621"}));
+        REQUIRE(ex.b["el1"].b3 == std::vector<bool>({1, 0, 1, 1}));
+        REQUIRE(ex.b["el1"].b4 == std::vector<int>({7, 8, 9, 4}));
+        REQUIRE(ex.b["el1"].b5 == std::tuple<int, int>(1402, 1505));
+        REQUIRE(ex.b["el2"].a == 1022);
+        REQUIRE(ex.b["el2"].b == "10422");
+        REQUIRE(ex.b["el2"].b2 == std::vector<skv::http::String>({"10522", "10622"}));
+        REQUIRE(ex.b["el2"].b3 == std::vector<bool>({1, 0, 1, 1, 0}));
+        REQUIRE(ex.b["el2"].b4 == std::vector<int>({7, 8, 9, 2}));
+        REQUIRE(ex.b["el2"].b5 == std::tuple<int, int>(122, 052));
+
+        REQUIRE(ex.b1["el3"].a == 3021);
+        REQUIRE(ex.b1["el3"].b == "10423");
+        REQUIRE(ex.b1["el3"].b2 == std::vector<skv::http::String>({"10523", "10623"}));
+        REQUIRE(ex.b1["el3"].b3 == std::vector<bool>({1, 0, 1, 1, 0}));
+        REQUIRE(ex.b1["el3"].b4 == std::vector<int>({7, 8, 9, 4, 3}));
+        REQUIRE(ex.b1["el3"].b5 == std::tuple<int, int>(143, 153));
+        REQUIRE(ex.b1["el4"].a == 14);
+        REQUIRE(ex.b1["el4"].b == "104");
+        REQUIRE(ex.b1["el4"].b2 == std::vector<skv::http::String>({"14", "1042"}));
+        REQUIRE(ex.b1["el4"].b3 == std::vector<bool>({1, 0, 0}));
+        REQUIRE(ex.b1["el4"].b4 == std::vector<int>({7, 8, 4}));
+        REQUIRE(ex.b1["el4"].b5 == std::tuple<int, int>(124, 054));
+
+        REQUIRE(ex.b2.size() == 3);
+        REQUIRE(ex.b2.count("k1") == 1);
+        REQUIRE(ex.b2.count("k2") == 1);
+        REQUIRE(ex.b2.count("k3") == 1);
+        REQUIRE(ex.b3.size() == 3);
+        REQUIRE(ex.b3.count("k4") == 1);
+        REQUIRE(ex.b3.count("k5") == 1);
+        REQUIRE(ex.b3.count("k6") == 1);
+
         REQUIRE(std::get<0>(ex.b4) == 41);
         REQUIRE(std::get<2>(ex.b4).a == 4021);
         REQUIRE(std::get<2>(ex.b4).b == "00421");
+
         REQUIRE(std::get<2>(ex.b4).b2.size() == 2);
         REQUIRE(std::get<2>(ex.b4).b2[0] == "00521");
         REQUIRE(std::get<2>(ex.b4).b2[1] == "00621");
+
         REQUIRE(std::get<2>(ex.b4).b3.size() == 6);
         REQUIRE(std::get<2>(ex.b4).b3[0] == 1);
         REQUIRE(std::get<2>(ex.b4).b3[1] == 1);
@@ -336,15 +369,19 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         REQUIRE(std::get<2>(ex.b4).b3[3] == 0);
         REQUIRE(std::get<2>(ex.b4).b3[4] == 1);
         REQUIRE(std::get<2>(ex.b4).b3[5] == 1);
+
         REQUIRE(std::get<2>(ex.b4).b4.size() == 6);
         REQUIRE(std::get<2>(ex.b4).b4[0] == 5);
         REQUIRE(std::get<2>(ex.b4).b4[1] == 6);
         REQUIRE(std::get<2>(ex.b4).b4[2] == 7);
         REQUIRE(std::get<2>(ex.b4).b4[3] == 8);
         REQUIRE(std::get<2>(ex.b4).b4[4] == 9);
-        REQUIRE(std::get<2>(ex.b4).b3[5] == 1);
+        REQUIRE(std::get<2>(ex.b4).b4[5] == 4);
+
         REQUIRE(std::get<2>(ex.b4).b5 == std::tuple<int,int>(402,505));
+
         REQUIRE(std::get<3>(ex.b4) == "something");
+
         REQUIRE(std::get<4>(ex.b4).size() == 2);
         REQUIRE(std::get<4>(ex.b4)[0].a == 31);
         REQUIRE(std::get<4>(ex.b4)[0].b == "103");
@@ -360,6 +397,7 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         REQUIRE(std::get<4>(ex.b4)[0].b4[1] == 4);
         REQUIRE(std::get<4>(ex.b4)[0].b4[2] == 3);
         REQUIRE(std::get<4>(ex.b4)[0].b5 == std::tuple<int, int>(43, 53));
+
         REQUIRE(std::get<4>(ex.b4)[2].a == 14);
         REQUIRE(std::get<4>(ex.b4)[2].b == "104");
         REQUIRE(std::get<4>(ex.b4)[2].b2.size() == 2);
