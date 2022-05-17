@@ -40,8 +40,11 @@ public:
     }
 
     // wrap a binary around the given string.
-    Binary(String&& str):_data(str.data()), _size(str.size()) {
-        this->_state = std::make_shared<_SharedState>([str=std::move(str)] {});
+    Binary(String&& str) {
+        std::shared_ptr<String> ptr= std::make_shared<String>(std::move(str));
+        _data = ptr->data();
+        _size = ptr->size();
+        this->_state = std::make_shared<_SharedState>([ptr=std::move(ptr)] {});
     }
 
     Binary(const Binary& o) = default;

@@ -29,7 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Collection.h"
 #include "FieldTypes.h"
 #include "ControlPlaneOracle.h"
-#include <mpack/MPackSerialization.h>
+#include <skv/mpack/MPackSerialization.h>
 
 namespace skv::http {
 

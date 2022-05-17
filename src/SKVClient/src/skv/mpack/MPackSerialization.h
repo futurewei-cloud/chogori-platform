@@ -22,10 +22,10 @@ Copyright(c) 2022 Futurewei Cloud
 */
 
 #pragma once
-#include <common/Binary.h>
-#include <common/Common.h>
-#include <common/Log.h>
-#include <common/Serialization.h>
+#include <skv/common/Binary.h>
+#include <skv/common/Common.h>
+#include <skv/common/Log.h>
+#include <skv/common/Serialization.h>
 
 #include "mpack.h"
 
