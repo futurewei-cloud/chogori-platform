@@ -221,6 +221,30 @@ TEST_CASE("Test3: clone to other schema") {
     } catch (...) {}
 }
 
+void testRecord(const dto::Schema& schema, const dto::SKVRecord::Storage& storage, bool has_value) {
+    MPackWriter w;
+    w.write(storage);
+    Binary buf;
+    REQUIRE(w.flush(buf));
+    MPackReader reader(buf);
+    dto::SKVRecord::Storage read_storage{};
+    REQUIRE(reader.read(read_storage));
+    dto::SKVRecord reconstructed("collection", std::make_shared<dto::Schema>(schema),
+                                    std::move(read_storage), true);
+    std::optional<String> last = reconstructed.deserializeNext<String>();
+    REQUIRE(!last.has_value());
+    std::optional<String> first = reconstructed.deserializeNext<String>();
+    REQUIRE(first.has_value());
+    REQUIRE(first == "b");
+    std::optional<int32_t> balance = reconstructed.deserializeNext<int32_t>();
+    if (has_value) {
+        REQUIRE(balance.has_value());
+        REQUIRE(balance == 12);
+    } else {
+        REQUIRE(!balance.has_value());
+    }
+}
+
 TEST_CASE("Test4: getSKVKeyRecord test") {
     dto::Schema schema;
     schema.name = "test_schema";
@@ -240,25 +264,14 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
 
     // Testing a typical use-case of getSKVKeyRecord where the storage is serialized
     // to payload and then read back later
-    dto::SKVRecord key_record = builder.build();
-    const dto::SKVRecord::Storage& storage = key_record.getStorage();
-    MPackWriter w;
-    w.write(storage);
-    Binary buf;
-    REQUIRE(w.flush(buf));
-    MPackReader reader(buf);
-    dto::SKVRecord::Storage read_storage{};
-    REQUIRE(reader.read(read_storage));
-    dto::SKVRecord reconstructed("collection", std::make_shared<dto::Schema>(schema),
-                                     std::move(read_storage), true);
-    std::optional<String> last = reconstructed.deserializeNext<String>();
-    REQUIRE(!last.has_value());
-    std::optional<String> first = reconstructed.deserializeNext<String>();
-    REQUIRE(first.has_value());
-    REQUIRE(first == "b");
-    std::optional<int32_t> balance = reconstructed.deserializeNext<int32_t>();
-    REQUIRE(balance.has_value());
-    REQUIRE(balance == 12);
+    dto::SKVRecord doc = builder.build();
+    dto::SKVRecord key_record = doc.getSKVKeyRecord();
+    SECTION("full record") {
+        testRecord(schema, doc.getStorage(), true);
+    }
+    SECTION("key record") {
+        testRecord(schema, key_record.getStorage(), false);
+    }
 }
 
 TEST_CASE("Test5: empty reader test") {
