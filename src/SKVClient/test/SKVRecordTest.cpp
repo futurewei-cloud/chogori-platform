@@ -251,7 +251,6 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
     REQUIRE(reader.read(read_storage));
     dto::SKVRecord reconstructed("collection", std::make_shared<dto::Schema>(schema),
                                      std::move(read_storage), true);
-
     std::optional<String> last = reconstructed.deserializeNext<String>();
     REQUIRE(!last.has_value());
     std::optional<String> first = reconstructed.deserializeNext<String>();
@@ -261,3 +260,8 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
     REQUIRE(!balance.has_value());
 }
 
+TEST_CASE("Test5: empty reader test") {
+    MPackReader reader;
+    String value;
+    REQUIRE(!reader.read(value));
+}

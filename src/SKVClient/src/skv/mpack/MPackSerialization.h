@@ -327,7 +327,7 @@ public:
 
 private:
     Binary _binary;
-    mpack_tree_t _tree;
+    mpack_tree_t _tree{};
 };
 
 class MPackNodeWriter {
