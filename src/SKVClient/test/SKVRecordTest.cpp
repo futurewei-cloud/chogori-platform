@@ -257,7 +257,8 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
     REQUIRE(first.has_value());
     REQUIRE(first == "b");
     std::optional<int32_t> balance = reconstructed.deserializeNext<int32_t>();
-    REQUIRE(!balance.has_value());
+    REQUIRE(balance.has_value());
+    REQUIRE(balance == 12);
 }
 
 TEST_CASE("Test5: empty reader test") {

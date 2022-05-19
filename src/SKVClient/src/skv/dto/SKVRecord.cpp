@@ -107,7 +107,9 @@ SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
 // The constructor for an SKVRecord that is created by the SKV client to be returned to the user in a response
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyAvail) :
         schema(s), collectionName(collection), storage(std::move(storage)), keyValuesAvailable(keyAvail),
-        keyStringsConstructed(false) {}
+        keyStringsConstructed(false) {
+    reader = MPackReader(this->storage.fieldData);
+}
 
 template <typename T>
 void SKVRecord::makeKeyString(std::optional<T> value, const String& fieldName, int tmp) {
