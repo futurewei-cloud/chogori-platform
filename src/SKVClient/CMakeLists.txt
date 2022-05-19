@@ -2,6 +2,8 @@ cmake_minimum_required (VERSION 3.13)
 
 project (skvlib VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY)
 add_compile_options(-O3 -std=c++17 -g -Werror -Wall -Wextra)
 
 include_directories(src)
