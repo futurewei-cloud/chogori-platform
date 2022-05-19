@@ -268,11 +268,23 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
         throw KeyNotAvailableError("Cannot create an SKVKeyRecord from record without key values");
     }
 
+    size_t num_keys = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
     SKVRecordBuilder builder(collectionName, schema);
     MPackReader reader(storage.fieldData);
+    std::vector<bool> excludedFields = storage.excludedFields;
 
-    for (size_t i = 0; i < schema->partitionKeyFields.size() + schema->rangeKeyFields.size(); ++i) {
-        if (!storage.excludedFields[i]) {
+    // If size() == 0 then all fields were included, so resize the key_storage excluded fields
+    if (excludedFields.size() == 0) {
+        excludedFields.resize(schema->fields.size(), false);
+    }
+
+    // Exclude all value fields
+    for (size_t i = num_keys; i < excludedFields.size(); ++i) {
+        excludedFields[i] = true;
+    }
+
+    for (size_t i = 0; i < excludedFields.size(); ++i) {
+        if (!excludedFields[i]) {
             K2_DTO_CAST_APPLY_FIELD_VALUE(fieldApplier, schema->fields[i], builder, reader);
         }
         else {
