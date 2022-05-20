@@ -253,14 +253,16 @@ SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_pt
 }
 
 template <typename T>
-void fieldApplier(SchemaField fieldInfo, SKVRecordBuilder& builder, MPackReader& reader) {
-    (void) fieldInfo;
-    T field{};
-    if (!reader.read(field)) {
-        throw KeyNotAvailableError("Unable to read key field from buffer");
+void _fieldApplier(SchemaField, SKVRecordBuilder& builder, SKVRecord& rec) {
+    auto opt = rec.deserializeNext<T>();
+    if (opt) {
+        builder.serializeNext(*opt);
     }
-    builder.serializeNext(field);
-}
+    else {
+        builder.serializeNull();
+    }
+ }
+
 
 // This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
 SKVRecord SKVRecord::getSKVKeyRecord() {
@@ -268,29 +270,21 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
         throw KeyNotAvailableError("Cannot create an SKVKeyRecord from record without key values");
     }
 
-    size_t num_keys = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
+    auto currentIndex = getFieldCursor();
+    seekField(0);
+
     SKVRecordBuilder builder(collectionName, schema);
-    MPackReader reader(storage.fieldData);
-    std::vector<bool> excludedFields = storage.excludedFields;
 
-    // If size() == 0 then all fields were included, so resize the key_storage excluded fields
-    if (excludedFields.size() == 0) {
-        excludedFields.resize(schema->fields.size(), false);
+    size_t numKeyFields = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
+    for (size_t i = 0; i < schema->fields.size(); ++i) {
+        if (i < numKeyFields) {
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_fieldApplier, schema->fields[i], builder, *this);
+         } else {
+             builder.serializeNull();
+         }
     }
 
-    // Exclude all value fields
-    for (size_t i = num_keys; i < excludedFields.size(); ++i) {
-        excludedFields[i] = true;
-    }
-
-    for (size_t i = 0; i < excludedFields.size(); ++i) {
-        if (!excludedFields[i]) {
-            K2_DTO_CAST_APPLY_FIELD_VALUE(fieldApplier, schema->fields[i], builder, reader);
-        }
-        else {
-            builder.serializeNull();
-        }
-    }
+    seekField(currentIndex);
 
     return builder.build();
 }
