@@ -107,7 +107,9 @@ SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
 // The constructor for an SKVRecord that is created by the SKV client to be returned to the user in a response
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyAvail) :
         schema(s), collectionName(collection), storage(std::move(storage)), keyValuesAvailable(keyAvail),
-        keyStringsConstructed(false) {}
+        keyStringsConstructed(false) {
+    reader = MPackReader(this->storage.fieldData);
+}
 
 template <typename T>
 void SKVRecord::makeKeyString(std::optional<T> value, const String& fieldName, int tmp) {
@@ -251,14 +253,16 @@ SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_pt
 }
 
 template <typename T>
-void fieldApplier(SchemaField fieldInfo, SKVRecordBuilder& builder, MPackReader& reader) {
-    (void) fieldInfo;
-    T field{};
-    if (!reader.read(field)) {
-        throw KeyNotAvailableError("Unable to read key field from buffer");
+void _fieldApplier(SchemaField, SKVRecordBuilder& builder, SKVRecord& rec) {
+    auto opt = rec.deserializeNext<T>();
+    if (opt) {
+        builder.serializeNext(*opt);
     }
-    builder.serializeNext(field);
-}
+    else {
+        builder.serializeNull();
+    }
+ }
+
 
 // This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
 SKVRecord SKVRecord::getSKVKeyRecord() {
@@ -266,17 +270,21 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
         throw KeyNotAvailableError("Cannot create an SKVKeyRecord from record without key values");
     }
 
-    SKVRecordBuilder builder(collectionName, schema);
-    MPackReader reader(storage.fieldData);
+    auto currentIndex = getFieldCursor();
+    seekField(0);
 
-    for (size_t i = 0; i < schema->partitionKeyFields.size() + schema->rangeKeyFields.size(); ++i) {
-        if (!storage.excludedFields[i]) {
-            K2_DTO_CAST_APPLY_FIELD_VALUE(fieldApplier, schema->fields[i], builder, reader);
-        }
-        else {
-            builder.serializeNull();
-        }
+    SKVRecordBuilder builder(collectionName, schema);
+
+    size_t numKeyFields = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
+    for (size_t i = 0; i < schema->fields.size(); ++i) {
+        if (i < numKeyFields) {
+            K2_DTO_CAST_APPLY_FIELD_VALUE(_fieldApplier, schema->fields[i], builder, *this);
+         } else {
+             builder.serializeNull();
+         }
     }
+
+    seekField(currentIndex);
 
     return builder.build();
 }
