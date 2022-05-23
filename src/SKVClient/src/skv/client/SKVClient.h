@@ -112,29 +112,30 @@ private:
 
 class TxnHandle {
 public:
-    TxnHandle(HTTPMessageClient& client, dto::TxnId id):_client(client), _id(id) {}
-    boost::future<Response<dto::K23SITxnEndResponse>> endTxn(dto::K23SITxnEndRequest request) {
-        return _client.POST<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>("/api/v1/endTxn", std::move(request));
-    }
-    boost::future<Response<dto::K23SIReadResponse>> read(dto::K23SIReadRequest request);
-    boost::future<Response<dto::K23SIWriteResponse>> write(dto::K23SIWriteRequest request);
-    boost::future<Response<dto::K23SICreateQueryResponse>> createQuery(dto::K23SICreateQueryRequest request);
-    boost::future<Response<dto::K23SIQueryResponse>> query(dto::K23SIQueryRequest request);
+    TxnHandle(HTTPMessageClient* client, dto::Timestamp id):_client(client), _id(id) {}
+    boost::future<Response<>> endTxn(bool doCommit);
+    boost::future<Response<dto::SKVRecord>> read(dto::SKVRecord record);
+    boost::future<Response<dto::K23SIWriteResponse>> write(dto::SKVRecord& record, bool erase=false,
+                                       dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
+    boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<String> fieldNamesForUpdate);
+ 
+    boost::future<Response<std::vector<dto::SKVRecord>>> query(dto::Query& query);
+    boost::future<Response<dto::Query>> createQuery(const String& collectionName, const String& schemaName);
 
 private:
-    HTTPMessageClient& _client;
-    dto::TxnId _id;
+    HTTPMessageClient* _client;
+    dto::Timestamp _id;
 };
 
 class Client {
 public:
     Client() {}
     ~Client() {}
-    boost::future<Response<dto::CreateSchemaResponse>> createSchema(dto::CreateSchemaRequest request);
-    boost::future<Response<dto::GetSchemaResponse>> getSchema(dto::GetSchemaRequest request);
-    boost::future<Response<dto::CollectionCreateResponse>> createCollection(dto::CollectionCreateRequest request);
-    boost::future<Response<dto::CollectionGetResponse>> getCollection(dto::CollectionGetRequest request);
-    boost::future<Response<dto::K23SIBeginTxnResponse>> beginTxn(dto::K23SIBeginTxnRequest request);
+    boost::future<Response<>> createSchema(const String& collectionName, const dto::Schema& schema);
+    boost::future<Response<dto::Schema>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion=dto::ANY_SCHEMA_VERSION);
+    boost::future<Response<>> createCollection(dto::CollectionMetadata metadata, std::vector<String> rangeEnds);
+    boost::future<Response<dto::Collection>> getCollection(const String& collectionName);
+    boost::future<Response<TxnHandle>> beginTxn(dto::TxnOptions options);
 
 private:
     HTTPMessageClient _client;
