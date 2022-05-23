@@ -78,19 +78,6 @@ struct Value {
 
     K2_PAYLOAD_FIELDS(fieldName, type, literal);
 
-    template<typename T, typename Stream>
-    static void _valueStrHelper(const Value& r, Stream& os) {
-        T obj;
-        Binary* b = const_cast<Binary*>(&(r.literal));
-        MPackReader reader(*b);
-        if (!reader.read(obj)) {
-            os << TToFieldType<T>() << "_ERROR_READING";
-        }
-        else {
-            os << obj;
-        }
-    }
-
     friend std::ostream& operator<<(std::ostream&os, const Value& val) {
         std::ostringstream otype;
         otype << val.type;
@@ -102,7 +89,18 @@ struct Value {
             if (val.type != FieldType::NULL_T && val.type != FieldType::NOT_KNOWN && val.type != FieldType::NULL_LAST) {
                 // no need to log the other types - we wrote what they are above.
                 try {
-                    K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, val, lit);
+                    applyTyped(val, [&val, &os](const auto& sfr) {
+                        using T = typename std::remove_reference<decltype(sfr.type())>::type;
+                        T obj;
+                        Binary* b = const_cast<Binary*>(&(val.literal));
+                        MPackReader reader(*b);
+                        if (!reader.read(obj)) {
+                            os << TToFieldType<T>() << "_ERROR_READING";
+                        }
+                        else {
+                            os << obj;
+                        }
+                    });
                 } catch (const std::exception& e) {
                     // just in case, log the exception here so that we can do something about it
                     K2LOG_E(log::dto, "Caught exception in expression serialize: {}", e.what());

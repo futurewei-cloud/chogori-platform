@@ -188,54 +188,14 @@ private:
     SKVRecord(const String& collection, std::shared_ptr<Schema> s);
 public:
     template <typename Func>
-    void visitNextField(Func&& visitor) {
+    auto visitNextField(Func&& visitor) {
         const auto& field = schema->fields[fieldCursor];
-        switch (field.type) {
-            case skv::http::dto::FieldType::STRING: {
-                visitor(field, deserializeNext<String>());
-                break;
-            }
-            case skv::http::dto::FieldType::INT16T: {
-                visitor(field, deserializeNext<int16_t>());
-                break;
-            }
-            case skv::http::dto::FieldType::INT32T: {
-                visitor(field, deserializeNext<int32_t>());
-                break;
-            }
-            case skv::http::dto::FieldType::INT64T: {
-                visitor(field, deserializeNext<int64_t>());
-                break;
-            }
-            case skv::http::dto::FieldType::FLOAT: {
-                visitor(field, deserializeNext<float>());
-                break;
-            }
-            case skv::http::dto::FieldType::DOUBLE: {
-                visitor(field, deserializeNext<double>());
-                break;
-            }
-            case skv::http::dto::FieldType::BOOL: {
-                visitor(field, deserializeNext<bool>());
-                break;
-            }
-            case skv::http::dto::FieldType::DECIMAL64: {
-                visitor(field, deserializeNext<std::decimal::decimal64>());
-                break;
-            }
-            case skv::http::dto::FieldType::DECIMAL128: {
-                visitor(field, deserializeNext<std::decimal::decimal128>());
-                break;
-            }
-            case skv::http::dto::FieldType::FIELD_TYPE: {
-                visitor(field, deserializeNext<FieldType>());
-                break;
-            }
-            default:
-                auto msg = fmt::format("unknown type {} for field {}", field.type, field.name);
-                throw skv::http::dto::TypeMismatchException(msg);
-        }
+        return applyTyped(field, [this] (const auto& sfr, auto&& visitor) {
+            using T = typename std::remove_reference<decltype(sfr.type())>::type;
+            visitor(sfr.field, deserializeNext<T>());
+        }, std::forward<Func>(visitor));
     }
+
     template <typename Func>
     void visitRemainingFields(Func&& visitor) {
         while (fieldCursor < schema->fields.size()) {

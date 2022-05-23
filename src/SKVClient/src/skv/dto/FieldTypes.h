@@ -120,48 +120,54 @@ bool isNan(const T& field){
     return false;
 }
 
+template<typename T, typename FieldT>
+struct AppliedFieldRef {
+    using value_t = T;
+    const FieldT& field;
+    AppliedFieldRef(const FieldT& f): field(f){}
+    T type()const; // left unimplemented - used for type deduction
+};
+
+template <typename FieldT, typename Func, typename ...Args>
+auto applyTyped(const FieldT& field, Func&& applier, Args&&... args) {
+    switch (field.type) {
+        case FieldType::STRING: {
+            return applier(AppliedFieldRef<String, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::INT16T: {
+            return applier(AppliedFieldRef<int16_t, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::INT32T: {
+            return applier(AppliedFieldRef<int32_t, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::INT64T: {
+            return applier(AppliedFieldRef<int64_t, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::FLOAT: {
+            return applier(AppliedFieldRef<float, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::DOUBLE: {
+            return applier(AppliedFieldRef<double, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::BOOL: {
+            return applier(AppliedFieldRef<bool, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::DECIMAL64: {
+            return applier(AppliedFieldRef<std::decimal::decimal64, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::DECIMAL128: {
+            return applier(AppliedFieldRef<std::decimal::decimal128, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::FIELD_TYPE: {
+            return applier(AppliedFieldRef<FieldType, FieldT>(field), std::forward<Args>(args)...);
+        }
+        default:
+            throw TypeMismatchException("unknown type");
+    }
+}
+
 } // ns dto
 } // ns k2
-
-#define K2_DTO_CAST_APPLY_FIELD_VALUE(func, a, ...)                 \
-    do {                                                            \
-        switch ((a).type) {                                         \
-            case skv::http::dto::FieldType::STRING: {                      \
-                func<skv::http::String>((a), __VA_ARGS__);                 \
-            } break;                                                \
-            case skv::http::dto::FieldType::INT16T: {                      \
-                func<int16_t>((a), __VA_ARGS__);                    \
-            } break;                                                \
-            case skv::http::dto::FieldType::INT32T: {                      \
-                func<int32_t>((a), __VA_ARGS__);                    \
-            } break;                                                \
-            case skv::http::dto::FieldType::INT64T: {                      \
-                func<int64_t>((a), __VA_ARGS__);                    \
-            } break;                                                \
-            case skv::http::dto::FieldType::FLOAT: {                       \
-                func<float>((a), __VA_ARGS__);                      \
-            } break;                                                \
-            case skv::http::dto::FieldType::DOUBLE: {                      \
-                func<double>((a), __VA_ARGS__);                     \
-            } break;                                                \
-            case skv::http::dto::FieldType::BOOL: {                        \
-                func<bool>((a), __VA_ARGS__);                       \
-            } break;                                                \
-            case skv::http::dto::FieldType::DECIMAL64: {                   \
-                func<std::decimal::decimal64>((a), __VA_ARGS__);    \
-            } break;                                                \
-            case skv::http::dto::FieldType::DECIMAL128: {                  \
-                func<std::decimal::decimal128>((a), __VA_ARGS__);   \
-            } break;                                                \
-            case skv::http::dto::FieldType::FIELD_TYPE: {                  \
-                func<skv::http::dto::FieldType>((a), __VA_ARGS__);         \
-            } break;                                                \
-            default:                                                \
-                auto msg = fmt::format(                             \
-                    "cannot apply field of type {}", (a).type);     \
-                throw skv::http::dto::TypeMismatchException(msg);          \
-        }                                                           \
-    } while (0)
 
 namespace std {
     inline std::ostream& operator<<(std::ostream& os, const skv::http::dto::FieldType& ftype) {

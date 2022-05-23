@@ -228,18 +228,6 @@ SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_pt
     return SKVRecord(collection, other_schema, storage.share(), keyValuesAvailable);
 }
 
-template <typename T>
-void _fieldApplier(SchemaField, SKVRecordBuilder& builder, SKVRecord& rec) {
-    auto opt = rec.deserializeNext<T>();
-    if (opt) {
-        builder.serializeNext(*opt);
-    }
-    else {
-        builder.serializeNull();
-    }
- }
-
-
 // This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
 SKVRecord SKVRecord::getSKVKeyRecord() {
     if (!keyValuesAvailable) {
@@ -254,8 +242,12 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
     size_t numKeyFields = schema->partitionKeyFields.size() + schema->rangeKeyFields.size();
     for (size_t i = 0; i < schema->fields.size(); ++i) {
         if (i < numKeyFields) {
-            K2_DTO_CAST_APPLY_FIELD_VALUE(_fieldApplier, schema->fields[i], builder, *this);
+            // the partition and range keys are first in the record
+            visitNextField([&builder] (auto&, auto&& value) {
+                value? builder.serializeNext(*value) : builder.serializeNull();
+            });
          } else {
+             // force all non-key fields to be null in the result;
              builder.serializeNull();
          }
     }
