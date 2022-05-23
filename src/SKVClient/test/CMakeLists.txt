@@ -1,4 +1,3 @@
-enable_testing()
 include_directories(include)
 add_compile_options(-fno-var-tracking)
 
@@ -13,4 +12,3 @@ target_link_libraries (expression_test PRIVATE dto mpack)
 add_test(NAME mpack_tst COMMAND mpack_test)
 add_test(NAME skv_record COMMAND skv_record_test)
 add_test(NAME expression COMMAND expression_test)
-

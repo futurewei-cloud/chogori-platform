@@ -16,6 +16,7 @@ find_package(Threads REQUIRED)
 find_package (fmt REQUIRED)
 
 add_subdirectory (src)
+enable_testing()
 add_subdirectory (test)
 
 # install the cmake config for the entire project so that it can be used by upstream

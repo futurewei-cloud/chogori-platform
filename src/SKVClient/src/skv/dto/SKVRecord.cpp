@@ -53,14 +53,6 @@ void SKVRecordBuilder::serializeNull() {
     ++_record.fieldCursor;
 }
 
-// NoOp function to be used with the convience macros to get document fields
-template <typename T>
-void NoOp(std::optional<T> value, const String& fieldName, int n) {
-    (void) value;
-    (void) fieldName;
-    (void) n;
-};
-
 uint32_t SKVRecord::getFieldCursor() const {
     return fieldCursor;
 }
@@ -80,12 +72,7 @@ void SKVRecord::seekField(uint32_t fieldIndex) {
     }
 
     while(fieldIndex != fieldCursor) {
-        if (storage.excludedFields.size() > 0 && storage.excludedFields[fieldCursor]) {
-            ++fieldCursor;
-            continue;
-        }
-
-        DO_ON_NEXT_RECORD_FIELD((*this), NoOp, 0);
+        visitNextField([](const auto&, auto&&){});
     }
 }
 
@@ -111,43 +98,32 @@ SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storag
     reader = MPackReader(this->storage.fieldData);
 }
 
-template <typename T>
-void SKVRecord::makeKeyString(std::optional<T> value, const String& fieldName, int tmp) {
-    // tmp variable is need for vararg macro expansion
-    (void) tmp;
-    (void) fieldName;
-    for (size_t i = 0; i < schema->partitionKeyFields.size(); ++i) {
-        // Subtracting 1 from fieldCursor here and below because this function gets called
-        // after the deserialize function moves the fieldCursor
-        if (schema->partitionKeyFields[i] == fieldCursor-1) {
-            if (value.has_value()) {
-                partitionKeys[i] = FieldToKeyString<T>(*value);
-            } else {
-                partitionKeys[i] = schema->fields[fieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
-            }
-        }
-    }
-
-    for (size_t i = 0; i < schema->rangeKeyFields.size(); ++i) {
-         if (schema->rangeKeyFields[i] == fieldCursor-1) {
-            if (value.has_value()) {
-                rangeKeys[i] = FieldToKeyString<T>(*value);
-            } else {
-                rangeKeys[i] = schema->fields[fieldCursor-1].nullLast ? NullLastToKeyString() : NullFirstToKeyString();
-            }
-        }
-    }
-}
-
 void SKVRecord::constructKeyStrings() {
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
 
     uint32_t beginCursor = getFieldCursor();
     seekField(0);
-    for (size_t i = 0; i < partitionKeys.size() + rangeKeys.size() && i < schema->fields.size(); ++i) {
-        // Need the extra 0 argument for vararg macro expansion
-        DO_ON_NEXT_RECORD_FIELD(*this, makeKeyString, 0);
+    auto numKeys = partitionKeys.size() + rangeKeys.size();
+    for (size_t i = 0; i < partitionKeys.size(); ++i) {
+        visitNextField([this, i](const auto& field, auto&& value) {
+            if (value) {
+                partitionKeys[i] = FieldToKeyString(*value);
+            }
+            else {
+                partitionKeys[i] = field.nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+            }
+        });
+    }
+    for (size_t i = partitionKeys.size(); i < numKeys; ++i) {
+        visitNextField([this, i](const auto& field, auto&& value) {
+            if (value) {
+                rangeKeys[i] = FieldToKeyString(*value);
+            }
+            else {
+                rangeKeys[i] = field.nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+            }
+        });
     }
 
     seekField(beginCursor);

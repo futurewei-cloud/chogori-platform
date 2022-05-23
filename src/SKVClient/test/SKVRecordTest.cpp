@@ -29,33 +29,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 using namespace skv::http;
 
-template <typename T>
-void Test1Visitor(std::optional<T> value, const String& fieldName, int tmp) {
-    (void) value;
-    (void) fieldName;
-    (void) tmp;
-    throw std::runtime_error("Encountered unexpected type in test visitor");
-}
-
-template <>
-void Test1Visitor<String>(std::optional<String> value, const String& fieldName, int tmp) {
-    (void) tmp;
-    REQUIRE(value);
-    if (fieldName == "LastName") {
-        REQUIRE(*value == "Baggins");
-    } else {
-        REQUIRE(*value == "Bilbo");
-    }
-}
-
-template <>
-void Test1Visitor<int32_t>(std::optional<int32_t> value, const String& fieldName, int tmp) {
-    (void) tmp;
-    REQUIRE(value);
-    REQUIRE(fieldName == "Balance");
-    REQUIRE(*value == 777);
-}
-
 // Simple partition and range keys, happy path tests
 TEST_CASE("Test1: Basic SKVRecord tests") {
     dto::Schema schema;
@@ -133,7 +106,25 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
     REQUIRE(true);
 
     doc.seekField(0);
-    FOR_EACH_RECORD_FIELD(doc, Test1Visitor, 0); // Macro requires at least 1 extra arg, we just use "0"
+    doc.visitRemainingFields([] (const auto& field, auto&& value) {
+        using T = typename std::remove_reference<decltype(value.value())>::type;
+        if constexpr (std::is_same<T, String>::value) {
+            REQUIRE(value);
+            if (field.name == "LastName") {
+                REQUIRE(*value == "Baggins");
+            } else {
+                REQUIRE(*value == "Bilbo");
+            }
+        }
+        else if constexpr(std::is_same<T, int32_t>::value) {
+            REQUIRE(value);
+            REQUIRE(field.name == "Balance");
+            REQUIRE(*value == 777);
+        }
+        else {
+            throw std::runtime_error("Encountered unexpected type in test visitor");
+        }
+    });
 }
 
 TEST_CASE("Test2: invalid serialization tests") {
