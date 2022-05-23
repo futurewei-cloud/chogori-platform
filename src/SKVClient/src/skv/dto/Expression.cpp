@@ -122,25 +122,16 @@ compareOptionals(std::tuple<bool, std::optional<T1>>& a, std::tuple<bool, std::o
     return -1;
 }
 
-
-
-template <typename B_TYPE, typename A>
-void _innerCompareHelper(SchematizedValue& b, A& a_opt, int& result) {
-    auto b_opt = b.get<B_TYPE>();
-    result = compareOptionals(a_opt, b_opt);
-}
-
-template <typename A_TYPE>
-void _outerCompareHelper(SchematizedValue& a, SchematizedValue& b, int& result) {
-    auto a_opt = a.get<A_TYPE>();
-    // This relies on partial template deduction of the last template argument of innerHelper
-    K2_DTO_CAST_APPLY_FIELD_VALUE(_innerCompareHelper, b, a_opt, result);
-}
-
 int _compareSValues(SchematizedValue& a, SchematizedValue& b) {
-    int result = 0;
-    K2_DTO_CAST_APPLY_FIELD_VALUE(_outerCompareHelper, a, b, result);
-    return result;
+    return applyTyped(a, [&a, &b] (const auto& asfr) mutable {
+        using AT = typename std::remove_reference<decltype(asfr.type())>::type;
+        auto aOpt = a.get<AT>();
+        return applyTyped(b, [&aOpt, &b] (const auto& bsfr) mutable {
+            using BT = typename std::remove_reference<decltype(bsfr.type())>::type;
+            auto bOpt = b.get<BT>();
+            return compareOptionals(aOpt, bOpt);
+        });
+    });
 }
 
 void Expression::copyPayloads() {
@@ -260,12 +251,6 @@ bool Expression::LTE_handler(SKVRecord& rec) {
     return _compareSValues(aVal, bVal) <= 0;
 }
 
-template<typename T>
-void _isNullTypedHelper(SchematizedValue& sv, bool& result) {
-    auto [nullLast, optVal] = sv.get<T>();
-    result = !optVal.has_value();
-}
-
 bool Expression::IS_NULL_handler(SKVRecord& rec) {
     // this op evaluates exactly one reference leaf only. It cannot be composed with other children
     if (valueChildren.size() != 1 || expressionChildren.size() > 0 || !valueChildren[0].isReference()) {
@@ -275,9 +260,11 @@ bool Expression::IS_NULL_handler(SKVRecord& rec) {
     // There is just one value child and it is a reference.
     SchematizedValue ref(valueChildren[0], rec);
 
-    bool result = false;
-    K2_DTO_CAST_APPLY_FIELD_VALUE(_isNullTypedHelper, ref, result);
-    return result;
+    return applyTyped(ref, [&ref] (const auto& sfr) mutable{
+        using T = typename std::remove_reference<decltype(sfr.type())>::type;
+        auto [nullLast, optVal] = ref.get<T>();
+        return !optVal.has_value();
+    });
 }
 
 bool Expression::IS_EXACT_TYPE_handler(SKVRecord& rec) {
