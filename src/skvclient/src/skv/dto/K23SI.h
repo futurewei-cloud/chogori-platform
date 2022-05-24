@@ -32,7 +32,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Expression.h"
 
 namespace skv::http::dto {
-using TxnId = uint64_t;
 
 // common transaction priorities
 enum class TxnPriority : uint8_t {
@@ -88,11 +87,10 @@ struct K23SIBeginTxnResponse {
 // The main READ DTO.
 struct K23SIReadRequest {
     String collectionName;  // the name of the collection
-    TxnId txnId;       // the txnid for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     SKVRecord key;  // the key to read
-    K2_PAYLOAD_FIELDS(collectionName, txnId, key);
-    K2_DEF_FMT(K23SIReadRequest, collectionName, txnId, key);
+    K2_PAYLOAD_FIELDS(collectionName, key);
+    K2_DEF_FMT(K23SIReadRequest, collectionName, key);
 };
 
 // The response for READs
