@@ -125,6 +125,17 @@ private:
     dto::Timestamp _id;
 };
 
+boost::future<Response<>> TxnHandle::endTxn(bool doCommit) {
+    dto::K23SITxnEndRequest request{_id,
+        doCommit? dto::EndAction::Commit : dto::EndAction::Abort};
+    return _client->POST<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(
+        "/api/v1/endTxn", std::move(request))
+        .then([this](auto&& fut) {
+            auto&& [status, txnresp]  = fut.get();
+            return Response<>(std::move(status));
+        });
+}
+
 class Client {
 public:
     Client() {}
@@ -150,4 +161,5 @@ boost::future<Response<TxnHandle>> Client::beginTxn(
             return Response<TxnHandle>(std::move(status), TxnHandle(&_client, timestamp));
         });
 }
+
 }  // namespace skv::http

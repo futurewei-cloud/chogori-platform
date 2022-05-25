@@ -66,14 +66,11 @@ struct K23SI_MTR {
     K2_DEF_FMT(K23SI_MTR, timestamp, priority);
 };
 struct TxnOptions {
-    TxnOptions() noexcept : deadline(Duration(1s)),
-                            priority(TxnPriority::Medium) {}
-
-    Deadline<> deadline;
-    TxnPriority priority;
-    bool syncFinalize = false;
-    K2_PAYLOAD_FIELDS(deadline, priority, syncFinalize);
-    K2_DEF_FMT(TxnOptions, deadline, priority, syncFinalize);
+    Duration timeout{1s};
+    TxnPriority priority{TxnPriority::Medium};
+    bool syncFinalize{false};
+    K2_PAYLOAD_FIELDS(timeout, priority, syncFinalize);
+    K2_DEF_FMT(TxnOptions, timeout, priority, syncFinalize);
 };
 
 struct K23SIBeginTxnRequest {
@@ -275,29 +272,12 @@ struct K23SITxnPushResponse {
 };
 
 struct K23SITxnEndRequest {
-    // the partition version ID for the TRH. Should be coming from an up-to-date partition map
-    PVID pvid;
-    // the name of the collection
-    String collectionName;
-    // trh of the transaction to end.
-    // use the name "key" so that we can use common routing from CPO client
-    Key key;
-    // the MTR for the transaction to end
-    K23SI_MTR mtr;
+    // the TSO timestamp of the transaction
+    Timestamp timestamp;
     // the end action (Abort|Commit)
-    EndAction action;
-    // the ranges to which this transaction wrote. TRH will finalize WIs with each range when we commit/abort
-    std::unordered_map<String, std::unordered_set<KeyRangeVersion>> writeRanges;
-    // flag to tell if the server should finalize synchronously.
-    // this is useful in cases where the client knows that the data from the txn will be accessed a lot after
-    // the commit, so it may choose to wait in order to get better performance.
-    // This flag does not impact correctness, just performance for certain workloads
-    bool syncFinalize=false;
-    // The interval from end to Finalize for a transaction
-    Duration timeToFinalize{0};
-
-    K2_PAYLOAD_FIELDS(pvid, collectionName, key, mtr, action, writeRanges, syncFinalize, timeToFinalize);
-    K2_DEF_FMT(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, writeRanges, syncFinalize, timeToFinalize);
+    EndAction action{EndAction::Abort};
+    K2_PAYLOAD_FIELDS(timestamp, action);
+    K2_DEF_FMT(K23SITxnEndRequest, timestamp, action);
 };
 
 struct K23SITxnEndResponse {

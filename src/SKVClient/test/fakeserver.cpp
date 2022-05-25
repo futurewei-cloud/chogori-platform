@@ -63,8 +63,9 @@ bool _sendResponse(httplib::Response &resp, T& obj) {
  }
 
 template <typename T>
-T _deserialize(std::string&& body) {
-    Binary buf(std::move(body));
+T _deserialize(const std::string& body) {
+    String copy(body);
+    Binary buf(std::move(copy));
     MPackReader reader(buf);
     T obj;
     if (!reader.read(obj)) {
@@ -73,9 +74,21 @@ T _deserialize(std::string&& body) {
     return obj;
 }
 
+template<typename ReqT, typename RespT>
+void process(httplib::Server& svr, const char *path, std::function<RespT(ReqT&&)> fn) {
+    svr.Post(path, [fn](const httplib::Request &req, httplib::Response &resp) {
+        ReqT reqObj = _deserialize<ReqT>(req.body);
+        K2LOG_I(log::dto, "Got {} request {}", req.path, reqObj);
+        RespT respObj = fn(std::move(reqObj));
+        bool success = _sendResponse(resp, respObj);
+        K2LOG_I(log::dto, "Sent  {} {}", respObj, success);
+    });
+}
+
 namespace po = boost::program_options;
 po::options_description desc("Allowed options");
 po::variables_map vm;
+
 
 int main(int argc, char **argv) {
     desc.add_options()
@@ -92,14 +105,16 @@ int main(int argc, char **argv) {
 
     // HTTP
     httplib::Server svr;
-    uint64_t txnId = 0; 
+    uint64_t txnId = 0;
 
-    svr.Post("/api/v1/beginTxn", [&](const httplib::Request &req, httplib::Response &resp)  {
-        dto::K23SIBeginTxnRequest txnreq = _deserialize(std::move(req.body));
-        K2LOG_I(log::dto, "Got beginTxn request {}", txnreq);
-        dto::K23SIBeginTxnResponse txn{dto::Timestamp(100000, 1, txnId++)};
-        bool success = _sendResponse(resp, txn);
-        K2LOG_I(log::dto, "Sent txn  {} {}", txn.timestamp, success);
+    process<dto::K23SIBeginTxnRequest, dto::K23SIBeginTxnResponse>(svr,
+        "/api/v1/beginTxn", [&txnId] (auto&&) {
+        return  dto::K23SIBeginTxnResponse{dto::Timestamp(100000, 1, txnId++)};
+    });
+
+    process<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(svr,
+        "/api/v1/endTxn", [] (auto&&) {
+        return  dto::K23SITxnEndResponse{};
     });
 
     svr.listen("0.0.0.0", vm["port"].as<int>());
