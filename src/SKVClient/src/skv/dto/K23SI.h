@@ -72,16 +72,20 @@ struct TxnOptions {
     Deadline<> deadline;
     TxnPriority priority;
     bool syncFinalize = false;
+    K2_PAYLOAD_FIELDS(deadline, priority, syncFinalize);
+    K2_DEF_FMT(TxnOptions, deadline, priority, syncFinalize);
 };
 
 struct K23SIBeginTxnRequest {
-    K2_PAYLOAD_FIELDS();
-    K2_DEF_FMT(K23SIBeginTxnRequest);
+    TxnOptions options;
+    K2_PAYLOAD_FIELDS(options);
+    K2_DEF_FMT(K23SIBeginTxnRequest, options);
 };
 
 struct K23SIBeginTxnResponse {
-    K2_PAYLOAD_FIELDS();
-    K2_DEF_FMT(K23SIBeginTxnResponse);
+    Timestamp timestamp; // the TSO timestamp of the transaction
+    K2_PAYLOAD_FIELDS(timestamp);
+    K2_DEF_FMT(K23SIBeginTxnResponse, timestamp);
 };
 
 // The main READ DTO.

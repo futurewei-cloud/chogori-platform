@@ -72,9 +72,7 @@ private:
     }
     Response<Binary> _processResponse(httplib::Result&& result) {
         Status responseStatus{.code = result->status, .message = result->reason};
-        char* bodyData = result->body.data();
-        size_t bodySize = result->body.size();
-        Binary responseBody(bodyData, bodySize, [str=std::move(result->body)]() {});
+        Binary responseBody(std::move(result->body));
         return {std::move(responseStatus), std::move(responseBody)};
     }
 
@@ -135,10 +133,21 @@ public:
     boost::future<Response<dto::Schema>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion=dto::ANY_SCHEMA_VERSION);
     boost::future<Response<>> createCollection(dto::CollectionMetadata metadata, std::vector<String> rangeEnds);
     boost::future<Response<dto::Collection>> getCollection(const String& collectionName);
-    boost::future<Response<TxnHandle>> beginTxn(dto::TxnOptions options);
+    boost::future<Response<TxnHandle>> beginTxn(const dto::TxnOptions& options);
 
 private:
     HTTPMessageClient _client;
 };
 
+boost::future<Response<TxnHandle>> Client::beginTxn(
+    const dto::TxnOptions& options) {
+    dto::K23SIBeginTxnRequest request{options};
+    return _client.POST<dto::K23SIBeginTxnRequest, dto::K23SIBeginTxnResponse>(
+        "/api/v1/beginTxn", std::move(request))
+        .then([this](auto&& fut) {
+            auto&& [status, txnresp]  = fut.get();
+            auto timestamp = !status.is2xxOK() ? dto::Timestamp() : txnresp.timestamp;
+            return Response<TxnHandle>(std::move(status), TxnHandle(&_client, timestamp));
+        });
+}
 }  // namespace skv::http

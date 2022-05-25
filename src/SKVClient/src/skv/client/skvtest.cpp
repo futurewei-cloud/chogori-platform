@@ -23,7 +23,21 @@ Copyright(c) 2022 Futurewei Cloud
 #include <iostream>
 #include <string>
 #include "SKVClient.h"
+
+using namespace skv::http;
+void basicTxnTest(Client& client) {
+    K2LOG_I(log::dto, "Sending begin txn");
+    auto result = client.beginTxn(dto::TxnOptions{})
+        .then([] (auto&& fut) {
+            auto&& [status, txn]  = fut.get();
+            K2LOG_I(log::dto, "Got txn handle {}", status);
+            K2ASSERT(log::dto, status.is2xxOK(), "Begin txn failed");
+            return make_ready_future(0);
+        }).get();
+}
+
 int main() {
     skv::http::Client client;
+    basicTxnTest(client);
     return 0;
 }
