@@ -214,4 +214,19 @@ struct HeartbeatResponse {
     K2_DEF_FMT(HeartbeatResponse, ID, roleMetadata, endpoints, echoToken);
 };
 
+struct AssignTSORequest {
+    // The TSO instance ID, increasing sequence number according to the number of endpoints given
+    uint64_t tsoID;
+    // The CPO assigned error bound.
+    Duration tsoErrBound;
+    K2_PAYLOAD_FIELDS(tsoID, tsoErrBound);
+    K2_DEF_FMT(AssignTSORequest, tsoID, tsoErrBound);
+};
+
+struct AssignTSOResponse {
+    K2_PAYLOAD_EMPTY;
+    K2_DEF_FMT(AssignTSOResponse);
+};
+
+
 }  // namespace k2::dto

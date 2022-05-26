@@ -50,6 +50,9 @@ class CPOService {
 private:
     ConfigVar<String> _dataDir{"data_dir"};
     ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id"};
+    ConfigDuration _TSOErrorBound{"tso_error_bound", 20us};
+    SingleTimer _tsoAssignTimer;
+    std::vector<String> _healthyTSOs;
     String _getCollectionPath(String name);
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);
