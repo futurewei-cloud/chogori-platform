@@ -112,10 +112,10 @@ class TxnHandle {
 public:
     TxnHandle(HTTPMessageClient* client, dto::Timestamp id):_client(client), _id(id) {}
     boost::future<Response<>> endTxn(bool doCommit);
-    boost::future<Response<dto::SKVRecord>> read(dto::SKVRecord record);
-    boost::future<Response<dto::K23SIWriteResponse>> write(dto::SKVRecord& record, bool erase=false,
+    boost::future<Response<dto::SKVRecord>> read(dto::SKVRecord&& record);
+    boost::future<Response<>> write(dto::SKVRecord&& record, bool erase=false,
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
-    boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<String> fieldNamesForUpdate);
+    boost::future<Response<>> partialUpdate(dto::SKVRecord& record,std::vector<String> fieldNamesForUpdate);
  
     boost::future<Response<std::vector<dto::SKVRecord>>> query(dto::Query& query);
     boost::future<Response<dto::Query>> createQuery(const String& collectionName, const String& schemaName);
@@ -125,11 +125,32 @@ private:
     dto::Timestamp _id;
 };
 
+boost::future<Response<dto::SKVRecord>> TxnHandle::read(dto::SKVRecord&& record) {
+    dto::K23SIReadRequest request{_id, record.collectionName,
+        record.schema->name, record.schema->version, std::move(record.storage)};
+    return _client->POST<dto::K23SIReadRequest, dto::K23SIReadResponse>(
+        "/api/v1/read", std::move(request))
+        .then([this, collectionName=record.collectionName, schema=record.schema](auto&& fut) {
+            auto&& [status, resp]  = fut.get();
+            dto::SKVRecord rec(collectionName, schema, std::move(resp.storage), true);
+            return Response<dto::SKVRecord>(std::move(status), std::move(rec));
+        });
+}
+
+boost::future<Response<>> TxnHandle::write(dto::SKVRecord&& record, bool erase, dto::ExistencePrecondition precondition) {
+    dto::K23SIWriteRequest request{_id, record.collectionName,
+        record.schema->name, record.schema->version, erase, precondition, record.storage};
+    return _client->POST<dto::K23SIWriteRequest, dto::K23SIWriteResponse>( "/api/v1/write", std::move(request))
+        .then([this](auto&& fut) {
+            auto&& [status, resp]  = fut.get();
+            return Response<>(std::move(status));
+        });
+}
+
 boost::future<Response<>> TxnHandle::endTxn(bool doCommit) {
     dto::K23SITxnEndRequest request{_id,
         doCommit? dto::EndAction::Commit : dto::EndAction::Abort};
-    return _client->POST<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(
-        "/api/v1/endTxn", std::move(request))
+    return _client->POST<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>( "/api/v1/endTxn", std::move(request))
         .then([this](auto&& fut) {
             auto&& [status, txnresp]  = fut.get();
             return Response<>(std::move(status));

@@ -45,21 +45,16 @@ template <typename T>
 }
 
 void setError(httplib::Response &resp, const Status& status) {
+    K2LOG_E(log::dto, "Sent  error {}", status);
     resp.status = status.code;
     resp.set_content(status.message, "text/plain");
 }
 
 template <typename T>
-bool _sendResponse(httplib::Response &resp, T& obj) {
-    try {
-        auto&& buf = _serialize(obj);
-        resp.status = 200;
-        resp.set_content(buf.data(), buf.size(), response_type);
-        return true;
-    } catch(std::runtime_error& e) {
-        setError(resp, Statuses::S500_Internal_Server_Error);
-    }
-    return false;
+void _sendResponse(httplib::Response &resp, T& obj) {
+    auto&& buf = _serialize(obj);
+    resp.status = 200;
+    resp.set_content(buf.data(), buf.size(), response_type);
  }
 
 template <typename T>
@@ -74,14 +69,25 @@ T _deserialize(const std::string& body) {
     return obj;
 }
 
+struct ServerError : public std::runtime_error {
+    Status status;
+    ServerError(const Status& s) : std::runtime_error(s.message), status(s) {}
+};
+
 template<typename ReqT, typename RespT>
 void process(httplib::Server& svr, const char *path, std::function<RespT(ReqT&&)> fn) {
     svr.Post(path, [fn](const httplib::Request &req, httplib::Response &resp) {
-        ReqT reqObj = _deserialize<ReqT>(req.body);
-        K2LOG_I(log::dto, "Got {} request {}", req.path, reqObj);
-        RespT respObj = fn(std::move(reqObj));
-        bool success = _sendResponse(resp, respObj);
-        K2LOG_I(log::dto, "Sent  {} {}", respObj, success);
+        try {
+            ReqT reqObj = _deserialize<ReqT>(req.body);
+            K2LOG_I(log::dto, "Got {} request {}", req.path, reqObj);
+            RespT respObj = fn(std::move(reqObj));
+            _sendResponse(resp, respObj);
+            K2LOG_I(log::dto, "Sent  {}", respObj);
+        }  catch(ServerError& e) {
+            setError(resp, e.status);
+        } catch(std::runtime_error& e) {
+            setError(resp, Statuses::S500_Internal_Server_Error);
+        }
     });
 }
 
@@ -89,6 +95,27 @@ namespace po = boost::program_options;
 po::options_description desc("Allowed options");
 po::variables_map vm;
 
+std::shared_ptr<dto::Schema> getSchema() {
+    static std::shared_ptr<dto::Schema> schemaPtr;
+    if (!schemaPtr) {
+        dto::Schema schema;
+        schema.name = "test_schema";
+        schema.version = 1;
+        schema.fields = std::vector<dto::SchemaField> {
+            {dto::FieldType::STRING, "LastName", false, false},
+            {dto::FieldType::STRING, "FirstName", false, false},
+            {dto::FieldType::INT32T, "Balance", false, false}
+        };
+        schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
+        schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
+        schemaPtr = std::make_shared<dto::Schema>(schema);
+    }
+    return schemaPtr;
+}
+
+std::string_view get_key(const dto::SKVRecord::Storage& storage) {
+    return std::string_view(storage.fieldData.data(), storage.fieldData.size());
+}
 
 int main(int argc, char **argv) {
     desc.add_options()
@@ -106,15 +133,41 @@ int main(int argc, char **argv) {
     // HTTP
     httplib::Server svr;
     uint64_t txnId = 0;
+    auto data = std::map<dto::SKVRecord::Storage, dto::SKVRecord::Storage,
+        std::function<bool(const dto::SKVRecord::Storage&, const dto::SKVRecord::Storage&)>> {
+            [](const dto::SKVRecord::Storage& a, const dto::SKVRecord::Storage& b)
+            {
+                return get_key(a) < get_key(b);
+            }
+        };
 
-    process<dto::K23SIBeginTxnRequest, dto::K23SIBeginTxnResponse>(svr,
-        "/api/v1/beginTxn", [&txnId] (auto&&) {
+    process<dto::K23SIBeginTxnRequest, dto::K23SIBeginTxnResponse>(svr, "/api/v1/beginTxn", [&txnId] (auto&&) {
         return  dto::K23SIBeginTxnResponse{dto::Timestamp(100000, 1, txnId++)};
     });
 
-    process<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(svr,
-        "/api/v1/endTxn", [] (auto&&) {
+    process<dto::K23SITxnEndRequest, dto::K23SITxnEndResponse>(svr, "/api/v1/endTxn", [] (auto&&) {
         return  dto::K23SITxnEndResponse{};
+    });
+
+    process<dto::K23SIWriteRequest, dto::K23SIWriteResponse>(svr, "/api/v1/write", [&data] (auto&& req) {
+        auto schema = getSchema();
+        if (req.collectionName != "test_collection" || req.schemaName != schema->name || req.schemaVersion != schema->version) {
+            throw ServerError(Statuses::S404_Not_Found);
+        }
+        dto::SKVRecord rec(req.collectionName, schema, std::move(req.value), true);
+        data[rec.getSKVKeyRecord().storage] = std::move(rec.storage);
+        return  dto::K23SIWriteResponse{};
+    });
+
+    process<dto::K23SIReadRequest, dto::K23SIReadResponse>(svr, "/api/v1/read", [&data] (auto&& req) {
+        auto schema = getSchema();
+        if (req.collectionName != "test_collection" || req.schemaName != schema->name || req.schemaVersion != schema->version) {
+            throw ServerError(Statuses::S404_Not_Found);
+        }
+        if (auto it = data.find(req.key); it != data.end()) {
+            return dto::K23SIReadResponse{it->second.copy()};
+        }
+        throw  ServerError(Statuses::S404_Not_Found);
     });
 
     svr.listen("0.0.0.0", vm["port"].as<int>());

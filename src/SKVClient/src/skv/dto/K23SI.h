@@ -87,18 +87,21 @@ struct K23SIBeginTxnResponse {
 
 // The main READ DTO.
 struct K23SIReadRequest {
+    Timestamp timestamp; // the TSO timestamp of the transaction
     String collectionName;  // the name of the collection
+    String schemaName; // the name of the schema
+    uint32_t schemaVersion;
     // use the name "key" so that we can use common routing from CPO client
-    SKVRecord key;  // the key to read
-    K2_PAYLOAD_FIELDS(collectionName, key);
-    K2_DEF_FMT(K23SIReadRequest, collectionName, key);
+    SKVRecord::Storage key;  // the key to read
+    K2_PAYLOAD_FIELDS(timestamp, collectionName, schemaName, schemaVersion, key);
+    K2_DEF_FMT(K23SIReadRequest, timestamp, collectionName, schemaName, schemaVersion, key);
 };
 
 // The response for READs
 struct K23SIReadResponse {
-    SKVRecord record;
-    K2_PAYLOAD_FIELDS(record);
-    K2_DEF_FMT(K23SIReadResponse, record);
+    SKVRecord::Storage storage;
+    K2_PAYLOAD_FIELDS(storage);
+    K2_DEF_FMT(K23SIReadResponse, storage);
 };
 
 K2_DEF_ENUM(ExistencePrecondition,
@@ -108,39 +111,19 @@ K2_DEF_ENUM(ExistencePrecondition,
 );
 
 struct K23SIWriteRequest {
-    PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
-    String collectionName; // the name of the collection
-    K23SI_MTR mtr; // the MTR for the issuing transaction
-    // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
-    // the first write (the write for which designateTRH was set to true)
-    // Note that this is not an unique identifier for a transaction record - transaction records are
-    // uniquely identified by the tuple (mtr, trh)
-    Key trh;
-    String trhCollection; // the collection for the TRH
+    Timestamp timestamp; // the TSO timestamp of the transaction
+    String collectionName;  // the name of the collection
+    String schemaName; // the name of the schema
+    uint32_t schemaVersion;
     bool isDelete = false; // is this a delete write?
-    bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
     // Whether the server should reject the write if a previous version exists (like a SQL insert),
     // or reject a write if a previous version does not exists (e.g. to know if a delete actually deleted
     // a record). In the future we want more expressive preconditions, but those will be on the fields of
     // a record whereas this is the only record-level precondition that makes sense so it is its own flag
     ExistencePrecondition precondition = ExistencePrecondition::None;
-    // Generated on the client and stored on by the server so that
-    uint64_t request_id;
-    // use the name "key" so that we can use common routing from CPO client
-    Key key; // the key for the write
     SKVRecord::Storage value; // the value of the write
-    std::vector<uint32_t> fieldsForPartialUpdate; // if size() > 0 then this is a partial update
-
-    K23SIWriteRequest() = default;
-    K23SIWriteRequest(PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, String _trhCollection, bool _isDelete,
-                      bool _designateTRH, ExistencePrecondition _precondition, uint64_t id, Key _key, SKVRecord::Storage _value,
-                      std::vector<uint32_t> _fields) :
-        pvid(std::move(_pvid)), collectionName(std::move(cname)), mtr(std::move(_mtr)), trh(std::move(_trh)), trhCollection(std::move(_trhCollection)),
-        isDelete(_isDelete), designateTRH(_designateTRH), precondition(_precondition), request_id(id),
-        key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
-
-    K2_PAYLOAD_FIELDS(pvid, collectionName, mtr, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
-    K2_DEF_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
+    K2_PAYLOAD_FIELDS(timestamp, collectionName, schemaName, schemaVersion, isDelete, value);
+    K2_DEF_FMT(K23SIWriteRequest,timestamp, collectionName, schemaName, schemaVersion, isDelete, value);
 };
 
 struct K23SIWriteResponse {

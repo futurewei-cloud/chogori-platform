@@ -8,6 +8,7 @@ set_target_properties(client PROPERTIES
     SOVERSION 1
 )
 
+add_compile_options(-O0 -ggdb)
 target_link_libraries (client PRIVATE common dto mpack httplib)
 
 add_executable (skvtester skvtest.cpp)
