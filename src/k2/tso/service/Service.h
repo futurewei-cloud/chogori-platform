@@ -60,6 +60,9 @@ private: // methods
     seastar::future<std::tuple<Status, dto::AssignTSOResponse>> 
     _handleAssignment(dto::AssignTSORequest&& request);
 
+    // handler for tsoID and error bound assignment, does the local time check
+    seastar::future<> _assign(uint64_t tsoID, k2::Duration &errBound);
+
 private: // members
     // we use this to signal from core 0 to all workers that the GPS clock has been initialized
     seastar::promise<> _clockInitialized;

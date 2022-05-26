@@ -79,7 +79,7 @@ seastar::future<> TSOService::_collectWorkerURLs() {
     });
 }
 
-seastar::future<> _assign(uint64_t tsoID, k2::Duration &errBound) {
+seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration &errBound) {
     _tsoId = tsoID;
     _CPOErrorBound = errBound;
 
@@ -158,17 +158,17 @@ seastar::future<std::tuple<Status, dto::AssignTSOResponse>>
 TSOService::_handleAssignment(dto::AssignTSORequest&& request) {
     K2LOG_I(log::tsoserver, "Registration with CPO successful, the tsoID: {}, errorBound : {}", request.tsoID, request.tsoErrBound);
     if (request.tsoErrBound <= 0s) {
-        return RPCResponse(Statuses::S400_Bad_Request)
+        return RPCResponse(Statuses::S400_Bad_Request("TSO error bound cannot be <= 0s"), dto::AssignTSOResponse{});
     }
-    _tsoId = request.tsoID;
-    _CPOErrorBound = request.tsoErrBound;
+    // _tsoId = request.tsoID;
+    // _CPOErrorBound = request.tsoErrBound;
 
-    return _assign().then([] {
+    return _assign(request.tsoID, request.tsoErrBound).then([] {
         return RPCResponse(Statuses::S200_OK("OK"), dto::AssignTSOResponse{});
     }).handle_exception([] (auto exp) {
         K2LOG_W_EXC(log::tsoserver, exp, "failed to assign");
         return RPCResponse(Statuses::S500_Internal_Server_Error("Unable to assign TSO server"), dto::AssignTSOResponse{});
-    })
+    });
 }
 
 seastar::future<std::tuple<Status, dto::GetServiceNodeURLsResponse>>

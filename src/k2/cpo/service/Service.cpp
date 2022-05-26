@@ -118,15 +118,6 @@ seastar::future<> CPOService::start() {
         return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleMetadataGet, std::move(request));
     });
 
-    RPC().registerRPCObserver<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>(dto::Verbs::CPO_GET_TSO_ENDPOINTS, [this] (dto::GetTSOEndpointsRequest&& request) {
-        (void) request;
-        if (_healthyTSOs.size() > 0) {
-            return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),dto::GetTSOEndpointsResponse{std::move(_healthyTSOs)});
-        } else {
-            return RPCResponse(Statuses::S500_Internal_Server_Error("Unable to get TSO endpoints: no healthy TSO", dto::GetTSOEndpointsResponse()));
-        }
-    });
-
     RPC().registerRPCObserver<dto::GetPersistenceEndpointsRequest, dto::GetPersistenceEndpointsResponse>(dto::Verbs::CPO_GET_PERSISTENCE_ENDPOINTS, [this] (dto::GetPersistenceEndpointsRequest&& request) {
         (void) request;
         return AppBase().getDist<HealthMonitor>().local().getPersistEndpoints()
@@ -148,7 +139,7 @@ seastar::future<> CPOService::start() {
         }
     }
 
-    _tsoAssignTimer.setCallback([] {
+    _tsoAssignTimer.setCallback([this] {
         return AppBase().getDist<HealthMonitor>().local().getTSOEndpoints()
         .then([this] (std::vector<String>&& eps) {
             return seastar::do_with(size_t(0), std::move(eps), [this] (size_t &i, auto &eps) {
@@ -160,33 +151,45 @@ seastar::future<> CPOService::start() {
                     [&i, &eps, this] {
                         String &ep = eps[i];
                         auto txep = RPC().getTXEndpoint(ep);
-                        ++i;
+                        K2LOG_I(log::cposvr, "assigning TSO: {}", ep);
                         if (!txep) {
                             K2LOG_W(log::cposvr, "unable to obtain endpoint for {}", eps[i]);
                             return seastar::make_ready_future();
                         }
                         dto::AssignTSORequest request{.tsoID=i, .tsoErrBound=_TSOErrorBound()};
+                        ++i;
                         return RPC().callRPC<dto::AssignTSORequest, dto::AssignTSOResponse>(
                             dto::Verbs::GET_TSO_ASSIGN, request, *txep, _assignTimeout()
-                        ).then([&ep] (auto &&result) {
+                        ).then([&ep, this] (auto &&result) {
                             auto& [status, resp] = result;
                             if (status.is2xxOK()) {
-                                K2LOG_I("tso successfully assigned: {}", );
+                                K2LOG_I(log::cposvr, "tso successfully assigned for endpoint: {}", ep);
                                 _healthyTSOs.push_back(ep);
                                 return seastar::make_ready_future();
                             }
                             else {
-                                K2LOG_W_EXC();
+                                K2LOG_W(log::cposvr, "tso assignment unsucessful for endpoint: {}", ep);
                                 return seastar::make_ready_future();
                             }
-                        })
+                        });
                    }
-                )
-            })
+                );
+            });
+            return seastar::make_ready_future();
         });
-    })
+    });
     _tsoAssignTimer.arm(0s);
-    return seastar::make_ready_future<>();
+    return seastar::make_ready_future<>()
+    .then([this]{
+        RPC().registerRPCObserver<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>(dto::Verbs::CPO_GET_TSO_ENDPOINTS, [this] (dto::GetTSOEndpointsRequest&& request) {
+            (void) request;
+            if (_healthyTSOs.size() > 0) {
+                return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),dto::GetTSOEndpointsResponse{std::move(_healthyTSOs)});
+            } else {
+                return RPCResponse(Statuses::S500_Internal_Server_Error("Unable to get TSO endpoints: no healthy TSO"), dto::GetTSOEndpointsResponse());
+            }
+        });
+    });
 }
 
 seastar::future<> CPOService::_getNodes() {
