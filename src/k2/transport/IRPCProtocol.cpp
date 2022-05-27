@@ -22,7 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "IRPCProtocol.h"
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 namespace k2 {
 IAddressProvider::IAddressProvider() {

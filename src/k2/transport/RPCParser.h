@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "RPCTypes.h"
 #include "RPCHeader.h"
 #include <k2/common/Common.h>
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include "Payload.h"
 #include "Status.h"
 

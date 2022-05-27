@@ -35,26 +35,98 @@ namespace log {
 inline thread_local k2::logging::Logger apisvr("k2::api_server");
 }
 
-using APIRawObserver_t = std::function<seastar::future<nlohmann::json>(nlohmann::json&& request)>;
+enum class ContentType: uint8_t {
+    K2PAYLOAD=0,
+    JSON,
+    MSGPACK,
+    UNKNOWN
+};
+
+static const inline std::vector<String> ContentTypeStrings = {"application/x-k2payload", "application/x-json", "application/x-msgpack", "application/octet-stream"};
+
+struct HTTPPayload {
+    String data;
+    ContentType ctype;
+    std::vector<ContentType> accepts;
+};
+
+using APIRawObserver_t = std::function<seastar::future<HTTPPayload>(HTTPPayload&&)>;
 
 // Helper class for registering HTTP routes
-class api_route_handler : public seastar::httpd::handler_base  {
+class APIRouteHandler : public seastar::httpd::handler_base  {
 public:
-    api_route_handler(std::function<seastar::future<nlohmann::json>(const String&)> h) : _handler(std::move(h)) {}
+    template<typename HandlerFunc>
+    APIRouteHandler(HandlerFunc&& h) : _handler(std::forward<HandlerFunc>(h)) {}
 
     seastar::future<std::unique_ptr<seastar::httpd::reply>> handle(const String& path,
         std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override;
-        
+
 private:
-    std::function<seastar::future<nlohmann::json>(const String&)> _handler;
+    APIRawObserver_t _handler;
 };
 
-// This class is used to setup a Json API over HTTP and provide convience methods to expose API methods.
+// This class is used to setup an API over HTTP and provide convience methods to expose API methods.
 // Its intended use is to expose normal K2 RPCs over an easy to use interface
 // Should be used as an applet and the listen IP and port will depend on tcp_endpoints command line
 class APIServer {
+struct Route {
+    String suffix;
+    String descr;
+};
+private:
+
+template<typename Request_T, typename Response_T, typename Func>
+auto _handleRequest(HTTPPayload& req, Func&& observer) {
+    switch (req.ctype) {
+        case ContentType::K2PAYLOAD: {
+            auto shp = seastar::make_lw_shared<String>(std::move(req.data));
+            Payload payload;
+            payload.appendBinary(Binary(shp->data(), shp->size(), seastar::make_deleter([shp=std::move(shp)]()mutable{})));
+            Request_T reqObj{};
+            if (!payload.read(reqObj)) {
+                return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unable to parse incoming bytes as K2PAYLOAD"));
+            };
+            return observer(std::move(reqObj));
+        } break;
+        default:
+            return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unsupported content type"));
+    }
+}
+
+template <typename Response_T>
+auto _handleResponse(HTTPPayload& req, std::tuple<k2::Status, Response_T>&& result) {
+    // handle content-type translation for the response
+    // default is K2PAYLOAD or the first one the caller accepts
+    ContentType respCT{req.accepts.size() > 0 ? req.accepts[0] : ContentType::K2PAYLOAD};
+    for (auto& ct : req.accepts) {
+        // see if we can match the incoming content type
+        if (ct == req.ctype) {
+            respCT = ct;
+            break;
+        }
+    }
+    HTTPPayload response;
+    response.ctype = respCT;
+
+    switch (respCT) {
+        case ContentType::K2PAYLOAD: {
+            Payload payload(Payload::DefaultAllocator());
+            auto&& [status, resp] = std::move(result);
+            payload.write(status);
+            payload.write(resp);
+            payload.truncateToCurrent();
+            for (auto&& buf : payload.release()) {
+                response.data.append(buf.get(), buf.size());
+            }
+        } break;
+        default:
+            return seastar::make_exception_future<HTTPPayload>(std::runtime_error("Unsupported accepts-content-type"));
+    }
+    return seastar::make_ready_future<HTTPPayload>(std::move(response));
+}
+
 public:
-    APIServer() : _server("Json API Server") {}
+    APIServer() : _server("HTTP API Server") {}
     APIServer(String name) : _server(name) {}
 
     // initialize server.
@@ -65,38 +137,33 @@ public:
 
     // All HTTP paths will be registered under api/
     // A GET on api/ will show each path registered this way with a description
-    // Request and Response types must be convertable to JSON
-    template <class Request_t, class Response_t>
+    // Request and Response types must be K2_PAYLOAD_SERIALIZABLE
+    template <class Request_T, class Response_T>
     void registerAPIObserver(String pathSuffix, String description,
-                             RPCRequestObserver_t<Request_t, Response_t> observer) {
-        _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
-
-        _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
-        [observer=std::move(observer)] (const String& jsonRequest) {
-           Request_t request = nlohmann::json::parse(jsonRequest);
-           return observer(std::move(request))
-           .then([] (std::tuple<k2::Status, Response_t>&& fullResponse) {
-              auto [status, response] = fullResponse;
-              nlohmann::json jsonResponse;
-              jsonResponse["status"] = status;
-              jsonResponse["response"] = response;
-              return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
-           });
-        }));
+                             RPCRequestObserver_t<Request_T, Response_T> observer) {
+        registerRawAPIObserver(std::move(pathSuffix), std::move(description),
+        [this, observer=std::move(observer)] (HTTPPayload&& req) {
+            // handle content-type translations in the request
+            return seastar::do_with(std::move(req), std::move(observer), [this] (auto& req, auto& observer) {
+                return _handleRequest<Request_T, Response_T>(req, std::move(observer))
+                    .then([this, &req] (auto&& resp) {
+                        return _handleResponse<Response_T>(req, std::move(resp));
+                    });
+            });
+        });
     }
 
     void registerRawAPIObserver(String pathSuffix, String description, APIRawObserver_t observer);
     void deregisterAPIObserver(String pathSuffix);
 
 private:
-    // API server will listen on the IP in _tcp_endpoints (by core ID) on the same port + the offset
+    // API server will listen on the IP for our core, with port=tcp_port + the offset
     static constexpr uint16_t API_PORT_OFFSET = 10000;
-    ConfigVar<std::vector<String>> _tcp_endpoints{"tcp_endpoints"};
 
     seastar::httpd::http_server _server;
-    std::vector<std::pair<String, String>> _registered_routes;
+    std::vector<Route> _registeredRoutes;
 
-    seastar::future<> add_routes();
-    String get_current_routes();
+    seastar::future<> addRoutes();
+    String getCurrentRoutes();
 }; // class APIServer
 } // k2 namespace

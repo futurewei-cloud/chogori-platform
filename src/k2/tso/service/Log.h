@@ -22,7 +22,7 @@ Copyright(c) 2021 Futurewei Cloud
 */
 #pragma once
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 namespace k2::tso::log {
 inline thread_local logging::Logger tsoserver("k2::tso_server");

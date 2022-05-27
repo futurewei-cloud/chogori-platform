@@ -26,7 +26,7 @@ Copyright(c) 2022 Futurewei Cloud
 #include <seastar/core/sleep.hh>
 
 #include <k2/infrastructure/APIServer.h>
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 namespace k2::log {
 inline thread_local k2::logging::Logger httpproxy("k2::httpproxy");

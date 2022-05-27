@@ -23,7 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Discovery.h"
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 #include "AutoRRDMARPCProtocol.h"
 #include "DiscoveryDTO.h"

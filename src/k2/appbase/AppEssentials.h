@@ -23,11 +23,12 @@ Copyright(c) 2020 Futurewei Cloud
 
 // This is a convenience header, which helps get access to various concerns for k2 applications
 // k2 stuff
-#include <k2/common/Log.h>               // for access to initialized logging
+#include <k2/common/Common.h>            // for to common data types
 #include <k2/config/Config.h>            // for access to initialized Config
+#include <k2/logging/Chrono.h>           // for access to clock
+#include <k2/logging/Log.h>              // for access to initialized logging
 #include <k2/transport/Prometheus.h>     // for access to initialized etrics
 #include <k2/transport/RPCDispatcher.h>  // for access to initialized RPC
-#include <k2/common/Common.h>            // for to common data types
 
 // seastar stuff
 #include <seastar/core/distributed.hh>  // for distributed<>

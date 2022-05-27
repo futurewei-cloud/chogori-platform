@@ -90,41 +90,26 @@ struct Value {
         }
     }
 
-    // custom json conversion
-    friend void to_json(nlohmann::json& j, const Value& o) {
-        std::ostringstream otype;
-        otype << o.type;
+    friend std::ostream& operator<<(std::ostream&os, const Value& v) {
+        os << "{type= " << v.type << ", fieldName= " << v.fieldName << ", literal= ";
 
         std::ostringstream lit;
-        if (o.isReference()) {
-            lit << "REFERENCE";
-        }
-        else {
-            if (o.type != FieldType::NULL_T && o.type != FieldType::NOT_KNOWN && o.type != FieldType::NULL_LAST) {
+        if (v.isReference()) {
+            os << "REFERENCE";
+        } else {
+            if (v.type != FieldType::NULL_T && v.type != FieldType::NOT_KNOWN && v.type != FieldType::NULL_LAST) {
                 // no need to log the other types - we wrote what they are above.
                 try {
-                    K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, o, lit);
-                }
-                catch (const std::exception& e) {
+                    K2_DTO_CAST_APPLY_FIELD_VALUE(_valueStrHelper, v, os);
+                } catch (const std::exception& e) {
                     // just in case, log the exception here so that we can do something about it
                     K2LOG_E(log::dto, "Caught exception in expression serialize: {}", e.what());
-                    lit << "!!!EXCEPTION!!!: " << e.what();
+                    os << "!!!EXCEPTION!!!: " << e.what();
                 }
             }
         }
-        j = {
-            {"fieldName", o.fieldName},
-            {"type", k2::HexCodec::encode(otype.str())},
-            {"literal", k2::HexCodec::encode(lit.str())}
-        };
-    }
-    friend void from_json(const nlohmann::json&, Value&) {
-        throw std::runtime_error("Value type does not support construct from json");
-    }
 
-    friend std::ostream& operator<<(std::ostream&os, const Value& v) {
-        nlohmann::json j = v;
-        return os << j.dump();
+        return os << "}";
     }
 };
 

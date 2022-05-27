@@ -32,7 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <limits>
 
 #include <k2/common/Common.h>
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 namespace k2 {
 

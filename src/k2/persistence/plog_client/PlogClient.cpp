@@ -22,7 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "PlogClient.h"
-#include <k2/common/Chrono.h>
+#include <k2/logging/Chrono.h>
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/Persistence.h>

@@ -22,7 +22,6 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "CollectionMetadataCache.h"
-#include <k2/common/Log.h>
 
 namespace k2 {
 

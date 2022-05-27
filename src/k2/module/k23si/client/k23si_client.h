@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/common/Common.h>
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include <k2/common/Timer.h>
 #include <k2/cpo/client/Client.h>
 #include <k2/dto/Collection.h>

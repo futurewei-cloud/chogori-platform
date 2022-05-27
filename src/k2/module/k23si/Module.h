@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <k2/appbase/AppEssentials.h>
-#include <k2/common/Chrono.h>
+#include <k2/logging/Chrono.h>
 #include <k2/cpo/client/Client.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/K23SI.h>

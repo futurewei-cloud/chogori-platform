@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <k2/transport/PayloadSerialization.h>
-#include <k2/common/Chrono.h>
+#include <k2/logging/Chrono.h>
 
 namespace k2 {
 namespace dto {

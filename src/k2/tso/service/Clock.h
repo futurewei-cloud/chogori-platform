@@ -23,7 +23,7 @@ Copyright(c) 2021 Futurewei Cloud
 
 #pragma once
 
-#include <k2/common/Chrono.h>
+#include <k2/logging/Chrono.h>
 #include <k2/common/SpinMutex.h>
 
 namespace k2::tso {
@@ -144,18 +144,6 @@ struct fmt::formatter<k2::tso::GPSTimePoint> {
 };
 
 namespace std {
-inline void to_json(nlohmann::json& j, const k2::tso::GPSTimePoint& tp) {
-    j = nlohmann::json{
-        {"real", fmt::format("{}", tp.real)},
-        {"error", fmt::format("{}", tp.error)}
-    };
-}
-
-inline void from_json(const nlohmann::json& j, k2::tso::GPSTimePoint& tp) {
-    tp.real = j[1].get<k2::TimePoint>();
-    tp.error = j[2].get<k2::Duration>();
-}
-
 inline ostream& operator<<(ostream& os, const k2::tso::GPSTimePoint& o) {
     fmt::print(os, "{}", o);
     return os;

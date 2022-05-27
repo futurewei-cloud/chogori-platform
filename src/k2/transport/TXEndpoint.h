@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <memory>
 #include <k2/common/Common.h>
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include "Payload.h"
 #include "RPCHeader.h"
 #include <iostream>

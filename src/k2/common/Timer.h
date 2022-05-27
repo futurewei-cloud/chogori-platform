@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <seastar/core/timer.hh>
 #include <seastar/core/future.hh>
-#include "Chrono.h"
+#include <k2/logging/Chrono.h>
 
 namespace k2 {
 
