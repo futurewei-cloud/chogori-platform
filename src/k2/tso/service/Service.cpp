@@ -82,18 +82,20 @@ seastar::future<> TSOService::_collectWorkerURLs() {
 seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration &errBound) {
     _tsoId = tsoID;
     _CPOErrorBound = errBound;
+    K2LOG_I(log::tsoserver, "assigning TSOID: {}", _tsoId);
+    K2LOG_I(log::tsoserver, "assigning CPOERR: {}", _CPOErrorBound);
 
     return seastar::make_ready_future<>()
         .then([this]{
             seastar::future<> startFut = seastar::make_ready_future<>();
             if (seastar::this_shard_id() == 0) {
                 K2LOG_I(log::tsoserver, "TSOService initializing GPS clock");
-                GPSClockInst.initialize(nsec(_errorBound()).count());
+                GPSClockInst.initialize(nsec(_CPOErrorBound).count());
                 auto now = GPSClockInst.now();
                 K2LOG_I(log::tsoserver, "TSOService clock has been initialized with GPS real={}, error={}",
                         nsec(now.real).count(), nsec(now.error).count());
-                if (now.error > _errorBound()) {
-                    K2LOG_E(log::tsoserver, "TSOService cannot start since the GPS error is larger than our error bound {}", _errorBound());
+                if (now.error > _CPOErrorBound) {
+                    K2LOG_E(log::tsoserver, "TSOService cannot start since the GPS error is larger than our error bound {}", _CPOErrorBound);
                     return seastar::make_exception_future<>(std::runtime_error("gps error is bigger than max error bound"));
                 }
                 // start the poller thread

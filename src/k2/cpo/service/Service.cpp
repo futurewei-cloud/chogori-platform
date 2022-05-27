@@ -143,7 +143,7 @@ seastar::future<> CPOService::start() {
         return AppBase().getDist<HealthMonitor>().local().getTSOEndpoints()
         .then([this] (std::vector<String>&& eps) {
             return seastar::do_with(size_t(0), std::move(eps), [this] (size_t &i, auto &eps) {
-                //TODO: parallelize the loop ()
+                std::vector<seastar::future<>> futs;
                 return seastar::do_until(
                     [&i, &eps] {
                         return i == eps.size();
@@ -156,8 +156,7 @@ seastar::future<> CPOService::start() {
                             K2LOG_W(log::cposvr, "unable to obtain endpoint for {}", eps[i]);
                             return seastar::make_ready_future();
                         }
-                        dto::AssignTSORequest request{.tsoID=i, .tsoErrBound=_TSOErrorBound()};
-                        ++i;
+                        dto::AssignTSORequest request{.tsoID=i++, .tsoErrBound=_TSOErrorBound()};
                         return RPC().callRPC<dto::AssignTSORequest, dto::AssignTSOResponse>(
                             dto::Verbs::GET_TSO_ASSIGN, request, *txep, _assignTimeout()
                         ).then([&ep, this] (auto &&result) {
@@ -165,6 +164,7 @@ seastar::future<> CPOService::start() {
                             if (status.is2xxOK()) {
                                 K2LOG_I(log::cposvr, "tso successfully assigned for endpoint: {}", ep);
                                 _healthyTSOs.push_back(ep);
+                                K2LOG_I(log::cposvr, "assigned TSOs: {}", _healthyTSOs);
                                 return seastar::make_ready_future();
                             }
                             else {
@@ -175,6 +175,7 @@ seastar::future<> CPOService::start() {
                    }
                 );
             });
+            K2LOG_I(log::cposvr, "all TSOs assigned. The following TSOs are healthy: {}", _healthyTSOs);
             return seastar::make_ready_future();
         });
     });
