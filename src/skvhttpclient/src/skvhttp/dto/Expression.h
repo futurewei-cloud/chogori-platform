@@ -23,16 +23,16 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <skv/common/Binary.h>
-#include <skv/common/Common.h>
-#include <skv/common/VecUtil.h>
-#include <skv/mpack/MPackSerialization.h>
+#include <skvhttp/common/Binary.h>
+#include <skvhttp/common/Common.h>
+#include <skvhttp/common/VecUtil.h>
+#include <skvhttp/mpack/MPackSerialization.h>
 
 #include <functional>
 #include <vector>
 
-#include <skv/dto/FieldTypes.h>
-#include <skv/dto/SKVRecord.h>
+#include <skvhttp/dto/FieldTypes.h>
+#include <skvhttp/dto/SKVRecord.h>
 
 namespace skv::http::dto {
 

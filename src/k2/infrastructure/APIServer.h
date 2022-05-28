@@ -30,6 +30,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future.hh>
 #include <seastar/http/httpd.hh>
 
+#include <skvhttp/mpack/MPackSerialization.h>
+
 namespace k2 {
 namespace log {
 inline thread_local k2::logging::Logger apisvr("k2::api_server");
@@ -42,7 +44,12 @@ enum class ContentType: uint8_t {
     UNKNOWN
 };
 
-static const inline std::vector<String> ContentTypeStrings = {"application/x-k2payload", "application/x-json", "application/x-msgpack", "application/octet-stream"};
+static const inline std::vector<String> ContentTypeStrings = {
+    "application/x-k2payload",
+    "application/x-json",
+    "application/x-msgpack",
+    "application/octet-stream"
+};
 
 struct HTTPPayload {
     String data;
@@ -76,25 +83,85 @@ struct Route {
 private:
 
 template<typename Request_T, typename Response_T, typename Func>
+auto _handleK2PAYLOADRequest(HTTPPayload& req, Func&& observer) {
+    auto shp = seastar::make_lw_shared<String>(std::move(req.data));
+    Payload payload;
+    payload.appendBinary(Binary(shp->data(), shp->size(), seastar::make_deleter([shp=std::move(shp)]()mutable{})));
+    Request_T reqObj{};
+    if (!payload.read(reqObj)) {
+        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unable to parse incoming bytes as K2PAYLOAD"));
+    };
+    return observer(std::move(reqObj));
+}
+
+template<typename Request_T, typename Response_T, typename Func>
+auto _handleMSGPACKRequest(HTTPPayload& req, Func&& observer) {
+    auto shp = seastar::make_lw_shared<String>(std::move(req.data));
+    skv::http::Binary bin(shp->data(), shp->size(), [shp=std::move(shp)]{});
+    skv::http::MPackReader reader(bin);
+    Request_T reqObj{};
+    if (!reader.read(reqObj)) {
+        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unable to parse incoming bytes as MSGPACK"));
+    };
+    return observer(std::move(reqObj));
+}
+
+template<typename Request_T, typename Response_T, typename Func>
 auto _handleRequest(HTTPPayload& req, Func&& observer) {
-    switch (req.ctype) {
-        case ContentType::K2PAYLOAD: {
-            auto shp = seastar::make_lw_shared<String>(std::move(req.data));
-            Payload payload;
-            payload.appendBinary(Binary(shp->data(), shp->size(), seastar::make_deleter([shp=std::move(shp)]()mutable{})));
-            Request_T reqObj{};
-            if (!payload.read(reqObj)) {
-                return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unable to parse incoming bytes as K2PAYLOAD"));
-            };
-            return observer(std::move(reqObj));
-        } break;
-        default:
-            return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unsupported content type"));
+    if (req.ctype == ContentType::MSGPACK) {
+        if constexpr(skv::http::isK2SerializableR<Request_T, skv::http::MPackReader>::value ||
+                     skv::http::isTrivialClass<Request_T>::value) {
+            return _handleMSGPACKRequest<Request_T, Response_T>(req, std::move(observer));
+        }
+        K2LOG_W(log::apisvr, "Type {} is not MSGPACK-serializable", k2::type_name<Request_T>());
+        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("type is not MSGPACK serializable"));
     }
+    else if (req.ctype == ContentType::K2PAYLOAD) {
+        if constexpr (k2::isPayloadSerializableType<Request_T>() || k2::isPayloadCopyableType<Request_T>()) {
+            return _handleK2PAYLOADRequest<Request_T, Response_T>(req, std::move(observer));
+        }
+
+        K2LOG_W(log::apisvr, "Type {} is not K2PAYLOAD-serializable", k2::type_name<Request_T>());
+        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("request type is not K2PAYLOAD serializable"));
+    }
+    K2LOG_W(log::apisvr, "Unsuported content type: {} in request", req.ctype);
+    return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unsupported content type"));
+}
+
+template <typename Response_T>
+auto _handleK2PAYLOADResponse(std::tuple<k2::Status, Response_T>&& result) {
+    HTTPPayload response;
+    response.ctype = ContentType::K2PAYLOAD;
+
+    Payload payload(Payload::DefaultAllocator());
+    auto&& [status, resp] = std::move(result);
+    payload.write(status);
+    payload.write(resp);
+    payload.truncateToCurrent();
+    for (auto&& buf : payload.release()) {
+        response.data.append(buf.get(), buf.size());
+    }
+
+    return seastar::make_ready_future<HTTPPayload>(std::move(response));
+}
+
+template <typename Response_T>
+auto _handleMSGPACKResponse(std::tuple<k2::Status, Response_T>&& result) {
+    HTTPPayload response;
+    response.ctype = ContentType::MSGPACK;
+
+    skv::http::MPackWriter writer;
+    writer.write(result);
+    skv::http::Binary bin;
+    writer.flush(bin);
+    response.data = String(bin.data(), bin.size());
+    return seastar::make_ready_future<HTTPPayload>(std::move(response));
 }
 
 template <typename Response_T>
 auto _handleResponse(HTTPPayload& req, std::tuple<k2::Status, Response_T>&& result) {
+    using RT= std::tuple<k2::Status, Response_T>;
+
     // handle content-type translation for the response
     // default is K2PAYLOAD or the first one the caller accepts
     ContentType respCT{req.accepts.size() > 0 ? req.accepts[0] : ContentType::K2PAYLOAD};
@@ -105,24 +172,24 @@ auto _handleResponse(HTTPPayload& req, std::tuple<k2::Status, Response_T>&& resu
             break;
         }
     }
-    HTTPPayload response;
-    response.ctype = respCT;
 
-    switch (respCT) {
-        case ContentType::K2PAYLOAD: {
-            Payload payload(Payload::DefaultAllocator());
-            auto&& [status, resp] = std::move(result);
-            payload.write(status);
-            payload.write(resp);
-            payload.truncateToCurrent();
-            for (auto&& buf : payload.release()) {
-                response.data.append(buf.get(), buf.size());
-            }
-        } break;
-        default:
-            return seastar::make_exception_future<HTTPPayload>(std::runtime_error("Unsupported accepts-content-type"));
+    if (respCT == ContentType::MSGPACK) {
+        if constexpr(skv::http::isK2SerializableW<RT, skv::http::MPackWriter>::value ||
+                     skv::http::isTrivialClass<RT>::value) {
+            return _handleMSGPACKResponse<Response_T>(std::move(result));
+        }
+        K2LOG_W(log::apisvr, "Type {} is not MSGPACK-serializable", k2::type_name<RT>());
+        return seastar::make_exception_future<HTTPPayload>(std::runtime_error("response expects msgpack content type but response type is not MSGPACK serializable"));
     }
-    return seastar::make_ready_future<HTTPPayload>(std::move(response));
+    else if (req.ctype == ContentType::K2PAYLOAD) {
+        if constexpr (k2::isPayloadSerializableType<Response_T>() || k2::isPayloadCopyableType<Response_T>()) {
+            return _handleK2PAYLOADResponse<Response_T>(std::move(result));
+        }
+        K2LOG_W(log::apisvr, "Type {} is not K2PAYLOAD-serializable", k2::type_name<RT>());
+        return seastar::make_exception_future<HTTPPayload>(std::runtime_error("response expects K2PAYLOAD content type but response type is not K2PAYLOAD serializable"));
+    }
+    K2LOG_W(log::apisvr, "Unsuported content type: {} requested", respCT);
+    return seastar::make_exception_future<HTTPPayload>(std::runtime_error("unsupported content type"));
 }
 
 public:

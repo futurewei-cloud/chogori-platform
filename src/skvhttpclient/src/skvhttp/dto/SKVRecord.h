@@ -25,11 +25,11 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <optional>
 
-#include <skv/dto/Log.h>
-#include <skv/dto/Collection.h>
-#include <skv/dto/FieldTypes.h>
-#include <skv/dto/ControlPlaneOracle.h>
-#include <skv/mpack/MPackSerialization.h>
+#include <skvhttp/dto/Log.h>
+#include <skvhttp/dto/Collection.h>
+#include <skvhttp/dto/FieldTypes.h>
+#include <skvhttp/dto/ControlPlaneOracle.h>
+#include <skvhttp/mpack/MPackSerialization.h>
 
 namespace skv::http {
 

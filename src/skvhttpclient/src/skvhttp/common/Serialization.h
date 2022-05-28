@@ -89,6 +89,34 @@ struct isMapLikeType<std::map<K, V>> : std::true_type {};
 template <typename K, typename V>
 struct isMapLikeType<std::unordered_map<K, V>> : std::true_type {};
 
+
+// to tell if a type is read-serializable for a given reader type
+template< class, class ReaderT, class = void >
+struct isK2SerializableR : std::false_type {};
+
+template<class T, class ReaderT>
+struct isK2SerializableR<T, ReaderT,
+ std::void_t<
+    std::enable_if_t<std::is_same_v<
+        decltype(std::declval<T>().k2UnpackFrom(std::declval<ReaderT&>())), bool>,void>,
+    std::enable_if_t<std::is_same_v<
+        decltype(std::declval<T>().k2GetNumberOfPackedFields()), size_t>,void>
+  >> : std::true_type {};
+
+// to tell if a type is read-serializable for a given reader type
+template< class, class WriterT, class = void >
+struct isK2SerializableW : std::false_type {};
+
+template<class T, class WriterT>
+struct isK2SerializableW<T, WriterT,
+ std::void_t<
+    std::enable_if_t<std::is_same_v<
+        decltype(std::declval<T>().k2PackTo(std::declval<WriterT&>())), void>,void>,
+    std::enable_if_t<std::is_same_v<
+        decltype(std::declval<T>().k2GetNumberOfPackedFields()), size_t>,void>
+  >> : std::true_type {};
+
+
 template< class, class SerializerT, class = void >
 struct isK2Serializable : std::false_type {};
 
@@ -102,9 +130,6 @@ struct isK2Serializable<T, SerializerT,
     std::enable_if_t<std::is_same_v<
         decltype(std::declval<T>().k2GetNumberOfPackedFields()), size_t>,void>
   >> : std::true_type {};
-
-template<typename T, class SerializerT>
-using isK2Serializable_t = typename isK2Serializable<T, SerializerT>::value;
 
 template< class T >
 struct isTrivialClass :

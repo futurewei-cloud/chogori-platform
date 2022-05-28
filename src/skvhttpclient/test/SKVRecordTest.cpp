@@ -23,7 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #define CATCH_CONFIG_MAIN
 
-#include <skv/dto/SKVRecord.h>
+#include <skvhttp/dto/SKVRecord.h>
 
 #include "catch.hpp"
 

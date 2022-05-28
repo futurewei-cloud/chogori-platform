@@ -34,9 +34,7 @@ public:  // application lifespan
     seastar::future<> start();
 
 private:
-    static void serializeRecordFromJSON(k2::dto::SKVRecord& record, nlohmann::json&& jsonRecord);
-    static nlohmann::json serializeJSONFromRecord(k2::dto::SKVRecord& record);
-
+/** TODO convert to struct dto types
     seastar::future<nlohmann::json> _handleBegin(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
@@ -44,7 +42,7 @@ private:
     seastar::future<nlohmann::json> _handleGetKeyString(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleCreateQuery(nlohmann::json&& request);
     seastar::future<nlohmann::json> _handleQuery(nlohmann::json&& request);
-
+*/
     seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
         dto::CreateSchemaRequest&& request);
     seastar::future<std::tuple<k2::Status, dto::Schema>> _handleGetSchema(

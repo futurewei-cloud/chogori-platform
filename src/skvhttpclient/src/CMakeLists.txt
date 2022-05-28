@@ -1,1 +1,1 @@
-add_subdirectory(skv)
+add_subdirectory(skvhttp)

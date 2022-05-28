@@ -23,11 +23,11 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <skv/common/Status.h>
+#include <skvhttp/common/Status.h>
 
-#include <skv/dto/Collection.h>
-#include <skv/dto/FieldTypes.h>
-#include <skv/dto/Timestamp.h>
+#include <skvhttp/dto/Collection.h>
+#include <skvhttp/dto/FieldTypes.h>
+#include <skvhttp/dto/Timestamp.h>
 #include <unordered_set>
 
 namespace skv::http::dto {

@@ -29,7 +29,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/logging/Chrono.h>
 #include <k2/logging/FormattingUtils.h>
-#include <skv/common/Serialization.h>
+#include <skvhttp/common/Serialization.h>
 
 #include <boost/thread/future.hpp>
 

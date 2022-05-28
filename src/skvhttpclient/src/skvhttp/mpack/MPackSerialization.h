@@ -23,11 +23,11 @@ Copyright(c) 2022 Futurewei Cloud
 
 #pragma once
 #include <k2/logging/Log.h>
-#include <skv/common/Binary.h>
-#include <skv/common/Common.h>
-#include <skv/common/Serialization.h>
+#include <skvhttp/common/Binary.h>
+#include <skvhttp/common/Common.h>
+#include <skvhttp/common/Serialization.h>
 
-#include <skv/mpack/mpack.h>
+#include <skvhttp/mpack/mpack.h>
 
 namespace skv::http {
 namespace log {
@@ -104,7 +104,7 @@ public:
 
 private:
     template <typename T>
-    std::enable_if_t<isK2Serializable<T, MPackNodeReader>::value && !isTrivialClass<T>::value , bool>
+    std::enable_if_t<isK2SerializableR<T, MPackNodeReader>::value && !isTrivialClass<T>::value , bool>
     _readFromNode(T& val) {
         // PayloadSerializable types are packed as a list of values
         // get a reader for the node array and pass it to the struct itself for (recursive) unpacking
@@ -367,7 +367,7 @@ public:
     }
 
     template <typename T>
-    std::enable_if_t<isK2Serializable<T, MPackNodeWriter>::value && !isTrivialClass<T>::value, void>
+    std::enable_if_t<isK2SerializableW<T, MPackNodeWriter>::value && !isTrivialClass<T>::value, void>
     write(const T& val) {
         K2LOG_V(log::mpack, "writing serializable type {}", val);
         mpack_start_array(&_writer, val.k2GetNumberOfPackedFields());

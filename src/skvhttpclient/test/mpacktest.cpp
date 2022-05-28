@@ -20,7 +20,7 @@ Copyright(c) 2022 Futurewei Cloud
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
-#include <skv/mpack/MPackSerialization.h>
+#include <skvhttp/mpack/MPackSerialization.h>
 
 #include <iostream>
 #include <string>

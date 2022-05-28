@@ -3,7 +3,7 @@ file(GLOB SOURCES "*.cpp")
 
 add_library(httpproxy STATIC ${HEADERS} ${SOURCES})
 
-target_link_libraries (httpproxy PRIVATE cpo_client k23si_client  dto infrastructure common config Seastar::seastar)
+target_link_libraries (httpproxy PRIVATE cpo_client k23si_client dto infrastructure common config Seastar::seastar)
 
 # export the library in the common k2Targets
 install(TARGETS httpproxy EXPORT k2Targets DESTINATION lib/k2)

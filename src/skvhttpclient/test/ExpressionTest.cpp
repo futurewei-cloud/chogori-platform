@@ -24,8 +24,8 @@ Copyright(c) 2020 Futurewei Cloud
 #define CATCH_CONFIG_MAIN
 
 #include<vector>
-#include <skv/dto/Expression.h>
-#include <skv/dto/SKVRecord.h>
+#include <skvhttp/dto/Expression.h>
+#include <skvhttp/dto/SKVRecord.h>
 #include "catch.hpp"
 
 using namespace skv::http;
