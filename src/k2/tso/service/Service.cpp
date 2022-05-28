@@ -79,12 +79,8 @@ seastar::future<> TSOService::_collectWorkerURLs() {
     });
 }
 
-seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration &errBound) {
-    _tsoId = tsoID;
+seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration errBound) {
     _CPOErrorBound = errBound;
-    K2LOG_I(log::tsoserver, "assigning TSOID: {}", _tsoId);
-    K2LOG_I(log::tsoserver, "assigning CPOERR: {}", _CPOErrorBound);
-
     return seastar::make_ready_future<>()
         .then([this]{
             seastar::future<> startFut = seastar::make_ready_future<>();
@@ -134,14 +130,18 @@ seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration &errBound) {
             return startFut;
         })
         .then([this] {
+            K2LOG_I(log::tsoserver, "TSOService waiting for clock initialization");
             // wait for clock to be initialized
             return _clockInitialized.get_future();
         })
-        .then([this] {
+        .then([this, tsoID] {
+            K2LOG_I(log::tsoserver, "TSOService assigning tsoID");
+            _tsoId = tsoID;
             return _collectWorkerURLs();
         })
         .then([this] {
             // register RPC APIs
+            K2LOG_I(log::tsoserver, "TSOService registering RPC");
             RPC().registerRPCObserver<dto::GetServiceNodeURLsRequest, dto::GetServiceNodeURLsResponse>
             (dto::Verbs::GET_TSO_SERVICE_NODE_URLS, [this](dto::GetServiceNodeURLsRequest&& request) {
                 return _handleGetServiceNodeURLs(std::move(request));
@@ -151,20 +151,16 @@ seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration &errBound) {
                 return _handleGetTimestamp(std::move(request));
             });
 
-            K2LOG_I(log::tsoserver, "TSOService started");
+            K2LOG_I(log::tsoserver, "TSOService started with ID {}, error bound {}", _tsoId, _CPOErrorBound);
             return seastar::make_ready_future<>();
         });
 }
 
 seastar::future<std::tuple<Status, dto::AssignTSOResponse>>
 TSOService::_handleAssignment(dto::AssignTSORequest&& request) {
-    K2LOG_I(log::tsoserver, "Registration with CPO successful, the tsoID: {}, errorBound : {}", request.tsoID, request.tsoErrBound);
     if (request.tsoErrBound <= 0s) {
         return RPCResponse(Statuses::S400_Bad_Request("TSO error bound cannot be <= 0s"), dto::AssignTSOResponse{});
     }
-    // _tsoId = request.tsoID;
-    // _CPOErrorBound = request.tsoErrBound;
-
     return _assign(request.tsoID, request.tsoErrBound).then([] {
         return RPCResponse(Statuses::S200_OK("OK"), dto::AssignTSOResponse{});
     }).handle_exception([] (auto exp) {

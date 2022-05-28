@@ -58,8 +58,10 @@ private:
     String _getSchemasPath(String collectionName);
     void _assignCollection(dto::Collection& collection);
     seastar::future<bool> _offloadCollection(dto::Collection& collection);
-    ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
+    ConfigDuration _assignTimeout{"assignment_timeout", 100ms};
     ConfigDuration _collectionHeartbeatDeadline{"txn_heartbeat_deadline", 100ms};
+    ConfigVar<int> _maxAssignRetries{"max_assign_retries", 3};
+
     std::unordered_map<String, seastar::future<>> _assignments;
     std::unordered_map<String, std::vector<dto::PartitionMetdataRecord>> _metadataRecords;
     std::map<String, NodeAssignmentEntry> _nodesToCollection;
@@ -73,7 +75,8 @@ private:
     String _assignToFreeNode(String collection);
     int _makeHashPartitionMap(dto::Collection& collection, uint32_t numNodes);
     int _makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& rangeEnds);
-
+    seastar::future<> _assignAllTSOs();
+    seastar::future<> _assignTSO(String &ep, size_t tsoID, int retry);
     // Collection name -> schemas
     std::unordered_map<String, std::vector<dto::Schema>> schemas;
 
