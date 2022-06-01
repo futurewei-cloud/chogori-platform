@@ -22,25 +22,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
-from typing import Tuple
-import requests, json
+import requests
 from urllib.parse import urlparse
 import copy
 from enum import Enum
 from typing import List
 import re
+import msgpack
+from datetime import timedelta
 
+def serializeTD(tdelta):
+    return int(tdelta.total_seconds()*1000*1000*1000)
 class Status:
     "Status returned from HTTP Proxy"
 
-    def __init__(self, result_json):
-        "Get status from result json"
-
-        # If seastar catches exception it doesn't populate "status" field
-        status = result_json["status"] if "status" in result_json else result_json
-        self.code = status["code"]
-        self.message = status["message"]
-
+    def __init__(self, status):
+        "Get status from status tuple"
+        self.code, self.message = status
 class DBLoc:
     """Indicates a complete location to identify a record.
 
@@ -126,7 +124,7 @@ class Txn:
         result = self._send_req("/api/Write", request)
         return Status(result)
 
-    def read(self, loc: DBLoc) -> Tuple[Status, object] :
+    def read(self, loc: DBLoc) :
         record = loc.get_fields()
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self._txn_id, "record": record}
@@ -134,7 +132,7 @@ class Txn:
         output = result["response"].get("record") if "response" in result else None
         return Status(result), output
 
-    def query(self, query: Query) -> Tuple[Status, ListOfDict]:
+    def query(self, query: Query):
         request = {"txnID" : self._txn_id, "queryID": query.query_id}
         result = self._send_req("/api/Query", request)
         recores:dict = []
@@ -143,7 +141,7 @@ class Txn:
             records = result["response"]["records"]
         return Status(result), records
 
-    def queryAll(self, query: Query) ->Tuple[Status, ListOfDict]:
+    def queryAll(self, query: Query):
         records: [dict] = []
         while not query.done:
             status, r = self.query(query)
@@ -181,33 +179,58 @@ class Schema (dict):
         fields = fields,
         partitionKeyFields = partitionKeyFields, rangeKeyFields = rangeKeyFields)
 
-class CollectionCapacity(dict):
-    def __init__(self, dataCapacityMegaBytes: int = 0, readIOPs: int = 0,
-        writeIOPs: int = 0, minNodes: int = 0):
-        dict.__init__(self,
-            dataCapacityMegaBytes = dataCapacityMegaBytes,
-            readIOPs = readIOPs,
-            writeIOPs = writeIOPs,
-            minNodes = minNodes)
 
-class HashScheme(dict):
-    def __init__(self, value:str):
-        dict.__init__(self, value=value)
+class CollectionCapacity:
+    def __init__(self, minNodes, dataCapacityMegaBytes=0, readIOPs=0, writeIOPs=0):
+        self.dataCapacityMegaBytes = dataCapacityMegaBytes
+        self.readIOPs = readIOPs
+        self.writeIOPs = writeIOPs
+        self.minNodes = minNodes
 
-class StorageDriver(dict):
-    def __init__(self, value:str):
-        dict.__init__(self, value=value)
+    def serialize(self):
+        return [self.dataCapacityMegaBytes, self.readIOPs, self.writeIOPs, self.minNodes]
 
-class CollectionMetadata (dict):
+
+class HashScheme(Enum):
+    Range      = 0
+    HashCRC32C = 1
+
+    def serialize(self):
+        return self.value
+
+
+class StorageDriver(int, Enum):
+    K23SI = 0
+
+    def serialize(self):
+        return self.value
+
+
+class CollectionMetadata:
     def __init__(self, name: str, hashScheme: HashScheme,
         storageDriver: StorageDriver, capacity: CollectionCapacity,
-        retentionPeriod: int = 0, heartbeatDeadline: int = 0, deleted: bool = False):
-        dict.__init__(self,
-            name = name, hashScheme = hashScheme, storageDriver = storageDriver,
-            capacity = capacity, retentionPeriod = retentionPeriod,
-            heartbeatDeadline = heartbeatDeadline, deleted=deleted)
+        retentionPeriod=timedelta(hours=1), heartbeatDeadline=timedelta(hours=0), deleted: bool = False):
+        self.name = name
+        self.hashScheme = hashScheme
+        self.storageDriver = storageDriver
+        self.capacity = capacity
+        self.retentionPeriod = retentionPeriod
+        self.heartbeatDeadline = heartbeatDeadline
+        self.deleted = deleted
 
-class FieldSpec(dict):
+    def serialize(self):
+        return [
+            self.name.encode(),
+            self.hashScheme.serialize(),
+            self.storageDriver.serialize(),
+            self.capacity.serialize(),
+            serializeTD(self.retentionPeriod),
+            serializeTD(self.heartbeatDeadline),
+            self.deleted
+            ]
+
+
+class FieldValue(dict):
     def __init__(self, type: FieldType, value: object):
         dict.__init__(self, type = type, value = value)
 
@@ -217,7 +240,22 @@ class SKVClient:
     def __init__(self, url: str):
         self.http = url
 
-    def begin_txn(self) -> Tuple[Status, Txn]:
+    def _make_call(self, path, data):
+        url = self.http + path
+        try:
+            datab = msgpack.packb(data, use_bin_type=True)
+        except Exception as exc:
+            return Status([501, "Unable to serialize request due to: " + str(exc)])
+        resp = requests.post(url, data=datab, headers={'Content-Type': 'application/x-msgpack', 'Accept': 'application/x-msgpack'})
+
+        if resp.status_code != 200:
+            return Status([503, "Unable to issue call with data: " + str(data) + ", due to: " + str(resp)])
+        try:
+            return msgpack.unpackb(resp.content)
+        except Exception as exc:
+            return Status([501, "Unable to deserialize response due to: " + str(exc)])
+
+    def begin_txn(self):
         data = {}
         url = self.http + "/api/BeginTxn"
         r = requests.post(url, data=json.dumps(data))
@@ -244,7 +282,7 @@ class SKVClient:
         return status
 
     def get_schema(self, collectionName: str, schemaName: str,
-        schemaVersion: int = -1) -> Tuple[Status, Schema]:
+        schemaVersion: int = -1):
         url = self.http + "/api/GetSchema"
         data = {"collectionName": collectionName, "schemaName": schemaName,
             "schemaVersion": schemaVersion}
@@ -256,17 +294,14 @@ class SKVClient:
             return status, schema
         return status, None
 
-    def create_collection(self, metadata: CollectionMetadata, rangeEnds: [str] = []) -> Status:
-        url = self.http + "/api/CreateCollection"
-        data = {"metadata": metadata, "rangeEnds": rangeEnds}
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
+    def create_collection(self, md: CollectionMetadata, rangeEnds: [str] = None) -> Status:
+        status, _ = self._make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
+        status = Status(status)
         return status
 
     def create_query(self, collectionName: str,
         schemaName: str, start: dict = None, end: dict = None,
-        limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
+        limit: int = 0, reverse: bool = False):
         url = self.http + "/api/CreateQuery"
         data = {"collectionName": collectionName,
             "schemaName": schemaName}
@@ -286,7 +321,7 @@ class SKVClient:
             return status, Query(result["response"]["queryID"])
         return status, None
 
-    def get_key_string(self, fields: [FieldSpec]) -> Tuple[Status, str]:
+    def get_key_string(self, fields: [FieldValue]):
         url = self.http + "/api/GetKeyString"
         req = {"fields": fields}
         data = json.dumps(req)
@@ -341,4 +376,3 @@ class MetricsClient:
             else:
                 metrics._set_counter(text, m)
         return metrics
-

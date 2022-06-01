@@ -136,11 +136,48 @@ struct isTrivialClass :
     std::integral_constant<
         bool,
         std::is_trivially_copyable<T>::value &&
-        std::is_trivially_default_constructible<T>::value &&
         ! std::is_integral<T>::value &&
         ! std::is_enum<T>::value &&
         (sizeof(T) > 1)
     >
 {};
 
-} // ns k2
+// check if the given type has a complete implementation (e.g. particular specialization) of a template)
+template <class T, std::size_t = sizeof(T)>
+std::true_type isCompleteImpl(T*);
+std::false_type isCompleteImpl(...);
+
+template <class T>
+using isCompleteType = decltype(isCompleteImpl(std::declval<T*>()));
+
+template<typename T>
+struct Serializer; // provide base, non-complete Serializer.
+// External serialization can be provided by implementing, e.g.:
+/*
+template<>
+struct k2::Serializer<MyType> {
+    template <typename ReaderT>
+    bool k2UnpackFrom(ReaderT& reader, MyType& o) {
+        // read the data
+        WriterT::Binary bin;
+        if (!reader.read(bin)) {
+            return false;
+        }
+        o = MyType(bin.data(), bin.size());
+        return true;
+    }
+
+    template <typename WriterT>
+    void k2PackTo(WriterT& writer, const MyType& o) const {
+        // write the data
+        WriterT::Binary bin(str.data(), str.size(),[]{});
+        writer.write(bin);
+    }
+
+    size_t k2GetNumberOfPackedFields() const {
+        // we serialize by reading/writing just one object (the Binary above)
+        return 1;
+    }
+};
+*/
+} // ns skv::http

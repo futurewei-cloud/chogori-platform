@@ -59,6 +59,9 @@ struct HTTPPayload {
 
 using APIRawObserver_t = std::function<seastar::future<HTTPPayload>(HTTPPayload&&)>;
 
+template<typename Statuses_T>
+using GetStatus_T = typename std::remove_cv<typename std::remove_reference_t< decltype(Statuses_T::S100_Continue) >>;
+
 // Helper class for registering HTTP routes
 class APIRouteHandler : public seastar::httpd::handler_base  {
 public:
@@ -82,54 +85,70 @@ struct Route {
 };
 private:
 
-template<typename Request_T, typename Response_T, typename Func>
+template<typename Statuses_T, typename Request_T, typename Response_T, typename Func>
 auto _handleK2PAYLOADRequest(HTTPPayload& req, Func&& observer) {
+    using Status_T= typename GetStatus_T<Statuses_T>::type;
+    K2LOG_D(log::apisvr, "handling incoming payload request of type {}", k2::type_name<Request_T>());
     auto shp = seastar::make_lw_shared<String>(std::move(req.data));
     Payload payload;
-    payload.appendBinary(Binary(shp->data(), shp->size(), seastar::make_deleter([shp=std::move(shp)]()mutable{})));
+    payload.appendBinary(Binary(shp->data(), shp->size(), seastar::make_deleter([shp]()mutable{})));
     Request_T reqObj{};
     if (!payload.read(reqObj)) {
-        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unable to parse incoming bytes as K2PAYLOAD"));
+        return seastar::make_ready_future<std::tuple<Status_T, Response_T>>(Statuses_T::S400_Bad_Request("Unable to parse incoming bytes as K2PAYLOAD"), Response_T{});
     };
     return observer(std::move(reqObj));
 }
 
-template<typename Request_T, typename Response_T, typename Func>
+template<typename Statuses_T, typename Request_T, typename Response_T, typename Func>
 auto _handleMSGPACKRequest(HTTPPayload& req, Func&& observer) {
+    using Status_T= typename GetStatus_T<Statuses_T>::type;
+    {
+        Request_T newt{};
+        skv::http::MPackWriter wtr;
+        wtr.write(newt);
+        skv::http::Binary b;
+        auto fr = wtr.flush(b);
+        K2LOG_D(log::apisvr, "example of incoming msgpack request of type {}, encodes as={}, can be serialized={}", k2::type_name<Request_T>(), String(b.data(), b.size()), fr);
+    }
+    K2LOG_D(log::apisvr, "handling incoming msgpack request of type {}, {}", k2::type_name<Request_T>(), req.data);
     auto shp = seastar::make_lw_shared<String>(std::move(req.data));
-    skv::http::Binary bin(shp->data(), shp->size(), [shp=std::move(shp)]{});
+    skv::http::Binary bin(shp->data(), shp->size(), [shp] {});
     skv::http::MPackReader reader(bin);
     Request_T reqObj{};
     if (!reader.read(reqObj)) {
-        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unable to parse incoming bytes as MSGPACK"));
+        K2LOG_W(log::apisvr, "handling incoming msgpack request of type {}, unable to parse", k2::type_name<Request_T>());
+        return seastar::make_ready_future<std::tuple<Status_T, Response_T>>(Statuses_T::S400_Bad_Request("Unable to parse incoming bytes as MSGPACK"), Response_T{});
     };
+    K2LOG_D(log::apisvr, "handling incoming msgpack request of type {}; dispatching to observer", k2::type_name<Request_T>());
     return observer(std::move(reqObj));
 }
 
-template<typename Request_T, typename Response_T, typename Func>
+template<typename Statuses_T, typename Request_T, typename Response_T, typename Func>
 auto _handleRequest(HTTPPayload& req, Func&& observer) {
+    using Status_T= typename GetStatus_T<Statuses_T>::type;
+    K2LOG_D(log::apisvr, "handling incoming request of type {}", k2::type_name<Request_T>());
     if (req.ctype == ContentType::MSGPACK) {
         if constexpr(skv::http::isK2SerializableR<Request_T, skv::http::MPackReader>::value ||
                      skv::http::isTrivialClass<Request_T>::value) {
-            return _handleMSGPACKRequest<Request_T, Response_T>(req, std::move(observer));
+            return _handleMSGPACKRequest<Statuses_T, Request_T, Response_T>(req, std::move(observer));
         }
         K2LOG_W(log::apisvr, "Type {} is not MSGPACK-serializable", k2::type_name<Request_T>());
-        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("type is not MSGPACK serializable"));
+        return seastar::make_ready_future<std::tuple<Status_T, Response_T>>(Statuses_T::S400_Bad_Request("type is not MSGPACK serializable"), Response_T{});
     }
     else if (req.ctype == ContentType::K2PAYLOAD) {
         if constexpr (k2::isPayloadSerializableType<Request_T>() || k2::isPayloadCopyableType<Request_T>()) {
-            return _handleK2PAYLOADRequest<Request_T, Response_T>(req, std::move(observer));
+            return _handleK2PAYLOADRequest<Statuses_T, Request_T, Response_T>(req, std::move(observer));
         }
 
         K2LOG_W(log::apisvr, "Type {} is not K2PAYLOAD-serializable", k2::type_name<Request_T>());
-        return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("request type is not K2PAYLOAD serializable"));
+        return seastar::make_ready_future<std::tuple<Status_T, Response_T>>(Statuses_T::S400_Bad_Request("type is not K2PAYLOAD serializable"), Response_T{});
     }
     K2LOG_W(log::apisvr, "Unsuported content type: {} in request", req.ctype);
-    return seastar::make_exception_future<std::tuple<k2::Status, Response_T>>(std::runtime_error("Unsupported content type"));
+    return seastar::make_ready_future<std::tuple<Status_T, Response_T>>(Statuses_T::S400_Bad_Request("Unsupported request content type"), Response_T{});
 }
 
-template <typename Response_T>
-auto _handleK2PAYLOADResponse(std::tuple<k2::Status, Response_T>&& result) {
+template <typename Status_T, typename Response_T>
+auto _handleK2PAYLOADResponse(std::tuple<Status_T, Response_T>&& result) {
     HTTPPayload response;
     response.ctype = ContentType::K2PAYLOAD;
 
@@ -145,8 +164,9 @@ auto _handleK2PAYLOADResponse(std::tuple<k2::Status, Response_T>&& result) {
     return seastar::make_ready_future<HTTPPayload>(std::move(response));
 }
 
-template <typename Response_T>
-auto _handleMSGPACKResponse(std::tuple<k2::Status, Response_T>&& result) {
+template <typename Status_T, typename Response_T>
+auto _handleMSGPACKResponse(std::tuple<Status_T, Response_T>&& result) {
+    K2LOG_D(log::apisvr, "handling msgpack response of type {}", k2::type_name<Response_T>());
     HTTPPayload response;
     response.ctype = ContentType::MSGPACK;
 
@@ -158,9 +178,10 @@ auto _handleMSGPACKResponse(std::tuple<k2::Status, Response_T>&& result) {
     return seastar::make_ready_future<HTTPPayload>(std::move(response));
 }
 
-template <typename Response_T>
-auto _handleResponse(HTTPPayload& req, std::tuple<k2::Status, Response_T>&& result) {
-    using RT= std::tuple<k2::Status, Response_T>;
+template <typename Status_T, typename Response_T>
+auto _handleResponse(HTTPPayload& req, std::tuple<Status_T, Response_T>&& result) {
+    K2LOG_D(log::apisvr, "handling response of type {}", k2::type_name<Response_T>());
+    using RT= std::tuple<Status_T, Response_T>;
 
     // handle content-type translation for the response
     // default is K2PAYLOAD or the first one the caller accepts
@@ -174,22 +195,22 @@ auto _handleResponse(HTTPPayload& req, std::tuple<k2::Status, Response_T>&& resu
     }
 
     if (respCT == ContentType::MSGPACK) {
-        if constexpr(skv::http::isK2SerializableW<RT, skv::http::MPackWriter>::value ||
-                     skv::http::isTrivialClass<RT>::value) {
-            return _handleMSGPACKResponse<Response_T>(std::move(result));
+        if constexpr(skv::http::isK2SerializableW<Response_T, skv::http::MPackWriter>::value ||
+                     skv::http::isTrivialClass<Response_T>::value) {
+            return _handleMSGPACKResponse<Status_T, Response_T>(std::move(result));
         }
         K2LOG_W(log::apisvr, "Type {} is not MSGPACK-serializable", k2::type_name<RT>());
         return seastar::make_exception_future<HTTPPayload>(std::runtime_error("response expects msgpack content type but response type is not MSGPACK serializable"));
     }
     else if (req.ctype == ContentType::K2PAYLOAD) {
         if constexpr (k2::isPayloadSerializableType<Response_T>() || k2::isPayloadCopyableType<Response_T>()) {
-            return _handleK2PAYLOADResponse<Response_T>(std::move(result));
+            return _handleK2PAYLOADResponse<Status_T, Response_T>(std::move(result));
         }
         K2LOG_W(log::apisvr, "Type {} is not K2PAYLOAD-serializable", k2::type_name<RT>());
         return seastar::make_exception_future<HTTPPayload>(std::runtime_error("response expects K2PAYLOAD content type but response type is not K2PAYLOAD serializable"));
     }
     K2LOG_W(log::apisvr, "Unsuported content type: {} requested", respCT);
-    return seastar::make_exception_future<HTTPPayload>(std::runtime_error("unsupported content type"));
+    return seastar::make_exception_future<HTTPPayload>(std::runtime_error("unsupported response content type"));
 }
 
 public:
@@ -205,16 +226,16 @@ public:
     // All HTTP paths will be registered under api/
     // A GET on api/ will show each path registered this way with a description
     // Request and Response types must be K2_PAYLOAD_SERIALIZABLE
-    template <class Request_T, class Response_T>
-    void registerAPIObserver(String pathSuffix, String description,
-                             RPCRequestObserver_t<Request_T, Response_T> observer) {
+    template <class Statuses_T, class Request_T, class Response_T, typename Func>
+    void registerAPIObserver(String pathSuffix, String description, Func&& observer) {
         registerRawAPIObserver(std::move(pathSuffix), std::move(description),
         [this, observer=std::move(observer)] (HTTPPayload&& req) {
             // handle content-type translations in the request
-            return seastar::do_with(std::move(req), std::move(observer), [this] (auto& req, auto& observer) {
-                return _handleRequest<Request_T, Response_T>(req, std::move(observer))
-                    .then([this, &req] (auto&& resp) {
-                        return _handleResponse<Response_T>(req, std::move(resp));
+            return seastar::do_with(std::move(req), std::move(observer), [this](auto& req, auto& observer) {
+                return _handleRequest<Statuses_T, Request_T, Response_T>(req, std::move(observer))
+                    .then([this, &req](auto&& resp) {
+                        using Status_T= typename GetStatus_T<Statuses_T>::type;
+                        return _handleResponse<Status_T, Response_T>(req, std::move(resp));
                     });
             });
         });

@@ -77,8 +77,11 @@ public:
     }
 
 public:
+    using Binary = skv::http::Binary;
+
     class MPackStructReader {
     public:
+        using Binary = skv::http::Binary;
         MPackStructReader(mpack_node_t& arrayNode, Binary& source) : _arrayNode(arrayNode), _idx(0), _source(source) {}
 
         template<typename T>
@@ -104,7 +107,7 @@ public:
 
 private:
     template <typename T>
-    std::enable_if_t<isK2SerializableR<T, MPackNodeReader>::value && !isTrivialClass<T>::value , bool>
+    std::enable_if_t<isK2SerializableR<T, MPackNodeReader>::value, bool>
     _readFromNode(T& val) {
         // PayloadSerializable types are packed as a list of values
         // get a reader for the node array and pass it to the struct itself for (recursive) unpacking
@@ -156,6 +159,8 @@ private:
         val = mpack_node_double_strict(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
+
+    // this reads data by sharing. The returned pointer is valid if the backing node is valid
     bool _readData(const char*& data, size_t& sz) {
         sz = mpack_node_bin_size(_node);
         if (mpack_node_error(_node) != mpack_ok) {
@@ -180,6 +185,11 @@ private:
         val = String(data, sz);
         return true;
     }
+
+    // read a Binary value by sharing data.
+    // The returned binary shares data and holds a refcount for the entire stream which means that
+    // if you hold the Binary, you are holding the entire memory backing the stream
+    // In cases where you want to avoid this loss of memory, you should copy the binary (Binary::copy)
     bool _readFromNode(Binary& val) {
         // binary is packed as a BINARY msgpack type
         size_t sz;
@@ -241,6 +251,15 @@ private:
         }
         return true;
     }
+
+    template <typename T>
+    std::enable_if_t<isCompleteType<Serializer<T>>::value, bool>
+    _readFromNode(T& value) {
+        K2LOG_V(log::mpack, "writing externally serialized object of type {}", k2::type_name<T>());
+        Serializer<T> serializer;
+        return serializer.k2UnpackFrom(*this, value);
+    }
+
     bool _readFromNode(Duration& dur) {
         if (typeid(std::remove_reference_t<decltype(dur)>::rep) != typeid(long int)) {
             return false;
@@ -286,26 +305,14 @@ private:
     template <typename T>
     std::enable_if_t<std::is_enum<T>::value, bool>
     _readFromNode(T& value) {
-        // enums are packed as a BINARY msgpack type
-        size_t sz;
-        const char* data;
-
-        if (!_readData(data, sz)) {
-            return false;
-        }
-        if (sizeof(T) != sz) {
+        using UT = typename std::remove_reference<decltype(k2::to_integral(value))>::type;
+        UT data;
+        if (!_readFromNode(data)) {
             return false;
         }
 
-        value = *(const T*)data;
+        value = static_cast<T>(data);
         return true;
-    }
-
-    template <typename T>
-    std::enable_if_t<isTrivialClass<T>::value, void>
-    _readFromNode(T& value) {
-        // trivial classes are copied as binary
-        return _readData(&value, sizeof(T));
     }
 
 private:
@@ -339,9 +346,12 @@ private:
 
 class MPackNodeWriter {
 public:
+    using Binary = skv::http::Binary;
+
     MPackNodeWriter(mpack_writer_t& writer): _writer(writer){
     }
 
+    // Write the given binary as an object. The bytes are copied to the underlying stream
     void write(const Binary& val) {
         K2LOG_V(log::mpack, "writing binary {}", val);
         K2ASSERT(log::mpack, val.size() < std::numeric_limits<uint32_t>::max(), "cannot write binary of size {}", val.size());
@@ -367,7 +377,7 @@ public:
     }
 
     template <typename T>
-    std::enable_if_t<isK2SerializableW<T, MPackNodeWriter>::value && !isTrivialClass<T>::value, void>
+    std::enable_if_t<isK2SerializableW<T, MPackNodeWriter>::value, void>
     write(const T& val) {
         K2LOG_V(log::mpack, "writing serializable type {}", val);
         mpack_start_array(&_writer, val.k2GetNumberOfPackedFields());
@@ -459,12 +469,12 @@ public:
     void write(const Decimal64& value) {
         K2LOG_V(log::mpack, "writing decimal64 type {}", value);
         Decimal64::__decfloat64 data = const_cast<Decimal64&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(data));
+        mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal64::__decfloat64));
     }
     void write(const Decimal128& value) {
         K2LOG_V(log::mpack, "writing decimal128 type {}", value);
         Decimal128::__decfloat128 data = const_cast<Decimal128&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(data));
+        mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal128::__decfloat128));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);
@@ -476,14 +486,15 @@ public:
     std::enable_if_t<std::is_enum<T>::value, void>
     write(const T value) {
         K2LOG_V(log::mpack, "writing enum type {}", value);
-        mpack_write_bin(&_writer, (const char*)&value, sizeof(value));
+        write(k2::to_integral(value));
     }
 
     template <typename T>
-    std::enable_if_t<isTrivialClass<T>::value, void>
+    std::enable_if_t<isCompleteType<Serializer<T>>::value, void>
     write(const T& value) {
-        K2LOG_V(log::mpack, "writing enum type {}", value);
-        mpack_write_bin(&_writer, (const char*)&value, sizeof(value));
+        K2LOG_V(log::mpack, "writing externally serialized object of type {}", k2::type_name<T>());
+        Serializer<T> serializer;
+        serializer.k2PackTo(*this, value);
     }
 
     void write(){

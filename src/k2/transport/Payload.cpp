@@ -147,15 +147,28 @@ bool Payload::read(void* data, size_t size) {
     return true;
 }
 
-bool Payload::read(Binary& binary, size_t size) {
-    if (getDataRemaining() < size || binary.size() < size) {
+bool Payload::read(Binary& binary) {
+    size_t size;
+    if (!read(size)) {
+        return false;
+    }
+
+    if (getDataRemaining() < size) {
         return false;
     }
 
     Binary& buffer = _buffers[_currentPosition.bufferIndex];
     size_t currentBufferRemaining = buffer.size() - _currentPosition.bufferOffset;
     if (currentBufferRemaining < size) {        // this read spans multiple buffers
-        return read(binary.get_write(), size);  // execute a raw copy
+        char* data_p = (char*) malloc(size);
+        if (!data_p) {
+            return false;
+        }
+        if (!read(data_p, size)) {  // execute a raw copy
+            return false;
+        }
+        binary = Binary(data_p, size, seastar::make_free_deleter(data_p));
+        return true;
     }
 
     // the read is inside a single binary - we can just share in no-copy way
@@ -301,26 +314,37 @@ void Payload::write(const std::decimal::decimal128& value) {
     write((const void*)&data, sizeof(data));
 }
 
+void Payload::write(const Binary& bin) {
+    write(bin.size());
+    write(bin.get(), bin.size());
+}
+
 void Payload::write(const Payload& other) {
     // we only support this write at the end of an existing payload (append)
     K2ASSERT(log::tx, getDataRemaining() == 0, "cannot write a payload in the middle of another payload");
 
+    size_t size = other.getSize();
     // write out how many bytes are following
-    write(other.getSize());
+    write(size);
 
     // reset ourselves so that we are exactly as big as the data we're currently holding
     // truncate to the current cursor
     truncateToCurrent();
 
-    // now we can extend our buffer list with shared buffers from the other payload
-    // note that the share() call gives us a payload trimmed to contain exactly the data it should (size==capacity)
-    for (auto& buf : const_cast<Payload*>(&other)->shareAll()._buffers) {
-        auto sz = buf.size();
-        if (sz == 0) continue;
+    auto shared = const_cast<Payload*>(&other)->shareAll();
+    for (size_t i= 0; i < shared._buffers.size() && size > 0; ++i) {
+        // now we can extend our buffer list with shared buffers from the other payload
+        // note that the share() call gives us a payload trimmed to contain exactly the data it should (size==capacity)
+        auto& buf = shared._buffers[i];
+        auto toMove = std::min(size, buf.size());
+        if (toMove == 0) continue;
+        buf.trim(toMove);
+
         _buffers.push_back(std::move(buf));
-        _size += sz;
-        _capacity += sz;
-        skip(sz);
+        _size += toMove;
+        _capacity += toMove;
+        size -= toMove;
+        skip(toMove);
     }
 }
 

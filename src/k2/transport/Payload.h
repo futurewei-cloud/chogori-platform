@@ -209,8 +209,8 @@ public:  // Read API
     // if we cannot copy the requested bytes, the payload's position is left unmodified
     bool read(void* data, size_t size);
 
-    // Read some bytes into the given binary
-    bool read(Binary& binary, size_t size);
+    // read a binary from our data, sharing the data if possible
+    bool read(Binary& binary);
 
     // read a single character
     bool read(char& b);
@@ -385,6 +385,9 @@ public: // Write API
 
     // write another Payload
     void write(const Payload& other);
+
+    // write(copy) a Binary
+    void write(const Binary& other);
 
     // Write a duration value
     void write(const Duration& dur);

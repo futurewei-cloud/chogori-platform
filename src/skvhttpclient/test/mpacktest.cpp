@@ -74,6 +74,14 @@ struct Ex2 {
     K2_SERIALIZABLE_FMT(Ex2, a, b, b2, b3, b4, b5, c);
 };
 
+struct Ex4 { // trivial struct
+    int a;
+    int64_t b;
+    uint8_t c;
+    K2_SERIALIZABLE_FMT(Ex4, a, b, c);
+};
+
+
 struct Ex3 {
     std::vector<Ex2> a;
     std::list<Ex2> a1;
@@ -95,11 +103,12 @@ struct Ex3 {
     skv::http::Decimal64 k;
     skv::http::Decimal128 l;
     skv::http::Binary m;
+    Ex4 e4;
     K2_DEF_ENUM_IC(Action, A1, A2);
     Action n;
     std::optional<int> o;
     std::optional<skv::http::Duration> p;
-    K2_SERIALIZABLE_FMT(Ex3, a, a1, a2, b, b1, b2, b3, b4, b5, c, d, e, f, g, h, i, j, k, l, m, n, o, p);
+    K2_SERIALIZABLE_FMT(Ex3, a, a1, a2, b, b1, b2, b3, b4, b5, c, d, e, f, g, h, i, j, k, l, m, e4, n, o, p);
 };
 
 SCENARIO("Test 02: test struct") {
@@ -188,6 +197,7 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         .k=50,
         .l=100,
         .m=skv::http::Binary(skv::http::String("abcd")),
+        .e4={5, 4, 3},
         .n=Ex3::Action::A2,
         .o={},
         .p=std::make_optional<skv::http::Duration>(30ns)
@@ -430,6 +440,11 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         REQUIRE(ex.m.data()[2] == 'c');
         REQUIRE(ex.m.data()[3] == 'd');
         REQUIRE(skv::http::String(ex.m.data(), ex.m.size()) == "abcd");
+
+        REQUIRE(ex.e4.a == 5);
+        REQUIRE(ex.e4.b == 4);
+        REQUIRE(ex.e4.c == 3);
+
         REQUIRE(ex.n == Ex3::Action::A2);
         REQUIRE(!ex.o.has_value());
         REQUIRE(ex.p.has_value());

@@ -34,6 +34,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
 
+#include <skvhttp/common/Serialization.h>
 #include <k2/logging/Chrono.h>
 
 #define DISABLE_COPY(className)           \
@@ -295,7 +296,7 @@ struct fmt::formatter<std::vector<k2::String>> {
     }
 };
 
-template <> // fmt support
+template <> // fmt support for String
 struct fmt::formatter<std::unordered_set<k2::String>> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -315,5 +316,28 @@ struct fmt::formatter<std::unordered_set<k2::String>> {
             }
         }
         return fmt::format_to(ctx.out(), "}}");
+    }
+};
+
+template <>  // serialization support for String
+struct skv::http::Serializer<k2::String> {
+    template <typename ReaderT>
+    bool k2UnpackFrom(ReaderT& reader, k2::String& str) {
+        typename ReaderT::Binary bin;
+        if (!reader.read(bin)) {
+            return false;
+        }
+        str = k2::String(bin.data(), bin.size());
+        return true;
+    }
+
+    template <typename WriterT>
+    void k2PackTo(WriterT& writer, const k2::String& str) const {
+       typename WriterT::Binary bin(const_cast<char*>(str.data()), str.size(),[]{});
+        writer.write(bin);
+    }
+
+    size_t k2GetNumberOfPackedFields() const {
+        return 1;
     }
 };
