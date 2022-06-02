@@ -414,14 +414,6 @@ seastar::future<HTTPPayload> HTTPProxy::_handleQuery(HTTPPayload&& jsonReq) {
     });
 }
 
-seastar::future<HTTPPayload> HTTPProxy::_handleCreateSchema(HTTPPayload&& request) {
-    K2LOG_D(log::httpproxy, "Received create schema request {}", request);
-    return _client.createSchema(std::move(request.collectionName), std::move(request.schema))
-        .then([](CreateSchemaResult&& result) {
-            return RPCResponse(std::move(result.status), CreateSchemaResponse{});
-        });
-}
-
 seastar::future<HTTPPayload> HTTPProxy::_handleGetSchema(HTTPPayload&& request) {
     K2LOG_D(log::httpproxy, "Received get schema request {}", request);
     return _client.getSchema(std::move(request.collectionName), std::move(request.schemaName), request.schemaVersion)
@@ -457,6 +449,34 @@ HTTPProxy::_handleCreateCollection(sh::dto::CollectionCreateRequest&& request) {
     return _client.makeCollection(std::move(meta), std::move(rends))
         .then([](Status&& status) {
             return MakeHTTPResponse<sh::dto::CollectionCreateResponse>(sh::Status{.code=status.code, .message=status.message}, sh::dto::CollectionCreateResponse{});
+        });
+}
+
+seastar::future<std::tuple<sh::Status, sh::dto::CreateSchemaResponse>>
+HTTPProxy::_handleCreateSchema(sh::dto::CreateSchemaRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received create schema request {}", request);
+
+    std::vector<k2::dto::SchemaField> k2fields;
+
+    for (auto& f: request.schema.fields) {
+        k2fields.push_back(k2::dto::SchemaField{
+            .type = static_cast<k2::dto::FieldType>(f.type),
+            .name = f.name,
+            .descending = f.descending,
+            .nullLast = f.nullLast
+        });
+    }
+    k2::dto::Schema schema{
+        .name = request.schema.name,
+        .version = request.schema.version,
+        .fields = std::move(k2fields),
+        .partitionKeyFields = request.schema.partitionKeyFields,
+        .rangeKeyFields = request.schema.rangeKeyFields
+    };
+
+    return _client.createSchema(String(request.collectionName), std::move(schema))
+        .then([](auto&& result) {
+            return MakeHTTPResponse<sh::dto::CreateSchemaResponse>(sh::Status{.code=result.status.code, .message=result.status.message}, sh::dto::CreateSchemaResponse{});
         });
 }
 
@@ -512,14 +532,15 @@ void HTTPProxy::_registerAPI() {
     api_server.registerRawAPIObserver("GetSchema", "get schema",  [this] (auto&& request) {
         return _handleGetSchema(std::move(request));
     });
-    api_server.registerRawAPIObserver("CreateSchema", "create schema",  [this] (auto&& request) {
-        return _handleCreateSchema(std::move(request));
-    });
 */
     api_server.registerAPIObserver<sh::Statuses, sh::dto::CollectionCreateRequest, sh::dto::CollectionCreateResponse>
         ("CreateCollection", "create collection", [this] (auto&& request) {
             return _handleCreateCollection(std::move(request));
         });
+
+    api_server.registerAPIObserver<sh::Statuses, sh::dto::CreateSchemaRequest, sh::dto::CreateSchemaResponse>("CreateSchema", "create schema", [this](auto&& request) {
+        return _handleCreateSchema(std::move(request));
+    });
 }
 
 void HTTPProxy::_registerMetrics() {

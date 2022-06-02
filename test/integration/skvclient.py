@@ -166,19 +166,36 @@ class FieldType(int, Enum):
     DECIMAL64:  int     = 7
     DECIMAL168: int     = 8
 
-class SchemaField (dict):
+    def serialize(self):
+        return self.value
+
+class SchemaField:
     def __init__(self, type: FieldType, name: str,
         descending: bool= False, nullLast: bool = False):
-        dict.__init__(self, type = type, name = name,
-        descending = descending, nullLast = nullLast)
+        self.type = type
+        self.name = name
+        self.descending = descending
+        self.nullLast = nullLast
+    def serialize(self):
+        return [self.type.serialize(), self.name.encode(), self.descending, self.nullLast]
 
-class Schema (dict):
+
+class Schema:
     def __init__(self, name: str, version: int,
-        fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [str]):
-        dict.__init__(self, name = name, version = version,
-        fields = fields,
-        partitionKeyFields = partitionKeyFields, rangeKeyFields = rangeKeyFields)
+        fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [int]):
+        self.name = name
+        self.version = version
+        self.fields = fields
+        self.partitionKeyFields = partitionKeyFields
+        self.rangeKeyFields = rangeKeyFields
 
+    def serialize(self):
+        return [self.name.encode(),
+                self.version,
+                [field.serialize() for field in self.fields],
+                self.partitionKeyFields,
+                self.rangeKeyFields
+        ]
 
 class CollectionCapacity:
     def __init__(self, minNodes, dataCapacityMegaBytes=0, readIOPs=0, writeIOPs=0):
@@ -245,41 +262,16 @@ class SKVClient:
         try:
             datab = msgpack.packb(data, use_bin_type=True)
         except Exception as exc:
-            return Status([501, "Unable to serialize request due to: " + str(exc)])
+            return (Status([501, "Unable to serialize request due to: " + str(exc)]), None)
         resp = requests.post(url, data=datab, headers={'Content-Type': 'application/x-msgpack', 'Accept': 'application/x-msgpack'})
 
         if resp.status_code != 200:
-            return Status([503, "Unable to issue call with data: " + str(data) + ", due to: " + str(resp)])
+            return (Status([503, "Unable to issue call with data: " + str(data) + ", due to: " + str(resp)]), None)
         try:
-            return msgpack.unpackb(resp.content)
+            status, obj = msgpack.unpackb(resp.content)
+            return (Status(status), obj)
         except Exception as exc:
-            return Status([501, "Unable to deserialize response due to: " + str(exc)])
-
-    def begin_txn(self):
-        data = {}
-        url = self.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
-        if "response" in result:
-            txn = Txn(self, result["response"].get("txnID"))
-        else:
-            txn = None
-        return status, txn
-
-    def create_schema(self, collectionName: str, schema: Schema) -> Status:
-        'Create schema'
-        url = self.http + "/api/CreateSchema"
-        req = {"collectionName": collectionName, "schema": schema}
-        return self.create_schema_json(json.dumps(req))
-
-    def create_schema_json(self, json_data: str) -> Status:
-        'Create schema from raw json request string'
-        url = self.http + "/api/CreateSchema"
-        r = requests.post(url, data=json_data)
-        result = r.json()
-        status = Status(result)
-        return status
+            return (Status([501, "Unable to deserialize response due to: " + str(exc)]), None)
 
     def get_schema(self, collectionName: str, schemaName: str,
         schemaVersion: int = -1):
@@ -296,8 +288,23 @@ class SKVClient:
 
     def create_collection(self, md: CollectionMetadata, rangeEnds: [str] = None) -> Status:
         status, _ = self._make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
-        status = Status(status)
         return status
+
+    def create_schema(self, collectionName: str, schema: Schema) -> Status:
+        status, _ = self._make_call('/api/CreateSchema', [collectionName.encode(), schema.serialize()])
+        return status
+
+    def begin_txn(self):
+        data = {}
+        url = self.http + "/api/BeginTxn"
+        r = requests.post(url, data=json.dumps(data))
+        result = r.json()
+        status = Status(result)
+        if "response" in result:
+            txn = Txn(self, result["response"].get("txnID"))
+        else:
+            txn = None
+        return status, txn
 
     def create_query(self, collectionName: str,
         schemaName: str, start: dict = None, end: dict = None,

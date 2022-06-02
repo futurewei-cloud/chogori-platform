@@ -64,6 +64,9 @@ private:
 */
     seastar::future<std::tuple<sh::Status, sh::dto::CollectionCreateResponse>> _handleCreateCollection(
         sh::dto::CollectionCreateRequest&& request);
+
+    seastar::future<std::tuple<sh::Status, sh::dto::CreateSchemaResponse>> _handleCreateSchema(
+        sh::dto::CreateSchemaRequest&& request);
     void _registerAPI();
     void _registerMetrics();
 
