@@ -164,6 +164,8 @@ bool Payload::read(Binary& binary) {
         if (!data_p) {
             return false;
         }
+        // we want to read a total of `size` bytes which we know span multiple buffers.
+        // delegate to the raw read() which copies data that could span.
         if (!read(data_p, size)) {  // execute a raw copy
             return false;
         }
