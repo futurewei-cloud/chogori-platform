@@ -492,7 +492,7 @@ HTTPProxy::_handleBeginTxn(sh::dto::BeginTxnRequest&& request){
         .then([this](auto&& txn) {
             K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
             auto ts = txn.mtr().timestamp;
-            sh::dto::Timestamp shts(ts.tEndTSECount(), ts.tEndTSECount() - ts.tStartTSECount(), ts.tsoId());
+            sh::dto::Timestamp shts{.endCount = ts.endCount, .tsoId = ts.tsoId, .startDelta = ts.startDelta};
             _txns[shts] = std::move(txn);
             return MakeHTTPResponse<sh::dto::BeginTxnResponse>(sh::Statuses::S201_Created(""), sh::dto::BeginTxnResponse{.timestamp=shts});
         });

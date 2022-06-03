@@ -25,60 +25,43 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace k2 {
 namespace dto {
-Timestamp::Timestamp(uint64_t tEndTSECount, uint32_t tsoId, uint32_t tStartDelta):
-    _tEndTSECount(tEndTSECount),
-    _tsoId(tsoId),
-    _tStartDelta(tStartDelta) {
-}
-
-uint64_t Timestamp::tEndTSECount() const {
-    return _tEndTSECount;
-}
-
-uint64_t Timestamp::tStartTSECount() const {
-    return _tEndTSECount - _tStartDelta;
-}
-
-uint32_t Timestamp::tsoId() const {
-    return _tsoId;
-}
 
 Timestamp::CompareResult Timestamp::compareUncertain(const Timestamp& other) const {
-    if (tsoId() == other.tsoId()) {
-        return tEndTSECount() < other.tEndTSECount() ? LT :
-        (tEndTSECount() > other.tEndTSECount() ? GT : EQ);
+    if (tsoId == other.tsoId) {
+        return endCount < other.endCount ? LT :
+        (endCount > other.endCount ? GT : EQ);
     }
     else {
-        return tEndTSECount() < other.tStartTSECount() ? LT :
-            (tStartTSECount() > other.tEndTSECount() ? GT : UN);
+        return endCount < other.endCount - other.startDelta ? LT :
+            (endCount - startDelta > other.endCount ? GT : UN);
     }
 }
 
 Timestamp::CompareResult Timestamp::compareCertain(const Timestamp& other) const {
-    if (tEndTSECount() != other.tEndTSECount()){
-        return tEndTSECount() < other.tEndTSECount() ? LT : GT;
+    if (endCount != other.endCount){
+        return endCount < other.endCount ? LT : GT;
     }
     else {
-        return tsoId() < other.tsoId() ? LT :
-            (tsoId() > other.tsoId() ? GT : EQ);
+        return tsoId < other.tsoId ? LT :
+            (tsoId > other.tsoId ? GT : EQ);
     }
 }
 
 Timestamp Timestamp::operator-(const Duration d) const {
     uint64_t cnt = nsec(d).count();
-    if (_tEndTSECount <= cnt + _tStartDelta) {
+    if (endCount <= cnt + startDelta) {
         // our clock hasn't started that far back. Return minimum value
-        return Timestamp(_tStartDelta, _tsoId, _tStartDelta);
+        return Timestamp{.endCount=startDelta, .tsoId=tsoId, .startDelta=startDelta};
     }
-    return Timestamp(_tEndTSECount - cnt, _tsoId, _tStartDelta);
+    return Timestamp{.endCount=endCount - cnt, .tsoId=tsoId, .startDelta=startDelta};
 }
 
 Timestamp Timestamp::operator+(const Duration d) const {
-    return Timestamp(_tEndTSECount + nsec(d).count(), _tsoId, _tStartDelta);
+    return Timestamp{.endCount=endCount + nsec(d).count(),.tsoId= tsoId, .startDelta=startDelta};
 }
 
 size_t Timestamp::hash() const {
-    return hash_combine(_tEndTSECount, _tStartDelta, _tsoId);
+    return hash_combine(endCount, startDelta, tsoId);
 }
 
 bool Timestamp::operator==(const Timestamp& other) const noexcept {

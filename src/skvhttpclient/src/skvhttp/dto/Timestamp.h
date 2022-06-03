@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 namespace skv::http::dto {
 // K2Timestamp - a TrueTime uncertainty window and TSOId
-// internally keep TEndTSECount and tStartDelta for efficient serialization and comparison
+// internally keep endCount and startDelta for efficient serialization and comparison
 class Timestamp{
 public:
     enum CompareResult : int8_t {
@@ -38,21 +38,6 @@ public:
     };
 
 public:
-    // default ctor
-    Timestamp() = default;
-
-    // ctor
-    Timestamp(uint64_t tEndTSECount, uint32_t tsoId, uint32_t tStartDelta);
-
-    // end time of uncertainty window - TAI TimeSinceEpoch count in nanoseconds since Jan. 1, 1970;
-    uint64_t tEndTSECount() const;
-
-    // start time of uncertainty window - TAI nanoseconds count
-    uint64_t tStartTSECount() const;
-
-    // global unique Id of the TSO issuing this TS
-    uint32_t tsoId() const;
-
     // Uncertainty-compatible comparison
     // this should be used when the user cares if due to uncertainty, two timestamps may not be orderable
     CompareResult compareUncertain(const Timestamp& other) const;
@@ -88,22 +73,21 @@ public:
     // return the max of this and other
     Timestamp max(const Timestamp& other) const;
 
-private:
-    uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE in TAI
-    uint32_t _tsoId = 0;
-    uint32_t _tStartDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max
+    uint64_t endCount = 0;  // nanosec count of tEnd's TSE in TAI
+    uint32_t tsoId = 0;
+    uint32_t startDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max
 
 public:
-    K2_SERIALIZABLE(Timestamp, _tEndTSECount, _tsoId, _tStartDelta);
+    K2_SERIALIZABLE(Timestamp, endCount, tsoId, startDelta);
 
     // Zero timestamp
     static const Timestamp ZERO;
     static const Timestamp INF;
 };
-inline const Timestamp Timestamp::ZERO = Timestamp(1, 0, 1);
-inline const Timestamp Timestamp::INF = Timestamp(std::numeric_limits<uint64_t>::max(),
-                                              0,
-                                              std::numeric_limits<uint32_t>::max());
+inline const Timestamp Timestamp::ZERO = Timestamp{.endCount = 1, .tsoId = 0, .startDelta = 1};
+inline const Timestamp Timestamp::INF = Timestamp{.endCount = std::numeric_limits<uint64_t>::max(),
+                                                  .tsoId = 0,
+                                                  .startDelta = std::numeric_limits<uint32_t>::max()};
 
 } // ns skv::http::dto
 
@@ -118,7 +102,7 @@ struct fmt::formatter<skv::http::dto::Timestamp> {
     template <typename FormatContext>
     auto format(skv::http::dto::Timestamp const& tp, FormatContext& ctx) {
         return fmt::format_to(ctx.out(), "ts={}, tso_id={}",
-            k2::toTimestamp_ts(skv::http::TimePoint{} + 1ns * tp.tEndTSECount()), tp.tsoId());
+            k2::toTimestamp_ts(skv::http::TimePoint{} + 1ns * tp.endCount), tp.tsoId);
     }
 };
 
