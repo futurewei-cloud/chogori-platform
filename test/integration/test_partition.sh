@@ -5,7 +5,7 @@ source ${topname}/common_defs.sh
 cd ${topname}/../..
 
 # start CPO
-./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --prometheus_port 63000 --assignment_timeout=1s --nodepool_endpoints ${EPS[@]} --tso_endpoints ${TSO} &
+./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --prometheus_port 63000 --assignment_timeout=1s --tso_error_bound=100us --nodepool_endpoints ${EPS[@]} --tso_endpoints ${TSO} &
 cpo_child_pid=$!
 
 # start nodepool
@@ -17,7 +17,7 @@ nodepool_child_pid=$!
 persistence_child_pid=$!
 
 # start tso
-./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.error_bound=100us --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
+./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
 function finish {

@@ -158,31 +158,18 @@ seastar::future<> CPOService::start() {
 seastar::future<> CPOService::_assignAllTSOs() {
     return AppBase().getDist<HealthMonitor>().local().getTSOEndpoints()
         .then([this] (std::vector<String>&& eps) {
-            std::vector<seastar::future<>> futs;
-            size_t i = 0;
-            for (auto& ep : eps) {
-                futs.push_back(
-                    _assignTSO(ep, i++, _maxAssignRetries())
-                    .then([] {
-                        return seastar::make_ready_future<>();
-                    })
-                );
-            }
-            return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
-            // return seastar::do_with(size_t(0), std::move(eps), [this] (size_t &i, auto &eps) {
-            //     return seastar::do_until(
-            //         [&i, &eps] {
-            //             return i == eps.size();
-            //         }, 
-            //         [&i, &eps, this] {
-            //             return _assignTSO(eps[i], i, _maxAssignRetries())
-            //             .then([&i] {
-            //                 ++i;
-            //                 return seastar::make_ready_future<>();
-            //             });
-            //        }
-            //     );
-            // });
+            return seastar::do_with(size_t(0), std::move(eps), [this] (size_t &i, auto &eps) {
+                std::vector<seastar::future<>> futs;
+                for (auto& ep : eps) {
+                    futs.push_back(
+                        _assignTSO(ep, i++, _maxAssignRetries())
+                        .then([] {
+                            return seastar::make_ready_future<>();
+                        })
+                    );
+                }
+                return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
+            });
         });
 }
 

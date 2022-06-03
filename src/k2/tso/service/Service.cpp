@@ -189,7 +189,7 @@ TSOService::_handleGetTimestamp(dto::GetTimestampRequest&& request) {
     auto now = GPSClockInst.now();
     _timestampErrors.add(nsec(now.error).count());
 
-    if (now.error > _errorBound()/2) {
+    if (now.error > _CPOErrorBound/2) {
         // no need to bother doing anything else - the error in gps is too high
         K2LOG_W(log::tsoserver, "large gps error detected: {}", now);
         return RPCResponse(Statuses::S503_Service_Unavailable("gps error too high at the moment"), dto::GetTimestampResponse{});
@@ -209,7 +209,7 @@ TSOService::_handleGetTimestamp(dto::GetTimestampRequest&& request) {
     // 3. delta <= errorBound               // the error in the timestamp is no bigger than our advertised error bound
     //
     // To achieve this, we use the fact that we're allowed to produce all of our timestamps with constant max error
-    uint64_t delta = nsec(_errorBound()).count(); // condition #3: error is no-greater than error bound
+    uint64_t delta = nsec(_CPOErrorBound).count(); // condition #3: error is no-greater than error bound
     // and then we use the monotonic gps.real value, shifting it by a constant so that it remains monotonic
     uint64_t endCount = nsec(now.real).count() + delta/2;
     // Thus Timestamp([endCount - error, error]) is guaranteed to include the entirety of the gps time

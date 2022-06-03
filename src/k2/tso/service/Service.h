@@ -80,6 +80,10 @@ private: // members
     uint64_t _tsoId{0};
 
     // set by the CPO
+    // The error bound for uncertainty for timestamps
+    // The minimum transaction latency (see K23SI design doc) is derived from this number; essentially
+    // MTL = max( {TSO.uncertaintyWindow | for all TSOs} )
+    // Returned timestamps are guaranteed to contain the true time in the window [endCount - error_bound, endCount]
     Duration _CPOErrorBound{0};
 
     // to poll the gps clock
@@ -92,12 +96,6 @@ private: // members
     k2::ExponentialHistogram _timestampErrors;
 
 private: // config
-    // The error bound for uncertainty for timestamps
-    // The minimum transaction latency (see K23SI design doc) is derived from this number; essentially
-    // MTL = max( {TSO.uncertaintyWindow | for all TSOs} )
-    // Returned timestamps are guaranteed to contain the true time in the window [endCount - error_bound, endCount]
-    ConfigDuration _errorBound{"tso.error_bound", 20us};    // TODO: cleanup?
-
     // pick CPU on which to pin clock poller (default(-1) is free-floating)
     ConfigVar<int16_t> _clockPollerCPU{"tso.clock_poller_cpu", -1};
 };

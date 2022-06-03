@@ -13,10 +13,10 @@ nodepool_child_pid=$!
 persistence_child_pid=$!
 
 # start tso
-./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.error_bound=100us --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
+./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
-./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --prometheus_port 63000 --assignment_timeout=1s --nodepool_endpoints ${EPS[@]:0:2} --tso_endpoints ${TSO} --persistence_endpoints ${PERSISTENCE} &
+./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --prometheus_port 63000 --assignment_timeout=1s --nodepool_endpoints ${EPS[@]:0:2} --tso_endpoints ${TSO} --tso_error_bound=100us --persistence_endpoints ${PERSISTENCE} &
 cpo_child_pid=$!
 
 function finish {
@@ -43,6 +43,6 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
+sleep 5
 
 ./build/test/k23si/query_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100
