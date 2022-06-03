@@ -55,15 +55,6 @@ inline std::ostream& operator<<(std::ostream& os, const TxnPriority& pri) {
     return os << strpri;
 }
 
-// Minimum Transaction Record - enough to identify a transaction.
-struct K23SI_MTR {
-    Timestamp timestamp; // the TSO timestamp of the transaction
-    TxnPriority priority = TxnPriority::Medium;  // transaction priority: user-defined: used to pick abort victims by K2 (0 is highest)
-    bool operator==(const K23SI_MTR& o) const;
-    bool operator!=(const K23SI_MTR& o) const;
-    size_t hash() const;
-    K2_SERIALIZABLE_FMT(K23SI_MTR, timestamp, priority);
-};
 struct TxnOptions {
     Duration timeout{1s};
     TxnPriority priority{TxnPriority::Medium};
@@ -71,26 +62,28 @@ struct TxnOptions {
     K2_SERIALIZABLE_FMT(TxnOptions, timeout, priority, syncFinalize);
 };
 
-struct K23SIBeginTxnRequest {
-    K2_SERIALIZABLE_FMT(K23SIBeginTxnRequest);
+struct BeginTxnRequest {
+    TxnOptions options;
+    K2_SERIALIZABLE_FMT(BeginTxnRequest, options);
 };
 
-struct K23SIBeginTxnResponse {
-    K2_SERIALIZABLE_FMT(K23SIBeginTxnResponse);
+struct BeginTxnResponse {
+    Timestamp timestamp;
+    K2_SERIALIZABLE_FMT(BeginTxnResponse, timestamp);
 };
 
 // The main READ DTO.
-struct K23SIReadRequest {
+struct ReadRequest {
     String collectionName;  // the name of the collection
     // use the name "key" so that we can use common routing from CPO client
     SKVRecord key;  // the key to read
-    K2_SERIALIZABLE_FMT(K23SIReadRequest, collectionName, key);
+    K2_SERIALIZABLE_FMT(ReadRequest, collectionName, key);
 };
 
 // The response for READs
-struct K23SIReadResponse {
+struct ReadResponse {
     SKVRecord record;
-    K2_SERIALIZABLE_FMT(K23SIReadResponse, record);
+    K2_SERIALIZABLE_FMT(ReadResponse, record);
 };
 
 K2_DEF_ENUM(ExistencePrecondition,
@@ -99,10 +92,9 @@ K2_DEF_ENUM(ExistencePrecondition,
     NotExists
 );
 
-struct K23SIWriteRequest {
+struct WriteRequest {
     PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName; // the name of the collection
-    K23SI_MTR mtr; // the MTR for the issuing transaction
     // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
     // the first write (the write for which designateTRH was set to true)
     // Note that this is not an unique identifier for a transaction record - transaction records are
@@ -123,25 +115,32 @@ struct K23SIWriteRequest {
     SKVRecord::Storage value; // the value of the write
     std::vector<uint32_t> fieldsForPartialUpdate; // if size() > 0 then this is a partial update
 
-    K23SIWriteRequest() = default;
-    K23SIWriteRequest(PVID _pvid, String cname, K23SI_MTR _mtr, Key _trh, String _trhCollection, bool _isDelete,
+    WriteRequest() = default;
+    WriteRequest(PVID _pvid, String cname, Key _trh, String _trhCollection, bool _isDelete,
                       bool _designateTRH, ExistencePrecondition _precondition, uint64_t id, Key _key, SKVRecord::Storage _value,
                       std::vector<uint32_t> _fields) :
-        pvid(std::move(_pvid)), collectionName(std::move(cname)), mtr(std::move(_mtr)), trh(std::move(_trh)), trhCollection(std::move(_trhCollection)),
-        isDelete(_isDelete), designateTRH(_designateTRH), precondition(_precondition), request_id(id),
-        key(std::move(_key)), value(std::move(_value)), fieldsForPartialUpdate(std::move(_fields)) {}
+        pvid(std::move(_pvid)),
+        collectionName(std::move(cname)),
+        trh(std::move(_trh)),
+        trhCollection(std::move(_trhCollection)),
+        isDelete(_isDelete),
+        designateTRH(_designateTRH),
+        precondition(_precondition),
+        request_id(id),
+        key(std::move(_key)),
+        value(std::move(_value)),
+        fieldsForPartialUpdate(std::move(_fields)) {}
 
-    K2_SERIALIZABLE_FMT(K23SIWriteRequest, pvid, collectionName, mtr, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
+    K2_SERIALIZABLE_FMT(WriteRequest, pvid, collectionName, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
 };
 
-struct K23SIWriteResponse {
-    K2_SERIALIZABLE_FMT(K23SIWriteResponse);
+struct WriteResponse {
+    K2_SERIALIZABLE_FMT(WriteResponse);
 };
 
-struct K23SIQueryRequest {
+struct QueryRequest {
     PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
     String collectionName;
-    K23SI_MTR mtr; // the MTR for the issuing transaction
     // use the name "key" so that we can use common routing from CPO client
     Key key; // key for routing and will be interpreted as inclusive start key by the server
     Key endKey; // exclusive scan end key
@@ -154,15 +153,15 @@ struct K23SIQueryRequest {
     expression::Expression filterExpression; // the filter expression for this query
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_SERIALIZABLE_FMT(K23SIQueryRequest, pvid, collectionName, mtr, key, endKey, exclusiveKey, recordLimit,
+    K2_SERIALIZABLE_FMT(QueryRequest, pvid, collectionName, key, endKey, exclusiveKey, recordLimit,
         includeVersionMismatch, reverseDirection, filterExpression, projection);
 };
 
-struct K23SIQueryResponse {
+struct QueryResponse {
     Key nextToScan; // For continuation token
     bool exclusiveToken = false; // whether nextToScan should be excluded or included
     std::vector<SKVRecord::Storage> results;
-    K2_SERIALIZABLE_FMT(K23SIQueryResponse, nextToScan, exclusiveToken, results);
+    K2_SERIALIZABLE_FMT(QueryResponse, nextToScan, exclusiveToken, results);
 };
 
 // Represents a new or in-progress query (aka read scan with predicate and projection)
@@ -201,21 +200,21 @@ private:
     bool done = false;
     bool inprogress = false;  // Used to prevent user from changing predicates after query has started
     bool keysProjected = true;
-    K23SIQueryRequest request;
+    QueryRequest request;
 };
 
-struct K23SICreateQueryRequest {
+struct CreateQueryRequest {
     String collectionName;
     String schemaName;
-    K2_SERIALIZABLE_FMT(K23SICreateQueryRequest, collectionName, schemaName);
+    K2_SERIALIZABLE_FMT(CreateQueryRequest, collectionName, schemaName);
 };
 
-struct K23SICreateQueryResponse {
+struct CreateQueryResponse {
     Query query;    // the query if the response was OK
-    K2_SERIALIZABLE_FMT(K23SICreateQueryResponse, query);
+    K2_SERIALIZABLE_FMT(CreateQueryResponse, query);
 };
 
-struct K23SITxnHeartbeatRequest {
+struct TxnHeartbeatRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     PVID pvid;
     // the name of the collection
@@ -223,14 +222,12 @@ struct K23SITxnHeartbeatRequest {
     // trh of the transaction we want to heartbeat.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
-    // the MTR for the transaction we want to heartbeat
-    K23SI_MTR mtr;
 
-    K2_SERIALIZABLE_FMT(K23SITxnHeartbeatRequest, pvid, collectionName, key, mtr);
+    K2_SERIALIZABLE_FMT(TxnHeartbeatRequest, pvid, collectionName, key);
 };
 
-struct K23SITxnHeartbeatResponse {
-    K2_SERIALIZABLE_FMT(K23SITxnHeartbeatResponse);
+struct TxnHeartbeatResponse {
+    K2_SERIALIZABLE_FMT(TxnHeartbeatResponse);
 };
 
 // This is the end action to be taken on the transaction and its writes. Here are the current
@@ -244,15 +241,15 @@ K2_DEF_ENUM(EndAction,
     Commit);
 
 // Response for PUSH operation
-struct K23SITxnPushResponse {
+struct TxnPushResponse {
     // the mtr of the winning transaction
     EndAction incumbentFinalization = EndAction::None;
     bool allowChallengerRetry = false;
 
-    K2_SERIALIZABLE_FMT(K23SITxnPushResponse, incumbentFinalization, allowChallengerRetry);
+    K2_SERIALIZABLE_FMT(TxnPushResponse, incumbentFinalization, allowChallengerRetry);
 };
 
-struct K23SITxnEndRequest {
+struct TxnEndRequest {
     // the partition version ID for the TRH. Should be coming from an up-to-date partition map
     PVID pvid;
     // the name of the collection
@@ -260,8 +257,6 @@ struct K23SITxnEndRequest {
     // trh of the transaction to end.
     // use the name "key" so that we can use common routing from CPO client
     Key key;
-    // the MTR for the transaction to end
-    K23SI_MTR mtr;
     // the end action (Abort|Commit)
     EndAction action;
     // the ranges to which this transaction wrote. TRH will finalize WIs with each range when we commit/abort
@@ -274,11 +269,11 @@ struct K23SITxnEndRequest {
     // The interval from end to Finalize for a transaction
     Duration timeToFinalize{0};
 
-    K2_SERIALIZABLE_FMT(K23SITxnEndRequest, pvid, collectionName, key, mtr, action, writeRanges, syncFinalize, timeToFinalize);
+    K2_SERIALIZABLE_FMT(TxnEndRequest, pvid, collectionName, key, action, writeRanges, syncFinalize, timeToFinalize);
 };
 
-struct K23SITxnEndResponse {
-    K2_SERIALIZABLE_FMT(K23SITxnEndResponse);
+struct TxnEndResponse {
+    K2_SERIALIZABLE_FMT(TxnEndResponse);
 };
 
 } // ns skv::http::dto

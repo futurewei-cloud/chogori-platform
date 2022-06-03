@@ -30,6 +30,8 @@ from typing import List
 import re
 import msgpack
 from datetime import timedelta
+import logging
+logger = logging.getLogger(__name__)
 
 def serializeTD(tdelta):
     return int(tdelta.total_seconds()*1000*1000*1000)
@@ -39,6 +41,28 @@ class Status:
     def __init__(self, status):
         "Get status from status tuple"
         self.code, self.message = status
+
+    def __str__(self):
+        return f"{self.code}: {self.message.decode('ascii')}"
+
+    def __repr__(self):
+        return str(self)
+
+    def is1xxInfo(self):
+        return self.code < 200
+
+    def is2xxOK(self):
+        return self.code >= 200 and self.code < 300
+
+    def is3xxRedirect(self):
+        return self.code >= 300 and self.code < 400
+
+    def is4xxClientError(self):
+        return self.code >= 400 and self.code < 500
+
+    def is5xxServerError(self):
+        return self.code >= 500
+
 class DBLoc:
     """Indicates a complete location to identify a record.
 
@@ -95,31 +119,38 @@ class Query:
         self.query_id = query_id
         self.done = False
 
-ListOfDict = List[dict]
+
+class TxnPriority(int, Enum):
+    Highest =  0
+    High =    64
+    Medium = 128
+    Low =    192
+    Lowest = 255
+
+    def serialize(self):
+        return self.value
+
+class TxnOptions:
+    def __init__(self, timeout=timedelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
+        self.timeout = timeout
+        self.priority = priority
+        self.syncFinalize = syncFinalize
+
+    def serialize(self):
+        return [serializeTD(self.timeout), self.priority.serialize(), self.syncFinalize]
 
 class Txn:
     "Transaction Object"
-
-    def __init__(self, client, txn_id: int):
-        self._client = client
-        self._txn_id = txn_id
-
-    @property
-    def txn_id(self) -> int:
-        return self._txn_id
-
-    def _send_req(self, api, request):
-        url = self._client.http + api
-        r = requests.post(url, data=json.dumps(request))
-        result = r.json()
-        return result
+    def __init__(self, client, timestamp):
+        self.client = client
+        self.timestamp = timestamp
 
     def write(self, loc: DBLoc, additional_data={}) -> Status:
         "Write to dbloc"
         record = additional_data.copy()
         record.update(loc.get_fields())
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self._txn_id, "schemaVersion": loc.schema_version,
+            "txnID" : self.timestamp, "schemaVersion": loc.schema_version,
             "record": record}
         result = self._send_req("/api/Write", request)
         return Status(result)
@@ -127,13 +158,13 @@ class Txn:
     def read(self, loc: DBLoc) :
         record = loc.get_fields()
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self._txn_id, "record": record}
+            "txnID" : self.timestamp, "record": record}
         result = self._send_req("/api/Read", request)
         output = result["response"].get("record") if "response" in result else None
         return Status(result), output
 
     def query(self, query: Query):
-        request = {"txnID" : self._txn_id, "queryID": query.query_id}
+        request = {"txnID" : self.timestamp, "queryID": query.query_id}
         result = self._send_req("/api/Query", request)
         recores:dict = []
         if "response" in result:
@@ -152,7 +183,7 @@ class Txn:
         return status, records
 
     def end(self, commit=True):
-        request = {"txnID": self._txn_id, "commit": commit}
+        request = {"txnID": self.timestamp, "commit": commit}
         return Status(self._send_req("/api/EndTxn", request))
 
 class FieldType(int, Enum):
@@ -255,23 +286,32 @@ class SKVClient:
     "SKV DB client"
 
     def __init__(self, url: str):
+        self.session = requests.Session()
         self.http = url
 
-    def _make_call(self, path, data):
+    def make_call(self, path, data):
         url = self.http + path
         try:
             datab = msgpack.packb(data, use_bin_type=True)
         except Exception as exc:
-            return (Status([501, "Unable to serialize request due to: " + str(exc)]), None)
-        resp = requests.post(url, data=datab, headers={'Content-Type': 'application/x-msgpack', 'Accept': 'application/x-msgpack'})
+            logger.exception("Unable to serialize request")
+            return (Status([501, "Unable to serialize request due to: {}".format(exc)]), None)
+        resp = self.session.post(url, data=datab, headers={'Content-Type': 'application/x-msgpack', 'Accept': 'application/x-msgpack'})
 
         if resp.status_code != 200:
-            return (Status([503, "Unable to issue call with data: " + str(data) + ", due to: " + str(resp)]), None)
+            msg = "Unable to issue call with data: {}, due to: {}".format(data, resp)
+            logger.error(msg)
+            return (Status([503, msg]), None)
         try:
             status, obj = msgpack.unpackb(resp.content)
-            return (Status(status), obj)
+            st = Status(status)
+            if not st.is2xxOK():
+                logger.error("Error response from server: %s", st)
+
+            return (st, obj)
         except Exception as exc:
-            return (Status([501, "Unable to deserialize response due to: " + str(exc)]), None)
+            logger.exception("Unable to deserialize request")
+            return (Status([501, "Unable to deserialize response due to: {}".format(exc)]), None)
 
     def get_schema(self, collectionName: str, schemaName: str,
         schemaVersion: int = -1):
@@ -287,24 +327,21 @@ class SKVClient:
         return status, None
 
     def create_collection(self, md: CollectionMetadata, rangeEnds: [str] = None) -> Status:
-        status, _ = self._make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
+        status, _ = self.make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
         return status
 
     def create_schema(self, collectionName: str, schema: Schema) -> Status:
-        status, _ = self._make_call('/api/CreateSchema', [collectionName.encode(), schema.serialize()])
+        status, _ = self.make_call('/api/CreateSchema', [collectionName.encode(), schema.serialize()])
         return status
 
-    def begin_txn(self):
-        data = {}
-        url = self.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
-        if "response" in result:
-            txn = Txn(self, result["response"].get("txnID"))
+    def begin_txn(self, opts: TxnOptions = None):
+        if opts is None:
+            opts = TxnOptions()
+        status, resp = self.make_call('/api/BeginTxn', [opts.serialize()])
+        if status.code == 201:
+            return status, Txn(self, resp[0])
         else:
-            txn = None
-        return status, txn
+            return status, None
 
     def create_query(self, collectionName: str,
         schemaName: str, start: dict = None, end: dict = None,

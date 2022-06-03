@@ -24,17 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include "K23SI.h"
 namespace skv::http::dto {
 
-bool K23SI_MTR::operator==(const K23SI_MTR& o) const {
-    return timestamp == o.timestamp && priority == o.priority;
-}
-bool K23SI_MTR::operator!=(const K23SI_MTR& o) const {
-    return !(operator==(o));
-}
-
-size_t K23SI_MTR::hash() const {
-    return k2::hash_combine(timestamp, priority);
-}
-
 void Query::setFilterExpression(dto::expression::Expression&& root) {
     request.filterExpression = std::move(root);
 }

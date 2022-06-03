@@ -27,6 +27,7 @@ SOFTWARE.
 import argparse, unittest, sys
 from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient, HashScheme, StorageDriver, Schema, SchemaField, FieldType)
 from datetime import timedelta
+import logging
 
 class TestHTTP(unittest.TestCase):
     args = None
@@ -36,7 +37,7 @@ class TestHTTP(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         "Create common schema and collection used by multiple test cases"
-
+        logging.basicConfig(format='%(asctime)s [%(levelname)s] (%(module)s) %(message)s', level=logging.DEBUG)
         metadata = CollectionMetadata(
             name = 'HTTPClient',
             hashScheme = HashScheme.HashCRC32C,
@@ -46,7 +47,7 @@ class TestHTTP(unittest.TestCase):
         )
         TestHTTP.cl = SKVClient(TestHTTP.args.http)
         status = TestHTTP.cl.create_collection(metadata)
-        if status.code != 200:
+        if not status.is2xxOK():
             raise Exception(status.message)
 
         TestHTTP.schema = Schema(
@@ -60,21 +61,16 @@ class TestHTTP(unittest.TestCase):
             rangeKeyFields=[1]
         )
         status = TestHTTP.cl.create_schema("HTTPClient", TestHTTP.schema)
-        if status.code != 200:
+        if not status.is2xxOK():
             raise Exception(status.message)
 
     def test_basicTxn(self):
         # Begin Txn
         self.assertTrue(True)
-'''
-        data = {}
-        url = args.http + "/api/BeginTxn"
-        r = .post(url, data=json.dumps(data))
-        result = r.json()
-        print(result)
-        self.assertEqual(result["status"]["code"], 201);
-        txnId = result["response"]["txnID"]
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
 
+'''
         # Write
         record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
         request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": txnId, "schemaVersion": 1, "record": record}

@@ -480,8 +480,25 @@ HTTPProxy::_handleCreateSchema(sh::dto::CreateSchemaRequest&& request) {
         });
 }
 
-HTTPProxy::HTTPProxy():
-        _client(k2::K23SIClientConfig()) {
+seastar::future<std::tuple<sh::Status, sh::dto::BeginTxnResponse>>
+HTTPProxy::_handleBeginTxn(sh::dto::BeginTxnRequest&& request){
+    K2LOG_D(log::httpproxy, "Received begin txn request {}", request);
+    k2::K2TxnOptions opts{
+        .deadline= k2::Deadline<>(request.options.timeout),
+        .priority = static_cast<k2::TxnPriority>(request.options.priority),
+        .syncFinalize = request.options.syncFinalize
+    };
+    return _client.beginTxn(std::move(opts))
+        .then([this](auto&& txn) {
+            K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
+            auto ts = txn.mtr().timestamp;
+            sh::dto::Timestamp shts(ts.tEndTSECount(), ts.tEndTSECount() - ts.tStartTSECount(), ts.tsoId());
+            _txns[shts] = std::move(txn);
+            return MakeHTTPResponse<sh::dto::BeginTxnResponse>(sh::Statuses::S201_Created(""), sh::dto::BeginTxnResponse{.timestamp=shts});
+        });
+}
+
+HTTPProxy::HTTPProxy() : _client(k2::K23SIClientConfig()) {
 }
 
 seastar::future<> HTTPProxy::gracefulStop() {
@@ -540,6 +557,10 @@ void HTTPProxy::_registerAPI() {
 
     api_server.registerAPIObserver<sh::Statuses, sh::dto::CreateSchemaRequest, sh::dto::CreateSchemaResponse>("CreateSchema", "create schema", [this](auto&& request) {
         return _handleCreateSchema(std::move(request));
+    });
+
+    api_server.registerAPIObserver<sh::Statuses, sh::dto::BeginTxnRequest, sh::dto::BeginTxnResponse>("BeginTxn", "begin transaction", [this](auto&& request) {
+        return _handleBeginTxn(std::move(request));
     });
 }
 

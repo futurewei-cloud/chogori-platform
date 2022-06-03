@@ -27,6 +27,8 @@ Copyright(c) 2022 Futurewei Cloud
 #include <skvhttp/common/Status.h>
 #include <skvhttp/dto/Collection.h>
 #include <skvhttp/dto/ControlPlaneOracle.h>
+#include <skvhttp/dto/K23SI.h>
+
 namespace sh=skv::http;
 
 namespace k2 {
@@ -67,6 +69,10 @@ private:
 
     seastar::future<std::tuple<sh::Status, sh::dto::CreateSchemaResponse>> _handleCreateSchema(
         sh::dto::CreateSchemaRequest&& request);
+
+    seastar::future<std::tuple<sh::Status, sh::dto::BeginTxnResponse>> _handleBeginTxn(
+        sh::dto::BeginTxnRequest&& request);
+
     void _registerAPI();
     void _registerMetrics();
 
@@ -75,9 +81,8 @@ private:
 
     bool _stopped = true;
     k2::K23SIClient _client;
-    uint64_t _txnID = 0;
     uint64_t _queryID = 0;
-    std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
+    std::unordered_map<sh::dto::Timestamp, k2::K2TxnHandle> _txns;
     // Store in progress queries
     std::unordered_map<uint64_t, Query> _queries;
     std::vector<seastar::future<>> _endFuts;

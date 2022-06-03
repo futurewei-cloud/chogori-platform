@@ -55,12 +55,8 @@ struct K23SIClientException : public std::exception {
 
 class K2TxnOptions{
 public:
-    K2TxnOptions() noexcept :
-        deadline(Duration(1s)),
-        priority(dto::TxnPriority::Medium) {}
-
-    Deadline<> deadline;
-    dto::TxnPriority priority;
+    Deadline<> deadline = Deadline<>(Duration(1s));
+    dto::TxnPriority priority{dto::TxnPriority::Medium};
     bool syncFinalize = false;
     K2_DEF_FMT(K2TxnOptions, deadline, priority, syncFinalize);
 };
