@@ -166,7 +166,6 @@ public:
             rec.rangeKeys);
     }
 
-
     void constructKeyStrings();
 
 public:
@@ -190,8 +189,8 @@ public:
     auto visitNextField(Func&& visitor) {
         const auto& field = schema->fields[fieldCursor];
         K2LOG_D(log::dto, "visiting field {}", field.name);
-
         return applyTyped(field, [this] (const auto& afr, auto&& visitor) {
+            // the call to deserializeNext will take care of incrementing the current field cursor
             visitor(afr.field, deserializeNext<applied_type_t<decltype(afr)>>());
         }, std::forward<Func>(visitor));
     }

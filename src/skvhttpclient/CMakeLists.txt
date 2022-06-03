@@ -14,7 +14,7 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY)
-add_compile_options(-O3 -std=c++17 -g -Werror -Wall -Wextra)
+add_compile_options(-O3 -g -Werror -Wall -Wextra)
 
 include_directories(src)
 

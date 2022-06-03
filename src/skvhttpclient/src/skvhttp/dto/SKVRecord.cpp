@@ -104,24 +104,33 @@ void SKVRecord::constructKeyStrings() {
 
     uint32_t beginCursor = getFieldCursor();
     seekField(0);
-    auto numKeys = partitionKeys.size() + rangeKeys.size();
-    for (size_t i = 0; i < partitionKeys.size(); ++i) {
-        visitNextField([this, i](const auto& field, auto&& value) {
-            if (value) {
-                partitionKeys[i] = FieldToKeyString(*value);
-            }
-            else {
-                partitionKeys[i] = field.nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+
+    size_t fieldIdx = 0;
+    for (; fieldIdx < partitionKeys.size(); ++fieldIdx) {
+        visitNextField([this, fieldIdx](const auto& field, auto&& value) {
+            for (size_t schemaIdx = 0; schemaIdx < schema->partitionKeyFields.size(); ++schemaIdx) {
+                if (schema->partitionKeyFields[schemaIdx] == fieldIdx) {
+                    if (value) {
+                        partitionKeys[schemaIdx] = FieldToKeyString(*value);
+                    }
+                    else {
+                        partitionKeys[schemaIdx] = field.nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+                    }
+                }
             }
         });
     }
-    for (size_t i = partitionKeys.size(); i < numKeys; ++i) {
-        visitNextField([this, i](const auto& field, auto&& value) {
-            if (value) {
-                rangeKeys[i] = FieldToKeyString(*value);
-            }
-            else {
-                rangeKeys[i] = field.nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+
+    for (; fieldIdx < partitionKeys.size() + rangeKeys.size(); ++fieldIdx) {
+        visitNextField([this, fieldIdx](const auto& field, auto&& value) {
+            for (size_t schemaIdx = 0; schemaIdx < schema->rangeKeyFields.size(); ++schemaIdx) {
+                if (schema->rangeKeyFields[schemaIdx] == fieldIdx) {
+                    if (value) {
+                        rangeKeys[schemaIdx] = FieldToKeyString(*value);
+                    } else {
+                        rangeKeys[schemaIdx] = field.nullLast ? NullLastToKeyString() : NullFirstToKeyString();
+                    }
+                }
             }
         });
     }

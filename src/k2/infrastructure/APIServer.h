@@ -195,8 +195,7 @@ auto _handleResponse(HTTPPayload& req, std::tuple<Status_T, Response_T>&& result
     }
 
     if (respCT == ContentType::MSGPACK) {
-        if constexpr(skv::http::isK2SerializableW<Response_T, skv::http::MPackWriter>::value ||
-                     skv::http::isTrivialClass<Response_T>::value) {
+        if constexpr(skv::http::isK2SerializableW<Response_T, skv::http::MPackWriter>::value) {
             return _handleMSGPACKResponse<Status_T, Response_T>(std::move(result));
         }
         K2LOG_W(log::apisvr, "Type {} is not MSGPACK-serializable", k2::type_name<RT>());
