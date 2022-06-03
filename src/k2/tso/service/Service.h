@@ -72,7 +72,7 @@ private: // members
     // is assigned by the CPO at registration time.
     // 0 is a special value which indicates that this TSO worker is currently not registered with the CPO
     // which makes it an instance not authorized to produce timestamps in the cluster.
-    uint64_t _tsoId{0};
+    uint32_t _tsoId{0};
 
     // to poll the gps clock
     std::thread _clockPoller;

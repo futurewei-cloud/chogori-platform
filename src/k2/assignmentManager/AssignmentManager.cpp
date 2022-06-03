@@ -23,7 +23,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "AssignmentManager.h"
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include <k2/dto/AssignmentManager.h>   // our DTO
 #include <k2/dto/ControlPlaneOracle.h>   // our DTO
 #include <k2/dto/MessageVerbs.h>         // our DTO

@@ -31,7 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future.hh>       // for future stuff
 
 #include <k2/appbase/Appbase.h>
-#include <k2/common/Chrono.h>
+#include <k2/logging/Chrono.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/TSO.h>
 

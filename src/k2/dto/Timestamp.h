@@ -24,12 +24,12 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <k2/transport/PayloadSerialization.h>
-#include <k2/common/Chrono.h>
+#include <k2/logging/Chrono.h>
 
 namespace k2 {
 namespace dto {
 // K2Timestamp - a TrueTime uncertainty window and TSOId
-// internally keep TEndTSECount and tStartDelta for efficient serialization and comparison
+// internally keep endCount and startDelta for efficient serialization and comparison
 class Timestamp{
 public:
     enum CompareResult : int8_t {
@@ -40,21 +40,6 @@ public:
     };
 
 public:
-    // default ctor
-    Timestamp() = default;
-
-    // ctor
-    Timestamp(uint64_t tEndTSECount, uint32_t tsoId, uint32_t tStartDelta);
-
-    // end time of uncertainty window - TAI TimeSinceEpoch count in nanoseconds since Jan. 1, 1970;
-    uint64_t tEndTSECount() const;
-
-    // start time of uncertainty window - TAI nanoseconds count
-    uint64_t tStartTSECount() const;
-
-    // global unique Id of the TSO issuing this TS
-    uint32_t tsoId() const;
-
     // Uncertainty-compatible comparison
     // this should be used when the user cares if due to uncertainty, two timestamps may not be orderable
     CompareResult compareUncertain(const Timestamp& other) const;
@@ -79,7 +64,7 @@ public:
     size_t hash() const;
 
     String print() const {
-        return printTime(TimePoint{} + 1ns*_tEndTSECount);
+        return printTime(TimePoint{} + 1ns*endCount);
     }
 
     // set this timestamp to min of this and other, based on certain comparison
@@ -94,22 +79,21 @@ public:
     // return the max of this and other
     Timestamp max(const Timestamp& other) const;
 
-private:
-    uint64_t _tEndTSECount = 0;  // nanosec count of tEnd's TSE in TAI
-    uint32_t _tsoId = 0;
-    uint32_t _tStartDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max
+    uint64_t endCount = 0;  // nanosec count of tEnd's TSE in TAI
+    uint32_t tsoId = 0;
+    uint32_t startDelta = 0;  // TStart delta from TEnd in nanoseconds, std::numeric_limits<T>::max() nanoseconds max
 
 public:
-    K2_PAYLOAD_FIELDS(_tEndTSECount, _tsoId, _tStartDelta);
-    K2_DEF_FMT(Timestamp, _tEndTSECount, _tsoId, _tStartDelta);
+    K2_PAYLOAD_FIELDS(endCount, tsoId, startDelta);
+    K2_DEF_FMT(Timestamp, endCount, tsoId, startDelta);
     // Zero timestamp
     static const Timestamp ZERO;
     static const Timestamp INF;
 };
-inline const Timestamp Timestamp::ZERO = Timestamp(1, 0, 1);
-inline const Timestamp Timestamp::INF = Timestamp(std::numeric_limits<uint64_t>::max(),
-                                              0,
-                                              std::numeric_limits<uint32_t>::max());
+inline const Timestamp Timestamp::ZERO = Timestamp{.endCount = 1, .tsoId = 0, .startDelta = 1};
+inline const Timestamp Timestamp::INF = Timestamp{.endCount = std::numeric_limits<uint64_t>::max(),
+                                                  .tsoId = 0,
+                                                  .startDelta = std::numeric_limits<uint32_t>::max()};
 
 } // ns dto
 } // ns k2

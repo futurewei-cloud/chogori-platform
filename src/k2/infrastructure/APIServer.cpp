@@ -22,18 +22,20 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "APIServer.h"
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include <k2/common/Common.h>
 #include <k2/dto/Collection.h>
+#include <k2/transport/RPCDispatcher.h>
+#include <k2/transport/TCPRPCProtocol.h>
 
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/net/socket_defs.hh>
 
 namespace k2 {
 
-class get_routes_handler : public seastar::httpd::handler_base  {
+class GetRoutesHandler : public seastar::httpd::handler_base  {
 public:
-    get_routes_handler(std::function<String()> h) : _handler(std::move(h)) {}
+    GetRoutesHandler(std::function<String()> h) : _handler(std::move(h)) {}
 
     seastar::future<std::unique_ptr<seastar::httpd::reply>> handle(const String& path,
         std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep) override {
@@ -47,21 +49,60 @@ private:
     std::function<String()> _handler;
 };
 
-seastar::future<std::unique_ptr<seastar::httpd::reply>> api_route_handler::handle(const String& path,
+seastar::future<std::unique_ptr<seastar::httpd::reply>> APIRouteHandler::handle(const String&,
     std::unique_ptr<seastar::httpd::request> req, std::unique_ptr<seastar::httpd::reply> rep)  {
-    (void) path;
 
     // seastar returns a 200 status code by default, which is what we want. The k2 status code will
     // be embedded in the returned json object
-    return _handler(req->content)
-    .then([rep=std::move(rep)] (nlohmann::json&& json) mutable {
-        rep->write_body("json",  [json=std::move(json)] (auto&& os)  mutable {
-            return do_with(std::move(os),  json=std::move(json), [] (auto& os, auto& json) {
-                // Using json dump to write instead of << operator because seastar dosn't
-                // implement << operator. Also nlohmann::json just uses dump() method internally.
-                // in << operator implementation.
-                // https://json.nlohmann.me/api/basic_json/operator_ltlt/#operatorbasic_json
-                return os.write(json.dump())
+    ContentType ctype = ContentType::UNKNOWN;
+    auto& ctheader = req->_headers["Content-Type"];
+    for (size_t i = 0; i < ContentTypeStrings.size(); ++i) {
+        if (ContentTypeStrings[i] == ctheader) {
+            ctype = ContentType(i);
+            break;
+        }
+    }
+
+    auto& acceptHeader = req->_headers["Accept"];
+    std::vector<ContentType> accepts;
+    {
+        auto strToCtype = [] (const String& hdr) {
+            for (size_t i = 0; i < ContentTypeStrings.size(); ++i) {
+                if (hdr == ContentTypeStrings[i]) {
+                    return ContentType(i);
+                }
+            }
+            return ContentType::UNKNOWN;
+        };
+
+        const String delim(", ");
+        auto start = 0U;
+        auto end = acceptHeader.find(delim);
+        if (end == String::npos) {
+            accepts.push_back(strToCtype(acceptHeader));
+        }
+        else {
+            // multi-accepts header (comma-separated)
+            while (end != std::string::npos) {
+                accepts.push_back(strToCtype(acceptHeader.substr(start, end - start)));
+                start = end + delim.length();
+                end = acceptHeader.find(delim, start);
+            }
+        }
+    }
+
+    HTTPPayload hp{
+        .data=std::move(req->content),
+        .ctype=ctype,
+        .accepts=std::move(accepts)
+    };
+
+    return _handler(std::move(hp))
+    .then([rep=std::move(rep)] (auto&& payload) mutable {
+        const String& ctype= ContentTypeStrings[to_integral(payload.ctype)];
+        rep->write_body(ctype, [payload=std::move(payload)] (auto&& os)  mutable {
+            return do_with(std::move(os), payload=std::move(payload), [] (auto& os, auto& payload) {
+                return os.write(payload.data)
                 .finally([& os] {
                     return os.close();
                 });
@@ -73,38 +114,19 @@ seastar::future<std::unique_ptr<seastar::httpd::reply>> api_route_handler::handl
 
 seastar::future<>
 APIServer::start() {
-    K2LOG_I(log::apisvr, "starting JSON API server on port");
-
-    int coreID = seastar::this_shard_id();
-    seastar::ipv4_addr listenAddr;
-    bool parsed = false;
-    if (size_t(coreID) < _tcp_endpoints().size()) {
-        auto ep = k2::TXEndpoint::fromURL(_tcp_endpoints()[coreID], BinaryAllocator());
-        if (ep) {
-            parsed = true;
-            listenAddr = seastar::ipv4_addr(ep->ip, uint16_t(ep->port + API_PORT_OFFSET));
-        }
-
-        // Try parsing as port only
-        if (!parsed) {
-            try {
-                parsed = true;
-                auto port = std::stoi(_tcp_endpoints()[coreID]);
-                listenAddr = seastar::socket_address((uint16_t)(port + API_PORT_OFFSET));
-            } catch (...) {
-            }
-        }
+    auto tcpEp = RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
+    if (!tcpEp) {
+        K2LOG_E(log::apisvr, "Unable to start APIServer since this core does not support TCP protocol");
+        return seastar::make_exception_future(std::runtime_error("unable to initialize APIServer"));
     }
+    auto myPort = uint16_t(tcpEp->port + API_PORT_OFFSET);
+    K2LOG_I(log::apisvr, "starting HTTP API server on port {}", myPort);
+    auto listenAddr = seastar::ipv4_addr(tcpEp->ip, myPort);
 
-    if (!parsed) {
-        K2LOG_I(log::apisvr, "No IP/Port provided for API server, aborting server start()");
-        return seastar::make_ready_future<>();
-    }
-
-    return add_routes()
-    .then([this, listenAddr=std::move(listenAddr)]() {
-        return _server.listen(listenAddr);
-    });
+    return addRoutes()
+        .then([this, listenAddr=std::move(listenAddr)]() {
+            return _server.listen(listenAddr);
+        });
 }
 
 seastar::future<> APIServer::gracefulStop() {
@@ -112,38 +134,36 @@ seastar::future<> APIServer::gracefulStop() {
     return  _server.stop();
 }
 
-seastar::future<> APIServer::add_routes() {
+seastar::future<> APIServer::addRoutes() {
     _server._routes.put(seastar::httpd::GET, "/api",
-            new get_routes_handler([this] () { return get_current_routes();}));
+            new GetRoutesHandler([this] () { return getCurrentRoutes();}));
     return seastar::make_ready_future<>();
 }
 
-String APIServer::get_current_routes() {
+String APIServer::getCurrentRoutes() {
     String routes;
-    for (const std::pair<String, String>& route : _registered_routes) {
-        routes += route.first + ": " + route.second + "\n";
+    for (auto& route : _registeredRoutes) {
+        routes += route.suffix + ": " + route.descr + "\n";
     }
 
     return routes;
 }
 
 void APIServer::registerRawAPIObserver(String pathSuffix, String description, APIRawObserver_t observer) {
-    _registered_routes.emplace_back(std::make_pair(pathSuffix, description));
+    _registeredRoutes.emplace_back(Route{.suffix=pathSuffix, .descr=description});
 
-    _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new api_route_handler(
-    [observer=std::move(observer)] (const String& jsonRequest) {
-        nlohmann::json request = nlohmann::json::parse(jsonRequest.cbegin(), jsonRequest.cend());
-        return observer(std::move(request));
-    }));
+    _server._routes.put(seastar::httpd::POST, "/api/" + pathSuffix, new APIRouteHandler(
+        [observer=std::move(observer)] (auto&& httpPayload) {
+            return observer(std::move(httpPayload));
+        }));
 }
 
 void APIServer::deregisterAPIObserver(String pathSuffix) {
     bool found = false;
-    auto it = _registered_routes.begin();
-    for (; it != _registered_routes.end(); ++it) {
-        auto& [path, descrip] = *it;
-        if (path == pathSuffix) {
-            _registered_routes.erase(it);
+    auto it = _registeredRoutes.begin();
+    for (; it != _registeredRoutes.end(); ++it) {
+        if (it->suffix == pathSuffix) {
+            _registeredRoutes.erase(it);
             found = true;
             break;
         }

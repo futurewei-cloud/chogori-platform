@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Prometheus.h"
 #include "Util.h"
 #include "VirtualNetworkStack.h"
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 #include <seastar/core/prometheus.hh>
 #include <seastar/core/shared_ptr.hh>

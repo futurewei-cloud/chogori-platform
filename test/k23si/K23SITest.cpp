@@ -302,7 +302,7 @@ seastar::future<> runScenario01() {
         });
     })
     .then([this] {
-        return doRead({"schema", "Key1","rKey1"},{dto::Timestamp(100000, 1, 1000),dto::TxnPriority::Medium}, "somebadcoll");
+        return doRead({"schema", "Key1","rKey1"},{dto::Timestamp{.endCount=100000, .tsoId=1, .startDelta=1000},dto::TxnPriority::Medium}, "somebadcoll");
     })
     .then([](auto&& response) {
         auto& [status, resp] = response;

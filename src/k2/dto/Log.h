@@ -22,7 +22,7 @@ Copyright(c) 2021 Futurewei Cloud
 */
 #pragma once
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 namespace k2::log {
 inline thread_local k2::logging::Logger dto("k2::dto");

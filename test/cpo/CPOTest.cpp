@@ -26,7 +26,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/sleep.hh>
 #include <k2/dto/ControlPlaneOracle.h>
 #include <k2/dto/MessageVerbs.h>
-#include <k2/appbase/AppEssentials.h>
 
 using namespace k2;
 
@@ -332,4 +331,3 @@ seastar::future<> CPOTest::runTest11() {
     .then([this] () {
     });
 }
-

@@ -22,14 +22,15 @@ else()
     set(K2_MODULE_POOL_ALLOCATOR 0)
 endif()
 
+
 add_compile_definitions(K2_MODULE_POOL_ALLOCATOR=${K2_MODULE_POOL_ALLOCATOR})
 
 include_directories(src)
 
-find_package (Seastar REQUIRED)
-find_package (fmt REQUIRED)
-find_package(nlohmann_json REQUIRED)
-find_package (yaml-cpp REQUIRED) # required for configuration file parsing
+find_package(Seastar REQUIRED)
+find_package(fmt REQUIRED)
+find_package(skvhttp REQUIRED)
+find_package(yule REQUIRED)
 
 add_subdirectory (src)
 add_subdirectory (test)

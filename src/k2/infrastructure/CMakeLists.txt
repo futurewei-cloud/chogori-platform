@@ -3,7 +3,7 @@ file(GLOB SOURCES "*.cpp")
 
 add_library(infrastructure STATIC ${HEADERS} ${SOURCES})
 
-target_link_libraries (infrastructure PRIVATE common config Seastar::seastar)
+target_link_libraries (infrastructure PRIVATE common config Seastar::seastar transport)
 
 # export the library in the common k2Targets
 install(TARGETS infrastructure EXPORT k2Targets DESTINATION lib/k2)

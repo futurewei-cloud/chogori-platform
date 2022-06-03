@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/K23SI.h>
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include <k2/transport/RPCDispatcher.h>  // for RPC
 
 namespace k2 {

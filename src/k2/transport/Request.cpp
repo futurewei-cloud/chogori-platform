@@ -22,7 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "Request.h"
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include "Log.h"
 
 namespace k2 {

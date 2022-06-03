@@ -22,10 +22,27 @@ Copyright(c) 2022 Futurewei Cloud
 */
 
 #pragma once
-
+#include <k2/infrastructure/APIServer.h>
 #include <k2/module/k23si/client/k23si_client.h>
+#include <skvhttp/common/Status.h>
+#include <skvhttp/dto/Collection.h>
+#include <skvhttp/dto/ControlPlaneOracle.h>
+#include <skvhttp/dto/K23SI.h>
+
+namespace sh=skv::http;
 
 namespace k2 {
+
+// Utility function to generate e response of a given type
+template <typename ...T>
+inline seastar::future<sh::Response<T...>> MakeHTTPResponse(sh::Status s, T&&... r) {
+    return seastar::make_ready_future<sh::Response<T...>>(sh::Response<T...>(std::move(s), std::forward<T>(r)...));
+}
+// Utility function to generate e response of a given type
+template <typename... T>
+inline seastar::future<sh::Response<T...>> MakeHTTPResponse(sh::Response<T...>&& resp) {
+    return seastar::make_ready_future<sh::Response<T...>>(std::forward(resp));
+}
 
 class HTTPProxy {
 public:  // application lifespan
@@ -34,23 +51,27 @@ public:  // application lifespan
     seastar::future<> start();
 
 private:
-    static void serializeRecordFromJSON(k2::dto::SKVRecord& record, nlohmann::json&& jsonRecord);
-    static nlohmann::json serializeJSONFromRecord(k2::dto::SKVRecord& record);
+// TODO Once our types support multi-content-type conversions, use the object API
+// for now, use the raw API
+/*
+    seastar::future<HTTPPayload> _handleBegin(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleEnd(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleRead(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleWrite(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleGetKeyString(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleCreateQuery(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleQuery(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleCreateSchema(HTTPPayload&& request);
+    seastar::future<HTTPPayload> _handleGetSchema(HTTPPayload&& request);
+*/
+    seastar::future<std::tuple<sh::Status, sh::dto::CollectionCreateResponse>> _handleCreateCollection(
+        sh::dto::CollectionCreateRequest&& request);
 
-    seastar::future<nlohmann::json> _handleBegin(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleEnd(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleRead(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleWrite(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleGetKeyString(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleCreateQuery(nlohmann::json&& request);
-    seastar::future<nlohmann::json> _handleQuery(nlohmann::json&& request);
+    seastar::future<std::tuple<sh::Status, sh::dto::CreateSchemaResponse>> _handleCreateSchema(
+        sh::dto::CreateSchemaRequest&& request);
 
-    seastar::future<std::tuple<k2::Status, dto::CreateSchemaResponse>> _handleCreateSchema(
-        dto::CreateSchemaRequest&& request);
-    seastar::future<std::tuple<k2::Status, dto::Schema>> _handleGetSchema(
-        dto::GetSchemaRequest&& request);
-    seastar::future<std::tuple<k2::Status, dto::CollectionCreateResponse>> _handleCreateCollection(
-        dto::CollectionCreateRequest&& request);
+    seastar::future<std::tuple<sh::Status, sh::dto::BeginTxnResponse>> _handleBeginTxn(
+        sh::dto::BeginTxnRequest&& request);
 
     void _registerAPI();
     void _registerMetrics();
@@ -60,9 +81,8 @@ private:
 
     bool _stopped = true;
     k2::K23SIClient _client;
-    uint64_t _txnID = 0;
     uint64_t _queryID = 0;
-    std::unordered_map<uint64_t, k2::K2TxnHandle> _txns;
+    std::unordered_map<sh::dto::Timestamp, k2::K2TxnHandle> _txns;
     // Store in progress queries
     std::unordered_map<uint64_t, Query> _queries;
     std::vector<seastar::future<>> _endFuts;

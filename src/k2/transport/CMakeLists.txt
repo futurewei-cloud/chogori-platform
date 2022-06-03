@@ -3,7 +3,7 @@ file(GLOB SOURCES "*.cpp")
 
 add_library(transport STATIC ${HEADERS} ${SOURCES})
 
-target_link_libraries (transport PRIVATE common config Seastar::seastar  crc32c)
+target_link_libraries (transport PRIVATE common config Seastar::seastar crc32c skvhttp::common skvhttp::mpack)
 
 # export the library in the common k2Targets
 install(TARGETS transport EXPORT k2Targets DESTINATION lib/k2)

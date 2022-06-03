@@ -24,7 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstdlib>
 #include <seastar/core/sleep.hh>
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include "RPCDispatcher.h"
 #include "TXEndpoint.h"
 

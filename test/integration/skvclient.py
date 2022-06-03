@@ -22,24 +22,46 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 '''
 
-from typing import Tuple
-import requests, json
+import requests
 from urllib.parse import urlparse
 import copy
 from enum import Enum
 from typing import List
 import re
+import msgpack
+from datetime import timedelta
+import logging
+logger = logging.getLogger(__name__)
 
+def serializeTD(tdelta):
+    return int(tdelta.total_seconds()*1000*1000*1000)
 class Status:
     "Status returned from HTTP Proxy"
 
-    def __init__(self, result_json):
-        "Get status from result json"
+    def __init__(self, status):
+        "Get status from status tuple"
+        self.code, self.message = status
 
-        # If seastar catches exception it doesn't populate "status" field
-        status = result_json["status"] if "status" in result_json else result_json
-        self.code = status["code"]
-        self.message = status["message"]
+    def __str__(self):
+        return f"{self.code}: {self.message.decode('ascii')}"
+
+    def __repr__(self):
+        return str(self)
+
+    def is1xxInfo(self):
+        return self.code < 200
+
+    def is2xxOK(self):
+        return self.code >= 200 and self.code < 300
+
+    def is3xxRedirect(self):
+        return self.code >= 300 and self.code < 400
+
+    def is4xxClientError(self):
+        return self.code >= 400 and self.code < 500
+
+    def is5xxServerError(self):
+        return self.code >= 500
 
 class DBLoc:
     """Indicates a complete location to identify a record.
@@ -97,45 +119,52 @@ class Query:
         self.query_id = query_id
         self.done = False
 
-ListOfDict = List[dict]
+
+class TxnPriority(int, Enum):
+    Highest =  0
+    High =    64
+    Medium = 128
+    Low =    192
+    Lowest = 255
+
+    def serialize(self):
+        return self.value
+
+class TxnOptions:
+    def __init__(self, timeout=timedelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
+        self.timeout = timeout
+        self.priority = priority
+        self.syncFinalize = syncFinalize
+
+    def serialize(self):
+        return [serializeTD(self.timeout), self.priority.serialize(), self.syncFinalize]
 
 class Txn:
     "Transaction Object"
-
-    def __init__(self, client, txn_id: int):
-        self._client = client
-        self._txn_id = txn_id
-
-    @property
-    def txn_id(self) -> int:
-        return self._txn_id
-
-    def _send_req(self, api, request):
-        url = self._client.http + api
-        r = requests.post(url, data=json.dumps(request))
-        result = r.json()
-        return result
+    def __init__(self, client, timestamp):
+        self.client = client
+        self.timestamp = timestamp
 
     def write(self, loc: DBLoc, additional_data={}) -> Status:
         "Write to dbloc"
         record = additional_data.copy()
         record.update(loc.get_fields())
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self._txn_id, "schemaVersion": loc.schema_version,
+            "txnID" : self.timestamp, "schemaVersion": loc.schema_version,
             "record": record}
         result = self._send_req("/api/Write", request)
         return Status(result)
 
-    def read(self, loc: DBLoc) -> Tuple[Status, object] :
+    def read(self, loc: DBLoc) :
         record = loc.get_fields()
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self._txn_id, "record": record}
+            "txnID" : self.timestamp, "record": record}
         result = self._send_req("/api/Read", request)
         output = result["response"].get("record") if "response" in result else None
         return Status(result), output
 
-    def query(self, query: Query) -> Tuple[Status, ListOfDict]:
-        request = {"txnID" : self._txn_id, "queryID": query.query_id}
+    def query(self, query: Query):
+        request = {"txnID" : self.timestamp, "queryID": query.query_id}
         result = self._send_req("/api/Query", request)
         recores:dict = []
         if "response" in result:
@@ -143,7 +172,7 @@ class Txn:
             records = result["response"]["records"]
         return Status(result), records
 
-    def queryAll(self, query: Query) ->Tuple[Status, ListOfDict]:
+    def queryAll(self, query: Query):
         records: [dict] = []
         while not query.done:
             status, r = self.query(query)
@@ -154,7 +183,7 @@ class Txn:
         return status, records
 
     def end(self, commit=True):
-        request = {"txnID": self._txn_id, "commit": commit}
+        request = {"txnID": self.timestamp, "commit": commit}
         return Status(self._send_req("/api/EndTxn", request))
 
 class FieldType(int, Enum):
@@ -168,46 +197,88 @@ class FieldType(int, Enum):
     DECIMAL64:  int     = 7
     DECIMAL168: int     = 8
 
-class SchemaField (dict):
+    def serialize(self):
+        return self.value
+
+class SchemaField:
     def __init__(self, type: FieldType, name: str,
         descending: bool= False, nullLast: bool = False):
-        dict.__init__(self, type = type, name = name,
-        descending = descending, nullLast = nullLast)
+        self.type = type
+        self.name = name
+        self.descending = descending
+        self.nullLast = nullLast
+    def serialize(self):
+        return [self.type.serialize(), self.name.encode(), self.descending, self.nullLast]
 
-class Schema (dict):
+
+class Schema:
     def __init__(self, name: str, version: int,
-        fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [str]):
-        dict.__init__(self, name = name, version = version,
-        fields = fields,
-        partitionKeyFields = partitionKeyFields, rangeKeyFields = rangeKeyFields)
+        fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [int]):
+        self.name = name
+        self.version = version
+        self.fields = fields
+        self.partitionKeyFields = partitionKeyFields
+        self.rangeKeyFields = rangeKeyFields
 
-class CollectionCapacity(dict):
-    def __init__(self, dataCapacityMegaBytes: int = 0, readIOPs: int = 0,
-        writeIOPs: int = 0, minNodes: int = 0):
-        dict.__init__(self,
-            dataCapacityMegaBytes = dataCapacityMegaBytes,
-            readIOPs = readIOPs,
-            writeIOPs = writeIOPs,
-            minNodes = minNodes)
+    def serialize(self):
+        return [self.name.encode(),
+                self.version,
+                [field.serialize() for field in self.fields],
+                self.partitionKeyFields,
+                self.rangeKeyFields
+        ]
 
-class HashScheme(dict):
-    def __init__(self, value:str):
-        dict.__init__(self, value=value)
+class CollectionCapacity:
+    def __init__(self, minNodes, dataCapacityMegaBytes=0, readIOPs=0, writeIOPs=0):
+        self.dataCapacityMegaBytes = dataCapacityMegaBytes
+        self.readIOPs = readIOPs
+        self.writeIOPs = writeIOPs
+        self.minNodes = minNodes
 
-class StorageDriver(dict):
-    def __init__(self, value:str):
-        dict.__init__(self, value=value)
+    def serialize(self):
+        return [self.dataCapacityMegaBytes, self.readIOPs, self.writeIOPs, self.minNodes]
 
-class CollectionMetadata (dict):
+
+class HashScheme(Enum):
+    Range      = 0
+    HashCRC32C = 1
+
+    def serialize(self):
+        return self.value
+
+
+class StorageDriver(int, Enum):
+    K23SI = 0
+
+    def serialize(self):
+        return self.value
+
+
+class CollectionMetadata:
     def __init__(self, name: str, hashScheme: HashScheme,
         storageDriver: StorageDriver, capacity: CollectionCapacity,
-        retentionPeriod: int = 0, heartbeatDeadline: int = 0, deleted: bool = False):
-        dict.__init__(self,
-            name = name, hashScheme = hashScheme, storageDriver = storageDriver,
-            capacity = capacity, retentionPeriod = retentionPeriod,
-            heartbeatDeadline = heartbeatDeadline, deleted=deleted)
+        retentionPeriod=timedelta(hours=1), heartbeatDeadline=timedelta(hours=0), deleted: bool = False):
+        self.name = name
+        self.hashScheme = hashScheme
+        self.storageDriver = storageDriver
+        self.capacity = capacity
+        self.retentionPeriod = retentionPeriod
+        self.heartbeatDeadline = heartbeatDeadline
+        self.deleted = deleted
 
-class FieldSpec(dict):
+    def serialize(self):
+        return [
+            self.name.encode(),
+            self.hashScheme.serialize(),
+            self.storageDriver.serialize(),
+            self.capacity.serialize(),
+            serializeTD(self.retentionPeriod),
+            serializeTD(self.heartbeatDeadline),
+            self.deleted
+            ]
+
+
+class FieldValue(dict):
     def __init__(self, type: FieldType, value: object):
         dict.__init__(self, type = type, value = value)
 
@@ -215,36 +286,35 @@ class SKVClient:
     "SKV DB client"
 
     def __init__(self, url: str):
+        self.session = requests.Session()
         self.http = url
 
-    def begin_txn(self) -> Tuple[Status, Txn]:
-        data = {}
-        url = self.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
-        if "response" in result:
-            txn = Txn(self, result["response"].get("txnID"))
-        else:
-            txn = None
-        return status, txn
+    def make_call(self, path, data):
+        url = self.http + path
+        try:
+            datab = msgpack.packb(data, use_bin_type=True)
+        except Exception as exc:
+            logger.exception("Unable to serialize request")
+            return (Status([501, "Unable to serialize request due to: {}".format(exc)]), None)
+        resp = self.session.post(url, data=datab, headers={'Content-Type': 'application/x-msgpack', 'Accept': 'application/x-msgpack'})
 
-    def create_schema(self, collectionName: str, schema: Schema) -> Status:
-        'Create schema'
-        url = self.http + "/api/CreateSchema"
-        req = {"collectionName": collectionName, "schema": schema}
-        return self.create_schema_json(json.dumps(req))
+        if resp.status_code != 200:
+            msg = "Unable to issue call with data: {}, due to: {}".format(data, resp)
+            logger.error(msg)
+            return (Status([503, msg]), None)
+        try:
+            status, obj = msgpack.unpackb(resp.content)
+            st = Status(status)
+            if not st.is2xxOK():
+                logger.error("Error response from server: %s", st)
 
-    def create_schema_json(self, json_data: str) -> Status:
-        'Create schema from raw json request string'
-        url = self.http + "/api/CreateSchema"
-        r = requests.post(url, data=json_data)
-        result = r.json()
-        status = Status(result)
-        return status
+            return (st, obj)
+        except Exception as exc:
+            logger.exception("Unable to deserialize request")
+            return (Status([501, "Unable to deserialize response due to: {}".format(exc)]), None)
 
     def get_schema(self, collectionName: str, schemaName: str,
-        schemaVersion: int = -1) -> Tuple[Status, Schema]:
+        schemaVersion: int = -1):
         url = self.http + "/api/GetSchema"
         data = {"collectionName": collectionName, "schemaName": schemaName,
             "schemaVersion": schemaVersion}
@@ -256,17 +326,26 @@ class SKVClient:
             return status, schema
         return status, None
 
-    def create_collection(self, metadata: CollectionMetadata, rangeEnds: [str] = []) -> Status:
-        url = self.http + "/api/CreateCollection"
-        data = {"metadata": metadata, "rangeEnds": rangeEnds}
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
+    def create_collection(self, md: CollectionMetadata, rangeEnds: [str] = None) -> Status:
+        status, _ = self.make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
         return status
+
+    def create_schema(self, collectionName: str, schema: Schema) -> Status:
+        status, _ = self.make_call('/api/CreateSchema', [collectionName.encode(), schema.serialize()])
+        return status
+
+    def begin_txn(self, opts: TxnOptions = None):
+        if opts is None:
+            opts = TxnOptions()
+        status, resp = self.make_call('/api/BeginTxn', [opts.serialize()])
+        if status.code == 201:
+            return status, Txn(self, resp[0])
+        else:
+            return status, None
 
     def create_query(self, collectionName: str,
         schemaName: str, start: dict = None, end: dict = None,
-        limit: int = 0, reverse: bool = False) -> Tuple[Status, Query]:
+        limit: int = 0, reverse: bool = False):
         url = self.http + "/api/CreateQuery"
         data = {"collectionName": collectionName,
             "schemaName": schemaName}
@@ -286,7 +365,7 @@ class SKVClient:
             return status, Query(result["response"]["queryID"])
         return status, None
 
-    def get_key_string(self, fields: [FieldSpec]) -> Tuple[Status, str]:
+    def get_key_string(self, fields: [FieldValue]):
         url = self.http + "/api/GetKeyString"
         req = {"fields": fields}
         data = json.dumps(req)
@@ -341,4 +420,3 @@ class MetricsClient:
             else:
                 metrics._set_counter(text, m)
         return metrics
-

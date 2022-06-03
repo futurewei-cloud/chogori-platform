@@ -22,7 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
-#include "Log.h"
+#include <k2/logging/Log.h>
 
 
 namespace k2::log {

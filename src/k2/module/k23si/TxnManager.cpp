@@ -258,7 +258,7 @@ bool _evaluateChallenge(TxnRecord& incumbent, dto::K23SI_MTR& challengerMTR) {
             K2LOG_D(log::skvsvr, "incumbent {} could lose push", incumbent.mtr);
             incumbentLostConflict = true;
         } else if (cmpResult == dto::Timestamp::EQ) {
-            K2ASSERT(log::skvsvr, incumbent.mtr.timestamp.tsoId() != challengerMTR.timestamp.tsoId(), "invalid timestamps detected");
+            K2ASSERT(log::skvsvr, incumbent.mtr.timestamp.tsoId != challengerMTR.timestamp.tsoId, "invalid timestamps detected");
         }
     }
     // #3 abort the challenger

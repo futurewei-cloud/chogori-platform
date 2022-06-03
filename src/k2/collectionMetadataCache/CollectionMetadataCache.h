@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 // third-party
 #include <seastar/core/future.hh>  // for future stuff
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 namespace k2 {
 namespace log {

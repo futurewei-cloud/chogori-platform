@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstdint>
 #include <cstring>
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include <k2/common/Common.h>
 
 #include "FieldTypes.h"

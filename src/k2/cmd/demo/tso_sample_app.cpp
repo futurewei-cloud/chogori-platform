@@ -27,7 +27,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include <k2/common/Common.h>
 #include <k2/transport/PayloadSerialization.h>
 
@@ -85,4 +85,3 @@ int main(int argc, char **argv)
 
     return app.start(argc, argv);
 }
-

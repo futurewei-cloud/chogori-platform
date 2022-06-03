@@ -25,55 +25,52 @@ SOFTWARE.
 '''
 
 import argparse, unittest, sys
-import requests, json
-from urllib.parse import urlparse
-from skvclient import (Status, DBLoc, Txn, FieldType, SchemaField,
-    Schema, CollectionCapacity, HashScheme, StorageDriver,
-    CollectionMetadata, SKVClient, FieldSpec, MetricsClient,
-    Counter, Histogram)
+from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient, HashScheme, StorageDriver, Schema, SchemaField, FieldType)
 from datetime import timedelta
+import logging
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--http", help="HTTP API URL")
-parser.add_argument("--prometheus", default="http://localhost:8089", help="HTTP Proxy Prometheus port")
-args = parser.parse_args()
+class TestHTTP(unittest.TestCase):
+    args = None
+    cl = None
+    schema = None
 
-
-class TestBasicTxn(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         "Create common schema and collection used by multiple test cases"
-        SEC_TO_MICRO = 1000000
-        metadata = CollectionMetadata(name = 'HTTPClient',
-            hashScheme = HashScheme("HashCRC32C"),
-            storageDriver = StorageDriver("K23SI"),
+        logging.basicConfig(format='%(asctime)s [%(levelname)s] (%(module)s) %(message)s', level=logging.DEBUG)
+        metadata = CollectionMetadata(
+            name = 'HTTPClient',
+            hashScheme = HashScheme.HashCRC32C,
+            storageDriver = StorageDriver.K23SI,
             capacity = CollectionCapacity(minNodes = 2),
-            retentionPeriod = int(timedelta(hours=5).total_seconds()*SEC_TO_MICRO)
+            retentionPeriod = timedelta(hours=5)
         )
-        db = SKVClient(args.http)
-        status = db.create_collection(metadata)
-        if status.code != 200:
+        TestHTTP.cl = SKVClient(TestHTTP.args.http)
+        status = TestHTTP.cl.create_collection(metadata)
+        if not status.is2xxOK():
             raise Exception(status.message)
-        schema = Schema(name='test_schema', version=1,
+
+        TestHTTP.schema = Schema(
+            name='test_schema',
+            version=1,
             fields=[
                 SchemaField(FieldType.STRING, 'partitionKey'),
                 SchemaField(FieldType.STRING, 'rangeKey'),
                 SchemaField(FieldType.STRING, 'data')],
-            partitionKeyFields=[0], rangeKeyFields=[1])
-        status = db.create_schema("HTTPClient", schema)
-        if status.code != 200:
+            partitionKeyFields=[0],
+            rangeKeyFields=[1]
+        )
+        status = TestHTTP.cl.create_schema("HTTPClient", TestHTTP.schema)
+        if not status.is2xxOK():
             raise Exception(status.message)
 
     def test_basicTxn(self):
         # Begin Txn
-        data = {}
-        url = args.http + "/api/BeginTxn"
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        print(result)
-        self.assertEqual(result["status"]["code"], 201);
-        txnId = result["response"]["txnID"]
+        self.assertTrue(True)
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
 
+'''
         # Write
         record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
         request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": txnId, "schemaVersion": 1, "record": record}
@@ -332,8 +329,8 @@ class TestBasicTxn(unittest.TestCase):
         )
 
         status, endspec = db.get_key_string([
-            FieldSpec(FieldType.STRING, "default"),
-            FieldSpec(FieldType.STRING, "d")])
+            FieldValue(FieldType.STRING, "default"),
+            FieldValue(FieldType.STRING, "d")])
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(endspec, "^01default^00^01^01d^00^01")
 
@@ -441,14 +438,14 @@ class TestBasicTxn(unittest.TestCase):
 
     def test_key_string(self):
         db = SKVClient(args.http)
-        field1 = FieldSpec(FieldType.STRING, "default")
-        field2 = FieldSpec(FieldType.STRING, "d\x00ef")
+        field1 = FieldValue(FieldType.STRING, "default")
+        field2 = FieldValue(FieldType.STRING, "d\x00ef")
         status, endspec = db.get_key_string([field1, field2])
         self.assertEqual(status.code, 200, msg=status.message)
         print(field2)
         self.assertEqual(endspec, "^01default^00^01^01d^00^ffef^00^01")
 
-        field3 = FieldSpec(FieldType.INT32T, 10)
+        field3 = FieldValue(FieldType.INT32T, 10)
         status, endspec = db.get_key_string([field1, field3])
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(endspec, "^01default^00^01^02^03^00^0a^00^01")
@@ -489,6 +486,13 @@ class TestBasicTxn(unittest.TestCase):
         self.assertEqual(curr.txn_begin_latency, prev.txn_begin_latency+1)
         self.assertEqual(curr.txn_end_latency, prev.txn_end_latency+1)
         self.assertEqual(curr.txn_duration, prev.txn_duration+1)
+'''
 
-del sys.argv[1:]
-unittest.main()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--http", help="HTTP API URL")
+    parser.add_argument("--prometheus", default="http://localhost:8089", help="HTTP Proxy Prometheus port")
+    TestHTTP.args = parser.parse_args()
+
+    del sys.argv[1:]
+    unittest.main()

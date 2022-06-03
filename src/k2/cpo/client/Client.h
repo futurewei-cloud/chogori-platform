@@ -30,7 +30,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future.hh>  // for future stuff
 #include <seastar/core/sleep.hh>
 
-#include <k2/common/Chrono.h>
+#include <k2/logging/Chrono.h>
 #include <k2/config/Config.h>
 #include <k2/dto/Collection.h>
 #include <k2/dto/PersistenceCluster.h>

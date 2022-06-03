@@ -26,7 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/common/Common.h>
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include <k2/common/Timer.h>
 #include <k2/cpo/client/Client.h>
 #include <k2/dto/Collection.h>
@@ -55,12 +55,8 @@ struct K23SIClientException : public std::exception {
 
 class K2TxnOptions{
 public:
-    K2TxnOptions() noexcept :
-        deadline(Duration(1s)),
-        priority(dto::TxnPriority::Medium) {}
-
-    Deadline<> deadline;
-    dto::TxnPriority priority;
+    Deadline<> deadline = Deadline<>(Duration(1s));
+    dto::TxnPriority priority{dto::TxnPriority::Medium};
     bool syncFinalize = false;
     K2_DEF_FMT(K2TxnOptions, deadline, priority, syncFinalize);
 };
