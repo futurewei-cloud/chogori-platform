@@ -25,8 +25,7 @@ SOFTWARE.
 '''
 
 import argparse, unittest, sys
-from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient, HashScheme, StorageDriver, Schema, SchemaField, FieldType)
-from datetime import timedelta
+from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient, HashScheme, StorageDriver, Schema, SchemaField, FieldType, TimeDelta)
 import logging
 
 class TestHTTP(unittest.TestCase):
@@ -43,7 +42,7 @@ class TestHTTP(unittest.TestCase):
             hashScheme = HashScheme.HashCRC32C,
             storageDriver = StorageDriver.K23SI,
             capacity = CollectionCapacity(minNodes = 2),
-            retentionPeriod = timedelta(hours=5)
+            retentionPeriod = TimeDelta(hours=5)
         )
         TestHTTP.cl = SKVClient(TestHTTP.args.http)
         status = TestHTTP.cl.create_collection(metadata)
@@ -70,15 +69,12 @@ class TestHTTP(unittest.TestCase):
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
 
-'''
         # Write
-        record = {"partitionKey": "test1", "rangeKey": "test1", "data": "mydata"}
-        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": txnId, "schemaVersion": 1, "record": record}
-        url = args.http + "/api/Write"
-        r = requests.post(url, data=json.dumps(request))
-        result = r.json()
-        print(result)
-        self.assertEqual(result["status"]["code"], 201);
+        record = TestHTTP.schema.makeRecord(partitionKey="test1", rangeKey="test1", data="mydata")
+        status = txn.write(record)
+        self.assertTrue(status.is2xxOK())
+
+'''
 
         # Read
         record = {"partitionKey": "test1", "rangeKey": "test1"}

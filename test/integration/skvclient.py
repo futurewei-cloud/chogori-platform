@@ -33,8 +33,10 @@ from datetime import timedelta
 import logging
 logger = logging.getLogger(__name__)
 
-def serializeTD(tdelta):
-    return int(tdelta.total_seconds()*1000*1000*1000)
+class TimeDelta(timedelta):
+    def serialize(tdelta):
+        return int(self.total_seconds()*1000*1000*1000)
+
 class Status:
     "Status returned from HTTP Proxy"
 
@@ -63,62 +65,18 @@ class Status:
     def is5xxServerError(self):
         return self.code >= 500
 
-class DBLoc:
-    """Indicates a complete location to identify a record.
-
-       It helps doing read/write without spcifying all parameters.
-
-       Example:
-          loc = DBLoc("schema1", "collection1", partition_key_name="partitionKey",
-             range_key_name="rangeKey", partition_key="pkey1", range_key="rkey1",
-             schema_version=1)
-          # Write
-          txn.write(loc, data1="data 1", data2="data 2")
-          # Write to a differnt range key but other parameters same
-          txn.write(loc.get_new(range_key="rkey2"), data1="data 3", data2="data 4")
-    """
-
-    def __init__(self, schema, coll,
-        partition_key_name, range_key_name,
-        partition_key=None, range_key=None, schema_version=1):
-        self.schema = schema
-        self.coll = coll
-        self.partition_key_name=partition_key_name
-        self.range_key_name = range_key_name
-        self.partition_key = partition_key
-        self.range_key = range_key
-        self.schema_version = schema_version
-
-    def get_new(self, **kwargs):
-        "Create a copy and set some attributes"
-        obj = copy.copy(self)
-        obj.__dict__.update(kwargs)
-        return obj
-
-    # Get a data record from partition and range
-    # allowing multiple partitions or ranges
-    def get_fields(self) -> dict:
-        record = {}
-        if isinstance(self.partition_key_name, list):
-            for n, v in zip(self.partition_key_name, self.partition_key):
-                record[n] = v
-        else:
-            record[self.partition_key_name] = self.partition_key
-
-        if isinstance(self.range_key_name, list):
-            for n, v in zip(self.range_key_name, self.range_key):
-                record[n] = v
-        else:
-            record[self.range_key_name] = self.range_key
-
-        return record
-
-
 class Query:
     def __init__(self, query_id: int):
         self.query_id = query_id
         self.done = False
 
+class ExistencePrecondition(int, Enum):
+    Nil = 0
+    Exists = 1
+    NotExists = 2
+
+    def serialize(self):
+        return self.value
 
 class TxnPriority(int, Enum):
     Highest =  0
@@ -131,13 +89,13 @@ class TxnPriority(int, Enum):
         return self.value
 
 class TxnOptions:
-    def __init__(self, timeout=timedelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
+    def __init__(self, timeout=TimeDelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
         self.timeout = timeout
         self.priority = priority
         self.syncFinalize = syncFinalize
 
     def serialize(self):
-        return [serializeTD(self.timeout), self.priority.serialize(), self.syncFinalize]
+        return [self.timeout.serialize(), self.priority.serialize(), self.syncFinalize]
 
 class Txn:
     "Transaction Object"
@@ -145,15 +103,11 @@ class Txn:
         self.client = client
         self.timestamp = timestamp
 
-    def write(self, loc: DBLoc, additional_data={}) -> Status:
-        "Write to dbloc"
-        record = additional_data.copy()
-        record.update(loc.get_fields())
-        request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self.timestamp, "schemaVersion": loc.schema_version,
-            "record": record}
-        result = self._send_req("/api/Write", request)
-        return Status(result)
+    def write(self, record, erase=False, precondition=ExistencePrecondition.Nil) -> Status:
+        "Write record"
+        record.timestamp = self.timestamp
+        status, _ = self.client.make_call('/api/Write', [self.timestamp, erase, precondition.serialize(), record.serialize()])
+        return status
 
     def read(self, loc: DBLoc) :
         record = loc.get_fields()
@@ -200,6 +154,17 @@ class FieldType(int, Enum):
     def serialize(self):
         return self.value
 
+class Record:
+    def __init__(self, schemaName, schemaVersion):
+        self.schemaName = schemaName
+        self.schemaVersion = schemaVersion
+        self.fields = []
+        self.timestamp = None
+
+    def serialize(self):
+        return []
+
+
 class SchemaField:
     def __init__(self, type: FieldType, name: str,
         descending: bool= False, nullLast: bool = False):
@@ -207,6 +172,7 @@ class SchemaField:
         self.name = name
         self.descending = descending
         self.nullLast = nullLast
+
     def serialize(self):
         return [self.type.serialize(), self.name.encode(), self.descending, self.nullLast]
 
@@ -219,6 +185,11 @@ class Schema:
         self.fields = fields
         self.partitionKeyFields = partitionKeyFields
         self.rangeKeyFields = rangeKeyFields
+
+    def makeRecord(self, **fields):
+        rec = Record(self.name, self.version)
+        rec.fields = [(field, fields.get(field.name, None)) for field in self.fields]
+        return rec
 
     def serialize(self):
         return [self.name.encode(),
@@ -257,7 +228,7 @@ class StorageDriver(int, Enum):
 class CollectionMetadata:
     def __init__(self, name: str, hashScheme: HashScheme,
         storageDriver: StorageDriver, capacity: CollectionCapacity,
-        retentionPeriod=timedelta(hours=1), heartbeatDeadline=timedelta(hours=0), deleted: bool = False):
+        retentionPeriod=TimeDelta(hours=1), heartbeatDeadline=TimeDelta(hours=0), deleted: bool = False):
         self.name = name
         self.hashScheme = hashScheme
         self.storageDriver = storageDriver
@@ -272,8 +243,8 @@ class CollectionMetadata:
             self.hashScheme.serialize(),
             self.storageDriver.serialize(),
             self.capacity.serialize(),
-            serializeTD(self.retentionPeriod),
-            serializeTD(self.heartbeatDeadline),
+            self.retentionPeriod.serialize(),
+            self.heartbeatDeadline.serialize(),
             self.deleted
             ]
 

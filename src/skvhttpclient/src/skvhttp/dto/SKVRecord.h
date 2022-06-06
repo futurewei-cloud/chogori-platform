@@ -179,7 +179,6 @@ public:
     bool keyValuesAvailable = false; // Whether the values for key fields are in the storage payload
     bool keyStringsConstructed = false; // Whether the encoded keys are already in the vectors above
     MPackReader reader;
-    K2_SERIALIZABLE_FMT(SKVRecord, collectionName, storage);
 
     friend class SKVRecordBuilder;
 private:

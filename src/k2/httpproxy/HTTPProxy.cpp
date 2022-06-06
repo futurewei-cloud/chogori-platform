@@ -32,179 +32,51 @@ inline thread_local k2::logging::Logger httpproxy("k2::httpproxy");
 }
 
 namespace k2 {
-using namespace dto;
-/*
-template <typename T>
-void serializeFieldFromJSON(const k2::SchemaField& field, k2::SKVRecord& record,
-                                   const nlohmann::json& jsonRecord) {
-    T value;
-    jsonRecord.at(field.name).get_to(value);
-    record.serializeNext<T>(value);
-}
 
-template <>
-void serializeFieldFromJSON<k2::String>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
-    std::string value;
-    jsonRecord.at(field.name).get_to(value);
-    record.serializeNext<k2::String>(value);
-}
-
-template <>
-void serializeFieldFromJSON<std::decimal::decimal64>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
-    (void) field;
-    (void) record;
-    (void) jsonRecord;
-    throw k2::dto::TypeMismatchException("decimal64 type not supported with JSON interface");
-}
-
-template <>
-void serializeFieldFromJSON<std::decimal::decimal128>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
-    (void) field;
-    (void) record;
-    (void) jsonRecord;
-    throw k2::dto::TypeMismatchException("decimal128 type not supported with JSON interface");
-}
-
-template <>
-void serializeFieldFromJSON<k2::dto::FieldType>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, const nlohmann::json& jsonRecord) {
-    (void) field;
-    (void) record;
-    (void) jsonRecord;
-    throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
-}
-
-template <typename T>
-void serializeFieldFromRecord(const k2::SchemaField& field, k2::SKVRecord& record,
-                                   nlohmann::json& jsonRecord) {
-    std::optional<T> value = record.deserializeNext<T>();
-    if (!value.has_value()) {
-        jsonRecord[field.name] = nullptr;
-    } else {
-        jsonRecord[field.name] = *value;
-    }
-}
-
-template <>
-void serializeFieldFromRecord<k2::String>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
-    std::optional<k2::String> value = record.deserializeNext<k2::String>();
-    if (!value.has_value()) {
-        jsonRecord[field.name] = nullptr;
-    } else {
-        std::string val_str = *value;
-        jsonRecord[field.name] = val_str;
-    }
-}
-
-template <>
-void serializeFieldFromRecord<std::decimal::decimal64>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
-    (void) field;
-    (void) record;
-    (void) jsonRecord;
-    throw k2::dto::TypeMismatchException("decimal64 type not supported with JSON interface");
-}
-
-template <>
-void serializeFieldFromRecord<std::decimal::decimal128>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
-    (void) field;
-    (void) record;
-    (void) jsonRecord;
-    throw k2::dto::TypeMismatchException("decimal128 type not supported with JSON interface");
-}
-
-template <>
-void serializeFieldFromRecord<k2::dto::FieldType>(const k2::SchemaField& field,
-                                            k2::SKVRecord& record, nlohmann::json& jsonRecord) {
-    (void) field;
-    (void) record;
-    (void) jsonRecord;
-    throw k2::dto::TypeMismatchException("FieldType type not supported with JSON interface");
-}
-
-
-seastar::future<nlohmann::json> JsonResponse(Status&& status) {
-    nlohmann::json resp;
-    resp["status"] = std::move(status);
-    return seastar::make_ready_future<nlohmann::json>(std::move(resp));
-}
-
-seastar::future<nlohmann::json> JsonResponse(Status&& status, nlohmann::json&& response) {
-    nlohmann::json jsonResponse;
-    jsonResponse["status"] = std::move(status);
-    jsonResponse["response"] = std::move(response);
-    return seastar::make_ready_future<nlohmann::json>(std::move(jsonResponse));
-}
-
-void HTTPProxy::serializeRecordFromJSON(k2::SKVRecord& record, nlohmann::json&& jsonRecord) {
-    for (const k2::dto::SchemaField& field : record.schema->fields) {
-        std::string name = field.name;
-        if (!jsonRecord.contains(name)) {
-            record.serializeNull();
-            continue;
+void _shdRecToK2(shd::SKVRecord& shdrec, dto::SKVRecord& k2rec) {
+    shdrec.visitRemainingFields([&k2rec](const auto&, auto&& value) mutable {
+        if (value) {
+            using T = typename std::remove_reference_t<decltype(value)>::value_type;
+            if constexpr (std::is_same_v<T, shd::FieldType>) {
+                auto kval = static_cast<dto::FieldType>(to_integral(*value));
+                k2rec.serializeNext<dto::FieldType>(kval);
+            } else if constexpr (std::is_same_v<T, sh::String>) {
+                String k2str(value->data(), value->size());
+                k2rec.serializeNext<String>(std::move(k2str));
+            } else {
+                k2rec.serializeNext<T>(*value);
+            }
+        } else {
+            k2rec.serializeNull();
         }
-
-        K2_DTO_CAST_APPLY_FIELD_VALUE(serializeFieldFromJSON, field, record, jsonRecord);
-    }
+    });
+    k2rec.seekField(0);
 }
 
-nlohmann::json HTTPProxy::serializeJSONFromRecord(k2::SKVRecord& record) {
-    nlohmann::json jsonRecord;
-    for (const k2::dto::SchemaField& field : record.schema->fields) {
-        K2_DTO_CAST_APPLY_FIELD_VALUE(serializeFieldFromRecord, field, record, jsonRecord);
-    }
-    return jsonRecord;
-}
-
-// Get FieldToKeyString value for a type
-template <class T> void getEscapedString(const SchemaField& field, const nlohmann::json& jsonval,  String& out) {
-    T val;
-    (void)field;
-    if constexpr  (std::is_same_v<T, std::decimal::decimal64>
-        || std::is_same_v<T, std::decimal::decimal128>) {
-        throw k2::dto::TypeMismatchException("decimal type not supported with JSON interface");
+template <typename T>
+void _buildSHDRecordHelperVisitor(std::optional<T> value, String&, shd::SKVRecordBuilder& builder) {
+    if (value) {
+        if constexpr (std::is_same_v<T, dto::FieldType>) {
+            auto ft = static_cast<shd::FieldType>(to_integral(*value));
+            builder.serializeNext<shd::FieldType>(ft);
+        } else if constexpr (std::is_same_v<T, String>) {
+            sh::String str(value->data(), value->size());
+            builder.serializeNext<sh::String>(std::move(str));
+        } else {
+            builder.serializeNext<T>(*value);
+        }
     } else {
-        jsonval.get_to(val);
-        out = FieldToKeyString<T>(val);
+        builder.serializeNull();
     }
 }
 
-// Convert [{type: "FieldType", value: "value"}, ..] to string that can be used in collection range end
-seastar::future<nlohmann::json> HTTPProxy::_handleGetKeyString(nlohmann::json&& request) {
-    String output;
-    if (!request.contains("fields")) {
-        _deserializationErrors++;
-        return JsonResponse(Statuses::S400_Bad_Request("Invalid json"));
-    }
-
-    for (auto& record : request["fields"]) {
-        SchemaField field;
-        record.at("type").get_to(field.type);
-        String out;
-        K2_DTO_CAST_APPLY_FIELD_VALUE(getEscapedString, field, record["value"], out);
-        output += out;
-    }
-    return JsonResponse(Statuses::S200_OK(""), nlohmann::json{{"result", output}});
+shd::SKVRecord _buildSHDRecord(dto::SKVRecord& k2rec, sh::String& collectionName, std::shared_ptr<shd::Schema> shdSchema) {
+    shd::SKVRecordBuilder builder(collectionName, shdSchema);
+    FOR_EACH_RECORD_FIELD(k2rec, _buildSHDRecordHelperVisitor, builder);
+    return builder.build();
 }
-*/
-
-
 
 /*
-seastar::future<HTTPPayload> HTTPProxy::_handleBegin(HTTPPayload&& request) {
-    (void) request;
-    return _client.beginTxn(k2::K2TxnOptions())
-    .then([this] (auto&& txn) {
-        K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
-        _txns[_txnID++] = std::move(txn);
-        return JsonResponse(Statuses::S201_Created("Begin txn success"), nlohmann::json{{"txnID", _txnID - 1}});
-    });
-}
 
 seastar::future<HTTPPayload> HTTPProxy::_handleEnd(HTTPPayload&& request) {
     uint64_t id;
@@ -230,109 +102,6 @@ seastar::future<HTTPPayload> HTTPProxy::_handleEnd(HTTPPayload&& request) {
         return JsonResponse(std::move(result.status));
     });
 }
-
-seastar::future<HTTPPayload> HTTPProxy::_handleRead(HTTPPayload&& request) {
-    std::string collectionName;
-    std::string schemaName;
-    uint64_t id;
-    nlohmann::json record;
-    nlohmann::json response;
-
-    try {
-        request.at("collectionName").get_to(collectionName);
-        request.at("schemaName").get_to(schemaName);
-        request.at("txnID").get_to(id);
-        bool found = request.contains("record");
-        if (!found) {
-            throw std::runtime_error("Bad request");
-        }
-        record = request["record"];
-    } catch (...) {
-        _deserializationErrors++;
-        return JsonResponse(Statuses::S400_Bad_Request("Invalid json for read request"));
-    }
-
-    std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
-    if (it == _txns.end()) {
-        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for read request"));
-    }
-
-    return _client.getSchema(collectionName, schemaName, ANY_SCHEMA_VERSION)
-    .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
-                                            (k2::GetSchemaResult&& result) mutable {
-        if(!result.status.is2xxOK()) {
-            return JsonResponse(std::move(result.status));
-        }
-
-        k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
-        try {
-            serializeRecordFromJSON(record, std::move(jsonRecord));
-        } catch(nlohmann::json::exception& e) {
-            _deserializationErrors++;
-            return JsonResponse(Statuses::S400_Bad_Request(e.what()));
-        }
-        return _txns[id].read(std::move(record))
-        .then([this] (k2::ReadResult<k2::dto::SKVRecord>&& result) {
-            if(!result.status.is2xxOK()) {
-                return JsonResponse(std::move(result.status));
-            }
-            nlohmann::json resp;
-            resp["record"] = serializeJSONFromRecord(result.value);
-            return JsonResponse(std::move(result.status), std::move(resp));
-        });
-    });
-}
-
-seastar::future<HTTPPayload> HTTPProxy::_handleWrite(HTTPPayload&& request) {
-    std::string collectionName;
-    std::string schemaName;
-    uint64_t id;
-    uint64_t schemaVersion;
-    nlohmann::json record;
-    nlohmann::json response;
-
-    try {
-        request.at("collectionName").get_to(collectionName);
-        request.at("schemaName").get_to(schemaName);
-        request.at("txnID").get_to(id);
-        request.at("schemaVersion").get_to(schemaVersion);
-        bool found = request.contains("record");
-        if (!found) {
-            throw std::runtime_error("Bad request");
-        }
-        record = request["record"];
-    } catch (...) {
-        _deserializationErrors++;
-        return JsonResponse(Statuses::S400_Bad_Request("Bad json for write request"));
-    }
-
-    std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
-    if (it == _txns.end()) {
-        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for write request"));
-    }
-
-    return _client.getSchema(collectionName, schemaName, schemaVersion)
-    .then([this, id, collName=std::move(collectionName), jsonRecord=std::move(record)]
-                                            (k2::GetSchemaResult&& result) mutable {
-        if(!result.status.is2xxOK()) {
-            return JsonResponse(std::move(result.status));
-        }
-
-        k2::SKVRecord record = k2::SKVRecord(collName, result.schema);
-        try {
-            serializeRecordFromJSON(record, std::move(jsonRecord));
-        } catch(nlohmann::json::exception& e) {
-            _deserializationErrors++;
-            return JsonResponse(Statuses::S400_Bad_Request(e.what()));
-        }
-
-        return _txns[id].write(record)
-        .then([] (k2::WriteResult&& result) {
-            return JsonResponse(std::move(result.status));
-        });
-    });
-}
-
 
 seastar::future<HTTPPayload> HTTPProxy::_handleCreateQuery(HTTPPayload&& jsonReq) {
     std::string collectionName;
@@ -422,11 +191,11 @@ seastar::future<HTTPPayload> HTTPProxy::_handleGetSchema(HTTPPayload&& request) 
         });
 }
 */
-seastar::future<std::tuple<sh::Status, sh::dto::CollectionCreateResponse>>
-HTTPProxy::_handleCreateCollection(sh::dto::CollectionCreateRequest&& request) {
+seastar::future<std::tuple<sh::Status, shd::CollectionCreateResponse>>
+HTTPProxy::_handleCreateCollection(shd::CollectionCreateRequest&& request) {
     K2LOG_D(log::httpproxy, "Received create collection request {}", request);
 
-    k2::dto::CollectionMetadata meta{
+    dto::CollectionMetadata meta{
         .name = request.metadata.name,
         .hashScheme = static_cast<dto::HashScheme>(request.metadata.hashScheme),
         .storageDriver = static_cast<dto::StorageDriver>(request.metadata.storageDriver),
@@ -448,25 +217,25 @@ HTTPProxy::_handleCreateCollection(sh::dto::CollectionCreateRequest&& request) {
 
     return _client.makeCollection(std::move(meta), std::move(rends))
         .then([](Status&& status) {
-            return MakeHTTPResponse<sh::dto::CollectionCreateResponse>(sh::Status{.code=status.code, .message=status.message}, sh::dto::CollectionCreateResponse{});
+            return MakeHTTPResponse<shd::CollectionCreateResponse>(sh::Status{.code=status.code, .message=status.message}, shd::CollectionCreateResponse{});
         });
 }
 
-seastar::future<std::tuple<sh::Status, sh::dto::CreateSchemaResponse>>
-HTTPProxy::_handleCreateSchema(sh::dto::CreateSchemaRequest&& request) {
+seastar::future<std::tuple<sh::Status, shd::CreateSchemaResponse>>
+HTTPProxy::_handleCreateSchema(shd::CreateSchemaRequest&& request) {
     K2LOG_D(log::httpproxy, "Received create schema request {}", request);
 
-    std::vector<k2::dto::SchemaField> k2fields;
+    std::vector<dto::SchemaField> k2fields;
 
     for (auto& f: request.schema.fields) {
-        k2fields.push_back(k2::dto::SchemaField{
-            .type = static_cast<k2::dto::FieldType>(f.type),
+        k2fields.push_back(dto::SchemaField{
+            .type = static_cast<dto::FieldType>(f.type),
             .name = f.name,
             .descending = f.descending,
             .nullLast = f.nullLast
         });
     }
-    k2::dto::Schema schema{
+    dto::Schema schema{
         .name = request.schema.name,
         .version = request.schema.version,
         .fields = std::move(k2fields),
@@ -476,92 +245,218 @@ HTTPProxy::_handleCreateSchema(sh::dto::CreateSchemaRequest&& request) {
 
     return _client.createSchema(String(request.collectionName), std::move(schema))
         .then([](auto&& result) {
-            return MakeHTTPResponse<sh::dto::CreateSchemaResponse>(sh::Status{.code=result.status.code, .message=result.status.message}, sh::dto::CreateSchemaResponse{});
+            return MakeHTTPResponse<shd::CreateSchemaResponse>(sh::Status{.code=result.status.code, .message=result.status.message}, shd::CreateSchemaResponse{});
         });
 }
 
-seastar::future<std::tuple<sh::Status, sh::dto::BeginTxnResponse>>
-HTTPProxy::_handleBeginTxn(sh::dto::BeginTxnRequest&& request){
+seastar::future<std::tuple<sh::Status, shd::TxnBeginResponse>>
+HTTPProxy::_handleTxnBegin(shd::TxnBeginRequest&& request){
     K2LOG_D(log::httpproxy, "Received begin txn request {}", request);
-    k2::K2TxnOptions opts{
-        .deadline= k2::Deadline<>(request.options.timeout),
-        .priority = static_cast<k2::TxnPriority>(request.options.priority),
+    K2TxnOptions opts{
+        .deadline= Deadline<>(request.options.timeout),
+        .priority = static_cast<dto::TxnPriority>(request.options.priority),
         .syncFinalize = request.options.syncFinalize
     };
     return _client.beginTxn(std::move(opts))
         .then([this](auto&& txn) {
-            K2LOG_D(k2::log::httpproxy, "begin txn: {}", txn.mtr());
+            K2LOG_D(log::httpproxy, "begin txn: {}", txn.mtr());
             auto ts = txn.mtr().timestamp;
-            sh::dto::Timestamp shts{.endCount = ts.endCount, .tsoId = ts.tsoId, .startDelta = ts.startDelta};
-            _txns[shts] = std::move(txn);
-            return MakeHTTPResponse<sh::dto::BeginTxnResponse>(sh::Statuses::S201_Created(""), sh::dto::BeginTxnResponse{.timestamp=shts});
+            shd::Timestamp shts{.endCount = ts.endCount, .tsoId = ts.tsoId, .startDelta = ts.startDelta};
+            if (auto it = _txns.find(shts); it != _txns.end()) {
+                return MakeHTTPResponse<shd::TxnBeginResponse>(sh::Statuses::S500_Internal_Server_Error("duplicate transaction ID detected"), shd::TxnBeginResponse{});
+            }
+            else {
+                _txns.insert(it, {shts, ManagedTxn{.handle=std::move(txn), .queries={}}});
+                return MakeHTTPResponse<shd::TxnBeginResponse>(sh::Statuses::S201_Created(""), shd::TxnBeginResponse{.timestamp=shts});
+            }
         });
 }
 
-HTTPProxy::HTTPProxy() : _client(k2::K23SIClientConfig()) {
+seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
+HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received write request {}", request);
+
+    return seastar::do_with(std::move(request), [this] (auto& request) {
+        return _getSchemas(request.collectionName, request.schemaName, request.value.schemaVersion)
+        .then([this, &request](auto&& schemas) mutable {
+            auto& [status, k2Schema, shdSchema] = schemas;
+            if (!status.is2xxOK()) {
+                return MakeHTTPResponse<shd::WriteResponse>(sh::Status{.code=status.code, .message=status.message}, shd::WriteResponse{});
+            }
+            auto it = _txns.find(request.timestamp);
+            if (it == _txns.end()) {
+                return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S410_Gone("transaction does not exist"), shd::WriteResponse{});
+            }
+            dto::SKVRecord k2record(request.collectionName, k2Schema);
+            bool haveKeys = !request.isDelete && request.fieldsForPartialUpdate.size() == 0;
+            shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.value), haveKeys);
+            _shdRecToK2(shdrecord, k2record);
+
+            return it->second.handle.write(k2record, request.isDelete, static_cast<dto::ExistencePrecondition>(request.precondition))
+                .then([](WriteResult&& result) {
+                    return MakeHTTPResponse<shd::WriteResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::WriteResponse{});
+                });
+        });
+    });
+}
+
+seastar::future<std::tuple<sh::Status, shd::ReadResponse>>
+HTTPProxy::_handleRead(shd::ReadRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received read request {}", request);
+
+    return seastar::do_with(std::move(request), [this](auto& request) {
+        return _getSchemas(request.collectionName, request.schemaName, request.key.schemaVersion)
+            .then([this, &request](auto&& schemas) mutable {
+                auto& [status, k2Schema, shdSchema] = schemas;
+                if (!status.is2xxOK()) {
+                    return MakeHTTPResponse<shd::ReadResponse>(sh::Status{.code = status.code, .message = status.message}, shd::ReadResponse{});
+                }
+                auto it = _txns.find(request.timestamp);
+                if (it == _txns.end()) {
+                    return MakeHTTPResponse<shd::ReadResponse>(sh::Statuses::S410_Gone("transaction does not exist"), shd::ReadResponse{});
+                }
+                dto::SKVRecord k2record(request.collectionName, k2Schema);
+                shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.key), true);
+                _shdRecToK2(shdrecord, k2record);
+
+                return it->second.handle.read(k2record.getKey(), request.collectionName)
+                    .then([&request, shdSchema, k2Schema](auto&& result) {
+                        if (!result.status.is2xxOK()) {
+                            return MakeHTTPResponse<shd::ReadResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::ReadResponse{});
+                        }
+                        auto rec = _buildSHDRecord(result.value, request.collectionName, shdSchema);
+                        shd::ReadResponse resp{
+                            .collectionName=request.collectionName,
+                            .schemaName=request.schemaName,
+                            .record=std::move(rec.getStorage())
+                        };
+                        return MakeHTTPResponse<shd::ReadResponse>(sh::Statuses::S200_OK(""), std::move(resp));
+                    });
+            });
+    });
+}
+
+seastar::future<std::tuple<sh::Status, shd::QueryResponse>>
+HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received query request {}", request);
+    return MakeHTTPResponse<shd::QueryResponse>(sh::Statuses::S501_Not_Implemented("query not implemented"), shd::QueryResponse{});
+}
+
+seastar::future<std::tuple<sh::Status, shd::TxnEndResponse>>
+HTTPProxy::_handleTxnEnd(shd::TxnEndRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received txn end request {}", request);
+    return MakeHTTPResponse<shd::TxnEndResponse>(sh::Statuses::S501_Not_Implemented("txn end not implemented"), shd::TxnEndResponse{});
+}
+
+seastar::future<std::tuple<sh::Status, shd::GetSchemaResponse>>
+HTTPProxy::_handleGetSchema(shd::GetSchemaRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received get schema request {}", request);
+    return MakeHTTPResponse<shd::GetSchemaResponse>(sh::Statuses::S501_Not_Implemented("get schema not implemented"), shd::GetSchemaResponse{});
+}
+
+seastar::future<std::tuple<sh::Status, shd::CreateQueryResponse>>
+HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received create query request {}", request);
+    return MakeHTTPResponse<shd::CreateQueryResponse>(sh::Statuses::S501_Not_Implemented("create query not implemented"), shd::CreateQueryResponse{});
+}
+
+seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>
+HTTPProxy::_getSchemas(sh::String cname, sh::String sname, int64_t sversion) {
+    return _client.getSchema(cname, sname, sversion)
+        .then([this, cname=std::move(cname)](GetSchemaResult&& result) mutable {
+            if (!result.status.is2xxOK()) {
+                return seastar::make_ready_future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>(std::move(result.status), std::shared_ptr<dto::Schema>(), std::shared_ptr<shd::Schema>());
+            }
+            // create the nested maps as needed - we have a schema
+            auto& shdSchemaPtr = _shdSchemas[cname][result.schema->name][result.schema->version];
+            if (!shdSchemaPtr) {
+                std::vector<shd::SchemaField> shdfields;
+
+                for (auto& f : result.schema->fields) {
+                    shdfields.push_back(shd::SchemaField{
+                        .type = static_cast<shd::FieldType>(f.type),
+                        .name = sh::String(f.name.data(), f.name.size()),
+                        .descending = f.descending,
+                        .nullLast = f.nullLast});
+                }
+                shd::Schema* schema  = new shd::Schema{
+                    .name = result.schema->name,
+                    .version = result.schema->version,
+                    .fields = std::move(shdfields),
+                    .partitionKeyFields = result.schema->partitionKeyFields,
+                    .rangeKeyFields = result.schema->rangeKeyFields};
+                shdSchemaPtr.reset(schema);
+            }
+            return seastar::make_ready_future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>(std::move(result.status), std::move(result.schema), std::move(shdSchemaPtr));
+        });
+}
+
+HTTPProxy::HTTPProxy() : _client(K23SIClientConfig()) {
 }
 
 seastar::future<> HTTPProxy::gracefulStop() {
-    _stopped = true;
-
-    auto it = _txns.begin();
-    for(; it != _txns.end(); ++it) {
-        _endFuts.push_back(it->second.end(false).discard_result());
+    std::vector<seastar::future<>> futs;
+    for(auto& [ts, txn]: _txns) {
+        futs.push_back(txn.handle.end(false).discard_result());
     }
 
-    return seastar::when_all_succeed(_endFuts.begin(), _endFuts.end());
+    return seastar::when_all_succeed(futs.begin(), futs.end());
 }
 
 seastar::future<> HTTPProxy::start() {
-    _stopped = false;
     _registerMetrics();
     _registerAPI();
-    auto _startFut = seastar::make_ready_future<>();
-    _startFut = _startFut.then([this] {return _client.start();});
-    return _startFut;
+    return _client.start();
 }
 
 void HTTPProxy::_registerAPI() {
-    K2LOG_I(k2::log::httpproxy, "Registering HTTP API observers...");
-    k2::APIServer& api_server = k2::AppBase().getDist<k2::APIServer>().local();
-/*
-    api_server.registerRawAPIObserver("BeginTxn", "Begin a txn", [this](auto&& request) {
-        return _handleBegin(std::move(request));
-    });
-    api_server.registerRawAPIObserver("EndTxn", "End a txn", [this](auto&& request) {
-        return _handleEnd(std::move(request));
-    });
-    api_server.registerRawAPIObserver("Read", "handle read", [this](auto&& request) {
-        return _handleRead(std::move(request));
-    });
-    api_server.registerRawAPIObserver("Write", "handle write", [this](auto&& request) {
-        return _handleWrite(std::move(request));
-    });
-    api_server.registerRawAPIObserver("GetKeyString", "get range end", [this](auto&& request) {
-        return _handleGetKeyString(std::move(request));
-    });
-    api_server.registerRawAPIObserver("Query", "query", [this](auto&& request) {
-        return _handleQuery(std::move(request));
-    });
-    api_server.registerRawAPIObserver("CreateQuery", "create query", [this](auto&& request) {
-        return _handleCreateQuery(std::move(request));
-    });
-    api_server.registerRawAPIObserver("GetSchema", "get schema",  [this] (auto&& request) {
-        return _handleGetSchema(std::move(request));
-    });
-*/
-    api_server.registerAPIObserver<sh::Statuses, sh::dto::CollectionCreateRequest, sh::dto::CollectionCreateResponse>
+    K2LOG_I(log::httpproxy, "Registering HTTP API observers...");
+    APIServer& api_server = AppBase().getDist<APIServer>().local();
+
+    api_server.registerAPIObserver<sh::Statuses, shd::CollectionCreateRequest, shd::CollectionCreateResponse>
         ("CreateCollection", "create collection", [this] (auto&& request) {
             return _handleCreateCollection(std::move(request));
         });
 
-    api_server.registerAPIObserver<sh::Statuses, sh::dto::CreateSchemaRequest, sh::dto::CreateSchemaResponse>("CreateSchema", "create schema", [this](auto&& request) {
-        return _handleCreateSchema(std::move(request));
-    });
+    api_server.registerAPIObserver<sh::Statuses, shd::CreateSchemaRequest, shd::CreateSchemaResponse>
+        ("CreateSchema", "create schema", [this](auto&& request) {
+            return _handleCreateSchema(std::move(request));
+        });
 
-    api_server.registerAPIObserver<sh::Statuses, sh::dto::BeginTxnRequest, sh::dto::BeginTxnResponse>("BeginTxn", "begin transaction", [this](auto&& request) {
-        return _handleBeginTxn(std::move(request));
-    });
+    api_server.registerAPIObserver<sh::Statuses, shd::TxnBeginRequest, shd::TxnBeginResponse>
+        ("TxnBegin", "begin transaction", [this](auto&& request) {
+            return _handleTxnBegin(std::move(request));
+        });
+
+    api_server.registerAPIObserver<sh::Statuses, shd::WriteRequest, shd::WriteResponse>
+        ("Write", "write request", [this](auto&& request) {
+            return _handleWrite(std::move(request));
+        });
+
+    api_server.registerAPIObserver<sh::Statuses, shd::ReadRequest, shd::ReadResponse>
+        ("Read", "read request", [this](auto&& request) {
+            return _handleRead(std::move(request));
+        });
+
+    api_server.registerAPIObserver<sh::Statuses, shd::QueryRequest, shd::QueryResponse>
+        ("Query", "query request", [this](auto&& request) {
+            return _handleQuery(std::move(request));
+        });
+
+    api_server.registerAPIObserver<sh::Statuses, shd::TxnEndRequest, shd::TxnEndResponse>
+        ("TxnEnd", "end transaction", [this](auto&& request) {
+            return _handleTxnEnd(std::move(request));
+        });
+
+    api_server.registerAPIObserver<sh::Statuses, shd::CreateQueryRequest, shd::CreateQueryResponse>
+        ("CreateQuery", "create query", [this](auto&& request) {
+            return _handleCreateQuery(std::move(request));
+        });
+
+    api_server.registerAPIObserver<sh::Statuses, shd::GetSchemaRequest, shd::GetSchemaResponse>
+        ("GetSchema", "get schema", [this](auto&& request) {
+            return _handleGetSchema(std::move(request));
+        });
 }
 
 void HTTPProxy::_registerMetrics() {
@@ -570,10 +465,7 @@ void HTTPProxy::_registerMetrics() {
 
     _metric_groups.add_group("session",
     {
-        sm::make_counter("deserialization_errors", _deserializationErrors, sm::description("Total number of deserialization errors"), labels),
-
         sm::make_gauge("open_txns", [this]{ return  _txns.size();}, sm::description("Total number of open txn handles"), labels),
-        sm::make_gauge("open_queries", [this]{ return  _queries.size();}, sm::description("Total number of open queries"), labels),
     });
 }
 }
