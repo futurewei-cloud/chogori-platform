@@ -395,12 +395,9 @@ HTTPProxy::HTTPProxy() : _client(K23SIClientConfig()) {
 }
 
 seastar::future<> HTTPProxy::gracefulStop() {
-    std::vector<seastar::future<>> futs;
-    for(auto& [ts, txn]: _txns) {
-        futs.push_back(txn.handle.end(false).discard_result());
-    }
+    _txns.clear();
 
-    return seastar::when_all_succeed(futs.begin(), futs.end());
+    return seastar::make_ready_future();
 }
 
 seastar::future<> HTTPProxy::start() {
