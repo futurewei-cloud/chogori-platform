@@ -90,7 +90,9 @@ private: // members
     std::thread _clockPoller;
     // flag to signal the poller to stop
     std::atomic_flag _keepRunningPoller = ATOMIC_FLAG_INIT;
-
+    // flag to signal that the GPS clock initialization has been called
+    std::atomic_flag _clockInitializedFlag = ATOMIC_FLAG_INIT;
+    
     // metrics
     sm::metric_groups _metricGroups;
     k2::ExponentialHistogram _timestampErrors;

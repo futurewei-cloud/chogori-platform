@@ -51,8 +51,8 @@ private:
     ConfigVar<String> _dataDir{"data_dir"};
     ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id"};
     ConfigDuration _TSOErrorBound{"tso_error_bound", 20us};
-    SingleTimer _tsoAssignTimer;
     std::vector<String> _healthyTSOs;
+    seastar::future<> _tsoAssignment = seastar::make_ready_future<>();
     String _getCollectionPath(String name);
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);
@@ -77,6 +77,7 @@ private:
     int _makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& rangeEnds);
     seastar::future<> _assignAllTSOs();
     seastar::future<> _assignTSO(String &ep, size_t tsoID, int retry);
+    seastar::future<> _doAssignTSO(String &ep, size_t tsoID);
     // Collection name -> schemas
     std::unordered_map<String, std::vector<dto::Schema>> schemas;
 

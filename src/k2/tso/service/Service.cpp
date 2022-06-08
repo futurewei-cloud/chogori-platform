@@ -84,7 +84,7 @@ seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration errBound) {
     return seastar::make_ready_future<>()
         .then([this]{
             seastar::future<> startFut = seastar::make_ready_future<>();
-            if (seastar::this_shard_id() == 0) {
+            if (!_clockInitializedFlag.test_and_set()) {
                 K2LOG_I(log::tsoserver, "TSOService initializing GPS clock");
                 GPSClockInst.initialize(nsec(_CPOErrorBound).count());
                 auto now = GPSClockInst.now();
@@ -164,8 +164,12 @@ TSOService::_handleAssignment(dto::AssignTSORequest&& request) {
     return _assign(request.tsoID, request.tsoErrBound).then([] {
         return RPCResponse(Statuses::S200_OK("OK"), dto::AssignTSOResponse{});
     }).handle_exception([] (auto exp) {
-        K2LOG_W_EXC(log::tsoserver, exp, "failed to assign");
-        return RPCResponse(Statuses::S500_Internal_Server_Error("Unable to assign TSO server"), dto::AssignTSOResponse{});
+        try {
+            std::rethrow_exception(exp);
+        } catch (const std::runtime_error& e) {
+            K2LOG_W_EXC(log::tsoserver, exp, "failed to assign");
+            return RPCResponse(Statuses::S500_Internal_Server_Error(e.what()), dto::AssignTSOResponse{});
+        }
     });
 }
 
