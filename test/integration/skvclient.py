@@ -107,16 +107,23 @@ class Txn:
         "Write record"
         record.timestamp = self.timestamp
         status, _ = self.client.make_call('/api/Write',
-            [self.timestamp, collection.encode(), record.schemaName.encode(),
+            [self.timestamp, collection, record.schemaName,
              erase, precondition.serialize(), record.serialize(), record.fieldsForPartialUpdate])
         return status
 
-    def read(self, keyrec) :
-        request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self.timestamp, "record": record}
-        result = self._send_req("/api/Read", request)
-        output = result["response"].get("record") if "response" in result else None
-        return Status(result), output
+    def read(self, collection, keyrec) :
+        "Read record"
+        keyrec.timestamp = self.timestamp
+        status, resp = self.client.make_call('/api/Read',
+            [self.timestamp, collection, keyrec.schemaName, keyrec.serialize()])
+        if not status.is2xxOK() or status.code == 404:
+            return status, None
+
+        cname, sname, storage = resp
+
+        schema = self.client.get_schema(cname, sname, storage[2])
+
+        return status, schema.parse_read(storage, self.timestamp)
 
     def query(self, query: Query):
         request = {"txnID" : self.timestamp, "queryID": query.query_id}
@@ -155,19 +162,22 @@ class FieldType(int, Enum):
     def serialize(self):
         return self.value
 
+class Data:
+    'data storage class for records'
+    pass
 class Record:
     def __init__(self, schemaName, schemaVersion):
         self.schemaName = schemaName
         self.schemaVersion = schemaVersion
-        self.fields = []
+        self._posFields = [] # positional fields
         self.excludedFields=[]
         self.timestamp = None
         self.fieldsForPartialUpdate=[]
+        self.fields = Data()
 
     def serialize(self):
-        fieldData = b''.join([msgpack.packb(field) for field in self.fields])
+        fieldData = b''.join([msgpack.packb(field) for field in self._posFields])
         return [self.excludedFields, fieldData, self.schemaVersion]
-
 
 class SchemaField:
     def __init__(self, type: FieldType, name: str,
@@ -178,10 +188,11 @@ class SchemaField:
         self.nullLast = nullLast
 
     def serialize(self):
-        return [self.type.serialize(), self.name.encode(), self.descending, self.nullLast]
+        return [self.type.serialize(), self.name, self.descending, self.nullLast]
 
 
 class Schema:
+    ANY_VERSION=-1
     def __init__(self, name: str, version: int,
         fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [int]):
         self.name = name
@@ -193,20 +204,40 @@ class Schema:
     def make_record(self, **dataFields):
         rec = Record(self.name, self.version)
         for i,field in enumerate(self.fields):
-            if field.name in dataFields:
-                fieldValue = dataFields.get(field.name)
-                if isinstance(fieldValue, str):
-                    fieldValue = fieldValue.encode()
-                rec.fields.append(fieldValue)
+            dname = field.name.decode('ascii')
+            if dname in dataFields:
+                fieldValue = dataFields.get(dname)
+                rec._posFields.append(fieldValue)
+                rec.fields.__dict__[dname] = fieldValue
             else:
-                rec.fields.append(None)
                 if not rec.excludedFields:
                     rec.excludedFields = [False] * len(self.fields)
                 rec.excludedFields[i] = True
+                rec.fields.__dict__[dname] = None
+        return rec
+
+    def parse_read(self, storage, timestamp):
+        rec = Record(self.name, self.version)
+        rec.timestamp = timestamp
+        rec.excludedFields = storage[0]
+        rec.fieldsForPartialUpdate = []
+        excl = rec.excludedFields if rec.excludedFields else [False] * len(self.fields)
+
+        unp = msgpack.Unpacker()
+        unp.feed(storage[1])
+        for i,field in enumerate(self.fields):
+            dname = field.name.decode('ascii')
+            fv = None
+            if not excl[i]:
+                fv = unp.unpack()
+                rec._posFields.append(fv)
+
+            rec.fields.__dict__[dname] = fv
+
         return rec
 
     def serialize(self):
-        return [self.name.encode(),
+        return [self.name,
                 self.version,
                 [field.serialize() for field in self.fields],
                 self.partitionKeyFields,
@@ -253,7 +284,7 @@ class CollectionMetadata:
 
     def serialize(self):
         return [
-            self.name.encode(),
+            self.name,
             self.hashScheme.serialize(),
             self.storageDriver.serialize(),
             self.capacity.serialize(),
@@ -273,9 +304,11 @@ class SKVClient:
     def __init__(self, url: str):
         self.session = requests.Session()
         self.http = url
+        self._schemas = {}
 
     def make_call(self, path, data):
         url = self.http + path
+        logger.info("calling {} with data {}".format(url, data))
         try:
             datab = msgpack.packb(data, use_bin_type=True)
         except Exception as exc:
@@ -298,25 +331,40 @@ class SKVClient:
             logger.exception("Unable to deserialize request")
             return (Status([501, "Unable to deserialize response due to: {}".format(exc)]), None)
 
-    def get_schema(self, collectionName: str, schemaName: str,
-        schemaVersion: int = -1):
-        url = self.http + "/api/GetSchema"
-        data = {"collectionName": collectionName, "schemaName": schemaName,
-            "schemaVersion": schemaVersion}
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
-        if "response" in result:
-            schema = Schema(**result["response"])
-            return status, schema
-        return status, None
+    def get_schema(self, collectionName, schemaName, schemaVersion: int = Schema.ANY_VERSION):
+        skey = (collectionName, schemaName, schemaVersion)
+        if skey not in self._schemas:
+            status, schema = self._do_get_schema(collectionName, schemaName, schemaVersion)
+            if not status.is2xxOK():
+                return None
+            self._schemas[skey] = schema
+
+        return self._schemas[skey]
+
+    def _do_get_schema(self, collectionName, schemaName, schemaVersion: int):
+        status, schema_raw = self.make_call('/api/GetSchema',
+                 [collectionName, schemaName, schemaVersion])
+        if not status.is2xxOK():
+            raise Exception("unable to get schema due to: " + str(status))
+        fields = [
+            SchemaField(FieldType(fraw[0]), fraw[1], fraw[2], fraw[3]) for fraw in schema_raw[2]
+        ]
+
+        schema = Schema(schema_raw[0], schema_raw[1],
+                        fields, schema_raw[3], schema_raw[4])
+        return status, schema
 
     def create_collection(self, md: CollectionMetadata, rangeEnds: [str] = None) -> Status:
         status, _ = self.make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
         return status
 
     def create_schema(self, collectionName: str, schema: Schema) -> Status:
-        status, _ = self.make_call('/api/CreateSchema', [collectionName.encode(), schema.serialize()])
+        status, _ = self.make_call('/api/CreateSchema', [collectionName, schema.serialize()])
+        if status.is2xxOK():
+            self._schemas[ (collectionName, schema.name, schema.version) ] = schema
+            anykey = (collectionName, schema.name, Schema.ANY_VERSION)
+            if anykey not in self._schemas:
+                self._schemas[anykey] = schema
         return status
 
     def begin_txn(self, opts: TxnOptions = None):

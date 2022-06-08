@@ -42,12 +42,12 @@ public:
     template <typename T>
     bool read(T& obj) {
         if (mpack_node_is_nil(_node)) {
-            K2LOG_D(log::mpack, "unable to read type {} since node is nil", k2::type_name<T>());
+            K2LOG_V(log::mpack, "unable to read type {} since node is nil", k2::type_name<T>());
             return false;
         }
 
         if (!_readFromNode(obj)) {
-            K2LOG_D(log::mpack, "unable to read type {} from node type {} with error {}", k2::type_name<T>(), mpack_node_type(_node), mpack_node_error(_node));
+            K2LOG_V(log::mpack, "unable to read type {} from node type {} with error {}", k2::type_name<T>(), mpack_node_type(_node), mpack_node_error(_node));
             return false;
         }
         return true;
@@ -63,7 +63,7 @@ public:
         // value is not Nil so we'd better be able to read it as T
         T val;
         if (!_readFromNode(val)) {
-            K2LOG_D(log::mpack, "unable to read type {} from node type {} with error {}", k2::type_name<T>(), mpack_node_type(_node), mpack_node_error(_node));
+            K2LOG_V(log::mpack, "unable to read type {} from node type {} with error {}", k2::type_name<T>(), mpack_node_type(_node), mpack_node_error(_node));
             return false;
         }
         obj = std::make_optional<T>(std::move(val));
@@ -111,51 +111,63 @@ private:
     _readFromNode(T& val) {
         // PayloadSerializable types are packed as a list of values
         // get a reader for the node array and pass it to the struct itself for (recursive) unpacking
+        K2LOG_V(log::mpack, "reading serializable of type {}", k2::type_name<T>());
         MPackStructReader sreader(_node, _source);
         return val.k2UnpackFrom(sreader);
     }
 
     bool _readFromNode(bool& val) {
+        K2LOG_V(log::mpack, "reading bool");
         val = mpack_node_bool(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(uint8_t& val) {
+        K2LOG_V(log::mpack, "reading uint8_t");
         val = mpack_node_u8(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(int8_t& val) {
+        K2LOG_V(log::mpack, "reading int8_t");
         val = mpack_node_i8(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(uint16_t& val) {
+        K2LOG_V(log::mpack, "reading uint16_t");
         val = mpack_node_u16(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(int16_t& val) {
+        K2LOG_V(log::mpack, "reading int16_t");
         val = mpack_node_i16(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(uint32_t& val) {
+        K2LOG_V(log::mpack, "reading uint32_t");
         val = mpack_node_u32(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(int32_t& val) {
+        K2LOG_V(log::mpack, "reading int32_t");
         val = mpack_node_i32(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(uint64_t& val) {
+        K2LOG_V(log::mpack, "reading uint64_t");
         val = mpack_node_u64(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(int64_t& val) {
+        K2LOG_V(log::mpack, "reading int64_t");
         val = mpack_node_i64(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(float& val) {
+        K2LOG_V(log::mpack, "reading float");
         val = mpack_node_float_strict(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
     bool _readFromNode(double& val) {
+        K2LOG_V(log::mpack, "reading double");
         val = mpack_node_double_strict(_node);
         return mpack_node_error(_node) == mpack_ok;
     }
@@ -175,6 +187,7 @@ private:
     }
     bool _readFromNode(String& val) {
         // String is packed as a BINARY msgpack type
+        K2LOG_V(log::mpack, "reading string");
         size_t sz;
         const char* data;
         if (!_readData(data, sz)) {
@@ -192,6 +205,7 @@ private:
     // In cases where you want to avoid this loss of memory, you should copy the binary (Binary::copy)
     bool _readFromNode(Binary& val) {
         // binary is packed as a BINARY msgpack type
+        K2LOG_V(log::mpack, "reading binary");
         size_t sz;
         const char* data;
         if (!_readData(data, sz)) {
@@ -206,6 +220,7 @@ private:
     template <typename T>
     std::enable_if_t<isVectorLikeType<T>::value, bool>
     _readFromNode(T& val) {
+        K2LOG_V(log::mpack, "reading vector-like of type {}", k2::type_name<T>());
         size_t sz = mpack_node_array_length(_node);
         MPackStructReader sreader(_node, _source);
 
@@ -223,15 +238,17 @@ private:
 
     template <typename ...T>
     bool _readFromNode(std::tuple<T...>& val) {
-        return std::apply([this, reader=MPackStructReader(_node, _source)] (auto&&... args) mutable {
+        K2LOG_V(log::mpack, "reading tuple of type {}", k2::type_name<typename std::remove_reference<decltype(val)>::type>());
+        return std::apply([this, reader = MPackStructReader(_node, _source)](auto&&... args) mutable {
             return ((reader.read(args)) && ...);
-            },
-            val);
+        },
+                          val);
     }
 
     template <typename T>
     std::enable_if_t<isMapLikeType<T>::value, bool>
     _readFromNode(T& val) {
+        K2LOG_V(log::mpack, "reading map-like of type {}", k2::type_name<T>());
         size_t sz = mpack_node_array_length(_node);
         for (size_t i = 0; i < sz; i++) {
             auto it = val.end();
@@ -255,12 +272,13 @@ private:
     template <typename T>
     std::enable_if_t<isCompleteType<Serializer<T>>::value, bool>
     _readFromNode(T& value) {
-        K2LOG_V(log::mpack, "writing externally serialized object of type {}", k2::type_name<T>());
+        K2LOG_V(log::mpack, "reading externally serialized object of type {}", k2::type_name<T>());
         Serializer<T> serializer;
         return serializer.k2UnpackFrom(*this, value);
     }
 
     bool _readFromNode(Duration& dur) {
+        K2LOG_V(log::mpack, "reading decimal64");
         if (typeid(std::remove_reference_t<decltype(dur)>::rep) != typeid(long int)) {
             return false;
         }
@@ -272,6 +290,7 @@ private:
 
     bool _readFromNode(Decimal64& value) {
         // decimal is packed as a BINARY msgpack type
+        K2LOG_V(log::mpack, "reading decimal64");
         size_t sz;
         const char* data;
 
@@ -288,6 +307,7 @@ private:
 
     bool _readFromNode(Decimal128& value) {
         // decimal is packed as a BINARY msgpack type
+        K2LOG_V(log::mpack, "reading decimal128");
         size_t sz;
         const char* data;
 
@@ -305,6 +325,7 @@ private:
     template <typename T>
     std::enable_if_t<std::is_enum<T>::value, bool>
     _readFromNode(T& value) {
+        K2LOG_V(log::mpack, "reading enum of type {}", k2::type_name<T>());
         using UT = typename std::remove_reference<decltype(k2::to_integral(value))>::type;
         UT data;
         if (!_readFromNode(data)) {
@@ -332,7 +353,7 @@ public:
         mpack_tree_parse(&_tree);
         auto node = mpack_tree_root(&_tree);
         if (mpack_tree_error(&_tree) != mpack_ok) {
-            K2LOG_D(log::mpack, "unable to read type {} with error {}", k2::type_name<T>(), mpack_tree_error(&_tree));
+            K2LOG_V(log::mpack, "unable to read type {} with error {}", k2::type_name<T>(), mpack_tree_error(&_tree));
             return false;
         }
         MPackNodeReader reader(node, _binary);
@@ -360,8 +381,8 @@ public:
 
     template <typename T>
     void write(const std::optional<T>& obj) {
+        K2LOG_V(log::mpack, "writing nil optional of type {}", k2::type_name<T>());
         if (!obj) {
-            K2LOG_V(log::mpack, "writing nil optional of type {}", k2::type_name<T>());
             mpack_write_nil(&_writer);
         } else {
             write(*obj);

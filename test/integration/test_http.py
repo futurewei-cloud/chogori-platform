@@ -32,7 +32,7 @@ class TestHTTP(unittest.TestCase):
     args = None
     cl = None
     schema = None
-    cname = 'HTTPClient'
+    cname = b'HTTPClient'
 
     @classmethod
     def setUpClass(cls):
@@ -51,16 +51,16 @@ class TestHTTP(unittest.TestCase):
             raise Exception(status.message)
 
         TestHTTP.schema = Schema(
-            name='test_schema',
+            name=b'test_schema',
             version=1,
             fields=[
-                SchemaField(FieldType.STRING, 'partitionKey'),
-                SchemaField(FieldType.STRING, 'rangeKey'),
-                SchemaField(FieldType.STRING, 'data')],
+                SchemaField(FieldType.STRING, b'partitionKey'),
+                SchemaField(FieldType.STRING, b'rangeKey'),
+                SchemaField(FieldType.STRING, b'data')],
             partitionKeyFields=[0],
             rangeKeyFields=[1]
         )
-        status = TestHTTP.cl.create_schema("HTTPClient", TestHTTP.schema)
+        status = TestHTTP.cl.create_schema(TestHTTP.cname, TestHTTP.schema)
         if not status.is2xxOK():
             raise Exception(status.message)
 
@@ -71,20 +71,25 @@ class TestHTTP(unittest.TestCase):
         self.assertTrue(status.is2xxOK())
 
         # Write
-        record = TestHTTP.schema.make_record(partitionKey="test1pk", rangeKey="test1rk", data="mydata")
+        record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk", data=b"mydata")
         status = txn.write(TestHTTP.cname, record)
         self.assertTrue(status.is2xxOK())
 
-'''
+        # Read 404
+        record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk")
+        status, resultRec = txn.read(TestHTTP.cname, record)
+        self.assertTrue(status.code == 404);
 
-        # Read
-        record = {"partitionKey": "test1", "rangeKey": "test1"}
-        request = {"collectionName": "HTTPClient", "schemaName": "test_schema", "txnID": txnId, "record": record}
-        url = args.http + "/api/Read"
-        r = requests.post(url, data=json.dumps(request))
-        result = r.json()
-        print(result)
-        self.assertEqual(result["status"]["code"], 200);
+        # read data
+        record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk")
+        status, resultRec = txn.read(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK());
+        self.assertEqual(resultRec.fields.partitionKey, b"test1pk")
+        self.assertEqual(resultRec.fields.rangeKey, b"test1rk")
+        self.assertEqual(resultRec.fields.data, b"mydata")
+
+
+'''
 
         # Commit
         request = {"txnID": txnId, "commit": True}
