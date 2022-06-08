@@ -32,13 +32,14 @@ class TestHTTP(unittest.TestCase):
     args = None
     cl = None
     schema = None
+    cname = 'HTTPClient'
 
     @classmethod
     def setUpClass(cls):
         "Create common schema and collection used by multiple test cases"
         logging.basicConfig(format='%(asctime)s [%(levelname)s] (%(module)s) %(message)s', level=logging.DEBUG)
         metadata = CollectionMetadata(
-            name = 'HTTPClient',
+            name = TestHTTP.cname,
             hashScheme = HashScheme.HashCRC32C,
             storageDriver = StorageDriver.K23SI,
             capacity = CollectionCapacity(minNodes = 2),
@@ -70,8 +71,8 @@ class TestHTTP(unittest.TestCase):
         self.assertTrue(status.is2xxOK())
 
         # Write
-        record = TestHTTP.schema.makeRecord(partitionKey="test1", rangeKey="test1", data="mydata")
-        status = txn.write(record)
+        record = TestHTTP.schema.make_record(partitionKey="test1pk", rangeKey="test1rk", data="mydata")
+        status = txn.write(TestHTTP.cname, record)
         self.assertTrue(status.is2xxOK())
 
 '''

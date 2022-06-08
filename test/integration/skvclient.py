@@ -34,7 +34,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class TimeDelta(timedelta):
-    def serialize(tdelta):
+    def serialize(self):
         return int(self.total_seconds()*1000*1000*1000)
 
 class Status:
@@ -103,14 +103,15 @@ class Txn:
         self.client = client
         self.timestamp = timestamp
 
-    def write(self, record, erase=False, precondition=ExistencePrecondition.Nil) -> Status:
+    def write(self, collection, record, erase=False, precondition=ExistencePrecondition.Nil) -> Status:
         "Write record"
         record.timestamp = self.timestamp
-        status, _ = self.client.make_call('/api/Write', [self.timestamp, erase, precondition.serialize(), record.serialize()])
+        status, _ = self.client.make_call('/api/Write',
+            [self.timestamp, collection.encode(), record.schemaName.encode(),
+             erase, precondition.serialize(), record.serialize(), record.fieldsForPartialUpdate])
         return status
 
-    def read(self, loc: DBLoc) :
-        record = loc.get_fields()
+    def read(self, keyrec) :
         request = {"collectionName": loc.coll, "schemaName": loc.schema,
             "txnID" : self.timestamp, "record": record}
         result = self._send_req("/api/Read", request)
@@ -159,10 +160,13 @@ class Record:
         self.schemaName = schemaName
         self.schemaVersion = schemaVersion
         self.fields = []
+        self.excludedFields=[]
         self.timestamp = None
+        self.fieldsForPartialUpdate=[]
 
     def serialize(self):
-        return []
+        fieldData = b''.join([msgpack.packb(field) for field in self.fields])
+        return [self.excludedFields, fieldData, self.schemaVersion]
 
 
 class SchemaField:
@@ -186,9 +190,19 @@ class Schema:
         self.partitionKeyFields = partitionKeyFields
         self.rangeKeyFields = rangeKeyFields
 
-    def makeRecord(self, **fields):
+    def make_record(self, **dataFields):
         rec = Record(self.name, self.version)
-        rec.fields = [(field, fields.get(field.name, None)) for field in self.fields]
+        for i,field in enumerate(self.fields):
+            if field.name in dataFields:
+                fieldValue = dataFields.get(field.name)
+                if isinstance(fieldValue, str):
+                    fieldValue = fieldValue.encode()
+                rec.fields.append(fieldValue)
+            else:
+                rec.fields.append(None)
+                if not rec.excludedFields:
+                    rec.excludedFields = [False] * len(self.fields)
+                rec.excludedFields[i] = True
         return rec
 
     def serialize(self):
@@ -308,7 +322,7 @@ class SKVClient:
     def begin_txn(self, opts: TxnOptions = None):
         if opts is None:
             opts = TxnOptions()
-        status, resp = self.make_call('/api/BeginTxn', [opts.serialize()])
+        status, resp = self.make_call('/api/TxnBegin', [opts.serialize()])
         if status.code == 201:
             return status, Txn(self, resp[0])
         else:
