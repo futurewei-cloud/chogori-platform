@@ -31,7 +31,7 @@ using namespace skv::http;
 
 // Simple partition and range keys, happy path tests
 TEST_CASE("Test1: Basic SKVRecord tests") {
-    k2::logging::Logger::threadLocalLogLevel = k2::logging::LogLevel::VERBOSE;
+    k2::logging::Logger::threadLocalLogLevel = k2::logging::LogLevel::Verbose;
 
     dto::Schema schema;
     schema.name = "test_schema";

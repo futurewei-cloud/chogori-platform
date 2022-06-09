@@ -212,7 +212,7 @@ void Indexer::Iterator::addWI(const dto::Key& key, dto::DataRecord&& rec, uint64
         const IndexerKey& ourKey = _foundIt->first;
         K2ASSERT(log::skvsvr, ourKey.partitionKey == key.partitionKey && ourKey.rangeKey == key.rangeKey, "Key mismatch while adding key: have={}, given={}", ourKey, key);
     }
-    _foundIt->second.WI.emplace(std::move(rec), request_id);
+    _foundIt->second.WI = dto::WriteIntent{.data=std::move(rec), .request_id=request_id};
 }
 
 void Indexer::Iterator::abortWI() {

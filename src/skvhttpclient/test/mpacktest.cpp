@@ -29,7 +29,7 @@ Copyright(c) 2022 Futurewei Cloud
 #include <catch.hpp>
 
 SCENARIO("Test 01: test buffer packer/unpacker serialization") {
-    k2::logging::Logger::threadLocalLogLevel = k2::logging::LogLevel::VERBOSE;
+    k2::logging::Logger::threadLocalLogLevel = k2::logging::LogLevel::Verbose;
     skv::http::Binary buf1;
     {
         skv::http::MPackWriter w;

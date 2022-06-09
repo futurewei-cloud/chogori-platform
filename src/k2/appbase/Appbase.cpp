@@ -81,7 +81,7 @@ int App::start(int argc, char** argv) {
             if (config.count("log_level")) {
                 auto levels = config["log_level"].as<std::vector<String>>();
                 if (levels.size() == 0) {
-                    logging::Logger::threadLocalLogLevel = logging::LogLevel::INFO;
+                    logging::Logger::threadLocalLogLevel = logging::LogLevel::Info;
                 }
                 else {
                     auto split = [](const String& token) {
@@ -113,7 +113,7 @@ int App::start(int argc, char** argv) {
             }
             else {
                 // if nothing is specified, default to INFO
-                logging::Logger::threadLocalLogLevel = logging::LogLevel::INFO;
+                logging::Logger::threadLocalLogLevel = logging::LogLevel::Info;
             }
         })
         .then([&] {

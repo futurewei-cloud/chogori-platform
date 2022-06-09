@@ -31,6 +31,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <k2/logging/AutoGenFormattingUtils.h>
 
 #include <iostream>
+#include <optional>
 #include <map>
 #include <set>
 #include <stdexcept>

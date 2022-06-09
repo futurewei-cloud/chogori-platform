@@ -115,7 +115,7 @@ public:
     TxnHandle(HTTPMessageClient* client, dto::Timestamp id):_client(client), _id(id) {}
     boost::future<Response<>> endTxn(bool doCommit);
     boost::future<Response<dto::SKVRecord>> read(dto::SKVRecord record);
-    boost::future<Response<dto::K23SIWriteResponse>> write(dto::SKVRecord& record, bool erase=false,
+    boost::future<Response<>> write(dto::SKVRecord& record, bool erase=false,
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
     boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<String> fieldNamesForUpdate);
 
@@ -134,7 +134,7 @@ public:
     boost::future<Response<>> createSchema(const String& collectionName, const dto::Schema& schema);
     boost::future<Response<dto::Schema>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion=dto::ANY_SCHEMA_VERSION);
     boost::future<Response<>> createCollection(dto::CollectionMetadata metadata, std::vector<String> rangeEnds);
-    boost::future<Response<dto::Collection>> getCollection(const String& collectionName);
+    boost::future<Response<dto::CollectionMetadata>> getCollectionMetadata(const String& collectionName);
     boost::future<Response<TxnHandle>> beginTxn(dto::TxnOptions options);
 
 private:

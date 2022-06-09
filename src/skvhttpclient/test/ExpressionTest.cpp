@@ -175,7 +175,7 @@ void runner(std::vector<TestCase>& tcases) {
 }
 
 TEST_CASE("NaN expressions"){
-    k2::logging::Logger::threadLocalLogLevel = k2::logging::LogLevel::VERBOSE;
+    k2::logging::Logger::threadLocalLogLevel = k2::logging::LogLevel::Verbose;
 
     try{
         k2e::makeValueLiteral<double>(nan("1"));
