@@ -99,7 +99,7 @@ private:
         k2::K2TxnHandle handle;
         std::unordered_map<uint64_t, Query> queries;
     };
-    std::unordered_map<sh::dto::Timestamp, ManagedTxn> _txns;
+    std::unordered_map<shd::Timestamp, ManagedTxn> _txns;
 
     // shd schema cache:
     // collection name -> (schema name -> (schema version -> schemaPtr))

@@ -288,8 +288,7 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
                 return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S410_Gone("transaction does not exist"), shd::WriteResponse{});
             }
             dto::SKVRecord k2record(request.collectionName, k2Schema);
-            bool haveKeys = !request.isDelete && request.fieldsForPartialUpdate.size() == 0;
-            shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.value), haveKeys);
+            shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.value), true);
             _shdRecToK2(shdrecord, k2record);
 
             return it->second.handle.write(k2record, request.isDelete, static_cast<dto::ExistencePrecondition>(request.precondition))
@@ -319,7 +318,7 @@ HTTPProxy::_handleRead(shd::ReadRequest&& request) {
                 shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.key), true);
                 _shdRecToK2(shdrecord, k2record);
 
-                return it->second.handle.read(k2record.getKey(), request.collectionName)
+                return it->second.handle.read(std::move(k2record))
                     .then([&request, shdSchema, k2Schema](auto&& result) {
                         if (!result.status.is2xxOK()) {
                             return MakeHTTPResponse<shd::ReadResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::ReadResponse{});
