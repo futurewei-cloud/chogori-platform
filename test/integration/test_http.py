@@ -66,6 +66,19 @@ class TestHTTP(unittest.TestCase):
 
     def test_basicTxn(self):
         # Begin Txn
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
+
+        # Write
+        record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk", data=b"mydata")
+        status = txn.write(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK())
+
+        # Abort
+        status = txn.end(False)
+        self.assertTrue(status.is2xxOK())
+
+        # Begin Txn
         self.assertTrue(True)
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
@@ -88,18 +101,31 @@ class TestHTTP(unittest.TestCase):
         self.assertEqual(resultRec.fields.rangeKey, b"test1rk")
         self.assertEqual(resultRec.fields.data, b"mydata")
 
+        # Commit
+        status = txn.end()
+        self.assertTrue(status.is2xxOK())
 
-'''
+        # Commit again, should fail
+        status = txn.end()
+        self.assertFalse(status.is2xxOK())
+
+       # Begin Txn
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
+
+        # read data
+        record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk")
+        status, resultRec = txn.read(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK());
+        self.assertEqual(resultRec.fields.partitionKey, b"test1pk")
+        self.assertEqual(resultRec.fields.rangeKey, b"test1rk")
+        self.assertEqual(resultRec.fields.data, b"mydata")
 
         # Commit
-        request = {"txnID": txnId, "commit": True}
-        url = args.http + "/api/EndTxn"
-        r = requests.post(url, data=json.dumps(request))
-        result = r.json()
-        print(result)
-        self.assertEqual(result["status"]["code"], 200);
+        status = txn.end()
+        self.assertTrue(status.is2xxOK())
 
-
+'''
     def test_validation(self):
         db = SKVClient(args.http)
         # Create a location object

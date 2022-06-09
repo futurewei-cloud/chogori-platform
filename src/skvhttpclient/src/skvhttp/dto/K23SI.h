@@ -213,13 +213,7 @@ struct TxnEndRequest {
     // the end action (Abort|Commit)
     EndAction action;
 
-    // This flag does not impact correctness, just performance for certain workloads
-    bool syncFinalize=false;
-
-    // The interval from end to Finalize for a transaction
-    Duration timeToFinalize{0};
-
-    K2_SERIALIZABLE_FMT(TxnEndRequest, timestamp, action, syncFinalize, timeToFinalize);
+    K2_SERIALIZABLE_FMT(TxnEndRequest, timestamp, action);
 };
 
 struct TxnEndResponse {

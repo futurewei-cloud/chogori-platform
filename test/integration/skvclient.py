@@ -97,6 +97,14 @@ class TxnOptions:
     def serialize(self):
         return [self.timeout.serialize(), self.priority.serialize(), self.syncFinalize]
 
+class EndAction(int, Enum):
+    NONE:       int     = 0
+    ABORT:      int     = 1
+    COMMIT:     int     = 2
+
+    def serialize(self):
+        return self.value
+
 class Txn:
     "Transaction Object"
     def __init__(self, client, timestamp):
@@ -145,8 +153,10 @@ class Txn:
         return status, records
 
     def end(self, commit=True):
-        request = {"txnID": self.timestamp, "commit": commit}
-        return Status(self._send_req("/api/EndTxn", request))
+        endAction = EndAction.COMMIT if commit else EndAction.ABORT
+        status, _ = self.client.make_call('/api/TxnEnd',
+            [self.timestamp, endAction.serialize()])
+        return status
 
 class FieldType(int, Enum):
     NULL_T:     int     = 0
@@ -161,6 +171,7 @@ class FieldType(int, Enum):
 
     def serialize(self):
         return self.value
+
 
 class Data:
     'data storage class for records'

@@ -341,10 +341,38 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
     return MakeHTTPResponse<shd::QueryResponse>(sh::Statuses::S501_Not_Implemented("query not implemented"), shd::QueryResponse{});
 }
 
+// Send status with default result
+template <class T>
+seastar::future<std::tuple<sh::Status, T>> makeResponse(sh::Status&& status) {
+    return MakeHTTPResponse<T>(std::move(status), T{});
+}
+
+// Send k2::status with default result
+template <class T>
+seastar::future<std::tuple<sh::Status, T>> makeResponse(Status&& status) {
+    return makeResponse<T>(sh::Status{.code = status.code, .message = status.message});
+}
+
+template<class T>
+seastar::future<std::tuple<sh::Status, T>> makeResponse(sh::Status&& status, T&& result) {
+    return  MakeHTTPResponse<T>(std::move(status), std::move(result));
+}
+
 seastar::future<std::tuple<sh::Status, shd::TxnEndResponse>>
 HTTPProxy::_handleTxnEnd(shd::TxnEndRequest&& request) {
     K2LOG_D(log::httpproxy, "Received txn end request {}", request);
-    return MakeHTTPResponse<shd::TxnEndResponse>(sh::Statuses::S501_Not_Implemented("txn end not implemented"), shd::TxnEndResponse{});
+    auto it = _txns.find(request.timestamp);
+    if (it == _txns.end()) {
+        return makeResponse<shd::TxnEndResponse>(sh::Statuses::S410_Gone("transaction does not exist"));
+    }
+    return it->second.handle.end(request.action == shd::EndAction::Commit)
+        .then([this, &request] (auto&& result) {
+            if (!result.status.is2xxOK()) {
+                return makeResponse<shd::TxnEndResponse>(std::move(result.status));
+            }
+            _txns.erase(request.timestamp);
+            return makeResponse(sh::Statuses::S200_OK(""), shd::TxnEndResponse{});
+        });
 }
 
 seastar::future<std::tuple<sh::Status, shd::GetSchemaResponse>>
