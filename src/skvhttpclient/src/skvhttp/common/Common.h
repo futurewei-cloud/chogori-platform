@@ -101,8 +101,7 @@ class HexCodec {
     inline static String encode(const char* data, size_t size) {
         static const int enc_byte_sz = 4;
         static const int bufsz = 3 * enc_byte_sz;
-        String result;
-        result.reserve(size + bufsz + 1);
+        String result(bufsz, 0);
         size_t c = 0;
         for (size_t i = 0; i < size; ++i) {
             if (c > result.size() - enc_byte_sz) {

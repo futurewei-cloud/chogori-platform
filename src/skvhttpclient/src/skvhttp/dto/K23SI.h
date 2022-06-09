@@ -62,76 +62,67 @@ struct TxnOptions {
     K2_SERIALIZABLE_FMT(TxnOptions, timeout, priority, syncFinalize);
 };
 
-struct BeginTxnRequest {
+K2_DEF_ENUM(ExistencePrecondition,
+            None,
+            Exists,
+            NotExists);
+
+// This is the end action to be taken on the transaction and its writes. Here are the current
+// use cases for this:
+// 1. Client library is ending a transaction(commit/abort)
+// 2. TRH is finalizing the transaction at a participant
+// 3. A PUSH response is signaling what action should be done to the WI which triggered the PUSH
+K2_DEF_ENUM(EndAction,
+            None,
+            Abort,
+            Commit);
+
+struct TxnBeginRequest {
     TxnOptions options;
-    K2_SERIALIZABLE_FMT(BeginTxnRequest, options);
+    K2_SERIALIZABLE_FMT(TxnBeginRequest, options);
 };
 
-struct BeginTxnResponse {
+struct TxnBeginResponse {
     Timestamp timestamp;
-    K2_SERIALIZABLE_FMT(BeginTxnResponse, timestamp);
+    K2_SERIALIZABLE_FMT(TxnBeginResponse, timestamp);
 };
 
 // The main READ DTO.
 struct ReadRequest {
+    Timestamp timestamp;    // identify the txn
     String collectionName;  // the name of the collection
     // use the name "key" so that we can use common routing from CPO client
-    SKVRecord key;  // the key to read
-    K2_SERIALIZABLE_FMT(ReadRequest, collectionName, key);
+    String schemaName;
+    SKVRecord::Storage key;  // the key to read
+    K2_SERIALIZABLE_FMT(ReadRequest, timestamp, collectionName, schemaName, key);
 };
 
 // The response for READs
 struct ReadResponse {
-    SKVRecord record;
-    K2_SERIALIZABLE_FMT(ReadResponse, record);
+    String collectionName;  // the name of the collection
+    // use the name "key" so that we can use common routing from CPO client
+    String schemaName;
+    SKVRecord::Storage record;
+    K2_SERIALIZABLE_FMT(ReadResponse, collectionName, schemaName, record);
 };
 
-K2_DEF_ENUM(ExistencePrecondition,
-    None,
-    Exists,
-    NotExists
-);
-
 struct WriteRequest {
-    PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    Timestamp timestamp; // identify the txn
     String collectionName; // the name of the collection
-    // The TRH key is used to find the K2 node which owns a transaction. It should be set to the key of
-    // the first write (the write for which designateTRH was set to true)
-    // Note that this is not an unique identifier for a transaction record - transaction records are
-    // uniquely identified by the tuple (mtr, trh)
-    Key trh;
-    String trhCollection; // the collection for the TRH
+    String schemaName;     // name of the schema for the following storage value
     bool isDelete = false; // is this a delete write?
-    bool designateTRH = false; // if this is set, the server which receives the request will be designated the TRH
     // Whether the server should reject the write if a previous version exists (like a SQL insert),
     // or reject a write if a previous version does not exists (e.g. to know if a delete actually deleted
     // a record). In the future we want more expressive preconditions, but those will be on the fields of
     // a record whereas this is the only record-level precondition that makes sense so it is its own flag
     ExistencePrecondition precondition = ExistencePrecondition::None;
-    // Generated on the client and stored on by the server so that
-    uint64_t request_id;
-    // use the name "key" so that we can use common routing from CPO client
-    Key key; // the key for the write
-    SKVRecord::Storage value; // the value of the write
-    std::vector<uint32_t> fieldsForPartialUpdate; // if size() > 0 then this is a partial update
 
-    WriteRequest() = default;
-    WriteRequest(PVID _pvid, String cname, Key _trh, String _trhCollection, bool _isDelete,
-                      bool _designateTRH, ExistencePrecondition _precondition, uint64_t id, Key _key, SKVRecord::Storage _value,
-                      std::vector<uint32_t> _fields) :
-        pvid(std::move(_pvid)),
-        collectionName(std::move(cname)),
-        trh(std::move(_trh)),
-        trhCollection(std::move(_trhCollection)),
-        isDelete(_isDelete),
-        designateTRH(_designateTRH),
-        precondition(_precondition),
-        request_id(id),
-        key(std::move(_key)),
-        value(std::move(_value)),
-        fieldsForPartialUpdate(std::move(_fields)) {}
+    SKVRecord::Storage value; // the value of the write. Contains a value for each field
 
-    K2_SERIALIZABLE_FMT(WriteRequest, pvid, collectionName, trh, trhCollection, isDelete, designateTRH, precondition, request_id, key, value, fieldsForPartialUpdate);
+    // if size() > 0 then this is a partial update, and this vector contains the indices of the new field values
+    std::vector<uint32_t> fieldsForPartialUpdate;
+
+    K2_SERIALIZABLE_FMT(WriteRequest, timestamp, collectionName, schemaName, isDelete, precondition, value, fieldsForPartialUpdate);
 };
 
 struct WriteResponse {
@@ -139,7 +130,7 @@ struct WriteResponse {
 };
 
 struct QueryRequest {
-    PVID pvid; // the partition version ID. Should be coming from an up-to-date partition map
+    Timestamp timestamp; // identify the issuing transaction
     String collectionName;
     // use the name "key" so that we can use common routing from CPO client
     Key key; // key for routing and will be interpreted as inclusive start key by the server
@@ -153,7 +144,7 @@ struct QueryRequest {
     expression::Expression filterExpression; // the filter expression for this query
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_SERIALIZABLE_FMT(QueryRequest, pvid, collectionName, key, endKey, exclusiveKey, recordLimit,
+    K2_SERIALIZABLE_FMT(QueryRequest, timestamp, collectionName, key, endKey, exclusiveKey, recordLimit,
         includeVersionMismatch, reverseDirection, filterExpression, projection);
 };
 
@@ -181,6 +172,8 @@ public:
     // memory of the payloads will be allocated in the context of the current thread.
     void copyPayloads() { request.filterExpression.copyPayloads(); }
 
+    Timestamp timestamp;  // identify the issuing transaction
+
     // The user must specify the inclusive start and exclusive end keys for the range scan, but the client
     // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an
     // appropriate schema by the client createQuery function. The user is then expected to serialize the
@@ -189,9 +182,9 @@ public:
     // They must be a fully specified prefix of the key fields. For example, if the key fields are defined
     // as {ID, NAME, TIMESTAMP} then {ID = 1, TIMESTAMP = 10} is not a valid start or end scanRecord, but
     // {ID = 1, NAME = J} is valid.
-    SKVRecord startScanRecord;
-    SKVRecord endScanRecord;
-    K2_SERIALIZABLE_FMT(Query, startScanRecord, endScanRecord, done, inprogress, keysProjected, request);
+    SKVRecord::Storage startScanRecord;
+    SKVRecord::Storage endScanRecord;
+    K2_SERIALIZABLE_FMT(Query, timestamp, startScanRecord, endScanRecord, done, inprogress, keysProjected, request);
     std::shared_ptr<Schema> schema = nullptr;
 
 private:
@@ -214,62 +207,19 @@ struct CreateQueryResponse {
     K2_SERIALIZABLE_FMT(CreateQueryResponse, query);
 };
 
-struct TxnHeartbeatRequest {
-    // the partition version ID for the TRH. Should be coming from an up-to-date partition map
-    PVID pvid;
-    // the name of the collection
-    String collectionName;
-    // trh of the transaction we want to heartbeat.
-    // use the name "key" so that we can use common routing from CPO client
-    Key key;
-
-    K2_SERIALIZABLE_FMT(TxnHeartbeatRequest, pvid, collectionName, key);
-};
-
-struct TxnHeartbeatResponse {
-    K2_SERIALIZABLE_FMT(TxnHeartbeatResponse);
-};
-
-// This is the end action to be taken on the transaction and its writes. Here are the current
-// use cases for this:
-// 1. Client library is ending a transaction(commit/abort)
-// 2. TRH is finalizing the transaction at a participant
-// 3. A PUSH response is signaling what action should be done to the WI which triggered the PUSH
-K2_DEF_ENUM(EndAction,
-    None,
-    Abort,
-    Commit);
-
-// Response for PUSH operation
-struct TxnPushResponse {
-    // the mtr of the winning transaction
-    EndAction incumbentFinalization = EndAction::None;
-    bool allowChallengerRetry = false;
-
-    K2_SERIALIZABLE_FMT(TxnPushResponse, incumbentFinalization, allowChallengerRetry);
-};
-
 struct TxnEndRequest {
-    // the partition version ID for the TRH. Should be coming from an up-to-date partition map
-    PVID pvid;
-    // the name of the collection
-    String collectionName;
-    // trh of the transaction to end.
-    // use the name "key" so that we can use common routing from CPO client
-    Key key;
+    Timestamp timestamp; // identify the issuing transaction
+
     // the end action (Abort|Commit)
     EndAction action;
-    // the ranges to which this transaction wrote. TRH will finalize WIs with each range when we commit/abort
-    std::unordered_map<String, std::unordered_set<KeyRangeVersion>> writeRanges;
-    // flag to tell if the server should finalize synchronously.
-    // this is useful in cases where the client knows that the data from the txn will be accessed a lot after
-    // the commit, so it may choose to wait in order to get better performance.
+
     // This flag does not impact correctness, just performance for certain workloads
     bool syncFinalize=false;
+
     // The interval from end to Finalize for a transaction
     Duration timeToFinalize{0};
 
-    K2_SERIALIZABLE_FMT(TxnEndRequest, pvid, collectionName, key, action, writeRanges, syncFinalize, timeToFinalize);
+    K2_SERIALIZABLE_FMT(TxnEndRequest, timestamp, action, syncFinalize, timeToFinalize);
 };
 
 struct TxnEndResponse {

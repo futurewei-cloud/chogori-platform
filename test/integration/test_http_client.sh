@@ -20,7 +20,7 @@ persistence_child_pid=$!
 ./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.error_bound=100us --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
-sleep 2
+sleep 1
 ./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --log_level=INFO k2::transport=INFO --memory=1G --cpo ${CPO} &
 http_child_pid=$!
 
@@ -52,7 +52,7 @@ function finish {
   echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
-sleep 5
+sleep 2
 
 echo ">>> Starting http test ..."
 PYTHONPATH=${PYTHONPATH}:./test/integration ./test/integration/test_http.py --http http://127.0.0.1:30000

@@ -33,8 +33,10 @@ from datetime import timedelta
 import logging
 logger = logging.getLogger(__name__)
 
-def serializeTD(tdelta):
-    return int(tdelta.total_seconds()*1000*1000*1000)
+class TimeDelta(timedelta):
+    def serialize(self):
+        return int(self.total_seconds()*1000*1000*1000)
+
 class Status:
     "Status returned from HTTP Proxy"
 
@@ -63,62 +65,18 @@ class Status:
     def is5xxServerError(self):
         return self.code >= 500
 
-class DBLoc:
-    """Indicates a complete location to identify a record.
-
-       It helps doing read/write without spcifying all parameters.
-
-       Example:
-          loc = DBLoc("schema1", "collection1", partition_key_name="partitionKey",
-             range_key_name="rangeKey", partition_key="pkey1", range_key="rkey1",
-             schema_version=1)
-          # Write
-          txn.write(loc, data1="data 1", data2="data 2")
-          # Write to a differnt range key but other parameters same
-          txn.write(loc.get_new(range_key="rkey2"), data1="data 3", data2="data 4")
-    """
-
-    def __init__(self, schema, coll,
-        partition_key_name, range_key_name,
-        partition_key=None, range_key=None, schema_version=1):
-        self.schema = schema
-        self.coll = coll
-        self.partition_key_name=partition_key_name
-        self.range_key_name = range_key_name
-        self.partition_key = partition_key
-        self.range_key = range_key
-        self.schema_version = schema_version
-
-    def get_new(self, **kwargs):
-        "Create a copy and set some attributes"
-        obj = copy.copy(self)
-        obj.__dict__.update(kwargs)
-        return obj
-
-    # Get a data record from partition and range
-    # allowing multiple partitions or ranges
-    def get_fields(self) -> dict:
-        record = {}
-        if isinstance(self.partition_key_name, list):
-            for n, v in zip(self.partition_key_name, self.partition_key):
-                record[n] = v
-        else:
-            record[self.partition_key_name] = self.partition_key
-
-        if isinstance(self.range_key_name, list):
-            for n, v in zip(self.range_key_name, self.range_key):
-                record[n] = v
-        else:
-            record[self.range_key_name] = self.range_key
-
-        return record
-
-
 class Query:
     def __init__(self, query_id: int):
         self.query_id = query_id
         self.done = False
 
+class ExistencePrecondition(int, Enum):
+    Nil = 0
+    Exists = 1
+    NotExists = 2
+
+    def serialize(self):
+        return self.value
 
 class TxnPriority(int, Enum):
     Highest =  0
@@ -131,13 +89,13 @@ class TxnPriority(int, Enum):
         return self.value
 
 class TxnOptions:
-    def __init__(self, timeout=timedelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
+    def __init__(self, timeout=TimeDelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
         self.timeout = timeout
         self.priority = priority
         self.syncFinalize = syncFinalize
 
     def serialize(self):
-        return [serializeTD(self.timeout), self.priority.serialize(), self.syncFinalize]
+        return [self.timeout.serialize(), self.priority.serialize(), self.syncFinalize]
 
 class Txn:
     "Transaction Object"
@@ -145,23 +103,27 @@ class Txn:
         self.client = client
         self.timestamp = timestamp
 
-    def write(self, loc: DBLoc, additional_data={}) -> Status:
-        "Write to dbloc"
-        record = additional_data.copy()
-        record.update(loc.get_fields())
-        request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self.timestamp, "schemaVersion": loc.schema_version,
-            "record": record}
-        result = self._send_req("/api/Write", request)
-        return Status(result)
+    def write(self, collection, record, erase=False, precondition=ExistencePrecondition.Nil) -> Status:
+        "Write record"
+        record.timestamp = self.timestamp
+        status, _ = self.client.make_call('/api/Write',
+            [self.timestamp, collection, record.schemaName,
+             erase, precondition.serialize(), record.serialize(), record.fieldsForPartialUpdate])
+        return status
 
-    def read(self, loc: DBLoc) :
-        record = loc.get_fields()
-        request = {"collectionName": loc.coll, "schemaName": loc.schema,
-            "txnID" : self.timestamp, "record": record}
-        result = self._send_req("/api/Read", request)
-        output = result["response"].get("record") if "response" in result else None
-        return Status(result), output
+    def read(self, collection, keyrec) :
+        "Read record"
+        keyrec.timestamp = self.timestamp
+        status, resp = self.client.make_call('/api/Read',
+            [self.timestamp, collection, keyrec.schemaName, keyrec.serialize()])
+        if not status.is2xxOK() or status.code == 404:
+            return status, None
+
+        cname, sname, storage = resp
+
+        schema = self.client.get_schema(cname, sname, storage[2])
+
+        return status, schema.parse_read(storage, self.timestamp)
 
     def query(self, query: Query):
         request = {"txnID" : self.timestamp, "queryID": query.query_id}
@@ -200,6 +162,23 @@ class FieldType(int, Enum):
     def serialize(self):
         return self.value
 
+class Data:
+    'data storage class for records'
+    pass
+class Record:
+    def __init__(self, schemaName, schemaVersion):
+        self.schemaName = schemaName
+        self.schemaVersion = schemaVersion
+        self._posFields = [] # positional fields
+        self.excludedFields=[]
+        self.timestamp = None
+        self.fieldsForPartialUpdate=[]
+        self.fields = Data()
+
+    def serialize(self):
+        fieldData = b''.join([msgpack.packb(field) for field in self._posFields])
+        return [self.excludedFields, fieldData, self.schemaVersion]
+
 class SchemaField:
     def __init__(self, type: FieldType, name: str,
         descending: bool= False, nullLast: bool = False):
@@ -207,11 +186,13 @@ class SchemaField:
         self.name = name
         self.descending = descending
         self.nullLast = nullLast
+
     def serialize(self):
-        return [self.type.serialize(), self.name.encode(), self.descending, self.nullLast]
+        return [self.type.serialize(), self.name, self.descending, self.nullLast]
 
 
 class Schema:
+    ANY_VERSION=-1
     def __init__(self, name: str, version: int,
         fields: [FieldType], partitionKeyFields: [int], rangeKeyFields: [int]):
         self.name = name
@@ -220,8 +201,43 @@ class Schema:
         self.partitionKeyFields = partitionKeyFields
         self.rangeKeyFields = rangeKeyFields
 
+    def make_record(self, **dataFields):
+        rec = Record(self.name, self.version)
+        for i,field in enumerate(self.fields):
+            dname = field.name.decode('ascii')
+            if dname in dataFields:
+                fieldValue = dataFields.get(dname)
+                rec._posFields.append(fieldValue)
+                rec.fields.__dict__[dname] = fieldValue
+            else:
+                if not rec.excludedFields:
+                    rec.excludedFields = [False] * len(self.fields)
+                rec.excludedFields[i] = True
+                rec.fields.__dict__[dname] = None
+        return rec
+
+    def parse_read(self, storage, timestamp):
+        rec = Record(self.name, self.version)
+        rec.timestamp = timestamp
+        rec.excludedFields = storage[0]
+        rec.fieldsForPartialUpdate = []
+        excl = rec.excludedFields if rec.excludedFields else [False] * len(self.fields)
+
+        unp = msgpack.Unpacker()
+        unp.feed(storage[1])
+        for i,field in enumerate(self.fields):
+            dname = field.name.decode('ascii')
+            fv = None
+            if not excl[i]:
+                fv = unp.unpack()
+                rec._posFields.append(fv)
+
+            rec.fields.__dict__[dname] = fv
+
+        return rec
+
     def serialize(self):
-        return [self.name.encode(),
+        return [self.name,
                 self.version,
                 [field.serialize() for field in self.fields],
                 self.partitionKeyFields,
@@ -257,7 +273,7 @@ class StorageDriver(int, Enum):
 class CollectionMetadata:
     def __init__(self, name: str, hashScheme: HashScheme,
         storageDriver: StorageDriver, capacity: CollectionCapacity,
-        retentionPeriod=timedelta(hours=1), heartbeatDeadline=timedelta(hours=0), deleted: bool = False):
+        retentionPeriod=TimeDelta(hours=1), heartbeatDeadline=TimeDelta(hours=0), deleted: bool = False):
         self.name = name
         self.hashScheme = hashScheme
         self.storageDriver = storageDriver
@@ -268,12 +284,12 @@ class CollectionMetadata:
 
     def serialize(self):
         return [
-            self.name.encode(),
+            self.name,
             self.hashScheme.serialize(),
             self.storageDriver.serialize(),
             self.capacity.serialize(),
-            serializeTD(self.retentionPeriod),
-            serializeTD(self.heartbeatDeadline),
+            self.retentionPeriod.serialize(),
+            self.heartbeatDeadline.serialize(),
             self.deleted
             ]
 
@@ -288,9 +304,11 @@ class SKVClient:
     def __init__(self, url: str):
         self.session = requests.Session()
         self.http = url
+        self._schemas = {}
 
     def make_call(self, path, data):
         url = self.http + path
+        logger.info("calling {} with data {}".format(url, data))
         try:
             datab = msgpack.packb(data, use_bin_type=True)
         except Exception as exc:
@@ -313,31 +331,46 @@ class SKVClient:
             logger.exception("Unable to deserialize request")
             return (Status([501, "Unable to deserialize response due to: {}".format(exc)]), None)
 
-    def get_schema(self, collectionName: str, schemaName: str,
-        schemaVersion: int = -1):
-        url = self.http + "/api/GetSchema"
-        data = {"collectionName": collectionName, "schemaName": schemaName,
-            "schemaVersion": schemaVersion}
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
-        if "response" in result:
-            schema = Schema(**result["response"])
-            return status, schema
-        return status, None
+    def get_schema(self, collectionName, schemaName, schemaVersion: int = Schema.ANY_VERSION):
+        skey = (collectionName, schemaName, schemaVersion)
+        if skey not in self._schemas:
+            status, schema = self._do_get_schema(collectionName, schemaName, schemaVersion)
+            if not status.is2xxOK():
+                return None
+            self._schemas[skey] = schema
+
+        return self._schemas[skey]
+
+    def _do_get_schema(self, collectionName, schemaName, schemaVersion: int):
+        status, schema_raw = self.make_call('/api/GetSchema',
+                 [collectionName, schemaName, schemaVersion])
+        if not status.is2xxOK():
+            raise Exception("unable to get schema due to: " + str(status))
+        fields = [
+            SchemaField(FieldType(fraw[0]), fraw[1], fraw[2], fraw[3]) for fraw in schema_raw[2]
+        ]
+
+        schema = Schema(schema_raw[0], schema_raw[1],
+                        fields, schema_raw[3], schema_raw[4])
+        return status, schema
 
     def create_collection(self, md: CollectionMetadata, rangeEnds: [str] = None) -> Status:
         status, _ = self.make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
         return status
 
     def create_schema(self, collectionName: str, schema: Schema) -> Status:
-        status, _ = self.make_call('/api/CreateSchema', [collectionName.encode(), schema.serialize()])
+        status, _ = self.make_call('/api/CreateSchema', [collectionName, schema.serialize()])
+        if status.is2xxOK():
+            self._schemas[ (collectionName, schema.name, schema.version) ] = schema
+            anykey = (collectionName, schema.name, Schema.ANY_VERSION)
+            if anykey not in self._schemas:
+                self._schemas[anykey] = schema
         return status
 
     def begin_txn(self, opts: TxnOptions = None):
         if opts is None:
             opts = TxnOptions()
-        status, resp = self.make_call('/api/BeginTxn', [opts.serialize()])
+        status, resp = self.make_call('/api/TxnBegin', [opts.serialize()])
         if status.code == 201:
             return status, Txn(self, resp[0])
         else:

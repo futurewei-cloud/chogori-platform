@@ -64,34 +64,4 @@ size_t Key::hash() const noexcept {
     return k2::hash_combine(schemaName, partitionKey, rangeKey);
 }
 
-// hash value
-size_t KeyRangeVersion::hash() const noexcept {
-    return k2::hash_combine(startKey, endKey, pvid);
-}
-
-// comparison for unordered containers
-bool KeyRangeVersion::operator==(const KeyRangeVersion& o) const noexcept {
-    return startKey == o.startKey && endKey == o.endKey && pvid == o.pvid;
-}
-
-bool KeyRangeVersion::operator!=(const KeyRangeVersion& o) const noexcept {
-    return !operator==(o);
-}
-
-bool KeyRangeVersion::operator<(const KeyRangeVersion& o) const noexcept {
-    return startKey < o.startKey;
-}
-
-bool PVID::operator==(const PVID& o) const noexcept {
-    return id == o.id && rangeVersion == o.rangeVersion && assignmentVersion == o.assignmentVersion;
-}
-
-bool PVID::operator!=(const PVID& o) const noexcept {
-    return !operator==(o);
-}
-
-// hash value
-size_t PVID::hash() const noexcept {
-    return k2::hash_combine(id, rangeVersion, assignmentVersion);
-}
 }  // namespace skv::http::dto

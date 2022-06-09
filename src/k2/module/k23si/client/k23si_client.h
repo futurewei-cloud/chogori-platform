@@ -418,6 +418,10 @@ public:
 
     K2_DEF_FMT(K2TxnHandle, _mtr);
 
+    seastar::future<> kill() {
+        return _heartbeat_timer.stop();
+    }
+
 private:
     dto::K23SI_MTR _mtr;
     K2TxnOptions _options;
