@@ -3,6 +3,7 @@ cmake_minimum_required (VERSION 3.13)
 project (k2_platform VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 add_compile_options(-O3 -g -Werror -Wall -Wextra -march=skylake -mtune=skylake-avx512 -mavx -mavx2 -mxsave -mbmi -mbmi2 -mlzcnt -maes -mpopcnt)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # K2_VERBOSE_LOGGING enables some verbose logging for debug purposes. By default it is disabled and compiled out
 if(DEFINED ENV{K2_VERBOSE_LOGGING})

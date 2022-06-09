@@ -63,24 +63,24 @@ Copyright(c) 2020 Futurewei Cloud
 // allow verbose logging to be compiled-out
 #if K2_VERBOSE_LOGGING == 1
 #define K2LOG_V(logger, fmt_str, ...) \
-    K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__);
+    K2LOG_LEVEL_FMT(k2::logging::LogLevel::Verbose, logger, fmt_str, ##__VA_ARGS__);
 #else
 #define K2LOG_V(logger, fmt_str, ...)                                                    \
     if (0) {                                                                             \
-        K2LOG_LEVEL_FMT(k2::logging::LogLevel::VERBOSE, logger, fmt_str, ##__VA_ARGS__); \
+        K2LOG_LEVEL_FMT(k2::logging::LogLevel::Verbose, logger, fmt_str, ##__VA_ARGS__); \
     }
 #endif
 
 #define K2LOG_D(logger, fmt_str, ...) \
-    K2LOG_LEVEL_FMT(k2::logging::LogLevel::DEBUG, logger, fmt_str, ##__VA_ARGS__);
+    K2LOG_LEVEL_FMT(k2::logging::LogLevel::Debug, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_I(logger, fmt_str, ...) \
-    K2LOG_LEVEL_FMT(k2::logging::LogLevel::INFO, logger, fmt_str, ##__VA_ARGS__);
+    K2LOG_LEVEL_FMT(k2::logging::LogLevel::Info, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_W(logger, fmt_str, ...) \
-    K2LOG_LEVEL_FMT(k2::logging::LogLevel::WARN, logger, fmt_str, ##__VA_ARGS__);
+    K2LOG_LEVEL_FMT(k2::logging::LogLevel::Warn, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_E(logger, fmt_str, ...) \
-    K2LOG_LEVEL_FMT(k2::logging::LogLevel::ERROR, logger, fmt_str, ##__VA_ARGS__);
+    K2LOG_LEVEL_FMT(k2::logging::LogLevel::Error, logger, fmt_str, ##__VA_ARGS__);
 #define K2LOG_F(logger, fmt_str, ...) \
-    K2LOG_LEVEL_FMT(k2::logging::LogLevel::FATAL, logger, fmt_str, ##__VA_ARGS__);
+    K2LOG_LEVEL_FMT(k2::logging::LogLevel::Fatal, logger, fmt_str, ##__VA_ARGS__);
 
 #ifndef NDEBUG
 // assertion macros which can be compiled-out
@@ -115,13 +115,13 @@ namespace k2 {
 namespace logging {
 
 K2_DEF_ENUM(LogLevel,
-    NOTSET,
-    VERBOSE,
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR,
-    FATAL);
+    NotSet,
+    Verbose,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Fatal);
 
 // Users of logging would create an instance of this class at their module level
 // Once created, the K2LOG_* macros can be used to perform logging.
@@ -135,7 +135,7 @@ public:
 
     // the global (per-thread) log level. This should be initialized at start of process and
     // can be modified while the process is running to affect the current log level
-    static inline thread_local LogLevel threadLocalLogLevel = LogLevel::INFO;
+    static inline thread_local LogLevel threadLocalLogLevel = LogLevel::Info;
 
     static inline thread_local uint64_t threadId{pthread_self()};
 
@@ -164,14 +164,14 @@ public:
     }
     // see if we should log at the given level
     bool isEnabledFor(LogLevel level) {
-        if (moduleLevel > LogLevel::NOTSET) {
+        if (moduleLevel > LogLevel::NotSet) {
             return level >= moduleLevel;
         }
         return level >= threadLocalLogLevel;
     }
 
     std::string name; // the name for this logger
-    LogLevel moduleLevel = LogLevel::NOTSET; // the module level isn't set by default - use the global level
+    LogLevel moduleLevel = LogLevel::NotSet; // the module level isn't set by default - use the global level
 };
 
 }  // namespace logging

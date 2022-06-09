@@ -4,6 +4,7 @@ project (yule VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_compile_options(-O3 -g -Werror -Wall -Wextra)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # K2_VERBOSE_LOGGING enables some verbose logging for debug purposes. By default it is disabled and compiled out
 if(DEFINED ENV{K2_VERBOSE_LOGGING})

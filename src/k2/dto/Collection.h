@@ -180,11 +180,10 @@ struct CollectionMetadata {
 
 struct Collection {
     PartitionMap partitionMap;
-    std::unordered_map<String, String> userMetadata;
     CollectionMetadata metadata;
 
-    K2_PAYLOAD_FIELDS(partitionMap, userMetadata, metadata);
-    K2_DEF_FMT(Collection, partitionMap, userMetadata, metadata);
+    K2_PAYLOAD_FIELDS(partitionMap, metadata);
+    K2_DEF_FMT(Collection, partitionMap, metadata);
 };
 
 
