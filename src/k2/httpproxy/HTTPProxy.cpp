@@ -292,7 +292,11 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
             }
             dto::SKVRecord k2record(request.collectionName, k2Schema);
             shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.value), true);
-            _shdRecToK2(shdrecord, k2record);
+            try {
+                _shdRecToK2(shdrecord, k2record);
+            } catch(shd::DeserializationError& err) {
+                return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::WriteResponse{});
+            }
 
             return it->second.handle.write(k2record, request.isDelete, static_cast<dto::ExistencePrecondition>(request.precondition))
                 .then([](WriteResult&& result) {
@@ -319,7 +323,11 @@ HTTPProxy::_handleRead(shd::ReadRequest&& request) {
                 }
                 dto::SKVRecord k2record(request.collectionName, k2Schema);
                 shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.key), true);
-                _shdRecToK2(shdrecord, k2record);
+                try {
+                    _shdRecToK2(shdrecord, k2record);
+                }  catch(shd::DeserializationError& err) {
+                    return MakeHTTPResponse<shd::ReadResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::ReadResponse{});
+                }
 
                 return it->second.handle.read(std::move(k2record))
                     .then([&request, shdSchema, k2Schema](auto&& result) {
@@ -352,9 +360,9 @@ HTTPProxy::_handleTxnEnd(shd::TxnEndRequest&& request) {
         return MakeHTTPResponse<shd::TxnEndResponse>(Txn_S410_Gone, shd::TxnEndResponse{});
     }
     return it->second.handle.end(request.action == shd::EndAction::Commit)
-        .then([this, &request] (auto&& result) {
+        .then([this, timestamp=request.timestamp] (auto&& result) {
             if (result.status.is2xxOK() || result.status.is4xxNonRetryable()) {
-                _txns.erase(request.timestamp);
+                _txns.erase(timestamp);
             }
             return MakeHTTPResponse<shd::TxnEndResponse>(sh::Status{.code=result.status.code, .message=result.status.message}, shd::TxnEndResponse{});
         });

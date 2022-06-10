@@ -92,7 +92,7 @@ class TestHTTP(unittest.TestCase):
         # Read 404
         record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk")
         status, resultRec = txn.read(TestHTTP.cname, record)
-        self.assertTrue(status.code == 404);
+        self.assertEqual(status.code, 404)
 
         # read data
         record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk")
@@ -108,7 +108,7 @@ class TestHTTP(unittest.TestCase):
 
         # Commit again, should fail
         status = txn.end()
-        self.assertFalse(status.is2xxOK())
+        self.assertEqual(status.code, 410)
 
        # Begin Txn
         status, txn = TestHTTP.cl.begin_txn()
@@ -156,19 +156,19 @@ class TestHTTP(unittest.TestCase):
         # Write/Read with bad partition key data type, should fail
         bad_loc = TestHTTP.schema.make_record(partitionKey=1, rangeKey=b"test1rk", data=b"mydata")
         status = txn.write(TestHTTP.cname, bad_loc)
-        self.assertEqual(status.code, 503)
+        self.assertEqual(status.code, 400)
         status, _ = txn.read(TestHTTP.cname, bad_loc)
-        self.assertEqual(status.code, 503)
+        self.assertEqual(status.code, 400)
 
         # Write/Read with bad range key data type, should fail
         bad_loc = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=1, data=b"mydata")
         status = txn.write(TestHTTP.cname, bad_loc)
-        self.assertEqual(status.code, 503)
+        self.assertEqual(status.code, 400)
 
         # Write with bad data field data type, should fail
         bad_loc = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=1, data=1)
         status = txn.write(TestHTTP.cname, bad_loc)
-        self.assertEqual(status.code, 503)
+        self.assertEqual(status.code, 400)
 
         # End transaction, should succeed
         status = txn.end()
