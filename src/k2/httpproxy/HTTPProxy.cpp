@@ -33,6 +33,9 @@ inline thread_local k2::logging::Logger httpproxy("k2::httpproxy");
 
 namespace k2 {
 
+// Indicates that the txn requested is no longer available
+static const inline auto Txn_S410_Gone = sh::Statuses::S410_Gone("transaction does not exist");
+
 void _shdRecToK2(shd::SKVRecord& shdrec, dto::SKVRecord& k2rec) {
     shdrec.visitRemainingFields([&k2rec](const auto&, auto&& value) mutable {
         if (value) {
@@ -285,11 +288,15 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
             }
             auto it = _txns.find(request.timestamp);
             if (it == _txns.end()) {
-                return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S410_Gone("transaction does not exist"), shd::WriteResponse{});
+                return MakeHTTPResponse<shd::WriteResponse>(Txn_S410_Gone, shd::WriteResponse{});
             }
             dto::SKVRecord k2record(request.collectionName, k2Schema);
             shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.value), true);
-            _shdRecToK2(shdrecord, k2record);
+            try {
+                _shdRecToK2(shdrecord, k2record);
+            } catch(shd::DeserializationError& err) {
+                return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::WriteResponse{});
+            }
 
             return it->second.handle.write(k2record, request.isDelete, static_cast<dto::ExistencePrecondition>(request.precondition))
                 .then([](WriteResult&& result) {
@@ -312,11 +319,15 @@ HTTPProxy::_handleRead(shd::ReadRequest&& request) {
                 }
                 auto it = _txns.find(request.timestamp);
                 if (it == _txns.end()) {
-                    return MakeHTTPResponse<shd::ReadResponse>(sh::Statuses::S410_Gone("transaction does not exist"), shd::ReadResponse{});
+                    return MakeHTTPResponse<shd::ReadResponse>(Txn_S410_Gone, shd::ReadResponse{});
                 }
                 dto::SKVRecord k2record(request.collectionName, k2Schema);
                 shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.key), true);
-                _shdRecToK2(shdrecord, k2record);
+                try {
+                    _shdRecToK2(shdrecord, k2record);
+                }  catch(shd::DeserializationError& err) {
+                    return MakeHTTPResponse<shd::ReadResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::ReadResponse{});
+                }
 
                 return it->second.handle.read(std::move(k2record))
                     .then([&request, shdSchema, k2Schema](auto&& result) {
@@ -344,7 +355,17 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
 seastar::future<std::tuple<sh::Status, shd::TxnEndResponse>>
 HTTPProxy::_handleTxnEnd(shd::TxnEndRequest&& request) {
     K2LOG_D(log::httpproxy, "Received txn end request {}", request);
-    return MakeHTTPResponse<shd::TxnEndResponse>(sh::Statuses::S501_Not_Implemented("txn end not implemented"), shd::TxnEndResponse{});
+    auto it = _txns.find(request.timestamp);
+    if (it == _txns.end()) {
+        return MakeHTTPResponse<shd::TxnEndResponse>(Txn_S410_Gone, shd::TxnEndResponse{});
+    }
+    return it->second.handle.end(request.action == shd::EndAction::Commit)
+        .then([this, timestamp=request.timestamp] (auto&& result) {
+            if (result.status.is2xxOK() || result.status.is4xxNonRetryable()) {
+                _txns.erase(timestamp);
+            }
+            return MakeHTTPResponse<shd::TxnEndResponse>(sh::Status{.code=result.status.code, .message=result.status.message}, shd::TxnEndResponse{});
+        });
 }
 
 seastar::future<std::tuple<sh::Status, shd::GetSchemaResponse>>

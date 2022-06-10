@@ -27,6 +27,7 @@ SOFTWARE.
 import argparse, unittest, sys
 from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient, HashScheme, StorageDriver, Schema, SchemaField, FieldType, TimeDelta)
 import logging
+from copy import copy
 
 class TestHTTP(unittest.TestCase):
     args = None
@@ -66,6 +67,19 @@ class TestHTTP(unittest.TestCase):
 
     def test_basicTxn(self):
         # Begin Txn
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
+
+        # Write
+        record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk", data=b"mydata")
+        status = txn.write(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK())
+
+        # Abort
+        status = txn.end(False)
+        self.assertTrue(status.is2xxOK())
+
+        # Begin Txn
         self.assertTrue(True)
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
@@ -78,7 +92,7 @@ class TestHTTP(unittest.TestCase):
         # Read 404
         record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk")
         status, resultRec = txn.read(TestHTTP.cname, record)
-        self.assertTrue(status.code == 404);
+        self.assertEqual(status.code, 404)
 
         # read data
         record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk")
@@ -88,106 +102,91 @@ class TestHTTP(unittest.TestCase):
         self.assertEqual(resultRec.fields.rangeKey, b"test1rk")
         self.assertEqual(resultRec.fields.data, b"mydata")
 
+        # Commit
+        status = txn.end()
+        self.assertTrue(status.is2xxOK())
 
-'''
+        # Commit again, should fail
+        status = txn.end()
+        self.assertEqual(status.code, 410)
+
+       # Begin Txn
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
+
+        # read data
+        record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk")
+        status, resultRec = txn.read(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK());
+        self.assertEqual(resultRec.fields.partitionKey, b"test1pk")
+        self.assertEqual(resultRec.fields.rangeKey, b"test1rk")
+        self.assertEqual(resultRec.fields.data, b"mydata")
 
         # Commit
-        request = {"txnID": txnId, "commit": True}
-        url = args.http + "/api/EndTxn"
-        r = requests.post(url, data=json.dumps(request))
-        result = r.json()
-        print(result)
-        self.assertEqual(result["status"]["code"], 200);
+        status = txn.end()
+        self.assertTrue(status.is2xxOK())
 
 
     def test_validation(self):
-        db = SKVClient(args.http)
-        # Create a location object
-        loc = DBLoc(partition_key_name="partitionKey", range_key_name="rangeKey",
-            partition_key="ptest2", range_key="rtest2",
-            schema="test_schema", coll="HTTPClient", schema_version=1)
-        additional_data =  { "data" :"data1"}
-
+        record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk", data=b"mydata")
         # Get a txn
-        status, txn = db.begin_txn()
-        self.assertEqual(status.code, 201)
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
 
         # Write/read with bad collection name, should fail
-        bad_loc = loc.get_new(coll="HTTPClient1")
-        status = txn.write(bad_loc, additional_data)
+        status = txn.write(b"HTTPClient1", record)
         self.assertEqual(status.code, 404)
-        status, record = txn.read(bad_loc)
+        status, _ = txn.read(b"HTTPClient1", record)
         self.assertEqual(status.code, 404)
 
-        # Write/Read with bad schemaName, should fail
-        bad_loc = loc.get_new(schema="test_schema1")
-        status = txn.write(bad_loc, additional_data)
+        # # Write/Read with bad schemaName, should fail
+        bad_loc = copy(record)
+        bad_loc.schemaName = b"test_schema1"
+        status = txn.write(TestHTTP.cname, bad_loc)
         self.assertEqual(status.code, 404)
-        status, record = txn.read(bad_loc)
+        status, _ = txn.read(TestHTTP.cname, bad_loc)
         self.assertEqual(status.code, 404)
 
         # Write with bad schema version, should fail
-        bad_loc = loc.get_new(schema_version=2)
-        status = txn.write(bad_loc, additional_data)
+        bad_loc = copy(record)
+        bad_loc.schemaVersion = 2
+        status = txn.write(TestHTTP.cname, bad_loc)
         self.assertEqual(status.code, 404)
 
         # Write/Read with bad partition key data type, should fail
-        bad_loc = loc.get_new(partition_key=1)
-        status = txn.write(bad_loc, additional_data)
+        bad_loc = TestHTTP.schema.make_record(partitionKey=1, rangeKey=b"test1rk", data=b"mydata")
+        status = txn.write(TestHTTP.cname, bad_loc)
         self.assertEqual(status.code, 400)
-        status, _ = txn.read(bad_loc)
+        status, _ = txn.read(TestHTTP.cname, bad_loc)
         self.assertEqual(status.code, 400)
 
         # Write/Read with bad range key data type, should fail
-        bad_loc = loc.get_new(range_key=1)
-        status = txn.write(bad_loc, additional_data)
+        bad_loc = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=1, data=b"mydata")
+        status = txn.write(TestHTTP.cname, bad_loc)
         self.assertEqual(status.code, 400)
 
         # Write with bad data field data type, should fail
-        status = txn.write(loc, {"data": 1})
+        bad_loc = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=1, data=1)
+        status = txn.write(TestHTTP.cname, bad_loc)
         self.assertEqual(status.code, 400)
-
-        # Do a valid write/read, should succeed
-        status = txn.write(loc, additional_data)
-        self.assertEqual(status.code, 201)
-        status, record = txn.read(loc)
-        self.assertEqual(status.code, 200)
-        self.assertEqual(record["data"], "data1")
-        self.assertEqual(record["partitionKey"], "ptest2")
-        self.assertEqual(record["rangeKey"], "rtest2")
 
         # End transaction, should succeed
         status = txn.end()
-        self.assertEqual(status.code, 200)
-        # End transaction again, should fail
-        status = txn.end()
-        self.assertEqual(status.code, 400)
-
-        # Read write using bad Txn ID, Create a txn object with bad txn Id
-        badTxn = Txn(db, 10000)
-        status = badTxn.write(loc, additional_data)
-        self.assertEqual(status.code, 400)
-        status, _ = badTxn.read(loc)
-        self.assertEqual(status.code, 400)
-        status = badTxn.end()
-        self.assertEqual(status.code, 400)
+        self.assertTrue(status.is2xxOK())
 
 
     # Test read write conflict between two transactions
     def test_read_write_txn(self):
-        db = SKVClient(args.http)
-        # Create a location object
-        loc = DBLoc(partition_key_name="partitionKey", range_key_name="rangeKey",
-            partition_key="ptest3", range_key="rtest3",
-            schema="test_schema", coll="HTTPClient", schema_version=1)
-        additional_data =  { "data" :"data3"}
+        record = TestHTTP.schema.make_record(partitionKey=b"ptest3", rangeKey=b"rtest3", data=b"data3")
+
+        # additional_data =  { "data" :"data3"}
 
         # Populate initial data, Begin Txn
-        status, txn = db.begin_txn()
+        status, txn = TestHTTP.cl.begin_txn()
         self.assertEqual(status.code, 201)
 
         # Write initial data
-        status = txn.write(loc, additional_data)
+        status = txn.write(TestHTTP.cname, record)
         self.assertEqual(status.code, 201)
 
         # Commit initial data
@@ -195,23 +194,23 @@ class TestHTTP(unittest.TestCase):
         self.assertEqual(status.code, 200)
 
         # Begin Txn 1
-        status, txn1 = db.begin_txn()
+        status, txn1 = TestHTTP.cl.begin_txn()
         self.assertEqual(status.code, 201)
 
         # Begin Txn 2
-        status, txn2 = db.begin_txn()
+        status, txn2 = TestHTTP.cl.begin_txn()
         self.assertEqual(status.code, 201)
 
         # Read by Txn 2
-        status, record = txn2.read(loc)
+        status, resultRec = txn2.read(TestHTTP.cname, record)
         self.assertEqual(status.code, 200)
-        self.assertEqual(record["data"], "data3")
-        self.assertEqual(record["partitionKey"], "ptest3")
-        self.assertEqual(record["rangeKey"], "rtest3")
+        self.assertEqual(resultRec.fields.partitionKey, b"ptest3")
+        self.assertEqual(resultRec.fields.rangeKey, b"rtest3")
+        self.assertEqual(resultRec.fields.data, b"data3")
 
         # Update data by Txn 1, should fail with 403: write request cannot be allowed as
         # this key (or key range) has been observed by another transaction.
-        status = txn1.write(loc, additional_data)
+        status = txn1.write(TestHTTP.cname, record)
         self.assertEqual(status.code, 403)
 
         # Commit Txn 1, same error as write request
@@ -222,6 +221,7 @@ class TestHTTP(unittest.TestCase):
         status = txn2.end()
         self.assertEqual(status.code, 200)
 
+'''
     def test_collection_schema_basic(self):
         db = SKVClient(args.http)
         SEC_TO_MICRO = 1000000
