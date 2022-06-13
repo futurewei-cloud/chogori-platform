@@ -80,32 +80,6 @@ shd::SKVRecord _buildSHDRecord(dto::SKVRecord& k2rec, sh::String& collectionName
 }
 
 /*
-
-seastar::future<HTTPPayload> HTTPProxy::_handleEnd(HTTPPayload&& request) {
-    uint64_t id;
-    bool commit;
-    nlohmann::json response;
-
-    try {
-        request.at("txnID").get_to(id);
-        request.at("commit").get_to(commit);
-    } catch (...) {
-        _deserializationErrors++;
-        return JsonResponse(Statuses::S400_Bad_Request("Bad json for end request"));
-    }
-
-    std::unordered_map<uint64_t, k2::K2TxnHandle>::iterator it = _txns.find(id);
-    if (it == _txns.end()) {
-        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for end request"));
-    }
-
-    return it->second.end(commit)
-    .then([this, id] (k2::EndResult&& result) {
-        _txns.erase(id);
-        return JsonResponse(std::move(result.status));
-    });
-}
-
 seastar::future<HTTPPayload> HTTPProxy::_handleCreateQuery(HTTPPayload&& jsonReq) {
     std::string collectionName;
     std::string schemaName;
@@ -186,13 +160,6 @@ seastar::future<HTTPPayload> HTTPProxy::_handleQuery(HTTPPayload&& jsonReq) {
     });
 }
 
-seastar::future<HTTPPayload> HTTPProxy::_handleGetSchema(HTTPPayload&& request) {
-    K2LOG_D(log::httpproxy, "Received get schema request {}", request);
-    return _client.getSchema(std::move(request.collectionName), std::move(request.schemaName), request.schemaVersion)
-        .then([](GetSchemaResult&& result) {
-            return RPCResponse(std::move(result.status), result.schema ? *result.schema : Schema{});
-        });
-}
 */
 seastar::future<std::tuple<sh::Status, shd::CollectionCreateResponse>>
 HTTPProxy::_handleCreateCollection(shd::CollectionCreateRequest&& request) {
@@ -371,7 +338,13 @@ HTTPProxy::_handleTxnEnd(shd::TxnEndRequest&& request) {
 seastar::future<std::tuple<sh::Status, shd::GetSchemaResponse>>
 HTTPProxy::_handleGetSchema(shd::GetSchemaRequest&& request) {
     K2LOG_D(log::httpproxy, "Received get schema request {}", request);
-    return MakeHTTPResponse<shd::GetSchemaResponse>(sh::Statuses::S501_Not_Implemented("get schema not implemented"), shd::GetSchemaResponse{});
+    return _getSchemas(request.collectionName, request.schemaName, request.schemaVersion)
+    .then([](auto&& schemas) {
+        auto& [status, k2Schema, shdSchema] = schemas;
+        return MakeHTTPResponse<shd::GetSchemaResponse>(
+            sh::Status{.code=status.code, .message=status.message},
+            status.is2xxOK() ? shd::GetSchemaResponse{.schema=*shdSchema}: shd::GetSchemaResponse{});
+    });
 }
 
 seastar::future<std::tuple<sh::Status, shd::CreateQueryResponse>>
