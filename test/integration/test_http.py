@@ -221,60 +221,55 @@ class TestHTTP(unittest.TestCase):
         status = txn2.end()
         self.assertEqual(status.code, 200)
 
-'''
+
     def test_collection_schema_basic(self):
-        db = SKVClient(args.http)
-        SEC_TO_MICRO = 1000000
-        metadata = CollectionMetadata(name = 'HTTPProxy1',
-            hashScheme = HashScheme("HashCRC32C"),
-            storageDriver = StorageDriver("K23SI"),
+        test_coll =  b'HTTPProxy1'
+        metadata = CollectionMetadata(name =test_coll,
+            hashScheme =  HashScheme.HashCRC32C,
+            storageDriver = StorageDriver.K23SI,
             capacity = CollectionCapacity(minNodes = 1),
-            retentionPeriod = int(timedelta(hours=5).total_seconds()*SEC_TO_MICRO)
+            retentionPeriod = TimeDelta(hours=5)
         )
-        status = db.create_collection(metadata)
-        self.assertEqual(status.code, 200, msg=status.message)
+        status = TestHTTP.cl.create_collection(metadata)
+        self.assertTrue(status.is2xxOK(), msg=status.message)
 
-        schema = Schema(name='tests', version=1,
+        test_schema = Schema(name=b'tests', version=1,
             fields=[
-                SchemaField(FieldType.STRING, 'pkey1'),
-                SchemaField(FieldType.INT32T, 'rkey1'),
-                SchemaField(FieldType.STRING, 'datafield1')],
+                SchemaField(FieldType.STRING, b'pkey1'),
+                SchemaField(FieldType.INT32T, b'rkey1'),
+                SchemaField(FieldType.STRING, b'datafield1')],
             partitionKeyFields=[0], rangeKeyFields=[1])
-        status = db.create_schema("HTTPProxy1", schema)
-        self.assertEqual(status.code, 200, msg=status.message)
+        status = TestHTTP.cl.create_schema(test_coll, test_schema)
+        self.assertTrue(status.is2xxOK())
 
-        status, schema1 = db.get_schema("HTTPProxy1", "tests", 1)
-        self.assertEqual(status.code, 200, msg=status.message)
-        self.assertEqual(schema, schema1)
+        schema1 = TestHTTP.cl.get_schema(test_coll, b"tests", 1)
+        self.assertIsNotNone(schema1)
+        self.assertEqual(test_schema, schema1)
 
         # Get a non existing schema, should fail
-        status, _ = db.get_schema("HTTPProxy1", "tests_1", 1)
-        self.assertEqual(status.code, 404, msg=status.message)
+        with self.assertRaises(Exception):
+            TestHTTP.cl.get_schema(test_coll, b"tests_1", 1)
 
-        # Create a location object
-        loc = DBLoc(partition_key_name="pkey1", range_key_name="rkey1",
-            partition_key="ptest4", range_key=4,
-            schema="tests", coll="HTTPProxy1", schema_version=1)
-        additional_data =  { "datafield1" :"data4"}
-
+        # Read write using the schema
+        record =test_schema.make_record(pkey1=b"ptest4", rkey1=4, datafield1=b"data4")
         # Populate data, Begin Txn
-        status, txn = db.begin_txn()
-        self.assertEqual(status.code, 201)
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
 
         # Write initial data
-        status = txn.write(loc, additional_data)
-        self.assertEqual(status.code, 201)
+        status = txn.write(test_coll, record)
+        self.assertTrue(status.is2xxOK())
 
-        status, record = txn.read(loc)
-        self.assertEqual(status.code, 200)
-        self.assertEqual(record["datafield1"], "data4")
-        self.assertEqual(record["pkey1"], "ptest4")
-        self.assertEqual(record["rkey1"], 4)
+        status, record1 = txn.read(test_coll, record)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(record.fields.datafield1, b"data4")
+        self.assertEqual(record.fields.pkey1, b"ptest4")
+        self.assertEqual(record.fields.rkey1, 4)
 
         # Commit Txn, should succeed
         status = txn.end()
-        self.assertEqual(status.code, 200)
-
+        self.assertTrue(status.is2xxOK())
+'''
     def test_create_schema_validation(self):
         db = SKVClient(args.http)
         # Create schema with no field, should fail
