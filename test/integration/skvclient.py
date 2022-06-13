@@ -129,7 +129,9 @@ class Txn:
 
         cname, sname, storage = resp
 
-        schema = self.client.get_schema(cname, sname, storage[2])
+        status, schema = self.client.get_schema(cname, sname, storage[2])
+        if not status.is2xxOK():
+            return status, None
 
         return status, schema.parse_read(storage, self.timestamp)
 
@@ -344,19 +346,20 @@ class SKVClient:
 
     def get_schema(self, collectionName, schemaName, schemaVersion: int = Schema.ANY_VERSION):
         skey = (collectionName, schemaName, schemaVersion)
+
         if skey not in self._schemas:
             status, schema = self._do_get_schema(collectionName, schemaName, schemaVersion)
             if not status.is2xxOK():
-                return None
+                return status, schema
             self._schemas[skey] = schema
 
-        return self._schemas[skey]
+        return Status([200, ""]), self._schemas[skey]
 
     def _do_get_schema(self, collectionName, schemaName, schemaVersion: int):
         status, schema_raw = self.make_call('/api/GetSchema',
                  [collectionName, schemaName, schemaVersion])
         if not status.is2xxOK():
-            raise Exception("unable to get schema due to: " + str(status))
+            return status, None
         fields = [
             SchemaField(FieldType(fraw[0]), fraw[1], fraw[2], fraw[3]) for fraw in schema_raw[2]
         ]

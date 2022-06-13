@@ -242,13 +242,13 @@ class TestHTTP(unittest.TestCase):
         status = TestHTTP.cl.create_schema(test_coll, test_schema)
         self.assertTrue(status.is2xxOK())
 
-        schema1 = TestHTTP.cl.get_schema(test_coll, b"tests", 1)
-        self.assertIsNotNone(schema1)
+        status, schema1 = TestHTTP.cl.get_schema(test_coll, b"tests", 1)
+        self.assertTrue(status.is2xxOK())
         self.assertEqual(test_schema, schema1)
 
         # Get a non existing schema, should fail
-        with self.assertRaises(Exception):
-            TestHTTP.cl.get_schema(test_coll, b"tests_1", 1)
+        status, _ = TestHTTP.cl.get_schema(test_coll, b"tests_1", 1)
+        self.assertEqual(status.code, 404)
 
         # Read write using the schema
         record =test_schema.make_record(pkey1=b"ptest4", rkey1=4, datafield1=b"data4")
