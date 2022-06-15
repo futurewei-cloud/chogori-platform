@@ -129,13 +129,13 @@ struct WriteResponse {
     K2_SERIALIZABLE_FMT(WriteResponse);
 };
 
-struct QueryRequest {
+struct CreateQueryRequest {
     Timestamp timestamp; // identify the issuing transaction
     String collectionName;
+    String schemaName;
     // use the name "key" so that we can use common routing from CPO client
-    Key key; // key for routing and will be interpreted as inclusive start key by the server
-    Key endKey; // exclusive scan end key
-    bool exclusiveKey = false; // Used to indicate key(aka startKey) is excluded in results
+    SKVRecord::Storage key; // key for routing and will be interpreted as inclusive start key by the server
+    SKVRecord::Storage endKey; // exclusive scan end key
 
     int32_t recordLimit = -1; // Max number of records server should return, negative is no limit
     bool includeVersionMismatch = false; // Whether mismatched schema versions should be included in results
@@ -144,67 +144,25 @@ struct QueryRequest {
     expression::Expression filterExpression; // the filter expression for this query
     std::vector<String> projection; // Fields by name to include in projection
 
-    K2_SERIALIZABLE_FMT(QueryRequest, timestamp, collectionName, key, endKey, exclusiveKey, recordLimit,
+    K2_SERIALIZABLE_FMT(CreateQueryRequest, timestamp, collectionName, schemaName, key, endKey, recordLimit,
         includeVersionMismatch, reverseDirection, filterExpression, projection);
 };
 
-struct QueryResponse {
-    Key nextToScan; // For continuation token
-    bool exclusiveToken = false; // whether nextToScan should be excluded or included
-    std::vector<SKVRecord::Storage> results;
-    K2_SERIALIZABLE_FMT(QueryResponse, nextToScan, exclusiveToken, results);
-};
-
-// Represents a new or in-progress query (aka read scan with predicate and projection)
-class Query {
-public:
-    void setFilterExpression(expression::Expression&& root);
-    void setReverseDirection(bool reverseDirection);
-    void setIncludeVersionMismatch(bool includeVersionMismatch);
-    void setLimit(int32_t limit);
-
-    void addProjection(const String& fieldName);
-    void addProjection(const std::vector<String>& fieldNames);
-
-    bool isDone();  // If false, more results may be available
-
-    // Recursively copies the payloads if the expression's values and children. This is used so that the
-    // memory of the payloads will be allocated in the context of the current thread.
-    void copyPayloads() { request.filterExpression.copyPayloads(); }
-
-    Timestamp timestamp;  // identify the issuing transaction
-
-    // The user must specify the inclusive start and exclusive end keys for the range scan, but the client
-    // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an
-    // appropriate schema by the client createQuery function. The user is then expected to serialize the
-    // key fields into the SKVRecords, similar to a single key read request.
-    //
-    // They must be a fully specified prefix of the key fields. For example, if the key fields are defined
-    // as {ID, NAME, TIMESTAMP} then {ID = 1, TIMESTAMP = 10} is not a valid start or end scanRecord, but
-    // {ID = 1, NAME = J} is valid.
-    SKVRecord::Storage startScanRecord;
-    SKVRecord::Storage endScanRecord;
-    K2_SERIALIZABLE_FMT(Query, timestamp, startScanRecord, endScanRecord, done, inprogress, keysProjected, request);
-    std::shared_ptr<Schema> schema = nullptr;
-
-private:
-    void checkKeysProjected();
-
-    bool done = false;
-    bool inprogress = false;  // Used to prevent user from changing predicates after query has started
-    bool keysProjected = true;
-    QueryRequest request;
-};
-
-struct CreateQueryRequest {
-    String collectionName;
-    String schemaName;
-    K2_SERIALIZABLE_FMT(CreateQueryRequest, collectionName, schemaName);
-};
-
 struct CreateQueryResponse {
-    Query query;    // the query if the response was OK
-    K2_SERIALIZABLE_FMT(CreateQueryResponse, query);
+    uint64_t queryId;    // the query if the response was OK
+    K2_SERIALIZABLE_FMT(CreateQueryResponse, queryId);
+};
+
+struct QueryRequest {
+    Timestamp timestamp; // identify the issuing transaction
+    uint64_t queryId;
+    K2_SERIALIZABLE_FMT(QueryRequest, timestamp, queryId);
+};
+
+struct QueryResponse {
+    bool done;
+    std::vector<SKVRecord::Storage> records;
+    K2_SERIALIZABLE_FMT(QueryResponse, done, records);
 };
 
 struct TxnEndRequest {

@@ -31,6 +31,8 @@ import re
 import msgpack
 from datetime import timedelta
 import logging
+from dataclasses import dataclass
+
 logger = logging.getLogger(__name__)
 
 class TimeDelta(timedelta):
@@ -65,10 +67,60 @@ class Status:
     def is5xxServerError(self):
         return self.code >= 500
 
-class Query:
-    def __init__(self, query_id: int):
-        self.query_id = query_id
-        self.done = False
+class FieldType(int, Enum):
+    NULL_T:     int     = 0
+    STRING:     int     = 1
+    INT32T:     int     = 2
+    INT64T:     int     = 3
+    FLOAT:      int     = 4
+    DOUBLE:     int     = 5
+    BOOL:       int     = 6
+    DECIMAL64:  int     = 7
+    DECIMAL168: int     = 8
+
+    def serialize(self):
+        return self.value
+
+class Operation(int, Enum):
+    EQ  = 0
+    GT  = 1
+    GTE = 2
+    LT  = 3
+    LTE = 4
+    IS_NULL = 5
+    IS_EXACT_TYPE = 6
+    STARTS_WITH = 7
+    CONTAINS = 8
+    ENDS_WITH = 9
+    AND = 10
+    OR = 11
+    XOR = 12
+    NOT = 13
+    UNKNOWN = 14
+
+    def serialize(self):
+        return self.value
+
+class Value:
+    def __init__(self, name = b'', fieldType = FieldType.NULL_T, literal=b''):
+        self.fieldName = name
+        self.fieldType = fieldType
+        self.literal = literal
+
+    def serialize(self):
+        return [self.fieldName, self.fieldType.serialize(), self.literal]
+
+class Expression:
+    def __init__(self, op = Operation.UNKNOWN, values=[], expressions = []):
+        self.op = op
+        self.values = values
+        self.expressions = expressions
+
+    def serialize(self):
+        return [self.op.serialize(),
+            [value.serialize() for value in self.values],
+            [expression.serialize() for expression in self.expressions]
+        ]
 
 class ExistencePrecondition(int, Enum):
     Nil = 0
@@ -105,6 +157,12 @@ class EndAction(int, Enum):
     def serialize(self):
         return self.value
 
+class Query:
+    def __init__(self, cname, sname, query_id):
+        self.cname = cname
+        self.sname = sname
+        self.query_id = query_id
+
 class Txn:
     "Transaction Object"
     def __init__(self, client, timestamp):
@@ -135,20 +193,43 @@ class Txn:
 
         return status, schema.parse_read(storage, self.timestamp)
 
-    def query(self, query: Query):
-        request = {"txnID" : self.timestamp, "queryID": query.query_id}
-        result = self._send_req("/api/Query", request)
-        recores:dict = []
-        if "response" in result:
-            query.done = result["response"]["done"]
-            records = result["response"]["records"]
-        return Status(result), records
 
-    def queryAll(self, query: Query):
-        records: [dict] = []
-        while not query.done:
-            status, r = self.query(query)
-            if status.code != 200:
+    def create_query(self, cname: str,
+        sname: str, start = None, end = None,
+        limit: int = -1, reverse: bool = False,
+        includeVersionMismatch = False, filter = Expression(),
+        projection = []):
+        if not start: start = Record(sname, 0)
+        if not end: end = Record(sname, 0)
+
+        status, resp = self.client.make_call("/api/CreateQuery",
+            [self.timestamp, cname, sname, start.serialize(), end.serialize(),
+                limit, includeVersionMismatch, reverse,
+                filter.serialize(), projection])
+        if not status.is2xxOK():
+            return status, None
+
+        return status, Query(cname, sname, resp[0])
+
+    def query(self, query):
+        status, result = self.client.make_call("/api/Query", [self.timestamp, query.query_id])
+        if not status.is2xxOK():
+            return status, None, None
+        records = []
+        for storage in result[1]:
+            status, schema = self.client.get_schema(query.cname, query.sname, storage[2])
+            if not status.is2xxOK():
+                return status, None, None
+            record = schema.parse_read(storage, None)
+            records += [record]
+        return status, result[0], records
+
+    def queryAll(self, query):
+        records = []
+        done = False
+        while not done:
+            status, done, r = self.query(query)
+            if not status.is2xxOK():
                 return status, records
             records += r
 
@@ -160,24 +241,12 @@ class Txn:
             [self.timestamp, endAction.serialize()])
         return status
 
-class FieldType(int, Enum):
-    NULL_T:     int     = 0
-    STRING:     int     = 1
-    INT32T:     int     = 2
-    INT64T:     int     = 3
-    FLOAT:      int     = 4
-    DOUBLE:     int     = 5
-    BOOL:       int     = 6
-    DECIMAL64:  int     = 7
-    DECIMAL168: int     = 8
-
-    def serialize(self):
-        return self.value
-
-
+@dataclass
 class Data:
     'data storage class for records'
     pass
+
+@dataclass
 class Record:
     def __init__(self, schemaName, schemaVersion):
         self.schemaName = schemaName
@@ -187,6 +256,7 @@ class Record:
         self.timestamp = None
         self.fieldsForPartialUpdate=[]
         self.fields = Data()
+
 
     def serialize(self):
         fieldData = b''.join([msgpack.packb(field) for field in self._posFields])
@@ -327,6 +397,7 @@ class SKVClient:
         except Exception as exc:
             logger.exception("Unable to serialize request")
             return (Status([501, "Unable to serialize request due to: {}".format(exc)]), None)
+
         resp = self.session.post(url, data=datab, headers={'Content-Type': 'application/x-msgpack', 'Accept': 'application/x-msgpack'})
 
         if resp.status_code != 200:
@@ -389,28 +460,6 @@ class SKVClient:
             return status, Txn(self, resp[0])
         else:
             return status, None
-
-    def create_query(self, collectionName: str,
-        schemaName: str, start: dict = None, end: dict = None,
-        limit: int = 0, reverse: bool = False):
-        url = self.http + "/api/CreateQuery"
-        data = {"collectionName": collectionName,
-            "schemaName": schemaName}
-        if start:
-            data["startScanRecord"] = start
-        if end:
-            data["endScanRecord"] = end
-        if limit:
-            data["limit"] = limit
-        if reverse:
-            data["reverse"] = reverse
-
-        r = requests.post(url, data=json.dumps(data))
-        result = r.json()
-        status = Status(result)
-        if "response" in result:
-            return status, Query(result["response"]["queryID"])
-        return status, None
 
     def get_key_string(self, fields: [FieldValue]):
         url = self.http + "/api/GetKeyString"

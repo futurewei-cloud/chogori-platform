@@ -73,94 +73,12 @@ void _buildSHDRecordHelperVisitor(std::optional<T> value, String&, shd::SKVRecor
     }
 }
 
-shd::SKVRecord _buildSHDRecord(dto::SKVRecord& k2rec, sh::String& collectionName, std::shared_ptr<shd::Schema> shdSchema) {
+shd::SKVRecord _buildSHDRecord(dto::SKVRecord& k2rec, const sh::String& collectionName, std::shared_ptr<shd::Schema> shdSchema) {
     shd::SKVRecordBuilder builder(collectionName, shdSchema);
     FOR_EACH_RECORD_FIELD(k2rec, _buildSHDRecordHelperVisitor, builder);
     return builder.build();
 }
 
-/*
-seastar::future<HTTPPayload> HTTPProxy::_handleCreateQuery(HTTPPayload&& jsonReq) {
-    std::string collectionName;
-    std::string schemaName;
-
-    try {
-        jsonReq.at("collectionName").get_to(collectionName);
-        jsonReq.at("schemaName").get_to(schemaName);
-    } catch(...) {
-        _deserializationErrors++;
-        return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
-    }
-
-    return _client.createQuery(collectionName, schemaName)
-    .then([this, req=std::move(jsonReq)] (auto&& result) mutable {
-        if(!result.status.is2xxOK()) {
-            return JsonResponse(std::move(result.status));
-        }
-        K2LOG_D(log::httpproxy, "begin query {}", result);
-        if (req.contains("startScanRecord")) {
-            serializeRecordFromJSON(result.query.startScanRecord, std::move(req.at("startScanRecord")));
-        }
-        if (req.contains("endScanRecord")) {
-            serializeRecordFromJSON(result.query.endScanRecord, std::move(req.at("endScanRecord")));
-        }
-        if (req.contains("limit")) {
-            result.query.setLimit(req["limit"]);
-        }
-        if (req.contains("reverse")) {
-            result.query.setReverseDirection(req["reverse"]);
-        }
-        _queries[_queryID++] = std::move(result.query);
-        nlohmann::json resp{{"queryID", _queryID - 1}};
-        return JsonResponse(std::move(result.status), std::move(resp));
-    });
-}
-
-seastar::future<HTTPPayload> HTTPProxy::_handleQuery(HTTPPayload&& jsonReq) {
-    uint64_t txnID;
-    uint64_t queryID;
-
-    try {
-        jsonReq.at("txnID").get_to(txnID);
-        jsonReq.at("queryID").get_to(queryID);
-    } catch(...) {
-        _deserializationErrors++;
-        return JsonResponse(Statuses::S400_Bad_Request("Bad json for query request"));
-    }
-    auto txnIter = _txns.find(txnID);
-    if (txnIter == _txns.end()) {
-        return JsonResponse(Statuses::S400_Bad_Request("Could not find txnID for query request"));
-    }
-    auto queryIter = _queries.find(queryID);
-
-    if (queryIter == _queries.end()) {
-        return JsonResponse(Statuses::S400_Bad_Request("Could not find queryID for query request"));
-    }
-
-    return txnIter->second.query(queryIter->second)
-    .then([this, queryID](QueryResult&& result) {
-        if(!result.status.is2xxOK()) {
-            return JsonResponse(std::move(result.status));
-        }
-
-        std::vector<nlohmann::json> records;
-        records.reserve(result.records.size());
-        for (auto& record: result.records) {
-            records.push_back(serializeJSONFromRecord(record));
-        }
-
-        bool isDone = _queries[queryID].isDone();
-        if (isDone) {
-            _queries.erase(queryID);
-        }
-        nlohmann::json resp;
-        resp["records"] = std::move(records);
-        resp["done"] = isDone;
-        return JsonResponse(std::move(result.status), std::move(resp));
-    });
-}
-
-*/
 seastar::future<std::tuple<sh::Status, shd::CollectionCreateResponse>>
 HTTPProxy::_handleCreateCollection(shd::CollectionCreateRequest&& request) {
     K2LOG_D(log::httpproxy, "Received create collection request {}", request);
@@ -258,7 +176,7 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
                 return MakeHTTPResponse<shd::WriteResponse>(Txn_S410_Gone, shd::WriteResponse{});
             }
             dto::SKVRecord k2record(request.collectionName, k2Schema);
-            shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.value), true);
+            shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.value), true);
             try {
                 _shdRecToK2(shdrecord, k2record);
             } catch(shd::DeserializationError& err) {
@@ -289,7 +207,7 @@ HTTPProxy::_handleRead(shd::ReadRequest&& request) {
                     return MakeHTTPResponse<shd::ReadResponse>(Txn_S410_Gone, shd::ReadResponse{});
                 }
                 dto::SKVRecord k2record(request.collectionName, k2Schema);
-                shd::SKVRecord shdrecord(request.schemaName, shdSchema, std::move(request.key), true);
+                shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.key), true);
                 try {
                     _shdRecToK2(shdrecord, k2record);
                 }  catch(shd::DeserializationError& err) {
@@ -316,7 +234,38 @@ HTTPProxy::_handleRead(shd::ReadRequest&& request) {
 seastar::future<std::tuple<sh::Status, shd::QueryResponse>>
 HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
     K2LOG_D(log::httpproxy, "Received query request {}", request);
-    return MakeHTTPResponse<shd::QueryResponse>(sh::Statuses::S501_Not_Implemented("query not implemented"), shd::QueryResponse{});
+    auto iter = _txns.find(request.timestamp);
+    if (iter == _txns.end()) {
+        return MakeHTTPResponse<shd::QueryResponse>(Txn_S410_Gone, shd::QueryResponse{});
+    }
+    auto queryIter = iter->second.queries.find(request.queryId);
+    if (queryIter ==iter->second.queries.end()) {
+        return MakeHTTPResponse<shd::QueryResponse>(sh::Statuses::S410_Gone("Query does not exist"), shd::QueryResponse{});
+    }
+
+    return iter->second.handle.query(queryIter->second)
+    .then([this, request=std::move(request)](QueryResult&& result) {
+        if(!result.status.is2xxOK()) {
+            return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::QueryResponse{});
+        }
+
+        std::vector<shd::SKVRecord::Storage> records;
+        records.reserve(result.records.size());
+        for (auto& k2record: result.records) {
+            sh::String collectionName(k2record.collectionName);
+            auto shSChema = getSchemaFromCache(collectionName, k2record.schema);
+            auto rec = _buildSHDRecord(k2record, collectionName, shSChema);
+            records.push_back(std::move(rec.getStorage()));
+        }
+        auto& txnrec = _txns.at(request.timestamp);
+        auto& query = txnrec.queries.at(request.queryId);
+        bool isDone = query.isDone();
+        if (isDone) {
+            txnrec.queries.erase(request.queryId);
+        }
+        return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code=result.status.code, .message=result.status.message},
+            shd::QueryResponse{.done = isDone, .records = std::move(records)});
+    });
 }
 
 seastar::future<std::tuple<sh::Status, shd::TxnEndResponse>>
@@ -347,10 +296,70 @@ HTTPProxy::_handleGetSchema(shd::GetSchemaRequest&& request) {
     });
 }
 
+void HTTPProxy::setQueryRecord(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record) {
+    if (key.fieldData.size() == 0) return;
+    auto shdSchema = getSchemaFromCache(collectionName, k2record.schema);
+    shd::SKVRecord shdrecord(collectionName, shdSchema, std::move(key), true);
+    _shdRecToK2(shdrecord, k2record);
+}
+
 seastar::future<std::tuple<sh::Status, shd::CreateQueryResponse>>
 HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
     K2LOG_D(log::httpproxy, "Received create query request {}", request);
-    return MakeHTTPResponse<shd::CreateQueryResponse>(sh::Statuses::S501_Not_Implemented("create query not implemented"), shd::CreateQueryResponse{});
+    auto it = _txns.find(request.timestamp);
+    if (it == _txns.end()) {
+        return MakeHTTPResponse<shd::CreateQueryResponse>(Txn_S410_Gone, shd::CreateQueryResponse{});
+    }
+    return _client.createQuery(request.collectionName, request.schemaName)
+        .then([this, req=std::move(request)] (auto&& result) mutable {
+            if(!result.status.is2xxOK()) {
+                return MakeHTTPResponse<shd::CreateQueryResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::CreateQueryResponse{});
+            }
+            try {
+                setQueryRecord(req.collectionName, std::move(req.key), result.query.startScanRecord);
+                setQueryRecord(req.collectionName, std::move(req.endKey), result.query.endScanRecord);
+            } catch(shd::DeserializationError& err) {
+                return MakeHTTPResponse<shd::CreateQueryResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::CreateQueryResponse{});
+            }
+
+            if (req.recordLimit >= 0) result.query.setLimit(req.recordLimit);
+            if (req.includeVersionMismatch) result.query.setIncludeVersionMismatch(req.includeVersionMismatch);
+            if (req.reverseDirection) result.query.setReverseDirection(req.reverseDirection);
+            if (req.projection.size() > 0) {
+                std::vector<String> projection(req.projection.begin(), req.projection.end());
+                result.query.addProjection(projection);
+            }
+
+            auto queryId = _queryID++;
+            _txns.at(req.timestamp).queries[queryId] = std::move(result.query);
+            return MakeHTTPResponse<shd::CreateQueryResponse>(
+                sh::Status{.code = result.status.code, .message = result.status.message},
+                shd::CreateQueryResponse{.queryId = queryId});
+        });
+ }
+
+std::shared_ptr<shd::Schema> HTTPProxy::getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema) {
+    // create the nested maps as needed - we have a schema
+    auto& shdSchemaPtr = _shdSchemas[cname][schema->name][schema->version];
+    if (!shdSchemaPtr) {
+        std::vector<shd::SchemaField> shdfields;
+
+        for (auto& f : schema->fields) {
+            shdfields.push_back(shd::SchemaField{
+                .type = static_cast<shd::FieldType>(f.type),
+                .name = sh::String(f.name.data(), f.name.size()),
+                .descending = f.descending,
+                .nullLast = f.nullLast});
+        }
+        shd::Schema* shdSchema  = new shd::Schema{
+            .name = schema->name,
+            .version = schema->version,
+            .fields = std::move(shdfields),
+            .partitionKeyFields = schema->partitionKeyFields,
+            .rangeKeyFields = schema->rangeKeyFields};
+        shdSchemaPtr.reset(shdSchema);
+    }
+    return shdSchemaPtr;
 }
 
 seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>
@@ -360,26 +369,7 @@ HTTPProxy::_getSchemas(sh::String cname, sh::String sname, int64_t sversion) {
             if (!result.status.is2xxOK()) {
                 return seastar::make_ready_future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>(std::move(result.status), std::shared_ptr<dto::Schema>(), std::shared_ptr<shd::Schema>());
             }
-            // create the nested maps as needed - we have a schema
-            auto& shdSchemaPtr = _shdSchemas[cname][result.schema->name][result.schema->version];
-            if (!shdSchemaPtr) {
-                std::vector<shd::SchemaField> shdfields;
-
-                for (auto& f : result.schema->fields) {
-                    shdfields.push_back(shd::SchemaField{
-                        .type = static_cast<shd::FieldType>(f.type),
-                        .name = sh::String(f.name.data(), f.name.size()),
-                        .descending = f.descending,
-                        .nullLast = f.nullLast});
-                }
-                shd::Schema* schema  = new shd::Schema{
-                    .name = result.schema->name,
-                    .version = result.schema->version,
-                    .fields = std::move(shdfields),
-                    .partitionKeyFields = result.schema->partitionKeyFields,
-                    .rangeKeyFields = result.schema->rangeKeyFields};
-                shdSchemaPtr.reset(schema);
-            }
+            auto shdSchemaPtr = getSchemaFromCache(std::move(cname), result.schema);
             return seastar::make_ready_future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>(std::move(result.status), std::move(result.schema), std::move(shdSchemaPtr));
         });
 }

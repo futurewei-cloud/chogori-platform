@@ -25,7 +25,9 @@ SOFTWARE.
 '''
 
 import argparse, unittest, sys
-from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient, HashScheme, StorageDriver, Schema, SchemaField, FieldType, TimeDelta)
+from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient,
+    HashScheme, StorageDriver, Schema, SchemaField, FieldType, TimeDelta,
+    Operation, Value, Expression)
 import logging
 from copy import copy
 
@@ -73,7 +75,7 @@ class TestHTTP(unittest.TestCase):
         # Write
         record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk", data=b"mydata")
         status = txn.write(TestHTTP.cname, record)
-        self.assertTrue(status.is2xxOK())
+        self.assertTrue(status.is2xxOK(), msg=status.message)
 
         # Abort
         status = txn.end(False)
@@ -251,7 +253,7 @@ class TestHTTP(unittest.TestCase):
         self.assertEqual(status.code, 404)
 
         # Read write using the schema
-        record =test_schema.make_record(pkey1=b"ptest4", rkey1=4, datafield1=b"data4")
+        record = test_schema.make_record(pkey1=b"ptest4", rkey1=4, datafield1=b"data4")
         # Populate data, Begin Txn
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
@@ -269,170 +271,179 @@ class TestHTTP(unittest.TestCase):
         # Commit Txn, should succeed
         status = txn.end()
         self.assertTrue(status.is2xxOK())
-'''
+
     def test_create_schema_validation(self):
-        db = SKVClient(args.http)
         # Create schema with no field, should fail
-        schema = Schema(name='tests2', version=1,
+        schema = Schema(name=b'tests2', version=1,
             fields=[], partitionKeyFields=[], rangeKeyFields=[])
 
-        status = db.create_schema("HTTPClient", schema)
+        status = TestHTTP.cl.create_schema(TestHTTP.cname, schema)
         self.assertEqual(status.code, 400, msg=status.message)
 
         # No partition Key, should fail
-        schema = Schema(name='tests2', version=1,
+        schema = Schema(name=b'tests2', version=1,
             fields=[
-                SchemaField(FieldType.STRING, 'pkey1'),
-                SchemaField(FieldType.INT32T, 'rkey1'),
-                SchemaField(FieldType.STRING, 'datafield1')],
+                SchemaField(FieldType.STRING, b'pkey1'),
+                SchemaField(FieldType.INT32T, b'rkey1'),
+                SchemaField(FieldType.STRING, b'datafield1')],
             partitionKeyFields=[], rangeKeyFields=[1])
 
-        status = db.create_schema("HTTPClient", schema)
+        status = TestHTTP.cl.create_schema(TestHTTP.cname, schema)
         self.assertEqual(status.code, 400, msg=status.message)
 
         # Duplicate Key, should fail
-        schema = Schema(name='tests2', version=1,
+        schema = Schema(name=b'tests2', version=1,
             fields=[
-                SchemaField(FieldType.STRING, 'pkey1'),
-                SchemaField(FieldType.INT32T, 'pkey1'),
-                SchemaField(FieldType.STRING, 'datafield1')],
+                SchemaField(FieldType.STRING, b'pkey1'),
+                SchemaField(FieldType.INT32T, b'pkey1'),
+                SchemaField(FieldType.STRING, b'datafield1')],
             partitionKeyFields=[0], rangeKeyFields=[])
 
-        status = db.create_schema("HTTPClient", schema)
+        status = TestHTTP.cl.create_schema(TestHTTP.cname, schema)
         self.assertEqual(status.code, 400, msg=status.message)
 
-        schema = Schema(name='tests2', version=1,
+        # Valid request, should succeed
+        schema = Schema(name=b'tests2', version=1,
             fields=[
-                SchemaField(FieldType.STRING, 'pkey1'),
-                SchemaField(FieldType.INT32T, 'rkey1'),
-                SchemaField(FieldType.STRING, 'datafield1')],
+                SchemaField(FieldType.STRING, b'pkey1'),
+                SchemaField(FieldType.INT32T, b'rkey1'),
+                SchemaField(FieldType.STRING, b'datafield1')],
             partitionKeyFields=[0], rangeKeyFields=[1])
 
-        status = db.create_schema("HTTPClient", schema)
-        self.assertEqual(status.code, 200, msg=status.message)
+        status = TestHTTP.cl.create_schema(TestHTTP.cname, schema)
+        self.assertTrue(status.is2xxOK())
 
         # Create the same schema again, should fail
-        status = db.create_schema("HTTPClient", schema)
+        status = TestHTTP.cl.create_schema(TestHTTP.cname, schema)
         self.assertEqual(status.code, 403, msg=status.message)
 
     def test_query(self):
-        db = SKVClient(args.http)
-        SEC_TO_MICRO = 1000000
-        metadata = CollectionMetadata(name = 'query_collection',
-            hashScheme = HashScheme("Range"),
-            storageDriver = StorageDriver("K23SI"),
+        test_coll = b'query_collection'
+        metadata = CollectionMetadata(name = test_coll,
+            hashScheme =  HashScheme.Range,
+            storageDriver = StorageDriver.K23SI,
             capacity = CollectionCapacity(minNodes = 2),
-            retentionPeriod = int(timedelta(hours=5).total_seconds()*SEC_TO_MICRO)
+            retentionPeriod = TimeDelta(hours=5)
         )
 
+        # TODO: Have range ends calculated by python or http api.
+        '''
         status, endspec = db.get_key_string([
             FieldValue(FieldType.STRING, "default"),
             FieldValue(FieldType.STRING, "d")])
         self.assertEqual(status.code, 200, msg=status.message)
         self.assertEqual(endspec, "^01default^00^01^01d^00^01")
+        '''
+        # Use offline calculated range key for now
+        endspec = b"^01default^00^01^01d^00^01"
+        status = TestHTTP.cl.create_collection(metadata,
+            rangeEnds = [endspec, b""])
+        self.assertTrue(status.is2xxOK(), msg=status.message)
 
-        # TODO: Have range ends calculated by python or http api.
-        status = db.create_collection(metadata,
-            rangeEnds = [endspec, ""])
-        self.assertEqual(status.code, 200, msg=status.message)
-
-        schema = Schema(name='query_test', version=1,
+        test_schema = Schema(name=b'query_test', version=1,
             fields=[
-                SchemaField(FieldType.STRING, 'partition'),
-                SchemaField(FieldType.STRING, 'partition1'),
-                SchemaField(FieldType.STRING, 'range'),
-                SchemaField(FieldType.STRING, 'data1')],
+                SchemaField(FieldType.STRING, b'partition'),
+                SchemaField(FieldType.STRING, b'partition1'),
+                SchemaField(FieldType.STRING, b'range'),
+                SchemaField(FieldType.STRING, b'data1')],
             partitionKeyFields=[0, 1], rangeKeyFields=[2])
-        status = db.create_schema("query_collection", schema)
-        self.assertEqual(status.code, 200, msg=status.message)
-
-        # Create a location object
-        loc = DBLoc(partition_key_name=["partition", "partition1"], range_key_name="range",
-            partition_key=["default", "a"], range_key="rtestq",
-            schema="query_test", coll="query_collection", schema_version=1)
+        status = TestHTTP.cl.create_schema(test_coll, test_schema)
+        self.assertTrue(status.is2xxOK())
 
         # Populate initial data, Begin Txn
-        status, txn = db.begin_txn()
-        self.assertEqual(status.code, 201)
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
 
         # Write initial data
-        status = txn.write(loc,  { "data1" :"dataq"})
-        self.assertEqual(status.code, 201, msg=status.message)
-        status, out = txn.read(loc)
-        self.assertEqual(status.code, 200, msg=status.message)
-        record1 = {"partition": "default", "partition1": "a", "range" : "rtestq", "data1" : "dataq"}
-        self.assertEqual(out, record1)
+        record = test_schema.make_record(partition=b"default", partition1=b'a',
+            range=b"rtestq", data1=b"dataq")
 
-        loc1 = loc.get_new(partition_key=["default", "h"], range_key="arq1")
-        status = txn.write(loc1, { "data1" :"adq1"})
-        self.assertEqual(status.code, 201, msg=status.message)
-        status, out = txn.read(loc1)
-        self.assertEqual(status.code, 200, msg=status.message)
-        record2 = {"partition": "default", "partition1": "h", "range" : "arq1", "data1" : "adq1"}
-        self.assertEqual(out, record2)
+        status = txn.write(test_coll, record)
+        self.assertTrue(status.is2xxOK())
+        status, record1 = txn.read(test_coll, record)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(record, record1)
+
+        record = test_schema.make_record(partition=b"default", partition1=b'h',
+            range=b"arq1", data1=b"adq1")
+        # loc1 = loc.get_new(partition_key=["default", "h"], range_key="arq1")
+        status = txn.write(test_coll, record)
+        self.assertTrue(status.is2xxOK())
+        status, record2 = txn.read(test_coll, record)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(record, record1)
 
         # Commit initial data
         status = txn.end()
-        self.assertEqual(status.code, 200)
+        self.assertTrue(status.is2xxOK())
 
-        status, txn = db.begin_txn()
-        self.assertEqual(status.code, 201)
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
 
-        all_records = [record1, record2]
+        # Query all, should return record1 and 2
+        status, query = txn.create_query(test_coll, test_schema.name)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(records, [record1, record2])
 
-        status, query_id = db.create_query("query_collection", "query_test")
-        self.assertEqual(status.code, 200, msg=status.message)
-        status, records = txn.queryAll(query_id)
-        self.assertEqual(status.code, 200, msg=status.message)
-        self.assertEqual(records, all_records)
+        # Do the same query but with filter data1=data1, should return only record2
+        filter = Expression(Operation.EQ,
+            values = [Value(b"data1"), Value(fieldType=FieldType.STRING, literal=b"adq1")])
+        status, query = txn.create_query(test_coll, test_schema.name, filter=filter)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        # self.assertEqual(records, [record2])
 
-        status, query_id = db.create_query("query_collection", "query_test",
-            start = {"partition": "default", "partition1": "h"})
-        self.assertEqual(status.code, 200, msg=status.message)
-        status, records = txn.queryAll(query_id)
-        self.assertEqual(status.code, 200, msg=status.message)
-        self.assertEqual(records, all_records[1:])
+        # Start from partition1=h, should return record2
+        key = test_schema.make_record(partition=b"default", partition1=b'h')
+        status, query = txn.create_query(test_coll, test_schema.name, start = key)
+        self.assertTrue(status.is2xxOK(), msg=status.message)
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(records, [record2])
 
-        status, query_id = db.create_query("query_collection", "query_test",
-            end = {"partition": "default", "partition1": "h"})
-        self.assertEqual(status.code, 200, msg=status.message)
-        status, records = txn.queryAll(query_id)
-        self.assertEqual(status.code, 200, msg=status.message)
-        self.assertEqual(records, all_records[:1])
+        # End to partition1=h, should return record1
+        status, query = txn.create_query(test_coll, test_schema.name, end = key)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(records, [record1])
 
-        status, query_id = db.create_query("query_collection", "query_test", limit = 1)
-        self.assertEqual(status.code, 200, msg=status.message)
-        status, records = txn.queryAll(query_id)
-        self.assertEqual(status.code, 200, msg=status.message)
-        self.assertEqual(records, all_records[:1])
+        # Limit 1
+        status, query = txn.create_query(test_coll, test_schema.name, limit = 1)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(records, [record1])
 
-        status, query_id = db.create_query("query_collection", "query_test", reverse = True)
-        self.assertEqual(status.code, 200, msg=status.message)
-        status, records = txn.queryAll(query_id)
-        self.assertEqual(status.code, 200, msg=status.message)
-        copied = all_records.copy()
-        copied.reverse()
-        self.assertEqual(records, copied)
+        # Reverse = True
+        status, query = txn.create_query(test_coll, test_schema.name, reverse = True)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(records, [record2, record1])
 
-        status, query_id = db.create_query("query_collection", "query_test",
-            limit = 1, reverse = True)
-        self.assertEqual(status.code, 200, msg=status.message)
-        status, records = txn.queryAll(query_id)
-        self.assertEqual(status.code, 200, msg=status.message)
-        self.assertEqual(records,  all_records[1:])
+        # Limit 1 from reverse
+        status, query = txn.create_query(test_coll, test_schema.name, limit = 1, reverse = True)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual(records, [record2])
 
         # Send reverse with invalid type, should fail with type error
-        status, query_id = db.create_query("query_collection", "query_test",
-            limit = 1, reverse = 5)
-        self.assertEqual(status.code, 500, msg=status.message)
-        self.assertIn("type_error", status.message, msg=status.message)
+        status, query = txn.create_query(test_coll, test_schema.name, limit = 1, reverse = 5)
+        self.assertEqual(status.code, 400)
 
-        # Send limit with invalid type, should fail with type error
-        status, query_id = db.create_query("query_collection", "query_test",
-            limit = "test", reverse = False)
-        self.assertEqual(status.code, 500, msg=status.message)
-        self.assertIn("type_error", status.message, msg=status.message)
+        # Send reverse with invalid type, should fail with type error
+        status, query = txn.create_query(test_coll, test_schema.name, limit = "test", reverse = 5)
+        self.assertEqual(status.code, 400)
 
+        status = txn.end()
+        self.assertTrue(status.is2xxOK())
+
+'''
     def test_key_string(self):
         db = SKVClient(args.http)
         field1 = FieldValue(FieldType.STRING, "default")

@@ -21,7 +21,7 @@ persistence_child_pid=$!
 tso_child_pid=$!
 
 sleep 1
-./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --log_level=Info k2::transport=Info --memory=1G --cpo ${CPO} &
+./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --log_level=Info k2::transport=Info skv::http::dto=Debug --memory=1G --cpo ${CPO} &
 http_child_pid=$!
 
 function finish {

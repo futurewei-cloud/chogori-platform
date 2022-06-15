@@ -80,12 +80,15 @@ private:
     seastar::future<std::tuple<sh::Status, sh::dto::TxnEndResponse>>
         _handleTxnEnd(sh::dto::TxnEndRequest&& request);
 
+    void setQueryRecord(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record);
     seastar::future<std::tuple<sh::Status, sh::dto::CreateQueryResponse>>
         _handleCreateQuery(sh::dto::CreateQueryRequest&& request);
 
 
     seastar::future<std::tuple<k2::Status, std::shared_ptr<k2::dto::Schema>, std::shared_ptr<shd::Schema>>>
         _getSchemas(sh::String cname, sh::String sname, int64_t sversion);
+    std::shared_ptr<shd::Schema> getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema);
+
 
     void _registerAPI();
     void _registerMetrics();
