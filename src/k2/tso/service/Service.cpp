@@ -130,10 +130,11 @@ seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration errBound) {
                 } catch (const std::exception& e) {
                     K2LOG_E(log::tsoserver, "Failed to initialize GPS clock: {}", e.what());
                     // notify all workers that the clock cannot be started
-                    return k2::AppBase().getDist<TSOService>().invoke_on_all([] (auto& svc) {
-                        svc._clockInitialized.set_value();
-                    }).then([&startFut, e] {
-                        startFut = startFut.then([e]{
+                    startFut = startFut.then([e] {
+                        // notify all workers that the clock cannnot be started
+                        return k2::AppBase().getDist<TSOService>().invoke_on_all([] (auto& svc) {
+                            svc._clockInitialized.set_exception(e);
+                        }).then([e] {
                             return seastar::make_exception_future<>(e);
                         });
                     });
