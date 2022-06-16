@@ -33,6 +33,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/dto/PersistenceCluster.h>
 #include <k2/dto/LogStream.h>
 #include <k2/transport/Status.h>
+#include <utility>
+#include <unordered_map>
 
 #include "Log.h"
 #include "HealthMonitor.h"
@@ -52,7 +54,8 @@ private:
     ConfigVar<uint32_t> _heartbeatMonitorShardId{"heartbeat_monitor_shard_id"};
     ConfigDuration _TSOErrorBound{"tso_error_bound", 20us};
     std::vector<String> _healthyTSOs;
-    seastar::future<> _tsoAssignment = seastar::make_ready_future<>();
+    std::unordered_map<String, size_t> _failedTSOs;
+    SingleTimer _tsoAssignTimer;
     String _getCollectionPath(String name);
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);
@@ -75,11 +78,15 @@ private:
     String _assignToFreeNode(String collection);
     int _makeHashPartitionMap(dto::Collection& collection, uint32_t numNodes);
     int _makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& rangeEnds);
-    seastar::future<> _assignAllTSOs();
-    seastar::future<> _assignTSO(String &ep, size_t tsoID, int retry);
-    seastar::future<> _doAssignTSO(String &ep, size_t tsoID);
+    seastar::future<bool> _assignAllTSOs();
+    seastar::future<> _assignTSO(const String &ep, size_t tsoID, int retry);
+    seastar::future<> _doAssignTSO(const String &ep, size_t tsoID);
     // Collection name -> schemas
     std::unordered_map<String, std::vector<dto::Schema>> schemas;
+
+    //for metrics
+    void _registerMetrics();
+    sm::metric_groups _metricGroups;
 
    public:  // application lifespan
     CPOService();

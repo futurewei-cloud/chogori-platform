@@ -93,6 +93,7 @@ private: // members
     // flag to signal that the GPS clock initialization has been called
     std::atomic_flag _clockInitializedFlag = ATOMIC_FLAG_INIT;
     
+    bool _isInInitialization{false};
     // metrics
     sm::metric_groups _metricGroups;
     k2::ExponentialHistogram _timestampErrors;

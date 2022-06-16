@@ -57,12 +57,25 @@ seastar::future<> CPOService::gracefulStop() {
     for (auto& [k,v]: _assignments) {
         futs.push_back(std::move(v));
     }
-    futs.push_back(std::move(_tsoAssignment));
+    futs.push_back(_tsoAssignTimer.stop());
     _assignments.clear();
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
 }
 
+void CPOService::_registerMetrics() {
+    _metricGroups.clear();
+    std::vector<sm::label_instance> labels;
+    labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
+    _metricGroups.add_group("CPO", {
+        sm::make_gauge("succeeded tso assignments", [this] {return _healthyTSOs.size();}, sm::description("Number of completed TSO assignment"), labels),
+        sm::make_gauge("failed tso assignments",[this] {return _failedTSOs.size();}, sm::description("Number of failed TSO assignment"), labels)
+    });
+
+}
+
 seastar::future<> CPOService::start() {
+    K2LOG_I(log::cposvr, "CPOService start");
+    _registerMetrics();
     APIServer& api_server = AppBase().getDist<APIServer>().local();
 
     if (_heartbeatMonitorShardId() >= seastar::smp::count) {
@@ -128,6 +141,15 @@ seastar::future<> CPOService::start() {
         });
     });
 
+    RPC().registerRPCObserver<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>(dto::Verbs::CPO_GET_TSO_ENDPOINTS, [this] (dto::GetTSOEndpointsRequest&& ) {
+        K2LOG_I(log::cposvr, "healthy TSOs: {}", _healthyTSOs);
+        if (_healthyTSOs.size() > 0) {
+            return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),dto::GetTSOEndpointsResponse{_healthyTSOs});
+        } else {
+            return RPCResponse(Statuses::S503_Service_Unavailable("Unable to get TSO endpoints: no healthy TSO"), dto::GetTSOEndpointsResponse());
+        }
+    });
+
     api_server.registerAPIObserver<dto::GetSchemasRequest, dto::GetSchemasResponse>("GetSchemas", "CPO get all schemas for a collection",
     [this] (dto::GetSchemasRequest&& request) {
         return AppBase().getDist<CPOService>().invoke_on(0, &CPOService::handleSchemasGet, std::move(request));
@@ -140,75 +162,84 @@ seastar::future<> CPOService::start() {
         }
     }
 
-    _tsoAssignment = _tsoAssignment.then([this] {
-        return _assignAllTSOs();
-    });
-    
-    RPC().registerRPCObserver<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>(dto::Verbs::CPO_GET_TSO_ENDPOINTS, [this] (dto::GetTSOEndpointsRequest&& ) {
-        K2LOG_I(log::cposvr, "healthy TSOs: {}", _healthyTSOs);
-        if (_healthyTSOs.size() > 0) {
-            return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),dto::GetTSOEndpointsResponse{_healthyTSOs});
-        } else {
-            return RPCResponse(Statuses::S503_Service_Unavailable("Unable to get TSO endpoints: no healthy TSO"), dto::GetTSOEndpointsResponse());
-        }
-    });
-    return seastar::make_ready_future();
-}
-
-seastar::future<> CPOService::_assignAllTSOs() {
     return AppBase().getDist<HealthMonitor>().local().getTSOEndpoints()
-        .then([this] (std::vector<String>&& eps) {
-            return seastar::do_with(size_t(0), std::move(eps), [this] (size_t &i, auto &eps) {
-                std::vector<seastar::future<>> futs;
-                for (auto& ep : eps) {
-                    futs.push_back(
-                        _assignTSO(ep, i++, _maxAssignRetries())
-                        .then([] {
-                            return seastar::make_ready_future<>();
-                        })
-                    );
+    .then([this] (std::vector<String>&& eps) {
+        size_t tsoID{1000};
+        for (const auto & ep : eps) {
+            _failedTSOs[ep] = tsoID++;
+        }
+        _tsoAssignTimer.setCallback([this] {
+            return _assignAllTSOs()
+            .then([this] (bool success) {
+                if (!success) {
+                    K2LOG_W(log::cposvr, "Failed to assign all TSOs");
+                    _tsoAssignTimer.arm(_assignTimeout());
                 }
-                return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result();
             });
         });
+        _tsoAssignTimer.arm(0s);    
+    });
+    
 }
 
-seastar::future<> CPOService::_doAssignTSO(String &ep, size_t tsoID) {
-    return seastar::do_with(k2::dto::AssignTSORequest{.tsoID=tsoID+1000, .tsoErrBound=_TSOErrorBound()}, [&ep, tsoID, this](auto &request) {
-        auto txep = RPC().getTXEndpoint(ep);
-        K2LOG_I(log::cposvr, "assigning TSO: {}", ep);
-        if (!txep) {
-            K2LOG_W(log::cposvr, "unable to obtain endpoint for {}", ep);
-            return seastar::make_ready_future();
-        }
-        return RPC().callRPC<dto::AssignTSORequest, dto::AssignTSOResponse>(
-            dto::Verbs::GET_TSO_ASSIGN, request, *txep, _assignTimeout()
-        ).then([&ep,tsoID, this] (auto &&result) {
-            auto& [status, resp] = result;
-            if (status.is2xxOK()) {
-                K2LOG_I(log::cposvr, "tso successfully assigned for endpoint: {}", ep);
-                _healthyTSOs.push_back(ep);
-                K2LOG_I(log::cposvr, "assigned TSOs: {}", _healthyTSOs);
-                return seastar::make_ready_future();
-            } 
-            else {
-                K2LOG_E(log::cposvr, "tso assingment unsucessful for endpoint: {} due to {}", ep, status);
-                if (status.is5xxRetryable()) {
-                    // retry TSO assignment
-                    return seastar::make_exception_future<>(std::runtime_error(status.message));
-                } else {
-                    return seastar::make_exception_future(StopRetryException{});
-                }
-            }
-        });
+seastar::future<bool> CPOService::_assignAllTSOs() {
+    std::vector<seastar::future<>> futs;
+    for (auto tso=_failedTSOs.begin(); tso!=_failedTSOs.end(); ++tso) {
+        futs.push_back(
+            _assignTSO(tso->first, tso->second, _maxAssignRetries())
+            .then([] {
+                return seastar::make_ready_future<>();
+            })
+        );
+    }
+    return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()
+    .then([this] {
+        return _failedTSOs.empty();
     });
 }
 
-seastar::future<> CPOService::_assignTSO(String &ep, size_t tsoID, int retry) {
+seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
+    k2::dto::AssignTSORequest request{.tsoID = tsoID, .tsoErrBound=_TSOErrorBound()};
+    auto txep = RPC().getTXEndpoint(ep);
+    K2LOG_D(log::cposvr, "assigning TSO: {}", ep);
+    if (!txep) {
+        K2LOG_W(log::cposvr, "unable to obtain endpoint for {}", ep);
+        return seastar::make_exception_future(StopRetryException{});
+    }
+    return RPC().callRPC<dto::AssignTSORequest, dto::AssignTSOResponse>(
+        dto::Verbs::GET_TSO_ASSIGN, request, *txep, _assignTimeout()
+    ).then([&ep,tsoID,this] (auto &&result) {
+        auto& [status, resp] = result;
+        if (status.is2xxOK()) {
+            K2LOG_D(log::cposvr, "tso successfully assigned for endpoint: {}", ep);
+            if (_failedTSOs.count(ep) > 0) {
+                _healthyTSOs.push_back(ep);
+                _failedTSOs.erase(ep);
+            }
+            K2LOG_D(log::cposvr, "assigned TSOs: {}", _healthyTSOs);
+            return seastar::make_ready_future();
+        } 
+        else {
+            K2LOG_W(log::cposvr, "tso assingment unsucessful for endpoint: {} due to {}", ep, status);
+            if (status.is5xxRetryable()) {
+                // retry TSO assignment
+                K2LOG_D(log::cposvr, "retrying TSO assignment for endpoint: {} due to 500 retryable", ep);
+                return seastar::make_exception_future<>(std::runtime_error(status.message));
+            } else {
+                return seastar::make_exception_future(StopRetryException{});
+            }
+        }
+    });
+}
+
+seastar::future<> CPOService::_assignTSO(const String &ep, size_t tsoID, int retry) {
     return seastar::do_with(ExponentialBackoffStrategy().withRetries(retry).withStartTimeout(1s).withRate(5), [&ep,tsoID,this](auto &retryStrategy) {
         return retryStrategy.run([&ep,tsoID,this] (size_t retriesLeft, Duration timeout) {
             K2LOG_I(log::cposvr, "Sending TSO assignment with retriesLeft={}, and timeout={}ms, with {}", retriesLeft, timeout, ep);
             return _doAssignTSO(ep, tsoID);
+        })
+        .handle_exception([&ep,tsoID,this] (auto exc) {
+            K2LOG_W_EXC(log::cposvr, exc, "Failed to assign TSO for endpoint after retry: {}", ep);
         });
     });
 }

@@ -86,46 +86,58 @@ seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration errBound) {
             seastar::future<> startFut = seastar::make_ready_future<>();
             if (!_clockInitializedFlag.test_and_set()) {
                 K2LOG_I(log::tsoserver, "TSOService initializing GPS clock");
-                GPSClockInst.initialize(nsec(_CPOErrorBound).count());
-                auto now = GPSClockInst.now();
-                K2LOG_I(log::tsoserver, "TSOService clock has been initialized with GPS real={}, error={}",
-                        nsec(now.real).count(), nsec(now.error).count());
-                if (now.error > _CPOErrorBound) {
-                    K2LOG_E(log::tsoserver, "TSOService cannot start since the GPS error is larger than our error bound {}", _CPOErrorBound);
-                    return seastar::make_exception_future<>(std::runtime_error("gps error is bigger than max error bound"));
-                }
-                // start the poller thread
-                K2LOG_I(log::tsoserver, "Starting GPS clock poller on CPU: {}", _clockPollerCPU());
-                _keepRunningPoller.test_and_set(); // set the running flag to true
-                _clockPoller = std::thread([this, pinCPU = _clockPollerCPU()] {
-                    // Mask most signals,to allow seastar to service them instead
-                    sigset_t sigs;
-                    sigfillset(&sigs);
-                    for (auto sig : {SIGHUP, SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV,
-                                    SIGALRM, SIGCONT, SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU}) {
-                        sigdelset(&sigs, sig);
+                try {
+                    GPSClockInst.initialize(nsec(_CPOErrorBound).count());
+                    auto now = GPSClockInst.now();
+                    K2LOG_I(log::tsoserver, "TSOService clock has been initialized with GPS real={}, error={}",
+                            nsec(now.real).count(), nsec(now.error).count());
+                    if (now.error > _CPOErrorBound) {
+                        K2LOG_E(log::tsoserver, "TSOService cannot start since the GPS error is larger than our error bound {}", _CPOErrorBound);
+                        throw std::runtime_error("gps error is bigger than max error bound");
                     }
-                    pthread_sigmask(SIG_BLOCK, &sigs, nullptr);
-
-                    // pin the calling thread to the given CPU
-                    if (pinCPU >= 0) {
-                        cpu_set_t cpuset;
-                        CPU_ZERO(&cpuset);
-                        CPU_SET(pinCPU, &cpuset);
-                        if (0 != pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
-                            throw std::runtime_error("Unable to set affinity");
+                    // start the poller thread
+                    K2LOG_I(log::tsoserver, "Starting GPS clock poller on CPU: {}", _clockPollerCPU());
+                    _keepRunningPoller.test_and_set(); // set the running flag to true
+                    _clockPoller = std::thread([this, pinCPU = _clockPollerCPU()] {
+                        // Mask most signals,to allow seastar to service them instead
+                        sigset_t sigs;
+                        sigfillset(&sigs);
+                        for (auto sig : {SIGHUP, SIGQUIT, SIGILL, SIGABRT, SIGFPE, SIGSEGV,
+                                        SIGALRM, SIGCONT, SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU}) {
+                            sigdelset(&sigs, sig);
                         }
-                    }
-                    while (_keepRunningPoller.test_and_set()) {
-                        GPSClockInst.poll();
-                    }
-                });
-                startFut = startFut.then([] {
-                    // notify all workers that the clock is initialized and we can start
+                        pthread_sigmask(SIG_BLOCK, &sigs, nullptr);
+
+                        // pin the calling thread to the given CPU
+                        if (pinCPU >= 0) {
+                            cpu_set_t cpuset;
+                            CPU_ZERO(&cpuset);
+                            CPU_SET(pinCPU, &cpuset);
+                            if (0 != pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset)) {
+                                throw std::runtime_error("Unable to set affinity");
+                            }
+                        }
+                        while (_keepRunningPoller.test_and_set()) {
+                            GPSClockInst.poll();
+                        }
+                    });
+                    startFut = startFut.then([] {
+                        // notify all workers that the clock is initialized and we can start
+                        return k2::AppBase().getDist<TSOService>().invoke_on_all([] (auto& svc) {
+                            svc._clockInitialized.set_value();
+                        });
+                    });
+                } catch (const std::exception& e) {
+                    K2LOG_E(log::tsoserver, "Failed to initialize GPS clock: {}", e.what());
+                    // notify all workers that the clock cannot be started
                     return k2::AppBase().getDist<TSOService>().invoke_on_all([] (auto& svc) {
                         svc._clockInitialized.set_value();
+                    }).then([&startFut, e] {
+                        startFut = startFut.then([e]{
+                            return seastar::make_exception_future<>(e);
+                        });
                     });
-                });
+                }
             }
             return startFut;
         })
@@ -137,6 +149,7 @@ seastar::future<> TSOService::_assign(uint64_t tsoID, k2::Duration errBound) {
         .then([this, tsoID] {
             K2LOG_I(log::tsoserver, "TSOService assigning tsoID");
             _tsoId = tsoID;
+            _isInInitialization = false;
             return _collectWorkerURLs();
         })
         .then([this] {
@@ -161,16 +174,31 @@ TSOService::_handleAssignment(dto::AssignTSORequest&& request) {
     if (request.tsoErrBound <= 0s) {
         return RPCResponse(Statuses::S400_Bad_Request("TSO error bound cannot be <= 0s"), dto::AssignTSOResponse{});
     }
-    return _assign(request.tsoID, request.tsoErrBound).then([] {
-        return RPCResponse(Statuses::S200_OK("OK"), dto::AssignTSOResponse{});
-    }).handle_exception([] (auto exp) {
-        try {
-            std::rethrow_exception(exp);
-        } catch (const std::runtime_error& e) {
-            K2LOG_W_EXC(log::tsoserver, exp, "failed to assign");
-            return RPCResponse(Statuses::S500_Internal_Server_Error(e.what()), dto::AssignTSOResponse{});
+    if (request.tsoID <= 999) {
+        return RPCResponse(Statuses::S400_Bad_Request("TSOID cannot be <= 0"), dto::AssignTSOResponse{});
+    }
+    if (_tsoId != 0) {
+        if (_tsoId == request.tsoID && _CPOErrorBound == request.tsoErrBound) {
+            return RPCResponse(Statuses::S200_OK("OK"), dto::AssignTSOResponse{});
         }
-    });
+        return RPCResponse(Statuses::S400_Bad_Request("Conflict TSOID or TSOErrorBound assignment"), dto::AssignTSOResponse{});
+    }
+    if (!_isInInitialization) {
+        _isInInitialization = true;
+        return _assign(request.tsoID, request.tsoErrBound).then([] {
+            return RPCResponse(Statuses::S200_OK("OK"), dto::AssignTSOResponse{});
+        }).handle_exception([] (auto exp) {
+            try {
+                std::rethrow_exception(exp);
+            } catch (const std::runtime_error& e) {
+                K2LOG_W_EXC(log::tsoserver, exp, "failed to assign");
+                return RPCResponse(Statuses::S500_Internal_Server_Error(e.what()), dto::AssignTSOResponse{});
+            }
+        }).finally([this] {
+            _isInInitialization = false;
+        });
+    }
+    return RPCResponse(Statuses::S503_Service_Unavailable("TSO in initialization"), dto::AssignTSOResponse{});
 }
 
 seastar::future<std::tuple<Status, dto::GetServiceNodeURLsResponse>>
