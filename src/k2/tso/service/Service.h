@@ -95,6 +95,8 @@ private: // members
     // metrics
     sm::metric_groups _metricGroups;
     k2::ExponentialHistogram _timestampErrors;
+    uint32_t _failedErrorBounds{0};
+    
 
 private: // config
     // pick CPU on which to pin clock poller (default(-1) is free-floating)

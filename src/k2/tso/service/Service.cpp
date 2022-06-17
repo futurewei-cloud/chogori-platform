@@ -41,7 +41,8 @@ seastar::future<> TSOService::start() {
 
     _metricGroups.add_group("TSO", {
         sm::make_histogram("timestamp_error", [this]{ return _timestampErrors.getHistogram();},
-                sm::description("Errors in returned timestamp in nanoseconds"), labels)
+                sm::description("Errors in returned timestamp in nanoseconds"), labels),
+        sm::make_counter("timestamp_errorbound_count", [this]{ return _failedErrorBounds;}),
     });
 
     K2LOG_I(log::tsoserver, "initializing GPS clock");
@@ -139,6 +140,7 @@ seastar::future<bool> TSOService::_assign(uint64_t tsoID, k2::Duration errBound)
                     return true;
                 }
                 isValidErrorBound = false;
+                ++_failedErrorBounds;
                 return Clock::now() - assignStart > _assignTimeout();
             },
             []{
