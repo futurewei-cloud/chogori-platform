@@ -248,11 +248,11 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
         if(!result.status.is2xxOK()) {
             return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::QueryResponse{});
         }
-
         std::vector<shd::SKVRecord::Storage> records;
         records.reserve(result.records.size());
         for (auto& k2record: result.records) {
             sh::String collectionName(k2record.collectionName);
+            // k2 schema is already populated by query api, get corresponding shd schema from cache
             auto shSChema = getSchemaFromCache(collectionName, k2record.schema);
             auto rec = _buildSHDRecord(k2record, collectionName, shSChema);
             records.push_back(std::move(rec.getStorage()));
@@ -303,6 +303,45 @@ void HTTPProxy::setQueryRecord(const sh::String& collectionName, shd::SKVRecord:
     _shdRecToK2(shdrecord, k2record);
 }
 
+namespace dtoexp = dto::expression;
+namespace shdexp = shd::expression;
+
+dtoexp::Value getValue(shdexp::Value&& shval) {
+    dtoexp::Value k2val;
+    if (shval.isReference()) {
+        k2val = dtoexp::makeValueReference(shval.fieldName);
+    } else if (shval.type == shd::FieldType::NULL_T || shval.type == shd::FieldType::NOT_KNOWN || shval.type == shd::FieldType::NULL_LAST) {
+        k2val.type =  static_cast<dto::FieldType>(to_integral(shval.type));
+    } else {
+        shd::applyTyped(shval, [&k2val](const auto& afr) {
+            using T = shd::applied_type_t<decltype(afr)>;
+            auto obj = afr.field.template get<T>();
+            if constexpr (std::is_same_v<T, shd::FieldType>) {
+                k2val = dtoexp::makeValueLiteral(static_cast<dto::FieldType>(to_integral(obj)));
+            } else if constexpr (std::is_same_v<T, sh::String>) {
+              k2val = dtoexp::makeValueLiteral<String>(String(std::move(obj)));
+            } else {
+              k2val = dtoexp::makeValueLiteral<T>(std::move(obj));
+            }
+        });
+    }
+    return k2val;
+}
+
+dtoexp::Expression getFilterExpression(shdexp::Expression&& shExpr) {
+    std::vector<dtoexp::Value> values;
+    values.reserve(shExpr.valueChildren.size());
+    for (auto& val: shExpr.valueChildren) {
+        values.push_back(getValue(std::move(val)));
+    }
+    std::vector<dtoexp::Expression> exprs;
+    exprs.reserve(shExpr.expressionChildren.size());
+    for (auto& cexpr: shExpr.expressionChildren) {
+        exprs.push_back(getFilterExpression(std::move(cexpr)));
+    }
+    return dtoexp::makeExpression(static_cast<dtoexp::Operation>(to_integral(shExpr.op)), std::move(values), std::move(exprs));
+}
+
 seastar::future<std::tuple<sh::Status, shd::CreateQueryResponse>>
 HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
     K2LOG_D(log::httpproxy, "Received create query request {}", request);
@@ -318,16 +357,24 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
             try {
                 setQueryRecord(req.collectionName, std::move(req.key), result.query.startScanRecord);
                 setQueryRecord(req.collectionName, std::move(req.endKey), result.query.endScanRecord);
+
+                if (req.recordLimit >= 0) result.query.setLimit(req.recordLimit);
+                if (req.includeVersionMismatch) result.query.setIncludeVersionMismatch(req.includeVersionMismatch);
+                if (req.reverseDirection) result.query.setReverseDirection(req.reverseDirection);
+                if (req.filterExpression.op != shdexp::Operation::UNKNOWN) {
+                    dtoexp::Expression expr = getFilterExpression(std::move(req.filterExpression));
+                    result.query.setFilterExpression(std::move(expr));
+                }
+                if (req.projection.size() > 0) {
+                    std::vector<String> projection;
+                    projection.reserve(req.projection.size());
+                    for (sh::String& p : req.projection) {
+                        projection.push_back(String(std::move(p)));
+                    }
+                    result.query.addProjection(projection);
+                }
             } catch(shd::DeserializationError& err) {
                 return MakeHTTPResponse<shd::CreateQueryResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::CreateQueryResponse{});
-            }
-
-            if (req.recordLimit >= 0) result.query.setLimit(req.recordLimit);
-            if (req.includeVersionMismatch) result.query.setIncludeVersionMismatch(req.includeVersionMismatch);
-            if (req.reverseDirection) result.query.setReverseDirection(req.reverseDirection);
-            if (req.projection.size() > 0) {
-                std::vector<String> projection(req.projection.begin(), req.projection.end());
-                result.query.addProjection(projection);
             }
 
             auto queryId = _queryID++;
@@ -338,6 +385,7 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
         });
  }
 
+// Get shd schema from k2 schema either from cache or convert
 std::shared_ptr<shd::Schema> HTTPProxy::getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema) {
     // create the nested maps as needed - we have a schema
     auto& shdSchemaPtr = _shdSchemas[cname][schema->name][schema->version];

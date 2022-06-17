@@ -89,7 +89,6 @@ private:
         _getSchemas(sh::String cname, sh::String sname, int64_t sversion);
     std::shared_ptr<shd::Schema> getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema);
 
-
     void _registerAPI();
     void _registerMetrics();
 

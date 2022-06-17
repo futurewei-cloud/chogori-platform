@@ -345,7 +345,9 @@ class TestHTTP(unittest.TestCase):
                 SchemaField(FieldType.STRING, b'partition'),
                 SchemaField(FieldType.STRING, b'partition1'),
                 SchemaField(FieldType.STRING, b'range'),
-                SchemaField(FieldType.STRING, b'data1')],
+                SchemaField(FieldType.STRING, b'data1'),
+                SchemaField(FieldType.INT32T, b'record_id')
+                ],
             partitionKeyFields=[0, 1], rangeKeyFields=[2])
         status = TestHTTP.cl.create_schema(test_coll, test_schema)
         self.assertTrue(status.is2xxOK())
@@ -356,22 +358,22 @@ class TestHTTP(unittest.TestCase):
 
         # Write initial data
         record = test_schema.make_record(partition=b"default", partition1=b'a',
-            range=b"rtestq", data1=b"dataq")
+            range=b"rtestq", data1=b"dataq", record_id=1)
 
         status = txn.write(test_coll, record)
         self.assertTrue(status.is2xxOK())
         status, record1 = txn.read(test_coll, record)
         self.assertTrue(status.is2xxOK())
-        self.assertEqual(record, record1)
+        self.assertEqual(record.data, record1.data)
 
         record = test_schema.make_record(partition=b"default", partition1=b'h',
-            range=b"arq1", data1=b"adq1")
+            range=b"arq1", data1=b"adq1", record_id=2)
         # loc1 = loc.get_new(partition_key=["default", "h"], range_key="arq1")
         status = txn.write(test_coll, record)
         self.assertTrue(status.is2xxOK())
         status, record2 = txn.read(test_coll, record)
         self.assertTrue(status.is2xxOK())
-        self.assertEqual(record, record1)
+        self.assertEqual(record.data, record2.data)
 
         # Commit initial data
         status = txn.end()
@@ -380,57 +382,77 @@ class TestHTTP(unittest.TestCase):
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
 
-        # Query all, should return record1 and 2
-        status, query = txn.create_query(test_coll, test_schema.name)
-        self.assertTrue(status.is2xxOK())
-        status, records = txn.queryAll(query)
-        self.assertTrue(status.is2xxOK())
-        self.assertEqual(records, [record1, record2])
-
-        # Do the same query but with filter data1=data1, should return only record2
-        filter = Expression(Operation.EQ,
-            values = [Value(b"data1"), Value(fieldType=FieldType.STRING, literal=b"adq1")])
-        status, query = txn.create_query(test_coll, test_schema.name, filter=filter)
-        self.assertTrue(status.is2xxOK())
-        status, records = txn.queryAll(query)
-        self.assertTrue(status.is2xxOK())
-        # self.assertEqual(records, [record2])
-
         # Start from partition1=h, should return record2
         key = test_schema.make_record(partition=b"default", partition1=b'h')
         status, query = txn.create_query(test_coll, test_schema.name, start = key)
         self.assertTrue(status.is2xxOK(), msg=status.message)
         status, records = txn.queryAll(query)
         self.assertTrue(status.is2xxOK())
-        self.assertEqual(records, [record2])
+        self.assertEqual([r.data for r in records], [record2.data])
 
         # End to partition1=h, should return record1
         status, query = txn.create_query(test_coll, test_schema.name, end = key)
         self.assertTrue(status.is2xxOK())
         status, records = txn.queryAll(query)
         self.assertTrue(status.is2xxOK())
-        self.assertEqual(records, [record1])
+        self.assertEqual([r.data for r in records], [record1.data])
 
         # Limit 1
         status, query = txn.create_query(test_coll, test_schema.name, limit = 1)
         self.assertTrue(status.is2xxOK())
         status, records = txn.queryAll(query)
         self.assertTrue(status.is2xxOK())
-        self.assertEqual(records, [record1])
-
-        # Reverse = True
-        status, query = txn.create_query(test_coll, test_schema.name, reverse = True)
-        self.assertTrue(status.is2xxOK())
-        status, records = txn.queryAll(query)
-        self.assertTrue(status.is2xxOK())
-        self.assertEqual(records, [record2, record1])
+        self.assertEqual([r.data for r in records], [record1.data])
 
         # Limit 1 from reverse
         status, query = txn.create_query(test_coll, test_schema.name, limit = 1, reverse = True)
         self.assertTrue(status.is2xxOK())
         status, records = txn.queryAll(query)
         self.assertTrue(status.is2xxOK())
-        self.assertEqual(records, [record2])
+        self.assertEqual([r.data for r in records], [record2.data])
+
+        # Query all, should return record1 and 2
+        status, query = txn.create_query(test_coll, test_schema.name)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual([r.data for r in records], [record1.data, record2.data])
+
+        # Query all, with reverse = True
+        status, query = txn.create_query(test_coll, test_schema.name, reverse = True)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual([r.data for r in records], [record2.data, record1.data])
+
+        # Do the same query but with filter data1=data1, should only return record2
+        filter = Expression(Operation.EQ,
+            values = [Value(b"data1"), Value(fieldType=FieldType.STRING, literal=b"adq1")])
+        status, query = txn.create_query(test_coll, test_schema.name, filter=filter)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual([r.data for r in records], [record2.data])
+
+        # Do the same query but with filter record_id=1, should only return record1
+        filter = Expression(Operation.EQ,
+            values = [Value(b"record_id"), Value(fieldType=FieldType.INT32T, literal=1)])
+        status, query = txn.create_query(test_coll, test_schema.name, filter=filter)
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual([r.data for r in records], [record1.data])
+        self.assertNotEqual([r.data for r in records], [record2.data])
+
+        #  Test projection
+        status, query = txn.create_query(test_coll, test_schema.name, projection=[b"data1", b"record_id"])
+        self.assertTrue(status.is2xxOK())
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK(), msg=status.message)
+        subset = lambda d, keys: {k: d[k] for k in  [b"data1", b"record_id"]}
+        self.assertEqual([r.data for r in records], [
+            {'partition': None, 'partition1': None, 'range': None, 'data1': b'dataq', 'record_id': 1},
+            {'partition': None, 'partition1': None, 'range': None, 'data1': b'adq1', 'record_id': 2}])
 
         # Send reverse with invalid type, should fail with type error
         status, query = txn.create_query(test_coll, test_schema.name, limit = 1, reverse = 5)

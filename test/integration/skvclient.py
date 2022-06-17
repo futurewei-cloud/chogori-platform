@@ -31,7 +31,6 @@ import re
 import msgpack
 from datetime import timedelta
 import logging
-from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +107,7 @@ class Value:
         self.literal = literal
 
     def serialize(self):
-        return [self.fieldName, self.fieldType.serialize(), self.literal]
+        return [self.fieldName, self.fieldType.serialize(), msgpack.packb(self.literal)]
 
 class Expression:
     def __init__(self, op = Operation.UNKNOWN, values=[], expressions = []):
@@ -241,12 +240,10 @@ class Txn:
             [self.timestamp, endAction.serialize()])
         return status
 
-@dataclass
 class Data:
     'data storage class for records'
     pass
 
-@dataclass
 class Record:
     def __init__(self, schemaName, schemaVersion):
         self.schemaName = schemaName
@@ -257,6 +254,10 @@ class Record:
         self.fieldsForPartialUpdate=[]
         self.fields = Data()
 
+    @property
+    def data(self):
+        'Used to compare two records as dict'
+        return self.fields.__dict__
 
     def serialize(self):
         fieldData = b''.join([msgpack.packb(field) for field in self._posFields])

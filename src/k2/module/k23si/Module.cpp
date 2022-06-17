@@ -554,8 +554,8 @@ std::tuple<Status, bool> K23SIPartitionModule::_doQueryFilter(dto::K23SIQueryReq
     catch (dto::DeserializationError&) {
         status = dto::K23SIStatus::OperationNotAllowed("DeserializationError in query filter");
     }
-    catch (dto::InvalidExpressionException&) {
-        status = dto::K23SIStatus::OperationNotAllowed("InvalidExpression in query filter");
+    catch (dto::InvalidExpressionException& exp) {
+        status = dto::K23SIStatus::OperationNotAllowed(fmt::format("InvalidExpression in query filter: {}", exp.what()));
     }
 
     return std::make_tuple(std::move(status), keep);
