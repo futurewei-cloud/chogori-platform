@@ -5,7 +5,7 @@ source ${topname}/common_defs.sh
 cd ${topname}/../..
 
 # start nodepool
-./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} --log_level INFO k2::skv_server=INFO -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 &
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} --log_level Info k2::skv_server=Info -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 &
 nodepool_child_pid=$!
 
 # start persistence

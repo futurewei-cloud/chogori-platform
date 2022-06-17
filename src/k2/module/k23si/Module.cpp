@@ -301,8 +301,7 @@ seastar::future<> K23SIPartitionModule::_registerVerbs() {
     (dto::Verbs::K23SI_INSPECT_ALL_KEYS, [this](dto::K23SIInspectAllKeysRequest&& request) {
         return handleInspectAllKeys(std::move(request));
     });
-    api_server.registerAPIObserver<dto::K23SIInspectAllKeysRequest, dto::K23SIInspectAllKeysResponse>
-    ("InspectAllKeys", "Returns ALL keys on the partition", [this](dto::K23SIInspectAllKeysRequest&& request) {
+    api_server.registerAPIObserver<k2::Statuses, dto::K23SIInspectAllKeysRequest, dto::K23SIInspectAllKeysResponse>("InspectAllKeys", "Returns ALL keys on the partition", [this](dto::K23SIInspectAllKeysRequest&& request) {
         return handleInspectAllKeys(std::move(request));
     });
 

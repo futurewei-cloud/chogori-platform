@@ -22,7 +22,7 @@ tso_child_pid=$!
 
 sleep 2
 
-./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --tso_error_bound=100us --memory=1G --cpo ${CPO} &
+./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --cpo ${CPO} &
 http_child_pid=$!
 
 function finish {
@@ -53,7 +53,7 @@ function finish {
   echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
-sleep 5
+sleep 2
 
 echo ">>> Starting http test ..."
 PYTHONPATH=${PYTHONPATH}:./test/integration ./test/integration/test_http.py --http http://127.0.0.1:30000

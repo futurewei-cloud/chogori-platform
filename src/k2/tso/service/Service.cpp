@@ -265,7 +265,7 @@ TSOService::_handleGetTimestamp(dto::GetTimestampRequest&& request) {
 
     // we're done generating a new timestamp. Remember the end count for next time
     _lastGeneratedEndCount = endCount;
-    return RPCResponse(Statuses::S200_OK("OK"), dto::GetTimestampResponse{.timestamp = dto::Timestamp(endCount, _tsoId, delta)});
+    return RPCResponse(Statuses::S200_OK("OK"), dto::GetTimestampResponse{.timestamp{.endCount=endCount, .tsoId=_tsoId,.startDelta=(uint32_t)delta}});
 }
 
 }

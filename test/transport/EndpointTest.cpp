@@ -78,7 +78,7 @@ SCENARIO("test fromURL bad URLs") {
 }
 
 SCENARIO("test fromURL good URLs") {
-    std::vector<std::tuple<String, String, String, int>> URLs = {
+    std::vector<std::tuple<String, String, String, uint32_t>> URLs = {
         {"a://1.2.3.4:1", "a", "1.2.3.4", 1},
         // ipv6/rdma
         {"a://[1::1]:1", "a", "1::1", 1},

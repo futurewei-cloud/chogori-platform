@@ -29,17 +29,17 @@ Copyright(c) 2020 Futurewei Cloud
 namespace k2 {
 SCENARIO("test01 empty indexer") {
     auto indexer = Indexer();
-    indexer.start(dto::Timestamp(100000, 1, 1000)).get0();
+    indexer.start(dto::Timestamp{.endCount=100000, .tsoId=1, .startDelta=1000}).get0();
     REQUIRE(indexer.size() == 0);
     REQUIRE_THROWS(indexer.find(dto::Key{}));
 }
 
 SCENARIO("test02 empty schema") {
     auto indexer = Indexer();
-    dto::Timestamp older(50000, 1, 1000);
-    dto::Timestamp start(60000, 1, 1000);
-    dto::Timestamp newer(70000, 1, 1000);
-    dto::Timestamp newest(80000, 1, 1000);
+    dto::Timestamp older{.endCount=50000, .tsoId=1, .startDelta=1000};
+    dto::Timestamp start{.endCount=60000, .tsoId=1, .startDelta=1000};
+    dto::Timestamp newer{.endCount=70000, .tsoId=1, .startDelta=1000};
+    dto::Timestamp newest{.endCount=80000, .tsoId=1, .startDelta=1000};
     indexer.start(start).get0();
     dto::Schema sch;
     sch.name = "schema1";
@@ -84,10 +84,11 @@ SCENARIO("test02 empty schema") {
 
 SCENARIO("test03 add, abort, commit new key") {
     auto indexer = Indexer();
-    dto::Timestamp older(50000, 1, 1000);
-    dto::Timestamp start(60000, 1, 1000);
-    dto::Timestamp newer(70000, 1, 1000);
-    dto::Timestamp newest(80000, 1, 1000);
+
+    dto::Timestamp older{.endCount = 50000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp start{.endCount = 60000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp newer{.endCount = 70000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp newest{.endCount = 80000, .tsoId = 1, .startDelta = 1000};
     indexer.start(start).get0();
     dto::Schema sch;
     sch.name = "schema1";
@@ -192,10 +193,9 @@ SCENARIO("test03 add, abort, commit new key") {
 
 SCENARIO("test04 add, abort, commit with existing key") {
     auto indexer = Indexer();
-    dto::Timestamp older(50000, 1, 1000);
-    dto::Timestamp start(60000, 1, 1000);
-    dto::Timestamp newer(70000, 1, 1000);
-    dto::Timestamp newest(80000, 1, 1000);
+    dto::Timestamp start{.endCount = 60000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp newer{.endCount = 70000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp newest{.endCount = 80000, .tsoId = 1, .startDelta = 1000};
     indexer.start(start).get0();
     dto::Schema sch;
     sch.name = "schema1";
@@ -268,15 +268,16 @@ SCENARIO("test04 add, abort, commit with existing key") {
 
 SCENARIO("test05 read in multiple versions") {
     auto indexer = Indexer();
-    dto::Timestamp oldest(40000, 1, 1000);
-    dto::Timestamp older(50000, 1, 1000);
-    dto::Timestamp older_p(50005, 1, 1000);
-    dto::Timestamp start(60000, 1, 1000);
-    dto::Timestamp start_p(60005, 1, 1000);
-    dto::Timestamp newer(70000, 1, 1000);
-    dto::Timestamp newer_p(70005, 1, 1000);
-    dto::Timestamp newest(80000, 1, 1000);
-    dto::Timestamp newest_p(80005, 1, 1000);
+    dto::Timestamp oldest{.endCount=40000, .tsoId=1, .startDelta=1000};
+    dto::Timestamp older{.endCount = 50000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp older_p{.endCount = 50005, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp start{.endCount=60000, .tsoId=1, .startDelta=1000};
+    dto::Timestamp start_p{.endCount=60005, .tsoId=1, .startDelta=1000};
+    dto::Timestamp newer{.endCount = 70000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp newer_p{.endCount = 70005, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp newest{.endCount = 80000, .tsoId = 1, .startDelta = 1000};
+    dto::Timestamp newest_p{.endCount = 80005, .tsoId = 1, .startDelta = 1000};
+
     indexer.start(start).get0();
     dto::Schema sch;
     sch.name = "schema1";
@@ -366,8 +367,8 @@ SCENARIO("test05 read in multiple versions") {
 SCENARIO("test 06 multi-key iterate and observation") {
     auto indexer = Indexer();
     std::vector<dto::Timestamp> ts;
-    for (int i = 1000; i < 1020; ++i) {
-        ts.push_back(dto::Timestamp(i, 1, 1000));
+    for (uint32_t i = 1000; i < 1020; ++i) {
+        ts.push_back(dto::Timestamp{.endCount=i, .tsoId=1, .startDelta=1000});
     }
     indexer.start(ts[0]).get0();
     dto::Schema sch;
@@ -543,96 +544,96 @@ SCENARIO("test 06 multi-key iterate and observation") {
     }
 }
 
-}  // namespace k2
-/*
-// 404 read between two values updates the ends to the max(existing, ts)
-KL(T10) | ..................| KH(T10)
-R(T100, K15)
-KL(T100) | ..................| KH(T100)
+    }  // namespace k2
+    /*
+    // 404 read between two values updates the ends to the max(existing, ts)
+    KL(T10) | ..................| KH(T10)
+    R(T100, K15)
+    KL(T100) | ..................| KH(T100)
 
-KL(T10) | ..................| KH(T200)
-R(T100, K15)
-KL(T100) | ..................| KH(T200)
+    KL(T10) | ..................| KH(T200)
+    R(T100, K15)
+    KL(T100) | ..................| KH(T200)
 
-KL(T10) | ......K15(T20)............| KH(T200)
-R(T100, K15)
-KL(T10) | ........K15(T100)..........| KH(T200)
+    KL(T10) | ......K15(T20)............| KH(T200)
+    R(T100, K15)
+    KL(T10) | ........K15(T100)..........| KH(T200)
 
-// new write between two values keeps the min of the two neighbors
-KL(T100) | ..................| KH(T130)
-W(T150, K15)
-KL(T100) | .........K15(T100=min(100,130), v=T150).........| KH(T130)
+    // new write between two values keeps the min of the two neighbors
+    KL(T100) | ..................| KH(T130)
+    W(T150, K15)
+    KL(T100) | .........K15(T100=min(100,130), v=T150).........| KH(T130)
 
-// update doesn't change read timestamp
-KL(T100) | .........K15(T100=min(100,130), v=T150).........| KH(T130)
-W(T250, K15)
-KL(T100) | .........K15(T100=min(100,130), v=T250).........| KH(T130)
+    // update doesn't change read timestamp
+    KL(T100) | .........K15(T100=min(100,130), v=T150).........| KH(T130)
+    W(T250, K15)
+    KL(T100) | .........K15(T100=min(100,130), v=T250).........| KH(T130)
 
-// Query updates both ends as well as any keys in-between to max(existing, req.ts)
-KL(T10) | .............K15(T200,v=T100)...............| KH(T150)
-Query(k10,k20,T100)
-KL(T100) | .............K15(T200,v=T100)...............| KH(T150)
-Query(k10, k20, T300)
-KL(T300) | .............K15(T300,v=T100)...........| KH(T300)
+    // Query updates both ends as well as any keys in-between to max(existing, req.ts)
+    KL(T10) | .............K15(T200,v=T100)...............| KH(T150)
+    Query(k10,k20,T100)
+    KL(T100) | .............K15(T200,v=T100)...............| KH(T150)
+    Query(k10, k20, T300)
+    KL(T300) | .............K15(T300,v=T100)...........| KH(T300)
 
-// Writes check to see if they are
-// - newer than current value
-// - or if no current value then newer than min(neighbors))
-Write(K10, T200)
-// accepted cases
-KL(T10) | ....................................| KH(T10)
-KL(T10) | ....................................| KH(T410)
-KL(T10) | .........K(10, T100, v=T20).........| KH(T10)
-KL(T400)| .........K(10, T100, v=T20).........| KH(T400)
-// rejected cases
-KL(T310) | ....................................| KH(T310) // newer potential query read
-KL(T10)  | .........K(10, T300, v=T20).........| KH(T10) // newer read
-KL(T10)  | .........K(10, T100, v=T300)........| KH(T10) //  newer value
+    // Writes check to see if they are
+    // - newer than current value
+    // - or if no current value then newer than min(neighbors))
+    Write(K10, T200)
+    // accepted cases
+    KL(T10) | ....................................| KH(T10)
+    KL(T10) | ....................................| KH(T410)
+    KL(T10) | .........K(10, T100, v=T20).........| KH(T10)
+    KL(T400)| .........K(10, T100, v=T20).........| KH(T400)
+    // rejected cases
+    KL(T310) | ....................................| KH(T310) // newer potential query read
+    KL(T10)  | .........K(10, T300, v=T20).........| KH(T10) // newer read
+    KL(T10)  | .........K(10, T100, v=T300)........| KH(T10) //  newer value
 
-// Eviction of an entry updates both neighbors to the max(current, evicted)
-KL(T10)  | .........K(10, T300, v=T20).........| KH(T10)
-evict(K10)
-KL(T300)  | ...................................| KH(T300)
+    // Eviction of an entry updates both neighbors to the max(current, evicted)
+    KL(T10)  | .........K(10, T300, v=T20).........| KH(T10)
+    evict(K10)
+    KL(T300)  | ...................................| KH(T300)
 
-KL(T400)  | .........K(10, T300, v=T20).........| KH(T10)
-evict(K10)
-KL(T400)  | ...................................| KH(T300)
+    KL(T400)  | .........K(10, T300, v=T20).........| KH(T10)
+    evict(K10)
+    KL(T400)  | ...................................| KH(T300)
 
-// Improvement: store dummy records - records which have no write intent nor commited values.
-// This helps limit the affected range of keys to only the keys that were read, so that a small
-// scan doesn't end up impacting a large key range
-// The solution would then require bounded number of such dummy entries. The proposal is to also
-// add an insertion queue so that we can garbage-collect entries when we have accumulated above
-// the desired threshold.
+    // Improvement: store dummy records - records which have no write intent nor commited values.
+    // This helps limit the affected range of keys to only the keys that were read, so that a small
+    // scan doesn't end up impacting a large key range
+    // The solution would then require bounded number of such dummy entries. The proposal is to also
+    // add an insertion queue so that we can garbage-collect entries when we have accumulated above
+    // the desired threshold.
 
-// The logic from above is modified so that if a key is not found, we insert a dummy entry with
-// timestamp =max(min(neighbors), ts). We then apply the same rules as above:
+    // The logic from above is modified so that if a key is not found, we insert a dummy entry with
+    // timestamp =max(min(neighbors), ts). We then apply the same rules as above:
 
-// 404 read between two values
-KL(T10) | ..................| KH(T10)
-R(T50, K15)
-KL(T10) | ........DK(15, T50)..........| KH(T10)
+    // 404 read between two values
+    KL(T10) | ..................| KH(T10)
+    R(T50, K15)
+    KL(T10) | ........DK(15, T50)..........| KH(T10)
 
-KL(T10) | ..................| KH(T200)
-R(T50, K15)
-KL(T10) | ........DK(15, T50)..........| KH(T200)
+    KL(T10) | ..................| KH(T200)
+    R(T50, K15)
+    KL(T10) | ........DK(15, T50)..........| KH(T200)
 
-KL(T100) | ..................| KH(T200)
-R(T50, K15)
-KL(T100) | ........DK(15, T100)..........| KH(T200) // maybe just not insert an entry in this case
+    KL(T100) | ..................| KH(T200)
+    R(T50, K15)
+    KL(T100) | ........DK(15, T100)..........| KH(T200) // maybe just not insert an entry in this case
 
-// Query inserts at both ends as well as updates any keys in-between to max(existing, req.ts)
-KL(T10) | .............K15(T200,v=T100)...............| KH(T300)
-Query(k10,k20,T100)
-KL(T10) | .....K10(T100)........K15(T200,v=T100)...............| KH(T300)
+    // Query inserts at both ends as well as updates any keys in-between to max(existing, req.ts)
+    KL(T10) | .............K15(T200,v=T100)...............| KH(T300)
+    Query(k10,k20,T100)
+    KL(T10) | .....K10(T100)........K15(T200,v=T100)...............| KH(T300)
 
-KL(T10) | .....K10(T100)........K15(T200,v=T100)...............| KH(T300)
-Query(k10, k20, T400)
-KL(T10) | .....K10(T400)........K15(T400,v=T100)..............| KH(T300)
+    KL(T10) | .....K10(T100)........K15(T200,v=T100)...............| KH(T300)
+    Query(k10, k20, T400)
+    KL(T10) | .....K10(T400)........K15(T400,v=T100)..............| KH(T300)
 
-KL(T10) | .............K15(T200,v=T100)...............| KH(T300)
-Query(k10, k20, T400)
-KL(T10) | .....K10(T400)........K15(T400,v=T100)..............| KH(T300)
+    KL(T10) | .............K15(T200,v=T100)...............| KH(T300)
+    Query(k10, k20, T400)
+    KL(T10) | .....K10(T400)........K15(T400,v=T100)..............| KH(T300)
 
-// Eviction updates the neighbors as before
-*/
+    // Eviction updates the neighbors as before
+    */

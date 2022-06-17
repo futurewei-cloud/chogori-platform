@@ -29,27 +29,13 @@ Copyright(c) 2020 Futurewei Cloud
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include <seastar/core/shared_ptr.hh>
 #include <seastar/core/when_all.hh>
 #include <seastar/core/sstring.hh>
 #include <seastar/core/temporary_buffer.hh>
-#include <set>
-#include <unordered_set>
-#include <vector>
 
-#include "Chrono.h"
-
-namespace std {
-inline ostream& operator<<(ostream& os, const decimal::decimal64& d) {
-    decimal::decimal64::__decfloat64 data = const_cast<decimal::decimal64&>(d).__getval();
-    return os << (double)data;
-}
-inline ostream& operator<<(ostream& os, const decimal::decimal128& d) {
-    decimal::decimal128::__decfloat128 data = const_cast<decimal::decimal128&>(d).__getval();
-    return os << (double)data;
-}
-}
+#include <skvhttp/common/Serialization.h>
+#include <k2/logging/Chrono.h>
 
 #define DISABLE_COPY(className)           \
     className(const className&) = delete; \
@@ -231,42 +217,24 @@ public:
     }
 };
 
-// base case recursion call
-inline void hash_combine_seed(size_t&) {
-}
+// this clock source should be used when you don't care just how precise you are with timing
+// and you want to avoid a lot of calls to system's clock.
+// It provides monotonically increasing, thread-local sequence of values and refreshes the
+// system clock when asked.
+struct CachedSteadyClock {
+    typedef Duration duration;
+    typedef Duration::rep rep;
+    typedef Duration::period period;
+    typedef TimePoint time_point;
+    static const bool is_steady = true;
 
-// hash-combine hashes for multiple objects over a seed
-// this is using boost-like hash combination
-// https://stackoverflow.com/questions/35985960/c-why-is-boosthash-combine-the-best-way-to-combine-hash-values
-template <typename T, typename... Rest>
-inline void hash_combine_seed(size_t& seed, const T& v, Rest&&... rest) {
-    seed ^= std::hash<T>{}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-    hash_combine_seed(seed, std::forward<Rest>(rest)...);
-}
+    static time_point now(bool refresh = false) noexcept;
 
-// hash-combine multiple objects
-template <typename T, typename... Rest>
-inline size_t hash_combine(const T& v, Rest&&... rest) {
-    size_t seed = 0;
-    hash_combine_seed(seed, v, std::forward<Rest>(rest)...);
-    return seed;
-}
+   private:
+    static inline thread_local TimePoint _now = Clock::now();
+};
 
 }  //  namespace k2
-
-template <> // json (de)serialization support
-struct nlohmann::adl_serializer<k2::String> {
-    // since we transport raw/binary with strings, we just b64 encode all strings in json
-    static void to_json(nlohmann::json& j, const k2::String& str) {
-        // use the raw char* to avoid recursion
-        j = k2::HexCodec::encode(str).data();
-    }
-
-    static void from_json(const nlohmann::json& j, k2::String& str) {
-        auto result = j.get<std::string>();
-        str = k2::HexCodec::decode(result);
-    }
-};
 
 template <> // fmt support
 struct fmt::formatter<k2::String> {
@@ -328,7 +296,7 @@ struct fmt::formatter<std::vector<k2::String>> {
     }
 };
 
-template <> // fmt support
+template <> // fmt support for String
 struct fmt::formatter<std::unordered_set<k2::String>> {
     template <typename ParseContext>
     constexpr auto parse(ParseContext& ctx) {
@@ -348,5 +316,28 @@ struct fmt::formatter<std::unordered_set<k2::String>> {
             }
         }
         return fmt::format_to(ctx.out(), "}}");
+    }
+};
+
+template <>  // serialization support for String
+struct skv::http::Serializer<k2::String> {
+    template <typename ReaderT>
+    bool k2UnpackFrom(ReaderT& reader, k2::String& str) {
+        typename ReaderT::Binary bin;
+        if (!reader.read(bin)) {
+            return false;
+        }
+        str = k2::String(bin.data(), bin.size());
+        return true;
+    }
+
+    template <typename WriterT>
+    void k2PackTo(WriterT& writer, const k2::String& str) const {
+       typename WriterT::Binary bin(const_cast<char*>(str.data()), str.size(),[]{});
+        writer.write(bin);
+    }
+
+    size_t k2GetNumberOfPackedFields() const {
+        return 1;
     }
 };

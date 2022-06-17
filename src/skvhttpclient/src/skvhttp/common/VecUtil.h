@@ -21,20 +21,37 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include "Chrono.h"
+#pragma once
+#include <vector>
 
-namespace k2 {
+namespace skv::http {
 
-CachedSteadyClock::time_point CachedSteadyClock::now(bool refresh) noexcept {
-    if (refresh) {
-        auto now = Clock::now();
-        if (now > _now) {
-            // make sure we're steady - only update value if we haven't gone past the real now()
-            _now = now;
-        }
-    } else {
-        _now += Duration(1ns);
-    }
-    return _now;
+// base recursion - no args to append
+template <typename T>
+void _append_vec(std::vector<T>&) {}
+
+// Append rvalues to a vector with variadic template expansion
+template <typename T, typename... ObjT>
+void _append_vec(std::vector<T>& v, T&& obj, ObjT&&... objs) {
+    v.push_back(std::forward<T>(obj));
+    _append_vec(v, std::forward<ObjT>(objs)...);
 }
-} // ns k2
+
+template <typename T, typename... ObjT>
+void append_vec(std::vector<T>& v, ObjT&&... objs) {
+    constexpr std::size_t sz = std::tuple_size<std::tuple<ObjT...>>::value;
+    v.reserve(sz);
+    _append_vec(v, std::forward<ObjT>(objs)...);
+}
+
+// create a vector using rvalues of type. This is needed to aid in creating rvalue vectors from
+// non-copyable types since the standard lib initializer list doesn't support non-copyable types
+template <typename T, typename... ObjT>
+std::vector<T> make_vec(ObjT&&... objs) {
+    std::vector<T> result;
+    constexpr std::size_t sz = std::tuple_size<std::tuple<ObjT...>>::value;
+    result.reserve(sz);
+    append_vec(result, std::forward<ObjT>(objs)...);
+    return result;
+}
+}

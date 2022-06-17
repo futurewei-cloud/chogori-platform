@@ -56,39 +56,6 @@ def genvars(N):
                       mn + "1(a" +str(i) + ")"])
         print(v)
 
-
-def genfromjson(N):
-    print('// _K2_FROM_JSON(...) generates from-json entries, e.g. _K2_FROM_JSON(a) -> j.at("a").get_to(o.a);')
-    vrs = ["a1"]
-    mn = "_K2_FROM_JSON"
-    print("#define", mn + "(...) _K2_OVERLOADED_MACRO(" + mn + ", __VA_ARGS__)")
-    print("#define", mn + "0() (void)o; (void)j;")
-    print("#define", mn + "1(a1) j.at(#a1).get_to(o.a1);")
-    for i in range(2, N):
-        vrs.append("a" + str(i))
-        v = " ".join(["#define",
-                      mname_with_vars(mn, i, vrs),
-                      mname_with_vars(mn, i-1, vrs[:-1]),
-                      mn + "1(a" + str(i) + ")"])
-        print(v)
-
-def gentojson(N):
-    print(
-        '// _K2_TO_JSON(...) generates from-json entries, e.g. _K2_TO_JSON(a1, a2) -> {"a1", o.a1}, {"a2", o.a2}')
-    vrs = ["a1"]
-    mn = "_K2_TO_JSON"
-    print("#define", mn + "(...) _K2_OVERLOADED_MACRO(" + mn + ", __VA_ARGS__)")
-    print("#define", mn + "0()")
-    print("#define", mn + "1(a1) {#a1, o.a1}")
-    for i in range(2, N):
-        vrs.append("a" + str(i))
-        v = " ".join(["#define",
-                      mname_with_vars(mn, i, vrs),
-                      mname_with_vars(mn, i-1, vrs[:-1]),
-                      ", ",
-                      mn + "1(a" + str(i) + ")"])
-        print(v)
-
 def gentostring(N):
     print(
         '// _K2_TO_STRING_LIST(...) converts list of args to list of stringed args, e.g. _K2_TO_STRING_LIST(a1, a2) -> "a1", "a2"')
@@ -159,10 +126,6 @@ Copyright(c) 2021 Futurewei Cloud
     genlst(N)
     print()
     genvars(N)
-    print()
-    genfromjson(N)
-    print()
-    gentojson(N)
     print()
     gentostring(N)
     print()

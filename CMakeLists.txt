@@ -3,6 +3,7 @@ cmake_minimum_required (VERSION 3.13)
 project (k2_platform VERSION 0.0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 add_compile_options(-O3 -g -Werror -Wall -Wextra -march=skylake -mtune=skylake-avx512 -mavx -mavx2 -mxsave -mbmi -mbmi2 -mlzcnt -maes -mpopcnt)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # K2_VERBOSE_LOGGING enables some verbose logging for debug purposes. By default it is disabled and compiled out
 if(DEFINED ENV{K2_VERBOSE_LOGGING})
@@ -22,14 +23,15 @@ else()
     set(K2_MODULE_POOL_ALLOCATOR 0)
 endif()
 
+
 add_compile_definitions(K2_MODULE_POOL_ALLOCATOR=${K2_MODULE_POOL_ALLOCATOR})
 
 include_directories(src)
 
-find_package (Seastar REQUIRED)
-find_package (fmt REQUIRED)
-find_package(nlohmann_json REQUIRED)
-find_package (yaml-cpp REQUIRED) # required for configuration file parsing
+find_package(Seastar REQUIRED)
+find_package(fmt REQUIRED)
+find_package(skvhttp REQUIRED)
+find_package(yule REQUIRED)
 
 add_subdirectory (src)
 add_subdirectory (test)

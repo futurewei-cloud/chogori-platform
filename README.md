@@ -15,6 +15,7 @@ https://groups.google.com/forum/#!forum/chogori-dev
 ### Install instructions
  * Install chogori-seastar-rd (see instructions in the repo https://github.com/futurewei-cloud/chogori-seastar-rd)
  * run `./install_deps.sh` to install other dependency libraries
+ * build and install the cmake subprojects under src/logging and src/skvhttpclient
  * generate cmake and build `mkdir build && cd build && cmake .. && make -j`
  * run tests `cd build/test && ctest`
  * run integration tests `./test/integration/run.sh`

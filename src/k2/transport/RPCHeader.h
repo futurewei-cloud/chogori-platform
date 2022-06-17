@@ -28,7 +28,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstring> // for size_t types
 
 // k2
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include "Payload.h"
 #include "RPCTypes.h"
 

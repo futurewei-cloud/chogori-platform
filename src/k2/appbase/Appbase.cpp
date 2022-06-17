@@ -32,6 +32,8 @@ namespace k2 {
 int App::start(int argc, char** argv) {
     std::srand(std::time(nullptr));
     k2::logging::Logger::procName = std::filesystem::path(argv[0]).filename().c_str();
+    k2::logging::Logger::threadId = seastar::this_shard_id();
+
     ___appBase___ = this;
     k2::VirtualNetworkStack::Dist_t vnet;
     k2::RPCProtocolFactory::Dist_t tcpproto;
@@ -75,10 +77,11 @@ int App::start(int argc, char** argv) {
         auto& config = _app.configuration();
         return seastar::smp::invoke_on_all([&] {
             // setup log configuration in each core
+            k2::logging::Logger::threadId = seastar::this_shard_id();
             if (config.count("log_level")) {
                 auto levels = config["log_level"].as<std::vector<String>>();
                 if (levels.size() == 0) {
-                    logging::Logger::threadLocalLogLevel = logging::LogLevel::INFO;
+                    logging::Logger::threadLocalLogLevel = logging::LogLevel::Info;
                 }
                 else {
                     auto split = [](const String& token) {
@@ -110,7 +113,7 @@ int App::start(int argc, char** argv) {
             }
             else {
                 // if nothing is specified, default to INFO
-                logging::Logger::threadLocalLogLevel = logging::LogLevel::INFO;
+                logging::Logger::threadLocalLogLevel = logging::LogLevel::Info;
             }
         })
         .then([&] {

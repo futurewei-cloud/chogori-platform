@@ -22,28 +22,16 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
+#include <k2/logging/FormattingUtils.h>
+
 #include <chrono>
 #include <iostream>
-#undef FMT_UNICODE
-#define FMT_UNICODE 0
-
-#include <fmt/format.h>
-#include <fmt/printf.h>
-#include <fmt/compile.h>
-#include <nlohmann/json.hpp>
-#include "FormattingUtils.h"
-
-//
-// duration used in a few places to specify timeouts and such
-//
 
 using namespace std::chrono_literals;  // so that we can type "1ms"
 
 namespace k2 {
 
 typedef std::chrono::steady_clock Clock;
-typedef std::chrono::system_clock ClockSys;
-
 typedef Clock::duration Duration;
 typedef std::chrono::time_point<Clock> TimePoint;
 
@@ -73,25 +61,7 @@ inline std::chrono::seconds sec(const TimePoint& tp) {
     return sec(tp.time_since_epoch());
 }
 
-// this clock source should be used when you don't care just how precise you are with timing
-// and you want to avoid a lot of calls to system's clock.
-// It provides monotonically increasing, thread-local sequence of values and refreshes the
-// system clock when asked.
-struct CachedSteadyClock {
-    typedef Duration duration;
-    typedef Duration::rep rep;
-    typedef Duration::period period;
-    typedef TimePoint time_point;
-    static const bool is_steady = true;
-
-    static time_point now(bool refresh=false) noexcept;
-private:
-    static inline thread_local TimePoint _now = Clock::now();
-};
-
-
-// Utility class to keep track of a deadline. Useful for nested requests
-template<typename ClockT=Clock>
+template <typename ClockT = Clock>
 class Deadline {
 public:
     Deadline(typename ClockT::duration dur) : _deadline(ClockT::now() + dur) {}
@@ -107,11 +77,10 @@ public:
     bool isOver() const {
         return ClockT::now() >= _deadline;
     }
-    K2_DEF_FMT(Deadline, _deadline);
 
 private:
     typename ClockT::time_point _deadline;
-}; // class Deadline
+};  // class Deadline
 
 struct Timestamp_ts {
     uint16_t micros;
@@ -168,6 +137,21 @@ struct fmt::formatter<k2::Duration> {
     }
 };
 
+//std::chrono::duration<long int, std::ratio<1, 1000000000> >
+
+template <typename X, typename Y>
+struct fmt::formatter<std::chrono::duration<X,Y>> {
+    template <typename ParseContext>
+    constexpr auto parse(ParseContext& ctx) {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(std::chrono::duration<X, Y> const& dur, FormatContext& ctx) {
+        return fmt::format_to(ctx.out(), "{}", k2::TimePoint{} + dur);
+    }
+};
+
 template <>
 struct fmt::formatter<k2::TimePoint> {
     template <typename ParseContext>
@@ -180,35 +164,3 @@ struct fmt::formatter<k2::TimePoint> {
         return fmt::format_to(ctx.out(), "{}", k2::toTimestamp_ts(tp));
     }
 };
-
-namespace std {
-void inline to_json(nlohmann::json& j, const k2::Duration& obj) {
-    j = nlohmann::json{{"duration", k2::usec(obj).count()}};
-}
-
-inline void from_json(const nlohmann::json& j, k2::Duration& obj) {
-    int64_t result = j.get<int64_t>();  // microseconds
-    obj = result * 1us;
-}
-
-void inline to_json(nlohmann::json& j, const k2::TimePoint& tp) {
-    j = nlohmann::json{{"timepoint", fmt::format("{}", k2::toTimestamp_ts(tp))}};
-}
-
-inline void from_json(const nlohmann::json& j, k2::TimePoint& tp) {
-    // timepoint deserialize expects a json with int64_t microseconds
-    int64_t result = j.get<int64_t>();  // microseconds
-    tp = k2::TimePoint{} + result * 1us;
-}
-
-inline ostream& operator<<(ostream& os, const k2::TimePoint& o) {
-    fmt::print(os, "{}", o);
-    return os;
-}
-
-inline ostream& operator<<(ostream& os, const k2::Duration& o) {
-    fmt::print(os, "{}", o);
-    return os;
-}
-
-}

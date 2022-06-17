@@ -1,6 +1,5 @@
 #!/bin/bash
 set -e
-apt install nlohmann-json3-dev
 
 mkdir -p deps
 cd deps
@@ -11,9 +10,3 @@ mkdir -p build
 cd build
 cmake -DCRC32C_BUILD_TESTS=0 -DCRC32C_BUILD_BENCHMARKS=0 .. && make -j all install
 cd ../../
-
-if [ ! -d "chogori-intervaltree" ]; then git clone https://github.com/futurewei-cloud/chogori-intervaltree.git; fi
-cd chogori-intervaltree
-mkdir -p build
-cd build
-cmake .. && make -j install

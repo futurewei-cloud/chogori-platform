@@ -21,7 +21,7 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 #include "NodePoolMonitor.h"
 
 namespace k2 {

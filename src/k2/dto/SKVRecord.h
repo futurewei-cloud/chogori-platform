@@ -236,14 +236,6 @@ public:
             rec.rangeKeys);
     }
 
-    void friend inline to_json(nlohmann::json& j, const SKVRecord& o) {
-        j = nlohmann::json{{ "skv_record", fmt::format("{}", o) }};
-    }
-
-    void friend inline from_json(const nlohmann::json&, SKVRecord&) {
-        throw std::runtime_error("cannot construct SKVRecord from json");
-    }
-
 private:
     void constructKeyStrings();
     template <typename T>

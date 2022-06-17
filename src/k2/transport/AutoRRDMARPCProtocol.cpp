@@ -32,7 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future-util.hh>
 
 //k2
-#include <k2/common/Log.h>
+#include <k2/logging/Log.h>
 
 namespace k2 {
 

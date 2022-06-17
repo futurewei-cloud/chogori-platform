@@ -82,12 +82,12 @@ void K2TxnHandle::_makeHeartbeatTimer() {
 
 std::unique_ptr<dto::K23SIReadRequest> K2TxnHandle::_makeReadRequest(
                         const dto::Key& key, const String& collection) const {
-    return std::make_unique<dto::K23SIReadRequest>(
-        dto::PVID{}, // Will be filled in by PartitionRequest
-        collection,
-        _mtr,
-        key
-    );
+    return std::make_unique<dto::K23SIReadRequest>(dto::K23SIReadRequest{
+        .pvid = dto::PVID{}, // Will be filled in by PartitionRequest
+        .collectionName = collection,
+        .mtr = _mtr,
+        .key = key
+    });
 }
 
 template <>
@@ -180,20 +180,20 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makeWriteRequest(dto::SKVR
         _trh_key = key;
         _trh_collection = record.collectionName;
     }
-    return std::make_unique<dto::K23SIWriteRequest>(
-        dto::PVID{}, // Will be filled in by PartitionRequest
-        record.collectionName,
-        _mtr,
-        _trh_key.value(),
-        _trh_collection,
-        erase,
-        isTRH,
-        precondition,
-        _client->write_ops,
-        key,
-        record.storage.share(),
-        std::vector<uint32_t>()
-    );
+    return std::make_unique<dto::K23SIWriteRequest>(dto::K23SIWriteRequest{
+        .pvid = dto::PVID{}, // Will be filled in by PartitionRequest
+        .collectionName = record.collectionName,
+        .mtr = _mtr,
+        .trh = _trh_key.value(),
+        .trhCollection = _trh_collection,
+        .isDelete = erase,
+        .designateTRH = isTRH,
+        .precondition = precondition,
+        .request_id = _client->write_ops,
+        .key = key,
+        .value = record.storage.share(),
+        .fieldsForPartialUpdate = std::vector<uint32_t>()
+    });
 }
 
 std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(dto::SKVRecord& record,
