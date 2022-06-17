@@ -101,7 +101,7 @@ public:
     static constexpr inline uint32_t DRIFT_PERIOD = 1'000'000;
 
     // We require the hardware to be able to generate a valid timestamp within this time
-    static constexpr inline uint64_t LIVELINESS_NANOS = 5'000'000'000;
+    static constexpr inline uint64_t LIVELINESS_NANOS = 500'000'000;
 
     // get the drift over a particular duration
     // note the possibility for rounding errors here due to integer math -

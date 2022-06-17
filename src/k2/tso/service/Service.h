@@ -57,11 +57,11 @@ private: // methods
     seastar::future<> _collectWorkerURLs();
 
     // obtain the TSOID and the error bound value from the CPO
-    seastar::future<std::tuple<Status, dto::AssignTSOResponse>> 
+    seastar::future<std::tuple<Status, dto::AssignTSOResponse>>
     _handleAssignment(dto::AssignTSORequest&& request);
 
     // handler for tsoID and error bound assignment, does the local time check
-    seastar::future<> _assign(uint64_t tsoID, k2::Duration errBound);
+    seastar::future<bool> _assign(uint64_t tsoID, k2::Duration errBound);
 
 private: // members
     // we use this to signal from core 0 to all workers that the GPS clock has been initialized
@@ -90,10 +90,8 @@ private: // members
     std::thread _clockPoller;
     // flag to signal the poller to stop
     std::atomic_flag _keepRunningPoller = ATOMIC_FLAG_INIT;
-    // flag to signal that the GPS clock initialization has been called
-    std::atomic_flag _clockInitializedFlag = ATOMIC_FLAG_INIT;
-    
-    bool _isInInitialization{false};
+
+    bool _isInAssignment{false};
     // metrics
     sm::metric_groups _metricGroups;
     k2::ExponentialHistogram _timestampErrors;
@@ -101,6 +99,8 @@ private: // members
 private: // config
     // pick CPU on which to pin clock poller (default(-1) is free-floating)
     ConfigVar<int16_t> _clockPollerCPU{"tso.clock_poller_cpu", -1};
+    ConfigDuration _clockErrorBound{"tso.hw_error_bound", 100us};
+    ConfigDuration _assignTimeout{"tso.assign_timeout", 500ms};
 };
 
 }

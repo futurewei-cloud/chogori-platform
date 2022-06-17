@@ -177,9 +177,9 @@ seastar::future<> CPOService::start() {
                 }
             });
         });
-        _tsoAssignTimer.arm(0s);    
+        _tsoAssignTimer.arm(0s);
     });
-    
+
 }
 
 seastar::future<bool> CPOService::_assignAllTSOs() {
@@ -218,9 +218,9 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
             }
             K2LOG_D(log::cposvr, "assigned TSOs: {}", _healthyTSOs);
             return seastar::make_ready_future();
-        } 
+        }
         else {
-            K2LOG_W(log::cposvr, "tso assingment unsucessful for endpoint: {} due to {}", ep, status);
+            K2LOG_W(log::cposvr, "tso assignment unsuccessful for endpoint: {} due to {}", ep, status);
             if (status.is5xxRetryable()) {
                 // retry TSO assignment
                 K2LOG_D(log::cposvr, "retrying TSO assignment for endpoint: {} due to 500 retryable", ep);
@@ -235,7 +235,7 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
 seastar::future<> CPOService::_assignTSO(const String &ep, size_t tsoID, int retry) {
     return seastar::do_with(ExponentialBackoffStrategy().withRetries(retry).withStartTimeout(1s).withRate(5), [&ep,tsoID,this](auto &retryStrategy) {
         return retryStrategy.run([&ep,tsoID,this] (size_t retriesLeft, Duration timeout) {
-            K2LOG_I(log::cposvr, "Sending TSO assignment with retriesLeft={}, and timeout={}ms, with {}", retriesLeft, timeout, ep);
+            K2LOG_I(log::cposvr, "Sending TSO assignment with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, ep);
             return _doAssignTSO(ep, tsoID);
         })
         .handle_exception([&ep,tsoID,this] (auto exc) {
