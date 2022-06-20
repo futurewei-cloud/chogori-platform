@@ -22,14 +22,9 @@ Copyright(c) 2022 Futurewei Cloud
 */
 
 #include "SKVClient.h"
-#include "skvhttp/common/Common.h"
-#include "skvhttp/common/Status.h"
-#include "skvhttp/dto/ControlPlaneOracle.h"
-#include "skvhttp/dto/K23SI.h"
-#include "skvhttp/dto/SKVRecord.h"
+
 #include <cstdint>
 #include <memory>
-#include <netinet/ip.h>
 #include <unordered_map>
 #include <vector>
 
@@ -80,11 +75,12 @@ boost::future<Response<std::shared_ptr<dto::Schema>>> Client::getSchema(const St
   return _HTTPClient.POST<dto::GetSchemaRequest, dto::GetSchemaResponse>("/api/GetSchema", std::move(request)).
     then([this, collectionName, schemaName, schemaVersion] (auto&& futResp) {
       auto&& [status, resp] = futResp.get();
-      auto schema = std::make_shared<dto::Schema>(resp.schema);
       if (status.is2xxOK()) {
+        auto schema = std::make_shared<dto::Schema>(resp.schema);
         _schemaCache[collectionName][schemaName][schemaVersion] = schema;
+        return Response<std::shared_ptr<dto::Schema>>(std::move(status), schema);
       }
-      return Response<std::shared_ptr<dto::Schema>>(std::move(status), schema);
+      return Response<std::shared_ptr<dto::Schema>>(std::move(status), nullptr);
     });
 }
 

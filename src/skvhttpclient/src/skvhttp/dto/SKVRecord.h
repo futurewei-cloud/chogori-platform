@@ -229,8 +229,7 @@ public:
             }
         }
 
-        std::optional<T> optionalValue(field);
-        _writer.write(optionalValue);
+        _writer.write(field);
         ++_record.fieldCursor;
     }
 
