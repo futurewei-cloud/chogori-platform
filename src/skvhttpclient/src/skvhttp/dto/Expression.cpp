@@ -58,12 +58,7 @@ struct SchematizedValue {
             throw TypeMismatchException(fmt::format("bad type in schematized value get: have {}, got {}", type, TToFieldType<T>()));
         }
         if (!val.isReference()) {
-            MPackReader reader(val.literal);
-            T result{};
-            if (reader.read(result)) {
-                return std::make_tuple(nullLast, std::move(result));
-            }
-            throw DeserializationError(fmt::format("Unable to deserialize value literal of type {}", TToFieldType<T>()));
+            return std::make_tuple(nullLast, val.get<T>());
         }
         return std::make_tuple(nullLast, rec.deserializeField<T>(sfieldIndex));
     }

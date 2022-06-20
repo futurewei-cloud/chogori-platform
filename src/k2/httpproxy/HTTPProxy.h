@@ -80,7 +80,7 @@ private:
     seastar::future<std::tuple<sh::Status, sh::dto::TxnEndResponse>>
         _handleTxnEnd(sh::dto::TxnEndRequest&& request);
 
-    void setQueryRecord(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record);
+    void shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record);
     seastar::future<std::tuple<sh::Status, sh::dto::CreateQueryResponse>>
         _handleCreateQuery(sh::dto::CreateQueryRequest&& request);
 

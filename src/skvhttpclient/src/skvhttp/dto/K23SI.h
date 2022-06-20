@@ -149,18 +149,18 @@ struct CreateQueryRequest {
 };
 
 struct CreateQueryResponse {
-    uint64_t queryId;    // the query if the response was OK
+    uint64_t queryId{0};    // the query if the response was OK
     K2_SERIALIZABLE_FMT(CreateQueryResponse, queryId);
 };
 
 struct QueryRequest {
     Timestamp timestamp; // identify the issuing transaction
-    uint64_t queryId;
+    uint64_t queryId{0};
     K2_SERIALIZABLE_FMT(QueryRequest, timestamp, queryId);
 };
 
 struct QueryResponse {
-    bool done;
+    bool done{false};
     std::vector<SKVRecord::Storage> records;
     K2_SERIALIZABLE_FMT(QueryResponse, done, records);
 };

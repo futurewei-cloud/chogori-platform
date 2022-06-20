@@ -219,7 +219,7 @@ class Txn:
             status, schema = self.client.get_schema(query.cname, query.sname, storage[2])
             if not status.is2xxOK():
                 return status, None, None
-            record = schema.parse_read(storage, None)
+            record = schema.parse_read(storage, self.timestamp)
             records += [record]
         return status, result[0], records
 

@@ -240,6 +240,7 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
     }
     auto queryIter = iter->second.queries.find(request.queryId);
     if (queryIter ==iter->second.queries.end()) {
+        K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
         return MakeHTTPResponse<shd::QueryResponse>(sh::Statuses::S410_Gone("Query does not exist"), shd::QueryResponse{});
     }
 
@@ -296,20 +297,20 @@ HTTPProxy::_handleGetSchema(shd::GetSchemaRequest&& request) {
     });
 }
 
-void HTTPProxy::setQueryRecord(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record) {
+void HTTPProxy::shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record) {
     if (key.fieldData.size() == 0) return;
     auto shdSchema = getSchemaFromCache(collectionName, k2record.schema);
     shd::SKVRecord shdrecord(collectionName, shdSchema, std::move(key), true);
     _shdRecToK2(shdrecord, k2record);
 }
 
-namespace dtoexp = dto::expression;
+namespace k2exp = dto::expression;
 namespace shdexp = shd::expression;
 
-dtoexp::Value getValue(shdexp::Value&& shval) {
-    dtoexp::Value k2val;
+k2exp::Value getValue(shdexp::Value&& shval) {
+    k2exp::Value k2val;
     if (shval.isReference()) {
-        k2val = dtoexp::makeValueReference(shval.fieldName);
+        k2val = k2exp::makeValueReference(shval.fieldName);
     } else if (shval.type == shd::FieldType::NULL_T || shval.type == shd::FieldType::NOT_KNOWN || shval.type == shd::FieldType::NULL_LAST) {
         k2val.type =  static_cast<dto::FieldType>(to_integral(shval.type));
     } else {
@@ -317,29 +318,29 @@ dtoexp::Value getValue(shdexp::Value&& shval) {
             using T = shd::applied_type_t<decltype(afr)>;
             auto obj = afr.field.template get<T>();
             if constexpr (std::is_same_v<T, shd::FieldType>) {
-                k2val = dtoexp::makeValueLiteral(static_cast<dto::FieldType>(to_integral(obj)));
+                k2val = k2exp::makeValueLiteral(static_cast<dto::FieldType>(to_integral(obj)));
             } else if constexpr (std::is_same_v<T, sh::String>) {
-              k2val = dtoexp::makeValueLiteral<String>(String(std::move(obj)));
+              k2val = k2exp::makeValueLiteral<String>(String(std::move(obj)));
             } else {
-              k2val = dtoexp::makeValueLiteral<T>(std::move(obj));
+              k2val = k2exp::makeValueLiteral<T>(std::move(obj));
             }
         });
     }
     return k2val;
 }
 
-dtoexp::Expression getFilterExpression(shdexp::Expression&& shExpr) {
-    std::vector<dtoexp::Value> values;
+k2exp::Expression getFilterExpression(shdexp::Expression&& shExpr) {
+    std::vector<k2exp::Value> values;
     values.reserve(shExpr.valueChildren.size());
     for (auto& val: shExpr.valueChildren) {
         values.push_back(getValue(std::move(val)));
     }
-    std::vector<dtoexp::Expression> exprs;
+    std::vector<k2exp::Expression> exprs;
     exprs.reserve(shExpr.expressionChildren.size());
     for (auto& cexpr: shExpr.expressionChildren) {
         exprs.push_back(getFilterExpression(std::move(cexpr)));
     }
-    return dtoexp::makeExpression(static_cast<dtoexp::Operation>(to_integral(shExpr.op)), std::move(values), std::move(exprs));
+    return k2exp::makeExpression(static_cast<k2exp::Operation>(to_integral(shExpr.op)), std::move(values), std::move(exprs));
 }
 
 seastar::future<std::tuple<sh::Status, shd::CreateQueryResponse>>
@@ -355,14 +356,14 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
                 return MakeHTTPResponse<shd::CreateQueryResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::CreateQueryResponse{});
             }
             try {
-                setQueryRecord(req.collectionName, std::move(req.key), result.query.startScanRecord);
-                setQueryRecord(req.collectionName, std::move(req.endKey), result.query.endScanRecord);
+                shdStorageToK2Record(req.collectionName, std::move(req.key), result.query.startScanRecord);
+                shdStorageToK2Record(req.collectionName, std::move(req.endKey), result.query.endScanRecord);
 
-                if (req.recordLimit >= 0) result.query.setLimit(req.recordLimit);
-                if (req.includeVersionMismatch) result.query.setIncludeVersionMismatch(req.includeVersionMismatch);
-                if (req.reverseDirection) result.query.setReverseDirection(req.reverseDirection);
+                result.query.setLimit(req.recordLimit);
+                result.query.setIncludeVersionMismatch(req.includeVersionMismatch);
+                result.query.setReverseDirection(req.reverseDirection);
                 if (req.filterExpression.op != shdexp::Operation::UNKNOWN) {
-                    dtoexp::Expression expr = getFilterExpression(std::move(req.filterExpression));
+                    k2exp::Expression expr = getFilterExpression(std::move(req.filterExpression));
                     result.query.setFilterExpression(std::move(expr));
                 }
                 if (req.projection.size() > 0) {
