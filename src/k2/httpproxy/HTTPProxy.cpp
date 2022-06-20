@@ -266,11 +266,13 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
                 K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
                 return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
             } else {
-                if (queryIter->second.isDone()) {
+                // Save to a variable to use it after query is deleted
+                bool isDone = queryIter->second.isDone();
+                if (isDone) {
                     iter->second.queries.erase(request.queryId);
                 }
                 return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code=result.status.code, .message=result.status.message},
-                    shd::QueryResponse{.done = queryIter->second.isDone(), .records = std::move(records)});
+                    shd::QueryResponse{.done = isDone, .records = std::move(records)});
             }
         }
     });
