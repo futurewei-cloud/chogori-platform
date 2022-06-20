@@ -35,6 +35,7 @@ namespace k2 {
 
 // Indicates that the txn requested is no longer available
 static const inline auto Txn_S410_Gone = sh::Statuses::S410_Gone("transaction does not exist");
+static const inline auto Query_S410_Gone = sh::Statuses::S410_Gone("Query does not exist");
 
 void _shdRecToK2(shd::SKVRecord& shdrec, dto::SKVRecord& k2rec) {
     shdrec.visitRemainingFields([&k2rec](const auto&, auto&& value) mutable {
@@ -241,7 +242,7 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
     auto queryIter = iter->second.queries.find(request.queryId);
     if (queryIter ==iter->second.queries.end()) {
         K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
-        return MakeHTTPResponse<shd::QueryResponse>(sh::Statuses::S410_Gone("Query does not exist"), shd::QueryResponse{});
+        return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
     }
 
     return iter->second.handle.query(queryIter->second)
@@ -258,14 +259,22 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
             auto rec = _buildSHDRecord(k2record, collectionName, shSChema);
             records.push_back(std::move(rec.getStorage()));
         }
-        auto& txnrec = _txns.at(request.timestamp);
-        auto& query = txnrec.queries.at(request.queryId);
-        bool isDone = query.isDone();
-        if (isDone) {
-            txnrec.queries.erase(request.queryId);
+        try {
+            auto& txnrec = _txns.at(request.timestamp);
+            try {
+                auto& query = txnrec.queries.at(request.queryId);
+                bool isDone = query.isDone();
+                if (isDone) {
+                    txnrec.queries.erase(request.queryId);
+                }
+                return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code=result.status.code, .message=result.status.message},
+                    shd::QueryResponse{.done = isDone, .records = std::move(records)});
+            } catch(std::out_of_range&) {
+                return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
+            }
+        } catch(std::out_of_range&) {
+            return MakeHTTPResponse<shd::QueryResponse>(Txn_S410_Gone, shd::QueryResponse{});
         }
-        return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code=result.status.code, .message=result.status.message},
-            shd::QueryResponse{.done = isDone, .records = std::move(records)});
     });
 }
 
@@ -379,7 +388,11 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
             }
 
             auto queryId = _queryID++;
-            _txns.at(req.timestamp).queries[queryId] = std::move(result.query);
+            try {
+                _txns.at(req.timestamp).queries[queryId] = std::move(result.query);
+            } catch (std::out_of_range&) {
+                return MakeHTTPResponse<shd::CreateQueryResponse>(Txn_S410_Gone, shd::CreateQueryResponse{});
+            }
             return MakeHTTPResponse<shd::CreateQueryResponse>(
                 sh::Status{.code = result.status.code, .message = result.status.message},
                 shd::CreateQueryResponse{.queryId = queryId});
