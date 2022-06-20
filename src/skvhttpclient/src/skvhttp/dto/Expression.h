@@ -78,6 +78,23 @@ struct Value {
 
     K2_SERIALIZABLE(Value, fieldName, type, literal);
 
+   // Extracts a given type for this Value.
+    template <typename T>
+    T get() const {
+        if (TToFieldType<T>() != type) {
+            throw TypeMismatchException(fmt::format("bad type in value get: have {}, got {}", type, TToFieldType<T>()));
+        }
+        if (isReference()) {
+            throw DeserializationError(fmt::format("Unable to deserialize reference value literal of type {}", TToFieldType<T>()));
+        }
+        MPackReader reader(literal);
+        T result{};
+        if (reader.read(result)) {
+            return result;
+        }
+        throw DeserializationError(fmt::format("Unable to deserialize value literal of type {}", TToFieldType<T>()));
+    }
+
     // custom formatting
     friend std::ostream& operator<<(std::ostream&os, const Value& val) {
         std::ostringstream otype;
@@ -92,15 +109,8 @@ struct Value {
                 try {
                     applyTyped(val, [&val, &os](const auto& afr) {
                         using T = applied_type_t<decltype(afr)>;
-                        T obj;
-                        Binary* b = const_cast<Binary*>(&(val.literal));
-                        MPackReader reader(*b);
-                        if (!reader.read(obj)) {
-                            os << TToFieldType<T>() << "_ERROR_READING";
-                        }
-                        else {
-                            os << obj;
-                        }
+                        auto obj = afr.field.template get<T>();
+                        os << obj;
                     });
                 } catch (const std::exception& e) {
                     // just in case, log the exception here so that we can do something about it
