@@ -259,20 +259,20 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
             auto rec = _buildSHDRecord(k2record, collectionName, shSChema);
             records.push_back(std::move(rec.getStorage()));
         }
-        auto iter = _txns.find(request.timestamp);
-        if (iter == _txns.end()) {
+        if (auto iter = _txns.find(request.timestamp); iter == _txns.end()) {
             return MakeHTTPResponse<shd::QueryResponse>(Txn_S410_Gone, shd::QueryResponse{});
+        } else {
+            if (auto queryIter = iter->second.queries.find(request.queryId); queryIter ==iter->second.queries.end()) {
+                K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
+                return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
+            } else {
+                if (queryIter->second.isDone()) {
+                    iter->second.queries.erase(request.queryId);
+                }
+                return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code=result.status.code, .message=result.status.message},
+                    shd::QueryResponse{.done = queryIter->second.isDone(), .records = std::move(records)});
+            }
         }
-        auto queryIter = iter->second.queries.find(request.queryId);
-        if (queryIter ==iter->second.queries.end()) {
-            K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
-            return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
-        }
-        if (queryIter->second.isDone()) {
-            iter->second.queries.erase(request.queryId);
-        }
-        return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code=result.status.code, .message=result.status.message},
-            shd::QueryResponse{.done = queryIter->second.isDone(), .records = std::move(records)});
     });
 }
 
@@ -386,14 +386,14 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
             }
 
             auto queryId = _queryID++;
-            auto it = _txns.find(req.timestamp);
-            if (it == _txns.end()) {
+            if (auto it = _txns.find(req.timestamp); it == _txns.end()) {
                 return MakeHTTPResponse<shd::CreateQueryResponse>(Txn_S410_Gone, shd::CreateQueryResponse{});
+            } else {
+                it->second.queries[queryId] = std::move(result.query);
+                return MakeHTTPResponse<shd::CreateQueryResponse>(
+                    sh::Status{.code = result.status.code, .message = result.status.message},
+                    shd::CreateQueryResponse{.queryId = queryId});
             }
-            it->second.queries[queryId] = std::move(result.query);
-            return MakeHTTPResponse<shd::CreateQueryResponse>(
-                sh::Status{.code = result.status.code, .message = result.status.message},
-                shd::CreateQueryResponse{.queryId = queryId});
         });
  }
 
