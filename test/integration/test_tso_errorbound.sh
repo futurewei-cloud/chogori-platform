@@ -31,4 +31,4 @@ trap finish EXIT
 
 sleep 2
 
-/build/test/integration/tso_errorbound_fail.py --prometheus_port=63003
+/build/test/integration/test_tso_errorbound_fail.py --prometheus_port=63003

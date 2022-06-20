@@ -1894,8 +1894,6 @@ seastar::future<> testScenario05() {
         return getTimeNow();
     })
     .then([this](dto::Timestamp&& ts) {
-        K2LOG_I(log::k23si, "timestamp: {}", ts);
-        // ts = dto::Timestamp(ts.tEndTSECount() - 100000000, ts.tsoId(), 1000);
         return seastar::do_with(
             dto::K23SI_MTR {.timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
             dto::Key {.schemaName = "schema", .partitionKey = "SC05_pkey1", .rangeKey = "rKey1"},

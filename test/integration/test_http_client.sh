@@ -20,7 +20,7 @@ persistence_child_pid=$!
 ./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
-sleep 2
+sleep 1
 
 ./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --cpo ${CPO} &
 http_child_pid=$!

@@ -67,8 +67,8 @@ void CPOService::_registerMetrics() {
     std::vector<sm::label_instance> labels;
     labels.push_back(sm::label_instance("total_cores", seastar::smp::count));
     _metricGroups.add_group("CPO", {
-        sm::make_gauge("succeeded tso assignments", [this] {return _healthyTSOs.size();}, sm::description("Number of completed TSO assignment"), labels),
-        sm::make_gauge("failed tso assignments",[this] {return _failedTSOs.size();}, sm::description("Number of failed TSO assignment"), labels)
+        sm::make_gauge("assigned tso instances", [this] {return _healthyTSOs.size();}, sm::description("number of tso instances currently assigned"), labels),
+        sm::make_gauge("unassigned tso instances",[this] {return _failedTSOs.size();}, sm::description("number of tso instances currently unassigned"), labels)
     });
 
 }
@@ -188,9 +188,6 @@ seastar::future<bool> CPOService::_assignAllTSOs() {
     for (auto tso=_failedTSOs.begin(); tso!=_failedTSOs.end(); ++tso) {
         futs.push_back(
             _assignTSO(tso->first, tso->second, _maxAssignRetries())
-            .then([] {
-                return seastar::make_ready_future<>();
-            })
         );
     }
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()
@@ -208,7 +205,7 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
         return seastar::make_exception_future(StopRetryException{});
     }
     return RPC().callRPC<dto::AssignTSORequest, dto::AssignTSOResponse>(
-        dto::Verbs::GET_TSO_ASSIGN, request, *txep, _assignTimeout()
+        dto::Verbs::TSO_ASSIGNMENT, request, *txep, _assignTimeout()
     ).then([&ep,tsoID,this] (auto &&result) {
         auto& [status, resp] = result;
         if (status.is2xxOK()) {

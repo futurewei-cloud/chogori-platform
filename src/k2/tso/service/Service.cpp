@@ -96,7 +96,7 @@ seastar::future<> TSOService::start() {
     })
     .then([this] {
         // registering the verb handler for assignment (recieve from CPO)
-        RPC().registerRPCObserver<dto::AssignTSORequest, dto::AssignTSOResponse>(dto::Verbs::GET_TSO_ASSIGN, [this](dto::AssignTSORequest&& request) {
+        RPC().registerRPCObserver<dto::AssignTSORequest, dto::AssignTSOResponse>(dto::Verbs::TSO_ASSIGNMENT, [this](dto::AssignTSORequest&& request) {
             return _handleAssignment(std::move(request));
         });
     });
