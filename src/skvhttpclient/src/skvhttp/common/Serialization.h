@@ -100,7 +100,7 @@ struct isK2SerializableR<T, ReaderT,
     std::enable_if_t<std::is_same_v<
         decltype(std::declval<T>().k2UnpackFrom(std::declval<ReaderT&>())), bool>,void>,
     std::enable_if_t<std::is_same_v<
-        decltype(std::declval<T>().k2GetNumberOfPackedFields()), size_t>,void>
+        decltype(std::declval<T>().k2GetNumberOfPackedFields()), std::size_t>,void>
   >> : std::true_type {};
 
 // to tell if a type is read-serializable for a given reader type
@@ -113,7 +113,7 @@ struct isK2SerializableW<T, WriterT,
     std::enable_if_t<std::is_same_v<
         decltype(std::declval<T>().k2PackTo(std::declval<WriterT&>())), void>,void>,
     std::enable_if_t<std::is_same_v<
-        decltype(std::declval<T>().k2GetNumberOfPackedFields()), size_t>,void>
+        decltype(std::declval<T>().k2GetNumberOfPackedFields()), std::size_t>,void>
   >> : std::true_type {};
 
 
@@ -128,7 +128,7 @@ struct isK2Serializable<T, SerializerT,
     std::enable_if_t<std::is_same_v<
         decltype(std::declval<T>().k2PackTo(std::declval<SerializerT&>())), void>,void>,
     std::enable_if_t<std::is_same_v<
-        decltype(std::declval<T>().k2GetNumberOfPackedFields()), size_t>,void>
+        decltype(std::declval<T>().k2GetNumberOfPackedFields()), std::size_t>,void>
   >> : std::true_type {};
 
 template< class T >
