@@ -45,7 +45,7 @@ struct CollectionCreateRequest {
 
 // Response to CollectionCreateRequest
 struct CollectionCreateResponse {
-    K2_SERIALIZABLE_FMT(CollectionCreateResponse);
+  K2_SERIALIZABLE_FMT(CollectionCreateResponse);
 };
 
 // Request to get a collection

@@ -451,3 +451,32 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         REQUIRE(*ex.p == 30ns);
     }
 }
+
+struct T06First {
+    int a;
+    int b;
+    K2_SERIALIZABLE_FMT(T06First, a, b);
+};
+struct T06Second {
+    K2_SERIALIZABLE_FMT(T06Second);
+};
+
+SCENARIO("Test 06: top level tuple") {
+    skv::http::Binary buf;
+
+    {
+      std::tuple<T06First, T06Second> t06{T06First{.a=1,.b=5}, T06Second{}};
+        skv::http::MPackWriter w;
+        w.write(t06);
+        REQUIRE(w.flush(buf));
+    }
+    {
+      std::tuple<T06First, T06Second> t06Read{};
+        skv::http::MPackReader reader(buf);
+        REQUIRE(reader.read(t06Read));
+        auto&&[first, second] = t06Read;
+        REQUIRE(first.a == 1);
+        REQUIRE(first.b == 5);
+    }
+}
+
