@@ -206,7 +206,7 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
     }
     return RPC().callRPC<dto::AssignTSORequest, dto::AssignTSOResponse>(
         dto::Verbs::TSO_ASSIGNMENT, request, *txep, _assignTimeout()
-    ).then([&ep,tsoID,this] (auto &&result) {
+    ).then([ep,tsoID,this] (auto &&result) {
         auto& [status, resp] = result;
         if (status.is2xxOK()) {
             K2LOG_D(log::cposvr, "tso successfully assigned for endpoint: {}", ep);
