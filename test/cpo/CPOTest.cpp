@@ -302,7 +302,7 @@ seastar::future<> CPOTest::runTest8() {
 }
 
 seastar::future<> CPOTest::runTest9() {
-    K2LOG_I(log::cpotest, ">>> Test8: Try to drop a non-existing collection");
+    K2LOG_I(log::cpotest, ">>> Test9: Try to drop a non-existing collection");
 
 
     dto::CollectionDropRequest request{"DNE"};

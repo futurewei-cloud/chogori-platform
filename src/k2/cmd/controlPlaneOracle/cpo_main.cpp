@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
     app.addOptions()
         ("nodepool_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list (space-delimited) of nodepool endpoints")
         ("tso_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list (space-delimited) of TSO endpoints")
+        ("tso_error_bound", bpo::value<k2::ParseableDuration>(), "the error bound for all TSO instances")
         ("persistence_endpoints", bpo::value<std::vector<k2::String>>()->multitoken()->default_value(std::vector<k2::String>()), "A list (space-delimited) of persistence endpoints")
         ("heartbeat_interval", bpo::value<k2::ParseableDuration>(), "The interval the health monitor uses to send heartbeats")
         ("heartbeat_batch_wait", bpo::value<k2::ParseableDuration>(), "How long the heartbeat monitor waits between batches (only for the start-up set of heartbeats")

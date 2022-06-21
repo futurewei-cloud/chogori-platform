@@ -1910,13 +1910,16 @@ seastar::future<> testScenario05() {
                         auto& [status, resp] = response;
                         K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
                     });
+                })
+                .then([this] {
+                    return getTimeNow();
+                })
+                .then([this, &mtr] (auto&& ts) {
+                    K2EXPECT(log::k23si, ts.compareCertain(mtr.timestamp), Timestamp::GT);
+                    return seastar::make_ready_future<dto::Timestamp>(std::move(ts));
                 });
             }
         ); // end do-with
-    })
-    .then([this]{
-        K2LOG_I(log::k23si, "Scenario 05 setup done.");
-        return getTimeNow();
     })
     .then([&](dto::Timestamp&& ts) {
         // ts will be the timestamp of the incumbent txn

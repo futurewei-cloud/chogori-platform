@@ -31,6 +31,6 @@ int main(int argc, char** argv) {
     app.addApplet<k2::tso::TSOService>();
 
     app.addOptions()("tso.clock_poller_cpu", bpo::value<int16_t>(), "CPU to which to pin the GPS clock polling thread");
-    app.addOptions()("tso.error_bound", bpo::value<k2::ParseableDuration>(), "the error bound for this instance");
+    app.addOptions()("tso.error_bound", bpo::value<k2::ParseableDuration>(), "the error bound for this instance");   // TODO: cleanup?
     return app.start(argc, argv);
 }

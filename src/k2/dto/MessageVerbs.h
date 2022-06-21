@@ -90,7 +90,7 @@ enum Verbs : k2::Verb {
     GET_TSO_SERVICE_NODE_URLS = 120,
     // API from TSO client to get timestamp from any TSO worker core
     GET_TSO_TIMESTAMP,
-
+    TSO_ASSIGNMENT,
     /************ END OF RESERVED BLOCK *****************/
     END=200
 };

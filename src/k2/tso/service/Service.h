@@ -25,6 +25,7 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include "Clock.h"
 #include "Log.h"
+#include "k2/dto/ControlPlaneOracle.h"
 #include <thread>
 #include <k2/appbase/AppEssentials.h>
 
@@ -55,8 +56,12 @@ private: // methods
     // obtain the worker URLs by contacting each worker core
     seastar::future<> _collectWorkerURLs();
 
-    // Register with the CPO as an authorized TSO server
-    seastar::future<> _cpoRegister();
+    // obtain the TSOID and the error bound value from the CPO
+    seastar::future<std::tuple<Status, dto::AssignTSOResponse>>
+    _handleAssignment(dto::AssignTSORequest&& request);
+
+    // handler for tsoID and error bound assignment, does the local time check
+    seastar::future<bool> _assign(uint64_t tsoID, k2::Duration errBound);
 
 private: // members
     // we use this to signal from core 0 to all workers that the GPS clock has been initialized
@@ -74,24 +79,30 @@ private: // members
     // which makes it an instance not authorized to produce timestamps in the cluster.
     uint32_t _tsoId{0};
 
+    // set by the CPO
+    // The error bound for uncertainty for timestamps
+    // The minimum transaction latency (see K23SI design doc) is derived from this number; essentially
+    // MTL = max( {TSO.uncertaintyWindow | for all TSOs} )
+    // Returned timestamps are guaranteed to contain the true time in the window [endCount - error_bound, endCount]
+    Duration _CPOErrorBound{0};
+
     // to poll the gps clock
     std::thread _clockPoller;
     // flag to signal the poller to stop
     std::atomic_flag _keepRunningPoller = ATOMIC_FLAG_INIT;
 
+    bool _isInAssignment{false};
     // metrics
     sm::metric_groups _metricGroups;
     k2::ExponentialHistogram _timestampErrors;
+    uint32_t _failedErrorBounds{0};
+    
 
 private: // config
-    // The error bound for uncertainty for timestamps
-    // The minimum transaction latency (see K23SI design doc) is derived from this number; essentially
-    // MTL = max( {TSO.uncertaintyWindow | for all TSOs} )
-    // Returned timestamps are guaranteed to contain the true time in the window [endCount - error_bound, endCount]
-    ConfigDuration _errorBound{"tso.error_bound", 20us};
-
     // pick CPU on which to pin clock poller (default(-1) is free-floating)
     ConfigVar<int16_t> _clockPollerCPU{"tso.clock_poller_cpu", -1};
+    ConfigDuration _clockErrorBound{"tso.hw_error_bound", 100us};
+    ConfigDuration _assignTimeout{"tso.assign_timeout", 500ms};
 };
 
 }
