@@ -51,7 +51,7 @@ private:
   struct EmptyResponse {
     K2_SERIALIZABLE_FMT(EmptyResponse);
   };
-  
+
 public:
     HTTPMessageClient(std::string server = "localhost", int port = 30000): client(server, port) {}
 
@@ -60,7 +60,7 @@ public:
     boost::future<Response<ResponseT>> POST(String path, RequestT&& obj) {
         return _makeCall<RequestT, ResponseT>(Method::POST, std::move(path), std::move(obj));
     }
-  
+
     template <typename RequestT>
     boost::future<Response<>> POST(String path, RequestT&& obj) {
         return _makeCall<RequestT, EmptyResponse>(Method::POST, std::move(path), std::move(obj))
@@ -71,7 +71,7 @@ public:
 
     }
 private:
- 
+
     // helper method. Make the given http call, to the given path with the given request object.
     template <typename RequestT, typename ResponseT>
     boost::future<Response<ResponseT>> _makeCall(Method method, String path, RequestT&& reqObj) {
@@ -133,7 +133,7 @@ private:
 };
 
 class Client;
-  
+
 class TxnHandle {
 public:
     TxnHandle(Client* client, dto::Timestamp id):_client(client), _id(id) {}
@@ -143,8 +143,8 @@ public:
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
     boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<String> fieldNamesForUpdate);
 
-    boost::future<Response<std::vector<dto::SKVRecord>>> query(dto::Query& query);
-    boost::future<Response<dto::Query>> createQuery(const String& collectionName, const String& schemaName);
+    boost::future<Response<dto::QueryResponse>> query(dto::QueryRequest& query);
+    boost::future<Response<dto::QueryRequest>> createQuery(const String& collectionName, const String& schemaName);
 
 private:
     Client* _client;
@@ -153,7 +153,7 @@ private:
 
 // Collection Name -> Schema Name -> Schema Version -> Schema
 typedef std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<int64_t, std::shared_ptr<dto::Schema>>>> SchemaCacheT;
-  
+
 class Client {
 public:
     Client() {}
