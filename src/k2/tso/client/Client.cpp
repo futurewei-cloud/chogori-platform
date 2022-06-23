@@ -209,14 +209,12 @@ seastar::future<Timestamp> TSOClient::getTimestamp() {
 
 seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyReporter&& reporter) {
     // ExponentialBackoffStrategy doesn't support returning values.
-    constexpr int retries=5;
-
     return seastar::do_with(
-        ExponentialBackoffStrategy().withRetries(retries).withStartTimeout(10ms).withRate(2),
+        ExponentialBackoffStrategy().withRetries(5).withStartTimeout(10ms).withRate(2),
         GetTimestampRequest{},
         Timestamp(),
-        [this, retries] (auto& retryStrategy, auto& request, auto& timestamp) mutable {
-        return retryStrategy.run([this, &request, &timestamp, retries] (int retriesLeft, Duration timeout)  mutable {
+        [this] (auto& retryStrategy, auto& request, auto& timestamp) mutable {
+        return retryStrategy.run([this, &request, &timestamp] (int retriesLeft, Duration timeout)  mutable {
             if (_stopped) {
                 K2LOG_D(log::tsoclient, "Stopping retry since we were stopped");
                 return seastar::make_exception_future<>(TSOClientShutdownException());
@@ -224,7 +222,7 @@ seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyR
 
             K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "we should have workers");
 
-            if (retriesLeft != retries) {
+            if (retriesLeft != 2) {
                 // if this is not first try, it means we had error and are retrying, thus change to a new service node.
                 _curWorkerIdx++;
             }

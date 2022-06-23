@@ -578,7 +578,7 @@ seastar::future<> CPOService::_doAssignCollection(dto::AssignmentCreateRequest &
         if (status.is2xxOK()) {
             K2LOG_I(log::cposvr, "assignment successful for collection {}, for partition {}", name, resp.assignedPartition);
             _handleCompletedAssignment(name, std::move(resp));
-            return seastar::make_ready_future();     
+            return seastar::make_ready_future();
         }
         else if (status.is4xxNonRetryable()) {
             // The node refused to accept the assignment. For now, just ignore this
