@@ -44,7 +44,7 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
+sleep 1
 
 NUMWH=1
 NUMDIST=1

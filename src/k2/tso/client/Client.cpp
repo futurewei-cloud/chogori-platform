@@ -59,20 +59,9 @@ seastar::future<> TSOClient::start() {
     return bootstrap(_cpoEndpoint());
 }
 
-seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
-    K2LOG_I(log::tsoclient, "start bootstrap with CPO server url: {}", cpoEndpoint);
-    auto cpoEP = RPC().getTXEndpoint(cpoEndpoint);
-    if (!cpoEP) {
-        K2LOG_E(log::tsoclient, "CPO endpoint is invalid: {}", cpoEndpoint);
-        return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
-    }
-
-    dto::GetTSOEndpointsRequest request{};
-    _stopped = false;
-    _registerMetrics();
-
+seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest &request, std::unique_ptr<TXEndpoint> cpoEP, Duration timeout) {
     return RPC().callRPC<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>
-            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, *cpoEP, 1s)
+            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, *cpoEP, timeout)
     .then([this](auto&& response) {
         auto& [status, resp] = response;
         if (!status.is2xxOK() || resp.endpoints.size() == 0) {
@@ -80,9 +69,30 @@ seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
                         status, resp.endpoints.size());
             return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
         }
-
         _tsoServerEndpoint = RPC().getTXEndpoint(resp.endpoints[0]);
         return _discoverServiceNodes();
+    });
+}
+
+seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
+    K2LOG_I(log::tsoclient, "start bootstrap with CPO server url: {}", cpoEndpoint);
+
+    _stopped = false;
+    _registerMetrics();
+    // retry TSO connection if cannot be established
+    return seastar::do_with(dto::GetTSOEndpointsRequest{}, ExponentialBackoffStrategy().withRetries(_maxTSORetries()).withStartTimeout(_tsoTimeout()).withRate(2), [cpoEndpoint, this](auto& request, auto& retryStrategy) {
+        return retryStrategy.run([&request, cpoEndpoint, this] (size_t retriesLeft, Duration timeout) {
+            K2LOG_I(log::tsoclient, "Sending GET_TSO_ENDPOINTS with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, cpoEndpoint);
+            auto cpoEP = RPC().getTXEndpoint(cpoEndpoint);
+            if (!cpoEP) {
+                K2LOG_E(log::tsoclient, "CPO endpoint is invalid: {}", cpoEndpoint);
+                return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
+            }
+            return _doGetTSOEndpoints(request, std::move(cpoEP), timeout);
+        })
+        .handle_exception([cpoEndpoint, this] (auto exc) {
+            K2LOG_W_EXC(log::tsoclient, exc, "Failed to assign TSO for endpoint after retry: {}", cpoEndpoint);
+        });
     });
 }
 
@@ -158,7 +168,7 @@ seastar::future<> TSOClient::_getServiceNodeURLs(Duration timeout){
 seastar::future<> TSOClient::_discoverServiceNodes() {
     OperationLatencyReporter reporter(_discoveryLatency);  // for reporting metrics
 
-    return seastar::do_with(ExponentialBackoffStrategy().withRetries(5).withStartTimeout(1s).withRate(5), [this](auto& retryStrategy) {
+    return seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxTSORetries()).withStartTimeout(_tsoTimeout()).withRate(2), [this](auto& retryStrategy) {
         return retryStrategy.run([this] (size_t retriesLeft, Duration timeout) {
             if (_stopped) {
                 K2LOG_I(log::tsoclient, "Stopping retry since we were stopped");
@@ -200,7 +210,7 @@ seastar::future<Timestamp> TSOClient::getTimestamp() {
 seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyReporter&& reporter) {
     // ExponentialBackoffStrategy doesn't support returning values.
     return seastar::do_with(
-        ExponentialBackoffStrategy().withRetries(3).withStartTimeout(100ms).withRate(5),
+        ExponentialBackoffStrategy().withRetries(5).withStartTimeout(10ms).withRate(2),
         GetTimestampRequest{},
         Timestamp(),
         [this] (auto& retryStrategy, auto& request, auto& timestamp) mutable {

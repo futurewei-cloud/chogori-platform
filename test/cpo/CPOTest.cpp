@@ -22,6 +22,8 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "CPOTest.h"
+#include <k2/tso/client/Client.h>
+
 #include <seastar/core/reactor.hh>
 #include <seastar/core/sleep.hh>
 #include <k2/dto/ControlPlaneOracle.h>
@@ -43,13 +45,22 @@ seastar::future<> CPOTest::gracefulStop() {
 }
 
 seastar::future<> CPOTest::start() {
+
     K2LOG_I(log::cpotest, "start");
-    ConfigVar<String> configEp("cpo_endpoint");
+    ConfigVar<String> configEp("cpo");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
+    _tsoClient = AppBase().getDist<tso::TSOClient>().local_shared();
 
     // let start() finish and then run the tests
-    _testTimer.set_callback([this] {
-        _testFuture = runTest1()
+    _testTimer.set_callback([this, configEp] {
+        _testFuture = seastar::make_ready_future()
+        .then([this] {
+            K2LOG_I(log::cpotest, "Getting the timestamp...");
+            return _tsoClient->getTimestamp();
+        })
+        .then([this] (dto::Timestamp&&) {
+            return runTest1();
+        })
         .then([this] { return runTest2(); })
         .then([this] { return runTest3(); })
         .then([this] { return runTest4(); })
@@ -106,7 +117,7 @@ seastar::future<> CPOTest::runTest2() {
                 .dataCapacityMegaBytes=1,
                 .readIOPs=100,
                 .writeIOPs=200,
-                .minNodes=0
+                .minNodes=1
             },
             .retentionPeriod = 1h*90*24
         },
@@ -117,6 +128,7 @@ seastar::future<> CPOTest::runTest2() {
     .then([](auto&& response) {
         auto& [status, resp] = response;
         K2EXPECT(log::cpotest, status, Statuses::S201_Created);
+        return seastar::sleep(100ms);
     });
 }
 
@@ -131,7 +143,7 @@ seastar::future<> CPOTest::runTest3() {
                 .dataCapacityMegaBytes = 1000,
                 .readIOPs = 100000,
                 .writeIOPs = 100000,
-                .minNodes = 0
+                .minNodes = 1
             },
             .retentionPeriod = 1h
         },
@@ -157,6 +169,13 @@ seastar::future<> CPOTest::runTest4() {
             auto& md = resp.collection.metadata;
             K2EXPECT(log::cpotest, md.name, "collection2");
             K2EXPECT(log::cpotest, md.hashScheme, dto::HashScheme::HashCRC32C);
+            for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
+                auto& p = resp.collection.partitionMap.partitions[i];
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.rangeVersion, 1);
+                K2EXPECT(log::cpotest, p.astate, dto::AssignmentState::Assigned);
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.assignmentVersion, 1);
+                K2EXPECT(log::cpotest, p.keyRangeV.pvid.id, i);
+            }
             K2EXPECT(log::cpotest, md.storageDriver, dto::StorageDriver::K23SI);
             K2EXPECT(log::cpotest, md.retentionPeriod, 1h*90*24);
             K2EXPECT(log::cpotest, md.capacity.dataCapacityMegaBytes, 1);

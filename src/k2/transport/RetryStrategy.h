@@ -25,6 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 // third-party
 #include <seastar/core/future.hh>
+#include <seastar/core/sleep.hh>
 #include <seastar/core/future-util.hh>
 
 // k2
@@ -51,7 +52,7 @@ public:
     ExponentialBackoffStrategy& withRetries(int retries);
 
     // Set the exponential increase rate
-    ExponentialBackoffStrategy& withRate(int rate);
+    ExponentialBackoffStrategy& withRate(double rate);
 
     // Set the desired starting value
     ExponentialBackoffStrategy& withStartTimeout(Duration startTimeout);
@@ -72,10 +73,9 @@ public: // API
         return seastar::do_until(
             [this] { return _success || this->_try >= this->_retries; },
             [this, func=std::move(func), resultPtr] ()mutable{
-                this->_try++;
-                this->_currentTimeout*=this->_try;
+                k2::Deadline deadline(this->_currentTimeout);
                 K2LOG_D(log::tx, "running try {}, with timeout {}ms", this->_try, k2::msec(_currentTimeout).count());
-                return func(this->_retries - this->_try, this->_currentTimeout).
+                return func(this->_retries - this->_try, deadline.getRemaining()).
                     handle_exception_type([this](RPCDispatcher::DispatcherShutdown&) {
                         K2LOG_D(log::tx, "Dispatcher has shut down. Stopping retry");
                         this->_try = this->_retries; // ff to the last retry
@@ -86,13 +86,18 @@ public: // API
                         this->_try = this->_retries; // ff to the last retry
                         return seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException());
                     }).
-                    then_wrapped([this, resultPtr](auto&& fut) {
+                    then_wrapped([this, resultPtr, deadline](auto&& fut) {
                         // the func future is done.
                         // if we exited with success, then we shouldn't run anymore
                         _success = !fut.failed();
                         resultPtr->ignore_ready_future(); // ignore previous result stored in the result
                         (*resultPtr.get()) = std::move(fut);
                         K2LOG_D(log::tx, "round ended with success={}", _success);
+                        if (!_success && !deadline.isOver()) {
+                            this->_try++;
+                            this->_currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
+                            return seastar::sleep(deadline.getRemaining());
+                        }
                         return seastar::make_ready_future<>();
                     });
         }).then_wrapped([this, resultPtr](auto&& fut){
@@ -108,7 +113,7 @@ private: // fields
     // which try we're on
     int _try{0};
     // the exponential growth rate
-    int _rate{5};
+    double _rate{2};
     // the value of the current timeout
     Duration _currentTimeout{1us};
     // indicate if the latest round has succeeded (so that we can break the retry loop)

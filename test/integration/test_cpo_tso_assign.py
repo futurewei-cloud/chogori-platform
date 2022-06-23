@@ -29,15 +29,18 @@ import requests, json
 from urllib.parse import urlparse
 import shlex, subprocess
 
+### TSO_reassignment fail if after 2 second there is still no valid tso started
+TEST_TIMEOUT = 2
+TEST_RETRY_INTERVAL = 0.1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--tso_child_pid", help="TSO child PID")
 parser.add_argument("--prometheus_port", help="CPO prometheus port")
 parser.add_argument("--cmd", help="Command to run the new TSOs")
 args = parser.parse_args()
+url = "http://127.0.0.1:" + args.prometheus_port + "/metrics"
 
 def readMetrics():
-    url = "http://127.0.0.1:" + args.prometheus_port + "/metrics"
     r = requests.get(url)
     success_count = 0
     failure_count = 0
@@ -50,7 +53,6 @@ def readMetrics():
             print("CPOService_CPO_assigned_tso_instances: ", success_count)
 
         if "CPOService_CPO_unassigned_tso_instances" in line:
-            print("CPOService_CPO_unassigned_tso_instances: ", line)
             try:
                 failure_count = int(float(line.split()[1]))
                 print("CPOService_CPO_unassigned_tso_instances: ", failure_count)
@@ -63,16 +65,35 @@ def readMetrics():
 class TestTSOAssignFailure(unittest.TestCase):
     ### testing TSO assignment failure. Start with unreachable TSOs. Confirm the retry logic works.
     def test_tsoAssignFailure(self):
-        scount, fcount = readMetrics()
+        ### periodically check the metrics (removing the sleep time constant)
+        scount = 0
+        fcount = 0
+
+        time_start = time.time()
+        while time.time() < time_start + TEST_TIMEOUT:
+            try:
+                scount, fcount = readMetrics()
+                if scount == 1:
+                    break
+                time.sleep(TEST_RETRY_INTERVAL)
+            except:
+                continue
+
         self.assertEqual(scount, 1)
         self.assertEqual(fcount, 2)
 
-        time.sleep(1)
         new_tso_args = shlex.split(args.cmd)
         p = subprocess.Popen(new_tso_args)
-        time.sleep(2)
+        time_start = time.time()
+        while time.time() < time_start + TEST_TIMEOUT:
+            try:
+                scount, fcount = readMetrics()
+                if scount == 3:
+                    break
+                time.sleep(TEST_RETRY_INTERVAL)
+            except:
+                continue
 
-        scount, fcount = readMetrics()
         self.assertEqual(scount, 3)
         self.assertEqual(fcount, 0)
 

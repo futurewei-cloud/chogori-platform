@@ -33,7 +33,7 @@ ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRetries(int retries)
 }
 
 // Set the exponential increase rate
-ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRate(int rate) {
+ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRate(double rate) {
     K2LOG_D(log::tx, "rate: {}", rate);
     _rate = rate;
     return *this;

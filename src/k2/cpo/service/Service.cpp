@@ -187,7 +187,7 @@ seastar::future<bool> CPOService::_assignAllTSOs() {
     std::vector<seastar::future<>> futs;
     for (auto tso=_failedTSOs.begin(); tso!=_failedTSOs.end(); ++tso) {
         futs.push_back(
-            _assignTSO(tso->first, tso->second, _maxAssignRetries())
+            _assignTSO(tso->first, tso->second)
         );
     }
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()
@@ -230,8 +230,8 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
     });
 }
 
-seastar::future<> CPOService::_assignTSO(const String &ep, size_t tsoID, int retry) {
-    return seastar::do_with(ExponentialBackoffStrategy().withRetries(retry).withStartTimeout(1s).withRate(5), [&ep,tsoID,this](auto &retryStrategy) {
+seastar::future<> CPOService::_assignTSO(const String &ep, size_t tsoID) {
+    return seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withStartTimeout(_assignTimeout()).withRate(2), [&ep, tsoID, this](auto& retryStrategy) {
         return retryStrategy.run([&ep,tsoID,this] (size_t retriesLeft, Duration timeout) {
             K2LOG_I(log::cposvr, "Sending TSO assignment with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, ep);
             return _doAssignTSO(ep, tsoID);
@@ -566,6 +566,30 @@ String CPOService::_getSchemasPath(String collectionName) {
     return _getCollectionPath(collectionName) + ".schemas";
 }
 
+seastar::future<> CPOService::_doAssignCollection(dto::AssignmentCreateRequest &request, const String &name, const String &ep) {
+    auto txep = RPC().getTXEndpoint(ep);
+    return RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
+                (dto::K2_ASSIGNMENT_CREATE, request, *txep, _assignTimeout())
+    .then([this, name, ep](auto&& result) {
+        auto& [status, resp] = result;
+        if (status.is2xxOK()) {
+            K2LOG_I(log::cposvr, "assignment successful for collection {}, for partition {}", name, resp.assignedPartition);
+            _handleCompletedAssignment(name, std::move(resp));
+            return seastar::make_ready_future();     
+        }
+        else if (status.is4xxNonRetryable()) {
+            // The node refused to accept the assignment. For now, just ignore this
+            K2LOG_W(log::cposvr, "assignment for collection {} was refused by {}, due to: {}", name, ep, status);
+            _handleCompletedAssignment(name, std::move(resp));
+            return seastar::make_exception_future<>(std::runtime_error("unable to assign collection"));
+        }
+        else {
+            K2LOG_W(log::cposvr, "assignment for collection {} failed because of server error by {}, due to: {}", name, ep, status);
+            return seastar::make_exception_future<>(std::runtime_error("unable to assign collection"));
+        }
+    });
+}
+
 void CPOService::_assignCollection(dto::Collection& collection) {
     auto &name = collection.metadata.name;
     K2LOG_I(log::cposvr, "Assigning collection {}, to {} nodes", name, collection.partitionMap.partitions.size());
@@ -595,21 +619,12 @@ void CPOService::_assignCollection(dto::Collection& collection) {
 
         K2LOG_I(log::cposvr, "Sending assignment for partition: {}", request.partition);
         futs.push_back(
-        RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
-                (dto::K2_ASSIGNMENT_CREATE, request, *txep, _assignTimeout())
-        .then([this, name, ep](auto&& result) {
-            auto& [status, resp] = result;
-            if (status.is2xxOK()) {
-                K2LOG_I(log::cposvr, "assignment successful for collection {}, for partition {}", name, resp.assignedPartition);
-                _handleCompletedAssignment(name, std::move(resp));
-            }
-            else {
-                // The node refused to accept the assignment. For now, just ignore this
-                K2LOG_W(log::cposvr, "assignment for collection {} was refused by {}, due to: {}", name, ep, status);
-                _handleCompletedAssignment(name, std::move(resp));
-            }
-            return seastar::make_ready_future();
-        })
+            seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withStartTimeout(_assignTimeout()).withRate(2), std::move(request), [name, ep, this](auto& retryStrategy, auto &request) {
+                return retryStrategy.run([&request, name, ep,this] (size_t retriesLeft, Duration timeout) {
+                    K2LOG_I(log::cposvr, "Sending partition assignment with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, request.partition);
+                    return _doAssignCollection(request, name, ep);
+                });
+            })
         );
     }
     _assignments.emplace(name, seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()

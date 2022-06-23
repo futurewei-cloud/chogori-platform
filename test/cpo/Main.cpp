@@ -22,11 +22,13 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include <k2/appbase/Appbase.h>
+#include <k2/tso/client/Client.h>
 #include "CPOTest.h"
 
 int main(int argc, char** argv) {
     k2::App app("CPOTest");
-    app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO service");
+    app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO service");
+    app.addApplet<k2::tso::TSOClient>();
     app.addApplet<CPOTest>();
     return app.start(argc, argv);
 }

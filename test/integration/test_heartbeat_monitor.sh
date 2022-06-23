@@ -41,6 +41,6 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
+sleep 1
 
 /build/test/integration/heartbeat_monitor.py --nodepool_pid=${nodepool_child_pid} --prometheus_port=63000

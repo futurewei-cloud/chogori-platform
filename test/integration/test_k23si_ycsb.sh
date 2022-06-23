@@ -44,7 +44,7 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
+sleep 1
 
 echo ">>> Starting load ..."
 ./build/src/k2/cmd/ycsb/ycsb_client ${COMMON_ARGS} -c2 --cpo ${CPO} --data_load true --prometheus_port 63100 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --num_concurrent_txns=2 --num_records=500 --num_records_insert=100 --request_dist="latest" --num_partitions=3 --num_instances=2 --instance_id=0 &
