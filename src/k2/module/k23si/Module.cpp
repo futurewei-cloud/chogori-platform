@@ -424,6 +424,9 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
             return _indexer.stop();
         })
         .then([this] {
+            if (_persistence == nullptr) {
+                return seastar::make_ready_future();
+            }
             return _persistence->stop();
         })
         .then([this] {
