@@ -74,13 +74,14 @@ private: // methods
     seastar::future<dto::Timestamp> _getTimestampWithLatency(OperationLatencyReporter&& reporter);
 
     // Helper to send the RPC GET_TSO_ENDPOINT
-    seastar::future<> _doGetTSOEndpoints(dto::GetTSOEndpointsRequest& request, TXEndpoint cpoEP);
+    seastar::future<> _doGetTSOEndpoints(dto::GetTSOEndpointsRequest& request, TXEndpoint cpoEP, Duration timeout);
 
 private: // fields
     ConfigVar<String> _cpoEndpoint{"cpo", ""};
 
     // Config variable for retring TSO connections
     ConfigVar<int> _maxTSORetries{"max_tso_retries", 10};
+    ConfigDuration _tsoTimeout{"tso_timeout", 1ms};
 
     // to tell if we've been signaled to stop
     bool _stopped{true};

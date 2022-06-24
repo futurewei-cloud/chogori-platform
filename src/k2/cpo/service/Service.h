@@ -79,7 +79,7 @@ private:
     int _makeHashPartitionMap(dto::Collection& collection, uint32_t numNodes);
     int _makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& rangeEnds);
     seastar::future<bool> _assignAllTSOs();
-    seastar::future<> _assignTSO(const String &ep, size_t tsoID, int retry);
+    seastar::future<> _assignTSO(const String &ep, size_t tsoID);
     seastar::future<> _doAssignTSO(const String &ep, size_t tsoID);
     // Collection name -> schemas
     std::unordered_map<String, std::vector<dto::Schema>> schemas;

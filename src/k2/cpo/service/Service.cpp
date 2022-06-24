@@ -187,7 +187,7 @@ seastar::future<bool> CPOService::_assignAllTSOs() {
     std::vector<seastar::future<>> futs;
     for (auto tso=_failedTSOs.begin(); tso!=_failedTSOs.end(); ++tso) {
         futs.push_back(
-            _assignTSO(tso->first, tso->second, _maxAssignRetries())
+            _assignTSO(tso->first, tso->second)
         );
     }
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()
@@ -230,8 +230,8 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
     });
 }
 
-seastar::future<> CPOService::_assignTSO(const String &ep, size_t tsoID, int retry) {
-    return seastar::do_with(ExponentialBackoffStrategy().withRetries(retry).withStartTimeout(1s).withRate(5), [&ep,tsoID,this](auto &retryStrategy) {
+seastar::future<> CPOService::_assignTSO(const String &ep, size_t tsoID) {
+    return seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withStartTimeout(_assignTimeout()).withRate(2), [&ep, tsoID, this](auto& retryStrategy) {
         return retryStrategy.run([&ep,tsoID,this] (size_t retriesLeft, Duration timeout) {
             K2LOG_I(log::cposvr, "Sending TSO assignment with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, ep);
             return _doAssignTSO(ep, tsoID);
