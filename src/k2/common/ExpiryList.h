@@ -28,7 +28,7 @@ Copyright(c) 2022 Futurewei Cloud
 namespace k2 {
 namespace nsbi = boost::intrusive;
 
-template <class ElemT, class ClockT=Clock>
+template <class ElemT, nsbi::list_member_hook<> ElemT::* Field, class ClockT=Clock>
 class ExpiryList {
 public:
     typedef std::function<seastar::future<>(ElemT&)> Func;
@@ -77,7 +77,7 @@ public:
 
 
 private:
-    typedef nsbi::list<ElemT, nsbi::member_hook<ElemT, nsbi::list_member_hook<>, &ElemT::tsLink>> IntrusiveList;
+    typedef nsbi::list<ElemT, nsbi::member_hook<ElemT, nsbi::list_member_hook<>, Field>> IntrusiveList;
     IntrusiveList _list;
     // heartbeats checks are driven off single timer.
     PeriodicTimer _expiryTimer;

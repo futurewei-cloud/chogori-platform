@@ -119,7 +119,7 @@ private:
         std::unordered_map<String,
             std::unordered_map<uint32_t, std::shared_ptr<shd::Schema>>
     >> _shdSchemas;
-    ExpiryList<ManagedTxn> _expiryList;
+    ExpiryList<ManagedTxn, &ManagedTxn::tsLink> _expiryList;
     // Txn idle timeout
     ConfigDuration httpproxy_txn_timeout{"httpproxy_txn_timeout", 60s};
 };  // class HTTPProxy
