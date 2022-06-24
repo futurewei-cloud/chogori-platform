@@ -34,6 +34,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/logging/Chrono.h>
 #include <k2/dto/MessageVerbs.h>
 #include <k2/dto/TSO.h>
+#include <k2/dto/ControlPlaneOracle.h>
 
 namespace k2::tso {
 namespace log {
@@ -72,8 +73,14 @@ private: // methods
     // Helper used to obtain the timestamp from server and report latency
     seastar::future<dto::Timestamp> _getTimestampWithLatency(OperationLatencyReporter&& reporter);
 
+    // Helper to send the RPC GET_TSO_ENDPOINT
+    seastar::future<> _doGetTSOEndpoints(dto::GetTSOEndpointsRequest& request, TXEndpoint cpoEP);
+
 private: // fields
     ConfigVar<String> _cpoEndpoint{"cpo", ""};
+
+    // Config variable for retring TSO connections
+    ConfigVar<int> _maxTSORetries{"max_tso_retries", 10};
 
     // to tell if we've been signaled to stop
     bool _stopped{true};

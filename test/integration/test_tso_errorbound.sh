@@ -29,6 +29,4 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
-
 /build/test/integration/test_tso_errorbound_fail.py --prometheus_port=63003

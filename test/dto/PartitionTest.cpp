@@ -38,6 +38,10 @@ public:  // application lifespan
     PartitionTest() : _client(k2::K23SIClientConfig()) { K2LOG_I(log::ptest, "ctor");}
     ~PartitionTest(){ K2LOG_I(log::ptest, "dtor");}
 
+    seastar::future<dto::Timestamp> getTimeNow() {
+        return AppBase().getDist<tso::TSOClient>().local().getTimestamp();
+    }
+
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
         K2LOG_I(log::ptest, "stop");
@@ -49,7 +53,12 @@ public:  // application lifespan
 
         _cpoEndpoint = k2::RPC().getTXEndpoint(_cpoConfigEp());
         _testFuture = seastar::make_ready_future()
-        .then([this] () {
+        .then([this] {
+            K2LOG_I(log::ptest, "Getting the timestamp...");
+            return getTimeNow();
+        })
+        .then([this] (dto::Timestamp&& ts) {
+            K2LOG_I(log::ptest, "The Test starts with ts: {}", ts.print());
             return _client.start();
         })
         .then([this] {

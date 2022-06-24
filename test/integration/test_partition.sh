@@ -44,6 +44,4 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
-
 ./build/test/dto/partition_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100

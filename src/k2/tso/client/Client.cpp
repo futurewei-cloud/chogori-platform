@@ -59,20 +59,9 @@ seastar::future<> TSOClient::start() {
     return bootstrap(_cpoEndpoint());
 }
 
-seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
-    K2LOG_I(log::tsoclient, "start bootstrap with CPO server url: {}", cpoEndpoint);
-    auto cpoEP = RPC().getTXEndpoint(cpoEndpoint);
-    if (!cpoEP) {
-        K2LOG_E(log::tsoclient, "CPO endpoint is invalid: {}", cpoEndpoint);
-        return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
-    }
-
-    dto::GetTSOEndpointsRequest request{};
-    _stopped = false;
-    _registerMetrics();
-
+seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest& request, TXEndpoint cpoEP) {
     return RPC().callRPC<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>
-            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, *cpoEP, 1s)
+            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, cpoEP, 1s)
     .then([this](auto&& response) {
         auto& [status, resp] = response;
         if (!status.is2xxOK() || resp.endpoints.size() == 0) {
@@ -80,9 +69,31 @@ seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
                         status, resp.endpoints.size());
             return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
         }
-
         _tsoServerEndpoint = RPC().getTXEndpoint(resp.endpoints[0]);
         return _discoverServiceNodes();
+    });
+}
+
+seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
+    K2LOG_I(log::tsoclient, "start bootstrap with CPO server url: {}", cpoEndpoint);
+
+    dto::GetTSOEndpointsRequest request{};
+    _stopped = false;
+    _registerMetrics();
+    // retry TSO connection if cannot be established
+    return seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxTSORetries()).withStartTimeout(1s).withRate(5), [&request,cpoEndpoint,this](auto &retryStrategy) {
+        return retryStrategy.run([&request,cpoEndpoint,this] (size_t retriesLeft, Duration timeout) {
+            K2LOG_I(log::tsoclient, "Sending GET_TSO_ENDPOINTS with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, cpoEndpoint);
+            auto cpoEP = RPC().getTXEndpoint(cpoEndpoint);
+            if (!cpoEP) {
+                K2LOG_E(log::tsoclient, "CPO endpoint is invalid: {}", cpoEndpoint);
+                return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
+            }
+            return _doGetTSOEndpoints(request, *cpoEP);
+        })
+        .handle_exception([cpoEndpoint,this] (auto exc) {
+            K2LOG_W_EXC(log::tsoclient, exc, "Failed to assign TSO for endpoint after retry: {}", cpoEndpoint);
+        });
     });
 }
 
