@@ -140,14 +140,13 @@ class TxnPriority(int, Enum):
         return self.value
 
 class TxnOptions:
-    def __init__(self, txnTimeout=TimeDelta(seconds=60), opTimeout=TimeDelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
-        self.txnTimeout = txnTimeout
-        self.opTimeout = opTimeout
+    def __init__(self, timeout=TimeDelta(seconds=10), priority=TxnPriority.Medium, syncFinalize: bool = False):
+        self.timeout = timeout
         self.priority = priority
         self.syncFinalize = syncFinalize
 
     def serialize(self):
-        return [self.txnTimeout.serialize(), self.opTimeout.serialize(), self.priority.serialize(), self.syncFinalize]
+        return [self.timeout.serialize(), self.priority.serialize(), self.syncFinalize]
 
 class EndAction(int, Enum):
     NONE:       int     = 0

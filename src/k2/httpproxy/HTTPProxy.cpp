@@ -147,12 +147,12 @@ seastar::future<std::tuple<sh::Status, shd::TxnBeginResponse>>
 HTTPProxy::_handleTxnBegin(shd::TxnBeginRequest&& request){
     K2LOG_D(log::httpproxy, "Received begin txn request {}", request);
     K2TxnOptions opts{
-        .deadline= Deadline<>(request.options.opTimeout),
+        .deadline= Deadline<>(request.options.timeout),
         .priority = static_cast<dto::TxnPriority>(request.options.priority),
         .syncFinalize = request.options.syncFinalize
     };
     return _client.beginTxn(std::move(opts))
-        .then([this, idleTimeout=request.options.txnTimeout](auto&& txn) {
+        .then([this](auto&& txn) {
             K2LOG_D(log::httpproxy, "begin txn: {}", txn.mtr());
             auto ts = txn.mtr().timestamp;
             shd::Timestamp shts{.endCount = ts.endCount, .tsoId = ts.tsoId, .startDelta = ts.startDelta};
@@ -160,9 +160,8 @@ HTTPProxy::_handleTxnBegin(shd::TxnBeginRequest&& request){
                 return MakeHTTPResponse<shd::TxnBeginResponse>(sh::Statuses::S500_Internal_Server_Error("duplicate transaction ID detected"), shd::TxnBeginResponse{});
             }
             else {
-                auto now = Clock::now();
-                _txns.insert(it, {shts, ManagedTxn{.handle=std::move(txn), .queries={}, .idleTimeout=idleTimeout, .lastAccess=now}});
-                _expiryQueue.add(shts, now + idleTimeout);
+                auto result = _txns.insert(it, {shts, ManagedTxn{.handle=std::move(txn), .queries={}, .expiryTime=Clock::now()+httpproxy_txn_timeout(), .tsLink={}, .timestamp=shts}});
+                _expiryList.add(result->second);
                 return MakeHTTPResponse<shd::TxnBeginResponse>(sh::Statuses::S201_Created(""), shd::TxnBeginResponse{.timestamp=shts});
             }
         });
@@ -183,7 +182,7 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
             if (it == _txns.end()) {
                 return MakeHTTPResponse<shd::WriteResponse>(Txn_S410_Gone, shd::WriteResponse{});
             }
-            updateLastAccessed(it->second);
+            updateExpiry(it->second);
             dto::SKVRecord k2record(request.collectionName, k2Schema);
             shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.value), true);
             try {
@@ -215,7 +214,7 @@ HTTPProxy::_handleRead(shd::ReadRequest&& request) {
                 if (it == _txns.end()) {
                     return MakeHTTPResponse<shd::ReadResponse>(Txn_S410_Gone, shd::ReadResponse{});
                 }
-                updateLastAccessed(it->second);
+                updateExpiry(it->second);
                 dto::SKVRecord k2record(request.collectionName, k2Schema);
                 shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.key), true);
                 try {
@@ -248,7 +247,7 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
     if (iter == _txns.end()) {
         return MakeHTTPResponse<shd::QueryResponse>(Txn_S410_Gone, shd::QueryResponse{});
     }
-    updateLastAccessed(iter->second);
+    updateExpiry(iter->second);
     auto queryIter = iter->second.queries.find(request.queryId);
     if (queryIter ==iter->second.queries.end()) {
         K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
@@ -272,7 +271,7 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
         if (auto iter = _txns.find(request.timestamp); iter == _txns.end()) {
             return MakeHTTPResponse<shd::QueryResponse>(Txn_S410_Gone, shd::QueryResponse{});
         } else {
-            updateLastAccessed(iter->second);
+            updateExpiry(iter->second);
             if (auto queryIter = iter->second.queries.find(request.queryId); queryIter ==iter->second.queries.end()) {
                 K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
                 return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
@@ -299,7 +298,9 @@ HTTPProxy::_handleTxnEnd(shd::TxnEndRequest&& request) {
     return it->second.handle.end(request.action == shd::EndAction::Commit)
         .then([this, timestamp=request.timestamp] (auto&& result) {
             if (result.status.is2xxOK() || result.status.is4xxNonRetryable()) {
-                _txns.erase(timestamp);
+                if (auto node = _txns.extract(timestamp); node) {
+                    _expiryList.erase(node.mapped());
+                }
             }
             return MakeHTTPResponse<shd::TxnEndResponse>(sh::Status{.code=result.status.code, .message=result.status.message}, shd::TxnEndResponse{});
         });
@@ -369,7 +370,7 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
     if (it == _txns.end()) {
         return MakeHTTPResponse<shd::CreateQueryResponse>(Txn_S410_Gone, shd::CreateQueryResponse{});
     }
-    updateLastAccessed(it->second);
+    updateExpiry(it->second);
     return _client.createQuery(request.collectionName, request.schemaName)
         .then([this, req=std::move(request)] (auto&& result) mutable {
             if(!result.status.is2xxOK()) {
@@ -402,7 +403,7 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
             if (auto it = _txns.find(req.timestamp); it == _txns.end()) {
                 return MakeHTTPResponse<shd::CreateQueryResponse>(Txn_S410_Gone, shd::CreateQueryResponse{});
             } else {
-                updateLastAccessed(it->second);
+                updateExpiry(it->second);
                 it->second.queries[queryId] = std::move(result.query);
                 return MakeHTTPResponse<shd::CreateQueryResponse>(
                     sh::Status{.code = result.status.code, .message = result.status.message},
@@ -453,7 +454,7 @@ HTTPProxy::HTTPProxy() : _client(K23SIClientConfig()) {
 
 seastar::future<> HTTPProxy::gracefulStop() {
     std::vector<seastar::future<>> futs;
-    _expiryQueue.stop().wait();
+    _expiryList.stop().wait();
     for (auto& [ts, txn]: _txns) {
         futs.push_back(txn.handle.kill());
     }
@@ -469,22 +470,16 @@ seastar::future<> HTTPProxy::gracefulStop() {
 seastar::future<> HTTPProxy::start() {
     _registerMetrics();
     _registerAPI();
-    return _client.start()
-    .then([this] {
-        _expiryQueue.start([this](shd::Timestamp ts) {
-            auto it = _txns.find(ts);
-            if (it == _txns.end()) return seastar::make_ready_future<std::optional<TimePoint>>();
-            TimePoint expiry = it->second.lastAccess + it->second.idleTimeout;
-            if ( Clock::now() < expiry) return seastar::make_ready_future<std::optional<TimePoint>>(expiry);
-            return it->second.handle.kill()
-                .then([this, ts]{
-                    K2LOG_I(log::httpproxy, "Removing txn {} because of timeout", ts);
-                    _txns.erase(ts);
-                    return seastar::make_ready_future<std::optional<TimePoint>>();
-                });
-        });
-        return seastar::make_ready_future<>();
+    _expiryList.start(httpproxy_txn_timeout(), [this](ManagedTxn& txn) {
+        auto ts = txn.timestamp;
+        K2LOG_I(log::httpproxy, "Removing txn {} because of timeout", ts);
+        return txn.handle.kill()
+            .then([this, ts]{
+                _txns.erase(ts); // No need to unlink from list, as it's done by caller
+                return seastar::make_ready_future<>();
+            });
     });
+    return _client.start();
 }
 
 void HTTPProxy::_registerAPI() {

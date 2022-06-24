@@ -479,7 +479,7 @@ class TestHTTP(unittest.TestCase):
 
     def test_txn_timeout(self):
         # Begin Txn with timeout 1s
-        status, txn = TestHTTP.cl.begin_txn(TxnOptions(TimeDelta(seconds=1)))
+        status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
 
         # Sleep 1.6s for txn to timeout
@@ -487,7 +487,7 @@ class TestHTTP(unittest.TestCase):
         status = txn.end()
         self.assertEqual(status.code, 410)
 
-        status, txn = TestHTTP.cl.begin_txn(TxnOptions(TimeDelta(seconds=1)))
+        status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
 
         # Sleep 0.8 and write, it should succeed because within timeout

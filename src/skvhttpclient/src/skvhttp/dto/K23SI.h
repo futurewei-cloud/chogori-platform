@@ -56,11 +56,10 @@ inline std::ostream& operator<<(std::ostream& os, const TxnPriority& pri) {
 }
 
 struct TxnOptions {
-    Duration txnTimeout{60s};
-    Duration opTimeout{1s};
+    Duration timeout{1s};
     TxnPriority priority{TxnPriority::Medium};
     bool syncFinalize{false};
-    K2_SERIALIZABLE_FMT(TxnOptions, txnTimeout, opTimeout, priority, syncFinalize);
+    K2_SERIALIZABLE_FMT(TxnOptions, timeout, priority, syncFinalize);
 };
 
 K2_DEF_ENUM(ExistencePrecondition,
