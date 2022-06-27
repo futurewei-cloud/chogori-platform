@@ -107,8 +107,8 @@ private:
     };
 
     void updateExpiry(ManagedTxn& txn) {
-        txn.expiryTime = Clock::now() + httpproxy_txn_timeout();
-        _expiryList.moveLast(txn);
+        txn.expiryTime = Clock::now() + _txnTimeout();
+        _expiryList.moveToEnd(txn);
     }
 
     std::unordered_map<shd::Timestamp, ManagedTxn> _txns;
@@ -121,7 +121,7 @@ private:
     >> _shdSchemas;
     ExpiryList<ManagedTxn, &ManagedTxn::tsLink> _expiryList;
     // Txn idle timeout
-    ConfigDuration httpproxy_txn_timeout{"httpproxy_txn_timeout", 60s};
+    ConfigDuration _txnTimeout{"httpproxy_txn_timeout", 60s};
 };  // class HTTPProxy
 
 } // namespace k2

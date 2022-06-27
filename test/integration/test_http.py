@@ -478,26 +478,27 @@ class TestHTTP(unittest.TestCase):
             bad_record = test_schema.make_prefix_record(partition1=b"h")
 
     def test_txn_timeout(self):
-        # Begin Txn with timeout 1s
+        # The tests assume that txn timeout is set to 100ms (httpproxy_txn_timeout)
+        # Begin Txn
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
 
-        # Sleep 1.6s for txn to timeout
-        sleep(1.6)
+        # Sleep 160ms for txn to timeout
+        sleep(0.16)
         status = txn.end()
         self.assertEqual(status.code, 410)
 
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
 
-        # Sleep 0.8 and write, it should succeed because within timeout
-        sleep(0.8)
+        # Sleep 80ms and write, it should succeed because within timeout
+        sleep(0.08)
         record = TestHTTP.schema.make_record(partitionKey=b"ptest6", rangeKey=b"rtest6", data=b"data6")
         status = txn.write(TestHTTP.cname, record)
         self.assertTrue(status.is2xxOK())
 
-        # Sleep additional 0.8s and commit, should succeed as timeout pushed back because of write
-        sleep(0.8)
+        # Sleep additional 80ms and commit, should succeed as timeout pushed back because of write
+        sleep(0.08)
         # Commit
         status = txn.end()
         self.assertTrue(status.is2xxOK())

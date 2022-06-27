@@ -160,7 +160,7 @@ HTTPProxy::_handleTxnBegin(shd::TxnBeginRequest&& request){
                 return MakeHTTPResponse<shd::TxnBeginResponse>(sh::Statuses::S500_Internal_Server_Error("duplicate transaction ID detected"), shd::TxnBeginResponse{});
             }
             else {
-                auto result = _txns.insert(it, {shts, ManagedTxn{.handle=std::move(txn), .queries={}, .expiryTime=Clock::now()+httpproxy_txn_timeout(), .tsLink={}, .timestamp=shts}});
+                auto result = _txns.insert(it, {shts, ManagedTxn{.handle=std::move(txn), .queries={}, .expiryTime=Clock::now() + _txnTimeout(), .tsLink={}, .timestamp=shts}});
                 _expiryList.add(result->second);
                 return MakeHTTPResponse<shd::TxnBeginResponse>(sh::Statuses::S201_Created(""), shd::TxnBeginResponse{.timestamp=shts});
             }
@@ -454,7 +454,7 @@ HTTPProxy::HTTPProxy() : _client(K23SIClientConfig()) {
 
 seastar::future<> HTTPProxy::gracefulStop() {
     std::vector<seastar::future<>> futs;
-    _expiryList.stop().wait();
+    futs.push_back(_expiryList.stop());
     for (auto& [ts, txn]: _txns) {
         futs.push_back(txn.handle.kill());
     }
@@ -470,14 +470,15 @@ seastar::future<> HTTPProxy::gracefulStop() {
 seastar::future<> HTTPProxy::start() {
     _registerMetrics();
     _registerAPI();
-    _expiryList.start(httpproxy_txn_timeout(), [this](ManagedTxn& txn) {
+    // Run timer at interval minimum of 1s and txn_timeout/2.
+    // After expiry it may take additional min(1s,timeout/2) for cleanup.
+    auto interval = _txnTimeout()/2;
+    if (interval > 1s) interval = 1s;
+    _expiryList.start(interval, [this](ManagedTxn& txn) {
         auto ts = txn.timestamp;
         K2LOG_I(log::httpproxy, "Removing txn {} because of timeout", ts);
-        return txn.handle.kill()
-            .then([this, ts]{
-                _txns.erase(ts); // No need to unlink from list, as it's done by caller
-                return seastar::make_ready_future<>();
-            });
+        auto node = _txns.extract(ts); // No need to unlink from list, as it's done by caller
+        return node ?  node.mapped().handle.kill() : seastar::make_ready_future<>();
     });
     return _client.start();
 }

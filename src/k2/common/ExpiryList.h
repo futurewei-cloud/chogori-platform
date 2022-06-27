@@ -24,16 +24,30 @@ Copyright(c) 2022 Futurewei Cloud
 #pragma once
 #include <boost/intrusive/list.hpp>
 #include "Timer.h"
+#include "Log.h"
 
 namespace k2 {
 namespace nsbi = boost::intrusive;
 
+// Utility class to keep elements orderded by expiry time and cleanup elements upon expiry.
+//
+// Template members:
+//
+//  ElemT: Element type, it required to have a  member expiry() returning expiry time.
+//  Field: boost::intrusive::list_member_hook<> type field.
+//  ClockT: Clock used to get current time.
+//
 template <class ElemT, nsbi::list_member_hook<> ElemT::* Field, class ClockT=Clock>
 class ExpiryList {
 public:
     typedef std::function<seastar::future<>(ElemT&)> Func;
 
-    void start(Duration timeout, Func&& cleanupFn) {
+    // Start a periodic timer to cleanup elements upon expiry.
+    // Args:
+    // interval:  Periodic timer interval, Elemnets may take upto interval after
+    //            expiry for clean up depending on when the timer is fired.
+    // cleanupFn: Supplied function to clean up the element.
+    void start(Duration interval, Func&& cleanupFn) {
         _expiryTimer.setCallback([this,  func=std::move(cleanupFn)] {
             return seastar::do_until(
                 [this] {
@@ -46,9 +60,10 @@ public:
                 });
 
         });
-        _expiryTimer.armPeriodic(timeout/2);
+        _expiryTimer.armPeriodic(interval);
      }
 
+    // Stop the timer.
     seastar::future<> stop() {
         return _expiryTimer.stop()
             .then([this] {
@@ -56,18 +71,18 @@ public:
              });
     }
 
-    // Move elment to the end of the TS ordered list
-    void moveLast(ElemT& elem) {
-        // new TS needs to be >= current maximum TS
-        if (elem.expiry() < _list.back().expiry()) {
-            assert(false);
-            throw std::invalid_argument("too small ts");
-        }
-        _list.erase(_list.iterator_to(elem));
+    // Move elment to the end of the time ordered list
+    void moveToEnd(ElemT& elem) {
+        // The list is supposed to be ordered by time, as it only checks front
+        // element for expiry. Adding smaller time at end
+        // indicates logic error somewhere.
+        K2ASSERT(log::common, elem.expiry() >= _list.back().expiry(), "too small ts");
+        if (((elem.*Field).is_linked())) _list.erase(_list.iterator_to(elem));
         _list.push_back(elem);
     }
 
     void erase(ElemT& elem) {
+        if (!((elem.*Field).is_linked())) return;
         _list.erase(_list.iterator_to(elem));
     }
 
@@ -79,7 +94,7 @@ public:
 private:
     typedef nsbi::list<ElemT, nsbi::member_hook<ElemT, nsbi::list_member_hook<>, Field>> IntrusiveList;
     IntrusiveList _list;
-    // heartbeats checks are driven off single timer.
+    // Expiry checks are driven off single timer.
     PeriodicTimer _expiryTimer;
 };
 }
