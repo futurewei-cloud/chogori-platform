@@ -241,8 +241,10 @@ public:
 
     // This method returns the built record
     SKVRecord build() {
-        K2ASSERT(log::dto, _writer.flush(_record.storage.fieldData), "error during record packing");
+        auto flushResult = _writer.flush(_record.storage.fieldData);
+        K2ASSERT(log::dto, flushResult, "error during record packing");
         _record.reader = MPackReader(_record.storage.fieldData);
+        _record.seekField(0);
         return std::move(_record);
     }
 
