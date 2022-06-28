@@ -1476,4 +1476,7 @@ seastar::future<> K23SIPartitionModule::_recovery() {
     return seastar::make_ready_future();
 }
 
+dto::OwnerPartition& K23SIPartitionModule::getOwnerPartition() {
+    return this->_partition;
+}
 }  // ns k2

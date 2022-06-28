@@ -57,8 +57,7 @@ public:  // application lifespan
             K2LOG_I(log::ptest, "Getting the timestamp...");
             return getTimeNow();
         })
-        .then([this] (dto::Timestamp&& ts) {
-            K2LOG_I(log::ptest, "The Test starts with ts: {}", ts.print());
+        .then([this] (dto::Timestamp&&) {
             return _client.start();
         })
         .then([this] {

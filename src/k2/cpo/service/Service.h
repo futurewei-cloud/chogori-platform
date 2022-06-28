@@ -59,11 +59,12 @@ private:
     String _getCollectionPath(String name);
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);
+    seastar::future<> _doAssignCollection(dto::AssignmentCreateRequest request, const String &name, const String &ep);
     void _assignCollection(dto::Collection& collection);
     seastar::future<bool> _offloadCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
     ConfigDuration _collectionHeartbeatDeadline{"txn_heartbeat_deadline", 100ms};
-    ConfigVar<int> _maxAssignRetries{"max_assign_retries", 3};
+    ConfigVar<int> _maxAssignRetries{"max_assign_retries", 5};
 
     std::unordered_map<String, seastar::future<>> _assignments;
     std::unordered_map<String, std::vector<dto::PartitionMetdataRecord>> _metadataRecords;

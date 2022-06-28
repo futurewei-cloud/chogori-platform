@@ -22,6 +22,8 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "CPOTest.h"
+#include <k2/tso/client/Client.h>
+
 #include <seastar/core/reactor.hh>
 #include <seastar/core/sleep.hh>
 #include <k2/dto/ControlPlaneOracle.h>
@@ -29,7 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 using namespace k2;
 
-CPOTest::CPOTest() {
+CPOTest::CPOTest():_tsoClient(AppBase().getDist<tso::TSOClient>().local()) {
     K2LOG_I(log::cpotest, "ctor");
 }
 
@@ -43,13 +45,24 @@ seastar::future<> CPOTest::gracefulStop() {
 }
 
 seastar::future<> CPOTest::start() {
+
     K2LOG_I(log::cpotest, "start");
     ConfigVar<String> configEp("cpo_endpoint");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
     // let start() finish and then run the tests
-    _testTimer.set_callback([this] {
-        _testFuture = runTest1()
+    _testTimer.set_callback([this, configEp] {
+        _testFuture = seastar::make_ready_future()
+        .then([this, configEp] {
+            return _tsoClient.bootstrap(configEp());
+        })
+        .then([this] {
+            K2LOG_I(log::cpotest, "Getting the timestamp...");
+            return _tsoClient.getTimestamp();
+        })
+        .then([this] (dto::Timestamp&&) {
+            return runTest1();
+        })
         .then([this] { return runTest2(); })
         .then([this] { return runTest3(); })
         .then([this] { return runTest4(); })

@@ -566,6 +566,25 @@ String CPOService::_getSchemasPath(String collectionName) {
     return _getCollectionPath(collectionName) + ".schemas";
 }
 
+seastar::future<> CPOService::_doAssignCollection(dto::AssignmentCreateRequest request, const String &name, const String &ep) {
+    auto txep = RPC().getTXEndpoint(ep);
+    return RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
+                (dto::K2_ASSIGNMENT_CREATE, request, *txep, _assignTimeout())
+    .then([this, name, ep](auto&& result) {
+        auto& [status, resp] = result;
+        if (status.is2xxOK()) {
+            K2LOG_I(log::cposvr, "assignment successful for collection {}, for partition {}", name, resp.assignedPartition);
+            _handleCompletedAssignment(name, std::move(resp));
+        }
+        else {
+            // The node refused to accept the assignment. For now, just ignore this
+            K2LOG_W(log::cposvr, "assignment for collection {} was refused by {}, due to: {}", name, ep, status);
+            _handleCompletedAssignment(name, std::move(resp));
+        }
+        return seastar::make_ready_future();
+    });
+}
+
 void CPOService::_assignCollection(dto::Collection& collection) {
     auto &name = collection.metadata.name;
     K2LOG_I(log::cposvr, "Assigning collection {}, to {} nodes", name, collection.partitionMap.partitions.size());
@@ -595,21 +614,15 @@ void CPOService::_assignCollection(dto::Collection& collection) {
 
         K2LOG_I(log::cposvr, "Sending assignment for partition: {}", request.partition);
         futs.push_back(
-        RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
-                (dto::K2_ASSIGNMENT_CREATE, request, *txep, _assignTimeout())
-        .then([this, name, ep](auto&& result) {
-            auto& [status, resp] = result;
-            if (status.is2xxOK()) {
-                K2LOG_I(log::cposvr, "assignment successful for collection {}, for partition {}", name, resp.assignedPartition);
-                _handleCompletedAssignment(name, std::move(resp));
-            }
-            else {
-                // The node refused to accept the assignment. For now, just ignore this
-                K2LOG_W(log::cposvr, "assignment for collection {} was refused by {}, due to: {}", name, ep, status);
-                _handleCompletedAssignment(name, std::move(resp));
-            }
-            return seastar::make_ready_future();
-        })
+            seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withStartTimeout(_assignTimeout()).withRate(2), [&request, name, ep, this](auto& retryStrategy) {
+                return retryStrategy.run([&request,name,ep,this] (size_t retriesLeft, Duration timeout) {
+                    K2LOG_I(log::cposvr, "Sending partition assignment with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, request.partition);
+                    return _doAssignCollection(request, name, ep);
+                })
+                .handle_exception([&request,this] (auto exc) {
+                    K2LOG_W_EXC(log::cposvr, exc, "Failed to assign partition {} to node after retry", request.partition);
+                });
+            })
         );
     }
     _assignments.emplace(name, seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()

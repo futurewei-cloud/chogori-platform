@@ -81,7 +81,7 @@ private: // fields
 
     // Config variable for retring TSO connections
     ConfigVar<int> _maxTSORetries{"max_tso_retries", 10};
-    ConfigDuration _tsoTimeout{"tso_timeout", 1ms};
+    ConfigDuration _tsoTimeout{"tso_timeout", 10ms};
 
     // to tell if we've been signaled to stop
     bool _stopped{true};

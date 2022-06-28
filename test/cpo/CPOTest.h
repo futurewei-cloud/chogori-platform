@@ -24,6 +24,10 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include <k2/appbase/Appbase.h>
 #include <k2/appbase/AppEssentials.h>
+#include <k2/dto/Timestamp.h>
+#include <k2/tso/client/Client.h>
+
+
 namespace k2::log {
 inline thread_local k2::logging::Logger cpotest("k2::cpotest");
 }
@@ -53,4 +57,5 @@ private:
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
+    k2::tso::TSOClient& _tsoClient;
 };
