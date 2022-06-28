@@ -186,7 +186,7 @@ class Txn:
 
         cname, sname, storage = resp
 
-        status, schema = self.client.get_schema(cname, sname, storage[2])
+        status, schema = self.client.get_schema(cname, sname, storage[3])
         if not status.is2xxOK():
             return status, None
 
@@ -216,7 +216,7 @@ class Txn:
             return status, None, None
         records = []
         for storage in result[1]:
-            status, schema = self.client.get_schema(query.cname, query.sname, storage[2])
+            status, schema = self.client.get_schema(query.cname, query.sname, storage[3])
             if not status.is2xxOK():
                 return status, None, None
             record = schema.parse_read(storage, self.timestamp)
@@ -261,7 +261,7 @@ class Record:
 
     def serialize(self):
         fieldData = b''.join([msgpack.packb(field) for field in self._posFields])
-        return [self.excludedFields, fieldData, self.schemaVersion]
+        return [self.excludedFields, len(self.fields.__dict__), fieldData, self.schemaVersion]
 
 class SchemaField:
     def __init__(self, type: FieldType, name: str,
@@ -300,6 +300,18 @@ class Schema:
                 rec.fields.__dict__[dname] = None
         return rec
 
+    # For use in creating key records for a prefix query. The difference is fields that are not set
+    # are not set in excludedFields and are not set to None
+    def make_prefix_record(self, **dataFields):
+        rec = Record(self.name, self.version)
+        for i,field in enumerate(self.fields):
+            dname = field.name.decode('ascii')
+            if dname in dataFields:
+                fieldValue = dataFields.get(dname)
+                rec._posFields.append(fieldValue)
+                rec.fields.__dict__[dname] = fieldValue
+        return rec
+
     def parse_read(self, storage, timestamp):
         rec = Record(self.name, self.version)
         rec.timestamp = timestamp
@@ -308,7 +320,7 @@ class Schema:
         excl = rec.excludedFields if rec.excludedFields else [False] * len(self.fields)
 
         unp = msgpack.Unpacker()
-        unp.feed(storage[1])
+        unp.feed(storage[2])
         for i,field in enumerate(self.fields):
             dname = field.name.decode('ascii')
             fv = None

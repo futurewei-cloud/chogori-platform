@@ -50,6 +50,7 @@ void SKVRecordBuilder::serializeNull() {
     }
 
     _record.storage.excludedFields[_record.fieldCursor] = true;
+    _record.storage.serializedCursor++;
     ++_record.fieldCursor;
 }
 
@@ -209,17 +210,19 @@ dto::Key SKVRecord::getKey() {
 
 SKVRecord::Storage SKVRecord::Storage::share() {
     return SKVRecord::Storage {
-        excludedFields,
-        fieldData,
-        schemaVersion
+        .excludedFields = excludedFields,
+        .serializedCursor = serializedCursor,
+        .fieldData = fieldData,
+        .schemaVersion = schemaVersion
     };
 }
 
 SKVRecord::Storage SKVRecord::Storage::copy() {
     return SKVRecord::Storage {
-        excludedFields,
-        fieldData.copy(),
-        schemaVersion
+        .excludedFields = excludedFields,
+        .serializedCursor = serializedCursor,
+        .fieldData = fieldData.copy(),
+        .schemaVersion = schemaVersion
     };
 }
 

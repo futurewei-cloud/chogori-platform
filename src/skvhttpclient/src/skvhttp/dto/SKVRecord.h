@@ -130,12 +130,15 @@ public:
     struct Storage {
         // Bitmap of fields that are excluded because they are optional or this is for a partial update
         std::vector<bool> excludedFields;
+        // This is different from excludedFields above and needed because some use cases of the SKVRecord
+        // (e.g. specifying a prefix scan for queries) will not completely serialize the record
+        uint32_t serializedCursor = 0;
         Binary fieldData;
         uint32_t schemaVersion = 0;
 
         Storage share();
         Storage copy();
-        K2_SERIALIZABLE_FMT(Storage, excludedFields, fieldData, schemaVersion);
+        K2_SERIALIZABLE_FMT(Storage, excludedFields, serializedCursor, fieldData, schemaVersion);
     };
 
     // We expose the storage in case the user wants to write it to file or otherwise
@@ -230,6 +233,7 @@ public:
         }
 
         _writer.write(field);
+        _record.storage.serializedCursor++;
         ++_record.fieldCursor;
     }
 

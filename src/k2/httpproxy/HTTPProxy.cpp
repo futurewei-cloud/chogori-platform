@@ -38,22 +38,26 @@ static const inline auto Txn_S410_Gone = sh::Statuses::S410_Gone("transaction do
 static const inline auto Query_S410_Gone = sh::Statuses::S410_Gone("Query does not exist");
 
 void _shdRecToK2(shd::SKVRecord& shdrec, dto::SKVRecord& k2rec) {
-    shdrec.visitRemainingFields([&k2rec](const auto&, auto&& value) mutable {
-        if (value) {
-            using T = typename std::remove_reference_t<decltype(value)>::value_type;
-            if constexpr (std::is_same_v<T, shd::FieldType>) {
-                auto kval = static_cast<dto::FieldType>(to_integral(*value));
-                k2rec.serializeNext<dto::FieldType>(kval);
-            } else if constexpr (std::is_same_v<T, sh::String>) {
-                String k2str(value->data(), value->size());
-                k2rec.serializeNext<String>(std::move(k2str));
+    uint32_t serializedCursor = shdrec.storage.serializedCursor;
+    for (uint32_t field = 0; field < serializedCursor; ++field) {
+        shdrec.visitNextField([&k2rec](const auto&, auto&& value) {
+            if (value) {
+                using T = typename std::remove_reference_t<decltype(value)>::value_type;
+                if constexpr (std::is_same_v<T, shd::FieldType>) {
+                    auto kval = static_cast<dto::FieldType>(to_integral(*value));
+                    k2rec.serializeNext<dto::FieldType>(kval);
+                } else if constexpr (std::is_same_v<T, sh::String>) {
+                    String k2str(value->data(), value->size());
+                    k2rec.serializeNext<String>(std::move(k2str));
+                } else {
+                    k2rec.serializeNext<T>(*value);
+                }
             } else {
-                k2rec.serializeNext<T>(*value);
+                k2rec.serializeNull();
             }
-        } else {
-            k2rec.serializeNull();
-        }
-    });
+        });
+    }
+    
     k2rec.seekField(0);
 }
 
@@ -307,7 +311,6 @@ HTTPProxy::_handleGetSchema(shd::GetSchemaRequest&& request) {
 }
 
 void HTTPProxy::shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record) {
-    if (key.fieldData.size() == 0) return;
     auto shdSchema = getSchemaFromCache(collectionName, k2record.schema);
     shd::SKVRecord shdrecord(collectionName, shdSchema, std::move(key), true);
     _shdRecToK2(shdrecord, k2record);
