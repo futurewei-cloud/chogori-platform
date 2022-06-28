@@ -470,13 +470,9 @@ seastar::future<> HTTPProxy::gracefulStop() {
 seastar::future<> HTTPProxy::start() {
     _registerMetrics();
     _registerAPI();
-    // Run timer at interval minimum of 1s and txn_timeout/2.
-    // After expiry it may take additional min(1s,timeout/2) for cleanup.
-    auto interval = _txnTimeout()/2;
-    if (interval > 1s) interval = 1s;
-    _expiryList.start(interval, [this](ManagedTxn& txn) {
+    _expiryList.start(_expiryTimerInterval(), [this](ManagedTxn& txn) {
         auto ts = txn.timestamp;
-        K2LOG_I(log::httpproxy, "Removing txn {} because of timeout", ts);
+        K2LOG_W(log::httpproxy, "Removing txn {} because of timeout", ts);
         auto node = _txns.extract(ts); // No need to unlink from list, as it's done by caller
         return node ?  node.mapped().handle.kill() : seastar::make_ready_future<>();
     });

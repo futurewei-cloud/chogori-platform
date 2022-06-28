@@ -122,6 +122,9 @@ private:
     ExpiryList<ManagedTxn, &ManagedTxn::tsLink> _expiryList;
     // Txn idle timeout
     ConfigDuration _txnTimeout{"httpproxy_txn_timeout", 60s};
+    // How often periodic timer runs to check for expiry. After expiry cleanup may take additional this time.
+
+    ConfigDuration _expiryTimerInterval{"httpproxy_expiry_timer_interval", 10s};
 };  // class HTTPProxy
 
 } // namespace k2

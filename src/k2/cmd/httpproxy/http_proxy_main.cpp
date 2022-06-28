@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
         ("cpo", bpo::value<k2::String>(), "URL of Control Plane Oracle (CPO), e.g. 'tcp+k2rpc://192.168.1.2:12345'")
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
-        ("httpproxy_txn_timeout", bpo::value<k2::ParseableDuration>(), "HTTP Proxy Txn idle timeout");
+        ("httpproxy_txn_timeout", bpo::value<k2::ParseableDuration>(), "Txn idle timeout")
+        ("httpproxy_expiry_timer_interval", bpo::value<k2::ParseableDuration>(), "Periodic timer interval to check expired Txns");
     return app.start(argc, argv);
 }

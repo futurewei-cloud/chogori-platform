@@ -479,6 +479,7 @@ class TestHTTP(unittest.TestCase):
 
     def test_txn_timeout(self):
         # The tests assume that txn timeout is set to 100ms (httpproxy_txn_timeout)
+        # And periodic timer runs at 50ms interval (httpproxy_expiry_timer_interval)
         # Begin Txn
         status, txn = TestHTTP.cl.begin_txn()
         self.assertTrue(status.is2xxOK())
