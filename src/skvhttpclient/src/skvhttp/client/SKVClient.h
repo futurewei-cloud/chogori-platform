@@ -143,9 +143,10 @@ public:
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
     boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<String> fieldNamesForUpdate);
 
-    boost::future<Response<dto::QueryResponse>> query(dto::QueryRequest& query);
-    boost::future<Response<dto::QueryRequest>> createQuery(const String& collectionName, const String& schemaName);
-
+    boost::future<Response<dto::QueryResponse>> query(dto::QueryRequest query);
+    boost::future<Response<dto::QueryRequest>> createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey, dto::expression::Expression&& filter=dto::expression::Expression{},
+                                                           std::vector<String>&& projection=std::vector<String>{}, int32_t recordLimit=-1, bool reverseDirection=false, bool includeVersionMismatch=false);
+ 
 private:
     Client* _client;
     dto::Timestamp _id;

@@ -123,12 +123,54 @@ void testRead() {
  
 }
 
+void testQuery() {
+    auto&& [status, schemaPtr] = client.getSchema(collectionName, schemaName).get();
+    K2EXPECT(k2::log::httpclient, status.is2xxOK(), true);
+
+    auto&& [beginStatus, txn] = client.beginTxn(dto::TxnOptions{}).get();
+    K2EXPECT(k2::log::httpclient, beginStatus.is2xxOK(), true);
+
+    dto::SKVRecordBuilder startBuilder(collectionName, schemaPtr);
+    dto::SKVRecord start = startBuilder.build();
+    dto::SKVRecordBuilder endBuilder(collectionName, schemaPtr);
+    dto::SKVRecord end = endBuilder.build();
+
+    auto&& [createStatus, query] = txn.createQuery(start, end).get();
+    K2LOG_I(k2::log::httpclient, "crateQuery respone status: {}", createStatus);
+    K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
+
+    bool done = false;
+    std::vector<dto::SKVRecord::Storage> records;
+    while (!done) {
+        auto&& [queryStatus, result] = txn.query(query).get();
+        K2EXPECT(k2::log::httpclient, queryStatus.is2xxOK(), true);
+        done = result.done;
+        for (dto::SKVRecord::Storage& record : result.records) {
+            records.push_back(std::move(record));
+        }
+    }
+
+    K2EXPECT(k2::log::httpclient, records.size(), 1);
+    dto::SKVRecord record(collectionName, schemaPtr, std::move(records.front()), true);
+
+    std::string a = record.deserializeNext<std::string>().value();
+    K2EXPECT(k2::log::httpclient, a, "A");
+    std::string b = record.deserializeNext<std::string>().value();
+    K2EXPECT(k2::log::httpclient, b, "B");
+    int32_t c = record.deserializeNext<int32_t>().value();
+    K2EXPECT(k2::log::httpclient, c, 33);
+
+    auto&& [endStatus] = txn.endTxn(dto::EndAction::Commit).get();
+    K2EXPECT(k2::log::httpclient, endStatus.is2xxOK(), true);  
+}
+
 int main() {
   testCreateCollection();
   testCreateSchema();
   // Tests getSchema, beginTxn, write, and endTxn
   testBasicWritePath();
   testRead();
+  testQuery();
   
   return 0;
 }
