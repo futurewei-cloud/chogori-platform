@@ -59,9 +59,9 @@ seastar::future<> TSOClient::start() {
     return bootstrap(_cpoEndpoint());
 }
 
-seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest& request, TXEndpoint cpoEP, Duration timeout) {
+seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest &request, std::unique_ptr<TXEndpoint> cpoEP, Duration timeout) {
     return RPC().callRPC<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>
-            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, cpoEP, timeout)
+            (dto::Verbs::CPO_GET_TSO_ENDPOINTS, request, *cpoEP, timeout)
     .then([this](auto&& response) {
         auto& [status, resp] = response;
         if (!status.is2xxOK() || resp.endpoints.size() == 0) {
@@ -89,7 +89,7 @@ seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
                 K2LOG_E(log::tsoclient, "CPO endpoint is invalid: {}", cpoEndpoint);
                 return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
             }
-            return _doGetTSOEndpoints(request, *cpoEP, timeout);
+            return _doGetTSOEndpoints(request, std::move(cpoEP), timeout);
         })
         .handle_exception([cpoEndpoint,this] (auto exc) {
             K2LOG_W_EXC(log::tsoclient, exc, "Failed to assign TSO for endpoint after retry: {}", cpoEndpoint);

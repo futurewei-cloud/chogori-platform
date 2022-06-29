@@ -73,8 +73,6 @@ public: // API
         return seastar::do_until(
             [this] { return _success || this->_try >= this->_retries; },
             [this, func=std::move(func), resultPtr] ()mutable{
-                this->_try++;
-                this->_currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
                 k2::Deadline deadline(this->_currentTimeout);
                 K2LOG_D(log::tx, "running try {}, with timeout {}ms", this->_try, k2::msec(_currentTimeout).count());
                 return func(this->_retries - this->_try, deadline.getRemaining()).
@@ -96,6 +94,8 @@ public: // API
                         (*resultPtr.get()) = std::move(fut);
                         K2LOG_D(log::tx, "round ended with success={}", _success);
                         if (!_success && !deadline.isOver()) {
+                            this->_try++;
+                            this->_currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
                             return seastar::sleep(deadline.getRemaining());
                         }
                         return seastar::make_ready_future<>();

@@ -59,7 +59,7 @@ private:
     String _getCollectionPath(String name);
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);
-    seastar::future<> _doAssignCollection(dto::AssignmentCreateRequest request, const String &name, const String &ep);
+    seastar::future<> _doAssignCollection(dto::AssignmentCreateRequest &request, const String &name, const String &ep);
     void _assignCollection(dto::Collection& collection);
     seastar::future<bool> _offloadCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};

@@ -74,7 +74,7 @@ private: // methods
     seastar::future<dto::Timestamp> _getTimestampWithLatency(OperationLatencyReporter&& reporter);
 
     // Helper to send the RPC GET_TSO_ENDPOINT
-    seastar::future<> _doGetTSOEndpoints(dto::GetTSOEndpointsRequest& request, TXEndpoint cpoEP, Duration timeout);
+    seastar::future<> _doGetTSOEndpoints(dto::GetTSOEndpointsRequest &request, std::unique_ptr<TXEndpoint> cpoEP, Duration timeout);
 
 private: // fields
     ConfigVar<String> _cpoEndpoint{"cpo", ""};

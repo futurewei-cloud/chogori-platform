@@ -53,9 +53,6 @@ seastar::future<> CPOTest::start() {
     // let start() finish and then run the tests
     _testTimer.set_callback([this, configEp] {
         _testFuture = seastar::make_ready_future()
-        .then([this, configEp] {
-            return _tsoClient.bootstrap(configEp());
-        })
         .then([this] {
             K2LOG_I(log::cpotest, "Getting the timestamp...");
             return _tsoClient.getTimestamp();
