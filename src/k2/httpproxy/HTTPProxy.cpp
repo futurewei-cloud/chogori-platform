@@ -57,7 +57,8 @@ void _shdRecToK2(shd::SKVRecord& shdrec, dto::SKVRecord& k2rec) {
             }
         });
     }
-    
+
+    shdrec.seekField(0);
     k2rec.seekField(0);
 }
 

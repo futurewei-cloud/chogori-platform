@@ -473,6 +473,10 @@ class TestHTTP(unittest.TestCase):
         status = txn.end()
         self.assertTrue(status.is2xxOK())
 
+        # Try to make record that is not a prefix, should be caught by python library
+        with self.assertRaises(ValueError):
+            bad_record = test_schema.make_prefix_record(partition1=b"h")
+
 '''
     def test_key_string(self):
         db = SKVClient(args.http)

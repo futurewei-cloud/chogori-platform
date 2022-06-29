@@ -310,6 +310,10 @@ class Schema:
                 fieldValue = dataFields.get(dname)
                 rec._posFields.append(fieldValue)
                 rec.fields.__dict__[dname] = fieldValue
+            else:
+                break
+        if len(rec.fields.__dict__) != len(dataFields):
+            raise ValueError("dataFields given are not a prefix")
         return rec
 
     def parse_read(self, storage, timestamp):
