@@ -57,5 +57,5 @@ private:
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
     seastar::future<> _testFuture = seastar::make_ready_future();
     seastar::timer<> _testTimer;
-    k2::tso::TSOClient& _tsoClient;
+    seastar::shared_ptr<k2::tso::TSOClient> _tsoClient;
 };

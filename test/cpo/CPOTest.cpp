@@ -31,7 +31,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 using namespace k2;
 
-CPOTest::CPOTest():_tsoClient(AppBase().getDist<tso::TSOClient>().local()) {
+CPOTest::CPOTest() {
     K2LOG_I(log::cpotest, "ctor");
 }
 
@@ -47,6 +47,7 @@ seastar::future<> CPOTest::gracefulStop() {
 seastar::future<> CPOTest::start() {
 
     K2LOG_I(log::cpotest, "start");
+    _tsoClient = AppBase().getDist<tso::TSOClient>().local_shared();
     ConfigVar<String> configEp("cpo_endpoint");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
@@ -55,7 +56,7 @@ seastar::future<> CPOTest::start() {
         _testFuture = seastar::make_ready_future()
         .then([this] {
             K2LOG_I(log::cpotest, "Getting the timestamp...");
-            return _tsoClient.getTimestamp();
+            return _tsoClient->getTimestamp();
         })
         .then([this] (dto::Timestamp&&) {
             return runTest1();
