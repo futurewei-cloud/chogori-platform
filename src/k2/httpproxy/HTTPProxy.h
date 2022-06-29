@@ -24,11 +24,11 @@ Copyright(c) 2022 Futurewei Cloud
 #pragma once
 #include <k2/infrastructure/APIServer.h>
 #include <k2/module/k23si/client/k23si_client.h>
+#include <k2/common/ExpiryList.h>
 #include <skvhttp/common/Status.h>
 #include <skvhttp/dto/Collection.h>
 #include <skvhttp/dto/ControlPlaneOracle.h>
 #include <skvhttp/dto/K23SI.h>
-
 
 namespace k2 {
 namespace sh=skv::http;
@@ -100,7 +100,17 @@ private:
     struct ManagedTxn {
         k2::K2TxnHandle handle;
         std::unordered_map<uint64_t, Query> queries;
+        TimePoint expiryTime;
+        TimePoint expiry() {return expiryTime;}  // Used by ExpiryList
+        nsbi::list_member_hook<> tsLink;  // Used by ExpiryList
+        shd::Timestamp timestamp; // Used to remove element from _txns
     };
+
+    void updateExpiry(ManagedTxn& txn) {
+        txn.expiryTime = Clock::now() + _txnTimeout();
+        _expiryList.moveToEnd(txn);
+    }
+
     std::unordered_map<shd::Timestamp, ManagedTxn> _txns;
 
     // shd schema cache:
@@ -109,6 +119,12 @@ private:
         std::unordered_map<String,
             std::unordered_map<uint32_t, std::shared_ptr<shd::Schema>>
     >> _shdSchemas;
+    ExpiryList<ManagedTxn, &ManagedTxn::tsLink> _expiryList;
+    // Txn idle timeout
+    ConfigDuration _txnTimeout{"httpproxy_txn_timeout", 60s};
+    // How often periodic timer runs to check for expiry. After expiry cleanup may take additional this time.
+
+    ConfigDuration _expiryTimerInterval{"httpproxy_expiry_timer_interval", 10s};
 };  // class HTTPProxy
 
 } // namespace k2
