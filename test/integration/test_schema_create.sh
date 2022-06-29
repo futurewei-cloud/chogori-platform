@@ -43,4 +43,4 @@ function finish {
 }
 trap finish EXIT
 
-./build/test/k23si/schema_creation_test ${COMMON_ARGS} --cpo_endpoint ${CPO} --prometheus_port 63100
+./build/test/k23si/schema_creation_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100
