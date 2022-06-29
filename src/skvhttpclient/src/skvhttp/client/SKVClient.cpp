@@ -140,6 +140,36 @@ boost::future<Response<dto::SKVRecord>> TxnHandle::read(dto::SKVRecord record) {
       .unwrap();
 }
 
+boost::future<Response<dto::QueryRequest>> TxnHandle::createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey, dto::expression::Expression&& filter,
+                                                                  std::vector<String>&& projection, int32_t recordLimit, bool reverseDirection, bool includeVersionMismatch) {
+    if (startKey.collectionName != endKey.collectionName || startKey.schema->name != endKey.schema->name) {
+        return MakeResponse(Statuses::S400_Bad_Request("Start and end keys must have same collection and schema"), dto::QueryRequest{});
+    }
+    
+    dto::CreateQueryRequest request {
+        .timestamp = _id,
+        .collectionName = startKey.collectionName,
+        .schemaName = startKey.schema->name,
+        .key = startKey.storage.share(),
+        .endKey = endKey.storage.share(),
+        .recordLimit = recordLimit,
+        .includeVersionMismatch = includeVersionMismatch,
+        .reverseDirection = reverseDirection,
+        .filterExpression = std::move(filter),
+        .projection = std::move(projection)
+    };
+
+    return _client->_HTTPClient.POST<dto::CreateQueryRequest, dto::CreateQueryResponse>("/api/CreateQuery", std::move(request))
+        .then([this] (auto&& futResp) {
+          auto&& [status, resp] = futResp.get();
+          return Response<dto::QueryRequest>(std::move(status), dto::QueryRequest{.timestamp=_id, .queryId=resp.queryId});
+        });
+}
+
+boost::future<Response<dto::QueryResponse>> TxnHandle::query(dto::QueryRequest query) {
+    return _client->_HTTPClient.POST<dto::QueryRequest, dto::QueryResponse>("/api/Query", std::move(query));
+}
+
 boost::future<Response<>> TxnHandle::endTxn(dto::EndAction endAction) {
     dto::TxnEndRequest request{
         .timestamp = _id,

@@ -418,6 +418,14 @@ class TestHTTP(unittest.TestCase):
         self.assertTrue(status.is2xxOK())
         self.assertEqual([r.data for r in records], [record1.data, record2.data])
 
+        # Prefix scan on first key field, should return record1 and 2
+        key = test_schema.make_prefix_record(partition=b"default")
+        status, query = txn.create_query(test_coll, test_schema.name, start = key, end = key)
+        self.assertTrue(status.is2xxOK(), msg=status.message)
+        status, records = txn.queryAll(query)
+        self.assertTrue(status.is2xxOK())
+        self.assertEqual([r.data for r in records], [record1.data, record2.data])
+
         # Query all, with reverse = True
         status, query = txn.create_query(test_coll, test_schema.name, reverse = True)
         self.assertTrue(status.is2xxOK())
@@ -464,6 +472,10 @@ class TestHTTP(unittest.TestCase):
 
         status = txn.end()
         self.assertTrue(status.is2xxOK())
+
+        # Try to make record that is not a prefix, should be caught by python library
+        with self.assertRaises(ValueError):
+            bad_record = test_schema.make_prefix_record(partition1=b"h")
 
 '''
     def test_key_string(self):
