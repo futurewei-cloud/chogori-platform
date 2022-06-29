@@ -27,9 +27,10 @@ SOFTWARE.
 import argparse, unittest, sys
 from skvclient import (CollectionMetadata, CollectionCapacity, SKVClient,
     HashScheme, StorageDriver, Schema, SchemaField, FieldType, TimeDelta,
-    Operation, Value, Expression)
+    Operation, Value, Expression, TxnOptions)
 import logging
 from copy import copy
+from time import sleep
 
 class TestHTTP(unittest.TestCase):
     args = None
@@ -222,7 +223,6 @@ class TestHTTP(unittest.TestCase):
         # Commit Txn 2, should succeed
         status = txn2.end()
         self.assertEqual(status.code, 200)
-
 
     def test_collection_schema_basic(self):
         test_coll =  b'HTTPProxy1'
@@ -476,6 +476,33 @@ class TestHTTP(unittest.TestCase):
         # Try to make record that is not a prefix, should be caught by python library
         with self.assertRaises(ValueError):
             bad_record = test_schema.make_prefix_record(partition1=b"h")
+
+    def test_txn_timeout(self):
+        # The tests assume that txn timeout is set to 100ms (httpproxy_txn_timeout)
+        # And periodic timer runs at 50ms interval (httpproxy_expiry_timer_interval)
+        # Begin Txn
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
+
+        # Sleep 160ms for txn to timeout
+        sleep(0.16)
+        status = txn.end()
+        self.assertEqual(status.code, 410)
+
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
+
+        # Sleep 80ms and write, it should succeed because within timeout
+        sleep(0.08)
+        record = TestHTTP.schema.make_record(partitionKey=b"ptest6", rangeKey=b"rtest6", data=b"data6")
+        status = txn.write(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK())
+
+        # Sleep additional 80ms and commit, should succeed as timeout pushed back because of write
+        sleep(0.08)
+        # Commit
+        status = txn.end()
+        self.assertTrue(status.is2xxOK())
 
 '''
     def test_key_string(self):
