@@ -168,6 +168,34 @@ HTTPProxy::_handleTxnBegin(shd::TxnBeginRequest&& request){
 }
 
 seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
+HTTPProxy::_handleWrite(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record) {
+    return txn.write(k2record, request.isDelete, static_cast<dto::ExistencePrecondition>(request.precondition))
+        .then([](WriteResult&& result) {
+            return MakeHTTPResponse<shd::WriteResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::WriteResponse{});
+        });
+}
+
+seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
+HTTPProxy::_handlePartialUpdate(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record, const std::shared_ptr<k2::dto::Schema>& k2Schema, const std::shared_ptr<shd::Schema>& shdSchema) {
+    dto::SKVRecord k2KeyRecord(request.collectionName, k2Schema);
+    shd::SKVRecord shdKeyRecord(request.collectionName, shdSchema, std::move(request.key), true);
+    try {
+        _shdRecToK2(shdKeyRecord, k2KeyRecord);
+    }  catch(shd::DeserializationError& err) {
+        return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::WriteResponse{});
+    }
+    std::vector<String> fieldsForPartialUpdate;
+    fieldsForPartialUpdate.reserve(request.fieldsForPartialUpdate.size());
+    for (sh::String& field: request.fieldsForPartialUpdate) {
+        fieldsForPartialUpdate.push_back(String(std::move(field)));
+    }
+    return txn.partialUpdate(k2record, fieldsForPartialUpdate, k2KeyRecord.getKey())
+        .then([](PartialUpdateResult&& result) {
+            return MakeHTTPResponse<shd::WriteResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::WriteResponse{});
+        });
+}
+
+seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
 HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
     K2LOG_D(log::httpproxy, "Received write request {}", request);
 
@@ -183,6 +211,8 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
                 return MakeHTTPResponse<shd::WriteResponse>(Txn_S410_Gone, shd::WriteResponse{});
             }
             updateExpiry(it->second);
+
+            bool isPartialUpdate = request.fieldsForPartialUpdate.size() > 0;
             dto::SKVRecord k2record(request.collectionName, k2Schema);
             shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.value), true);
             try {
@@ -191,10 +221,11 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
                 return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::WriteResponse{});
             }
 
-            return it->second.handle.write(k2record, request.isDelete, static_cast<dto::ExistencePrecondition>(request.precondition))
-                .then([](WriteResult&& result) {
-                    return MakeHTTPResponse<shd::WriteResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::WriteResponse{});
-                });
+            if (isPartialUpdate) {
+                return _handlePartialUpdate(it->second.handle, std::move(request), std::move(k2record), k2Schema, shdSchema);
+            } else {
+                return _handleWrite(it->second.handle, std::move(request), std::move(k2record));
+            }
         });
     });
 }

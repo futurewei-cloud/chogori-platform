@@ -101,7 +101,8 @@ boost::future<Response<>> TxnHandle::write(dto::SKVRecord& record, bool erase, d
         .isDelete = erase,
         .precondition = precondition,
         .value = record.storage.share(),
-        .fieldsForPartialUpdate = std::vector<uint32_t>{}
+        .fieldsForPartialUpdate = std::vector<String>{},
+        .key = dto::SKVRecord::Storage{}
     };
 
     return _client->_HTTPClient.POST<dto::WriteRequest>("/api/Write", std::move(request));
