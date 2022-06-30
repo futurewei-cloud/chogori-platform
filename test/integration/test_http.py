@@ -136,7 +136,7 @@ class TestHTTP(unittest.TestCase):
 
         # Write partial upate
         record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk", data=b"mydata_update")
-        record.fieldsForPartialUpdate = [b"data"]
+        record.fieldsForPartialUpdate = [2]
         status = txn.write(TestHTTP.cname, record)
         self.assertTrue(status.is2xxOK())
 
