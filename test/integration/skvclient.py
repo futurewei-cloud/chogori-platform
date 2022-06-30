@@ -168,14 +168,12 @@ class Txn:
         self.client = client
         self.timestamp = timestamp
 
-    def write(self, collection, record, erase=False, precondition=ExistencePrecondition.Nil, key = None) -> Status:
+    def write(self, collection, record, erase=False, precondition=ExistencePrecondition.Nil) -> Status:
         "Write record"
         record.timestamp = self.timestamp
-        if not key:
-            key = Record(record.schemaName, record.schemaVersion)
         status, _ = self.client.make_call('/api/Write',
             [self.timestamp, collection, record.schemaName,
-             erase, precondition.serialize(), record.serialize(), record.fieldsForPartialUpdate, key.serialize()])
+             erase, precondition.serialize(), record.serialize(), record.fieldsForPartialUpdate])
         return status
 
     def read(self, collection, keyrec) :

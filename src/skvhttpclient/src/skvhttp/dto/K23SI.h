@@ -121,9 +121,8 @@ struct WriteRequest {
 
     // if size() > 0 then this is a partial update, and this vector contains the indices of the new field values
     std::vector<String> fieldsForPartialUpdate;
-    SKVRecord::Storage key;   // Used only for partial update
 
-    K2_SERIALIZABLE_FMT(WriteRequest, timestamp, collectionName, schemaName, isDelete, precondition, value, fieldsForPartialUpdate, key);
+    K2_SERIALIZABLE_FMT(WriteRequest, timestamp, collectionName, schemaName, isDelete, precondition, value, fieldsForPartialUpdate);
 };
 
 struct WriteResponse {

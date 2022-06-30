@@ -79,6 +79,25 @@ void _buildSHDRecordHelperVisitor(std::optional<T> value, String&, shd::SKVRecor
     }
 }
 
+// Convert skv element vector to k2 element vector by convert function
+template <class K2Type, class SHType, typename Fn>
+auto shVectorToK2(std::vector<SHType>&  shElems, Fn convertFn) {
+    std::vector<K2Type> k2Elems;
+    k2Elems.reserve(shElems.size());
+    for (SHType& elem: shElems) {
+        k2Elems.push_back(convertFn(std::move(elem)));
+    }
+    return k2Elems;
+}
+
+// Convert skv elment vector to k2 element vector using default conversion
+template <class K2Type, class SHType>
+auto shVectorToK2(std::vector<SHType>&  shElems) {
+    auto fn = [] (SHType&& elem) -> K2Type {return K2Type(std::move(elem));};
+    return shVectorToK2<K2Type, SHType>(shElems, fn);
+}
+
+
 shd::SKVRecord _buildSHDRecord(dto::SKVRecord& k2rec, const sh::String& collectionName, std::shared_ptr<shd::Schema> shdSchema) {
     shd::SKVRecordBuilder builder(collectionName, shdSchema);
     FOR_EACH_RECORD_FIELD(k2rec, _buildSHDRecordHelperVisitor, builder);
@@ -176,20 +195,9 @@ HTTPProxy::_handleWrite(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVR
 }
 
 seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
-HTTPProxy::_handlePartialUpdate(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record, const std::shared_ptr<k2::dto::Schema>& k2Schema, const std::shared_ptr<shd::Schema>& shdSchema) {
-    dto::SKVRecord k2KeyRecord(request.collectionName, k2Schema);
-    shd::SKVRecord shdKeyRecord(request.collectionName, shdSchema, std::move(request.key), true);
-    try {
-        _shdRecToK2(shdKeyRecord, k2KeyRecord);
-    }  catch(shd::DeserializationError& err) {
-        return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::WriteResponse{});
-    }
-    std::vector<String> fieldsForPartialUpdate;
-    fieldsForPartialUpdate.reserve(request.fieldsForPartialUpdate.size());
-    for (sh::String& field: request.fieldsForPartialUpdate) {
-        fieldsForPartialUpdate.push_back(String(std::move(field)));
-    }
-    return txn.partialUpdate(k2record, fieldsForPartialUpdate, k2KeyRecord.getKey())
+HTTPProxy::_handlePartialUpdate(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record) {
+    std::vector<String> fieldsForPartialUpdate = shVectorToK2<String>(request.fieldsForPartialUpdate);
+    return txn.partialUpdate(k2record, fieldsForPartialUpdate, k2record.getKey())
         .then([](PartialUpdateResult&& result) {
             return MakeHTTPResponse<shd::WriteResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::WriteResponse{});
         });
@@ -221,11 +229,9 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
                 return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request(err.what()), shd::WriteResponse{});
             }
 
-            if (isPartialUpdate) {
-                return _handlePartialUpdate(it->second.handle, std::move(request), std::move(k2record), k2Schema, shdSchema);
-            } else {
-                return _handleWrite(it->second.handle, std::move(request), std::move(k2record));
-            }
+            return isPartialUpdate ?
+                _handlePartialUpdate(it->second.handle, std::move(request), std::move(k2record)) :
+                _handleWrite(it->second.handle, std::move(request), std::move(k2record));
         });
     });
 }
@@ -381,16 +387,8 @@ k2exp::Value getValue(shdexp::Value&& shval) {
 }
 
 k2exp::Expression getFilterExpression(shdexp::Expression&& shExpr) {
-    std::vector<k2exp::Value> values;
-    values.reserve(shExpr.valueChildren.size());
-    for (auto& val: shExpr.valueChildren) {
-        values.push_back(getValue(std::move(val)));
-    }
-    std::vector<k2exp::Expression> exprs;
-    exprs.reserve(shExpr.expressionChildren.size());
-    for (auto& cexpr: shExpr.expressionChildren) {
-        exprs.push_back(getFilterExpression(std::move(cexpr)));
-    }
+    std::vector<k2exp::Value> values = shVectorToK2<k2exp::Value>(shExpr.valueChildren, getValue);
+    std::vector<k2exp::Expression> exprs = shVectorToK2<k2exp::Expression>(shExpr.expressionChildren, getFilterExpression);
     return k2exp::makeExpression(static_cast<k2exp::Operation>(to_integral(shExpr.op)), std::move(values), std::move(exprs));
 }
 
@@ -419,11 +417,7 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
                     result.query.setFilterExpression(std::move(expr));
                 }
                 if (req.projection.size() > 0) {
-                    std::vector<String> projection;
-                    projection.reserve(req.projection.size());
-                    for (sh::String& p : req.projection) {
-                        projection.push_back(String(std::move(p)));
-                    }
+                    std::vector<String> projection = shVectorToK2<String>(req.projection);
                     result.query.addProjection(projection);
                 }
             } catch(shd::DeserializationError& err) {

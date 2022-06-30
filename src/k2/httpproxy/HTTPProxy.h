@@ -75,7 +75,7 @@ private:
         _handleWrite(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record);
 
     seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
-        _handlePartialUpdate(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record, const std::shared_ptr<k2::dto::Schema>& k2Schema, const std::shared_ptr<shd::Schema>& shdSchema);
+        _handlePartialUpdate(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record);
 
 
     seastar::future<std::tuple<sh::Status, sh::dto::ReadResponse>>
