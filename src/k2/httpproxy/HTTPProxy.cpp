@@ -197,7 +197,7 @@ HTTPProxy::_handleWrite(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVR
 seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
 HTTPProxy::_handlePartialUpdate(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record) {
     std::vector<String> fieldsForPartialUpdate = shVectorToK2<String>(request.fieldsForPartialUpdate);
-    return txn.partialUpdate(k2record, fieldsForPartialUpdate, k2record.getKey())
+    return txn.partialUpdate(k2record, fieldsForPartialUpdate)
         .then([](PartialUpdateResult&& result) {
             return MakeHTTPResponse<shd::WriteResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::WriteResponse{});
         });
