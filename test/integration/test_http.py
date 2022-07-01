@@ -129,6 +129,28 @@ class TestHTTP(unittest.TestCase):
         status = txn.end()
         self.assertTrue(status.is2xxOK())
 
+        # Test partial update
+        # Begin Txn
+        status, txn = TestHTTP.cl.begin_txn()
+        self.assertTrue(status.is2xxOK())
+
+        # Write partial upate
+        record = TestHTTP.schema.make_record(partitionKey=b"test1pk", rangeKey=b"test1rk", data=b"mydata_update")
+        record.fieldsForPartialUpdate = [2]
+        status = txn.write(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK())
+
+        # read data
+        status, resultRec = txn.read(TestHTTP.cname, record)
+        self.assertTrue(status.is2xxOK());
+        self.assertEqual(resultRec.fields.partitionKey, b"test1pk")
+        self.assertEqual(resultRec.fields.rangeKey, b"test1rk")
+        self.assertEqual(resultRec.fields.data, b"mydata_update")
+
+        # Commit
+        status = txn.end()
+        self.assertTrue(status.is2xxOK())
+
 
     def test_validation(self):
         record = TestHTTP.schema.make_record(partitionKey=b"test2pk", rangeKey=b"test1rk", data=b"mydata")
