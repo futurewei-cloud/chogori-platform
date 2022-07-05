@@ -107,7 +107,6 @@ void testRead() {
   dto::SKVRecordBuilder builder(collectionName, schemaPtr);
   builder.serializeNext<std::string>("A");
   builder.serializeNext<std::string>("B");
-  builder.serializeNull();
   auto&& [readStatus, readRecord] = txn.read(builder.build()).get();
   K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
 
