@@ -108,10 +108,6 @@ boost::future<Response<>> TxnHandle::write(dto::SKVRecord& record, bool erase, d
 }
 
 boost::future<Response<dto::SKVRecord>> TxnHandle::read(dto::SKVRecord record) {
-    if (record.fieldCursor != record.schema->fields.size()) {
-        return MakeResponse(Statuses::S400_Bad_Request("All fields of record must be serialized for read request"), dto::SKVRecord{});
-    }
-
     dto::ReadRequest request{
         .timestamp = _id,
         .collectionName = record.collectionName,
