@@ -1193,7 +1193,10 @@ K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
         K2LOG_D(log::skvsvr, "transaction end too old for txn={}", request.mtr);
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in end"), dto::K23SITxnEndResponse{});
     }
-
+    if (!_validateRetentionWindow(request.mtr.timestamp)) {
+        // the request is outside the retention window
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("transaction too old in end"), dto::K23SITxnEndResponse());
+    }
     return _txnMgr.endTxn(std::move(request));
 }
 

@@ -52,7 +52,7 @@ function finish {
   echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
-sleep 2
+sleep 1
 
 echo ">>> Starting http test ..."
 ./src/skvhttpclient/build/test/client_integration_test

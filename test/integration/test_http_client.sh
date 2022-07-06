@@ -53,7 +53,7 @@ function finish {
   echo ">>>> Test ${0} finished with code ${rv}"
 }
 trap finish EXIT
-sleep 2
+sleep 1
 
 echo ">>> Starting http test ..."
 PYTHONPATH=${PYTHONPATH}:./test/integration ./test/integration/test_http.py --http http://127.0.0.1:30000

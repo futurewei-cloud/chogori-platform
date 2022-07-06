@@ -93,6 +93,22 @@ public: // application
         return AppBase().getDist<tso::TSOClient>().local().getTimestamp();
     }
 
+    // Returns a vector of timestamps
+    seastar::future<std::vector<dto::Timestamp>> getTimestamps(int n) {
+    return seastar::do_with(std::vector<dto::Timestamp>(), n, [this] (auto& tsvec, auto& i) {
+        return seastar::do_until( 
+            [&i] { return i == 0;},
+            [&tsvec, this] {
+                return getTimeNow().then([&tsvec] (auto&& ts) {
+                    tsvec.push_back(ts);
+                });
+            })
+            .then([&tsvec] {
+                return std::move(tsvec);
+            });
+        });
+    }
+
     // required for seastar::distributed interface
     seastar::future<> gracefulStop() {
         K2LOG_I(log::k23si, "stop");
@@ -712,7 +728,7 @@ seastar::future<> testScenario01() {
         K2LOG_I(log::k23si, "Get a stale timestamp(1,000,000) as the stale_ts");
         return seastar::do_with(
             dto::K23SI_MTR {
-                .timestamp = {1000000, 123, 1000}, // 1,000,000 is old enough
+                .timestamp = {1000001, 123, 1000}, // 1,000,000 is old enough
                 .priority = dto::TxnPriority::Medium},
             dto::Key {.schemaName = "schema", .partitionKey = "SC01_pKey1", .rangeKey = "SC01_rKey1" },
             dto::Key {.schemaName = "schema", .partitionKey = "SC01_pKey1", .rangeKey = "SC01_rKey1" },
@@ -1516,14 +1532,15 @@ seastar::future<> testScenario02() {
     }) // end sc-02 case-04
     .then([this] {
         // SC02 case05&06: attempt to write in the past and write at same time
-        return getTimeNow();
+        return getTimestamps(2);
+        // return getTimeNow();
     })
-    .then([this](dto::Timestamp&& ts) {
+    .then([this](auto&& ts) {
         K2LOG_I(log::k23si, "------- SC02.case 05&06 (for an existing key that has never been read, attempt to write in the past and write at same time) -------");
 
         return seastar::do_with(
-            dto::K23SI_MTR {.timestamp = {1000000, 123, 1000}, .priority = dto::TxnPriority::Medium},
-            dto::K23SI_MTR {.timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.timestamp = ts[0], .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.timestamp = ts[1], .priority = dto::TxnPriority::Medium},
             dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey5", .rangeKey = "range6"},
             DataRec {.f1="SC02_f05", .f2="SC02_f06"},
             DataRec {.f1="SC02_f07", .f2="SC02_f08"},
@@ -1591,31 +1608,32 @@ seastar::future<> testScenario02() {
     }) // end sc-02 case-07
     .then([this] {
         // SC02 case08 & 09 & 10: READ existing key at time before/equal/after the key
-        return getTimeNow();
+        return getTimestamps(3);
     })
-    .then([this](dto::Timestamp&& ts) {
+    .then([this](auto&& timestamps) {
         K2LOG_I(log::k23si, "------- SC02.case08 & 09 & 10 (READ existing key at time before/equal/after the key) -------");
-
         return seastar::do_with(
-            dto::K23SI_MTR {.timestamp = std::move(ts), .priority = dto::TxnPriority::Medium},
+            std::move(timestamps),
             dto::Key {.schemaName = "schema", .partitionKey = "SC02_pkey8", .rangeKey = "range8"},
             DataRec {.f1="SC02_f08", .f2="SC02_f09"},
-            [this](auto& eqMTR, auto& k6, auto& v1) {
+            [this](auto& timestamps, auto& k6, auto& v1) {
+                dto::K23SI_MTR eqMTR{.timestamp = timestamps[1], .priority = dto::TxnPriority::Medium};
                 return doWrite(k6, v1, eqMTR, k6, collname, false, true, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response) {
                      auto& [status, resp] = response;
                      K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
                 })
-                .then([this, &k6, &eqMTR] {
+                .then([this, &k6, &timestamps] {
+                    dto::K23SI_MTR eqMTR{.timestamp = timestamps[1], .priority = dto::TxnPriority::Medium};
                     return doEnd(k6, eqMTR, collname, true, {k6}, Duration(0us), ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
                     });
                 })
-                .then([this, &k6, &eqMTR] {
+                .then([this, &k6, &timestamps] {
                     dto::K23SI_MTR bfMTR{
-                        .timestamp = {(eqMTR.timestamp.endCount - 500000000), 123, 1000}, // 500ms earlier
+                        .timestamp = {(timestamps[0].endCount), 123, 1000}, // 500ms earlier
                         .priority = dto::TxnPriority::Medium};
                     return doRead(k6, bfMTR, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
@@ -1623,7 +1641,8 @@ seastar::future<> testScenario02() {
                         K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound);
                     });
                 }) // end sc-02 case-08
-                .then([this, &k6, &eqMTR, &v1] {
+                .then([this, &k6, &timestamps, &v1] {
+                    dto::K23SI_MTR eqMTR{.timestamp = timestamps[1], .priority = dto::TxnPriority::Medium};
                     return doRead(k6, eqMTR, collname, ErrorCaseOpt::NoInjection)
                     .then([&v1](auto&& response) {
                         auto& [status, resp] = response;
@@ -1631,9 +1650,9 @@ seastar::future<> testScenario02() {
                         K2EXPECT(log::k23si, resp, v1);
                     });
                 }) // end sc-02 case-09
-                .then([this, &k6, &eqMTR, &v1] {
+                .then([this, &k6, &timestamps, &v1] {
                     dto::K23SI_MTR afMTR{
-                        .timestamp = {(eqMTR.timestamp.endCount + 500000000), 123, 1000}, // 500ms later
+                        .timestamp = {(timestamps[2].endCount), 123, 1000}, // 500ms later
                         .priority = dto::TxnPriority::Medium};
                     return doRead(k6, afMTR, collname, ErrorCaseOpt::NoInjection)
                     .then([&v1](auto&& response) {
@@ -1755,9 +1774,9 @@ seastar::future<> testScenario04() {
     })
     .then([this]{
         K2LOG_I(log::k23si, "Scenario 04 setup done.");
-        return getTimeNow();
+        return getTimestamps(4);
     })
-    .then([this](dto::Timestamp&& ts) {
+    .then([this](auto&& timestamps) {
         return seastar::do_with(
             // The test logic of this scenario is shown as a diagram in document in K23SI_testing.md.
             // In short, Important events (txn-begin/write/end) are marked on the timeline. We test the
@@ -1766,18 +1785,17 @@ seastar::future<> testScenario04() {
             //
             //   init    B-bg   A-bg     A-WI     C-bg     B-WI     A-end    D-bg
             // ----|------|------|--------|--------|--------|--------|--------|--------> timeline
-
             dto::K23SI_MTR { // txn(B) is 1ms older than txn(A)
-                .timestamp = {(ts.endCount - 1000000), 123, 1000},
+                .timestamp = timestamps[0],
                 .priority = dto::TxnPriority::Medium},
             dto::K23SI_MTR { // txn(A)
-                .timestamp = {(ts.endCount), 123, 1000},
+                .timestamp = timestamps[1],
                 .priority = dto::TxnPriority::Medium},
             dto::K23SI_MTR { // txn(C) is newer than txn(A), also newer than txn(B)
-                .timestamp = {(ts.endCount + 1000000), 123, 1000},
+                .timestamp = timestamps[2],
                 .priority = dto::TxnPriority::Medium},
             dto::K23SI_MTR { // txn(D) is newest of all transactions
-                .timestamp = {(ts.endCount + 5000000), 123, 1000},
+                .timestamp = timestamps[3],
                 .priority = dto::TxnPriority::Medium},
             dto::Key {.schemaName = "schema", .partitionKey = "SC04_pkey1", .rangeKey = "rKey1"},
             dto::Key {.schemaName = "schema", .partitionKey = "SC04_pkey2", .rangeKey = "rKey2"},

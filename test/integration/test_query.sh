@@ -43,6 +43,6 @@ function finish {
 }
 trap finish EXIT
 
-sleep 2
+sleep 1
 
 ./build/test/k23si/query_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100
