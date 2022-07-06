@@ -47,4 +47,4 @@ trap finish EXIT
 
 sleep 1
 
-./build/test/k23si/3si_txn_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100 --log_level=Debug k2::transport=Info k2::tsoclient=Info
+./build/test/k23si/3si_txn_test ${COMMON_ARGS} --cpo ${CPO} --prometheus_port 63100
