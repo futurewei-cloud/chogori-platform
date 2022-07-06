@@ -133,6 +133,7 @@ public: // application
             .then([this] {
                 K2LOG_I(log::k23si, "======= All tests passed ========");
                 exitcode = 0;
+                return seastar::sleep(30s);
             })
             .handle_exception([this](auto exc) {
                 try {
@@ -795,14 +796,14 @@ seastar::future<> testScenario01() {
                 })
                 // stale request for FINALIZE, test Finalize-commit & Finalize-abort
                 .then([this, &key, &mtr] {
-                    K2LOG_D(log::k23si, "using mtr={}", mtr);
+                    K2LOG_D(log::k23si, "using mtr={}. expect missing txn warning", mtr);
                     return doFinalize(key, mtr, collname, true, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
                         auto& [status, resp] = response;
                         K2EXPECT(log::k23si, status, dto::K23SIStatus::KeyNotFound)
                     })
                     .then([this, &mtr, &key] {
-                        K2LOG_D(log::k23si, "using mtr={}", mtr);
+                        K2LOG_D(log::k23si, "using mtr={}. expect missing txn warning", mtr);
                         return doFinalize(key, mtr, collname, false, ErrorCaseOpt::NoInjection)
                         .then([](auto&& response) {
                             auto& [status, resp] = response;
@@ -1385,7 +1386,7 @@ seastar::future<> testScenario02() {
             },
             .rangeEnds{}
         };
-        K2LOG_D(log::k23si, "using req={}", request);
+        K2LOG_D(log::k23si, "using req={}. expect warning no free nodes from cpo", request);
         return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
                 (dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s)
         .then([](auto&& response) {
@@ -1453,15 +1454,15 @@ seastar::future<> testScenario02() {
                             .priority = dto::TxnPriority::Medium};
                     K2LOG_D(log::k23si, "using mtr={}", mtr);
 
-                    return doWrite(k4, v1, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection);
-                })
-                .then([&, mtr] (auto&& response) {
-                    auto& [status, resp] = response;
-                    K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
-                    K2LOG_D(log::k23si, "using mtr={}", mtr);
+                    return doWrite(k4, v1, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection)
+                    .then([&, mtr] (auto&& response) {
+                        auto& [status, resp] = response;
+                        K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
+                        K2LOG_D(log::k23si, "using mtr={}", mtr);
 
-                    // abort the k4 write
-                    return doEnd(k4, mtr, collname, false, {k4}, Duration(500ms), ErrorCaseOpt::NoInjection);
+                        // abort the k4 write
+                        return doEnd(k4, mtr, collname, false, {k4}, Duration(500ms), ErrorCaseOpt::NoInjection);
+                    });
                 })
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
