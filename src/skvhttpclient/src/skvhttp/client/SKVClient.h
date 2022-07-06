@@ -36,15 +36,19 @@ Copyright(c) 2022 Futurewei Cloud
 #include <unordered_map>
 #include <utility>
 
+namespace skv::http::log {
+inline thread_local k2::logging::Logger shclient("skv::http::client");
+}
+
 namespace skv::http {
 
 class HTTPMessageClient {
 private:
     httplib::Client client;
 
-    enum class Method : uint8_t {
+    K2_DEF_ENUM_IC(Method,
         POST
-    };
+    );
 
   // Helper struct to stand-in for any empty response type (e.g. CreateCollectionRequest) that is used in the
   // POST overload below
@@ -75,6 +79,7 @@ private:
     // helper method. Make the given http call, to the given path with the given request object.
     template <typename RequestT, typename ResponseT>
     boost::future<Response<ResponseT>> _makeCall(Method method, String path, RequestT&& reqObj) {
+        K2LOG_D(log::shclient, "making call method={}, path={}, req={}", method, path, reqObj);
         auto&& [status, buf] = _serialize(reqObj);
         if (!status.is2xxOK()) {
             return MakeResponse(std::move(status), ResponseT{});
@@ -82,6 +87,8 @@ private:
         return _doSend(method, path, std::move(buf))
             .then([this](auto&& fut) {
                 auto&& [status, buf] = fut.get();
+                K2LOG_D(log::shclient, "call completed with status={}", status);
+
                 if (!status.is2xxOK()) {
                     return Response<ResponseT>(std::move(status), ResponseT{});
                 }
@@ -146,7 +153,7 @@ public:
     boost::future<Response<dto::QueryResponse>> query(dto::QueryRequest query);
     boost::future<Response<dto::QueryRequest>> createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey, dto::expression::Expression&& filter=dto::expression::Expression{},
                                                            std::vector<String>&& projection=std::vector<String>{}, int32_t recordLimit=-1, bool reverseDirection=false, bool includeVersionMismatch=false);
- 
+    K2_DEF_FMT(TxnHandle, _id);
 private:
     Client* _client;
     dto::Timestamp _id;
