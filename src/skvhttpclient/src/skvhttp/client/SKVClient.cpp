@@ -89,6 +89,7 @@ boost::future<Response<TxnHandle>> Client::beginTxn(dto::TxnOptions options) {
     return _HTTPClient.POST<dto::TxnBeginRequest, dto::TxnBeginResponse>("/api/TxnBegin", std::move(request)).then([this](auto&& futResp) {
         auto&& [status, resp] = futResp.get();
         TxnHandle txn(this, resp.timestamp);
+        K2LOG_D(log::shclient, "created txn: {}", txn);
         return Response<TxnHandle>(std::move(status), std::move(txn));
     });
 }
@@ -141,7 +142,7 @@ boost::future<Response<dto::QueryRequest>> TxnHandle::createQuery(dto::SKVRecord
     if (startKey.collectionName != endKey.collectionName || startKey.schema->name != endKey.schema->name) {
         return MakeResponse(Statuses::S400_Bad_Request("Start and end keys must have same collection and schema"), dto::QueryRequest{});
     }
-    
+
     dto::CreateQueryRequest request {
         .timestamp = _id,
         .collectionName = startKey.collectionName,
