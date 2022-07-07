@@ -2502,7 +2502,7 @@ seastar::future<> testScenario06() {
             })
             .then([&] {
                 K2LOG_I(log::k23si, "------- SC06.case13 ( During async end_abort interval, finalize_commit those keys ) -------");
-                return doEnd(k7, mtr, collname, false, {k7, k8}, Duration{200ms}, ErrorCaseOpt::NoInjection)
+                return doEnd(k7, mtr, collname, false, {k7, k8}, Duration{50ms}, ErrorCaseOpt::NoInjection)
                 .then([](auto&& response)  {
                     auto& [status, val] = response;
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
