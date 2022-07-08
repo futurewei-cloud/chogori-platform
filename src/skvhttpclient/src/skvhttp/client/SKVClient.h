@@ -164,8 +164,8 @@ typedef std::unordered_map<std::string, std::unordered_map<std::string, std::uno
 
 class Client {
 public:
-    Client() {}
-    ~Client() {}
+    Client(std::string server = "localhost", int port = 30000) : _HTTPClient(server, port) {}
+    ~Client() = default;
     boost::future<Response<>> createSchema(const String& collectionName, const dto::Schema& schema);
     boost::future<Response<std::shared_ptr<dto::Schema>>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion=dto::ANY_SCHEMA_VERSION);
     boost::future<Response<>> createCollection(dto::CollectionMetadata metadata, std::vector<String> rangeEnds);
