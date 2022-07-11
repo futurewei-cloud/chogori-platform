@@ -70,8 +70,8 @@ dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder) {return builder
 
 // Get a builder by serializing args
 template<typename Second, typename... Args>
-dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder, Second second, Args&&... args) {
-    builder.serializeNext<Second>(second);
+dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder, Second&& second, Args&&... args) {
+    builder.serializeNext<Second>(std::forward<Second>(second));
     return serialize(builder, std::forward<Args>(args)...);
 }
 
