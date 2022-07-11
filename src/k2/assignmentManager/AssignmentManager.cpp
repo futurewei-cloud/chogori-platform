@@ -70,6 +70,13 @@ AssignmentManager::handleAssign(dto::AssignmentCreateRequest&& request) {
     dto::Partition& partition = request.partition;
 
     if (_pmodule) {
+        auto& pmpart = _pmodule->getOwnerPartition()();
+        // if the partition has already been assigned (new assign is a retry)
+        if (pmpart.keyRangeV.pvid == partition.keyRangeV.pvid) {
+            auto status = (pmpart.astate == dto::AssignmentState::Assigned) ? Statuses::S201_Created("assignment accepted") : Statuses::S403_Forbidden("partition assignment was not allowed");
+            dto::AssignmentCreateResponse resp{.assignedPartition = pmpart};
+            return RPCResponse(std::move(status), std::move(resp));
+        }
         K2LOG_W(log::amgr, "Partition already assigned");
         partition.astate = dto::AssignmentState::FailedAssignment;
         auto status = Statuses::S403_Forbidden("partition assignment was not allowed");

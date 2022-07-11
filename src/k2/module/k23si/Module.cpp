@@ -424,6 +424,9 @@ seastar::future<> K23SIPartitionModule::gracefulStop() {
             return _indexer.stop();
         })
         .then([this] {
+            if (_persistence == nullptr) {
+                return seastar::make_ready_future();
+            }
             return _persistence->stop();
         })
         .then([this] {
@@ -1190,7 +1193,10 @@ K23SIPartitionModule::handleTxnEnd(dto::K23SITxnEndRequest&& request) {
         K2LOG_D(log::skvsvr, "transaction end too old for txn={}", request.mtr);
         return RPCResponse(dto::K23SIStatus::RefreshCollection("collection refresh needed in end"), dto::K23SITxnEndResponse{});
     }
-
+    if (!_validateRetentionWindow(request.mtr.timestamp)) {
+        // the request is outside the retention window
+        return RPCResponse(dto::K23SIStatus::AbortRequestTooOld("transaction too old in end"), dto::K23SITxnEndResponse());
+    }
     return _txnMgr.endTxn(std::move(request));
 }
 
@@ -1473,4 +1479,7 @@ seastar::future<> K23SIPartitionModule::_recovery() {
     return seastar::make_ready_future();
 }
 
+dto::OwnerPartition& K23SIPartitionModule::getOwnerPartition() {
+    return this->_partition;
+}
 }  // ns k2

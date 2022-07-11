@@ -100,6 +100,8 @@ public:
     seastar::future<std::tuple<Status, dto::K23SIInspectAllKeysResponse>>
     handleInspectAllKeys(dto::K23SIInspectAllKeysRequest&& request);
 
+    dto::OwnerPartition& getOwnerPartition();
+
 private: // methods
     // this method executes a push operation at the TRH for the given incumbent in order to
     // determine if the challengerMTR should be allowed to proceed.

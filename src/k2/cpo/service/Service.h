@@ -59,11 +59,12 @@ private:
     String _getCollectionPath(String name);
     String _getPersistenceClusterPath(String clusterName);
     String _getSchemasPath(String collectionName);
+    seastar::future<> _doAssignCollection(dto::AssignmentCreateRequest &request, const String &name, const String &ep);
     void _assignCollection(dto::Collection& collection);
     seastar::future<bool> _offloadCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
     ConfigDuration _collectionHeartbeatDeadline{"txn_heartbeat_deadline", 100ms};
-    ConfigVar<int> _maxAssignRetries{"max_assign_retries", 3};
+    ConfigVar<int> _maxAssignRetries{"max_assign_retries", 5};
 
     std::unordered_map<String, seastar::future<>> _assignments;
     std::unordered_map<String, std::vector<dto::PartitionMetdataRecord>> _metadataRecords;
@@ -79,7 +80,7 @@ private:
     int _makeHashPartitionMap(dto::Collection& collection, uint32_t numNodes);
     int _makeRangePartitionMap(dto::Collection& collection, const std::vector<String>& rangeEnds);
     seastar::future<bool> _assignAllTSOs();
-    seastar::future<> _assignTSO(const String &ep, size_t tsoID, int retry);
+    seastar::future<> _assignTSO(const String &ep, size_t tsoID);
     seastar::future<> _doAssignTSO(const String &ep, size_t tsoID);
     // Collection name -> schemas
     std::unordered_map<String, std::vector<dto::Schema>> schemas;

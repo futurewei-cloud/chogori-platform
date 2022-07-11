@@ -56,7 +56,7 @@ public: // application lifespan
 
     seastar::future<> start() {
     K2LOG_I(log::k23si, "+++++++ start schema creation test +++++++");
-    ConfigVar<String> configEp("cpo_endpoint");
+    ConfigVar<String> configEp("cpo");
     _cpoEndpoint = RPC().getTXEndpoint(configEp());
 
     // let start() finish and then run the tests
@@ -633,8 +633,7 @@ seastar::future<> runScenario11(){
 
 int main(int argc, char** argv) {
     k2::App app("schemaCreationTest");
-    app.addOptions()("cpo_endpoint", bpo::value<k2::String>(), "The endpoint of the CPO");
+    app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO");
     app.addApplet<k2::schemaCreation>();
     return app.start(argc, argv);
 }
-
