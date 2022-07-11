@@ -1453,15 +1453,14 @@ seastar::future<> testScenario02() {
                             .priority = dto::TxnPriority::Medium};
                     K2LOG_D(log::k23si, "using mtr={}", mtr);
 
-                    return doWrite(k4, v1, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection)
-                    .then([&, mtr] (auto&& response) {
-                        auto& [status, resp] = response;
-                        K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
-                        K2LOG_D(log::k23si, "using mtr={}", mtr);
-
-                        // abort the k4 write
-                        return doEnd(k4, mtr, collname, false, {k4}, Duration(500ms), ErrorCaseOpt::NoInjection);
-                    });
+                    return doWrite(k4, v1, mtr, k4, collname, false, true, ErrorCaseOpt::NoInjection);
+                })
+                .then([&, mtr] (auto&& response) {
+                    auto& [status, resp] = response;
+                    K2EXPECT(log::k23si, status, dto::K23SIStatus::Created);
+                    K2LOG_D(log::k23si, "using mtr={}", mtr);
+                    // abort the k4 write
+                    return doEnd(k4, mtr, collname, false, {k4}, Duration(500ms), ErrorCaseOpt::NoInjection);
                 })
                 .then([](auto&& response) {
                     auto& [status, resp] = response;
@@ -1715,7 +1714,7 @@ seastar::future<> testScenario02() {
                 })
                 .then([this, &k6, &timestamps] {
                     dto::K23SI_MTR bfMTR{
-                        .timestamp = {(timestamps[0].endCount), 123, 1000}, // 500ms earlier
+                        .timestamp = timestamps[0],
                         .priority = dto::TxnPriority::Medium};
                     return doRead(k6, bfMTR, collname, ErrorCaseOpt::NoInjection)
                     .then([](auto&& response) {
@@ -1734,7 +1733,7 @@ seastar::future<> testScenario02() {
                 }) // end sc-02 case-09
                 .then([this, &k6, &timestamps, &v1] {
                     dto::K23SI_MTR afMTR{
-                        .timestamp = {(timestamps[2].endCount), 123, 1000}, // 500ms later
+                        .timestamp = timestamps[2],
                         .priority = dto::TxnPriority::Medium};
                     return doRead(k6, afMTR, collname, ErrorCaseOpt::NoInjection)
                     .then([&v1](auto&& response) {
@@ -2030,22 +2029,22 @@ seastar::future<> testScenario05() {
             // So the following statement may cause some confusion, which will be cleared
             // in combination with the test cases.
             dto::K23SI_MTR{// mtr_ts_Med_ts incumbent mtr
-                           .timestamp = {timestamps[2].endCount, 123, 1000},
+                           .timestamp = timestamps[2],
                            .priority = dto::TxnPriority::Medium},
             dto::K23SI_MTR{// mtr_m1000_Med_123 - txn which started earlier than incumbent
-                           .timestamp = {(timestamps[0].endCount), 123, 1000},
+                           .timestamp = timestamps[0],
                            .priority = dto::TxnPriority::Medium},
             dto::K23SI_MTR{// mtr_m900_High_123 - another txn which started earlier than incumbent
-                           .timestamp = {(timestamps[1].endCount), 123, 1000},
+                           .timestamp = timestamps[1],
                            .priority = dto::TxnPriority::High},
             dto::K23SI_MTR{// mtr_1000_High_123: txn with higher priority
-                           .timestamp = {(timestamps[3].endCount), 123, 1000},
+                           .timestamp = timestamps[3],
                            .priority = dto::TxnPriority::High},
             dto::K23SI_MTR{// mtr_1010_High_123: txn with higher priority and newer than before
                            .timestamp = {(timestamps[4].endCount), 123, 1000},
                            .priority = dto::TxnPriority::High},
             dto::K23SI_MTR{// mtr_1020_Low_123: txn lower priority
-                           .timestamp = {(timestamps[5].endCount), 123, 1000},
+                           .timestamp = timestamps[5],
                            .priority = dto::TxnPriority::Low},
             dto::K23SI_MTR{// mtr_1010_High_100: txn with same ts, same priority, smaller tso id
                            .timestamp = {(timestamps[4].endCount), 100, 1000},
@@ -2546,11 +2545,11 @@ seastar::future<> testScenario07() {
         return seastar::do_with(
             // multi MTRs are used for multiple transactions to execute. We use these MTRs in sequence
             dto::K23SI_MTR { .timestamp = timestamps[0], .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[1].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[2].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[3].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[4].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[5].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[1], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[2], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[3], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[4], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[5], .priority = dto::TxnPriority::Medium },
             dto::Key {.schemaName = "schema", .partitionKey = "SC07_pkey1", .rangeKey = "rKey1"},
             dto::Key {.schemaName = "schema", .partitionKey = "SC07_pkey4", .rangeKey = "rKey2"},
             DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
@@ -2803,11 +2802,11 @@ seastar::future<> testScenario08() {
     .then([this](auto&& timestamps) {
         return seastar::do_with(
             // multi MTRs are used for multiple transactions to execute. We use these MTRs in sequence
-            dto::K23SI_MTR { .timestamp = {timestamps[0].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[1].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[2].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[3].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
-            dto::K23SI_MTR { .timestamp = {timestamps[4].endCount, 123, 1000}, .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[0], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[1], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[2], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[3], .priority = dto::TxnPriority::Medium },
+            dto::K23SI_MTR { .timestamp = timestamps[4], .priority = dto::TxnPriority::Medium },
             dto::Key {.schemaName = "schema", .partitionKey = "SC08_pkey1", .rangeKey = "rKey1"},
             DataRec {.f1="SC05_f1_zero", .f2="SC04_f2_zero"},
             [this](auto& mtr1, auto& mtr2, auto& mtr3, auto& mtr4, auto& mtr5, auto& k1, auto& v0) {

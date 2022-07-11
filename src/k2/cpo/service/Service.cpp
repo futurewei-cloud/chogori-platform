@@ -568,6 +568,9 @@ String CPOService::_getSchemasPath(String collectionName) {
 
 seastar::future<> CPOService::_doAssignCollection(dto::AssignmentCreateRequest &request, const String &name, const String &ep) {
     auto txep = RPC().getTXEndpoint(ep);
+    if (txep == nullptr) {
+        return seastar::make_exception_future<>(std::runtime_error("unable to assign collection due to wrong endpoint"));
+    }
     return RPC().callRPC<dto::AssignmentCreateRequest, dto::AssignmentCreateResponse>
                 (dto::K2_ASSIGNMENT_CREATE, request, *txep, _assignTimeout())
     .then([this, name, ep](auto&& result) {
