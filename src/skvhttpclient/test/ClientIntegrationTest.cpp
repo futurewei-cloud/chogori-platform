@@ -44,6 +44,9 @@ const std::string schemaName = "test_schema";
 // Helper functions
 // Verify that two records are equal, the parameters are not const as deserialize is not const function
 void verifyEqual(dto::SKVRecord& first, dto::SKVRecord& second) {
+    first.seekField(0);
+    second.seekField(0);
+    K2EXPECT(k2::log::httpclient, first.schema, second.schema);
     first.visitRemainingFields([&second] (const auto& field, auto val1) {
         auto val2 = second.deserializeField<typename decltype(val1)::value_type>(field.name);
         K2EXPECT(k2::log::httpclient, val1.has_value(), val2.has_value());
@@ -51,9 +54,11 @@ void verifyEqual(dto::SKVRecord& first, dto::SKVRecord& second) {
             K2EXPECT(k2::log::httpclient, val1.value(), val2.value());
         }
     });
+    first.seekField(0);
+    second.seekField(0);
 }
 
-// Compare a query result with refernce records
+// Compare a query result with reference records
 void verifyEqual(std::vector<dto::SKVRecord>& first, std::vector<dto::SKVRecord>&& second) {
     K2EXPECT(k2::log::httpclient, first.size(), second.size());
     for (size_t i=0; i < first.size(); i++) {
@@ -65,15 +70,15 @@ dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder) {return builder
 
 // Get a builder by serializing args
 template<typename Second, typename... Args>
-dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder, Second second, Args... args) {
+dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder, Second second, Args&&... args) {
     builder.serializeNext<Second>(second);
-    return serialize(builder, args...);
+    return serialize(builder, std::forward<Args>(args)...);
 }
 
 
 // Get a SKV record by serializing args
 template<typename... Args>
-dto::SKVRecord buildRecord(const std::string& collectionName, std::shared_ptr<dto::Schema>& schemaPtr, Args... args) {
+dto::SKVRecord buildRecord(const std::string& collectionName, std::shared_ptr<dto::Schema> schemaPtr, Args&&... args) {
     dto::SKVRecordBuilder builder(collectionName, schemaPtr);
     return serialize(builder, args...).build();
 }
@@ -124,7 +129,6 @@ void testCreateHashCollection() {
     .deleted = false
   };
   auto&& [status] = client.createCollection(std::move(metadata), {}).get();
-  K2LOG_I(k2::log::httpclient, "crateCollection respone status: {}", status);
   K2EXPECT(k2::log::httpclient, status.is2xxOK(), true);
 }
 
@@ -192,7 +196,7 @@ void testRead() {
   K2EXPECT(k2::log::httpclient, endStatus.is2xxOK(), true);
 }
 
-std::vector<dto::SKVRecord> queryAll(TxnHandle& txn, const std::string& collectionName, std::shared_ptr<dto::Schema>& schemaPtr, dto::QueryRequest& query) {
+std::vector<dto::SKVRecord> queryAll(TxnHandle& txn, const std::string& collectionName, std::shared_ptr<dto::Schema> schemaPtr, dto::QueryRequest& query) {
     bool done = false;
     std::vector<dto::SKVRecord> records;
     while (!done) {
@@ -370,11 +374,11 @@ void testValidation() {
       K2EXPECT(k2::log::httpclient, status.code, 404);
   }
   // Bad partition key type
-  expectException<dto::TypeMismatchException>([&schemaPtr] {
+  expectException<dto::TypeMismatchException>([schemaPtr] {
       buildRecord(collectionName, schemaPtr, int32_t(33), std::string("B"), int32_t(33));
   });
   // Bad range key type
-  expectException<dto::TypeMismatchException>([&schemaPtr] {
+  expectException<dto::TypeMismatchException>([schemaPtr] {
       buildRecord(collectionName, schemaPtr, std::string("A"), int32_t(1), int32_t(33));
   });
   {
