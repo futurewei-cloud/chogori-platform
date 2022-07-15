@@ -208,9 +208,8 @@ public:
 
 class SKVRecordBuilder {
 public:
-    // The record must be serialized in order. Schema will be enforced
     template <typename T>
-    void serializeNext(T&& field) {
+    void serializeNext(const T& field) {
         if (isNan(field)) {
             throw NaNError("NaN type in serialization");
         }
@@ -233,7 +232,7 @@ public:
             }
         }
 
-        _writer.write(std::forward<T>(field));
+        _writer.write(field);
         _record.storage.serializedCursor++;
         ++_record.fieldCursor;
     }
