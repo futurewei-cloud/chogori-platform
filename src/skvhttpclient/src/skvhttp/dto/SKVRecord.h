@@ -208,36 +208,6 @@ public:
 
 class SKVRecordBuilder {
 public:
-    // The record must be serialized in order. Schema will be enforced
-    template <typename T>
-    void serializeNext(T&& field) {
-        if (isNan(field)) {
-            throw NaNError("NaN type in serialization");
-        }
-
-        using Tnr = typename std::remove_reference<T>::type;
-        FieldType ft = TToFieldType<Tnr>();
-        if (_record.fieldCursor >= _record.schema->fields.size() || ft != _record.schema->fields[_record.fieldCursor].type) {
-            throw TypeMismatchException("Schema not followed in record serialization");
-        }
-
-        for (size_t i = 0; i < _record.schema->partitionKeyFields.size(); ++i) {
-            if (_record.schema->partitionKeyFields[i] == _record.fieldCursor) {
-                _record.partitionKeys[i] = FieldToKeyString(field);
-            }
-        }
-
-        for (size_t i = 0; i < _record.schema->rangeKeyFields.size(); ++i) {
-            if (_record.schema->rangeKeyFields[i] == _record.fieldCursor) {
-                _record.rangeKeys[i] = FieldToKeyString(field);
-            }
-        }
-
-        _writer.write(std::forward<T>(field));
-        _record.storage.serializedCursor++;
-        ++_record.fieldCursor;
-    }
-    
     template <typename T>
     void serializeNext(const T& field) {
         if (isNan(field)) {
