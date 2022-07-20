@@ -90,15 +90,16 @@ public:  // application lifespan
                     },
                     .rangeEnds{}
                 };
-                return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
-                        (dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s);
+                return _cpo_client.createAndWaitForCollection(Deadline<>(_createWaitTime()), std::move(request.metadata), std::move(request.rangeEnds));
+                // return RPC().callRPC<dto::CollectionCreateRequest, dto::CollectionCreateResponse>
+                //         (dto::Verbs::CPO_COLLECTION_CREATE, request, *_cpoEndpoint, 1s);
             })
-            .then([](auto&& response) {
+            .then([](Status&& status) {
                 // response for collection create
-                auto& [status, resp] = response;
+                // auto& [status, resp] = response;
                 K2EXPECT(log::k23si, status, Statuses::S201_Created);
                 // wait for collection to get assigned
-                return seastar::sleep(100ms);
+                // return seastar::sleep(100ms);
             })
             .then([this] {
                 // check to make sure the collection is assigned
@@ -167,7 +168,7 @@ public:  // application lifespan
 private:
     int exitcode = -1;
     ConfigVar<String> _cpoConfigEp{"cpo"};
-
+    ConfigDuration _createWaitTime{"create_ddl", 100ms};
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
     seastar::timer<> _testTimer;
@@ -587,6 +588,7 @@ seastar::future<> runScenario05() {
 int main(int argc, char** argv) {
     k2::App app("K23SITest");
     app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO");
+    app.addOptions()("create_ddl", bpo::value<k2::ParseableDuration>(), "The duration to wait after called create partition");
     app.addApplet<k2::K23SITest>();
     app.addApplet<k2::tso::TSOClient>();
 
