@@ -84,39 +84,11 @@ public:
     }
 
 
-    // template<typename ClockT=Clock>
-    // seastar::future<std::tuple<Status, seastar::lw_shared_ptr<dto::PartitionGetter>>> getPartitionGetter(Deadline<ClockT> deadline, String &name) {
-    //     K2LOG_D(log::cpoclient, "time remaining={}, for coll={}, key={}, reverse={}, excludedKey={}, retries={}", deadline.getRemaining(), name, key, reverse, excludedKey, retries);
-    //     auto it = requestWaiters.find(name);
-    //     if (it != requestWaiters.end()) {
-    //         K2LOG_D(log::cpoclient, "found existing waiter");
-    //         it->second.emplace_back(seastar::promise<Status>());
-    //         // TODO: change get partition to return a partition getter
-    //         return it->second.back().get_future().then([this, deadline, name, key, reverse, excludedKey, retries](Status&& status) {
-    //             K2LOG_D(log::cpoclient, "waiter finished with status={}", status);
-    //             if (status.is2xxOK()) {
-    //                 auto pgetterIter = collections.find(name);
-    //                 dto::Partition* partition = collections[name]->getPartitionForKey(key, reverse, excludedKey).partition;
-    //                 if (partition && partition->astate == dto::AssignmentState::Assigned) {
-    //                     return seastar::make_ready_future<Status>(std::move(status));
-    //                 }
-    //                 K2LOG_W(log::cpoclient, "Partition found but still not completed assignment");
-    //             }
-    //             else {
-    //                 K2LOG_W(log::cpoclient, "Partition not found with status={}", status);
-    //             }
-
-    //             if (!retries) {
-    //                 status = Statuses::S408_Request_Timeout("get assigned partition retries exceeded");
-    //                 return seastar::make_ready_future<Status>(std::move(status));
-    //             }
-
-    //             return _getAssignedPartitionWithRetry(deadline, std::move(name), std::move(key), reverse, excludedKey, retries - 1);
-    //         });
-    //     }
-    //     K2LOG_D(log::cpoclient, "no existing waiter for name={}. Creating new one", name);
-
-    // }
+    // Get the Partition Getter object, which can be used to get the collection of the given name
+    template<typename ClockT=Clock>
+    seastar::future<std::tuple<Status, seastar::lw_shared_ptr<dto::PartitionGetter>>> getPartitionGetterWithRetry(Deadline<ClockT> deadline, String name) {
+        return _getPartitionGetterForCollection(deadline, name);
+    }
 
     // Gets the partition endpoint for request's key, executes the request, and refreshes the
     // partition map and retries if necessary. The caller must keep the request alive for the
@@ -295,6 +267,8 @@ private:
                         if (partition.astate == dto::AssignmentState::NotAssigned) {
                             K2LOG_D(log::cpoclient, "Has partition is collection that is not assigned");
                             // need to sleep before retry: _getAssignedPartition won't sleep in this case as it is succeeded
+                            // refresh the cached clock so that we calculate deadlines better
+                            CachedSteadyClock::now(true);
                             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
                             K2LOG_D(log::cpoclient, "Sleeping for {} before retry checking all partition assigned", s);
                             return seastar::sleep(s).then([this, &name, retries, deadline] {

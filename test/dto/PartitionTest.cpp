@@ -125,17 +125,12 @@ seastar::future<> runScenario01() {
 
     return seastar::make_ready_future()
     .then([this] {
-        // get partitions
-        auto request = k2::dto::CollectionGetRequest{.name = collname};
-        return k2::RPC().callRPC<k2::dto::CollectionGetRequest, k2::dto::CollectionGetResponse>
-                (k2::dto::Verbs::CPO_COLLECTION_GET, request, *_cpoEndpoint, 100ms);
+        return _client.cpo_client.getPartitionGetterWithRetry(Deadline<>(100ms),String(collname));
     })
-    .then([this](auto&& response) {
-        // check and assign it to _pgetter
+    .then([this] (auto&& response) {
         auto&[status, resp] = response;
-        K2LOG_D(log::ptest, "get collection status: {}", status.code);
-        K2EXPECT(log::ptest, status, k2::dto::K23SIStatus::OK);
-        _pgetter = k2::dto::PartitionGetter(std::move(resp.collection));
+        K2EXPECT(log::ptest, status.is2xxOK(), true);
+        _pgetter = std::move(*resp);
     })
     .then([this] {
         K2LOG_I(log::ptest, "case1: get Partition for key with default reverse and exclusiveKey flag");
