@@ -63,16 +63,16 @@ void _shdRecToK2(shd::SKVRecord& shdrec, dto::SKVRecord& k2rec) {
 }
 
 template <typename T>
-void _buildSHDRecordHelperVisitor(std::optional<T> value, String&, shd::SKVRecordBuilder& builder) {
+void _buildSHDRecordHelperVisitor(std::optional<T>&& value, String&, shd::SKVRecordBuilder& builder) {
     if (value) {
         if constexpr (std::is_same_v<T, dto::FieldType>) {
             auto ft = static_cast<shd::FieldType>(to_integral(*value));
-            builder.serializeNext<shd::FieldType>(ft);
+            builder.serializeNext<shd::FieldType>(std::move(ft));
         } else if constexpr (std::is_same_v<T, String>) {
             sh::String str(value->data(), value->size());
             builder.serializeNext<sh::String>(std::move(str));
         } else {
-            builder.serializeNext<T>(*value);
+            builder.serializeNext<T>(*std::move(value));
         }
     } else {
         builder.serializeNull();
