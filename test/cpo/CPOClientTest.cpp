@@ -25,11 +25,10 @@ Copyright(c) 2022 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/dto/Timestamp.h>
 #include <k2/tso/client/Client.h>
-#include <k2/cpo/CPOClient.h>
-#include <unistd.h>
+#include <k2/cpo/client/Client.h>
+#include <k2/dto/Collection.h>
+#include <k2/dto/ControlPlaneOracle.h>
 
-
-#include "Log.h"
 
 const char* collname = "cpo_client_test_collection";
 
@@ -42,24 +41,28 @@ namespace k2 {
     class CPOClientTest {
     public:
         CPOClientTest() {
-            K2LOG_I(log::cpo_client_test, "ctor");
+            K2LOG_I(k2::log::cpo_client_test, "ctor");
         }
         ~CPOClientTest() {
-            K2LOG_I(log::cpo_client_test, "dtor");
+            K2LOG_I(k2::log::cpo_client_test, "dtor");
+        }
+        seastar::future<> gracefulStop() {
+            K2LOG_I(k2::log::cpo_client_test, "stop");
+            return std::move(_testFuture);
         }
         seastar::future<dto::Timestamp> getTimeNow() {
             return AppBase().getDist<tso::TSOClient>().local().getTimestamp();
         }
         seastar::future<> runTest1() {
-            K2LOG_I(log::cpo_client_test, ">>> Test 1: Getting a non-existent collection");
+            K2LOG_I(k2::log::cpo_client_test, ">>> Test 1: Getting a non-existent collection");
             return _cpoClient.getPartitionGetterWithRetry(Deadline<>(100ms),String(collname))
             .then([this] (auto&& response) {
                 auto&[status, resp] = response;
-                K2EXPECT(log::ptest, status.is4xxNonRetryable(), true);
+                K2EXPECT(k2::log::cpo_client_test, status.is4xxNonRetryable(), true);
             });
         }
         seastar::future<> runTest2() {
-            K2LOG_I(log::cpo_client_test, ">>> Test 2: Creating a collection");
+            K2LOG_I(k2::log::cpo_client_test, ">>> Test 2: Creating a collection");
             auto request = dto::CollectionCreateRequest{
                 .metadata{
                     .name=collname,
@@ -75,68 +78,46 @@ namespace k2 {
                 },
                 .rangeEnds{}
             };
-            // fork and run the new nodepool. Partition checking should fail the collection create into retry
-
             return _cpoClient.createAndWaitForCollection(Deadline<>(100ms), std::move(request.metadata), std::move(request.rangeEnds))
-            .then([this] (auto&& response) {
-                auto&[status, resp] = response;
-                K2EXPECT(log::cpo_client_test, status, Statuses::S201_Created);
-            });
-        }
-        seastar::future<> runTest3() {
-            K2LOG_I(log::cpo_client_test, ">>> Test 3: Read the collection created in test 2");
-            return _cpoClient.getPartitionGetterWithRetry(Deadline<>(100ms),String(collname))
-            .then([this] (auto&& response) {
-                auto&[status, resp] = response;
-                K2EXPECT(log::cpo_client_test, status, Statuses::S200_OK);
-                auto& md = *resp.collection.metadata;
-                K2EXPECT(log::cpo_client_test, md.name, "cpo_client_test_collection");
-                K2EXPECT(log::cpo_client_test, md.hashSchema, dto::HashScheme::HashCRC32C);
-                for (size_t i = 0; i < resp.collection.partitionMap.partitions.size(); ++i) {
-                    auto& p = resp.collection.partitionMap.partitions[i];
-                    K2EXPECT(log::cpo_client_test, p.keyRangeV.pvid.rangeVersion, 1);
-                    K2EXPECT(log::cpo_client_test, p.astate, dto::AssignmentState::Assigned);
-                    K2EXPECT(log::cpo_client_test, p.keyRangeV.pvid.assignmentVersion, 1);
-                    K2EXPECT(log::cpo_client_test, p.keyRangeV.pvid.id, i);
-                }
-                K2EXPECT(log::cpo_client_test, md.storageDriver, dto::StorageDriver::K23SI);
-                K2EXPECT(log::cpo_client_test, md.retentionPeriod, 1h*90*24);
-                K2EXPECT(log::cpo_client_test, md.capacity.dataCapacityMegaBytes, 1);
-                K2EXPECT(log::cpo_client_test, md.capacity.readIOPs, 100);
-                K2EXPECT(log::cpo_client_test, md.capacity.writeIOPs, 200);
+            .then([this] (auto&& status) {
+                K2EXPECT(k2::log::cpo_client_test, status.is4xxNonRetryable(), true);
             });
         }
         seastar::future<> start() {
-            K2LOG_I(log::cpo_client_test, "start");
-            __cpo_client.init(_cpoConfigEp());
+            K2LOG_I(k2::log::cpo_client_test, "start");
+            _cpoClient.init(_cpoConfigEp());
             _cpoEndpoint = RPC().getTXEndpoint(_cpoConfigEp());
+            _tsoClient = AppBase().getDist<tso::TSOClient>().local_shared();
 
-            _testTimer.set_callback([this, configEp] {
-                K2LOG_I(log::cpo_client_test, "testTimer");
+            _testTimer.set_callback([this] {
+                K2LOG_I(k2::log::cpo_client_test, "testTimer");
                 _testFuture = seastar::make_ready_future()
                 .then([this] {
-                    return getTimeNow();
+                    return  _tsoClient->getTimestamp();
                 })
                 .then([this](dto::Timestamp&&) {
                     return runTest1();
                 })
                 .then([this] {
-                    K2LOG_I(log::cpo_client_test, "======= All tests passed ========");
+                    return runTest2();
+                })
+                .then([this] {
+                    K2LOG_I(k2::log::cpo_client_test, "======= All tests passed ========");
                     exitcode = 0;
                 })
                 .handle_exception([this](auto exc) {
                     try {
                         std::rethrow_exception(exc);
                     } catch (RPCDispatcher::RequestTimeoutException& exc) {
-                        K2LOG_E(log::cpo_client_test, "======= Test failed due to timeout ========");
+                        K2LOG_E(k2::log::cpo_client_test, "======= Test failed due to timeout ========");
                         exitcode = -1;
                     } catch (std::exception& e) {
-                        K2LOG_E(log::cpo_client_test, "======= Test failed with exception [{}] ========", e.what());
+                        K2LOG_E(k2::log::cpo_client_test, "======= Test failed with exception [{}] ========", e.what());
                         exitcode = -1;
                     }
                 })
                 .finally([this] {
-                    K2LOG_I(log::k23si, "======= Test ended ========");
+                    K2LOG_I(k2::log::cpo_client_test, "======= Test ended ========");
                     AppBase().stop(exitcode);
                 });
             });
@@ -149,8 +130,8 @@ namespace k2 {
         seastar::future<> _testFuture = seastar::make_ready_future();
         seastar::timer<> _testTimer;
         cpo::CPOClient _cpoClient;
+        seastar::shared_ptr<k2::tso::TSOClient> _tsoClient;
         ConfigVar<String> _cpoConfigEp{"cpo"};
-        ConfigVar<String> _newNodepool{"new_nodepool"};
         std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
     };
 } // ns k2
@@ -159,7 +140,6 @@ namespace k2 {
 int main(int argc, char** argv) {
     k2::App app("CPOClientTest");
     app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO");
-    app.addOptions()("new_nodepool", bpo::value<k2::String>(), "The command of starting the new nodepool");
     app.addApplet<k2::CPOClientTest>();
     app.addApplet<k2::tso::TSOClient>();
 
