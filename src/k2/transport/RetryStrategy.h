@@ -35,7 +35,12 @@ Copyright(c) 2020 Futurewei Cloud
 #include "RPCDispatcher.h"
 #include "Log.h"
 
+namespace k2::log {
+inline thread_local k2::logging::Logger txretry("k2::txretry");
+}
+
 namespace k2 {
+
 // this is returned in an exceptional future if you attempt to call Do() more than once
 class DuplicateExecutionException : public std::exception {};
 
@@ -63,27 +68,27 @@ public: // API
     // Note that we do not setup any timeout timers here. We just provide the correct value to use
     template<typename Func>
     seastar::future<> run(Func&& func) {
-        K2LOG_D(log::tx, "Initial run");
+        K2LOG_D(log::txretry, "Initial run");
         if (_used) {
-            K2LOG_W(log::tx, "This strategy has already been used");
+            K2LOG_W(log::txretry, "This strategy has already been used");
             return seastar::make_exception_future<>(DuplicateExecutionException());
         }
         auto resultPtr = seastar::make_lw_shared<>(
             seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException()));
         return seastar::do_until(
-            [this] { return _success || this->_try >= this->_retries; },
+            [this] { return _success || _try >= _retries; },
             [this, func=std::move(func), resultPtr] ()mutable{
-                k2::Deadline deadline(this->_currentTimeout);
-                K2LOG_D(log::tx, "running try {}, with timeout {}ms", this->_try, k2::msec(_currentTimeout).count());
-                return func(this->_retries - this->_try, deadline.getRemaining()).
+                k2::Deadline deadline(_currentTimeout);
+                K2LOG_D(log::txretry, "running try {}, with timeout {}ms", _try, k2::msec(_currentTimeout).count());
+                return func(_retries - _try, deadline.getRemaining()).
                     handle_exception_type([this](RPCDispatcher::DispatcherShutdown&) {
-                        K2LOG_D(log::tx, "Dispatcher has shut down. Stopping retry");
-                        this->_try = this->_retries; // ff to the last retry
+                        K2LOG_D(log::txretry, "Dispatcher has shut down. Stopping retry");
+                        _try = _retries; // ff to the last retry
                         return seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException());
                     }).
                     handle_exception_type([this](StopRetryException&) {
-                        K2LOG_D(log::tx, "Stopping retry due to explicit request to stop retrying");
-                        this->_try = this->_retries; // ff to the last retry
+                        K2LOG_D(log::txretry, "Stopping retry due to explicit request to stop retrying");
+                        _try = _retries; // ff to the last retry
                         return seastar::make_exception_future<>(RPCDispatcher::RequestTimeoutException());
                     }).
                     then_wrapped([this, resultPtr, deadline](auto&& fut) {
@@ -92,11 +97,13 @@ public: // API
                         _success = !fut.failed();
                         resultPtr->ignore_ready_future(); // ignore previous result stored in the result
                         (*resultPtr.get()) = std::move(fut);
-                        K2LOG_D(log::tx, "round ended with success={}", _success);
-                        if (!_success && !deadline.isOver()) {
-                            this->_try++;
-                            this->_currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
-                            return seastar::sleep(deadline.getRemaining());
+                        K2LOG_D(log::txretry, "round {} ended with success={}", _try, _success);
+                        if (!_success) {
+                            _try++;
+                            _currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
+                            if (!deadline.isOver()) {
+                                return seastar::sleep(deadline.getRemaining());
+                            }
                         }
                         return seastar::make_ready_future<>();
                     });
