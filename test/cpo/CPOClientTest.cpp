@@ -62,7 +62,7 @@ namespace k2 {
             });
         }
         seastar::future<> runTest2() {
-            K2LOG_I(k2::log::cpo_client_test, ">>> Test 2: Creating a collection");
+            K2LOG_I(k2::log::cpo_client_test, ">>> Test 2: Creating a collection. Should fail because the last partition is not up and fails when checking all partition assigned");
             auto request = dto::CollectionCreateRequest{
                 .metadata{
                     .name=collname,
