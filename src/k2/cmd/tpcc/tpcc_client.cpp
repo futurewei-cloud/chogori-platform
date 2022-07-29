@@ -115,8 +115,15 @@ public:  // application lifespan
 
         registerMetrics();
 
-        _benchFuture = _client.start().then([this] () { return _benchmark(); })
-        .then([this]() {
+        _benchFuture = _client.start()
+        .then([this] () {
+            return _benchmark();
+        })
+        .handle_exception([this](auto exc) {
+            K2LOG_W_EXC(log::tpcc, exc, "Unable to execute benchmark");
+            return seastar::make_ready_future<>();
+        })
+        .finally([this] {
             K2LOG_I(log::tpcc, "Done with benchmark");
             _stopped = true;
             cores_finished++;
@@ -143,12 +150,6 @@ public:  // application lifespan
                 AppBase().stop(0);
             }
 
-            return make_ready_future<>();
-        })
-        .handle_exception([this](auto exc) {
-            K2LOG_W_EXC(log::tpcc, exc, "Unable to execute benchmark");
-            _stopped = true;
-            return seastar::make_ready_future<>();
             return make_ready_future<>();
         });
 
@@ -268,6 +269,7 @@ private:
                                                 _max_warehouses()));
             })
             .then([this] (Status&& status) {
+                K2LOG_I(log::tpcc, "Create primary collection completed with status {}", status);
                 K2ASSERT(log::tpcc, status.is2xxOK(), "Failed to make primary collection");
                 K2LOG_I(log::tpcc, "Creating Item collection");
                 dto::CollectionMetadata metadata{
