@@ -74,9 +74,11 @@ private:
             return do_until(
                 [this, &current_size] { return _data.size() == 0 || current_size >= _writes_per_load_txn(); },
                 [this, &current_size, &txn] () {
-                K2LOG_D(log::tpcc, "remaining data size={}", _data.size());
                 auto write_func = std::move(_data.back());
                 _data.pop_back();
+                if (_data.size() %5000 == 0) {
+                    K2LOG_D(log::tpcc, "remaining data size={}", _data.size());
+                }
                 ++current_size;
 
                 return write_func(txn).discard_result();

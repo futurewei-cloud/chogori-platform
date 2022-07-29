@@ -49,7 +49,7 @@ sleep 1
 NUMWH=1
 NUMDIST=1
 echo ">>> Starting load ..."
-./build/src/k2/cmd/tpcc/tpcc_client ${COMMON_ARGS} -c1 --cpo ${CPO} --data_load true --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63100 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --do_verification true --num_concurrent_txns=2 --item_table_num_nodes=1 --txn_weights={43,4,4,45,4} --warehouse_tables_num_nodes=2
+./build/src/k2/cmd/tpcc/tpcc_client ${COMMON_ARGS} -c1 --cpo ${CPO} --data_load true --num_warehouses ${NUMWH} --districts_per_warehouse ${NUMDIST} --prometheus_port 63100 --memory=512M --partition_request_timeout=6s --dataload_txn_timeout=600s --do_verification true --num_concurrent_txns=2 --item_table_num_nodes=1 --txn_weights={43,4,4,45,4} --warehouse_tables_num_nodes=2 --log_level=Info k2::tpcc=Info k2::skv_client=Info log::txretry=Info
 
 sleep 1
 

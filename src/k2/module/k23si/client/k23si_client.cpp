@@ -260,6 +260,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     K2LOG_D(log::skvclient, "Cancel hb for {}", _mtr);
     _heartbeat_timer.cancel();
 
+    K2LOG_D(log::skvclient, "Cancelled hb for {} and now ending txn", _mtr);
     return _cpo_client->partitionRequest
         <dto::K23SITxnEndRequest, dto::K23SITxnEndResponse, dto::Verbs::K23SI_TXN_END>
         (Deadline<>(_txn_end_deadline), *request).
@@ -282,9 +283,11 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
                 status = _failed_status;
             }
 
+            K2LOG_D(log::skvclient, "txn {} end request was accepted", _mtr);
             return _heartbeat_timer.stop().then([this, s=std::move(status)] () {
                 // TODO get min transaction time from TSO client
                 auto time_spent = Clock::now() - _start_time;
+                K2LOG_D(log::skvclient, "time {}, spent: {}", _mtr, time_spent);
                 if (time_spent < 50us) {
                     auto sleep = 50us - time_spent;
                     return seastar::sleep(sleep).then([s=std::move(s)] () {
@@ -298,6 +301,7 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             delete request;
             reporter.report();
             _client->_txnDuration.add(k2::Clock::now() - _startTime);
+            K2LOG_D(log::skvclient, "txn {} ended", _mtr);
         });
 }
 
