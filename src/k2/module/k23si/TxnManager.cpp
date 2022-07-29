@@ -771,7 +771,7 @@ seastar::future<Status> TxnManager::_finalizeTransaction(TxnRecord& rec, FastDea
                     return _cpo.partitionRequestByPVID<dto::K23SITxnFinalizeRequest,
                                                 dto::K23SITxnFinalizeResponse,
                                                 dto::Verbs::K23SI_TXN_FINALIZE>
-                    (deadline, request, _config.finalizeRetries())
+                    (deadline, request)
                     .then([this, idx, &requests, reporter=std::move(reporter)](auto&& responsePair) mutable {
 
                         auto& [status, response] = responsePair;
