@@ -163,7 +163,7 @@ public:  // application lifespan
 private:
     int exitcode = -1;
     ConfigVar<String> _cpoConfigEp{"cpo"};
-    ConfigDuration _createWaitTime{"create_ddl", 800ms};
+    ConfigDuration _createWaitTime{"cpo_create_collection_timeout", 800ms};
     std::unique_ptr<k2::TXEndpoint> _cpoEndpoint;
 
     seastar::timer<> _testTimer;
@@ -583,7 +583,7 @@ seastar::future<> runScenario05() {
 int main(int argc, char** argv) {
     k2::App app("K23SITest");
     app.addOptions()("cpo", bpo::value<k2::String>(), "The endpoint of the CPO");
-    app.addOptions()("create_ddl", bpo::value<k2::ParseableDuration>(), "The duration to wait after called create partition");
+    app.addOptions()("cpo_create_collection_timeout", bpo::value<k2::ParseableDuration>(), "The duration to wait for collection to be created");
     app.addApplet<k2::K23SITest>();
     app.addApplet<k2::tso::TSOClient>();
 
