@@ -228,7 +228,7 @@ struct CachedSteadyClock {
     typedef TimePoint time_point;
     static const bool is_steady = true;
 
-    static time_point now(bool refresh = false) noexcept;
+    static time_point now(bool refresh = true) noexcept;
 
    private:
     static inline thread_local TimePoint _now = Clock::now();
