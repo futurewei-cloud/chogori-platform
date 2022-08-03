@@ -42,6 +42,9 @@ CPOClient::~CPOClient() {
 
 void CPOClient::_fulfillWaiters(const String& name, const Status& status) {
     auto waiters = _requestWaiters.extract(name);
+    if (waiters.empty()) {
+        return;
+    }
     for (auto it = waiters.mapped().begin(); it != waiters.mapped().end(); ++it) {
         it->set_value(status);
     }
