@@ -51,7 +51,7 @@ class CPOClient {
 public:
     ConfigDuration partition_request_timeout{"partition_request_timeout", 100ms};
     ConfigDuration schema_request_timeout{"schema_request_timeout", 1s};
-    ConfigDuration cpo_request_timeout{"cpo_request_timeout", 200ms};
+    ConfigDuration cpo_request_timeout{"cpo_request_timeout", 100ms};
     ConfigDuration cpo_request_backoff{"cpo_request_backoff", 500ms};
     std::unique_ptr<TXEndpoint> cpo;
     std::unordered_map<String, seastar::lw_shared_ptr<dto::PartitionGetter>> collections;
@@ -412,31 +412,31 @@ private:
                 dto::Partition* partition = collections[name]->getPartitionForKey(dto::Key{}, reverse, excludedKey).partition;
                 _fulfillWaiters(name, status);
                 if (!partition || partition->astate != dto::AssignmentState::Assigned) {
-                    K2LOG_I(log::cpoclient, "No partition or not assigned");
+                    K2LOG_D(log::cpoclient, "No partition or not assigned");
                     retry = true;
                 }
             } else if (status.is5xxRetryable()) {
                 retry = true;
             } else {
-                K2LOG_I(log::cpoclient, "non-retryable error");
+                K2LOG_D(log::cpoclient, "non-retryable error");
                 _fulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (!retry) {
-                K2LOG_I(log::cpoclient, "retry not needed");
+                K2LOG_D(log::cpoclient, "retry not needed");
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (status.is2xxOK() && retry) {
-                K2LOG_I(log::cpoclient, "not all partitions have been assigned in cpo yet, name={}, status={}", name,status);
+                K2LOG_D(log::cpoclient, "not all partitions have been assigned in cpo yet, name={}, status={}", name,status);
                 status = Statuses::S503_Service_Unavailable("not all partitions assigned in cpo");
                 _fulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
             }
 
             if (deadline.isOver()) {
-                K2LOG_I(log::cpoclient, "deadline reached");
+                K2LOG_D(log::cpoclient, "deadline reached");
                 status = Statuses::S408_Request_Timeout("cpo deadline exceeded");
                 _fulfillWaiters(name, status);
                 return seastar::make_ready_future<Status>(std::move(status));
@@ -446,12 +446,12 @@ private:
             CachedSteadyClock::now(true);
 
             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
-            K2LOG_I(log::cpoclient, "will retry after {}", s);
+            K2LOG_D(log::cpoclient, "will retry after {}", s);
             return seastar::sleep(s).then([this, name, deadline, reverse, excludedKey]() -> seastar::future<Status> {
                 // kill the waiters queue if it is empty so that the recursive call can be processed as the only
                 // in-progress call
                 if (auto it = _requestWaiters.find(name); it != _requestWaiters.end() && it->second.empty()) {
-                    K2LOG_I(log::cpoclient, "killing waiters queue for {}", name);
+                    K2LOG_D(log::cpoclient, "killing waiters queue for {}", name);
                     _requestWaiters.erase(it);
                 }
                 return _refreshCollectionWithRetry(deadline, std::move(name));
