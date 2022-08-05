@@ -101,7 +101,7 @@ public:
     getPartitionGetterWithRetry(Deadline<ClockT> deadline, const String& cname, const dto::Key& key=dto::Key{},
                                     bool reverse=false, bool exclusiveKey=false) {
         return _partitionGetterHelper(deadline, cname, key, reverse, exclusiveKey)
-        .then([this, &cname] (auto&& status) {
+        .then([this, cname] (auto&& status) {
             auto it = collections.find(cname);
             if (it == collections.end()) {
                 // Failed to get collection, returning status from GetAssignedPartitionWithRetry
@@ -231,28 +231,25 @@ private:
     template<typename ClockT=Clock>
     seastar::future<Status> _checkAllParititonsAssigned(Deadline<ClockT> deadline, const String& name) {
         return _getAssignedPartitionWithRetry(deadline, name, dto::Key{})
-        .then([this, &name, deadline](Status&& status){
+        .then([this, name, deadline](Status&& status){
             K2LOG_D(log::cpoclient, "Checking if all partitions are assigned");
             if (status.is2xxOK()) {
                 // Then check if all partitions are assigned
-                auto pgetterIter = collections.find(name);
-                if (pgetterIter != collections.end()) {
-                    auto pgetter = pgetterIter->second;
-                    auto& partitions = pgetter->getAllPartitions();
-                    for (auto& partition : partitions) {
+                for (auto it = collections.find(name); it != collections.end(); ++it) {
+                    for (auto& partition : it->second->getAllPartitions()) {
                         if (partition.astate == dto::AssignmentState::NotAssigned) {
                             K2LOG_D(log::cpoclient, "Has partition is collection that is not assigned");
                             // need to sleep before retry: _getAssignedPartition won't sleep in this case as it is succeeded
                             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
                             K2LOG_D(log::cpoclient, "Sleeping for {} before retry checking all partition assigned", s);
-                            return seastar::sleep(s).then([this, &name, deadline] {
+                            return seastar::sleep(s).then([this, name, deadline] {
                                 return _checkAllParititonsAssigned(deadline, name);
                             });
                         }
                     }
                     return seastar::make_ready_future<Status>(Statuses::S200_OK("Collection created"));
                 }
-            } 
+            }
             return seastar::make_ready_future<Status>(std::move(status));
         });
     }
@@ -262,26 +259,20 @@ private:
     seastar::future<Status> _partitionGetterHelper(Deadline<ClockT> deadline, const String& cname, const dto::Key& key=dto::Key{},
                                     bool reverse=false, bool exclusiveKey=false) {
         // If collection is not in cache or partition is not assigned, get collection first
-        seastar::future<Status> fut = seastar::make_ready_future<Status>(Statuses::S200_OK("default cached response"));
-        auto it = collections.find(cname);
-        if (it == collections.end()) {
-            K2LOG_D(log::cpoclient, "Collection {} not found", cname);
-            return fut
-            .then([this, &deadline, &cname, &key, &reverse, &exclusiveKey](Status&&) {
-                return _getAssignedPartitionWithRetry(deadline, cname, key, reverse, exclusiveKey);
-            });
-        } else {
-            K2LOG_D(log::cpoclient, "Collection found");
+        if (auto it = collections.find(cname); it != collections.end()) {
+            K2LOG_D(log::cpoclient, "Collection {} found in cache", cname);
+            // we have it inside the cache, check if the partition is assigned. If not, get from CPO
             dto::Partition* partition = it->second->getPartitionForKey(key, reverse, exclusiveKey).partition;
-            if (!partition || partition->astate != dto::AssignmentState::Assigned) {
+            if (!partition || partition->astate == dto::AssignmentState::NotAssigned) {
                 K2LOG_D(log::cpoclient, "Collection {} found but is in bad state", cname);
-                return fut
-                .then([this, &deadline, &cname, &key, &reverse, &exclusiveKey](Status&&) {
-                    return _getAssignedPartitionWithRetry(deadline, cname, key, reverse, exclusiveKey);
-                });
+                return _getAssignedPartitionWithRetry(deadline, cname, key);
             }
+        } else {
+            K2LOG_D(log::cpoclient, "Collection {} not found in cache", cname);
+            // we don't have the collection - get it from the CPO
+            return _getAssignedPartitionWithRetry(deadline, cname, key, reverse, exclusiveKey);
         }
-        return fut;
+        return seastar::make_ready_future<Status>(Statuses::S200_OK("default cached response"));
     }
 
     // Checks the partition if it is assigned. Updates the cache if it is not assigned/not found.
@@ -298,8 +289,7 @@ private:
             K2LOG_D(log::cpoclient, "Deadline exceeded");
             return seastar::make_ready_future<Status>(Statuses::S408_Request_Timeout("partition deadline exceeded"));
         }
-        auto it = _requestWaiters.find(name);
-        if (it != _requestWaiters.end()) {
+        if (auto it = _requestWaiters.find(name); it != _requestWaiters.end()) {
             K2LOG_D(log::cpoclient, "found existing waiter");
             it->second.emplace_back(seastar::promise<Status>());
             return it->second.back().get_future().then([this, deadline, name, key, reverse, excludedKey](Status&& status) {
@@ -398,7 +388,7 @@ private:
     seastar::future<Status> _refreshCollectionWithRetry(Deadline<ClockT> deadline, const String& name, bool reverse=false, bool excludedKey=false) {
         // Always make the remote calls and queue waiters to force a refresh of the collection, retry until deadline runs out
         // Register the ongoing request
-        K2ASSERT(log::cpoclient, _requestWaiters[name].empty(), "_requestWaiters[name] is not empty");
+        K2ASSERT(log::cpoclient, _requestWaiters[name].empty(), "_requestWaiters[name] is not empty, the name is: {}", name);
         _requestWaiters[name] = std::vector<seastar::promise<Status>>();
         Duration timeout = std::min(deadline.getRemaining(), cpo_request_timeout());
         dto::CollectionGetRequest request{.name = name};
