@@ -98,10 +98,13 @@ public: // API
                         resultPtr->ignore_ready_future(); // ignore previous result stored in the result
                         (*resultPtr.get()) = std::move(fut);
                         K2LOG_D(log::tx, "round ended with success={}", _success);
-                        if (!_success && !deadline.isOver()) {
-                            this->_try++;
-                            this->_currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
-                            return seastar::sleep(deadline.getRemaining());
+                        K2LOG_D(log::txretry, "round {} ended with success={}", _try, _success);
+                        if (!_success) {
+                            _try++;
+                            _currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
+                            if (!deadline.isOver()) {
+                                return seastar::sleep(deadline.getRemaining());
+                            }
                         }
                         return seastar::make_ready_future<>();
                     });

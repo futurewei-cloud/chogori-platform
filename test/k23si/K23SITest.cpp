@@ -92,11 +92,8 @@ public:  // application lifespan
                 };
                 return _cpo_client.createAndWaitForCollection(Deadline<>(_createWaitTime()), std::move(request.metadata), std::move(request.rangeEnds));
             })
-            .then([](Status&& status) {
-                // response for collection create
+            .then([this](Status&& status) {
                 K2EXPECT(log::k23si, status, Statuses::S201_Created);
-            })
-            .then([this] {
                 // check to make sure the collection is assigned
                 auto request = dto::CollectionGetRequest{.name = collname};
                 return RPC().callRPC<dto::CollectionGetRequest, dto::CollectionGetResponse>
