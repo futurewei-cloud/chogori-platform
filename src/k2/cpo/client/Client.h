@@ -232,9 +232,9 @@ private:
             K2LOG_D(log::cpoclient, "Checking if all partitions are assigned");
             if (status.is2xxOK()) {
                 // Then check if all partitions are assigned
-                for (auto it = collections.find(name); it != collections.end(); ++it) {
+                if (auto it = collections.find(name); it != collections.end()) {
                     for (auto& partition : it->second->getAllPartitions()) {
-                        if (partition.astate == dto::AssignmentState::NotAssigned) {
+                        if (partition.astate != dto::AssignmentState::Assigned) {
                             K2LOG_D(log::cpoclient, "Has partition is collection that is not assigned");
                             // need to sleep before retry: _getAssignedPartition won't sleep in this case as it is succeeded
                             Duration s = std::min(deadline.getRemaining(), cpo_request_backoff());
