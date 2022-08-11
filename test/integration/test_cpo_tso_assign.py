@@ -29,8 +29,8 @@ import requests, json
 from urllib.parse import urlparse
 import shlex, subprocess
 
-### TSO_reassignment fail if after 2 second there is still no valid tso started
-TEST_TIMEOUT = 2
+### TSO_reassignment fail if after 3 second there is still no valid tso started
+TEST_TIMEOUT = 3
 TEST_RETRY_INTERVAL = 0.1
 
 parser = argparse.ArgumentParser()

@@ -41,13 +41,13 @@ CPOClient::~CPOClient() {
 }
 
 void CPOClient::_fulfillWaiters(const String& name, const Status& status) {
-    auto& waiters = requestWaiters[name];
-
-    for (auto it = waiters.begin(); it != waiters.end(); ++it) {
+    auto waiters = _requestWaiters.extract(name);
+    if (waiters.empty()) {
+        return;
+    }
+    for (auto it = waiters.mapped().begin(); it != waiters.mapped().end(); ++it) {
         it->set_value(status);
     }
-
-    requestWaiters.erase(name);
 }
 
 seastar::future<k2::Status> CPOClient::createSchema(const String& collectionName, k2::dto::Schema schema) {
