@@ -26,6 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/appbase/AppEssentials.h>
 #include <k2/appbase/Appbase.h>
 #include <k2/common/Common.h>
+#include <k2/logging/Chrono.h>
 #include <k2/logging/Log.h>
 #include <k2/common/Timer.h>
 #include <k2/cpo/client/Client.h>
@@ -135,6 +136,7 @@ public:
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
     seastar::future<CreateQueryResult> createQuery(const String& collectionName, const String& schemaName);
+    seastar::future<Duration> getTSOErrorbound();
 
     ConfigVar<String> _cpo{"cpo"};
     ConfigDuration create_collection_deadline{"create_collection_deadline", 1s};

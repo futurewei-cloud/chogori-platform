@@ -145,7 +145,7 @@ seastar::future<> CPOService::start() {
     RPC().registerRPCObserver<dto::GetTSOEndpointsRequest, dto::GetTSOEndpointsResponse>(dto::Verbs::CPO_GET_TSO_ENDPOINTS, [this] (dto::GetTSOEndpointsRequest&& ) {
         K2LOG_I(log::cposvr, "healthy TSOs: {}", _healthyTSOs);
         if (_healthyTSOs.size() > 0) {
-            return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),dto::GetTSOEndpointsResponse{_healthyTSOs});
+            return RPCResponse(Statuses::S200_OK("GetTSOEndpoints success"),dto::GetTSOEndpointsResponse{_healthyTSOs, _TSOErrorBound()});
         } else {
             return RPCResponse(Statuses::S503_Service_Unavailable("Unable to get TSO endpoints: no healthy TSO"), dto::GetTSOEndpointsResponse());
         }

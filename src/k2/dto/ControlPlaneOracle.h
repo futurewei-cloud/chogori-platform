@@ -169,10 +169,12 @@ struct GetTSOEndpointsRequest {
     K2_DEF_FMT(GetTSOEndpointsRequest);
 };
 
+// Get TSO endpoints and the CPO assigned max errorbound
 struct GetTSOEndpointsResponse {
     std::vector<String> endpoints;
-    K2_PAYLOAD_FIELDS(endpoints);
-    K2_DEF_FMT(GetTSOEndpointsResponse, endpoints);
+    Duration minTransTime;
+    K2_PAYLOAD_FIELDS(endpoints, minTransTime);
+    K2_DEF_FMT(GetTSOEndpointsResponse, endpoints, minTransTime);
 };
 
 struct GetPersistenceEndpointsRequest {
