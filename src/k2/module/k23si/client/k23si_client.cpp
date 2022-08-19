@@ -285,19 +285,16 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
 
             K2LOG_D(log::skvclient, "txn {} end request was accepted", _mtr);
             return _heartbeat_timer.stop().then([this, s=std::move(status)] () {
-                // TODO get min transaction time from TSO client
                 auto time_spent = Clock::now() - _start_time;
                 K2LOG_D(log::skvclient, "time {}, spent: {}", _mtr, time_spent);
-                return _client->getTSOErrorbound()
-                .then([time_spent, s] (auto&& minTransTime) {
-                    if (time_spent < minTransTime) {
-                        auto sleep = minTransTime - time_spent;
-                        return seastar::sleep(sleep).then([s=std::move(s)] () {
-                            return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
-                        });
-                    }
-                    return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
-                });
+                auto minTransTime = _client->getTSOErrorbound();
+                if (time_spent < minTransTime) {
+                    auto sleep = minTransTime - time_spent;
+                    return seastar::sleep(sleep).then([s=std::move(s)] () {
+                        return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
+                    });
+                }
+                return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
             });
         }).finally([this, request, reporter=std::move(reporter)] () mutable {
             delete request;
@@ -408,7 +405,7 @@ seastar::future<GetSchemaResult> K23SIClient::getSchema(const String& collection
 
 }
 
-seastar::future<Duration> K23SIClient::getTSOErrorbound() {
+Duration K23SIClient::getTSOErrorbound() {
     return this->_tsoClient.getErrorbound();
 }
 

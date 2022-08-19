@@ -263,8 +263,8 @@ seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyR
     });
 }
 
-seastar::future<Duration> TSOClient::getErrorbound() {
-    return seastar::make_ready_future<Duration>(this->_tsoErrorBound);
+Duration TSOClient::getErrorbound() {
+    return this->_tsoErrorBound;
 }
 
 } // namespace k2::tso

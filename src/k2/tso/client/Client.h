@@ -52,7 +52,7 @@ public:
     seastar::future<dto::Timestamp> getTimestamp();
 
     // get the TSO assigned errorbounds
-    seastar::future<Duration> getErrorbound();
+    Duration getErrorbound();
 
 private: // metrics
     ExponentialHistogram _latency;

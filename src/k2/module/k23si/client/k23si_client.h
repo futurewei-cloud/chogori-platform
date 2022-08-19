@@ -136,7 +136,7 @@ public:
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);
     seastar::future<CreateQueryResult> createQuery(const String& collectionName, const String& schemaName);
-    seastar::future<Duration> getTSOErrorbound();
+    Duration getTSOErrorbound();
 
     ConfigVar<String> _cpo{"cpo"};
     ConfigDuration create_collection_deadline{"create_collection_deadline", 1s};
