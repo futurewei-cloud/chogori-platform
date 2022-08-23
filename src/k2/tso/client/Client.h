@@ -51,6 +51,9 @@ public:
     // get a K2 timestamp
     seastar::future<dto::Timestamp> getTimestamp();
 
+    // get the TSO assigned errorbounds
+    Duration getErrorbound();
+
 private: // metrics
     ExponentialHistogram _latency;
     ExponentialHistogram _discoveryLatency;
@@ -82,7 +85,7 @@ private: // fields
     // Config variable for retring TSO connections
     ConfigVar<int> _maxTSORetries{"max_tso_retries", 10};
     ConfigDuration _tsoTimeout{"tso_timeout", 10ms};
-
+    Duration _tsoErrorBound{50us};
     // to tell if we've been signaled to stop
     bool _stopped{true};
 

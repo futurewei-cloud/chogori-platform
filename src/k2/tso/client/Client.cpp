@@ -65,10 +65,11 @@ seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest &req
     .then([this](auto&& response) {
         auto& [status, resp] = response;
         if (!status.is2xxOK() || resp.endpoints.size() == 0) {
-            K2LOG_E(log::tsoclient, "Get TSO endpoints failed with status {} and endpoint size {}",
-                        status, resp.endpoints.size());
+            K2LOG_E(log::tsoclient, "Get TSO endpoints failed with status {}, endpoint size {} and errorbound {}",
+                        status, resp.endpoints.size(), resp.minTransTime);
             return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
         }
+        _tsoErrorBound = resp.minTransTime;
         _tsoServerEndpoint = RPC().getTXEndpoint(resp.endpoints[0]);
         return _discoverServiceNodes();
     });
@@ -262,4 +263,8 @@ seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyR
     });
 }
 
+Duration TSOClient::getErrorbound() {
+    return this->_tsoErrorBound;
 }
+
+} // namespace k2::tso

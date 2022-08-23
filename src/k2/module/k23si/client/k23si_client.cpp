@@ -241,9 +241,18 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             K2LOG_W(log::skvclient, "Tried to commit a failed RO transaction, mtr={}", _mtr);
             return seastar::make_ready_future<EndResult>(EndResult(_failed_status));
         }
-
+        auto minTransTime = _client->getTSOErrorbound();
+        auto time_spent = Clock::now() - _start_time;
+        if (time_spent < minTransTime) {
+            auto sleep = minTransTime - time_spent;
+            return seastar::sleep(sleep).then([this, reporter = std::move(reporter), time_spent] () mutable {
+                reporter.report();
+                _client->_txnDuration.add(Clock::now() - _start_time);
+                return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
+            });
+        }
         reporter.report();
-        _client->_txnDuration.add(k2::Clock::now() - _startTime);
+        _client->_txnDuration.add(Clock::now() - _start_time);
         return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
     }
 
@@ -285,16 +294,15 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
 
             K2LOG_D(log::skvclient, "txn {} end request was accepted", _mtr);
             return _heartbeat_timer.stop().then([this, s=std::move(status)] () {
-                // TODO get min transaction time from TSO client
                 auto time_spent = Clock::now() - _start_time;
                 K2LOG_D(log::skvclient, "time {}, spent: {}", _mtr, time_spent);
-                if (time_spent < 50us) {
-                    auto sleep = 50us - time_spent;
+                auto minTransTime = _client->getTSOErrorbound();
+                if (time_spent < minTransTime) {
+                    auto sleep = minTransTime - time_spent;
                     return seastar::sleep(sleep).then([s=std::move(s)] () {
                         return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
                     });
                 }
-
                 return seastar::make_ready_future<EndResult>(EndResult(std::move(s)));
             });
         }).finally([this, request, reporter=std::move(reporter)] () mutable {
@@ -404,6 +412,10 @@ seastar::future<GetSchemaResult> K23SIClient::getSchema(const String& collection
         reporter.report();
     });
 
+}
+
+Duration K23SIClient::getTSOErrorbound() {
+    return this->_tsoClient.getErrorbound();
 }
 
 seastar::future<std::tuple<Status, std::shared_ptr<dto::Schema>>> K23SIClient::getSchemaInternal(const String& collectionName, const String& schemaName, int64_t schemaVersion, bool doCPORefresh) {
