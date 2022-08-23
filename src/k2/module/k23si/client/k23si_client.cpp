@@ -241,16 +241,18 @@ seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
             K2LOG_W(log::skvclient, "Tried to commit a failed RO transaction, mtr={}", _mtr);
             return seastar::make_ready_future<EndResult>(EndResult(_failed_status));
         }
-        auto time_spent = Clock::now() - _start_time;
         auto minTransTime = _client->getTSOErrorbound();
+        auto time_spent = Clock::now() - _start_time;
         if (time_spent < minTransTime) {
             auto sleep = minTransTime - time_spent;
-            return seastar::sleep(sleep).then([] () {
+            return seastar::sleep(sleep).then([this, reporter = std::move(reporter), time_spent] () mutable {
+                reporter.report();
+                _client->_txnDuration.add(Clock::now() - _start_time);
                 return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
             });
         }
         reporter.report();
-        _client->_txnDuration.add(time_spent);
+        _client->_txnDuration.add(Clock::now() - _start_time);
         return seastar::make_ready_future<EndResult>(EndResult(Statuses::S200_OK("default end result")));
     }
 
