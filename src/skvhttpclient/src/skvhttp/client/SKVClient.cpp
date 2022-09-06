@@ -108,13 +108,13 @@ boost::future<Response<>> TxnHandle::write(dto::SKVRecord& record, bool erase, d
     return _client->_HTTPClient.POST<dto::WriteRequest>("/api/Write", std::move(request));
 }
 
-boost::future<Response<>> TxnHandle::partialUpdate(dto::SKVRecord& record, std::vector<uint32_t> fieldsForPartialUpdate) {
+boost::future<Response<>> TxnHandle::partialUpdate(dto::SKVRecord& record, std::vector<uint32_t> fieldsForPartialUpdate, dto::ExistencePrecondition precondition) {
     dto::WriteRequest request{
         .timestamp = _id,
         .collectionName = record.collectionName,
         .schemaName = record.schema->name,
         .isDelete = false,
-        .precondition = dto::ExistencePrecondition::None,
+        .precondition = precondition,
         .value = record.storage.share(),
         .fieldsForPartialUpdate = fieldsForPartialUpdate,
     };

@@ -68,6 +68,17 @@ void verifyEqual(std::vector<dto::SKVRecord>& first, std::vector<dto::SKVRecord>
 
 dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder) {return builder;}
 
+// Get a builder by serializing args, allows specify null value
+template<typename Second, typename... Args>
+dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder, std::optional<Second> second, Args&&... args) {
+    if (second.has_value()) {
+        builder.serializeNext<Second>(std::forward<Second>(second.value()));
+    } else {
+        builder.serializeNull();
+    }
+    return serialize(builder, std::forward<Args>(args)...);
+}
+
 // Get a builder by serializing args
 template<typename Second, typename... Args>
 dto::SKVRecordBuilder& serialize(dto::SKVRecordBuilder& builder, Second&& second, Args&&... args) {
@@ -379,15 +390,44 @@ void testPartialUpdate() {
         auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 33, std::string("Test1_Update"));
         verifyEqual(readRecord, compareRecord);
     }
+    auto key1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"));
     {
-        // Write a record with no value for Data field
-        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 34);
+        // Write a record with no value for Data field, should fail
+        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32);
+        auto&& [writeStatus] = txn.write(record1).get();
+        K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), false);
+    }
+    {
+        // Write with Data = null
+        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32, std::optional<std::string>());
         auto&& [writeStatus] = txn.write(record1).get();
         K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
-        auto&& [readStatus, readRecord] = txn.read(key).get();
+        auto&& [readStatus, readRecord] = txn.read(key1).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
         verifyEqual(readRecord, record1);
-
+    }
+    {
+        // Update data field from null to new value
+        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 34, std::string("Test2_Update"));
+        std::vector<uint32_t> fields = {3}; // Update data field only
+        auto&& [writeStatus] = txn.partialUpdate(record1, fields).get();
+        K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
+        auto&& [readStatus, readRecord] = txn.read(key1).get();
+        K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
+        auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32, std::string("Test2_Update"));
+        verifyEqual(readRecord, compareRecord);
+    }
+    {
+        // Partial update with precondition test.
+        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 36, std::string("Test3_Update"));
+        std::vector<uint32_t> fields = {2}; // Update balance field only
+        // Update field only if it doesn't exist, balance should not be updated
+        auto&& [writeStatus] = txn.partialUpdate(record1, fields, dto::ExistencePrecondition::NotExists).get();
+        K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
+        auto&& [readStatus, readRecord] = txn.read(key1).get();
+        K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
+        auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32, std::string("Test2_Update"));
+        verifyEqual(readRecord, compareRecord);
     }
     auto&& [endStatus] = txn.endTxn(dto::EndAction::Commit).get();
     K2EXPECT(k2::log::httpclient, endStatus.is2xxOK(), true);

@@ -222,6 +222,9 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
             bool isPartialUpdate = request.fieldsForPartialUpdate.size() > 0;
             dto::SKVRecord k2record(request.collectionName, k2Schema);
             shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.value), true);
+            if (shdrecord.storage.serializedCursor != k2Schema->fields.size()) {
+                return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request("All fields must be specified in the record"), shd::WriteResponse{});
+            }
             try {
                 _shdRecToK2(shdrecord, k2record);
             } catch(shd::DeserializationError& err) {
