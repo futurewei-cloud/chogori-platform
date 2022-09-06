@@ -400,7 +400,7 @@ void testPartialUpdate() {
         K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
         auto&& [readStatus, readRecord] = txn.read(key).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
-        verifyEqual(readRecord, record1);
+        verifyEqual(readRecord, record1); // Not working, expected 35 getting 33
         {
             K2LOG_I(k2::log::httpclient, "Write with existence precondition not exists, shold fail with 412 code: record exists");
             auto record1_1 = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 36, std::string("Test1_Update2"));
@@ -448,7 +448,7 @@ void testPartialUpdate() {
         std::vector<uint32_t> fields = {2}; // Update balance field only
         // Update field only if it doesn't exist, balance should not be updated
         auto&& [writeStatus] = txn.partialUpdate(record1, fields, dto::ExistencePrecondition::NotExists).get();
-        K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
+        K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true); // Not working, should fail with code 412 as the record already exists
         auto&& [readStatus, readRecord] = txn.read(key1).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
         auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32, std::string("Test2_Update"));
