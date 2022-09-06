@@ -390,8 +390,32 @@ void testPartialUpdate() {
         auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 33, std::string("Test1_Update"));
         verifyEqual(readRecord, compareRecord);
     }
+    {
+        K2LOG_I(k2::log::httpclient, "Full write, should succeed");
+        // Full write updating balance and data, should succeed
+        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 35, std::string("Test1_Update1"));
+        auto key = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"));
+
+        auto&& [writeStatus] = txn.write(record1).get();
+        K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
+        auto&& [readStatus, readRecord] = txn.read(key).get();
+        K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
+        verifyEqual(readRecord, record1);
+        {
+            K2LOG_I(k2::log::httpclient, "Write with existence precondition not exists, shold fail with 412 code: record exists");
+            auto record1_1 = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 36, std::string("Test1_Update2"));
+            auto&& [writeStatus] = txn.write(record1_1, false, dto::ExistencePrecondition::NotExists).get();
+            K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(),false);
+            K2EXPECT(k2::log::httpclient, writeStatus.code, 412);
+            auto&& [readStatus, readRecord1] = txn.read(key).get();
+            K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
+            verifyEqual(readRecord1, record1);
+        }
+    }
+
     auto key1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"));
     {
+        K2LOG_I(k2::log::httpclient, "Write record with no value");
         // Write a record with no value for Data field, should fail
         auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32);
         auto&& [writeStatus] = txn.write(record1).get();
@@ -417,9 +441,10 @@ void testPartialUpdate() {
         auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32, std::string("Test2_Update"));
         verifyEqual(readRecord, compareRecord);
     }
+
     {
-        // Partial update with precondition test.
-        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 36, std::string("Test3_Update"));
+        K2LOG_I(k2::log::httpclient, "Partial update with precondition test");
+        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 39, std::string("Test3_Update"));
         std::vector<uint32_t> fields = {2}; // Update balance field only
         // Update field only if it doesn't exist, balance should not be updated
         auto&& [writeStatus] = txn.partialUpdate(record1, fields, dto::ExistencePrecondition::NotExists).get();
