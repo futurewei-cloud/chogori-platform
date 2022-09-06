@@ -148,7 +148,7 @@ public:
     boost::future<Response<dto::SKVRecord>> read(dto::SKVRecord record);
     boost::future<Response<>> write(dto::SKVRecord& record, bool erase=false,
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
-    boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<uint32_t> fieldNamesForUpdate);
+    boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<uint32_t> fieldsForPartialUpdate);
 
     boost::future<Response<dto::QueryResponse>> query(dto::QueryRequest query);
     boost::future<Response<dto::QueryRequest>> createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey, dto::expression::Expression&& filter=dto::expression::Expression{},

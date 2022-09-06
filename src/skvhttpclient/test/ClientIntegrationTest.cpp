@@ -379,6 +379,16 @@ void testPartialUpdate() {
         auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 33, std::string("Test1_Update"));
         verifyEqual(readRecord, compareRecord);
     }
+    {
+        // Write a record with no value for Data field
+        auto record1 = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 34);
+        auto&& [writeStatus] = txn.write(record1).get();
+        K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
+        auto&& [readStatus, readRecord] = txn.read(key).get();
+        K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
+        verifyEqual(readRecord, record1);
+
+    }
     auto&& [endStatus] = txn.endTxn(dto::EndAction::Commit).get();
     K2EXPECT(k2::log::httpclient, endStatus.is2xxOK(), true);
 }
