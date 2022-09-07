@@ -294,7 +294,6 @@ public:
             request = _makeWriteRequest(skv_record, erase, precondition);
         }
 
-        _client->write_ops++;
         _ongoing_ops++;
 
         return _cpo_client->partitionRequest
@@ -356,7 +355,6 @@ public:
         if (_failed) {
             return seastar::make_ready_future<PartialUpdateResult>(PartialUpdateResult(_failed_status));
         }
-        _client->write_ops++;
         _ongoing_ops++;
 
         std::unique_ptr<dto::K23SIWriteRequest> request;
