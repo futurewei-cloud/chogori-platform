@@ -189,7 +189,7 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makeWriteRequest(dto::SKVR
         .isDelete = erase,
         .designateTRH = isTRH,
         .precondition = precondition,
-        .request_id = _client->write_ops,
+        .request_id = _client->write_ops++,
         .key = key,
         .value = record.storage.share(),
         .fieldsForPartialUpdate = std::vector<uint32_t>()
@@ -213,12 +213,12 @@ std::unique_ptr<dto::K23SIWriteRequest> K2TxnHandle::_makePartialUpdateRequest(d
             false, // Partial update cannot be a delete
             isTRH,
             dto::ExistencePrecondition::Exists, // Partial update must be applied on existing record
-            _client->write_ops,
+            _client->write_ops++,
             std::move(key),
             record.storage.share(),
             fieldsForPartialUpdate
         });
-    }
+}
 
 seastar::future<EndResult> K2TxnHandle::end(bool shouldCommit) {
     k2::OperationLatencyReporter reporter(_client->_txnEndLatency);

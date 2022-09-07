@@ -214,7 +214,7 @@ private:
 public: // tests
 
 // 1. Write a record and read it back via dynamic schema method
-// 2 . Write a record twice in the same txn
+// 2. Write a record multiple times in the same txn
 seastar::future<> runScenario01() {
     K2LOG_I(log::k23si, "Scenario 01");
     K2TxnOptions options{};
@@ -277,7 +277,7 @@ seastar::future<> runScenario01() {
                 });
         });
     })
-    // Write the same key twice in same txn
+    // Write the same key multiple times in same txn
     .then([this] () {
         K2TxnOptions options{};
         options.syncFinalize = true;
@@ -316,11 +316,85 @@ seastar::future<> runScenario01() {
                     record.serializeNext<String>("rangekey");
                     record.serializeNext<String>("data1-3");
                     record.serializeNext<String>("data2-3");
+                    std::vector<uint32_t> update{3};
+
+                    return txnHandle.partialUpdate<dto::SKVRecord>(record, update);
+                })
+                .then([](auto&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this] () {
+                    return _client.getSchema(collname1, "1_schema", 1);
+                })
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(log::k23si, status.is2xxOK(), true);
+
+                    dto::SKVRecord record(collname1, schemaPtr);
+                    record.serializeNext<String>("partkey");
+                    record.serializeNext<String>("rangekey");
+
+                    return txnHandle.read<dto::SKVRecord>(std::move(record));
+                })
+                .then([this](ReadResult<dto::SKVRecord>&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
+
+                    std::optional<String> partkey = response.value.deserializeNext<String>();
+                    std::optional<String> rangekey = response.value.deserializeNext<String>();
+                    std::optional<String> data1 = response.value.deserializeNext<String>();
+                    std::optional<String> data2 = response.value.deserializeNext<String>();
+                    K2EXPECT(log::k23si, *partkey, "partkey");
+                    K2EXPECT(log::k23si, *rangekey, "rangekey");
+                    K2EXPECT(log::k23si, *data1, "data1-2");
+                    K2EXPECT(log::k23si, *data2, "data2-3");
+
+                    return seastar::make_ready_future<>();
+                })
+                .then([this] () {
+                    return _client.getSchema(collname1, "1_schema", 1);
+                })
+                .then([&txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(log::k23si, status.is2xxOK(), true);
+
+                    dto::SKVRecord record(collname1, schemaPtr);
+                    record.serializeNext<String>("partkey");
+                    record.serializeNext<String>("rangekey");
+                    record.serializeNext<String>("data1-4");
+                    record.serializeNext<String>("data2-4");
 
                     return txnHandle.write<dto::SKVRecord>(record);
                 })
                 .then([](auto&& response) {
                     K2EXPECT(log::k23si, response.status, dto::K23SIStatus::Created);
+                    return seastar::make_ready_future<>();
+                })
+                .then([this] () {
+                    return _client.getSchema(collname1, "1_schema", 1);
+                })
+                .then([this, &txnHandle] (auto&& response) {
+                    auto& [status, schemaPtr] = response;
+                    K2EXPECT(log::k23si, status.is2xxOK(), true);
+
+                    dto::SKVRecord record(collname1, schemaPtr);
+                    record.serializeNext<String>("partkey");
+                    record.serializeNext<String>("rangekey");
+
+                    return txnHandle.read<dto::SKVRecord>(std::move(record));
+                })
+                .then([this](ReadResult<dto::SKVRecord>&& response) {
+                    K2EXPECT(log::k23si, response.status, dto::K23SIStatus::OK);
+
+                    std::optional<String> partkey = response.value.deserializeNext<String>();
+                    std::optional<String> rangekey = response.value.deserializeNext<String>();
+                    std::optional<String> data1 = response.value.deserializeNext<String>();
+                    std::optional<String> data2 = response.value.deserializeNext<String>();
+                    K2EXPECT(log::k23si, *partkey, "partkey");
+                    K2EXPECT(log::k23si, *rangekey, "rangekey");
+                    K2EXPECT(log::k23si, *data1, "data1-4");
+                    K2EXPECT(log::k23si, *data2, "data2-4");
+
                     return seastar::make_ready_future<>();
                 })
                 .then([&txnHandle] () {
