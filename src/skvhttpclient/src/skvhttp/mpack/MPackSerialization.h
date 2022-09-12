@@ -305,20 +305,20 @@ private:
         return true;
     }
 
-    bool _readFromNode(Decimal128& value) {
+    bool _readFromNode(Decimal100& value) {
         // decimal is packed as a BINARY msgpack type
-        K2LOG_V(log::mpack, "reading decimal128");
+        K2LOG_V(log::mpack, "reading decimal100");
         size_t sz;
         const char* data;
 
         if (!_readData(data, sz)) {
             return false;
         }
-        if (sizeof(Decimal128::__decfloat128) != sz) {
+        if (sizeof(Decimal100::__decfloat128) != sz) {
             return false;
         }
 
-        value.__setval(*((Decimal128::__decfloat128*)data));
+        value.__setval(*((Decimal100::__decfloat128*)data));
         return true;
     }
 
@@ -492,10 +492,10 @@ public:
         Decimal64::__decfloat64 data = const_cast<Decimal64&>(value).__getval();
         mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal64::__decfloat64));
     }
-    void write(const Decimal128& value) {
-        K2LOG_V(log::mpack, "writing decimal128 type {}", value);
-        Decimal128::__decfloat128 data = const_cast<Decimal128&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal128::__decfloat128));
+    void write(const Decimal100& value) {
+        K2LOG_V(log::mpack, "writing decimal100 type {}", value);
+        Decimal100::__decfloat128 data = const_cast<Decimal100&>(value).__getval();
+        mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal100::__decfloat128));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);

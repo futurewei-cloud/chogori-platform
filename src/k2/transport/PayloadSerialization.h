@@ -338,7 +338,7 @@ public:
         _payload.write(value);
     }
     void write(const std::decimal::decimal128& value) {
-        K2LOG_V(log::tx, "writing decimal128 type {}", value);
+        K2LOG_V(log::tx, "writing decimal100 type {}", value);
         _payload.write(value);
     }
     void write(const String& value) {

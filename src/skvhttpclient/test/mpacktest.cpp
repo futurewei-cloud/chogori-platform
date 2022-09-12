@@ -101,7 +101,7 @@ struct Ex3 {
     uint64_t i;
     int64_t j;
     skv::http::Decimal64 k;
-    skv::http::Decimal128 l;
+    skv::http::Decimal100 l;
     skv::http::Binary m;
     Ex4 e4;
     K2_DEF_ENUM_IC(Action, A1, A2);

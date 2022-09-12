@@ -38,9 +38,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <decimal/decimal>
 namespace skv::http {
 using Decimal64 = std::decimal::decimal64;
-using Decimal128 = std::decimal::decimal128;
+using Decimal100 = std::decimal::decimal128;
 auto constexpr Decimal64_to_float = std::decimal::decimal64_to_float;
-auto constexpr Decimal128_to_float = std::decimal::decimal128_to_float;
+auto constexpr Decimal100_to_float = std::decimal::decimal128_to_float;
 }
 #endif
 
