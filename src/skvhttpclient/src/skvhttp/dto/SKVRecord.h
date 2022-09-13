@@ -237,6 +237,10 @@ public:
         ++_record.fieldCursor;
     }
 
+    std::shared_ptr<Schema> getSchema();
+
+    String getCollectionName();
+
     // Serializing a Null value on the next field, for optional fields or partial updates
     void serializeNull();
 

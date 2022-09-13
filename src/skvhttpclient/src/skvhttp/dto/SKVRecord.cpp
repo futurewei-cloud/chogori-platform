@@ -54,6 +54,14 @@ void SKVRecordBuilder::serializeNull() {
     ++_record.fieldCursor;
 }
 
+std::shared_ptr<Schema> SKVRecordBuilder::getSchema() {
+    return _record.schema;
+}
+
+String SKVRecordBuilder::getCollectionName() {
+    return _record.collectionName;
+}
+
 uint32_t SKVRecord::getFieldCursor() const {
     return fieldCursor;
 }
