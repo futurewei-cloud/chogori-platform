@@ -58,7 +58,7 @@ std::shared_ptr<Schema> SKVRecordBuilder::getSchema() {
     return _record.schema;
 }
 
-String SKVRecordBuilder::getCollectionName() {
+const String& SKVRecordBuilder::getCollectionName() {
     return _record.collectionName;
 }
 
