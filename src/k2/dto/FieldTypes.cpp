@@ -48,7 +48,7 @@ template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
 template <> FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
 template <> FieldType TToFieldType<bool>() { return FieldType::BOOL; }
 template <> FieldType TToFieldType<std::decimal::decimal64>() { return FieldType::DECIMAL64; }
-template <> FieldType TToFieldType<std::decimal::decimal128>() { return FieldType::DECIMAL100; }
+template <> FieldType TToFieldType<std::decimal::decimal128>() { return FieldType::DECIMALD100; }
 template <> FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }
 
 // All conversion assume ascending ordering

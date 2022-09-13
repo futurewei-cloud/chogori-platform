@@ -66,7 +66,7 @@ enum class FieldType : uint8_t {
     DOUBLE,  // Not supported as key field for now
     BOOL,
     DECIMAL64, // Provides 16 decimal digits of precision
-    DECIMAL100, // Provides 34 decimal digits of precision
+    DECIMALD100, // Provides 34 decimal digits of precision
     FIELD_TYPE, // The value refers to one of these types. Used in query filters.
     NOT_KNOWN = 254,
     NULL_LAST = 255
@@ -110,8 +110,8 @@ bool isNan(const T& field){
         }
     }
 
-    if constexpr (std::is_same_v<T, Decimal100> )  { // handle NaN decimal
-        if (std::isnan(Decimal100_to_float(field))) {
+    if constexpr (std::is_same_v<T, DecimalD100> )  { // handle NaN decimal
+        if (std::isnan(DecimalD100_to_float(field))) {
             return true;
         }
     }
@@ -156,8 +156,8 @@ auto applyTyped(const FieldT& field, Func&& applier, Args&&... args) {
         case FieldType::DECIMAL64: {
             return applier(AppliedFieldRef<Decimal64, FieldT>(field), std::forward<Args>(args)...);
         }
-        case FieldType::DECIMAL100: {
-            return applier(AppliedFieldRef<Decimal100, FieldT>(field), std::forward<Args>(args)...);
+        case FieldType::DECIMALD100: {
+            return applier(AppliedFieldRef<DecimalD100, FieldT>(field), std::forward<Args>(args)...);
         }
         case FieldType::FIELD_TYPE: {
             return applier(AppliedFieldRef<FieldType, FieldT>(field), std::forward<Args>(args)...);
@@ -191,8 +191,8 @@ namespace std {
             return os << "BOOL";
         case skv::http::dto::FieldType::DECIMAL64:
             return os << "DECIMAL64";
-        case skv::http::dto::FieldType::DECIMAL100:
-            return os << "DECIMAL100";
+        case skv::http::dto::FieldType::DECIMALD100:
+            return os << "DECIMALD100";
         case skv::http::dto::FieldType::FIELD_TYPE:
             return os << "FIELD_TYPE";
         case skv::http::dto::FieldType::NOT_KNOWN:
