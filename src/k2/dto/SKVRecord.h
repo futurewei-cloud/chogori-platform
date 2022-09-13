@@ -294,7 +294,7 @@ private:
                 std::optional<std::decimal::decimal64> value = (record).deserializeNext<std::decimal::decimal64>();   \
                 func<std::decimal::decimal64>(std::move(value), field.name, __VA_ARGS__);                             \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DECIMAL100: {                                                                    \
+            case k2::dto::FieldType::DECIMALD100: {                                                                    \
                 std::optional<std::decimal::decimal128> value = (record).deserializeNext<std::decimal::decimal128>(); \
                 func<std::decimal::decimal128>(std::move(value), field.name, __VA_ARGS__);                            \
             } break;                                                                                                  \

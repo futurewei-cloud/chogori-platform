@@ -190,7 +190,7 @@ TEST_CASE("NaN expressions"){
         k2e::makeValueLiteral<std::decimal::decimal128>(std::move(y));
         REQUIRE(false);
     }catch(k2d::NaNError &){
-        std::cout << "Expression with NaN decimal100 literal cannot be made." << std::endl;
+        std::cout << "Expression with NaN decimald100 literal cannot be made." << std::endl;
     }
 }
 
