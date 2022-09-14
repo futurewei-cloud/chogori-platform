@@ -437,7 +437,7 @@ TEST_CASE("Test11: serialize decimal NaN field") {
             {k2::dto::FieldType::STRING, "LastName", false, false},
             {k2::dto::FieldType::STRING, "FirstName", false, true},
             {k2::dto::FieldType::DOUBLE, "Balance", false, false}, 
-            {k2::dto::FieldType::DECIMAL64, "CreditLimit", false, false},
+            {k2::dto::FieldType::DECIMALD50, "CreditLimit", false, false},
     };
 
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName", "FirstName"});
@@ -491,7 +491,7 @@ TEST_CASE("Test13: serialiaze float, double and decimal fields") {
             {k2::dto::FieldType::STRING, "FirstName", false, true},
             {k2::dto::FieldType::DOUBLE, "Balance", false, false},
             {k2::dto::FieldType::FLOAT, "Salary", false, false},
-            {k2::dto::FieldType::DECIMAL64, "CreditLimit", false, false},
+            {k2::dto::FieldType::DECIMALD50, "CreditLimit", false, false},
             {k2::dto::FieldType::DECIMALD100, "CreditBalance", false, false},
     };
 

@@ -278,7 +278,7 @@ private:
     }
 
     bool _readFromNode(Duration& dur) {
-        K2LOG_V(log::mpack, "reading decimal64");
+        K2LOG_V(log::mpack, "reading decimald50");
         if (typeid(std::remove_reference_t<decltype(dur)>::rep) != typeid(long int)) {
             return false;
         }
@@ -288,20 +288,20 @@ private:
         return true;
     }
 
-    bool _readFromNode(Decimal64& value) {
+    bool _readFromNode(DecimalD50& value) {
         // decimal is packed as a BINARY msgpack type
-        K2LOG_V(log::mpack, "reading decimal64");
+        K2LOG_V(log::mpack, "reading decimald50");
         size_t sz;
         const char* data;
 
         if (!_readData(data, sz)) {
             return false;
         }
-        if (sizeof(Decimal64::__decfloat64) != sz) {
+        if (sizeof(DecimalD50::__decfloat64) != sz) {
             return false;
         }
 
-        value.__setval(*((Decimal64::__decfloat64*)data));
+        value.__setval(*((DecimalD50::__decfloat64*)data));
         return true;
     }
 
@@ -487,10 +487,10 @@ public:
         K2LOG_V(log::mpack, "writing duration type {}", dur);
         write(dur.count());  // write the tick count
     }
-    void write(const Decimal64& value) {
-        K2LOG_V(log::mpack, "writing decimal64 type {}", value);
-        Decimal64::__decfloat64 data = const_cast<Decimal64&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal64::__decfloat64));
+    void write(const DecimalD50& value) {
+        K2LOG_V(log::mpack, "writing decimald50 type {}", value);
+        DecimalD50::__decfloat64 data = const_cast<DecimalD50&>(value).__getval();
+        mpack_write_bin(&_writer, (const char*)&data, sizeof(DecimalD50::__decfloat64));
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);

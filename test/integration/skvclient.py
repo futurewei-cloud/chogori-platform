@@ -74,8 +74,8 @@ class FieldType(int, Enum):
     FLOAT:      int     = 4
     DOUBLE:     int     = 5
     BOOL:       int     = 6
-    DECIMAL64:  int     = 7
-    DECIMAL168: int     = 8
+    DECIMALD50:  int     = 7
+    DECIMALD100: int     = 8
 
     def serialize(self):
         return self.value

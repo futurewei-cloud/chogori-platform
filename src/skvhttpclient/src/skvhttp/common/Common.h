@@ -35,11 +35,12 @@ Copyright(c) 2020 Futurewei Cloud
 
 
 #ifdef _GLIBCXX_USE_DECIMAL_FLOAT
+#include <boost/multiprecision/cpp_dec_float.hpp>
 #include <decimal/decimal>
 namespace skv::http {
-using Decimal64 = std::decimal::decimal64;
+using DecimalD50 = std::decimal::decimal64;
 using DecimalD100 = std::decimal::decimal128;
-auto constexpr Decimal64_to_float = std::decimal::decimal64_to_float;
+auto constexpr DecimalD50_to_float = std::decimal::decimal64_to_float;
 auto constexpr DecimalD100_to_float = std::decimal::decimal128_to_float;
 }
 #endif
