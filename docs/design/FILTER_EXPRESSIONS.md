@@ -9,8 +9,8 @@ Operator := EQ | GT | GTE | LT | LTE | IS_NULL | IS_EXACT_TYPE | STARTS_WITH | C
 Operand := Value | Expression
 Value := Reference | Literal
 Literal := FieldType, CPPBuiltInValueOfType
-FieldType := "INT16T" | "INT32T" | "INT64_T" | "FLOAT" | "DOUBLE" | "BOOL" | "STRING" | "DECIMAL64" | "DECIMAL128" | "FIELD_TYPE" | "NULL_T"
-CPPBuiltInValueOfType := int16_t | int32_t | int64_t | float | double | bool | string | std::decimal::decimal64 | std::decimal::decimal128 | k2::dto::FieldType | null
+FieldType := "INT16T" | "INT32T" | "INT64_T" | "FLOAT" | "DOUBLE" | "BOOL" | "STRING" | "DECIMALD50" | "DECIMALD100" | "FIELD_TYPE" | "NULL_T"
+CPPBuiltInValueOfType := int16_t | int32_t | int64_t | float | double | bool | string | boost::multiprecision::cpp_dec_float_50 | boost::multiprecision::cpp_dec_float_100 | k2::dto::FieldType | null
 Reference := FieldName
 FieldName := string
 ```

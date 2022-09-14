@@ -112,8 +112,8 @@ public:
         .version = 1,
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT16T, "ID", false, false},
-                {dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
-                {dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "Tax", false, false}, // Requires 4 digits of precision
+                {dto::FieldType::DECIMALD50, "YTD", false, false}, // Requires 12 digits of precision
                 {dto::FieldType::STRING, "Name", false, false},
                 {dto::FieldType::STRING, "Street1", false, false},
                 {dto::FieldType::STRING, "Street2", false, false},
@@ -161,8 +161,8 @@ public:
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT16T, "ID", false, false},
                 {dto::FieldType::INT16T, "DID", false, false},
-                {dto::FieldType::DECIMAL64, "Tax", false, false}, // Requires 4 digits of precision
-                {dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "Tax", false, false}, // Requires 4 digits of precision
+                {dto::FieldType::DECIMALD50, "YTD", false, false}, // Requires 12 digits of precision
                 {dto::FieldType::INT64T, "NextOID", false, false},
                 {dto::FieldType::STRING, "Name", false, false},
                 {dto::FieldType::STRING, "Street1", false, false},
@@ -214,10 +214,10 @@ public:
                 {dto::FieldType::INT16T, "DID", false, false},
                 {dto::FieldType::INT32T, "CID", false, false},
                 {dto::FieldType::INT64T, "SinceDate", false, false},
-                {dto::FieldType::DECIMAL64, "CreditLimit", false, false}, //Requires 12 digits of precision
-                {dto::FieldType::DECIMAL64, "Discount", false, false}, //Requires 4 digits of precision
-                {dto::FieldType::DECIMAL64, "Balance", false, false}, //Requires 12 digits of precision
-                {dto::FieldType::DECIMAL64, "YTDPayment", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "CreditLimit", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "Discount", false, false}, //Requires 4 digits of precision
+                {dto::FieldType::DECIMALD50, "Balance", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "YTDPayment", false, false}, //Requires 12 digits of precision
                 {dto::FieldType::INT32T, "PaymentCount", false, false}, // Requires max >= 9999
                 {dto::FieldType::INT32T, "DeliveryCount", false, false}, // Requires max >= 9999
                 {dto::FieldType::STRING, "FirstName", false, false},
@@ -340,7 +340,7 @@ public:
                 {dto::FieldType::INT64T, "Date", false, false},
                 {dto::FieldType::INT32T, "CID", false, false},
                 {dto::FieldType::INT16T, "CWID", false, false},
-                {dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
+                {dto::FieldType::DECIMALD50, "Amount", false, false}, // Requires 6 digits of precision
                 {dto::FieldType::INT16T, "CDID", false, false},
                 {dto::FieldType::INT16T, "DID", false, false},
                 {dto::FieldType::STRING, "Info", false, false}},
@@ -531,7 +531,7 @@ public:
                 {dto::FieldType::INT64T, "DeliveryDate", false, false},
                 {dto::FieldType::INT32T, "ItemID", false, false},
                 {dto::FieldType::INT16T, "SupplyWID", false, false},
-                {dto::FieldType::DECIMAL64, "Amount", false, false}, // Requires 6 digits of precision
+                {dto::FieldType::DECIMALD50, "Amount", false, false}, // Requires 6 digits of precision
                 {dto::FieldType::INT16T, "Quantity", false, false},
                 {dto::FieldType::STRING, "DistInfo", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
@@ -608,7 +608,7 @@ public:
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT32T, "ID", false, false},
                 {dto::FieldType::INT32T, "ImageID", false, false},
-                {dto::FieldType::DECIMAL64, "Price", false, false}, // Requires 5 digits of precision
+                {dto::FieldType::DECIMALD50, "Price", false, false}, // Requires 5 digits of precision
                 {dto::FieldType::STRING, "Name", false, false},
                 {dto::FieldType::STRING, "Info", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
@@ -653,7 +653,7 @@ public:
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT16T, "ID", false, false},
                 {dto::FieldType::INT32T, "ItemID", false, false},
-                {dto::FieldType::DECIMAL64, "YTD", false, false}, // Requires 8 digits of precision
+                {dto::FieldType::DECIMALD50, "YTD", false, false}, // Requires 8 digits of precision
                 {dto::FieldType::INT16T, "OrderCount", false, false},
                 {dto::FieldType::INT16T, "RemoteCount", false, false},
                 {dto::FieldType::INT16T, "Quantity", false, false},

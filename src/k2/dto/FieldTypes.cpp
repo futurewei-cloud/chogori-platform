@@ -47,7 +47,7 @@ template <> FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
 template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
 template <> FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
 template <> FieldType TToFieldType<bool>() { return FieldType::BOOL; }
-template <> FieldType TToFieldType<std::decimal::decimal64>() { return FieldType::DECIMAL64; }
+template <> FieldType TToFieldType<std::decimal::decimal64>() { return FieldType::DECIMALD50; }
 template <> FieldType TToFieldType<std::decimal::decimal128>() { return FieldType::DECIMALD100; }
 template <> FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }
 

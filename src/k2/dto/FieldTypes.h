@@ -67,7 +67,7 @@ enum class FieldType : uint8_t {
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
-    DECIMAL64, // Provides 16 decimal digits of precision
+    DECIMALD50, // Provides 16 decimal digits of precision
     DECIMALD100, // Provides 100 decimal digits of precision
     FIELD_TYPE, // The value refers to one of these types. Used in query filters.
     NOT_KNOWN = 254,
@@ -148,7 +148,7 @@ bool isNan(const T& field){
             case k2::dto::FieldType::BOOL: {                        \
                 func<bool>((a), __VA_ARGS__);                       \
             } break;                                                \
-            case k2::dto::FieldType::DECIMAL64: {                   \
+            case k2::dto::FieldType::DECIMALD50: {                   \
                 func<std::decimal::decimal64>((a), __VA_ARGS__);    \
             } break;                                                \
             case k2::dto::FieldType::DECIMALD100: {                  \
@@ -183,8 +183,8 @@ namespace std {
             return os << "DOUBLE";
         case k2::dto::FieldType::BOOL:
             return os << "BOOL";
-        case k2::dto::FieldType::DECIMAL64:
-            return os << "DECIMAL64";
+        case k2::dto::FieldType::DECIMALD50:
+            return os << "DECIMALD50";
         case k2::dto::FieldType::DECIMALD100:
             return os << "DECIMALD100";
         case k2::dto::FieldType::FIELD_TYPE:

@@ -100,7 +100,7 @@ struct Ex3 {
     int32_t h;
     uint64_t i;
     int64_t j;
-    skv::http::Decimal64 k;
+    skv::http::DecimalD50 k;
     skv::http::DecimalD100 l;
     skv::http::Binary m;
     Ex4 e4;

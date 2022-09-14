@@ -182,7 +182,7 @@ TEST_CASE("NaN expressions"){
         k2e::makeValueLiteral<std::decimal::decimal64>(std::move(y));
         REQUIRE(false);
     }catch(k2d::NaNError &){
-        std::cout << "Expression with NaN decimal64 literal cannot be made." << std::endl;
+        std::cout << "Expression with NaN decimald50 literal cannot be made." << std::endl;
     }
 
     try{

@@ -334,7 +334,7 @@ public:
         _payload.write(value);
     }
     void write(const std::decimal::decimal64& value) {
-        K2LOG_V(log::tx, "writing decimal64 type {}", value);
+        K2LOG_V(log::tx, "writing decimald50 type {}", value);
         _payload.write(value);
     }
     void write(const std::decimal::decimal128& value) {
