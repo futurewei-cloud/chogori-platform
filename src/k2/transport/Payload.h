@@ -25,6 +25,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include "Log.h"
 
 #include <decimal/decimal>
+#include <boost/multiprecision/cpp_dec_float.hpp>
+#include <boost/multiprecision/float128.hpp>
+
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -220,7 +223,7 @@ public:  // Read API
 
     // read primitive decimal types
     bool read(std::decimal::decimal64& value);
-    bool read(std::decimal::decimal128& value);
+    bool read(boost::multiprecision::cpp_dec_float_100& value);
 
     // read into a payload
     bool read(Payload& other);
@@ -381,7 +384,7 @@ public: // Write API
 
     // write primitive decimal types
     void write(const std::decimal::decimal64& value);
-    void write(const std::decimal::decimal128& value);
+    void write(const boost::multiprecision::cpp_dec_float_100& value);
 
     // write another Payload
     void write(const Payload& other);
@@ -537,10 +540,10 @@ public: // getSerializedSizeOf api
         return sizeof(std::decimal::decimal64::__decfloat64);
     }
 
-    // for type: std::decimal::decimal128
+    // for type: boost::multiprecision::cpp_dec_float_100
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, std::decimal::decimal128>, size_t> getSerializedSizeOf() {
-        return sizeof(std::decimal::decimal128::__decfloat128);
+    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
+        return sizeof(boost::multiprecision::float128); // NOT SURE
     }
 
     // for type: Duration

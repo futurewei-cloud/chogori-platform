@@ -314,11 +314,11 @@ private:
         if (!_readData(data, sz)) {
             return false;
         }
-        if (sizeof(DecimalD100::__decfloat128) != sz) {
+        if (sizeof(boost::multiprecision::float128) != sz) {
             return false;
         }
 
-        value.__setval(*((DecimalD100::__decfloat128*)data));
+        value = double(*((boost::multiprecision::float128*)data)); // NOT SURE
         return true;
     }
 
@@ -494,8 +494,8 @@ public:
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        DecimalD100::__decfloat128 data = const_cast<DecimalD100&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(DecimalD100::__decfloat128));
+        boost::multiprecision::float128 data = double(const_cast<DecimalD100&>(value)); // NOT SURE
+        mpack_write_bin(&_writer, (const char*)&data, sizeof(boost::multiprecision::float128));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);

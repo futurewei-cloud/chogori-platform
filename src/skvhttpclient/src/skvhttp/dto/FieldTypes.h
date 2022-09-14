@@ -111,7 +111,7 @@ bool isNan(const T& field){
     }
 
     if constexpr (std::is_same_v<T, DecimalD100> )  { // handle NaN decimal
-        if (std::isnan(DecimalD100_to_float(field))) {
+        if (std::isnan(double(field))) { // NOT SURE
             return true;
         }
     }

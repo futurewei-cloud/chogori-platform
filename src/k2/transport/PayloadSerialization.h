@@ -204,7 +204,7 @@ public:
     bool read(std::decimal::decimal64& value) {
         return _payload.read(value);
     }
-    bool read(std::decimal::decimal128& value) {
+    bool read(boost::multiprecision::cpp_dec_float_100& value) {
         return _payload.read(value);
     }
 
@@ -337,7 +337,7 @@ public:
         K2LOG_V(log::tx, "writing decimald50 type {}", value);
         _payload.write(value);
     }
-    void write(const std::decimal::decimal128& value) {
+    void write(const boost::multiprecision::cpp_dec_float_100& value) {
         K2LOG_V(log::tx, "writing decimald100 type {}", value);
         _payload.write(value);
     }

@@ -202,11 +202,11 @@ bool Payload::read(std::decimal::decimal64& value) {
     return true;
 }
 
-bool Payload::read(std::decimal::decimal128& value) {
-    std::decimal::decimal128::__decfloat128 data;
+bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
+    boost::multiprecision::float128 data;
     bool success = read((void*)&data, sizeof(data));
     if (!success) return false;
-    value.__setval(data);
+    value = double(data); // NOT SURE
     return true;
 }
 
@@ -311,8 +311,8 @@ void Payload::write(const std::decimal::decimal64& value) {
     write((const void*)&data, sizeof(data));
 }
 
-void Payload::write(const std::decimal::decimal128& value) {
-    std::decimal::decimal128::__decfloat128 data = const_cast<std::decimal::decimal128&>(value).__getval();
+void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
+    boost::multiprecision::float128 data = double(value); // NOT SURE
     write((const void*)&data, sizeof(data));
 }
 

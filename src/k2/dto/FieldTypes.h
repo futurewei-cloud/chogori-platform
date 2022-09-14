@@ -26,6 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstdint>
 #include <cstring>
 #include <decimal/decimal>
+#include <boost/multiprecision/cpp_dec_float.hpp>
 
 #include <k2/logging/Log.h>
 #include <k2/common/Common.h>
@@ -112,8 +113,8 @@ bool isNan(const T& field){
         }
     }
 
-    if constexpr (std::is_same_v<T, std::decimal::decimal128> )  { // handle NaN decimal
-        if (std::isnan(std::decimal::decimal128_to_float(field))) {
+    if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_100> )  { // handle NaN decimal
+        if (std::isnan(double(field))) { // NOT SURE
             return true;
         }
     }
@@ -152,7 +153,7 @@ bool isNan(const T& field){
                 func<std::decimal::decimal64>((a), __VA_ARGS__);    \
             } break;                                                \
             case k2::dto::FieldType::DECIMALD100: {                  \
-                func<std::decimal::decimal128>((a), __VA_ARGS__);   \
+                func<boost::multiprecision::cpp_dec_float_100>((a), __VA_ARGS__);   \
             } break;                                                \
             case k2::dto::FieldType::FIELD_TYPE: {                  \
                 func<k2::dto::FieldType>((a), __VA_ARGS__);         \
