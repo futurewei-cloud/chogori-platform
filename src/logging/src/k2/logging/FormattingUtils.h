@@ -157,13 +157,15 @@ constexpr auto type_name() {
 // Provide formatting for decimals
 #ifdef _GLIBCXX_USE_DECIMAL_FLOAT
 #include <decimal/decimal>
+#include <boost/multiprecision/cpp_dec_float.hpp>
+#include <boost/multiprecision/float128.hpp>
 namespace std {
 inline ostream& operator<<(ostream& os, const decimal::decimal64& d) {
     decimal::decimal64::__decfloat64 data = const_cast<decimal::decimal64&>(d).__getval();
     return os << (double)data;
 }
-inline ostream& operator<<(ostream& os, const decimal::decimal128& d) {
-    decimal::decimal128::__decfloat128 data = const_cast<decimal::decimal128&>(d).__getval();
+inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_100& d) {
+    boost::multiprecision::float128 data = double (const_cast<boost::multiprecision::cpp_dec_float_100&>(d)); // NOT SURE
     return os << (double)data;
 }
 }
