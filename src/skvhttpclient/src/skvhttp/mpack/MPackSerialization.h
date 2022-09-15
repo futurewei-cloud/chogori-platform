@@ -297,11 +297,11 @@ private:
         if (!_readData(data, sz)) {
             return false;
         }
-        if (sizeof(DecimalD50::__decfloat64) != sz) {
+        if (sizeof(DecimalD50) != sz) {
             return false;
         }
 
-        value.__setval(*((DecimalD50::__decfloat64*)data));
+        value = *((DecimalD50*)data);
         return true;
     }
 
@@ -314,11 +314,11 @@ private:
         if (!_readData(data, sz)) {
             return false;
         }
-        if (sizeof(boost::multiprecision::float128) != sz) {
+        if (sizeof(DecimalD100) != sz) {
             return false;
         }
 
-        value = double(*((boost::multiprecision::float128*)data)); // NOT SURE
+        value = *((DecimalD100*)data); // NOT SURE
         return true;
     }
 
@@ -489,13 +489,13 @@ public:
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        DecimalD50::__decfloat64 data = const_cast<DecimalD50&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(DecimalD50::__decfloat64));
+        DecimalD50 data = value; // NOT SURE
+        mpack_write_bin(&_writer, (const char*)&data, sizeof(DecimalD50));
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        boost::multiprecision::float128 data = double(const_cast<DecimalD100&>(value)); // NOT SURE
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(boost::multiprecision::float128));
+        DecimalD100 data = value; // NOT SURE
+        mpack_write_bin(&_writer, (const char*)&data, sizeof(DecimalD100));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);

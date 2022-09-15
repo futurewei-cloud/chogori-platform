@@ -322,7 +322,7 @@ private:
     int16_t _w_id;
     int16_t _c_w_id;
     int32_t _c_id;
-    std::decimal::decimal64 _amount;
+    boost::multiprecision::cpp_dec_float_50 _amount;
     int16_t _d_id;
     int16_t _c_d_id;
     k2::String _w_name;
@@ -517,10 +517,10 @@ private:
     std::vector<OrderLine> _lines;
     // The below variables are needed to "display" the order total amount,
     // but are not needed for any DB operations
-    std::decimal::decimal64 _w_tax;
-    std::decimal::decimal64 _d_tax;
-    std::decimal::decimal64 _c_discount;
-    std::decimal::decimal64 _total_amount = 0;
+    boost::multiprecision::cpp_dec_float_50 _w_tax;
+    boost::multiprecision::cpp_dec_float_50 _d_tax;
+    boost::multiprecision::cpp_dec_float_50 _c_discount;
+    boost::multiprecision::cpp_dec_float_50 _total_amount = 0;
 };
 
 class OrderStatusT : public TPCCTxn
@@ -785,7 +785,7 @@ private:
                             std::optional<int64_t> delDateOpt = rec.deserializeField<int64_t>("DeliveryDate");
                             std::optional<int32_t> itemIDOpt = rec.deserializeField<int32_t>("ItemID");
                             std::optional<int16_t> supplyWIDOpt = rec.deserializeField<int16_t>("SupplyWID");
-                            std::optional<std::decimal::decimal64> amountOpt = rec.deserializeField<std::decimal::decimal64>("Amount");
+                            std::optional<boost::multiprecision::cpp_dec_float_50> amountOpt = rec.deserializeField<boost::multiprecision::cpp_dec_float_50>("Amount");
                             std::optional<int16_t> quantityOpt = rec.deserializeField<int16_t>("Quantity");
 
                             _out_ol_delivery_date.push_back(*delDateOpt);
@@ -823,7 +823,7 @@ private:
 private:
     // output data that Order-Status-Transaction wanna get
     // customer info
-    std::decimal::decimal64 _out_c_balance;
+    boost::multiprecision::cpp_dec_float_50 _out_c_balance;
     k2::String _out_c_first_name;
     k2::String _out_c_middle_name;
     k2::String _out_c_last_name;
@@ -835,7 +835,7 @@ private:
     std::vector<int64_t> _out_ol_delivery_date;
     std::vector<int32_t> _out_ol_item_id;
     std::vector<int16_t> _out_ol_supply_wid;
-    std::vector<std::decimal::decimal64> _out_ol_amount;
+    std::vector<boost::multiprecision::cpp_dec_float_50> _out_ol_amount;
     std::vector<int16_t> _out_ol_quantity;
 };
 
@@ -1126,7 +1126,7 @@ private:
                 .then([this, &result_set, &count, idx] () {
                     for (std::vector<dto::SKVRecord>& set : result_set) {
                         for (dto::SKVRecord& rec : set) {
-                            std::optional<std::decimal::decimal64> amountOpt = rec.deserializeField<std::decimal::decimal64>("Amount");
+                            std::optional<boost::multiprecision::cpp_dec_float_50> amountOpt = rec.deserializeField<boost::multiprecision::cpp_dec_float_50>("Amount");
                             _OL_SUM_AMOUNT[idx] += *amountOpt;
                         }
                     }
@@ -1185,7 +1185,7 @@ private:
                     }
 
                     dto::SKVRecord& rec = response.records[0];
-                    std::optional<std::decimal::decimal64> balanceOpt = rec.deserializeField<std::decimal::decimal64>("Balance");
+                    std::optional<boost::multiprecision::cpp_dec_float_50> balanceOpt = rec.deserializeField<boost::multiprecision::cpp_dec_float_50>("Balance");
                     std::optional<int32_t> deliveryCountOpt = rec.deserializeField<int32_t>("DeliveryCount");
 
                     Customer updateCustomer(_w_id, _d_id[idx], _O_C_ID[idx]);
@@ -1219,7 +1219,7 @@ private:
     // output data that DeliveryT wanna get
     std::vector<int64_t> _NO_O_ID = std::vector<int64_t>(10, -1); // NEW-ORDER table info: order ID
     std::vector<int32_t> _O_C_ID = std::vector<int32_t>(10, -1); // ORDER table info: customer ID
-    std::vector<std::decimal::decimal64> _OL_SUM_AMOUNT = std::vector<std::decimal::decimal64>(10, -1); // ORDER-LINE table info: sum of all amount
+    std::vector<boost::multiprecision::cpp_dec_float_50> _OL_SUM_AMOUNT = std::vector<boost::multiprecision::cpp_dec_float_50>(10, -1); // ORDER-LINE table info: sum of all amount
 
     // Save the next expected new order id to avoid scans over deleted records
     static inline int64_t _saved_noid = 0;

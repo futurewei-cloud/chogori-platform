@@ -160,13 +160,13 @@ constexpr auto type_name() {
 #include <boost/multiprecision/cpp_dec_float.hpp>
 #include <boost/multiprecision/float128.hpp>
 namespace std {
-inline ostream& operator<<(ostream& os, const decimal::decimal64& d) {
-    decimal::decimal64::__decfloat64 data = const_cast<decimal::decimal64&>(d).__getval();
-    return os << (double)data;
+inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_50& d) {
+    boost::multiprecision::cpp_dec_float_50 data = d; // NOT SURE
+    return os << data.backend().extract_double();
 }
 inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_100& d) {
-    boost::multiprecision::float128 data = double (const_cast<boost::multiprecision::cpp_dec_float_100&>(d)); // NOT SURE
-    return os << (double)data;
+    boost::multiprecision::cpp_dec_float_100 data = d; // NOT SURE
+    return os << data.backend().extract_double();
 }
 }
 #endif

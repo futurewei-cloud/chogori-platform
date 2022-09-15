@@ -39,9 +39,9 @@ Copyright(c) 2020 Futurewei Cloud
 #include <boost/multiprecision/float128.hpp>
 #include <decimal/decimal>
 namespace skv::http {
-using DecimalD50 = std::decimal::decimal64;
+using DecimalD50 = boost::multiprecision::cpp_dec_float_50;
 using DecimalD100 = boost::multiprecision::cpp_dec_float_100;
-auto constexpr DecimalD50_to_float = std::decimal::decimal64_to_float;
+auto constexpr DecimalD50_to_float = std::decimal::decimal64_to_float; // NOT SURE
 auto constexpr DecimalD100_to_float = std::decimal::decimal128_to_float; // NOT SURE
 }
 #endif

@@ -26,6 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <decimal/decimal>
 #include <string>
 
+#include <boost/multiprecision/cpp_dec_float.hpp>
+
 #include <k2/common/Common.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/Payload.h>
@@ -138,8 +140,8 @@ public:
     Warehouse() = default;
 
     std::optional<int16_t> WarehouseID;
-    std::optional<std::decimal::decimal64> Tax;
-    std::optional<std::decimal::decimal64> YTD;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Tax;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTD;
     std::optional<String> Name;
     Address address;
 
@@ -189,8 +191,8 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int16_t> DistrictID;
-    std::optional<std::decimal::decimal64> Tax;
-    std::optional<std::decimal::decimal64> YTD;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Tax;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTD;
     std::optional<int64_t> NextOrderID;
     std::optional<String> Name;
     Address address;
@@ -275,10 +277,10 @@ public:
     std::optional<int16_t> DistrictID;
     std::optional<int32_t> CustomerID;
     std::optional<int64_t> SinceDate;
-    std::optional<std::decimal::decimal64> CreditLimit;
-    std::optional<std::decimal::decimal64> Discount;
-    std::optional<std::decimal::decimal64> Balance;
-    std::optional<std::decimal::decimal64> YTDPayment;
+    std::optional<boost::multiprecision::cpp_dec_float_50> CreditLimit;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Discount;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Balance;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTDPayment;
     std::optional<int32_t> PaymentCount;
     std::optional<int32_t> DeliveryCount;
     std::optional<String> FirstName;
@@ -361,7 +363,7 @@ public:
 
     // For payment transaction
     History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id,
-                std::decimal::decimal64 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
+                boost::multiprecision::cpp_dec_float_50 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
         Date = getDate();
         CustomerID = c_id;
         CustomerWarehouseID = c_w_id;
@@ -383,7 +385,7 @@ public:
     std::optional<int64_t> Date;
     std::optional<int32_t> CustomerID;
     std::optional<int16_t> CustomerWarehouseID;
-    std::optional<std::decimal::decimal64> Amount;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Amount;
     std::optional<int16_t> CustomerDistrictID;
     std::optional<int16_t> DistrictID;
     std::optional<String> Info;
@@ -589,7 +591,7 @@ public:
     std::optional<int64_t> DeliveryDate;
     std::optional<int32_t> ItemID;
     std::optional<int16_t> SupplyWarehouseID;
-    std::optional<std::decimal::decimal64> Amount;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Amount;
     std::optional<int16_t> Quantity;
     std::optional<String> DistInfo;
 
@@ -636,7 +638,7 @@ public:
 
     std::optional<int32_t> ItemID;
     std::optional<int32_t> ImageID;
-    std::optional<std::decimal::decimal64> Price;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Price;
     std::optional<String> Name;
     std::optional<String> Info;
 
@@ -730,7 +732,7 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int32_t> ItemID;
-    std::optional<std::decimal::decimal64> YTD;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTD;
     std::optional<int16_t> OrderCount;
     std::optional<int16_t> RemoteCount;
     std::optional<int16_t> Quantity;
