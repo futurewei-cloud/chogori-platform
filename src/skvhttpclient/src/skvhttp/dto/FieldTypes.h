@@ -65,8 +65,8 @@ enum class FieldType : uint8_t {
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
-    DECIMALD50, // Provides 16 decimal digits of precision
-    DECIMALD100, // Provides 34 decimal digits of precision
+    DECIMALD50, // Provides 50 decimal digits of precision
+    DECIMALD100, // Provides 100 decimal digits of precision
     FIELD_TYPE, // The value refers to one of these types. Used in query filters.
     NOT_KNOWN = 254,
     NULL_LAST = 255
@@ -105,13 +105,13 @@ bool isNan(const T& field){
     }
 
     if constexpr (std::is_same_v<T, DecimalD50>)  { // handle NaN decimal
-        if (std::isnan(DecimalD50_to_float(field))) {
+        if (std::isnan(field.backend().extract_double())) { // NOT SURE
             return true;
         }
     }
 
     if constexpr (std::is_same_v<T, DecimalD100> )  { // handle NaN decimal
-        if (std::isnan(double(field))) { // NOT SURE
+        if (std::isnan(field.backend().extract_double())) { // NOT SURE
             return true;
         }
     }

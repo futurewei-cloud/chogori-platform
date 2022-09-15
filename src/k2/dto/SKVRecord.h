@@ -291,8 +291,8 @@ private:
                 func<bool>(std::move(value), field.name, __VA_ARGS__);                                                \
             } break;                                                                                                  \
             case k2::dto::FieldType::DECIMALD50: {                                                                     \
-                std::optional<std::decimal::decimal64> value = (record).deserializeNext<std::decimal::decimal64>();   \
-                func<std::decimal::decimal64>(std::move(value), field.name, __VA_ARGS__);                             \
+                std::optional<boost::multiprecision::cpp_dec_float_50> value = (record).deserializeNext<boost::multiprecision::cpp_dec_float_50>();   \
+                func<boost::multiprecision::cpp_dec_float_50>(std::move(value), field.name, __VA_ARGS__);                             \
             } break;                                                                                                  \
             case k2::dto::FieldType::DECIMALD100: {                                                                    \
                 std::optional<boost::multiprecision::cpp_dec_float_100> value = (record).deserializeNext<boost::multiprecision::cpp_dec_float_100>(); \

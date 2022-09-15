@@ -222,7 +222,7 @@ public:  // Read API
     bool read(String& value);
 
     // read primitive decimal types
-    bool read(std::decimal::decimal64& value);
+    bool read(boost::multiprecision::cpp_dec_float_50& value);
     bool read(boost::multiprecision::cpp_dec_float_100& value);
 
     // read into a payload
@@ -383,7 +383,7 @@ public: // Write API
     void write(const String& value);
 
     // write primitive decimal types
-    void write(const std::decimal::decimal64& value);
+    void write(const boost::multiprecision::cpp_dec_float_50& value);
     void write(const boost::multiprecision::cpp_dec_float_100& value);
 
     // write another Payload
@@ -534,16 +534,16 @@ public: // getSerializedSizeOf api
         return size + sizeof(size);
     }
 
-    // for type: std::decimal::decimal64
+    // for type: boost::multiprecision::cpp_dec_float_50
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, std::decimal::decimal64>, size_t> getSerializedSizeOf() {
-        return sizeof(std::decimal::decimal64::__decfloat64);
+    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
+        return sizeof(boost::multiprecision::cpp_dec_float_50); // NOT SURE
     }
 
     // for type: boost::multiprecision::cpp_dec_float_100
     template <typename T>
     std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
-        return sizeof(boost::multiprecision::float128); // NOT SURE
+        return sizeof(boost::multiprecision::cpp_dec_float_100); // NOT SURE
     }
 
     // for type: Duration

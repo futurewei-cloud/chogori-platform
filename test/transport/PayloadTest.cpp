@@ -373,7 +373,7 @@ SCENARIO("test getSerializedSizeOf method") {
     Payload src(Payload::DefaultAllocator(32));
     char a = 'a';
     String b = "test getSerializedSizeOf method";
-    std::decimal::decimal64 c(323.435);
+    boost::multiprecision::cpp_dec_float_50 c(323.435);
     std::set<int16_t> d{
         1, 2, 3, 4, 5
     };
@@ -418,8 +418,8 @@ SCENARIO("test getSerializedSizeOf method") {
     src.skip<char>();
     REQUIRE(src.getSerializedSizeOf<String>() == sizeof(uint32_t) + b.size() + 1);
     src.skip<String>();
-    REQUIRE(src.getSerializedSizeOf<std::decimal::decimal64>() == sizeof(std::decimal::decimal64::__decfloat64));
-    src.skip<std::decimal::decimal64>();
+    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_50>() == sizeof(boost::multiprecision::float128)); // NOT SURE
+    src.skip<boost::multiprecision::cpp_dec_float_50>();
     REQUIRE(src.getSerializedSizeOf<std::set<int16_t>>() == sizeof(uint32_t) + d.size() * sizeof(int16_t));
     src.skip<std::set<int16_t>>();
     REQUIRE(src.getSerializedSizeOf<std::map<int16_t, String>>() == sizeof(uint32_t) + 2 + 9 + 2 + 24 + 2 + 11);

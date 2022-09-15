@@ -68,7 +68,7 @@ enum class FieldType : uint8_t {
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
-    DECIMALD50, // Provides 16 decimal digits of precision
+    DECIMALD50, // Provides 50 decimal digits of precision
     DECIMALD100, // Provides 100 decimal digits of precision
     FIELD_TYPE, // The value refers to one of these types. Used in query filters.
     NOT_KNOWN = 254,
@@ -107,14 +107,14 @@ bool isNan(const T& field){
         }
     }
 
-    if constexpr (std::is_same_v<T, std::decimal::decimal64>)  { // handle NaN decimal
-        if (std::isnan(std::decimal::decimal64_to_float(field))) {
+    if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>)  { // handle NaN decimal
+        if (std::isnan(field.backend().extract_double())) {
             return true;
         }
     }
 
     if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_100> )  { // handle NaN decimal
-        if (std::isnan(double(field))) { // NOT SURE
+        if (std::isnan(field.backend().extract_double())) { // NOT SURE
             return true;
         }
     }
@@ -150,7 +150,7 @@ bool isNan(const T& field){
                 func<bool>((a), __VA_ARGS__);                       \
             } break;                                                \
             case k2::dto::FieldType::DECIMALD50: {                   \
-                func<std::decimal::decimal64>((a), __VA_ARGS__);    \
+                func<boost::multiprecision::cpp_dec_float_50>((a), __VA_ARGS__);    \
             } break;                                                \
             case k2::dto::FieldType::DECIMALD100: {                  \
                 func<boost::multiprecision::cpp_dec_float_100>((a), __VA_ARGS__);   \
