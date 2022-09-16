@@ -161,7 +161,7 @@ class Query:
         self.cname = cname
         self.sname = sname
         self.query_id = query_id
-        self.paginationKey = ""
+        self.paginationKey = b""
         self.paginationExclusiveKey = False
 
 class Txn:
