@@ -49,6 +49,11 @@ public:
     // memory of the payloads will be allocated in the context of the current thread.
     void copyPayloads() { request.filterExpression.copyPayloads(); }
 
+    // The native K23SI client will handle retries and pagination automatically through the query call,
+    // but for use cases such as the skvhttp client, we might need to manually "rewind" the query.
+    void resetPaginationToken(dto::Key paginationKey, bool exclusiveKey);
+    std::tuple<dto::Key, bool> getPaginationToken();
+
     // The user must specify the inclusive start and exclusive end keys for the range scan, but the client
     // still needs to encode these keys so we use SKVRecords. The SKVRecords will be created with an
     // appropriate schema by the client createQuery function. The user is then expected to serialize the

@@ -153,16 +153,33 @@ struct CreateQueryResponse {
     K2_SERIALIZABLE_FMT(CreateQueryResponse, queryId);
 };
 
+struct DestroyQueryRequest {
+    Timestamp timestamp; // identify the issuing transaction
+    uint64_t queryId{0};
+
+    K2_SERIALIZABLE_FMT(DestroyQueryRequest, timestamp, queryId);
+};
+
+struct DestroyQueryResponse {
+    K2_SERIALIZABLE_FMT(DestroyQueryResponse);
+};
+
 struct QueryRequest {
     Timestamp timestamp; // identify the issuing transaction
     uint64_t queryId{0};
-    K2_SERIALIZABLE_FMT(QueryRequest, timestamp, queryId);
+    std::string paginationKey;
+    bool paginationExclusiveKey{false};
+
+    K2_SERIALIZABLE_FMT(QueryRequest, timestamp, queryId, paginationKey, paginationExclusiveKey);
 };
 
 struct QueryResponse {
-    bool done{false};
     std::vector<SKVRecord::Storage> records;
-    K2_SERIALIZABLE_FMT(QueryResponse, done, records);
+    std::string paginationKey;
+    bool paginationExclusiveKey{false};
+    bool done{false};
+
+    K2_SERIALIZABLE_FMT(QueryResponse, records, paginationKey, paginationExclusiveKey, done);
 };
 
 struct TxnEndRequest {

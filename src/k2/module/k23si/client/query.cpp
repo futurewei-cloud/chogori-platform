@@ -91,6 +91,20 @@ bool Query::isDone() {
     return done;
 }
 
+void Query::resetPaginationToken(dto::Key paginationKey, bool exclusiveKey) {
+    // If query is not progress, then the user could have never gotten a valid pagination token to use here
+    if (inprogress) {
+        done = false;
+        request.key = std::move(paginationKey);
+        request.exclusiveKey = exclusiveKey;
+    }
+}
+
+std::tuple<dto::Key, bool> Query::getPaginationToken() {
+    bool exclusive = request.exclusiveKey;
+    return std::make_tuple<dto::Key, bool>(dto::Key(request.key), std::move(exclusive));
+}
+
 seastar::future<QueryResult> QueryResult::makeQueryResult(K23SIClient* client, const Query& query, Status status, dto::K23SIQueryResponse&& response) {
     std::vector<seastar::future<>> futures;
     QueryResult* result = new QueryResult(std::move(status));

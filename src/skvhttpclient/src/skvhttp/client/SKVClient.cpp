@@ -151,10 +151,10 @@ boost::future<Response<dto::SKVRecord>> TxnHandle::read(dto::SKVRecord record) {
       .unwrap();
 }
 
-boost::future<Response<dto::QueryRequest>> TxnHandle::createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey, dto::expression::Expression&& filter,
+boost::future<Response<std::shared_ptr<dto::QueryRequest>>> TxnHandle::createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey, dto::expression::Expression&& filter,
                                                                   std::vector<String>&& projection, int32_t recordLimit, bool reverseDirection, bool includeVersionMismatch) {
     if (startKey.collectionName != endKey.collectionName || startKey.schema->name != endKey.schema->name) {
-        return MakeResponse(Statuses::S400_Bad_Request("Start and end keys must have same collection and schema"), dto::QueryRequest{});
+        return MakeResponse(Statuses::S400_Bad_Request("Start and end keys must have same collection and schema"), std::make_shared<dto::QueryRequest>(dto::QueryRequest{}));
     }
 
     dto::CreateQueryRequest request {
@@ -173,12 +173,30 @@ boost::future<Response<dto::QueryRequest>> TxnHandle::createQuery(dto::SKVRecord
     return _client->_HTTPClient.POST<dto::CreateQueryRequest, dto::CreateQueryResponse>("/api/CreateQuery", std::move(request))
         .then([this] (auto&& futResp) {
           auto&& [status, resp] = futResp.get();
-          return Response<dto::QueryRequest>(std::move(status), dto::QueryRequest{.timestamp=_id, .queryId=resp.queryId});
+          // Pagination token will be ignored for the first use of a query, so it is safe to put in placeholder values here
+          return Response<std::shared_ptr<dto::QueryRequest>>(std::move(status), std::make_shared<dto::QueryRequest>(dto::QueryRequest{.timestamp=_id, .queryId=resp.queryId,
+                                                                                                    .paginationKey="", .paginationExclusiveKey=false}));
         });
 }
 
-boost::future<Response<dto::QueryResponse>> TxnHandle::query(dto::QueryRequest query) {
-    return _client->_HTTPClient.POST<dto::QueryRequest, dto::QueryResponse>("/api/Query", std::move(query));
+boost::future<Response<dto::QueryResponse>> TxnHandle::query(std::shared_ptr<dto::QueryRequest> query) {
+    dto::QueryRequest request = *query; // POST needs a rvalue ref
+    return _client->_HTTPClient.POST<dto::QueryRequest, dto::QueryResponse>("/api/Query", std::move(request))
+        .then([this, query] (auto&& futResp) {
+            auto&& [status, resp] = futResp.get();
+            if (!status.is2xxOK()) {
+                return Response<dto::QueryResponse>(std::move(status), std::move(resp));
+            }
+
+            query->paginationKey = std::move(resp.paginationKey);
+            query->paginationExclusiveKey = resp.paginationExclusiveKey;
+
+            return Response<dto::QueryResponse>(std::move(status), std::move(resp));
+        });
+}
+
+boost::future<Response<>> TxnHandle::destroyQuery(std::shared_ptr<dto::QueryRequest> query) {
+    return _client->_HTTPClient.POST<dto::DestroyQueryRequest>("/api/DestroyQuery", dto::DestroyQueryRequest{.timestamp=query->timestamp, .queryId=query->queryId});
 }
 
 boost::future<Response<>> TxnHandle::endTxn(dto::EndAction endAction) {
