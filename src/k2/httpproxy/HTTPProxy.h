@@ -52,10 +52,6 @@ public:  // application lifespan
     seastar::future<> start();
 
 private:
-/*
-    TODO: remaining ops
-    seastar::future<HTTPPayload> _handleGetSchema(HTTPPayload&& request);
-*/
     seastar::future<std::tuple<sh::Status, sh::dto::CollectionCreateResponse>>
         _handleCreateCollection(sh::dto::CollectionCreateRequest&& request);
 
@@ -77,7 +73,6 @@ private:
     seastar::future<std::tuple<sh::Status, shd::WriteResponse>>
         _handlePartialUpdate(K2TxnHandle& txn, shd::WriteRequest&& request, dto::SKVRecord&& k2record);
 
-
     seastar::future<std::tuple<sh::Status, sh::dto::ReadResponse>>
         _handleRead(sh::dto::ReadRequest&& request);
 
@@ -87,14 +82,18 @@ private:
     seastar::future<std::tuple<sh::Status, sh::dto::TxnEndResponse>>
         _handleTxnEnd(sh::dto::TxnEndRequest&& request);
 
-    void shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record);
     seastar::future<std::tuple<sh::Status, sh::dto::CreateQueryResponse>>
         _handleCreateQuery(sh::dto::CreateQueryRequest&& request);
 
+    seastar::future<std::tuple<sh::Status, sh::dto::DestroyQueryResponse>>
+        _handleDestroyQuery(sh::dto::DestroyQueryRequest&& request);
 
     seastar::future<std::tuple<k2::Status, std::shared_ptr<k2::dto::Schema>, std::shared_ptr<shd::Schema>>>
         _getSchemas(sh::String cname, sh::String sname, int64_t sversion);
-    std::shared_ptr<shd::Schema> getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema);
+
+    std::shared_ptr<shd::Schema> _getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema);
+
+    void _shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record);
 
     void _registerAPI();
     void _registerMetrics();

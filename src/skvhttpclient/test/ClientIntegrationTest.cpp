@@ -209,7 +209,7 @@ void testRead() {
   K2EXPECT(k2::log::httpclient, endStatus.is2xxOK(), true);
 }
 
-std::vector<dto::SKVRecord> queryAll(TxnHandle& txn, const std::string& collectionName, std::shared_ptr<dto::Schema> schemaPtr, dto::QueryRequest& query) {
+std::vector<dto::SKVRecord> queryAll(TxnHandle& txn, const std::string& collectionName, std::shared_ptr<dto::Schema> schemaPtr, std::shared_ptr<dto::QueryRequest> query) {
     bool done = false;
     std::vector<dto::SKVRecord> records;
     while (!done) {
@@ -260,6 +260,9 @@ void testQuery() {
     K2EXPECT(k2::log::httpclient, b, "B");
     int32_t c = record.deserializeNext<int32_t>().value();
     K2EXPECT(k2::log::httpclient, c, 33);
+
+    auto&& [destroyStatus] = txn.destroyQuery(query).get();
+    K2EXPECT(k2::log::httpclient, destroyStatus.is2xxOK(), true);
 
     auto&& [endStatus] = txn.endTxn(dto::EndAction::Commit).get();
     K2EXPECT(k2::log::httpclient, endStatus.is2xxOK(), true);

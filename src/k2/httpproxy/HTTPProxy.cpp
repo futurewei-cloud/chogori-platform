@@ -288,10 +288,22 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
     }
     updateExpiry(iter->second);
     auto queryIter = iter->second.queries.find(request.queryId);
-    if (queryIter ==iter->second.queries.end()) {
+    if (queryIter == iter->second.queries.end()) {
         K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
         return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
     }
+
+    k2::dto::Key paginationKey{};
+    // Wrap the string in a non-owning Binary, so we can read into it without
+    // an extra copy. We are using the payload's serialization mechanism without giving the
+    // payload ownership of the data.
+    k2::Binary binary(request.paginationKey.data(), request.paginationKey.size(), seastar::deleter());
+    k2::Payload payload{};
+    payload.appendBinary(std::move(binary));
+    payload.seek(0);
+    payload.read(paginationKey);
+
+    queryIter->second.resetPaginationToken(std::move(paginationKey), request.paginationExclusiveKey);
 
     return iter->second.handle.query(queryIter->second)
     .then([this, request=std::move(request)](QueryResult&& result) {
@@ -303,7 +315,7 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
         for (auto& k2record: result.records) {
             sh::String collectionName(k2record.collectionName);
             // k2 schema is already populated by query api, get corresponding shd schema from cache
-            auto shSChema = getSchemaFromCache(collectionName, k2record.schema);
+            auto shSChema = _getSchemaFromCache(collectionName, k2record.schema);
             auto rec = _buildSHDRecord(k2record, collectionName, shSChema);
             records.push_back(std::move(rec.getStorage()));
         }
@@ -311,20 +323,42 @@ HTTPProxy::_handleQuery(shd::QueryRequest&& request) {
             return MakeHTTPResponse<shd::QueryResponse>(Txn_S410_Gone, shd::QueryResponse{});
         } else {
             updateExpiry(iter->second);
-            if (auto queryIter = iter->second.queries.find(request.queryId); queryIter ==iter->second.queries.end()) {
+            if (auto queryIter = iter->second.queries.find(request.queryId); queryIter == iter->second.queries.end()) {
                 K2LOG_W(log::httpproxy, "Query not found, txn: {} query: {}", request.timestamp, request.queryId);
                 return MakeHTTPResponse<shd::QueryResponse>(Query_S410_Gone, shd::QueryResponse{});
             } else {
-                // Save to a variable to use it after query is deleted
                 bool isDone = queryIter->second.isDone();
-                if (isDone) {
-                    iter->second.queries.erase(request.queryId);
-                }
+                auto&& [key, exclusiveKey] = queryIter->second.getPaginationToken();
+
+                // dto::Key is not exposed to skvhttp client and the pagination token should be opaque to the user anyway,
+                // so serialize to a string here to pass to the client
+                k2::Payload payload(k2::Payload::DefaultAllocator());
+                payload.write(key);
+                payload.seek(0);
+                std::string serialized(payload.getSize(), '\0');
+                payload.read(serialized.data(), payload.getSize());
+
                 return MakeHTTPResponse<shd::QueryResponse>(sh::Status{.code=result.status.code, .message=result.status.message},
-                    shd::QueryResponse{.done = isDone, .records = std::move(records)});
+                    shd::QueryResponse{.records = std::move(records),
+                                       .paginationKey = std::move(serialized),
+                                       .paginationExclusiveKey = exclusiveKey,
+                                       .done = isDone});
             }
         }
     });
+}
+
+seastar::future<std::tuple<sh::Status, shd::DestroyQueryResponse>>
+HTTPProxy::_handleDestroyQuery(shd::DestroyQueryRequest&& request) {
+    auto it = _txns.find(request.timestamp);
+    if (it != _txns.end()) {
+        auto query = it->second.queries.find(request.queryId);
+        if (query != it->second.queries.end()) {
+            it->second.queries.erase(query);
+        }
+    }
+
+    return MakeHTTPResponse<shd::DestroyQueryResponse>(sh::Statuses::S200_OK("Query destroy"), shd::DestroyQueryResponse{});
 }
 
 seastar::future<std::tuple<sh::Status, shd::TxnEndResponse>>
@@ -357,8 +391,8 @@ HTTPProxy::_handleGetSchema(shd::GetSchemaRequest&& request) {
     });
 }
 
-void HTTPProxy::shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record) {
-    auto shdSchema = getSchemaFromCache(collectionName, k2record.schema);
+void HTTPProxy::_shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record) {
+    auto shdSchema = _getSchemaFromCache(collectionName, k2record.schema);
     shd::SKVRecord shdrecord(collectionName, shdSchema, std::move(key), true);
     _shdRecToK2(shdrecord, k2record);
 }
@@ -408,8 +442,8 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
                 return MakeHTTPResponse<shd::CreateQueryResponse>(sh::Status{.code = result.status.code, .message = result.status.message}, shd::CreateQueryResponse{});
             }
             try {
-                shdStorageToK2Record(req.collectionName, std::move(req.key), result.query.startScanRecord);
-                shdStorageToK2Record(req.collectionName, std::move(req.endKey), result.query.endScanRecord);
+                _shdStorageToK2Record(req.collectionName, std::move(req.key), result.query.startScanRecord);
+                _shdStorageToK2Record(req.collectionName, std::move(req.endKey), result.query.endScanRecord);
 
                 result.query.setLimit(req.recordLimit);
                 result.query.setIncludeVersionMismatch(req.includeVersionMismatch);
@@ -440,7 +474,7 @@ HTTPProxy::_handleCreateQuery(shd::CreateQueryRequest&& request) {
  }
 
 // Get shd schema from k2 schema either from cache or convert
-std::shared_ptr<shd::Schema> HTTPProxy::getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema) {
+std::shared_ptr<shd::Schema> HTTPProxy::_getSchemaFromCache(const sh::String& cname, std::shared_ptr<dto::Schema> schema) {
     // create the nested maps as needed - we have a schema
     auto& shdSchemaPtr = _shdSchemas[cname][schema->name][schema->version];
     if (!shdSchemaPtr) {
@@ -471,7 +505,7 @@ HTTPProxy::_getSchemas(sh::String cname, sh::String sname, int64_t sversion) {
             if (!result.status.is2xxOK()) {
                 return seastar::make_ready_future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>(std::move(result.status), std::shared_ptr<dto::Schema>(), std::shared_ptr<shd::Schema>());
             }
-            auto shdSchemaPtr = getSchemaFromCache(std::move(cname), result.schema);
+            auto shdSchemaPtr = _getSchemaFromCache(std::move(cname), result.schema);
             return seastar::make_ready_future<std::tuple<Status, std::shared_ptr<dto::Schema>, std::shared_ptr<shd::Schema>>>(std::move(result.status), std::move(result.schema), std::move(shdSchemaPtr));
         });
 }
@@ -538,6 +572,11 @@ void HTTPProxy::_registerAPI() {
     api_server.registerAPIObserver<sh::Statuses, shd::QueryRequest, shd::QueryResponse>
         ("Query", "query request", [this](auto&& request) {
             return _handleQuery(std::move(request));
+        });
+
+    api_server.registerAPIObserver<sh::Statuses, shd::DestroyQueryRequest, shd::DestroyQueryResponse>
+        ("DestroyQuery", "destroy query", [this](auto&& request) {
+            return _handleDestroyQuery(std::move(request));
         });
 
     api_server.registerAPIObserver<sh::Statuses, shd::TxnEndRequest, shd::TxnEndResponse>

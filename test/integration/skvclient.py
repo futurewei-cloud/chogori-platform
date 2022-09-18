@@ -161,6 +161,8 @@ class Query:
         self.cname = cname
         self.sname = sname
         self.query_id = query_id
+        self.paginationKey = b""
+        self.paginationExclusiveKey = False
 
 class Txn:
     "Transaction Object"
@@ -211,17 +213,19 @@ class Txn:
         return status, Query(cname, sname, resp[0])
 
     def query(self, query):
-        status, result = self.client.make_call("/api/Query", [self.timestamp, query.query_id])
+        status, result = self.client.make_call("/api/Query", [self.timestamp, query.query_id, query.paginationKey, query.paginationExclusiveKey])
         if not status.is2xxOK():
             return status, None, None
         records = []
-        for storage in result[1]:
+        for storage in result[0]:
             status, schema = self.client.get_schema(query.cname, query.sname, storage[3])
             if not status.is2xxOK():
                 return status, None, None
             record = schema.parse_read(storage, self.timestamp)
             records += [record]
-        return status, result[0], records
+        query.paginationKey = result[1]
+        query.paginationExclusiveKey = result[2]
+        return status, result[3], records
 
     def queryAll(self, query):
         records = []

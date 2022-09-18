@@ -150,9 +150,13 @@ public:
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
     boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<uint32_t> fieldsForPartialUpdate);
 
-    boost::future<Response<dto::QueryResponse>> query(dto::QueryRequest query);
-    boost::future<Response<dto::QueryRequest>> createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey, dto::expression::Expression&& filter=dto::expression::Expression{},
-                                                           std::vector<String>&& projection=std::vector<String>{}, int32_t recordLimit=-1, bool reverseDirection=false, bool includeVersionMismatch=false);
+    boost::future<Response<dto::QueryResponse>> query(std::shared_ptr<dto::QueryRequest> query);
+    boost::future<Response<std::shared_ptr<dto::QueryRequest>>> createQuery(dto::SKVRecord& startKey, dto::SKVRecord& endKey,
+                                                                   dto::expression::Expression&& filter=dto::expression::Expression{},
+                                                                   std::vector<String>&& projection=std::vector<String>{}, int32_t recordLimit=-1,
+                                                                   bool reverseDirection=false, bool includeVersionMismatch=false);
+    // Queries are automatically drestroyed on txn end, so this is only needed for long running txns
+    boost::future<Response<>> destroyQuery(std::shared_ptr<dto::QueryRequest> query);
     K2_DEF_FMT(TxnHandle, _id);
 private:
     Client* _client;
