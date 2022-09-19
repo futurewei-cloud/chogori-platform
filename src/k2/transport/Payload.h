@@ -537,13 +537,13 @@ public: // getSerializedSizeOf api
     // for type: boost::multiprecision::cpp_dec_float_50
     template <typename T>
     std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
-        return sizeof(boost::multiprecision::cpp_dec_float_50); // NOT SURE
+        return getSerializedSizeOf<String>(); // NOT SURE
     }
 
     // for type: boost::multiprecision::cpp_dec_float_100
     template <typename T>
     std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
-        return sizeof(boost::multiprecision::cpp_dec_float_100); // NOT SURE
+        return getSerializedSizeOf<String>(); // NOT SURE
     }
 
     // for type: Duration

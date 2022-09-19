@@ -105,13 +105,13 @@ bool isNan(const T& field){
     }
 
     if constexpr (std::is_same_v<T, DecimalD50>)  { // handle NaN decimal
-        if (std::isnan(field.backend().extract_double())) { // NOT SURE
+        if (field.backend().isnan()) { // NOT SURE
             return true;
         }
     }
 
     if constexpr (std::is_same_v<T, DecimalD100> )  { // handle NaN decimal
-        if (std::isnan(field.backend().extract_double())) { // NOT SURE
+        if (field.backend().isnan()) { // NOT SURE
             return true;
         }
     }
