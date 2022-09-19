@@ -23,7 +23,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #pragma once
 
-#include <decimal/decimal>
 #include <string>
 
 #include <boost/multiprecision/cpp_dec_float.hpp>

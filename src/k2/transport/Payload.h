@@ -24,9 +24,7 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include "Log.h"
 
-#include <decimal/decimal>
 #include <boost/multiprecision/cpp_dec_float.hpp>
-#include <boost/multiprecision/float128.hpp>
 
 #include <map>
 #include <unordered_map>
