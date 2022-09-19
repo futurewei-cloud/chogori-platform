@@ -209,8 +209,8 @@ TEST_CASE("Float expressions"){
         .expectedResult = {false},
         .expectedException = {}});
 
-    boost::multiprecision::cpp_dec_float_50 v1(101.5001);
-    boost::multiprecision::cpp_dec_float_50 v2(101.5002);
+    boost::multiprecision::cpp_dec_float_50 v1("101.5001");
+    boost::multiprecision::cpp_dec_float_50 v2("101.5002");
     cases.push_back(TestCase{
         .name = "gt: two decimals not gt",
         .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_50>(std::move(v1)), k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_50>(std::move(v2))), {})},
@@ -218,8 +218,8 @@ TEST_CASE("Float expressions"){
         .expectedResult = {false},
         .expectedException = {}});
 
-    boost::multiprecision::cpp_dec_float_100 x1(101.5002);
-    boost::multiprecision::cpp_dec_float_100 x2(101.5001);
+    boost::multiprecision::cpp_dec_float_100 x1("101.5002");
+    boost::multiprecision::cpp_dec_float_100 x2("101.5001");
     cases.push_back(TestCase{
         .name = "gt: two decimals gt",
         .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_100>(std::move(x1)), k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_100>(std::move(x2))), {})},

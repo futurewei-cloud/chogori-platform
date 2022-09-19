@@ -195,18 +195,22 @@ bool Payload::read(String& value) {
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
-    boost::multiprecision::cpp_dec_float_50 data;
-    bool success = read((void*)&data, sizeof(data));
+    String data;
+    bool success = read(data);
     if (!success) return false;
-    value = data; // NOT SURE
+    // construct from a c string.
+    boost::multiprecision::cpp_dec_float_100 _val(data.c_str()); 
+    value = _val; // NOT SURE
     return true;
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
-    boost::multiprecision::cpp_dec_float_100 data;
-    bool success = read((void*)&data, sizeof(data));
+    String data;
+    bool success = read(data);
     if (!success) return false;
-    value = data; // NOT SURE
+    // construct from a c string.
+    boost::multiprecision::cpp_dec_float_100 _val(data.c_str());
+    value = _val; // NOT SURE
     return true;
 }
 
@@ -307,13 +311,13 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    boost::multiprecision::cpp_dec_float_50 data = value; // NOT SURE
-    write((const void*)&data, sizeof(data));
+    String ss(value.str()); // serialize as a String
+    write(ss); // NOT SURE
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    boost::multiprecision::cpp_dec_float_100 data = value; // NOT SURE
-    write((const void*)&data, sizeof(data));
+    String ss(value.str()); // serialize as a String
+    write(ss); // NOT SURE
 }
 
 void Payload::write(const Binary& bin) {

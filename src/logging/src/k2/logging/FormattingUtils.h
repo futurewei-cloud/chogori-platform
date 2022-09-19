@@ -158,15 +158,12 @@ constexpr auto type_name() {
 #ifdef _GLIBCXX_USE_DECIMAL_FLOAT
 #include <decimal/decimal>
 #include <boost/multiprecision/cpp_dec_float.hpp>
-#include <boost/multiprecision/float128.hpp>
 namespace std {
 inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_50& d) {
-    boost::multiprecision::cpp_dec_float_50 data = d; // NOT SURE
-    return os << data.backend().extract_double();
+    return os << d.str(); // NOT SURE
 }
 inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_100& d) {
-    boost::multiprecision::cpp_dec_float_100 data = d; // NOT SURE
-    return os << data.backend().extract_double();
+    return os << d.str();
 }
 }
 #endif

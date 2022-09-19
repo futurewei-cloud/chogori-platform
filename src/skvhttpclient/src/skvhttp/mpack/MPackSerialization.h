@@ -289,37 +289,27 @@ private:
     }
 
     bool _readFromNode(DecimalD50& value) {
-        // decimal is packed as a BINARY msgpack type
+        // DecimalD50 is serialized as a k2 String
         K2LOG_V(log::mpack, "reading decimald50");
-        size_t sz;
-        const char* data;
-
-        if (!_readData(data, sz)) {
-            return false;
+        String ss;
+        if (_readFromNode(ss)) {
+            DecimalD50 _val = DecimalD50(ss.c_str());
+            value = _val; // NOT SURE
+            return true;
         }
-        if (sizeof(DecimalD50) != sz) {
-            return false;
-        }
-
-        value = *((DecimalD50*)data);
-        return true;
+        return false;
     }
 
     bool _readFromNode(DecimalD100& value) {
-        // decimal is packed as a BINARY msgpack type
+        // DecimalD100 is serialized as a k2 String
         K2LOG_V(log::mpack, "reading decimald100");
-        size_t sz;
-        const char* data;
-
-        if (!_readData(data, sz)) {
-            return false;
+        String ss;
+        if (_readFromNode(ss)) {
+            DecimalD100 _val = DecimalD100(ss.c_str());
+            value = _val; // NOT SURE
+            return true;
         }
-        if (sizeof(DecimalD100) != sz) {
-            return false;
-        }
-
-        value = *((DecimalD100*)data); // NOT SURE
-        return true;
+        return false;
     }
 
     template <typename T>
@@ -489,13 +479,13 @@ public:
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        DecimalD50 data = value; // NOT SURE
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(DecimalD50));
+        String ss(value.str());
+        write(ss); // NOT SURE
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        DecimalD100 data = value; // NOT SURE
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(DecimalD100));
+        String ss(value.str());
+        write(ss); // NOT SURE
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);

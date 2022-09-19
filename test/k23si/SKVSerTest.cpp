@@ -504,10 +504,10 @@ TEST_CASE("Test13: serialiaze float, double and decimal fields") {
     doc.serializeNext<double>(1000.1);
     doc.serializeNext<float>(100.2);
 
-    boost::multiprecision::cpp_dec_float_50 y(101.5001);
+    boost::multiprecision::cpp_dec_float_50 y("101.5001");
     doc.serializeNext<boost::multiprecision::cpp_dec_float_50>(y);
 
-    boost::multiprecision::cpp_dec_float_100  x(101.5002);
+    boost::multiprecision::cpp_dec_float_100  x("101.5002");
     doc.serializeNext<boost::multiprecision::cpp_dec_float_100>(x);
     
     std::cout << "Test13: Serialize float and double fields." << std::endl;
