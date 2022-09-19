@@ -36,7 +36,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #ifdef _GLIBCXX_USE_DECIMAL_FLOAT
 #include <boost/multiprecision/cpp_dec_float.hpp>
-#include <decimal/decimal>
 namespace skv::http {
 using DecimalD50 = boost::multiprecision::cpp_dec_float_50;
 using DecimalD100 = boost::multiprecision::cpp_dec_float_100;

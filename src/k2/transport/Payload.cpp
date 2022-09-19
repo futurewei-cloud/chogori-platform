@@ -199,7 +199,7 @@ bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
     bool success = read(data);
     if (!success) return false;
     // construct from a c string.
-    boost::multiprecision::cpp_dec_float_100 _val(data.c_str()); 
+    boost::multiprecision::cpp_dec_float_50 _val(data.c_str()); 
     value = _val; // NOT SURE
     return true;
 }

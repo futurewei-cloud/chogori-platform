@@ -156,11 +156,10 @@ constexpr auto type_name() {
 
 // Provide formatting for decimals
 #ifdef _GLIBCXX_USE_DECIMAL_FLOAT
-#include <decimal/decimal>
 #include <boost/multiprecision/cpp_dec_float.hpp>
 namespace std {
 inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_50& d) {
-    return os << d.str(); // NOT SURE
+    return os << d.str();
 }
 inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_100& d) {
     return os << d.str();

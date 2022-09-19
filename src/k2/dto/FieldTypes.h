@@ -25,7 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <cstdint>
 #include <cstring>
-#include <decimal/decimal>
+
 #include <boost/multiprecision/cpp_dec_float.hpp>
 
 #include <k2/logging/Log.h>
