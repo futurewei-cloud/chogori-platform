@@ -372,7 +372,8 @@ SCENARIO("test getSerializedSizeOf method") {
     Payload src(Payload::DefaultAllocator(32));
     char a = 'a';
     String b = "test getSerializedSizeOf method";
-    boost::multiprecision::cpp_dec_float_50 c(323.435);
+    boost::multiprecision::cpp_dec_float_50 c("1333666666.0000001111");
+    boost::multiprecision::cpp_dec_float_100 c1("1333666666.00000011114444");
     std::set<int16_t> d{
         1, 2, 3, 4, 5
     };
@@ -405,6 +406,7 @@ SCENARIO("test getSerializedSizeOf method") {
     src.write(a);
     src.write(b);
     src.write(c);
+    src.write(c1);
     src.write(d);
     src.write(e);
     src.write(f);
@@ -417,8 +419,10 @@ SCENARIO("test getSerializedSizeOf method") {
     src.skip<char>();
     REQUIRE(src.getSerializedSizeOf<String>() == sizeof(uint32_t) + b.size() + 1);
     src.skip<String>();
-    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_50>() == sizeof(uint32_t) + c.str().size() + 1); // NOT SURE
+    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_50>() == sizeof(size_t) + c.str().size());
     src.skip<boost::multiprecision::cpp_dec_float_50>();
+    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_100>() == sizeof(size_t) + c1.str().size());
+    src.skip<boost::multiprecision::cpp_dec_float_100>();
     REQUIRE(src.getSerializedSizeOf<std::set<int16_t>>() == sizeof(uint32_t) + d.size() * sizeof(int16_t));
     src.skip<std::set<int16_t>>();
     REQUIRE(src.getSerializedSizeOf<std::map<int16_t, String>>() == sizeof(uint32_t) + 2 + 9 + 2 + 24 + 2 + 11);

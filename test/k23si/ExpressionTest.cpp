@@ -186,7 +186,7 @@ TEST_CASE("NaN expressions"){
     }
 
     try{
-        boost::multiprecision::cpp_dec_float_100 y(nan("1")); // NOT SURE
+        boost::multiprecision::cpp_dec_float_100 y(nan("1"));
         k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_100>(std::move(y));
         REQUIRE(false);
     }catch(k2d::NaNError &){

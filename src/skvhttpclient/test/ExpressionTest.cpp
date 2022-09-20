@@ -216,8 +216,8 @@ TEST_CASE("Float expressions"){
         .expectedResult = {false},
         .expectedException = {}});
 
-    DecimalD50 v1(101.5001);
-    DecimalD50 v2(101.5002);
+    DecimalD50 v1("101.5001");
+    DecimalD50 v2("101.5002");
     cases.push_back(TestCase{
         .name = "gt: two decimals not gt",
         .expr = {k2e::makeExpression(k2e::Operation::GT, make_vec<K2Val>(k2e::makeValueLiteral<DecimalD50>(std::move(v1)), k2e::makeValueLiteral<DecimalD50>(std::move(v2))), {})},
@@ -225,8 +225,8 @@ TEST_CASE("Float expressions"){
         .expectedResult = {false},
         .expectedException = {}});
 
-    DecimalD100 x1(101.5002);
-    DecimalD100 x2(101.5001);
+    DecimalD100 x1("101.5002");
+    DecimalD100 x2("101.5001");
     cases.push_back(TestCase{
         .name = "gt: two decimals gt",
         .expr = {k2e::makeExpression(k2e::Operation::GT, make_vec<K2Val>(k2e::makeValueLiteral<DecimalD100>(std::move(x1)), k2e::makeValueLiteral<DecimalD100>(std::move(x2))), {})},

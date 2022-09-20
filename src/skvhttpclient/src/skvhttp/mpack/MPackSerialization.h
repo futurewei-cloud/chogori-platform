@@ -278,7 +278,7 @@ private:
     }
 
     bool _readFromNode(Duration& dur) {
-        K2LOG_V(log::mpack, "reading decimald50");
+        K2LOG_V(log::mpack, "reading duration");
         if (typeid(std::remove_reference_t<decltype(dur)>::rep) != typeid(long int)) {
             return false;
         }
@@ -289,27 +289,31 @@ private:
     }
 
     bool _readFromNode(DecimalD50& value) {
-        // DecimalD50 is serialized as a k2 String
+        // DecimalD50 is serialized as a string and then packed as a Binary
         K2LOG_V(log::mpack, "reading decimald50");
-        String ss;
-        if (_readFromNode(ss)) {
-            DecimalD50 _val = DecimalD50(ss.c_str());
-            value = _val; // NOT SURE
-            return true;
+        Binary binData;
+
+        if (!_readFromNode(binData)) {
+            return false;
         }
-        return false;
+        String str(binData.data(), binData.size());
+        DecimalD50 _val = DecimalD50(str.c_str());
+        value = _val;
+        return true;
     }
 
     bool _readFromNode(DecimalD100& value) {
-        // DecimalD100 is serialized as a k2 String
+        // DecimalD100 is serialized as a string and then packed as a Binary
         K2LOG_V(log::mpack, "reading decimald100");
-        String ss;
-        if (_readFromNode(ss)) {
-            DecimalD100 _val = DecimalD100(ss.c_str());
-            value = _val; // NOT SURE
-            return true;
+        Binary binData;
+
+        if (!_readFromNode(binData)) {
+            return false;
         }
-        return false;
+        String str(binData.data(), binData.size());
+        DecimalD100 _val = DecimalD100(str.c_str());
+        value = _val;
+        return true;
     }
 
     template <typename T>
@@ -479,13 +483,13 @@ public:
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        String ss(value.str());
-        write(ss); // NOT SURE
+        Binary binData(value.str());
+        write(binData);
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        String ss(value.str());
-        write(ss); // NOT SURE
+        Binary binData(value.str());
+        write(binData);
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);
