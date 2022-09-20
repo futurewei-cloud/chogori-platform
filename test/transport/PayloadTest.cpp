@@ -419,9 +419,9 @@ SCENARIO("test getSerializedSizeOf method") {
     src.skip<char>();
     REQUIRE(src.getSerializedSizeOf<String>() == sizeof(uint32_t) + b.size() + 1);
     src.skip<String>();
-    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_50>() == sizeof(size_t) + c.str().size());
+    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_50>() == sizeof(size_t) + c.str().size() + 1);
     src.skip<boost::multiprecision::cpp_dec_float_50>();
-    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_100>() == sizeof(size_t) + c1.str().size());
+    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_100>() == sizeof(size_t) + c1.str().size() + 1);
     src.skip<boost::multiprecision::cpp_dec_float_100>();
     REQUIRE(src.getSerializedSizeOf<std::set<int16_t>>() == sizeof(uint32_t) + d.size() * sizeof(int16_t));
     src.skip<std::set<int16_t>>();
