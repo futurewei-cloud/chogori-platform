@@ -195,22 +195,22 @@ bool Payload::read(String& value) {
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
-    String data;
-    bool success = read(data);
+    Binary binData;
+    bool success = read(binData);
     if (!success) return false;
-    // construct from a c string.
-    boost::multiprecision::cpp_dec_float_50 _val(data.c_str()); 
-    value = _val; // NOT SURE
+    String s(binData.get(), binData.size());
+    boost::multiprecision::cpp_dec_float_50 _val(s.c_str());
+    value = _val;
     return true;
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
-    String data;
-    bool success = read(data);
+    Binary binData;
+    bool success = read(binData);
     if (!success) return false;
-    // construct from a c string.
-    boost::multiprecision::cpp_dec_float_100 _val(data.c_str());
-    value = _val; // NOT SURE
+    String s(binData.get(), binData.size());
+    boost::multiprecision::cpp_dec_float_100 _val(s.c_str());
+    value = _val;
     return true;
 }
 
@@ -311,13 +311,13 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    String ss(value.str()); // serialize as a String
-    write(ss); // NOT SURE
+    auto shp = seastar::make_lw_shared<std::string>(value.str());
+    write(Binary(shp->data(), shp->size(), seastar::make_deleter([shp]() mutable {})));
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    String ss(value.str()); // serialize as a String
-    write(ss); // NOT SURE
+    auto shp = seastar::make_lw_shared<std::string>(value.str());
+    write(Binary(shp->data(), shp->size(), seastar::make_deleter([shp]() mutable {})));
 }
 
 void Payload::write(const Binary& bin) {

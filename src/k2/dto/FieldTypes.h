@@ -108,13 +108,13 @@ bool isNan(const T& field){
     }
 
     if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>)  { // handle NaN decimal
-        if (field.backend().isnan()) { // NOT SURE
+        if (field.backend().isnan()) {
             return true;
         }
     }
 
     if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_100> )  { // handle NaN decimal
-        if (field.backend().isnan()) { // NOT SURE
+        if (field.backend().isnan()) {
             return true;
         }
     }

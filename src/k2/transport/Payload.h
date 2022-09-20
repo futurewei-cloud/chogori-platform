@@ -24,13 +24,13 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include "Log.h"
 
-#include <boost/multiprecision/cpp_dec_float.hpp>
-
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
 #include <limits>
+
+#include <boost/multiprecision/cpp_dec_float.hpp>
 
 #include <k2/common/Common.h>
 #include <k2/logging/Log.h>
@@ -535,13 +535,29 @@ public: // getSerializedSizeOf api
     // for type: boost::multiprecision::cpp_dec_float_50
     template <typename T>
     std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
-        return getSerializedSizeOf<String>(); // NOT SURE
+        auto curPos = getCurrentPosition();
+        size_t size = 0;
+        if (!read(size)) {
+            K2LOG_E(log::tx, "failed to read payload size");
+            seek(curPos);
+            return 0;
+        }
+        seek(curPos);
+        return size + sizeof(size);
     }
 
     // for type: boost::multiprecision::cpp_dec_float_100
     template <typename T>
     std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
-        return getSerializedSizeOf<String>(); // NOT SURE
+        auto curPos = getCurrentPosition();
+        size_t size = 0;
+        if (!read(size)) {
+            K2LOG_E(log::tx, "failed to read payload size");
+            seek(curPos);
+            return 0;
+        }
+        seek(curPos);
+        return size + sizeof(size);
     }
 
     // for type: Duration
