@@ -198,8 +198,11 @@ bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
     Binary binData;
     bool success = read(binData);
     if (!success) return false;
-    boost::multiprecision::cpp_dec_float_50 val(binData.get());
-    value = val;
+    try {
+        value = boost::multiprecision::cpp_dec_float_50(binData.get());
+    } catch(std::exception& e) {
+        return false;
+    }
     return true;
 }
 
@@ -207,8 +210,11 @@ bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
     Binary binData;
     bool success = read(binData);
     if (!success) return false;
-    boost::multiprecision::cpp_dec_float_100 val(binData.get());
-    value = val;
+    try {
+        value = boost::multiprecision::cpp_dec_float_100(binData.get());
+    } catch(std::exception& e) {
+        return false;
+    }
     return true;
 }
 

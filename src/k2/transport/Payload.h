@@ -532,27 +532,14 @@ public: // getSerializedSizeOf api
         return size + sizeof(size);
     }
 
-    // for type: boost::multiprecision::cpp_dec_float_50
+    // for types: boost::multiprecision::cpp_dec_float_50 and boost::multiprecision::cpp_dec_float_100
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
+    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50> 
+        || std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
         auto curPos = getCurrentPosition();
         size_t size = 0;
         if (!read(size)) {
-            K2LOG_E(log::tx, "failed to read payload size");
-            seek(curPos);
-            return 0;
-        }
-        seek(curPos);
-        return size + sizeof(size);
-    }
-
-    // for type: boost::multiprecision::cpp_dec_float_100
-    template <typename T>
-    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
-        auto curPos = getCurrentPosition();
-        size_t size = 0;
-        if (!read(size)) {
-            K2LOG_E(log::tx, "failed to read payload size");
+            K2LOG_E(log::tx, "failed to read decimal size");
             seek(curPos);
             return 0;
         }
