@@ -375,8 +375,8 @@ SCENARIO("test getSerializedSizeOf method") {
     String b = "test getSerializedSizeOf method";
     boost::multiprecision::cpp_dec_float_50 c("1333666666.0000001111");
     boost::multiprecision::cpp_dec_float_100 c1("1333666666.00000011114444");
-    Binary c2("abcd", 4); // can't create a float with this string
-    Binary c3("aaaa", 4);
+    Binary c2("abcd", 5); // can't create a float with this string
+    Binary c3("aaaa", 5);
     std::set<int16_t> d{
         1, 2, 3, 4, 5
     };

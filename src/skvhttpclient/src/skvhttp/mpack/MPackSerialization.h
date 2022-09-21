@@ -479,13 +479,13 @@ public:
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        String str = value.str();
-        write(Binary(str.data(), str.size() + 1, []{}));
+        auto shp = std::make_shared<String>(value.str());
+        write(Binary(shp->data(), shp->size() + 1, [shp]() mutable {}));
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        String str = value.str();
-        write(Binary(str.data(), str.size() + 1, []{}));
+        auto shp = std::make_shared<String>(value.str());
+        write(Binary(shp->data(), shp->size() + 1, [shp]() mutable {}));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);
