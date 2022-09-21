@@ -296,8 +296,7 @@ private:
         if (!_readFromNode(binData)) {
             return false;
         }
-        DecimalD50 val = DecimalD50(binData.data());
-        value = val;
+        value = DecimalD50(binData.data());
         return true;
     }
 
@@ -309,8 +308,7 @@ private:
         if (!_readFromNode(binData)) {
             return false;
         }
-        DecimalD100 val = DecimalD100(binData.data());
-        value = val;
+        value = DecimalD100(binData.data());
         return true;
     }
 
@@ -481,13 +479,13 @@ public:
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        auto shp = std::make_shared<String>(value.str());
-        write(Binary(shp->data(), shp->size() + 1, [shp]() mutable {}));
+        String str = value.str();
+        write(Binary(str.data(), str.size() + 1, []{}));
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        auto shp = std::make_shared<String>(value.str());
-        write(Binary(shp->data(), shp->size() + 1, [shp]() mutable {}));
+        String str = value.str();
+        write(Binary(str.data(), str.size() + 1, []{}));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);
