@@ -289,26 +289,36 @@ private:
     }
 
     bool _readFromNode(DecimalD50& value) {
-        // DecimalD50 is serialized as a string and then packed as a Binary
+        // DecimalD50 is memcpy-ed
         K2LOG_V(log::mpack, "reading decimald50");
-        Binary binData;
+        size_t sz;
+        const char* data;
 
-        if (!_readFromNode(binData)) {
+        if (!_readData(data, sz)) {
             return false;
         }
-        value = DecimalD50(binData.data());
+        if (sizeof(DecimalD50) != sz) {
+            return false;
+        }
+
+        std::memcpy((void *)&value, data, sizeof(DecimalD50));
         return true;
     }
 
     bool _readFromNode(DecimalD100& value) {
-        // DecimalD100 is serialized as a string and then packed as a Binary
+        // DecimalD100 is memcpy-ed
         K2LOG_V(log::mpack, "reading decimald100");
-        Binary binData;
+        size_t sz;
+        const char* data;
 
-        if (!_readFromNode(binData)) {
+        if (!_readData(data, sz)) {
             return false;
         }
-        value = DecimalD100(binData.data());
+        if (sizeof(DecimalD100) != sz) {
+            return false;
+        }
+
+        std::memcpy((void *)&value, data, sizeof(DecimalD100));
         return true;
     }
 
@@ -479,13 +489,11 @@ public:
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        auto shp = std::make_shared<String>(value.str());
-        write(Binary(shp->data(), shp->size() + 1, [shp]() mutable {}));
+        mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD50));
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        auto shp = std::make_shared<String>(value.str());
-        write(Binary(shp->data(), shp->size() + 1, [shp]() mutable {}));
+        mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD100));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);
