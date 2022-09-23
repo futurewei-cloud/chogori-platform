@@ -8,7 +8,7 @@ set_target_properties(mpack PROPERTIES
     SOVERSION 1
 )
 
-target_link_libraries (mpack PRIVATE common)
+target_link_libraries (mpack PRIVATE common Boost::serialization)
 
 # export the library in the common skvhttpTargets
 install(TARGETS mpack EXPORT skvhttpTargets DESTINATION lib/skvhttp)

@@ -22,7 +22,7 @@ include_directories(src)
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost COMPONENTS thread system REQUIRED) # header only libraries must not be added here
+find_package(Boost COMPONENTS thread system serialization REQUIRED) # header only libraries must not be added here
 find_package(Threads REQUIRED)
 find_package(fmt REQUIRED)
 find_package(yule REQUIRED)

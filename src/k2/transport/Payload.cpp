@@ -195,11 +195,31 @@ bool Payload::read(String& value) {
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
-    return read(&value, sizeof(boost::multiprecision::cpp_dec_float_50));
+    Binary binData;
+    bool success = read(binData);
+    if (!success) return false;
+    try {
+        std::istringstream iss(binData.get());
+        boost::archive::binary_iarchive bi(iss);
+        bi >> value;
+    } catch(std::exception& e) {
+        return false;
+    }
+    return true;
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
-    return read(&value, sizeof(boost::multiprecision::cpp_dec_float_100));
+    Binary binData;
+    bool success = read(binData);
+    if (!success) return false;
+    try {
+        std::istringstream iss(binData.get());
+        boost::archive::binary_iarchive bi(iss);
+        bi >> value;
+    } catch(std::exception& e) {
+        return false;
+    }
+    return true;
 }
 
 bool Payload::read(Payload& other) {
@@ -299,11 +319,19 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    write(&value, sizeof(boost::multiprecision::cpp_dec_float_50));
+    std::ostringstream oss;
+    boost::archive::binary_oarchive bo(oss);
+    bo << value;
+    auto shp = seastar::make_lw_shared<std::string>(oss.str());
+    write(Binary(shp->data(), shp->size() + 1, seastar::make_deleter([shp]() mutable {})));
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    write(&value, sizeof(boost::multiprecision::cpp_dec_float_100));
+    std::ostringstream oss;
+    boost::archive::binary_oarchive bo(oss);
+    bo << value;
+    auto shp = seastar::make_lw_shared<std::string>(oss.str());
+    write(Binary(shp->data(), shp->size() + 1, seastar::make_deleter([shp]() mutable {})));
 }
 
 void Payload::write(const Binary& bin) {

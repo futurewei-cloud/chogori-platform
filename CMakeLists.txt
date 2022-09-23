@@ -32,6 +32,7 @@ find_package(Seastar REQUIRED)
 find_package(fmt REQUIRED)
 find_package(skvhttp REQUIRED)
 find_package(yule REQUIRED)
+find_package(Boost COMPONENTS thread system serialization REQUIRED)
 
 add_subdirectory (src)
 add_subdirectory (test)
