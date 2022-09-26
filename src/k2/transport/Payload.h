@@ -111,6 +111,8 @@ constexpr bool isMapLikeType() { return IsMapLikeTypeTrait<T>::value; }
 template <typename T>  // For type: SerializeAsPayload
 constexpr bool isSerializeAsPayloadType() {return IsSerializeAsPayloadTypeTrait<T>::value; }
 
+class PayloadStreamBuf;
+
 //  Payload is abstraction representing message content. It allows for very efficient network
 // transportation of bytes, and it allows for allocating the underlying memory in a network-aware way.
 // For that reason, normally payloads are produced by the k2 transport, either when a new message comes in
@@ -534,19 +536,32 @@ public: // getSerializedSizeOf api
         return size + sizeof(size);
     }
 
-    // for types boost::multiprecision::cpp_dec_float_50 and boost::multiprecision::cpp_dec_float_100
+    // for type boost::multiprecision::cpp_dec_float_50
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>
-        || std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
+    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
         auto curPos = getCurrentPosition();
-        size_t size = 0;
-        if (!read(size)) {
-            K2LOG_E(log::tx, "failed to read payload size");
-            seek(curPos);
-            return 0;
-        }
+        _Size sz = 0;
+        PayloadStreamBuf psb(*this);
+        boost::archive::binary_iarchive bis(psb);
+        boost::multiprecision::cpp_dec_float_50 value;
+        bis >> value;
+        read(sz);
         seek(curPos);
-        return size + sizeof(size);
+        return sz;
+    }
+
+    // for type boost::multiprecision::cpp_dec_float_100
+    template <typename T>
+    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
+        auto curPos = getCurrentPosition();
+        _Size sz = 0;
+        PayloadStreamBuf psb(*this);
+        boost::archive::binary_iarchive bis(psb);
+        boost::multiprecision::cpp_dec_float_100 value;
+        bis >> value;
+        read(sz);
+        seek(curPos);
+        return sz;
     }
 
     // for type: Duration
@@ -687,5 +702,36 @@ private: // deleted
     Payload(const Payload&) = delete;
     Payload& operator=(const Payload&) = delete;
 }; // class Payload
+
+class PayloadStreamBuf : public std::streambuf {
+public:
+    PayloadStreamBuf(Payload& payload): _payload(payload){}
+    std::streamsize xsputn(const char_type* s, std::streamsize count) {
+        _payload.write(s, count);
+        return count;
+    }
+    int_type sputc(char_type ch) {
+        _payload.write(ch);
+        return (int_type) ch;
+    }
+    std::streamsize xsgetn(char_type* s, std::streamsize count) {
+        _payload.read(s, count);
+        return count;
+    }
+    int_type sbumpc() {
+        char_type ch;
+        _payload.read(ch);
+        return (int_type) ch;
+    }
+    int_type sgetc() {
+        char_type ch;
+        auto curPos = _payload.getCurrentPosition();
+        _payload.read(ch);
+        _payload.seek(curPos);
+        return (int_type) ch;
+    }
+private:
+    Payload& _payload;
+};
 
 } //  namespace k2

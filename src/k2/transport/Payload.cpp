@@ -195,30 +195,18 @@ bool Payload::read(String& value) {
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
-    Binary binData;
-    bool success = read(binData);
-    if (!success) return false;
-    try {
-        std::istringstream iss(binData.get());
-        boost::archive::binary_iarchive bi(iss);
-        bi >> value;
-    } catch(std::exception& e) {
-        return false;
-    }
+    PayloadStreamBuf psb(*this);
+    boost::archive::binary_iarchive bia(psb);
+    bia >> value;
+    skip(sizeof(_Size)); // the size is stored after the value
     return true;
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
-    Binary binData;
-    bool success = read(binData);
-    if (!success) return false;
-    try {
-        std::istringstream iss(binData.get());
-        boost::archive::binary_iarchive bi(iss);
-        bi >> value;
-    } catch(std::exception& e) {
-        return false;
-    }
+    PayloadStreamBuf psb(*this);
+    boost::archive::binary_iarchive bia(psb);
+    bia >> value;
+    skip(sizeof(_Size));
     return true;
 }
 
@@ -319,19 +307,25 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    std::ostringstream oss;
-    boost::archive::binary_oarchive bo(oss);
-    bo << value;
-    auto shp = seastar::make_lw_shared<std::string>(oss.str());
-    write(Binary(shp->data(), shp->size() + 1, seastar::make_deleter([shp]() mutable {})));
+    PayloadStreamBuf psb(*this);
+    boost::archive::binary_oarchive boa(psb);
+    auto startOffset = getCurrentPosition().offset;
+    boa << value;
+    auto endOffset = getCurrentPosition().offset;
+    _Size sz = endOffset - startOffset;
+    sz += sizeof(_Size);
+    write(sz); // store the size after the value
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    std::ostringstream oss;
-    boost::archive::binary_oarchive bo(oss);
-    bo << value;
-    auto shp = seastar::make_lw_shared<std::string>(oss.str());
-    write(Binary(shp->data(), shp->size() + 1, seastar::make_deleter([shp]() mutable {})));
+    PayloadStreamBuf psb(*this);
+    boost::archive::binary_oarchive boa(psb);
+    auto startOffset = getCurrentPosition().offset;
+    boa << value;
+    auto endOffset = getCurrentPosition().offset;
+    _Size sz = endOffset - startOffset;
+    sz += sizeof(_Size); // the sz also occupies space
+    write(sz);
 }
 
 void Payload::write(const Binary& bin) {
