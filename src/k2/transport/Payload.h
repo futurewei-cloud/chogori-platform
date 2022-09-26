@@ -540,9 +540,11 @@ public: // getSerializedSizeOf api
     template <typename T>
     std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
         auto curPos = getCurrentPosition();
+
         _Size sz = 0;
         PayloadStreamBuf psb(*this);
-        boost::archive::binary_iarchive bis(psb);
+        auto const flags = boost::archive::no_header | boost::archive::no_tracking;
+        boost::archive::binary_iarchive bis(psb, flags);
         boost::multiprecision::cpp_dec_float_50 value;
         bis >> value;
         read(sz);
@@ -556,7 +558,8 @@ public: // getSerializedSizeOf api
         auto curPos = getCurrentPosition();
         _Size sz = 0;
         PayloadStreamBuf psb(*this);
-        boost::archive::binary_iarchive bis(psb);
+        auto const flags = boost::archive::no_header | boost::archive::no_tracking;
+        boost::archive::binary_iarchive bis(psb, flags);
         boost::multiprecision::cpp_dec_float_100 value;
         bis >> value;
         read(sz);
@@ -721,13 +724,6 @@ public:
     int_type sbumpc() {
         char_type ch;
         _payload.read(ch);
-        return (int_type) ch;
-    }
-    int_type sgetc() {
-        char_type ch;
-        auto curPos = _payload.getCurrentPosition();
-        _payload.read(ch);
-        _payload.seek(curPos);
         return (int_type) ch;
     }
 private:
