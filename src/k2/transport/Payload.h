@@ -33,6 +33,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <boost/multiprecision/cpp_dec_float.hpp>
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
+auto const BOOST_ARCHIVE_FLAGS = boost::archive::no_header | boost::archive::no_tracking;
 
 #include <k2/common/Common.h>
 #include <k2/logging/Log.h>
@@ -540,11 +541,9 @@ public: // getSerializedSizeOf api
     template <typename T>
     std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
         auto curPos = getCurrentPosition();
-
         _Size sz = 0;
         PayloadStreamBuf psb(*this);
-        auto const flags = boost::archive::no_header | boost::archive::no_tracking;
-        boost::archive::binary_iarchive bis(psb, flags);
+        boost::archive::binary_iarchive bis(psb, BOOST_ARCHIVE_FLAGS);
         boost::multiprecision::cpp_dec_float_50 value;
         bis >> value;
         read(sz);
@@ -558,8 +557,7 @@ public: // getSerializedSizeOf api
         auto curPos = getCurrentPosition();
         _Size sz = 0;
         PayloadStreamBuf psb(*this);
-        auto const flags = boost::archive::no_header | boost::archive::no_tracking;
-        boost::archive::binary_iarchive bis(psb, flags);
+        boost::archive::binary_iarchive bis(psb, BOOST_ARCHIVE_FLAGS);
         boost::multiprecision::cpp_dec_float_100 value;
         bis >> value;
         read(sz);

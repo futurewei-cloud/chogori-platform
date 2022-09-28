@@ -196,8 +196,7 @@ bool Payload::read(String& value) {
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
     PayloadStreamBuf psb(*this);
-    auto const flags = boost::archive::no_header | boost::archive::no_tracking;
-    boost::archive::binary_iarchive bia(psb, flags);
+    boost::archive::binary_iarchive bia(psb, BOOST_ARCHIVE_FLAGS);
     bia >> value;
     skip(sizeof(_Size)); // the size is stored after the value
     return true;
@@ -205,8 +204,7 @@ bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
     PayloadStreamBuf psb(*this);
-    auto const flags = boost::archive::no_header | boost::archive::no_tracking;
-    boost::archive::binary_iarchive bia(psb, flags);
+    boost::archive::binary_iarchive bia(psb, BOOST_ARCHIVE_FLAGS);
     bia >> value;
     skip(sizeof(_Size));
     return true;
@@ -309,9 +307,8 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    auto const flags = boost::archive::no_header | boost::archive::no_tracking;
     PayloadStreamBuf psb(*this);
-    boost::archive::binary_oarchive boa(psb, flags);
+    boost::archive::binary_oarchive boa(psb, BOOST_ARCHIVE_FLAGS);
     auto startOffset = getCurrentPosition().offset;
     boa << value;
     auto endOffset = getCurrentPosition().offset;
@@ -321,14 +318,13 @@ void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    auto const flags = boost::archive::no_header | boost::archive::no_tracking;
     PayloadStreamBuf psb(*this);
-    boost::archive::binary_oarchive boa(psb, flags);
+    boost::archive::binary_oarchive boa(psb, BOOST_ARCHIVE_FLAGS);
     auto startOffset = getCurrentPosition().offset;
     boa << value;
     auto endOffset = getCurrentPosition().offset;
     _Size sz = endOffset - startOffset;
-    sz += sizeof(_Size); // the sz also occupies space
+    sz += sizeof(_Size);
     write(sz);
 }
 
