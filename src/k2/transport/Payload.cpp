@@ -196,16 +196,24 @@ bool Payload::read(String& value) {
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
     PayloadStreamBuf psb(*this);
-    boost::archive::binary_iarchive bia(psb, BOOST_ARCHIVE_FLAGS);
-    bia >> value;
+    boost::archive::binary_iarchive bia(psb, boost::archive::no_header);
+    try {
+        bia >> value;
+    } catch (std::exception& e) {
+        return false;
+    }
     skip(sizeof(_Size)); // the size is stored after the value
     return true;
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
     PayloadStreamBuf psb(*this);
-    boost::archive::binary_iarchive bia(psb, BOOST_ARCHIVE_FLAGS);
-    bia >> value;
+    boost::archive::binary_iarchive bia(psb, boost::archive::no_header);
+    try {
+        bia >> value;
+    } catch (std::exception& e) {
+        return false;
+    }
     skip(sizeof(_Size));
     return true;
 }
@@ -308,18 +316,18 @@ void Payload::write(const String& value) {
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
     PayloadStreamBuf psb(*this);
-    boost::archive::binary_oarchive boa(psb, BOOST_ARCHIVE_FLAGS);
+    boost::archive::binary_oarchive boa(psb, boost::archive::no_header);
     auto startOffset = getCurrentPosition().offset;
     boa << value;
     auto endOffset = getCurrentPosition().offset;
     _Size sz = endOffset - startOffset;
     sz += sizeof(_Size);
-    write(sz); // store the size after the value
+    write(sz); // store size after value, as we don't know the size beforehand
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
     PayloadStreamBuf psb(*this);
-    boost::archive::binary_oarchive boa(psb, BOOST_ARCHIVE_FLAGS);
+    boost::archive::binary_oarchive boa(psb, boost::archive::no_header);
     auto startOffset = getCurrentPosition().offset;
     boa << value;
     auto endOffset = getCurrentPosition().offset;

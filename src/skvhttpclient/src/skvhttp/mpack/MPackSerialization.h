@@ -24,14 +24,11 @@ Copyright(c) 2022 Futurewei Cloud
 #pragma once
 #include <streambuf>
 
-#include <boost/archive/binary_oarchive.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-auto const MPACK_BOOST_ARCHIVE_FLAGS = boost::archive::no_header | boost::archive::no_tracking;
-
 #include <k2/logging/Log.h>
 #include <skvhttp/common/Binary.h>
 #include <skvhttp/common/Common.h>
 #include <skvhttp/common/Serialization.h>
+#include <skvhttp/common/StreamBuf.h>
 
 #include <skvhttp/mpack/mpack.h>
 
@@ -294,21 +291,9 @@ private:
         return true;
     }
 
-    bool _readFromNode(DecimalD50& value) {
-        K2LOG_V(log::mpack, "reading decimald50");
-        MPNodeReaderStreamBuf rsb(_node);
-        boost::archive::binary_iarchive bia(rsb, MPACK_BOOST_ARCHIVE_FLAGS);
-        bia >> value;
-        return true;
-    }
+    bool _readFromNode(DecimalD50& value);
 
-    bool _readFromNode(DecimalD100& value) {
-        K2LOG_V(log::mpack, "reading decimald100");
-        MPNodeReaderStreamBuf rsb(_node);
-        boost::archive::binary_iarchive bia(rsb, MPACK_BOOST_ARCHIVE_FLAGS);
-        bia >> value;
-        return true;
-    }
+    bool _readFromNode(DecimalD100& value);
 
     template <typename T>
     std::enable_if_t<std::is_enum<T>::value, bool>
@@ -327,26 +312,6 @@ private:
 private:
     mpack_node_t _node;
     Binary& _source;
-    class MPNodeReaderStreamBuf : public std::streambuf {
-    public:
-        MPNodeReaderStreamBuf(mpack_node_t& nd):_nd(nd), _index(0) {}
-        std::streamsize xsgetn(char_type* s, std::streamsize count) {
-            for (std::streamsize i = 0; i < count; ++i) {
-                mpack_node_t nodeInArray = mpack_node_array_at(_nd, _index);
-                int8_t i8 = mpack_node_i8(nodeInArray);
-                ++_index;
-                s[i] = (char_type) i8;
-            }
-            return count;
-        }
-        int_type sbumpc() {
-            mpack_node_t nodeInArray = mpack_node_array_at(_nd, _index);
-            ++_index;
-            return (int_type) mpack_node_i8(nodeInArray);
-        }
-        mpack_node_t& _nd;
-        size_t _index;
-    };
 };
 
 class MPackReader {
@@ -495,22 +460,10 @@ public:
         K2LOG_V(log::mpack, "writing duration type {}", dur);
         write(dur.count());  // write the tick count
     }
-    void write(const DecimalD50& value) {
-        K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        mpack_build_array(&_writer);
-        MPNodeWriterStreamBuf wsf(_writer);
-        boost::archive::binary_oarchive boa(wsf, MPACK_BOOST_ARCHIVE_FLAGS);
-        boa << value;
-        mpack_complete_array(&_writer);
-    }
-    void write(const DecimalD100& value) {
-        K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        mpack_build_array(&_writer);
-        MPNodeWriterStreamBuf wsf(_writer);
-        boost::archive::binary_oarchive boa(wsf, MPACK_BOOST_ARCHIVE_FLAGS);
-        boa << value;
-        mpack_complete_array(&_writer);
-    }
+    void write(const DecimalD50& value);
+
+    void write(const DecimalD100& value);
+    
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);
         K2ASSERT(log::mpack, val.size() < std::numeric_limits<uint32_t>::max(), "cannot write binary of size {}", val.size());
@@ -538,21 +491,6 @@ public:
 
 private:
     mpack_writer_t &_writer;
-    class MPNodeWriterStreamBuf : public std::streambuf {
-    public:
-        MPNodeWriterStreamBuf(mpack_writer_t& wrt): _wrt(wrt){}
-        std::streamsize xsputn(const char_type* s, std::streamsize count) {
-            for (std::streamsize i = 0; i < count; ++i) {
-                mpack_write_i8(&_wrt, (int8_t) *(s + i));
-            }
-            return count;
-        }
-        int_type sputc(char_type ch) {
-            mpack_write_i8(&_wrt, (int8_t)ch);
-            return (int_type) ch;
-        }
-        mpack_writer_t& _wrt;
-    };
 };
 
 
