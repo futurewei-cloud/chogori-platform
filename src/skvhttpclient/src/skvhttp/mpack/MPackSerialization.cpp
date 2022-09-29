@@ -22,37 +22,37 @@ Copyright(c) 2022 Futurewei Cloud
 */
 
 #include "MPackSerialization.h"
-
 namespace skv::http {
 
-    bool MPackNodeReader::_readFromNode(DecimalD50& value) {
-        K2LOG_V(log::mpack, "reading decimald50");
-        DFReadStreamBuf readsb(*this);
-        boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
-        bia >> value;
-        return true;
-    }
+bool MPackNodeReader::_readFromNode(DecimalD50& value) {
+    K2LOG_V(log::mpack, "reading decimald50");
+    DFReadStreamBuf<MPackNodeReader> readsb(*this);
+    boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
+    bia >> value;
+    return true;
+}
 
-    bool MPackNodeReader::_readFromNode(DecimalD100& value) {
-        K2LOG_V(log::mpack, "reading decimald100");
-        DFReadStreamBuf readsb(*this);
-        boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
-        bia >> value;
-        return true;
-    }
+bool MPackNodeReader::_readFromNode(DecimalD100& value) {
+    K2LOG_V(log::mpack, "reading decimald100");
+    DFReadStreamBuf<MPackNodeReader> readsb(*this);
+    boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
+    bia >> value;
+    return true;
+}
 
 
-    void MPackNodeWriter::write(const DecimalD50& value) {
-        K2LOG_V(log::mpack, "writing decimald50 type {}", value);
-        DFWriteStreamBuf writesb(*this);
-        boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
-        boa << value;
-    }
-    void MPackNodeWriter::write(const DecimalD100& value) {
-        K2LOG_V(log::mpack, "writing decimald100 type {}", value);
-        DFWriteStreamBuf writesb(*this);
-        boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
-        boa << value;
-    }
+void MPackNodeWriter::write(const DecimalD50& value) {
+    K2LOG_V(log::mpack, "writing decimald50 type {}", value);
+    DFWriteStreamBuf<MPackNodeWriter, 80> writesb(*this);
+    boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
+    boa << value;
+}
+
+void MPackNodeWriter::write(const DecimalD100& value) {
+    K2LOG_V(log::mpack, "writing decimald100 type {}", value);
+    DFWriteStreamBuf<MPackNodeWriter, 100> writesb(*this);
+    boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
+    boa << value;
+}
 
 }

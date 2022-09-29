@@ -22,6 +22,7 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #include "Payload.h"
+// #include "PayloadSerialization.h"
 #include <crc32c/crc32c.h>
 
 namespace k2 {
@@ -195,26 +196,26 @@ bool Payload::read(String& value) {
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
-    PayloadStreamBuf psb(*this);
-    boost::archive::binary_iarchive bia(psb, boost::archive::no_header);
+    // PayloadReader reader(*this);
+    PayloadDFReadStreamBuf<Payload> readsb(*this);
+    boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
     try {
         bia >> value;
     } catch (std::exception& e) {
         return false;
     }
-    skip(sizeof(_Size)); // the size is stored after the value
     return true;
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
-    PayloadStreamBuf psb(*this);
-    boost::archive::binary_iarchive bia(psb, boost::archive::no_header);
+    // PayloadReader reader(*this);
+    PayloadDFReadStreamBuf<Payload> readsb(*this);
+    boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
     try {
         bia >> value;
     } catch (std::exception& e) {
         return false;
     }
-    skip(sizeof(_Size));
     return true;
 }
 
@@ -315,25 +316,17 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    PayloadStreamBuf psb(*this);
-    boost::archive::binary_oarchive boa(psb, boost::archive::no_header);
-    auto startOffset = getCurrentPosition().offset;
+    // PayloadWriter writer(*this);
+    PayloadDFWriteStreamBuf<Payload, 80> writesb(*this);
+    boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
     boa << value;
-    auto endOffset = getCurrentPosition().offset;
-    _Size sz = endOffset - startOffset;
-    sz += sizeof(_Size);
-    write(sz); // store size after value, as we don't know the size beforehand
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    PayloadStreamBuf psb(*this);
-    boost::archive::binary_oarchive boa(psb, boost::archive::no_header);
-    auto startOffset = getCurrentPosition().offset;
+    // PayloadWriter writer(*this);
+    PayloadDFWriteStreamBuf<Payload, 100> writesb(*this);
+    boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
     boa << value;
-    auto endOffset = getCurrentPosition().offset;
-    _Size sz = endOffset - startOffset;
-    sz += sizeof(_Size);
-    write(sz);
 }
 
 void Payload::write(const Binary& bin) {

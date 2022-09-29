@@ -73,6 +73,8 @@ public:
         _payload.seek(source.getCurrentPosition());
     }
 
+    using Binary = k2::Binary;
+
     // read a value that can be optional
     template <typename T>
     bool read(std::optional<T>& obj) {
@@ -231,6 +233,8 @@ public:
     Payload& getPayload() {
             return _payload;
     }
+
+    using Binary = k2::Binary;
 
     template <typename T>
     void write(const std::optional<T>& obj) {
