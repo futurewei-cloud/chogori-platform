@@ -22,7 +22,6 @@ Copyright(c) 2022 Futurewei Cloud
 */
 
 #pragma once
-#include <streambuf>
 
 #include <k2/logging/Log.h>
 #include <skvhttp/common/Binary.h>
@@ -460,6 +459,7 @@ public:
         K2LOG_V(log::mpack, "writing duration type {}", dur);
         write(dur.count());  // write the tick count
     }
+
     void write(const DecimalD50& value);
 
     void write(const DecimalD100& value);

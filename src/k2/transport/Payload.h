@@ -131,7 +131,6 @@ public: // types
         _Size bufferOffset;
         size_t offset;
     };
-    using Binary = k2::Binary;
     
 public: // Lifecycle
     // Create a blank payload which can grow by allocating with the given allocator
@@ -712,59 +711,66 @@ public:
     Payload& _payload;
 };
 
-const size_t MAX_SERIALIZED_SIZE_CPP_DEC_FLOATS = 100;
-
 template<typename WriterT, size_t bufSize>
 class PayloadDFWriteStreamBuf : public std::streambuf {
 public:
-    PayloadDFWriteStreamBuf(WriterT& writer): _writer(writer), _sz(0) {}
+    PayloadDFWriteStreamBuf(WriterT& writer): _writer(writer) {}
 
     std::streamsize xsputn(const char_type* s, std::streamsize count) {
+        if (_sz + count > bufSize) {
+            throw std::out_of_range("not enough memory put");
+        }
         std::memcpy(_data + _sz, s, count);
         _sz += count;
         return count;
     }
 
     std::streambuf::int_type sputc(char_type ch) {
+        if (_sz + 1 > bufSize) {
+            throw std::out_of_range("not enough memory put");
+        }
         _data[_sz] = ch;
         ++_sz;
         return ch;
     }
 
     ~PayloadDFWriteStreamBuf() {
-        typename WriterT::Binary bin(_data, _sz, seastar::make_deleter([](){}));
+        Binary bin(_data, _sz, seastar::make_deleter([](){}));
         _writer.write(bin);
     }
 
     WriterT& _writer;
     char _data[bufSize];
-    size_t _sz;
+    size_t _sz{0};
 };
 
 template<typename ReaderT>
 class PayloadDFReadStreamBuf : public std::streambuf {
 public:
-    PayloadDFReadStreamBuf(ReaderT& reader): _reader(reader), _index{0} {
-        typename ReaderT::Binary bin;
-        _reader.read(bin);
-        _data = (char *) bin.get();
+    PayloadDFReadStreamBuf(ReaderT& reader) {
+        reader.read(_bin);
     }
 
     std::streamsize xsgetn(char_type* s, std::streamsize count) {
-        std::memcpy(s, _data +_index, count);
+        if (_index + count > _bin.size()) {
+            throw std::out_of_range("out of range get");
+        }
+        std::memcpy(s, _bin.get() +_index, count);
         _index += count;
         return count;
     }
 
     std::streambuf::int_type sbumpc() {
-        char_type ch = (char_type) _data[_index];
+        if (_index + 1 > _bin.size()) {
+            throw std::out_of_range("out of range get");
+        }
+        char_type ch = (char_type) _bin.get()[_index];
         ++_index;
         return (int_type) ch;
     }
 
-    ReaderT& _reader;
-    char *_data;
-    size_t _index;
+    Binary _bin;
+    size_t _index{0};
 };
 
 } //  namespace k2

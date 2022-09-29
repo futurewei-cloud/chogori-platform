@@ -67,13 +67,7 @@ namespace k2 {
 
 class PayloadReader {
 public:
-    PayloadReader() {}
-    PayloadReader(Payload& source) {
-        _payload = source.shareAll();
-        _payload.seek(source.getCurrentPosition());
-    }
-
-    using Binary = k2::Binary;
+    PayloadReader(Payload& payload): _payload(payload) {}
 
     // read a value that can be optional
     template <typename T>
@@ -223,18 +217,12 @@ public:
     }
 
 private:
-    Payload _payload;
+    Payload& _payload;
 };
 
 class PayloadWriter {
 public:
-    PayloadWriter():_payload{Payload(Payload::DefaultAllocator())} {}
-    PayloadWriter(Payload&& payload):_payload(std::move(payload)) {}
-    Payload& getPayload() {
-            return _payload;
-    }
-
-    using Binary = k2::Binary;
+    PayloadWriter(Payload& payload):_payload(payload) {}
 
     template <typename T>
     void write(const std::optional<T>& obj) {
@@ -373,6 +361,6 @@ public:
     }
 
 private:
-    Payload _payload;
+    Payload& _payload;
 };
 }

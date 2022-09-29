@@ -26,18 +26,14 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <skvhttp/common/Binary.h>
 #include <skvhttp/common/Common.h>
-// #include <skvhttp/common/Serialization.h>
-// #include <skvhttp/mpack/MPackSerialization.h>
 
 namespace skv::http {
 
-const size_t MAX_SERIALIZED_SIZE_CPP_DEC_FLOATS = 100;
-
 template<typename WriterT, size_t bufSize>
-class DFWriteStreamBuf : public std::streambuf {
+class WriteStreamBuf : public std::streambuf {
 public:
 
-    DFWriteStreamBuf(WriterT& writer): _writer(writer), _sz(0) {}
+    WriteStreamBuf(WriterT& writer): _writer(writer) {}
 
     std::streamsize xsputn(const char_type* s, std::streamsize count) {
         if (_sz + count > bufSize) {
@@ -48,7 +44,7 @@ public:
         return count;
     }
 
-    std::streambuf::int_type sputc(char_type ch) {
+    int_type sputc(char_type ch) {
         if (_sz + 1 > bufSize) {
             throw std::out_of_range("not enough memory put");
         }
@@ -57,20 +53,20 @@ public:
         return ch;
     }
 
-    ~DFWriteStreamBuf() {
-        typename WriterT::Binary bin(_data, _sz, [](){});
+    ~WriteStreamBuf() {
+        Binary bin(_data, _sz, [](){});
         _writer.write(bin);
     }
 
     WriterT& _writer;
     char _data[bufSize];
-    size_t _sz;
+    size_t _sz{0};
 };
 
 template<typename ReaderT>
-class DFReadStreamBuf : public std::streambuf {
+class ReadStreamBuf : public std::streambuf {
 public:
-    DFReadStreamBuf(ReaderT& reader) {
+    ReadStreamBuf(ReaderT& reader) {
         reader.read(_bin);
     }
 
@@ -83,7 +79,7 @@ public:
         return count;
     }
 
-    std::streambuf::int_type sbumpc() {
+    int_type sbumpc() {
         if (_index + 1 > _bin.size()) {
             throw std::out_of_range("out of range get");
         }
@@ -92,7 +88,7 @@ public:
         return (int_type) ch;
     }
 
-    typename ReaderT::Binary _bin;
+    Binary _bin;
     size_t _index{0};
 };
 

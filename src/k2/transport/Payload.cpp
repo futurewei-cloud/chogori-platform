@@ -21,10 +21,11 @@ Copyright(c) 2020 Futurewei Cloud
     SOFTWARE.
 */
 
-#include "Payload.h"
-// #include "PayloadSerialization.h"
+
 #include <crc32c/crc32c.h>
 
+#include "Payload.h"
+#include "PayloadSerialization.h"
 namespace k2 {
 
 Payload::PayloadPosition::PayloadPosition():PayloadPosition(0, 0, 0) {
@@ -196,8 +197,8 @@ bool Payload::read(String& value) {
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
-    // PayloadReader reader(*this);
-    PayloadDFReadStreamBuf<Payload> readsb(*this);
+    PayloadReader reader(*this);
+    PayloadDFReadStreamBuf<PayloadReader> readsb(reader);
     boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
     try {
         bia >> value;
@@ -208,8 +209,8 @@ bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
 }
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
-    // PayloadReader reader(*this);
-    PayloadDFReadStreamBuf<Payload> readsb(*this);
+    PayloadReader reader(*this);
+    PayloadDFReadStreamBuf<PayloadReader> readsb(reader);
     boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
     try {
         bia >> value;
@@ -316,15 +317,15 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    // PayloadWriter writer(*this);
-    PayloadDFWriteStreamBuf<Payload, 80> writesb(*this);
+    PayloadWriter writer(*this);
+    PayloadDFWriteStreamBuf<PayloadWriter, 80> writesb(writer);
     boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
     boa << value;
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    // PayloadWriter writer(*this);
-    PayloadDFWriteStreamBuf<Payload, 100> writesb(*this);
+    PayloadWriter writer(*this);
+    PayloadDFWriteStreamBuf<PayloadWriter, 100> writesb(writer);
     boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
     boa << value;
 }
