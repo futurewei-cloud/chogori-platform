@@ -40,12 +40,18 @@ public:
     DFWriteStreamBuf(WriterT& writer): _writer(writer), _sz(0) {}
 
     std::streamsize xsputn(const char_type* s, std::streamsize count) {
+        if (_sz + count > bufSize) {
+            throw std::out_of_range("not enough memory put");
+        }
         std::memcpy(_data + _sz, s, count);
         _sz += count;
         return count;
     }
 
     std::streambuf::int_type sputc(char_type ch) {
+        if (_sz + 1 > bufSize) {
+            throw std::out_of_range("not enough memory put");
+        }
         _data[_sz] = ch;
         ++_sz;
         return ch;
@@ -64,27 +70,30 @@ public:
 template<typename ReaderT>
 class DFReadStreamBuf : public std::streambuf {
 public:
-    DFReadStreamBuf(ReaderT& reader): _reader(reader), _index{0} {
-        typename ReaderT::Binary bin;
-        _reader.read(bin);
-        _data = (char *) bin.data();
+    DFReadStreamBuf(ReaderT& reader) {
+        reader.read(_bin);
     }
 
     std::streamsize xsgetn(char_type* s, std::streamsize count) {
-        std::memcpy(s, _data +_index, count);
+        if (_index + count > _bin.size()) {
+            throw std::out_of_range("out of range get");
+        }
+        std::memcpy(s, _bin.data() +_index, count);
         _index += count;
         return count;
     }
 
     std::streambuf::int_type sbumpc() {
-        char_type ch = (char_type) _data[_index];
+        if (_index + 1 > _bin.size()) {
+            throw std::out_of_range("out of range get");
+        }
+        char_type ch = (char_type) _bin.data()[_index];
         ++_index;
         return (int_type) ch;
     }
 
-    ReaderT& _reader;
-    char *_data;
-    size_t _index;
+    typename ReaderT::Binary _bin;
+    size_t _index{0};
 };
 
 }
