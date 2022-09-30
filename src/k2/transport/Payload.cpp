@@ -26,6 +26,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include "Payload.h"
 #include "PayloadSerialization.h"
+
 namespace k2 {
 
 Payload::PayloadPosition::PayloadPosition():PayloadPosition(0, 0, 0) {

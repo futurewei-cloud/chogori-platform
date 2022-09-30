@@ -131,7 +131,7 @@ public: // types
         _Size bufferOffset;
         size_t offset;
     };
-    
+
 public: // Lifecycle
     // Create a blank payload which can grow by allocating with the given allocator
     Payload(BinaryAllocator&& allocator);
@@ -540,7 +540,7 @@ public: // getSerializedSizeOf api
         || std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
         auto curPos = getCurrentPosition();
         size_t size = 0;
-        if (!read(size)) { // decimals are stored in a binary
+        if (!read(size)) {
             K2LOG_E(log::tx, "failed to read decimal size");
             seek(curPos);
             return 0;
@@ -687,90 +687,5 @@ private: // deleted
     Payload(const Payload&) = delete;
     Payload& operator=(const Payload&) = delete;
 }; // class Payload
-
-class PayloadStreamBuf : public std::streambuf {
-public:
-    PayloadStreamBuf(Payload& payload): _payload(payload){}
-    std::streamsize xsputn(const char_type* s, std::streamsize count) {
-        _payload.write(s, count);
-        return count;
-    }
-    int_type sputc(char_type ch) {
-        _payload.write(ch);
-        return (int_type) ch;
-    }
-    std::streamsize xsgetn(char_type* s, std::streamsize count) {
-        _payload.read(s, count);
-        return count;
-    }
-    int_type sbumpc() {
-        char_type ch;
-        _payload.read(ch);
-        return (int_type) ch;
-    }
-    Payload& _payload;
-};
-
-template<typename WriterT, size_t bufSize>
-class PayloadDFWriteStreamBuf : public std::streambuf {
-public:
-    PayloadDFWriteStreamBuf(WriterT& writer): _writer(writer) {}
-
-    std::streamsize xsputn(const char_type* s, std::streamsize count) {
-        if (_sz + count > bufSize) {
-            throw std::out_of_range("not enough memory put");
-        }
-        std::memcpy(_data + _sz, s, count);
-        _sz += count;
-        return count;
-    }
-
-    std::streambuf::int_type sputc(char_type ch) {
-        if (_sz + 1 > bufSize) {
-            throw std::out_of_range("not enough memory put");
-        }
-        _data[_sz] = ch;
-        ++_sz;
-        return ch;
-    }
-
-    ~PayloadDFWriteStreamBuf() {
-        Binary bin(_data, _sz, seastar::make_deleter([](){}));
-        _writer.write(bin);
-    }
-
-    WriterT& _writer;
-    char _data[bufSize];
-    size_t _sz{0};
-};
-
-template<typename ReaderT>
-class PayloadDFReadStreamBuf : public std::streambuf {
-public:
-    PayloadDFReadStreamBuf(ReaderT& reader) {
-        reader.read(_bin);
-    }
-
-    std::streamsize xsgetn(char_type* s, std::streamsize count) {
-        if (_index + count > _bin.size()) {
-            throw std::out_of_range("out of range get");
-        }
-        std::memcpy(s, _bin.get() +_index, count);
-        _index += count;
-        return count;
-    }
-
-    std::streambuf::int_type sbumpc() {
-        if (_index + 1 > _bin.size()) {
-            throw std::out_of_range("out of range get");
-        }
-        char_type ch = (char_type) _bin.get()[_index];
-        ++_index;
-        return (int_type) ch;
-    }
-
-    Binary _bin;
-    size_t _index{0};
-};
 
 } //  namespace k2

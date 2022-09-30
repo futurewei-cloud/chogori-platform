@@ -195,22 +195,14 @@ public:
     bool read(Binary& val) {
         return _payload.read(val);
     }
-    /*
+    
     bool read(skv::http::Binary& val) {
-        Binary bin;
-        if (!_payload.read(bin)) { // read a k2 binary first
+        // use shared pointer since the deleter lambda needs to be copied into an std function
+        auto binp = seastar::make_lw_shared<Binary>(); 
+        if (!_payload.read(*binp)) {
             return false;
         }
-        val = skv::http::Binary((char*)bin.get(), bin.size(), [shp = std::make_shared<Binary>(bin)]{});
-        return true;
-    }
-    */
-    bool read(skv::http::Binary& val) {
-        size_t size; 
-        _payload.read(size);
-        char* data = (char*) malloc(size);
-        _payload.read(data, size);
-        val = skv::http::Binary(data, size, [data]{free(data);});
+        val = skv::http::Binary((char*)binp->get(), binp->size(), [binp]{});
         return true;
     }
 
@@ -361,16 +353,9 @@ public:
         K2LOG_V(log::tx, "writing binary {}", val);
         _payload.write(val);
     }
-    /*
     void write(const skv::http::Binary& val) {
         K2LOG_V(log::tx, "writing skv http binary {}", val);
         _payload.write(Binary((char*)val.data(), val.size(), seastar::make_deleter([](){})));
-    }
-    */
-    void write(const skv::http::Binary& val) {
-        K2LOG_V(log::tx, "writing skv http binary {}", val);
-        _payload.write((size_t)val.size());
-        _payload.write(val.data(), val.size());
     }
 
     template <typename T>

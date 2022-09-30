@@ -32,7 +32,6 @@ namespace skv::http {
 template<typename WriterT, size_t bufSize>
 class WriteStreamBuf : public std::streambuf {
 public:
-
     WriteStreamBuf(WriterT& writer): _writer(writer) {}
 
     std::streamsize xsputn(const char_type* s, std::streamsize count) {
@@ -57,7 +56,7 @@ public:
         Binary bin(_data, _sz, [](){});
         _writer.write(bin);
     }
-
+private:
     WriterT& _writer;
     char _data[bufSize];
     size_t _sz{0};
@@ -87,7 +86,7 @@ public:
         ++_index;
         return (int_type) ch;
     }
-
+private:
     Binary _bin;
     size_t _index{0};
 };
