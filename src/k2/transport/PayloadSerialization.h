@@ -195,14 +195,25 @@ public:
     bool read(Binary& val) {
         return _payload.read(val);
     }
+    /*
     bool read(skv::http::Binary& val) {
         Binary bin;
         if (!_payload.read(bin)) { // read a k2 binary first
             return false;
         }
-        val = skv::http::Binary((char*)bin.get(), bin.size(), [k2binData=std::move(bin.get())](){});
+        val = skv::http::Binary((char*)bin.get(), bin.size(), [shp = std::make_shared<Binary>(bin)]{});
         return true;
     }
+    */
+    bool read(skv::http::Binary& val) {
+        size_t size; 
+        _payload.read(size);
+        char* data = (char*) malloc(size);
+        _payload.read(data, size);
+        val = skv::http::Binary(data, size, [data]{free(data);});
+        return true;
+    }
+
     bool read(Duration& dur) {
         return _payload.read(dur);
     }
@@ -347,12 +358,19 @@ public:
         _payload.write(value.data(), value.size());
     }
     void write(const Binary& val) {
-        K2LOG_V(log::tx, "writing k2 binary {}", val);
+        K2LOG_V(log::tx, "writing binary {}", val);
         _payload.write(val);
     }
+    /*
     void write(const skv::http::Binary& val) {
         K2LOG_V(log::tx, "writing skv http binary {}", val);
         _payload.write(Binary((char*)val.data(), val.size(), seastar::make_deleter([](){})));
+    }
+    */
+    void write(const skv::http::Binary& val) {
+        K2LOG_V(log::tx, "writing skv http binary {}", val);
+        _payload.write((size_t)val.size());
+        _payload.write(val.data(), val.size());
     }
 
     template <typename T>
