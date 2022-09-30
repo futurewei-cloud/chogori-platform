@@ -25,6 +25,7 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <k2/logging/Log.h>
 #include <skvhttp/common/Serialization.h>
+#include <skvhttp/common/StreamBuf.h>
 #include "Payload.h"
 
 // General purpose macro for creating serializable structures of any field types.
@@ -194,6 +195,14 @@ public:
     bool read(Binary& val) {
         return _payload.read(val);
     }
+    bool read(skv::http::Binary& val) {
+        Binary bin;
+        if (!_payload.read(bin)) { // read a k2 binary first
+            return false;
+        }
+        val = skv::http::Binary((char*)bin.get(), bin.size(), [k2binData=std::move(bin.get())](){});
+        return true;
+    }
     bool read(Duration& dur) {
         return _payload.read(dur);
     }
@@ -338,8 +347,12 @@ public:
         _payload.write(value.data(), value.size());
     }
     void write(const Binary& val) {
-        K2LOG_V(log::tx, "writing binary {}", val);
+        K2LOG_V(log::tx, "writing k2 binary {}", val);
         _payload.write(val);
+    }
+    void write(const skv::http::Binary& val) {
+        K2LOG_V(log::tx, "writing skv http binary {}", val);
+        _payload.write(Binary((char*)val.data(), val.size(), seastar::make_deleter([](){})));
     }
 
     template <typename T>
