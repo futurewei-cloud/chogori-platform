@@ -198,7 +198,7 @@ bool Payload::read(String& value) {
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
     PayloadReader reader(*this);
-    PayloadDFReadStreamBuf<PayloadReader> readsb(reader);
+    skv::http::ReadStreamBuf<PayloadReader> readsb(reader);
     boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
     try {
         bia >> value;
@@ -210,7 +210,7 @@ bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
 
 bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
     PayloadReader reader(*this);
-    PayloadDFReadStreamBuf<PayloadReader> readsb(reader);
+    skv::http::ReadStreamBuf<PayloadReader> readsb(reader);
     boost::archive::binary_iarchive bia(readsb, boost::archive::no_header);
     try {
         bia >> value;
@@ -318,14 +318,14 @@ void Payload::write(const String& value) {
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
     PayloadWriter writer(*this);
-    PayloadDFWriteStreamBuf<PayloadWriter, 80> writesb(writer);
+    skv::http::WriteStreamBuf<PayloadWriter, 80> writesb(writer);
     boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
     boa << value;
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
     PayloadWriter writer(*this);
-    PayloadDFWriteStreamBuf<PayloadWriter, 100> writesb(writer);
+    skv::http::WriteStreamBuf<PayloadWriter, 100> writesb(writer);
     boost::archive::binary_oarchive boa(writesb, boost::archive::no_header);
     boa << value;
 }
