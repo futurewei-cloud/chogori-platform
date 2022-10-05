@@ -50,12 +50,12 @@ def readMetrics():
                 success_count = int(float(line.split()[1]))
             except:
                 continue
-            print("CPOService_CPO_assigned_tso_instances: ", success_count)
+            # print("CPOService_CPO_assigned_tso_instances: ", success_count)
 
         if "CPOService_CPO_unassigned_tso_instances" in line:
             try:
                 failure_count = int(float(line.split()[1]))
-                print("CPOService_CPO_unassigned_tso_instances: ", failure_count)
+                # print("CPOService_CPO_unassigned_tso_instances: ", failure_count)
             except:
                 continue
     return success_count, failure_count

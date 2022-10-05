@@ -50,7 +50,7 @@ class TestHeartbeatFailure(unittest.TestCase):
                 except:
                     continue
                 self.assertTrue(count > 0)
-                print("Heartbeats_sent: ", count)
+                # print("Heartbeats_sent: ", count)
             if "HealthMonitor_nodepool_down" in line:
                 count = 0
                 try:
@@ -58,7 +58,7 @@ class TestHeartbeatFailure(unittest.TestCase):
                 except:
                     continue
                 self.assertTrue(count == 0)
-                print("nodepool_down: ", count)
+                # print("nodepool_down: ", count)
             if "HealthMonitor_nodepool_total" in line:
                 count = 0
                 try:
@@ -66,7 +66,7 @@ class TestHeartbeatFailure(unittest.TestCase):
                 except:
                     continue
                 self.assertTrue(count > 0)
-                print("nodepool_total: ", count)
+                # print("nodepool_total: ", count)
 
         os.kill(int(args.nodepool_pid), signal.SIGKILL)
         time.sleep(2)
@@ -81,7 +81,7 @@ class TestHeartbeatFailure(unittest.TestCase):
                 except:
                     continue
                 self.assertTrue(count > 0)
-                print("Heartbeats_sent: ", count)
+                # print("Heartbeats_sent: ", count)
             if "HealthMonitor_nodepool_down" in line:
                 count = 0
                 try:
@@ -89,7 +89,7 @@ class TestHeartbeatFailure(unittest.TestCase):
                 except:
                     continue
                 self.assertTrue(count == 1)
-                print("nodepool_down: ", count)
+                # print("nodepool_down: ", count)
             if "HealthMonitor_nodepool_total" in line:
                 count = 0
                 try:
@@ -97,7 +97,7 @@ class TestHeartbeatFailure(unittest.TestCase):
                 except:
                     continue
                 self.assertTrue(count > 0)
-                print("nodepool_total: ", count)
+                # print("nodepool_total: ", count)
 
 # Needed because unittest will throw an exception if it sees any command line arguments it doesn't understand
 del sys.argv[1:]
