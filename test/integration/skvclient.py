@@ -46,7 +46,7 @@ class Status:
         self.code, self.message = status
 
     def __str__(self):
-        return f"{self.code}: {self.message.decode('ascii')}"
+        return f"{self.code}: {self.message}"
 
     def __repr__(self):
         return str(self)
@@ -412,7 +412,7 @@ class SKVClient:
 
     def make_call(self, path, data):
         url = self.http + path
-        logger.info("calling {} with data {}".format(url, data))
+        logger.debug("calling {} with data {}".format(url, data))
         try:
             datab = msgpack.packb(data, use_bin_type=True)
         except Exception as exc:
@@ -429,7 +429,7 @@ class SKVClient:
             status, obj = msgpack.unpackb(resp.content)
             st = Status(status)
             if not st.is2xxOK():
-                logger.error("Error response from server: %s", st)
+                logger.debug("Error response from server: %s", st)
 
             return (st, obj)
         except Exception as exc:
@@ -452,12 +452,13 @@ class SKVClient:
                  [collectionName, schemaName, schemaVersion])
         if not status.is2xxOK():
             return status, None
+        sraw = schema_raw[0]
         fields = [
-            SchemaField(FieldType(fraw[0]), fraw[1], fraw[2], fraw[3]) for fraw in schema_raw[2]
+            SchemaField(FieldType(fraw[0]), fraw[1], fraw[2], fraw[3]) for fraw in sraw[2]
         ]
 
-        schema = Schema(schema_raw[0], schema_raw[1],
-                        fields, schema_raw[3], schema_raw[4])
+        schema = Schema(sraw[0], sraw[1],
+                        fields, sraw[3], sraw[4])
         return status, schema
 
     def create_collection(self, md: CollectionMetadata, rangeEnds: [str] = None) -> Status:
