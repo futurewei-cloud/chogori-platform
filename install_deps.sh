@@ -9,4 +9,7 @@ git submodule update --init --recursive
 mkdir -p build
 cd build
 cmake -DCRC32C_BUILD_TESTS=0 -DCRC32C_BUILD_BENCHMARKS=0 .. && make -j all install
-cd ../../
+cd ../../../
+
+mkdir -p src/logging/build && cd src/logging/build && cmake ../ && make -j install && cd -
+mkdir -p src/skvhttpclient/build && cd src/skvhttpclient/build && cmake ../ && make -j install && cd -

@@ -40,7 +40,7 @@ def get_failed_errbound_times():
     r = requests.get(url)
     count = 0
     for line in r.text.splitlines():
-        print(line)
+        # print(line)
         if "TSOService_TSO_timestamp_errorbound_count" in line:
             try:
                 count = int(float(line.split()[1]))
@@ -55,7 +55,7 @@ class TestTSOErrorBoundFailure(unittest.TestCase):
         while time.time() < time_start + TEST_TIMEOUT:
             try:
                 count = get_failed_errbound_times()
-                print("count is: ", count)
+                # print("count is: ", count)
                 if count > 0:
                     break
                 time.sleep(TEST_RETRY_INTERVAL)
