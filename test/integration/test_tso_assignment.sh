@@ -31,4 +31,4 @@ trap finish EXIT
 
 sleep 1
 
-/build/test/integration/test_cpo_tso_assign.py --tso_child_pid=${tso_child_pid} --prometheus_port=63000 --cmd="./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c2 --tcp_endpoints \"tcp+k2rpc://0.0.0.0:13001\" \"tcp+k2rpc://0.0.0.0:13002\" --prometheus_port 63004 --tso.clock_poller_cpu=${TSO_POLLER_CORE}"\
+./test/integration/test_cpo_tso_assign.py --tso_child_pid=${tso_child_pid} --prometheus_port=63000 --cmd="./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c2 --tcp_endpoints \"tcp+k2rpc://0.0.0.0:13001\" \"tcp+k2rpc://0.0.0.0:13002\" --prometheus_port 63004 --tso.clock_poller_cpu=${TSO_POLLER_CORE}"\

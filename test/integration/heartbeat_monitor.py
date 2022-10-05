@@ -33,6 +33,7 @@ parser.add_argument("--nodepool_pid", help="Nodepool PID")
 parser.add_argument("--prometheus_port", help="CPO prometheus port")
 args = parser.parse_args()
 
+
 #CPOService_HealthMonitor_heartbeats_sent{shard="1",total_cores="2"} 40
 #CPOService_HealthMonitor_nodepool_down{shard="1",total_cores="2"} 0.000000
 #CPOService_HealthMonitor_nodepool_total{shard="1",total_cores="2"} 1.000000
@@ -69,7 +70,7 @@ class TestHeartbeatFailure(unittest.TestCase):
 
         os.kill(int(args.nodepool_pid), signal.SIGKILL)
         time.sleep(2)
-            
+
         url = "http://127.0.0.1:" + args.prometheus_port + "/metrics"
         r = requests.get(url)
         for line in r.text.splitlines():
