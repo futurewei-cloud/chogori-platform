@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(assignment_manager STATIC ${HEADERS} ${SOURCES})
+add_library(assignment_manager OBJECT ${HEADERS} ${SOURCES})
 target_link_libraries (assignment_manager PRIVATE common transport Seastar::seastar dto k23si)
 
 # export the library in the common k2Targets

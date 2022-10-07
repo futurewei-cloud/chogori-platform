@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(collection_metadata_cache STATIC ${HEADERS} ${SOURCES})
+add_library(collection_metadata_cache OBJECT ${HEADERS} ${SOURCES})
 target_link_libraries (collection_metadata_cache PRIVATE common transport Seastar::seastar dto)
 
 # export the library in the common k2Targets

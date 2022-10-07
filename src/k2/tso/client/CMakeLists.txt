@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(tso_client STATIC ${HEADERS} ${SOURCES})
+add_library(tso_client OBJECT ${HEADERS} ${SOURCES})
 
 target_link_libraries (tso_client PRIVATE appbase dto config common transport Seastar::seastar)
 

@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(httpproxy STATIC ${HEADERS} ${SOURCES})
+add_library(httpproxy OBJECT ${HEADERS} ${SOURCES})
 
 target_link_libraries (httpproxy PRIVATE cpo_client k23si_client dto infrastructure common config Seastar::seastar skvhttp::dto)
 

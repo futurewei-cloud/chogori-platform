@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(appbase STATIC ${HEADERS} ${SOURCES})
+add_library(appbase OBJECT ${HEADERS} ${SOURCES})
 
 set_target_properties(appbase PROPERTIES
     VERSION ${PROJECT_VERSION}

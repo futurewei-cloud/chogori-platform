@@ -138,7 +138,10 @@ public:
                     K2LOG_D(log::cpoclient, "refreshing collection from CPO after status={}", status);
                     return _getAssignedPartitionWithRetry(deadline, request.collectionName, request.key, reverse, exclusiveKey)
                     .then([this, deadline, &request, reverse, exclusiveKey] (auto&& status) {
-                        // just retry here regardless of the result.
+                        if (deadline.isOver() && !status.is2xxOK()) {
+                            return RPCResponse(std::move(status), ResponseT{});
+                        }
+
                         K2LOG_D(log::cpoclient, "retrying partition call after status={}", status);
                         return partitionRequest<RequestT, ResponseT, verb, ClockT>(deadline, request, reverse, exclusiveKey);
                     });

@@ -1,8 +1,8 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(common STATIC ${HEADERS} ${SOURCES})
-target_link_libraries (common PRIVATE Seastar::seastar fmt::fmt skvhttp::common)
+add_library(common INTERFACE ${HEADERS} ${SOURCES})
+target_link_libraries (common INTERFACE Seastar::seastar fmt::fmt skvhttp::common)
 
 # export the library in the common k2Targets
 install(TARGETS common EXPORT k2Targets DESTINATION lib/k2)

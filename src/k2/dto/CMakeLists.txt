@@ -1,8 +1,8 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(dto STATIC ${HEADERS} ${SOURCES})
-target_link_libraries (dto PRIVATE common)
+add_library(dto OBJECT ${HEADERS} ${SOURCES})
+target_link_libraries (dto PRIVATE transport common)
 
 # export the library in the common k2Targets
 install(TARGETS dto EXPORT k2Targets DESTINATION lib/k2)

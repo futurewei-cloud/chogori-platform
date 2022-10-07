@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(infrastructure STATIC ${HEADERS} ${SOURCES})
+add_library(infrastructure OBJECT ${HEADERS} ${SOURCES})
 
 target_link_libraries (infrastructure PRIVATE common config Seastar::seastar transport)
 

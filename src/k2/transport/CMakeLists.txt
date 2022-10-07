@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(transport STATIC ${HEADERS} ${SOURCES})
+add_library(transport OBJECT ${HEADERS} ${SOURCES})
 
 target_link_libraries (transport PRIVATE common config Seastar::seastar crc32c skvhttp::common skvhttp::mpack)
 

@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(indexer STATIC ${HEADERS} ${SOURCES})
+add_library(indexer OBJECT ${HEADERS} ${SOURCES})
 set_target_properties(indexer PROPERTIES LINKER_LANGUAGE CXX)
 
 # export the library in the common k2Targets
