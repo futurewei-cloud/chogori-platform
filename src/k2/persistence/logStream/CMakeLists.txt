@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(log_stream STATIC ${HEADERS} ${SOURCES})
+add_library(log_stream OBJECT ${HEADERS} ${SOURCES})
 target_link_libraries (log_stream PRIVATE transport common cpo_client plog_client)
 
 # export the library in the common k2Targets

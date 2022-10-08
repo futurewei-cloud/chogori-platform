@@ -34,6 +34,7 @@ int main(int argc, char** argv) {
 
     app.addOptions()
         ("partition_request_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("tso_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of TSO operations, as chrono literals")
         ("cpo_request_timeout", bpo::value<k2::ParseableDuration>(), "CPO request timeout")
         ("cpo_request_backoff", bpo::value<k2::ParseableDuration>(), "CPO request backoff")
         ("k23si_query_pagination_limit", bpo::value<uint32_t>(), "Max records to return in a single query response")

@@ -1,8 +1,8 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(k23si_client STATIC ${HEADERS} ${SOURCES})
-target_link_libraries (k23si_client PRIVATE common transport dto cpo_client Seastar::seastar)
+add_library(k23si_client OBJECT ${HEADERS} ${SOURCES})
+target_link_libraries (k23si_client PRIVATE cpo_client dto transport common Seastar::seastar)
 
 # export the library in the common k2Targets
 install(TARGETS k23si_client EXPORT k2Targets DESTINATION lib/k2)

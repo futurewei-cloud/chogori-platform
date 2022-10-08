@@ -1,14 +1,14 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(config STATIC ${HEADERS} ${SOURCES})
+add_library(config INTERFACE ${HEADERS} ${SOURCES})
 
 set_target_properties(config PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
 )
 
-target_link_libraries (config PRIVATE common)
+target_link_libraries (config INTERFACE common)
 
 # export the library in the common k2Targets
 install(TARGETS config EXPORT k2Targets DESTINATION lib/k2)

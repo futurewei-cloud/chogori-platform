@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(cpo_service STATIC ${HEADERS} ${SOURCES})
+add_library(cpo_service OBJECT ${HEADERS} ${SOURCES})
 target_link_libraries (cpo_service PRIVATE common transport Seastar::seastar dto)
 
 # export the library in the common k2Targets

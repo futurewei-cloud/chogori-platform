@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(node_pool_monitor STATIC ${HEADERS} ${SOURCES})
+add_library(node_pool_monitor OBJECT ${HEADERS} ${SOURCES})
 target_link_libraries (node_pool_monitor PRIVATE common transport Seastar::seastar dto)
 
 # export the library in the common k2Targets

@@ -480,6 +480,7 @@ int main(int argc, char** argv) {;
         ("num_concurrent_txns", bpo::value<int>()->default_value(2), "Number of concurrent transactions to use")
         ("test_duration_s", bpo::value<uint32_t>()->default_value(30), "How long in seconds to run")
         ("partition_request_timeout", bpo::value<ParseableDuration>(), "Timeout of K23SI operations, as chrono literals")
+        ("tso_timeout", bpo::value<k2::ParseableDuration>(), "Timeout of TSO operations, as chrono literals")
         ("dataload_txn_timeout", bpo::value<ParseableDuration>(), "Timeout of dataload txn, as chrono literal")
         ("writes_per_load_txn", bpo::value<size_t>()->default_value(10), "The number of writes to do in the load phase between txn commit calls")
         ("districts_per_warehouse", bpo::value<int16_t>()->default_value(10), "The number of districts per warehouse")

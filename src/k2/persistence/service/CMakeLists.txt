@@ -1,7 +1,7 @@
 file(GLOB HEADERS "*.h")
 file(GLOB SOURCES "*.cpp")
 
-add_library(persistence_service STATIC ${HEADERS} ${SOURCES})
+add_library(persistence_service OBJECT ${HEADERS} ${SOURCES})
 
 set_target_properties(persistence_service PROPERTIES
     VERSION ${PROJECT_VERSION}
