@@ -299,10 +299,12 @@ void Payload::write(const String& value) {
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
+    static_assert(sizeof(boost::multiprecision::cpp_dec_float_50) == 56, "check updated implementation for cpp_dec_float_50");
     write(&value, sizeof(boost::multiprecision::cpp_dec_float_50));
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
+    static_assert(sizeof(boost::multiprecision::cpp_dec_float_100) == 80, "check updated implementation for cpp_dec_float_100");
     write(&value, sizeof(boost::multiprecision::cpp_dec_float_100));
 }
 

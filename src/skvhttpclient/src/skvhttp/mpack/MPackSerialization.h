@@ -489,10 +489,12 @@ public:
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);
+        static_assert(sizeof(DecimalD50) == 56, "check updated implementation for cpp_dec_float_50");
         mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD50));
     }
     void write(const DecimalD100& value) {
         K2LOG_V(log::mpack, "writing decimald100 type {}", value);
+        static_assert(sizeof(DecimalD100) == 80, "check updated implementation for cpp_dec_float_100");
         mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD100));
     }
     void write(const String& val) {
