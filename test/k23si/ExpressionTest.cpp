@@ -178,6 +178,14 @@ TEST_CASE("NaN expressions"){
     }
 
     try{
+        boost::multiprecision::cpp_dec_float_25 y(nan("1"));
+        k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_25>(std::move(y));
+        REQUIRE(false);
+    }catch(k2d::NaNError &){
+        std::cout << "Expression with NaN decimald25 literal cannot be made." << std::endl;
+    }
+
+    try{
         boost::multiprecision::cpp_dec_float_50 y(nan("1"));
         k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_50>(std::move(y));
         REQUIRE(false);
@@ -208,6 +216,15 @@ TEST_CASE("Float expressions"){
         .rec = makeRec(),
         .expectedResult = {false},
         .expectedException = {}});
+
+    boost::multiprecision::cpp_dec_float_25 d1("100.5001");
+    boost::multiprecision::cpp_dec_float_25 d2("100.5002");
+    cases.push_back(TestCase{
+        .name = "gt: two decimals not gt",
+        .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_25>(std::move(d1)), k2e::makeValueLiteral<boost::multiprecision::cpp_dec_float_25>(std::move(d2))), {})},
+        .rec = makeRec(),
+        .expectedResult = {false},
+        .expectedException = {}});  
 
     boost::multiprecision::cpp_dec_float_50 v1("101.5001");
     boost::multiprecision::cpp_dec_float_50 v2("101.5002");

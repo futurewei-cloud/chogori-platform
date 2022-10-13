@@ -372,10 +372,12 @@ SCENARIO("test getSerializedSizeOf method") {
     Payload src(Payload::DefaultAllocator(32));
     char a = 'a';
     String b = "test getSerializedSizeOf method";
-    boost::multiprecision::cpp_dec_float_50 c("1333666666.0000001111");
-    boost::multiprecision::cpp_dec_float_100 c1("1333666666.00000011114444");
-    boost::multiprecision::cpp_dec_float_50 c2 = std::numeric_limits<boost::multiprecision::cpp_dec_float_50>::min();
-    boost::multiprecision::cpp_dec_float_50 c3 = std::numeric_limits<boost::multiprecision::cpp_dec_float_50>::max();
+    
+    boost::multiprecision::cpp_dec_float_25 c0("122333.0000001111");
+    boost::multiprecision::cpp_dec_float_50 c1("1333666666.0000001111");
+    boost::multiprecision::cpp_dec_float_100 c2("1333666666.00000011114444");
+    boost::multiprecision::cpp_dec_float_50 c3 = std::numeric_limits<boost::multiprecision::cpp_dec_float_50>::min();
+    boost::multiprecision::cpp_dec_float_50 c4 = std::numeric_limits<boost::multiprecision::cpp_dec_float_50>::max();
     
     std::set<int16_t> d{
         1, 2, 3, 4, 5
@@ -408,10 +410,11 @@ SCENARIO("test getSerializedSizeOf method") {
 
     src.write(a);
     src.write(b);
-    src.write(c);
+    src.write(c0);
     src.write(c1);
     src.write(c2);
     src.write(c3);
+    src.write(c4);
     src.write(d);
     src.write(e);
     src.write(f);
@@ -424,6 +427,8 @@ SCENARIO("test getSerializedSizeOf method") {
     src.skip<char>();
     REQUIRE(src.getSerializedSizeOf<String>() == sizeof(uint32_t) + b.size() + 1);
     src.skip<String>();
+    REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_25>() == sizeof(boost::multiprecision::cpp_dec_float_25));
+    src.skip<boost::multiprecision::cpp_dec_float_25>();
     REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_50>() == sizeof(boost::multiprecision::cpp_dec_float_50));
     src.skip<boost::multiprecision::cpp_dec_float_50>();
     REQUIRE(src.getSerializedSizeOf<boost::multiprecision::cpp_dec_float_100>() == sizeof(boost::multiprecision::cpp_dec_float_100));

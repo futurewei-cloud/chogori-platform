@@ -290,13 +290,17 @@ private:
                 std::optional<bool> value = (record).deserializeNext<bool>();                                         \
                 func<bool>(std::move(value), field.name, __VA_ARGS__);                                                \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DECIMALD50: {                                                                     \
-                std::optional<boost::multiprecision::cpp_dec_float_50> value = (record).deserializeNext<boost::multiprecision::cpp_dec_float_50>();   \
-                func<boost::multiprecision::cpp_dec_float_50>(std::move(value), field.name, __VA_ARGS__);                             \
+            case k2::dto::FieldType::DECIMALD25: {                                                                    \
+                std::optional<boost::multiprecision::cpp_dec_float_25> value = (record).deserializeNext<boost::multiprecision::cpp_dec_float_25>();   \
+                func<boost::multiprecision::cpp_dec_float_25>(std::move(value), field.name, __VA_ARGS__);             \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DECIMALD100: {                                                                    \
+            case k2::dto::FieldType::DECIMALD50: {                                                                    \
+                std::optional<boost::multiprecision::cpp_dec_float_50> value = (record).deserializeNext<boost::multiprecision::cpp_dec_float_50>();   \
+                func<boost::multiprecision::cpp_dec_float_50>(std::move(value), field.name, __VA_ARGS__);             \
+            } break;                                                                                                  \
+            case k2::dto::FieldType::DECIMALD100: {                                                                   \
                 std::optional<boost::multiprecision::cpp_dec_float_100> value = (record).deserializeNext<boost::multiprecision::cpp_dec_float_100>(); \
-                func<boost::multiprecision::cpp_dec_float_100>(std::move(value), field.name, __VA_ARGS__);                            \
+                func<boost::multiprecision::cpp_dec_float_100>(std::move(value), field.name, __VA_ARGS__);            \
             } break;                                                                                                  \
             case k2::dto::FieldType::FIELD_TYPE: {                                                                    \
                 std::optional<k2::dto::FieldType> value = (record).deserializeNext<k2::dto::FieldType>();             \

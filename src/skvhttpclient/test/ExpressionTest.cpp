@@ -185,6 +185,14 @@ TEST_CASE("NaN expressions"){
     }
 
     try{
+        DecimalD25 y(nan("1"));
+        k2e::makeValueLiteral<DecimalD25>(std::move(y));
+        REQUIRE(false);
+    }catch(k2d::NaNError &){
+        std::cout << "Expression with NaN decimald25 literal cannot be made." << std::endl;
+    }
+
+    try{
         DecimalD50 y(nan("1"));
         k2e::makeValueLiteral<DecimalD50>(std::move(y));
         REQUIRE(false);
@@ -212,6 +220,15 @@ TEST_CASE("Float expressions"){
     cases.push_back(TestCase{
         .name = "gt: two floats not gt",
         .expr = {k2e::makeExpression(k2e::Operation::GT, make_vec<K2Val>(k2e::makeValueLiteral<float>(0.5), k2e::makeValueLiteral<float>(1.1)), {})},
+        .rec = makeRec(),
+        .expectedResult = {false},
+        .expectedException = {}});
+
+    DecimalD25 d1("101.5001");
+    DecimalD25 d2("101.5002");
+    cases.push_back(TestCase{
+        .name = "gt: two decimals not gt",
+        .expr = {k2e::makeExpression(k2e::Operation::GT, make_vec<K2Val>(k2e::makeValueLiteral<DecimalD25>(std::move(d1)), k2e::makeValueLiteral<DecimalD25>(std::move(d2))), {})},
         .rec = makeRec(),
         .expectedResult = {false},
         .expectedException = {}});

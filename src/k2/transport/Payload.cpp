@@ -194,6 +194,10 @@ bool Payload::read(String& value) {
     return read((void*)value.data(), size);
 }
 
+bool Payload::read(boost::multiprecision::cpp_dec_float_25& value) {
+    return read(&value, sizeof(boost::multiprecision::cpp_dec_float_25));
+}
+
 bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
     return read(&value, sizeof(boost::multiprecision::cpp_dec_float_50));
 }
@@ -296,6 +300,11 @@ void Payload::write(const String& value) {
     _Size size = value.size() + 1; // count the null character too
     write(size);
     write(value.data(), size);
+}
+
+void Payload::write(const boost::multiprecision::cpp_dec_float_25& value) {
+    static_assert(sizeof(boost::multiprecision::cpp_dec_float_25) == 44, "check updated implementation for cpp_dec_float_25");
+    write(&value, sizeof(boost::multiprecision::cpp_dec_float_25));
 }
 
 void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {

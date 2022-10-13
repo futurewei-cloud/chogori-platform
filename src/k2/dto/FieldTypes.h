@@ -31,6 +31,10 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/logging/Log.h>
 #include <k2/common/Common.h>
 
+namespace boost::multiprecision {
+typedef number<cpp_dec_float<25> > cpp_dec_float_25;
+}
+
 namespace k2 {
 namespace dto {
 
@@ -68,6 +72,7 @@ enum class FieldType : uint8_t {
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
+    DECIMALD25, // Provides 25 decimal digits of precision
     DECIMALD50, // Provides 50 decimal digits of precision
     DECIMALD100, // Provides 100 decimal digits of precision
     FIELD_TYPE, // The value refers to one of these types. Used in query filters.
@@ -107,7 +112,8 @@ bool isNan(const T& field){
         }
     }
 
-    if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>
+    if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_25> 
+        || std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>
         || std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>)  { // handle NaN decimal
         if (field.backend().isnan()) {
             return true;
@@ -144,10 +150,13 @@ bool isNan(const T& field){
             case k2::dto::FieldType::BOOL: {                        \
                 func<bool>((a), __VA_ARGS__);                       \
             } break;                                                \
-            case k2::dto::FieldType::DECIMALD50: {                   \
+            case k2::dto::FieldType::DECIMALD25: {                  \
+                func<boost::multiprecision::cpp_dec_float_25>((a), __VA_ARGS__);    \
+            } break;                                                \
+            case k2::dto::FieldType::DECIMALD50: {                  \
                 func<boost::multiprecision::cpp_dec_float_50>((a), __VA_ARGS__);    \
             } break;                                                \
-            case k2::dto::FieldType::DECIMALD100: {                  \
+            case k2::dto::FieldType::DECIMALD100: {                 \
                 func<boost::multiprecision::cpp_dec_float_100>((a), __VA_ARGS__);   \
             } break;                                                \
             case k2::dto::FieldType::FIELD_TYPE: {                  \
@@ -179,6 +188,8 @@ namespace std {
             return os << "DOUBLE";
         case k2::dto::FieldType::BOOL:
             return os << "BOOL";
+        case k2::dto::FieldType::DECIMALD25:
+            return os << "DECIMALD25";
         case k2::dto::FieldType::DECIMALD50:
             return os << "DECIMALD50";
         case k2::dto::FieldType::DECIMALD100:

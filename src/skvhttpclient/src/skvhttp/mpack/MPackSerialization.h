@@ -288,6 +288,23 @@ private:
         return true;
     }
 
+    bool _readFromNode(DecimalD25& value) {
+        // DecimalD25 is memcpy-ed
+        K2LOG_V(log::mpack, "reading decimald25");
+        size_t sz;
+        const char* data;
+
+        if (!_readData(data, sz)) {
+            return false;
+        }
+        if (sizeof(DecimalD25) != sz) {
+            return false;
+        }
+
+        std::memcpy((void *)&value, data, sizeof(DecimalD25));
+        return true;
+    }
+
     bool _readFromNode(DecimalD50& value) {
         // DecimalD50 is memcpy-ed
         K2LOG_V(log::mpack, "reading decimald50");
@@ -486,6 +503,11 @@ public:
     void write(const Duration& dur) {
         K2LOG_V(log::mpack, "writing duration type {}", dur);
         write(dur.count());  // write the tick count
+    }
+    void write(const DecimalD25& value) {
+        K2LOG_V(log::mpack, "writing decimald25 type {}", value);
+        static_assert(sizeof(DecimalD25) == 44, "check updated implementation for cpp_dec_float_25");
+        mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD25));
     }
     void write(const DecimalD50& value) {
         K2LOG_V(log::mpack, "writing decimald50 type {}", value);

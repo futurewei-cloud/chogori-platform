@@ -47,6 +47,7 @@ template <> FieldType TToFieldType<int64_t>() { return FieldType::INT64T; }
 template <> FieldType TToFieldType<float>() { return FieldType::FLOAT; }
 template <> FieldType TToFieldType<double>() { return FieldType::DOUBLE; }
 template <> FieldType TToFieldType<bool>() { return FieldType::BOOL; }
+template <> FieldType TToFieldType<boost::multiprecision::cpp_dec_float_25>() { return FieldType::DECIMALD25; }
 template <> FieldType TToFieldType<boost::multiprecision::cpp_dec_float_50>() { return FieldType::DECIMALD50; }
 template <> FieldType TToFieldType<boost::multiprecision::cpp_dec_float_100>() { return FieldType::DECIMALD100; }
 template <> FieldType TToFieldType<FieldType>() { return FieldType::FIELD_TYPE; }

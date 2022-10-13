@@ -155,9 +155,14 @@ constexpr auto type_name() {
     }
 
 // Provide formatting for decimals
-#ifdef _GLIBCXX_USE_DECIMAL_FLOAT
 #include <boost/multiprecision/cpp_dec_float.hpp>
+namespace boost::multiprecision {
+    typedef number<cpp_dec_float<25> > cpp_dec_float_25;
+}
 namespace std {
+inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_25& d) {
+    return os << d.str();
+}
 inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_50& d) {
     return os << d.str();
 }
@@ -165,7 +170,6 @@ inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_flo
     return os << d.str();
 }
 }
-#endif
 
 // provide support for formatting of stl containers of bool type
 template <>  // fmt support

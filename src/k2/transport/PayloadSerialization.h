@@ -201,6 +201,9 @@ public:
     bool read(Duration& dur) {
         return _payload.read(dur);
     }
+    bool read(boost::multiprecision::cpp_dec_float_25& value) {
+        return _payload.read(value);
+    }
     bool read(boost::multiprecision::cpp_dec_float_50& value) {
         return _payload.read(value);
     }
@@ -331,6 +334,10 @@ public:
     }
     void write(const Duration& value) {
         K2LOG_V(log::tx, "writing duration type {}", value);
+        _payload.write(value);
+    }
+    void write(const boost::multiprecision::cpp_dec_float_25& value) {
+        K2LOG_V(log::tx, "writing decimald25 type {}", value);
         _payload.write(value);
     }
     void write(const boost::multiprecision::cpp_dec_float_50& value) {
