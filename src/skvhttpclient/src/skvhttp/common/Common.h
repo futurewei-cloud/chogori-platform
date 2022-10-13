@@ -32,10 +32,7 @@ Copyright(c) 2020 Futurewei Cloud
 #include <skvhttp/common/Serialization.h>
 
 #include <boost/thread/future.hpp>
-#include <boost/multiprecision/cpp_dec_float.hpp>
-namespace boost::multiprecision {
-typedef number<cpp_dec_float<25> > cpp_dec_float_25;
-}
+
 namespace skv::http {
 using DecimalD25 = boost::multiprecision::cpp_dec_float_25;
 using DecimalD50 = boost::multiprecision::cpp_dec_float_50;

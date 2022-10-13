@@ -100,6 +100,7 @@ struct Ex3 {
     int32_t h;
     uint64_t i;
     int64_t j;
+    skv::http::DecimalD25 k0;
     skv::http::DecimalD50 k;
     skv::http::DecimalD100 l;
     skv::http::Binary m;
@@ -108,7 +109,7 @@ struct Ex3 {
     Action n;
     std::optional<int> o;
     std::optional<skv::http::Duration> p;
-    K2_SERIALIZABLE_FMT(Ex3, a, a1, a2, b, b1, b2, b3, b4, b5, c, d, e, f, g, h, i, j, k, l, m, e4, n, o, p);
+    K2_SERIALIZABLE_FMT(Ex3, a, a1, a2, b, b1, b2, b3, b4, b5, c, d, e, f, g, h, i, j, k0, k, l, m, e4, n, o, p);
 };
 
 SCENARIO("Test 02: test struct") {
@@ -194,6 +195,7 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         .h=95,
         .i=96,
         .j=99,
+        .k0=10,
         .k=50,
         .l=100,
         .m=skv::http::Binary(skv::http::String("abcd")),
@@ -432,6 +434,7 @@ SCENARIO("Test 05: test complex embedded struct with data") {
         REQUIRE(ex.h == 95);
         REQUIRE(ex.i == 96);
         REQUIRE(ex.j == 99);
+        REQUIRE(ex.k0 == 10);
         REQUIRE(ex.k == 50);
         REQUIRE(ex.l == 100);
         REQUIRE(ex.m.size() == 4);

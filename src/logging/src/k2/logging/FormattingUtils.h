@@ -42,6 +42,12 @@ Copyright(c) 2021 Futurewei Cloud
 #include <unordered_set>
 #include <vector>
 
+#include <boost/multiprecision/cpp_dec_float.hpp>
+// define cpp_dec_float_25 for use in both k2 and skvhttpclient
+namespace boost::multiprecision {
+    typedef number<cpp_dec_float<25> > cpp_dec_float_25;
+}
+
 namespace k2 {
 // helper function for converting enum class into an integral type
 // e.g. usage: auto integralColor = to_integral(MyEnum::Red);
@@ -155,10 +161,6 @@ constexpr auto type_name() {
     }
 
 // Provide formatting for decimals
-#include <boost/multiprecision/cpp_dec_float.hpp>
-namespace boost::multiprecision {
-    typedef number<cpp_dec_float<25> > cpp_dec_float_25;
-}
 namespace std {
 inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_25& d) {
     return os << d.str();

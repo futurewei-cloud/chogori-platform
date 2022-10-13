@@ -127,8 +127,8 @@ future<> AtomicVerify::run() {
 
 // Consistency condition 1 of spec: Sum of district YTD == warehouse YTD
 future<> ConsistencyVerify::verifyWarehouseYTD() {
-    return do_with((boost::multiprecision::cpp_dec_float_50)0, (int16_t)1,
-        [this] (boost::multiprecision::cpp_dec_float_50& total, int16_t& cur_d_id) {
+    return do_with((boost::multiprecision::cpp_dec_float_25)0, (int16_t)1,
+        [this] (boost::multiprecision::cpp_dec_float_25& total, int16_t& cur_d_id) {
         return do_until(
                 [this, &cur_d_id] () { return cur_d_id > _districts_per_warehouse(); },
                 [this, &cur_d_id, &total] () {
@@ -149,7 +149,7 @@ future<> ConsistencyVerify::verifyWarehouseYTD() {
                 CHECK_READ_STATUS(result);
                 K2ASSERT(log::tpcc, result.value.YTD.has_value(), "Warehouse YTD is null")
 
-                boost::multiprecision::cpp_dec_float_50 w_total = *(result.value.YTD);
+                boost::multiprecision::cpp_dec_float_25 w_total = *(result.value.YTD);
                 double w_display = w_total.backend().extract_double();
                 double total_display = total.backend().extract_double();
                 K2LOG_I(log::tpcc, "YTD consistency (WARNING: displayed values may not match due to conversion of decimal type, w_total: {}, total: {}", w_display, total_display);
@@ -547,8 +547,8 @@ future<> ConsistencyVerify::verifyOrderLineDelivery() {
 
 
 // Helper for consistency conditions 8 and 9
-future<boost::multiprecision::cpp_dec_float_50> ConsistencyVerify::historySum(bool useDistrictID) {
-    return do_with((boost::multiprecision::cpp_dec_float_50)0, Query(), [this, useDistrictID] (boost::multiprecision::cpp_dec_float_50& sum, Query& query) {
+future<boost::multiprecision::cpp_dec_float_25> ConsistencyVerify::historySum(bool useDistrictID) {
+    return do_with((boost::multiprecision::cpp_dec_float_25)0, Query(), [this, useDistrictID] (boost::multiprecision::cpp_dec_float_25& sum, Query& query) {
         return _client.createQuery(tpccCollectionName, "history")
         .then([this, &sum, &query, useDistrictID](auto&& response) {
             CHECK_READ_STATUS(response);
@@ -580,7 +580,7 @@ future<boost::multiprecision::cpp_dec_float_50> ConsistencyVerify::historySum(bo
                     CHECK_READ_STATUS(response);
 
                     for (dto::SKVRecord& record : response.records) {
-                        std::optional<boost::multiprecision::cpp_dec_float_50> amount = record.deserializeField<boost::multiprecision::cpp_dec_float_50>("Amount");
+                        std::optional<boost::multiprecision::cpp_dec_float_25> amount = record.deserializeField<boost::multiprecision::cpp_dec_float_25>("Amount");
                         sum += *amount;
                     }
 
@@ -589,7 +589,7 @@ future<boost::multiprecision::cpp_dec_float_50> ConsistencyVerify::historySum(bo
             });
         })
         .then([this, &sum] () {
-            return make_ready_future<boost::multiprecision::cpp_dec_float_50>(sum);
+            return make_ready_future<boost::multiprecision::cpp_dec_float_25>(sum);
         });
     });
 }
@@ -600,9 +600,9 @@ future<> ConsistencyVerify::verifyWarehouseHistorySum() {
     .then([this] (auto&& response) {
         CHECK_READ_STATUS(response);
 
-        std::optional<boost::multiprecision::cpp_dec_float_50> ytd = response.value.YTD;
+        std::optional<boost::multiprecision::cpp_dec_float_25> ytd = response.value.YTD;
         return historySum(false)
-        .then([this, ytd] (boost::multiprecision::cpp_dec_float_50&& sum) {
+        .then([this, ytd] (boost::multiprecision::cpp_dec_float_25&& sum) {
             K2ASSERT(log::tpcc, *ytd == sum, "History sum and Warehouse YTD do not match");
         });
     });
@@ -614,9 +614,9 @@ future<> ConsistencyVerify::verifyDistrictHistorySum() {
     .then([this] (auto&& response) {
         CHECK_READ_STATUS(response);
 
-        std::optional<boost::multiprecision::cpp_dec_float_50> ytd = response.value.YTD;
+        std::optional<boost::multiprecision::cpp_dec_float_25> ytd = response.value.YTD;
         return historySum(true)
-        .then([this, ytd] (boost::multiprecision::cpp_dec_float_50&& sum) {
+        .then([this, ytd] (boost::multiprecision::cpp_dec_float_25&& sum) {
             K2ASSERT(log::tpcc, *ytd == sum, "History sum and District YTD do not match");
         });
     });

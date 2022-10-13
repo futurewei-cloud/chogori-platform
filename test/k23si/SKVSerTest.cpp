@@ -505,6 +505,7 @@ TEST_CASE("Test13: serialiaze float, double and decimal fields") {
             {k2::dto::FieldType::STRING, "FirstName", false, true},
             {k2::dto::FieldType::DOUBLE, "Balance", false, false},
             {k2::dto::FieldType::FLOAT, "Salary", false, false},
+            {k2::dto::FieldType::DECIMALD25, "OtherIncome", false, false},
             {k2::dto::FieldType::DECIMALD50, "CreditLimit", false, false},
             {k2::dto::FieldType::DECIMALD100, "CreditBalance", false, false},
     };
