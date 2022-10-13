@@ -278,6 +278,18 @@ private:
                 std::optional<int64_t> value = (record).deserializeNext<int64_t>();                                   \
                 func<int64_t>(std::move(value), field.name, __VA_ARGS__);                                             \
             } break;                                                                                                  \
+            case k2::dto::FieldType::UINT16T: {                                                                        \
+                std::optional<uint16_t> value = (record).deserializeNext<uint16_t>();                                   \
+                func<uint16_t>(std::move(value), field.name, __VA_ARGS__);                                             \
+            } break;                                                                                                  \
+            case k2::dto::FieldType::UINT32T: {                                                                        \
+                std::optional<uint32_t> value = (record).deserializeNext<uint32_t>();                                   \
+                func<uint32_t>(std::move(value), field.name, __VA_ARGS__);                                             \
+            } break;                                                                                                  \
+            case k2::dto::FieldType::UINT64T: {                                                                        \
+                std::optional<uint64_t> value = (record).deserializeNext<uint64_t>();                                   \
+                func<uint64_t>(std::move(value), field.name, __VA_ARGS__);                                             \
+            } break;                                                                                                  \
             case k2::dto::FieldType::FLOAT: {                                                                         \
                 std::optional<float> value = (record).deserializeNext<float>();                                       \
                 func<float>(std::move(value), field.name, __VA_ARGS__);                                               \

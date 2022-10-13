@@ -63,6 +63,9 @@ enum class FieldType : uint8_t {
     INT16T,
     INT32T,
     INT64T,
+    UINT16T,
+    UINT32T,
+    UINT64T,
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
@@ -85,6 +88,9 @@ String FieldToKeyString(const T&);
 template<> String FieldToKeyString<int16_t>(const int16_t&);
 template<> String FieldToKeyString<int32_t>(const int32_t&);
 template<> String FieldToKeyString<int64_t>(const int64_t&);
+template<> String FieldToKeyString<uint16_t>(const uint16_t&);
+template<> String FieldToKeyString<uint32_t>(const uint32_t&);
+template<> String FieldToKeyString<uint64_t>(const uint64_t&);
 template<> String FieldToKeyString<String>(const String&);
 template<> String FieldToKeyString<bool>(const bool&);
 
@@ -135,6 +141,15 @@ bool isNan(const T& field){
             case k2::dto::FieldType::INT64T: {                      \
                 func<int64_t>((a), __VA_ARGS__);                    \
             } break;                                                \
+            case k2::dto::FieldType::UINT16T: {                     \
+                func<uint16_t>((a), __VA_ARGS__);                   \
+            } break;                                                \
+            case k2::dto::FieldType::UINT32T: {                     \
+                func<uint32_t>((a), __VA_ARGS__);                   \
+            } break;                                                \
+            case k2::dto::FieldType::UINT64T: {                     \
+                func<uint64_t>((a), __VA_ARGS__);                   \
+            } break;                                                \
             case k2::dto::FieldType::FLOAT: {                       \
                 func<float>((a), __VA_ARGS__);                      \
             } break;                                                \
@@ -176,6 +191,12 @@ namespace std {
             return os << "INT32T";
         case k2::dto::FieldType::INT64T:
             return os << "INT64T";
+        case k2::dto::FieldType::UINT16T:
+            return os << "UINT16T";
+        case k2::dto::FieldType::UINT32T:
+            return os << "UINT32T";
+        case k2::dto::FieldType::UINT64T:
+            return os << "UINT64T";
         case k2::dto::FieldType::FLOAT:
             return os << "FLOAT";
         case k2::dto::FieldType::DOUBLE:

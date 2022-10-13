@@ -87,6 +87,48 @@ struct is_comparable<T1, T2,
                          void())>
     : std::true_type {};
 
+
+/*
+template <> struct is_comparable<int16_t, int16_t> : std::true_type {};
+template <> struct is_comparable<int16_t, int32_t> : std::true_type {};
+template <> struct is_comparable<int16_t, int64_t> : std::true_type {};
+template <> struct is_comparable<int32_t, int16_t> : std::true_type {};
+template <> struct is_comparable<int32_t, int32_t> : std::true_type {};
+template <> struct is_comparable<int32_t, int64_t> : std::true_type {};
+template <> struct is_comparable<int64_t, int16_t> : std::true_type {};
+template <> struct is_comparable<int64_t, int32_t> : std::true_type {};
+template <> struct is_comparable<int64_t, int64_t> : std::true_type {};
+template <> struct is_comparable<uint16_t, uint16_t> : std::true_type {};
+template <> struct is_comparable<uint16_t, uint32_t> : std::true_type {};
+template <> struct is_comparable<uint16_t, uint64_t> : std::true_type {};
+template <> struct is_comparable<uint32_t, uint16_t> : std::true_type {};
+template <> struct is_comparable<uint32_t, uint32_t> : std::true_type {};
+template <> struct is_comparable<uint32_t, uint64_t> : std::true_type {};
+template <> struct is_comparable<uint64_t, uint16_t> : std::true_type {};
+template <> struct is_comparable<uint64_t, uint32_t> : std::true_type {};
+template <> struct is_comparable<uint64_t, uint64_t> : std::true_type {};
+*/
+
+template <> struct is_comparable<int16_t, uint16_t> : std::false_type {};
+template <> struct is_comparable<int16_t, uint32_t> : std::false_type {};
+template <> struct is_comparable<int16_t, uint64_t> : std::false_type {};
+template <> struct is_comparable<int32_t, uint16_t> : std::false_type {};
+template <> struct is_comparable<int32_t, uint32_t> : std::false_type {};
+template <> struct is_comparable<int32_t, uint64_t> : std::false_type {};
+template <> struct is_comparable<int64_t, uint16_t> : std::false_type {};
+template <> struct is_comparable<int64_t, uint32_t> : std::false_type {};
+template <> struct is_comparable<int64_t, uint64_t> : std::false_type {};
+
+template <> struct is_comparable<uint16_t, int16_t> : std::false_type {};
+template <> struct is_comparable<uint16_t, int32_t> : std::false_type {};
+template <> struct is_comparable<uint16_t, int64_t> : std::false_type {};
+template <> struct is_comparable<uint32_t, int16_t> : std::false_type {};
+template <> struct is_comparable<uint32_t, int32_t> : std::false_type {};
+template <> struct is_comparable<uint32_t, int64_t> : std::false_type {};
+template <> struct is_comparable<uint64_t, int16_t> : std::false_type {};
+template <> struct is_comparable<uint64_t, int32_t> : std::false_type {};
+template <> struct is_comparable<uint64_t, int64_t> : std::false_type {};
+
 // template specialization comparing two optionals of non-comparable types
 template <typename T1, typename T2>
 std::enable_if_t<!is_comparable<T1, T2>::value, int>

@@ -62,6 +62,9 @@ enum class FieldType : uint8_t {
     INT16T,
     INT32T,
     INT64T,
+    UINT16T,
+    UINT32T,
+    UINT64T,
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
@@ -84,6 +87,9 @@ String FieldToKeyString(const T&);
 template<> String FieldToKeyString<int16_t>(const int16_t&);
 template<> String FieldToKeyString<int32_t>(const int32_t&);
 template<> String FieldToKeyString<int64_t>(const int64_t&);
+template<> String FieldToKeyString<uint16_t>(const uint16_t&);
+template<> String FieldToKeyString<uint32_t>(const uint32_t&);
+template<> String FieldToKeyString<uint64_t>(const uint64_t&);
 template<> String FieldToKeyString<String>(const String&);
 template<> String FieldToKeyString<bool>(const bool&);
 
@@ -151,6 +157,15 @@ auto applyTyped(const FieldT& field, Func&& applier, Args&&... args) {
         case FieldType::INT64T: {
             return applier(AppliedFieldRef<int64_t, FieldT>(field), std::forward<Args>(args)...);
         }
+        case FieldType::UINT16T: {
+            return applier(AppliedFieldRef<uint16_t, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::UINT32T: {
+            return applier(AppliedFieldRef<uint32_t, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::UINT64T: {
+            return applier(AppliedFieldRef<uint64_t, FieldT>(field), std::forward<Args>(args)...);
+        }
         case FieldType::FLOAT: {
             return applier(AppliedFieldRef<float, FieldT>(field), std::forward<Args>(args)...);
         }
@@ -193,6 +208,12 @@ namespace std {
             return os << "INT32T";
         case skv::http::dto::FieldType::INT64T:
             return os << "INT64T";
+        case skv::http::dto::FieldType::UINT16T:
+            return os << "UINT16T";
+        case skv::http::dto::FieldType::UINT32T:
+            return os << "UINT32T";
+        case skv::http::dto::FieldType::UINT64T:
+            return os << "UINT64T";
         case skv::http::dto::FieldType::FLOAT:
             return os << "FLOAT";
         case skv::http::dto::FieldType::DOUBLE:
