@@ -44,6 +44,7 @@ Copyright(c) 2021 Futurewei Cloud
 
 #include <boost/multiprecision/cpp_dec_float.hpp>
 
+// define cpp_dec_float_25 for use in both k2 and skvhttpclient
 namespace boost::multiprecision {
 typedef number<cpp_dec_float<25> > cpp_dec_float_25;
 }

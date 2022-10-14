@@ -25,8 +25,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <string>
 
-#include <boost/multiprecision/cpp_dec_float.hpp>
-
 #include <k2/common/Common.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/Payload.h>

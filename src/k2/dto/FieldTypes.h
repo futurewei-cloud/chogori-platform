@@ -26,14 +26,8 @@ Copyright(c) 2020 Futurewei Cloud
 #include <cstdint>
 #include <cstring>
 
-#include <boost/multiprecision/cpp_dec_float.hpp>
-
 #include <k2/logging/Log.h>
 #include <k2/common/Common.h>
-
-namespace boost::multiprecision {
-typedef number<cpp_dec_float<25> > cpp_dec_float_25;
-}
 
 namespace k2 {
 namespace dto {
