@@ -194,16 +194,16 @@ bool Payload::read(String& value) {
     return read((void*)value.data(), size);
 }
 
-bool Payload::read(boost::multiprecision::cpp_dec_float_25& value) {
-    return read(&value, sizeof(boost::multiprecision::cpp_dec_float_25));
+bool Payload::read(DecimalD25& value) {
+    return read(&value, sizeof(DecimalD25));
 }
 
-bool Payload::read(boost::multiprecision::cpp_dec_float_50& value) {
-    return read(&value, sizeof(boost::multiprecision::cpp_dec_float_50));
+bool Payload::read(DecimalD50& value) {
+    return read(&value, sizeof(DecimalD50));
 }
 
-bool Payload::read(boost::multiprecision::cpp_dec_float_100& value) {
-    return read(&value, sizeof(boost::multiprecision::cpp_dec_float_100));
+bool Payload::read(DecimalD100& value) {
+    return read(&value, sizeof(DecimalD100));
 }
 
 bool Payload::read(Payload& other) {
@@ -302,19 +302,19 @@ void Payload::write(const String& value) {
     write(value.data(), size);
 }
 
-void Payload::write(const boost::multiprecision::cpp_dec_float_25& value) {
-    static_assert(sizeof(boost::multiprecision::cpp_dec_float_25) == 44, "check updated implementation for cpp_dec_float_25");
-    write(&value, sizeof(boost::multiprecision::cpp_dec_float_25));
+void Payload::write(const DecimalD25& value) {
+    static_assert(sizeof(DecimalD25) == 44, "check updated implementation for cpp_dec_float_25");
+    write(&value, sizeof(DecimalD25));
 }
 
-void Payload::write(const boost::multiprecision::cpp_dec_float_50& value) {
-    static_assert(sizeof(boost::multiprecision::cpp_dec_float_50) == 56, "check updated implementation for cpp_dec_float_50");
-    write(&value, sizeof(boost::multiprecision::cpp_dec_float_50));
+void Payload::write(const DecimalD50& value) {
+    static_assert(sizeof(DecimalD50) == 56, "check updated implementation for cpp_dec_float_50");
+    write(&value, sizeof(DecimalD50));
 }
 
-void Payload::write(const boost::multiprecision::cpp_dec_float_100& value) {
-    static_assert(sizeof(boost::multiprecision::cpp_dec_float_100) == 80, "check updated implementation for cpp_dec_float_100");
-    write(&value, sizeof(boost::multiprecision::cpp_dec_float_100));
+void Payload::write(const DecimalD100& value) {
+    static_assert(sizeof(DecimalD100) == 80, "check updated implementation for cpp_dec_float_100");
+    write(&value, sizeof(DecimalD100));
 }
 
 void Payload::write(const Binary& bin) {

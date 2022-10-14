@@ -32,11 +32,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <skvhttp/common/Serialization.h>
 
 #include <boost/thread/future.hpp>
-namespace skv::http {
-using DecimalD25 = boost::multiprecision::cpp_dec_float_25;
-using DecimalD50 = boost::multiprecision::cpp_dec_float_50;
-using DecimalD100 = boost::multiprecision::cpp_dec_float_100;
-}
 
 namespace skv::http {
 template <typename T>
@@ -57,6 +52,9 @@ using String = std::string;
 using Duration = k2::Duration;
 using TimePoint = k2::TimePoint;
 using Clock = k2::Clock;
+using DecimalD25 = k2::DecimalD25;
+using DecimalD50 = k2::DecimalD50;
+using DecimalD100 = k2::DecimalD100;
 
 class HexCodec {
    private:

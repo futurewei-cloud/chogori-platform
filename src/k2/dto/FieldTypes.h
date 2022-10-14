@@ -106,9 +106,9 @@ bool isNan(const T& field){
         }
     }
 
-    if constexpr (std::is_same_v<T, boost::multiprecision::cpp_dec_float_25> 
-        || std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>
-        || std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>)  { // handle NaN decimal
+    if constexpr (std::is_same_v<T, DecimalD25> 
+        || std::is_same_v<T, DecimalD50>
+        || std::is_same_v<T, DecimalD100>)  { // handle NaN decimal
         if (field.backend().isnan()) {
             return true;
         }
@@ -145,13 +145,13 @@ bool isNan(const T& field){
                 func<bool>((a), __VA_ARGS__);                       \
             } break;                                                \
             case k2::dto::FieldType::DECIMALD25: {                  \
-                func<boost::multiprecision::cpp_dec_float_25>((a), __VA_ARGS__);    \
+                func<DecimalD25>((a), __VA_ARGS__);    \
             } break;                                                \
             case k2::dto::FieldType::DECIMALD50: {                  \
-                func<boost::multiprecision::cpp_dec_float_50>((a), __VA_ARGS__);    \
+                func<DecimalD50>((a), __VA_ARGS__);    \
             } break;                                                \
             case k2::dto::FieldType::DECIMALD100: {                 \
-                func<boost::multiprecision::cpp_dec_float_100>((a), __VA_ARGS__);   \
+                func<DecimalD100>((a), __VA_ARGS__);   \
             } break;                                                \
             case k2::dto::FieldType::FIELD_TYPE: {                  \
                 func<k2::dto::FieldType>((a), __VA_ARGS__);         \

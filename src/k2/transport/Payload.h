@@ -218,9 +218,9 @@ public:  // Read API
     bool read(String& value);
 
     // read primitive decimal types
-    bool read(boost::multiprecision::cpp_dec_float_25& value);
-    bool read(boost::multiprecision::cpp_dec_float_50& value);
-    bool read(boost::multiprecision::cpp_dec_float_100& value);
+    bool read(DecimalD25& value);
+    bool read(DecimalD50& value);
+    bool read(DecimalD100& value);
 
     // read into a payload
     bool read(Payload& other);
@@ -380,9 +380,9 @@ public: // Write API
     void write(const String& value);
 
     // write primitive decimal types
-    void write(const boost::multiprecision::cpp_dec_float_25& value);
-    void write(const boost::multiprecision::cpp_dec_float_50& value);
-    void write(const boost::multiprecision::cpp_dec_float_100& value);
+    void write(const DecimalD25& value);
+    void write(const DecimalD50& value);
+    void write(const DecimalD100& value);
 
     // write another Payload
     void write(const Payload& other);
@@ -532,22 +532,22 @@ public: // getSerializedSizeOf api
         return size + sizeof(size);
     }
 
-    // for type boost::multiprecision::cpp_dec_float_25
+    // for type DecimalD25
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_25>, size_t> getSerializedSizeOf() {
-        return sizeof(boost::multiprecision::cpp_dec_float_25);
+    std::enable_if_t<std::is_same_v<T, DecimalD25>, size_t> getSerializedSizeOf() {
+        return sizeof(DecimalD25);
     }
 
-    // for type boost::multiprecision::cpp_dec_float_50
+    // for type DecimalD50
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_50>, size_t> getSerializedSizeOf() {
-        return sizeof(boost::multiprecision::cpp_dec_float_50);
+    std::enable_if_t<std::is_same_v<T, DecimalD50>, size_t> getSerializedSizeOf() {
+        return sizeof(DecimalD50);
     }
 
-    // for type boost::multiprecision::cpp_dec_float_100
+    // for type DecimalD100
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, boost::multiprecision::cpp_dec_float_100>, size_t> getSerializedSizeOf() {
-        return sizeof(boost::multiprecision::cpp_dec_float_100);
+    std::enable_if_t<std::is_same_v<T, DecimalD100>, size_t> getSerializedSizeOf() {
+        return sizeof(DecimalD100);
     }
 
     // for type: Duration

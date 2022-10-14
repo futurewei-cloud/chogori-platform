@@ -29,6 +29,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <fmt/printf.h>
 #include <fmt/ranges.h>
 #include <k2/logging/AutoGenFormattingUtils.h>
+#include <k2/logging/BoostDecimals.h>
 
 #include <iostream>
 #include <optional>
@@ -43,11 +44,6 @@ Copyright(c) 2021 Futurewei Cloud
 #include <vector>
 
 #include <boost/multiprecision/cpp_dec_float.hpp>
-
-// define cpp_dec_float_25 for use in both k2 and skvhttpclient
-namespace boost::multiprecision {
-typedef number<cpp_dec_float<25> > cpp_dec_float_25;
-}
 
 namespace k2 {
 // helper function for converting enum class into an integral type
@@ -163,13 +159,13 @@ constexpr auto type_name() {
 
 // Provide formatting for decimals
 namespace std {
-inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_25& d) {
+inline ostream& operator<<(ostream& os, const k2::DecimalD25& d) {
     return os << d.str();
 }
-inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_50& d) {
+inline ostream& operator<<(ostream& os, const k2::DecimalD50& d) {
     return os << d.str();
 }
-inline ostream& operator<<(ostream& os, const boost::multiprecision::cpp_dec_float_100& d) {
+inline ostream& operator<<(ostream& os, const k2::DecimalD100& d) {
     return os << d.str();
 }
 }

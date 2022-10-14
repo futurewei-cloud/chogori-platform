@@ -137,8 +137,8 @@ public:
     Warehouse() = default;
 
     std::optional<int16_t> WarehouseID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Tax;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTD;
+    std::optional<DecimalD25> Tax;
+    std::optional<DecimalD25> YTD;
     std::optional<String> Name;
     Address address;
 
@@ -188,8 +188,8 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int16_t> DistrictID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Tax;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTD;
+    std::optional<DecimalD25> Tax;
+    std::optional<DecimalD25> YTD;
     std::optional<int64_t> NextOrderID;
     std::optional<String> Name;
     Address address;
@@ -274,10 +274,10 @@ public:
     std::optional<int16_t> DistrictID;
     std::optional<int32_t> CustomerID;
     std::optional<int64_t> SinceDate;
-    std::optional<boost::multiprecision::cpp_dec_float_25> CreditLimit;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Discount;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Balance;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTDPayment;
+    std::optional<DecimalD25> CreditLimit;
+    std::optional<DecimalD25> Discount;
+    std::optional<DecimalD25> Balance;
+    std::optional<DecimalD25> YTDPayment;
     std::optional<int32_t> PaymentCount;
     std::optional<int32_t> DeliveryCount;
     std::optional<String> FirstName;
@@ -360,7 +360,7 @@ public:
 
     // For payment transaction
     History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id,
-                boost::multiprecision::cpp_dec_float_25 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
+                DecimalD25 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
         Date = getDate();
         CustomerID = c_id;
         CustomerWarehouseID = c_w_id;
@@ -382,7 +382,7 @@ public:
     std::optional<int64_t> Date;
     std::optional<int32_t> CustomerID;
     std::optional<int16_t> CustomerWarehouseID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Amount;
+    std::optional<DecimalD25> Amount;
     std::optional<int16_t> CustomerDistrictID;
     std::optional<int16_t> DistrictID;
     std::optional<String> Info;
@@ -588,7 +588,7 @@ public:
     std::optional<int64_t> DeliveryDate;
     std::optional<int32_t> ItemID;
     std::optional<int16_t> SupplyWarehouseID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Amount;
+    std::optional<DecimalD25> Amount;
     std::optional<int16_t> Quantity;
     std::optional<String> DistInfo;
 
@@ -635,7 +635,7 @@ public:
 
     std::optional<int32_t> ItemID;
     std::optional<int32_t> ImageID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Price;
+    std::optional<DecimalD25> Price;
     std::optional<String> Name;
     std::optional<String> Info;
 
@@ -729,7 +729,7 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int32_t> ItemID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTD;
+    std::optional<DecimalD25> YTD;
     std::optional<int16_t> OrderCount;
     std::optional<int16_t> RemoteCount;
     std::optional<int16_t> Quantity;

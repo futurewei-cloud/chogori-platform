@@ -449,8 +449,8 @@ TEST_CASE("Test11: serialize decimal NaN field") {
     doc.serializeNext<double>(100.1);
 
     try{
-        boost::multiprecision::cpp_dec_float_50 y(nan("1"));
-        doc.serializeNext<boost::multiprecision::cpp_dec_float_50>(y);
+        k2::DecimalD50 y(nan("1"));
+        doc.serializeNext<k2::DecimalD50>(y);
         REQUIRE(false);
     }catch(k2::dto::NaNError &){
         std::cout << "Test11: Tried to serialize decimal NaN field" << std::endl;
@@ -505,14 +505,14 @@ TEST_CASE("Test13: serialiaze float, double and decimal fields") {
     doc.serializeNext<double>(1000.1);
     doc.serializeNext<float>(100.2);
 
-    boost::multiprecision::cpp_dec_float_25 z("100.5001");
-    doc.serializeNext<boost::multiprecision::cpp_dec_float_25>(z);
+    k2::DecimalD25 z("100.5001");
+    doc.serializeNext<k2::DecimalD25>(z);
 
-    boost::multiprecision::cpp_dec_float_50 y("101.5001");
-    doc.serializeNext<boost::multiprecision::cpp_dec_float_50>(y);
+    k2::DecimalD50 y("101.5001");
+    doc.serializeNext<k2::DecimalD50>(y);
 
-    boost::multiprecision::cpp_dec_float_100  x("101.5002");
-    doc.serializeNext<boost::multiprecision::cpp_dec_float_100>(x);
+    k2::DecimalD100  x("101.5002");
+    doc.serializeNext<k2::DecimalD100>(x);
     
     std::cout << "Test13: Serialize float and double fields." << std::endl;
 }
