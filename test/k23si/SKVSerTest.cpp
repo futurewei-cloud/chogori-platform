@@ -449,22 +449,8 @@ TEST_CASE("Test11: serialize decimal NaN field") {
     doc.serializeNext<double>(100.1);
 
     try{
-        boost::multiprecision::cpp_dec_float_25 y(nan("1"));
-        doc.serializeNext<boost::multiprecision::cpp_dec_float_25>(y);
-        REQUIRE(false);
-    }catch(k2::dto::NaNError &){
-        std::cout << "Test11: Tried to serialize decimal NaN field" << std::endl;
-    }
-    try{
         boost::multiprecision::cpp_dec_float_50 y(nan("1"));
         doc.serializeNext<boost::multiprecision::cpp_dec_float_50>(y);
-        REQUIRE(false);
-    }catch(k2::dto::NaNError &){
-        std::cout << "Test11: Tried to serialize decimal NaN field" << std::endl;
-    }
-    try{
-        boost::multiprecision::cpp_dec_float_100 y(nan("1"));
-        doc.serializeNext<boost::multiprecision::cpp_dec_float_100>(y);
         REQUIRE(false);
     }catch(k2::dto::NaNError &){
         std::cout << "Test11: Tried to serialize decimal NaN field" << std::endl;
