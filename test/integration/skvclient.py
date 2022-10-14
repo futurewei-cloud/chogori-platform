@@ -69,15 +69,13 @@ class Status:
 class FieldType(int, Enum):
     NULL_T:     int     = 0
     STRING:     int     = 1
-    INT16T:     int     = 2
-    INT32T:     int     = 3
-    INT64T:     int     = 4
-    FLOAT:      int     = 5
-    DOUBLE:     int     = 6
-    BOOL:       int     = 7
-    DECIMALD25: int     = 8
-    DECIMALD50: int     = 9
-    DECIMALD100:int     = 10
+    INT32T:     int     = 2
+    INT64T:     int     = 3
+    FLOAT:      int     = 4
+    DOUBLE:     int     = 5
+    BOOL:       int     = 6
+    DECIMALD50:  int     = 7
+    DECIMALD100: int     = 8
 
     def serialize(self):
         return self.value

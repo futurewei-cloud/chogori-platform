@@ -48,10 +48,10 @@ public:
 
 private:
     struct ValuesToCompare {
-        boost::multiprecision::cpp_dec_float_25 w_ytd;
-        boost::multiprecision::cpp_dec_float_25 d_ytd;
-        boost::multiprecision::cpp_dec_float_25 c_ytd;
-        boost::multiprecision::cpp_dec_float_25 c_balance;
+        boost::multiprecision::cpp_dec_float_50 w_ytd;
+        boost::multiprecision::cpp_dec_float_50 d_ytd;
+        boost::multiprecision::cpp_dec_float_50 c_ytd;
+        boost::multiprecision::cpp_dec_float_50 c_balance;
         uint16_t c_payments;
     };
 
@@ -91,7 +91,7 @@ private:
     future<int16_t> countOrderLineRows(int64_t oid);
     future<> verifyOrderLineByOrder();
     future<> verifyOrderLineDelivery();
-    future<boost::multiprecision::cpp_dec_float_25> historySum(bool useDistrictID);
+    future<boost::multiprecision::cpp_dec_float_50> historySum(bool useDistrictID);
     future<> verifyWarehouseHistorySum();
     future<> verifyDistrictHistorySum();
     future<> runForEachWarehouse(consistencyOp op);

@@ -25,6 +25,8 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <string>
 
+#include <boost/multiprecision/cpp_dec_float.hpp>
+
 #include <k2/common/Common.h>
 #include <k2/module/k23si/client/k23si_client.h>
 #include <k2/transport/Payload.h>
@@ -111,8 +113,8 @@ public:
         .version = 1,
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT16T, "ID", false, false},
-                {dto::FieldType::DECIMALD25, "Tax", false, false}, // Requires 4 digits of precision
-                {dto::FieldType::DECIMALD25, "YTD", false, false}, // Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "Tax", false, false}, // Requires 4 digits of precision
+                {dto::FieldType::DECIMALD50, "YTD", false, false}, // Requires 12 digits of precision
                 {dto::FieldType::STRING, "Name", false, false},
                 {dto::FieldType::STRING, "Street1", false, false},
                 {dto::FieldType::STRING, "Street2", false, false},
@@ -137,8 +139,8 @@ public:
     Warehouse() = default;
 
     std::optional<int16_t> WarehouseID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Tax;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTD;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Tax;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTD;
     std::optional<String> Name;
     Address address;
 
@@ -160,8 +162,8 @@ public:
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT16T, "ID", false, false},
                 {dto::FieldType::INT16T, "DID", false, false},
-                {dto::FieldType::DECIMALD25, "Tax", false, false}, // Requires 4 digits of precision
-                {dto::FieldType::DECIMALD25, "YTD", false, false}, // Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "Tax", false, false}, // Requires 4 digits of precision
+                {dto::FieldType::DECIMALD50, "YTD", false, false}, // Requires 12 digits of precision
                 {dto::FieldType::INT64T, "NextOID", false, false},
                 {dto::FieldType::STRING, "Name", false, false},
                 {dto::FieldType::STRING, "Street1", false, false},
@@ -188,8 +190,8 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int16_t> DistrictID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Tax;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTD;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Tax;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTD;
     std::optional<int64_t> NextOrderID;
     std::optional<String> Name;
     Address address;
@@ -213,10 +215,10 @@ public:
                 {dto::FieldType::INT16T, "DID", false, false},
                 {dto::FieldType::INT32T, "CID", false, false},
                 {dto::FieldType::INT64T, "SinceDate", false, false},
-                {dto::FieldType::DECIMALD25, "CreditLimit", false, false}, //Requires 12 digits of precision
-                {dto::FieldType::DECIMALD25, "Discount", false, false}, //Requires 4 digits of precision
-                {dto::FieldType::DECIMALD25, "Balance", false, false}, //Requires 12 digits of precision
-                {dto::FieldType::DECIMALD25, "YTDPayment", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "CreditLimit", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "Discount", false, false}, //Requires 4 digits of precision
+                {dto::FieldType::DECIMALD50, "Balance", false, false}, //Requires 12 digits of precision
+                {dto::FieldType::DECIMALD50, "YTDPayment", false, false}, //Requires 12 digits of precision
                 {dto::FieldType::INT32T, "PaymentCount", false, false}, // Requires max >= 9999
                 {dto::FieldType::INT32T, "DeliveryCount", false, false}, // Requires max >= 9999
                 {dto::FieldType::STRING, "FirstName", false, false},
@@ -274,10 +276,10 @@ public:
     std::optional<int16_t> DistrictID;
     std::optional<int32_t> CustomerID;
     std::optional<int64_t> SinceDate;
-    std::optional<boost::multiprecision::cpp_dec_float_25> CreditLimit;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Discount;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Balance;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTDPayment;
+    std::optional<boost::multiprecision::cpp_dec_float_50> CreditLimit;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Discount;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Balance;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTDPayment;
     std::optional<int32_t> PaymentCount;
     std::optional<int32_t> DeliveryCount;
     std::optional<String> FirstName;
@@ -339,7 +341,7 @@ public:
                 {dto::FieldType::INT64T, "Date", false, false},
                 {dto::FieldType::INT32T, "CID", false, false},
                 {dto::FieldType::INT16T, "CWID", false, false},
-                {dto::FieldType::DECIMALD25, "Amount", false, false}, // Requires 6 digits of precision
+                {dto::FieldType::DECIMALD50, "Amount", false, false}, // Requires 6 digits of precision
                 {dto::FieldType::INT16T, "CDID", false, false},
                 {dto::FieldType::INT16T, "DID", false, false},
                 {dto::FieldType::STRING, "Info", false, false}},
@@ -360,7 +362,7 @@ public:
 
     // For payment transaction
     History(int16_t w_id, int16_t d_id, int32_t c_id, int16_t c_w_id, int16_t c_d_id,
-                boost::multiprecision::cpp_dec_float_25 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
+                boost::multiprecision::cpp_dec_float_50 amount, const char w_name[], const char d_name[]) : WarehouseID(w_id) {
         Date = getDate();
         CustomerID = c_id;
         CustomerWarehouseID = c_w_id;
@@ -382,7 +384,7 @@ public:
     std::optional<int64_t> Date;
     std::optional<int32_t> CustomerID;
     std::optional<int16_t> CustomerWarehouseID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Amount;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Amount;
     std::optional<int16_t> CustomerDistrictID;
     std::optional<int16_t> DistrictID;
     std::optional<String> Info;
@@ -530,7 +532,7 @@ public:
                 {dto::FieldType::INT64T, "DeliveryDate", false, false},
                 {dto::FieldType::INT32T, "ItemID", false, false},
                 {dto::FieldType::INT16T, "SupplyWID", false, false},
-                {dto::FieldType::DECIMALD25, "Amount", false, false}, // Requires 6 digits of precision
+                {dto::FieldType::DECIMALD50, "Amount", false, false}, // Requires 6 digits of precision
                 {dto::FieldType::INT16T, "Quantity", false, false},
                 {dto::FieldType::STRING, "DistInfo", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
@@ -588,7 +590,7 @@ public:
     std::optional<int64_t> DeliveryDate;
     std::optional<int32_t> ItemID;
     std::optional<int16_t> SupplyWarehouseID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Amount;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Amount;
     std::optional<int16_t> Quantity;
     std::optional<String> DistInfo;
 
@@ -607,7 +609,7 @@ public:
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT32T, "ID", false, false},
                 {dto::FieldType::INT32T, "ImageID", false, false},
-                {dto::FieldType::DECIMALD25, "Price", false, false}, // Requires 5 digits of precision
+                {dto::FieldType::DECIMALD50, "Price", false, false}, // Requires 5 digits of precision
                 {dto::FieldType::STRING, "Name", false, false},
                 {dto::FieldType::STRING, "Info", false, false}},
         .partitionKeyFields = std::vector<uint32_t> { 0 },
@@ -635,7 +637,7 @@ public:
 
     std::optional<int32_t> ItemID;
     std::optional<int32_t> ImageID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> Price;
+    std::optional<boost::multiprecision::cpp_dec_float_50> Price;
     std::optional<String> Name;
     std::optional<String> Info;
 
@@ -652,7 +654,7 @@ public:
         .fields = std::vector<dto::SchemaField> {
                 {dto::FieldType::INT16T, "ID", false, false},
                 {dto::FieldType::INT32T, "ItemID", false, false},
-                {dto::FieldType::DECIMALD25, "YTD", false, false}, // Requires 8 digits of precision
+                {dto::FieldType::DECIMALD50, "YTD", false, false}, // Requires 8 digits of precision
                 {dto::FieldType::INT16T, "OrderCount", false, false},
                 {dto::FieldType::INT16T, "RemoteCount", false, false},
                 {dto::FieldType::INT16T, "Quantity", false, false},
@@ -729,7 +731,7 @@ public:
 
     std::optional<int16_t> WarehouseID;
     std::optional<int32_t> ItemID;
-    std::optional<boost::multiprecision::cpp_dec_float_25> YTD;
+    std::optional<boost::multiprecision::cpp_dec_float_50> YTD;
     std::optional<int16_t> OrderCount;
     std::optional<int16_t> RemoteCount;
     std::optional<int16_t> Quantity;
