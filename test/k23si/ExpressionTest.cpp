@@ -207,7 +207,7 @@ TEST_CASE("Float expressions"){
         .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<float>(0.5), k2e::makeValueLiteral<float>(1.1)), {})},
         .rec = makeRec(),
         .expectedResult = {false},
-        .expectedException = {}});   
+        .expectedException = {}});
 
     std::decimal::decimal64 v1(101.5001);
     std::decimal::decimal64 v2(101.5002);
@@ -216,7 +216,7 @@ TEST_CASE("Float expressions"){
         .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<std::decimal::decimal64>(std::move(v1)), k2e::makeValueLiteral<std::decimal::decimal64>(std::move(v2))), {})},
         .rec = makeRec(),
         .expectedResult = {false},
-        .expectedException = {}});  
+        .expectedException = {}});
 
     std::decimal::decimal128 x1(101.5002);
     std::decimal::decimal128 x2(101.5001);
@@ -225,7 +225,7 @@ TEST_CASE("Float expressions"){
         .expr = {k2e::makeExpression(k2e::Operation::GT, k2::make_vec<K2Val>(k2e::makeValueLiteral<std::decimal::decimal128>(std::move(x1)), k2e::makeValueLiteral<std::decimal::decimal128>(std::move(x2))), {})},
         .rec = makeRec(),
         .expectedResult = {true},
-        .expectedException = {}}); 
+        .expectedException = {}});
 
     runner(cases);
 }
@@ -1270,8 +1270,8 @@ TEST_CASE("Test AND") {
                 {})
         ))},
         .rec = makeRec(),
-        .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
+        .expectedResult = {true},
+        .expectedException = {}});
     cases.push_back(TestCase{
         .name = "and: 1 expr",
         .expr = {k2e::makeExpression(k2e::Operation::AND, {}, k2::make_vec<K2Exp>(
@@ -1283,17 +1283,17 @@ TEST_CASE("Test AND") {
                 {})
         ))},
         .rec = makeRec(),
-        .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
+        .expectedResult = {true},
+        .expectedException = {}});
     cases.push_back(TestCase{
         .name = "and: 1 value",
         .expr = {k2e::makeExpression(k2e::Operation::AND,
-            k2::make_vec<K2Val>(k2e::makeValueLiteral<int32_t>(30)),
+            k2::make_vec<K2Val>(k2e::makeValueLiteral<bool>(false)),
             {}
         )},
         .rec = makeRec(),
-        .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
+        .expectedResult = {false},
+        .expectedException = {}});
     cases.push_back(TestCase{
         .name = "and: bool A expr true, B wrong type value",
         .expr = {k2e::makeExpression(k2e::Operation::AND,
@@ -1552,13 +1552,13 @@ TEST_CASE("Test OR") {
             k2e::makeExpression(k2e::Operation::GT,
                 k2::make_vec<K2Val>(
                     k2e::makeValueLiteral<int16_t>(20),
-                    k2e::makeValueLiteral<int16_t>(10)
+                    k2e::makeValueLiteral<int16_t>(100)
                 ),
                 {})
         ))},
         .rec = makeRec(),
-        .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
+        .expectedResult = {true},
+        .expectedException = {}});
     cases.push_back(TestCase{
         .name = "or: 1 expr",
         .expr = {k2e::makeExpression(k2e::Operation::OR, {}, k2::make_vec<K2Exp>(
@@ -1570,17 +1570,17 @@ TEST_CASE("Test OR") {
                 {})
         ))},
         .rec = makeRec(),
-        .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
+        .expectedResult = {true},
+        .expectedException = {}});
     cases.push_back(TestCase{
         .name = "or: 1 value",
         .expr = {k2e::makeExpression(k2e::Operation::OR,
-            k2::make_vec<K2Val>(k2e::makeValueLiteral<int32_t>(30)),
+            k2::make_vec<K2Val>(k2e::makeValueLiteral<bool>(false)),
             {}
         )},
         .rec = makeRec(),
-        .expectedResult = {},
-        .expectedException = {std::make_exception_ptr(k2d::InvalidExpressionException(""))}});
+        .expectedResult = {false},
+        .expectedException = {}});
     cases.push_back(TestCase{
         .name = "or: bool A expr true, B wrong type value",
         .expr = {k2e::makeExpression(k2e::Operation::OR,

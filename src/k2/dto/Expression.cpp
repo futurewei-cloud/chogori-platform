@@ -357,67 +357,53 @@ bool Expression::ENDS_WITH_handler(SKVRecord& rec) {
 }
 
 bool Expression::AND_handler(SKVRecord& rec) {
-    // this op evaluates exactly two children only
-    if (valueChildren.size() + expressionChildren.size() != 2) {
-        throw InvalidExpressionException(fmt::format("expression AND must have exactly 2 total children(have {} value and {} expression)", valueChildren.size(), expressionChildren.size()));
+    // this op must have children
+    if (valueChildren.size() + expressionChildren.size() == 0) {
+        throw InvalidExpressionException("expression AND must have 1 or more children");
     }
-    // case 1: 2 values
-    if (valueChildren.size() == 2) {
-        SchematizedValue aVal(valueChildren[0], rec);
-        SchematizedValue bVal(valueChildren[1], rec);
-        if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            throw TypeMismatchException(fmt::format("AND handler 2 values non-bool fields: {}, {}", aVal.type, bVal.type));
-        }
-        auto [nullA, aOpt] = aVal.get<bool>();
-        auto [nullB, bOpt] = bVal.get<bool>();
-        return aOpt.has_value() && bOpt.has_value() && (*aOpt) && (*bOpt);
-    }
-    else if (valueChildren.size() == 1) {
-        SchematizedValue aVal(valueChildren[0], rec);
+
+    bool result = true;
+    // values first, order does not matter as we don't short-circuit in order to detect schema mis-matches
+    for (auto&& value : valueChildren) {
+        SchematizedValue aVal(value, rec);
         if (aVal.type != FieldType::BOOL) {
-            throw TypeMismatchException(fmt::format("AND handler single non-bool field: {}", aVal.type));
+            throw TypeMismatchException(fmt::format("AND handler value with non-bool field: {}", aVal.type));
         }
-        auto [nullLast, aOpt] = aVal.get<bool>();
-        // make sure to always evaluate in order to trigger type exceptions if any
-        auto expEval = expressionChildren[0].evaluate(rec);
-        return aOpt.has_value() && (*aOpt) && expEval;
+
+        auto [nullA, aOpt] = aVal.get<bool>();
+        result = result && aOpt.has_value() && (*aOpt);
     }
-    // always evaluate fully both children to trigger type exceptions if any
-    auto expAeval = expressionChildren[0].evaluate(rec);
-    auto expBeval = expressionChildren[1].evaluate(rec);
-    return expAeval && expBeval;
+    // expressions next
+    for (auto&& expression : expressionChildren) {
+        result = result && expression.evaluate(rec);
+    }
+
+    return result;
 }
 
 bool Expression::OR_handler(SKVRecord& rec) {
-    // this op evaluates exactly two children only
-    if (valueChildren.size() + expressionChildren.size() != 2) {
-        throw InvalidExpressionException(fmt::format("expression OR must have exactly 2 total children(have {} value and {} expression)", valueChildren.size(), expressionChildren.size()));
-    }
-    // case 1: 2 values
-    if (valueChildren.size() == 2) {
-        SchematizedValue aVal(valueChildren[0], rec);
-        SchematizedValue bVal(valueChildren[1], rec);
-        if (aVal.type != FieldType::BOOL || bVal.type != FieldType::BOOL) {
-            throw TypeMismatchException(fmt::format("OR handler two non-bool fields: {}, {}", aVal.type, bVal.type));
-        }
-        auto [nullA, aOpt] = aVal.get<bool>();
-        auto [nullB, bOpt] = bVal.get<bool>();
-        return aOpt.has_value() && bOpt.has_value() && (*aOpt || *bOpt);
-    } else if (valueChildren.size() == 1) {
-        SchematizedValue aVal(valueChildren[0], rec);
-        if (aVal.type != FieldType::BOOL) {
-            throw TypeMismatchException(fmt::format("OR handler single non-bool field: {}", aVal.type));
-        }
-        auto [nullLast, aOpt] = aVal.get<bool>();
-        // make sure to always evaluate in order to trigger type exceptions if any
-        auto eval = expressionChildren[0].evaluate(rec);
-        return aOpt.has_value() && (*aOpt || eval);
+    // this op must have children
+    if (valueChildren.size() + expressionChildren.size() == 0) {
+        throw InvalidExpressionException("expression OR must have 1 or more children");
     }
 
-    // always evaluate fully both children to trigger type exceptions if any
-    auto expAeval = expressionChildren[0].evaluate(rec);
-    auto expBeval = expressionChildren[1].evaluate(rec);
-    return expAeval || expBeval;
+    bool result = false;
+    // values first, order does not matter as we don't short-circuit in order to detect schema mis-matches
+    for (auto&& value : valueChildren) {
+        SchematizedValue aVal(value, rec);
+        if (aVal.type != FieldType::BOOL) {
+            throw TypeMismatchException(fmt::format("OR handler value with non-bool field: {}", aVal.type));
+        }
+
+        auto [nullA, aOpt] = aVal.get<bool>();
+        result = result || (aOpt.has_value() && (*aOpt));
+    }
+    // expressions next
+    for (auto&& expression : expressionChildren) {
+        result = result || expression.evaluate(rec);
+    }
+
+    return result;
 }
 
 bool Expression::XOR_handler(SKVRecord& rec) {
