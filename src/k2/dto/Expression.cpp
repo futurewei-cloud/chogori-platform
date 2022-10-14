@@ -392,7 +392,7 @@ bool Expression::OR_handler(SKVRecord& rec) {
     for (auto&& value : valueChildren) {
         SchematizedValue aVal(value, rec);
         if (aVal.type != FieldType::BOOL) {
-            throw TypeMismatchException(fmt::format("AND handler value with non-bool field: {}", aVal.type));
+            throw TypeMismatchException(fmt::format("OR handler value with non-bool field: {}", aVal.type));
         }
 
         auto [nullA, aOpt] = aVal.get<bool>();
