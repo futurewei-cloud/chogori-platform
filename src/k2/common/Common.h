@@ -24,7 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 
 #include <algorithm>
-#include <decimal/decimal>
 #include <functional>
 #include <iomanip>
 #include <iostream>

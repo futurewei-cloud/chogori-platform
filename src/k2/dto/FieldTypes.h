@@ -25,7 +25,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <cstdint>
 #include <cstring>
-#include <decimal/decimal>
 
 #include <k2/logging/Log.h>
 #include <k2/common/Common.h>
@@ -67,8 +66,9 @@ enum class FieldType : uint8_t {
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
-    DECIMAL64, // Provides 16 decimal digits of precision
-    DECIMAL128, // Provides 34 decimal digits of precision
+    DECIMALD25, // Provides 25 decimal digits of precision
+    DECIMALD50, // Provides 50 decimal digits of precision
+    DECIMALD100, // Provides 100 decimal digits of precision
     FIELD_TYPE, // The value refers to one of these types. Used in query filters.
     NOT_KNOWN = 254,
     NULL_LAST = 255
@@ -106,14 +106,10 @@ bool isNan(const T& field){
         }
     }
 
-    if constexpr (std::is_same_v<T, std::decimal::decimal64>)  { // handle NaN decimal
-        if (std::isnan(std::decimal::decimal64_to_float(field))) {
-            return true;
-        }
-    }
-
-    if constexpr (std::is_same_v<T, std::decimal::decimal128> )  { // handle NaN decimal
-        if (std::isnan(std::decimal::decimal128_to_float(field))) {
+    if constexpr (std::is_same_v<T, DecimalD25> 
+        || std::is_same_v<T, DecimalD50>
+        || std::is_same_v<T, DecimalD100>)  { // handle NaN decimal
+        if (field.backend().isnan()) {
             return true;
         }
     }
@@ -148,11 +144,14 @@ bool isNan(const T& field){
             case k2::dto::FieldType::BOOL: {                        \
                 func<bool>((a), __VA_ARGS__);                       \
             } break;                                                \
-            case k2::dto::FieldType::DECIMAL64: {                   \
-                func<std::decimal::decimal64>((a), __VA_ARGS__);    \
+            case k2::dto::FieldType::DECIMALD25: {                  \
+                func<DecimalD25>((a), __VA_ARGS__);    \
             } break;                                                \
-            case k2::dto::FieldType::DECIMAL128: {                  \
-                func<std::decimal::decimal128>((a), __VA_ARGS__);   \
+            case k2::dto::FieldType::DECIMALD50: {                  \
+                func<DecimalD50>((a), __VA_ARGS__);    \
+            } break;                                                \
+            case k2::dto::FieldType::DECIMALD100: {                 \
+                func<DecimalD100>((a), __VA_ARGS__);   \
             } break;                                                \
             case k2::dto::FieldType::FIELD_TYPE: {                  \
                 func<k2::dto::FieldType>((a), __VA_ARGS__);         \
@@ -183,10 +182,12 @@ namespace std {
             return os << "DOUBLE";
         case k2::dto::FieldType::BOOL:
             return os << "BOOL";
-        case k2::dto::FieldType::DECIMAL64:
-            return os << "DECIMAL64";
-        case k2::dto::FieldType::DECIMAL128:
-            return os << "DECIMAL128";
+        case k2::dto::FieldType::DECIMALD25:
+            return os << "DECIMALD25";
+        case k2::dto::FieldType::DECIMALD50:
+            return os << "DECIMALD50";
+        case k2::dto::FieldType::DECIMALD100:
+            return os << "DECIMALD100";
         case k2::dto::FieldType::FIELD_TYPE:
             return os << "FIELD_TYPE";
         case k2::dto::FieldType::NOT_KNOWN:

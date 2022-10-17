@@ -290,13 +290,17 @@ private:
                 std::optional<bool> value = (record).deserializeNext<bool>();                                         \
                 func<bool>(std::move(value), field.name, __VA_ARGS__);                                                \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DECIMAL64: {                                                                     \
-                std::optional<std::decimal::decimal64> value = (record).deserializeNext<std::decimal::decimal64>();   \
-                func<std::decimal::decimal64>(std::move(value), field.name, __VA_ARGS__);                             \
+            case k2::dto::FieldType::DECIMALD25: {                                                                    \
+                std::optional<k2::DecimalD25> value = (record).deserializeNext<k2::DecimalD25>();   \
+                func<k2::DecimalD25>(std::move(value), field.name, __VA_ARGS__);             \
             } break;                                                                                                  \
-            case k2::dto::FieldType::DECIMAL128: {                                                                    \
-                std::optional<std::decimal::decimal128> value = (record).deserializeNext<std::decimal::decimal128>(); \
-                func<std::decimal::decimal128>(std::move(value), field.name, __VA_ARGS__);                            \
+            case k2::dto::FieldType::DECIMALD50: {                                                                    \
+                std::optional<k2::DecimalD50> value = (record).deserializeNext<k2::DecimalD50>();   \
+                func<k2::DecimalD50>(std::move(value), field.name, __VA_ARGS__);             \
+            } break;                                                                                                  \
+            case k2::dto::FieldType::DECIMALD100: {                                                                   \
+                std::optional<k2::DecimalD100> value = (record).deserializeNext<k2::DecimalD100>(); \
+                func<k2::DecimalD100>(std::move(value), field.name, __VA_ARGS__);            \
             } break;                                                                                                  \
             case k2::dto::FieldType::FIELD_TYPE: {                                                                    \
                 std::optional<k2::dto::FieldType> value = (record).deserializeNext<k2::dto::FieldType>();             \

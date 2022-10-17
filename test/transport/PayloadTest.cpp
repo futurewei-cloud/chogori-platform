@@ -372,7 +372,13 @@ SCENARIO("test getSerializedSizeOf method") {
     Payload src(Payload::DefaultAllocator(32));
     char a = 'a';
     String b = "test getSerializedSizeOf method";
-    std::decimal::decimal64 c(323.435);
+    
+    DecimalD25 c0("122333.0000001111");
+    DecimalD50 c1("1333666666.0000001111");
+    DecimalD100 c2("1333666666.00000011114444");
+    DecimalD50 c3 = std::numeric_limits<DecimalD50>::min();
+    DecimalD50 c4 = std::numeric_limits<DecimalD50>::max();
+    
     std::set<int16_t> d{
         1, 2, 3, 4, 5
     };
@@ -404,7 +410,11 @@ SCENARIO("test getSerializedSizeOf method") {
 
     src.write(a);
     src.write(b);
-    src.write(c);
+    src.write(c0);
+    src.write(c1);
+    src.write(c2);
+    src.write(c3);
+    src.write(c4);
     src.write(d);
     src.write(e);
     src.write(f);
@@ -417,8 +427,16 @@ SCENARIO("test getSerializedSizeOf method") {
     src.skip<char>();
     REQUIRE(src.getSerializedSizeOf<String>() == sizeof(uint32_t) + b.size() + 1);
     src.skip<String>();
-    REQUIRE(src.getSerializedSizeOf<std::decimal::decimal64>() == sizeof(std::decimal::decimal64::__decfloat64));
-    src.skip<std::decimal::decimal64>();
+    REQUIRE(src.getSerializedSizeOf<DecimalD25>() == sizeof(DecimalD25));
+    src.skip<DecimalD25>();
+    REQUIRE(src.getSerializedSizeOf<DecimalD50>() == sizeof(DecimalD50));
+    src.skip<DecimalD50>();
+    REQUIRE(src.getSerializedSizeOf<DecimalD100>() == sizeof(DecimalD100));
+    src.skip<DecimalD100>();
+    REQUIRE(src.getSerializedSizeOf<DecimalD50>() == sizeof(DecimalD50));
+    src.skip<DecimalD50>();
+    REQUIRE(src.getSerializedSizeOf<DecimalD50>() == sizeof(DecimalD50));
+    src.skip<DecimalD50>();
     REQUIRE(src.getSerializedSizeOf<std::set<int16_t>>() == sizeof(uint32_t) + d.size() * sizeof(int16_t));
     src.skip<std::set<int16_t>>();
     REQUIRE(src.getSerializedSizeOf<std::map<int16_t, String>>() == sizeof(uint32_t) + 2 + 9 + 2 + 24 + 2 + 11);

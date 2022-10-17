@@ -201,10 +201,13 @@ public:
     bool read(Duration& dur) {
         return _payload.read(dur);
     }
-    bool read(std::decimal::decimal64& value) {
+    bool read(DecimalD25& value) {
         return _payload.read(value);
     }
-    bool read(std::decimal::decimal128& value) {
+    bool read(DecimalD50& value) {
+        return _payload.read(value);
+    }
+    bool read(DecimalD100& value) {
         return _payload.read(value);
     }
 
@@ -333,12 +336,16 @@ public:
         K2LOG_V(log::tx, "writing duration type {}", value);
         _payload.write(value);
     }
-    void write(const std::decimal::decimal64& value) {
-        K2LOG_V(log::tx, "writing decimal64 type {}", value);
+    void write(const DecimalD25& value) {
+        K2LOG_V(log::tx, "writing decimald25 type {}", value);
         _payload.write(value);
     }
-    void write(const std::decimal::decimal128& value) {
-        K2LOG_V(log::tx, "writing decimal128 type {}", value);
+    void write(const DecimalD50& value) {
+        K2LOG_V(log::tx, "writing decimald50 type {}", value);
+        _payload.write(value);
+    }
+    void write(const DecimalD100& value) {
+        K2LOG_V(log::tx, "writing decimald100 type {}", value);
         _payload.write(value);
     }
     void write(const String& value) {

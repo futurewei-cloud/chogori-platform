@@ -65,8 +65,9 @@ enum class FieldType : uint8_t {
     FLOAT, // Not supported as key field for now
     DOUBLE,  // Not supported as key field for now
     BOOL,
-    DECIMAL64, // Provides 16 decimal digits of precision
-    DECIMAL128, // Provides 34 decimal digits of precision
+    DECIMALD25, // Provides 25 decimal digits of precision
+    DECIMALD50, // Provides 50 decimal digits of precision
+    DECIMALD100, // Provides 100 decimal digits of precision
     FIELD_TYPE, // The value refers to one of these types. Used in query filters.
     NOT_KNOWN = 254,
     NULL_LAST = 255
@@ -104,14 +105,20 @@ bool isNan(const T& field){
         }
     }
 
-    if constexpr (std::is_same_v<T, Decimal64>)  { // handle NaN decimal
-        if (std::isnan(Decimal64_to_float(field))) {
+    if constexpr (std::is_same_v<T, DecimalD25>)  { // handle NaN decimal
+        if (field.backend().isnan()) {
             return true;
         }
     }
 
-    if constexpr (std::is_same_v<T, Decimal128> )  { // handle NaN decimal
-        if (std::isnan(Decimal128_to_float(field))) {
+    if constexpr (std::is_same_v<T, DecimalD50>)  { // handle NaN decimal
+        if (field.backend().isnan()) {
+            return true;
+        }
+    }
+
+    if constexpr (std::is_same_v<T, DecimalD100> )  { // handle NaN decimal
+        if (field.backend().isnan()) {
             return true;
         }
     }
@@ -153,11 +160,14 @@ auto applyTyped(const FieldT& field, Func&& applier, Args&&... args) {
         case FieldType::BOOL: {
             return applier(AppliedFieldRef<bool, FieldT>(field), std::forward<Args>(args)...);
         }
-        case FieldType::DECIMAL64: {
-            return applier(AppliedFieldRef<Decimal64, FieldT>(field), std::forward<Args>(args)...);
+        case FieldType::DECIMALD25: {
+            return applier(AppliedFieldRef<DecimalD25, FieldT>(field), std::forward<Args>(args)...);
         }
-        case FieldType::DECIMAL128: {
-            return applier(AppliedFieldRef<Decimal128, FieldT>(field), std::forward<Args>(args)...);
+        case FieldType::DECIMALD50: {
+            return applier(AppliedFieldRef<DecimalD50, FieldT>(field), std::forward<Args>(args)...);
+        }
+        case FieldType::DECIMALD100: {
+            return applier(AppliedFieldRef<DecimalD100, FieldT>(field), std::forward<Args>(args)...);
         }
         case FieldType::FIELD_TYPE: {
             return applier(AppliedFieldRef<FieldType, FieldT>(field), std::forward<Args>(args)...);
@@ -189,10 +199,12 @@ namespace std {
             return os << "DOUBLE";
         case skv::http::dto::FieldType::BOOL:
             return os << "BOOL";
-        case skv::http::dto::FieldType::DECIMAL64:
-            return os << "DECIMAL64";
-        case skv::http::dto::FieldType::DECIMAL128:
-            return os << "DECIMAL128";
+        case skv::http::dto::FieldType::DECIMALD25:
+            return os << "DECIMALD25";
+        case skv::http::dto::FieldType::DECIMALD50:
+            return os << "DECIMALD50";
+        case skv::http::dto::FieldType::DECIMALD100:
+            return os << "DECIMALD100";
         case skv::http::dto::FieldType::FIELD_TYPE:
             return os << "FIELD_TYPE";
         case skv::http::dto::FieldType::NOT_KNOWN:

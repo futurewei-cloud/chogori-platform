@@ -29,6 +29,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <fmt/printf.h>
 #include <fmt/ranges.h>
 #include <k2/logging/AutoGenFormattingUtils.h>
+#include <k2/logging/Decimal.h>
 
 #include <iostream>
 #include <optional>
@@ -41,6 +42,8 @@ Copyright(c) 2021 Futurewei Cloud
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/multiprecision/cpp_dec_float.hpp>
 
 namespace k2 {
 // helper function for converting enum class into an integral type
@@ -155,19 +158,17 @@ constexpr auto type_name() {
     }
 
 // Provide formatting for decimals
-#ifdef _GLIBCXX_USE_DECIMAL_FLOAT
-#include <decimal/decimal>
 namespace std {
-inline ostream& operator<<(ostream& os, const decimal::decimal64& d) {
-    decimal::decimal64::__decfloat64 data = const_cast<decimal::decimal64&>(d).__getval();
-    return os << (double)data;
+inline ostream& operator<<(ostream& os, const k2::DecimalD25& d) {
+    return os << d.str();
 }
-inline ostream& operator<<(ostream& os, const decimal::decimal128& d) {
-    decimal::decimal128::__decfloat128 data = const_cast<decimal::decimal128&>(d).__getval();
-    return os << (double)data;
+inline ostream& operator<<(ostream& os, const k2::DecimalD50& d) {
+    return os << d.str();
+}
+inline ostream& operator<<(ostream& os, const k2::DecimalD100& d) {
+    return os << d.str();
 }
 }
-#endif
 
 // provide support for formatting of stl containers of bool type
 template <>  // fmt support

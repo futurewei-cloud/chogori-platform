@@ -194,20 +194,16 @@ bool Payload::read(String& value) {
     return read((void*)value.data(), size);
 }
 
-bool Payload::read(std::decimal::decimal64& value) {
-    std::decimal::decimal64::__decfloat64 data;
-    bool success = read((void*)&data, sizeof(data));
-    if (!success) return false;
-    value.__setval(data);
-    return true;
+bool Payload::read(DecimalD25& value) {
+    return read(&value, sizeof(DecimalD25));
 }
 
-bool Payload::read(std::decimal::decimal128& value) {
-    std::decimal::decimal128::__decfloat128 data;
-    bool success = read((void*)&data, sizeof(data));
-    if (!success) return false;
-    value.__setval(data);
-    return true;
+bool Payload::read(DecimalD50& value) {
+    return read(&value, sizeof(DecimalD50));
+}
+
+bool Payload::read(DecimalD100& value) {
+    return read(&value, sizeof(DecimalD100));
 }
 
 bool Payload::read(Payload& other) {
@@ -306,14 +302,19 @@ void Payload::write(const String& value) {
     write(value.data(), size);
 }
 
-void Payload::write(const std::decimal::decimal64& value) {
-    std::decimal::decimal64::__decfloat64 data = const_cast<std::decimal::decimal64&>(value).__getval();
-    write((const void*)&data, sizeof(data));
+void Payload::write(const DecimalD25& value) {
+    static_assert(sizeof(DecimalD25) == 44, "check updated implementation for cpp_dec_float_25");
+    write(&value, sizeof(DecimalD25));
 }
 
-void Payload::write(const std::decimal::decimal128& value) {
-    std::decimal::decimal128::__decfloat128 data = const_cast<std::decimal::decimal128&>(value).__getval();
-    write((const void*)&data, sizeof(data));
+void Payload::write(const DecimalD50& value) {
+    static_assert(sizeof(DecimalD50) == 56, "check updated implementation for cpp_dec_float_50");
+    write(&value, sizeof(DecimalD50));
+}
+
+void Payload::write(const DecimalD100& value) {
+    static_assert(sizeof(DecimalD100) == 80, "check updated implementation for cpp_dec_float_100");
+    write(&value, sizeof(DecimalD100));
 }
 
 void Payload::write(const Binary& bin) {

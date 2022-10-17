@@ -33,18 +33,6 @@ Copyright(c) 2020 Futurewei Cloud
 
 #include <boost/thread/future.hpp>
 
-
-#ifdef _GLIBCXX_USE_DECIMAL_FLOAT
-#include <decimal/decimal>
-namespace skv::http {
-using Decimal64 = std::decimal::decimal64;
-using Decimal128 = std::decimal::decimal128;
-auto constexpr Decimal64_to_float = std::decimal::decimal64_to_float;
-auto constexpr Decimal128_to_float = std::decimal::decimal128_to_float;
-}
-#endif
-
-
 namespace skv::http {
 template <typename T>
 auto make_ready_future(T&& obj) {
@@ -64,6 +52,9 @@ using String = std::string;
 using Duration = k2::Duration;
 using TimePoint = k2::TimePoint;
 using Clock = k2::Clock;
+using DecimalD25 = k2::DecimalD25;
+using DecimalD50 = k2::DecimalD50;
+using DecimalD100 = k2::DecimalD100;
 
 class HexCodec {
    private:

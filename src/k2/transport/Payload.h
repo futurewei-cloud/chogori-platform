@@ -24,7 +24,6 @@ Copyright(c) 2020 Futurewei Cloud
 #pragma once
 #include "Log.h"
 
-#include <decimal/decimal>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -219,8 +218,9 @@ public:  // Read API
     bool read(String& value);
 
     // read primitive decimal types
-    bool read(std::decimal::decimal64& value);
-    bool read(std::decimal::decimal128& value);
+    bool read(DecimalD25& value);
+    bool read(DecimalD50& value);
+    bool read(DecimalD100& value);
 
     // read into a payload
     bool read(Payload& other);
@@ -380,8 +380,9 @@ public: // Write API
     void write(const String& value);
 
     // write primitive decimal types
-    void write(const std::decimal::decimal64& value);
-    void write(const std::decimal::decimal128& value);
+    void write(const DecimalD25& value);
+    void write(const DecimalD50& value);
+    void write(const DecimalD100& value);
 
     // write another Payload
     void write(const Payload& other);
@@ -531,16 +532,22 @@ public: // getSerializedSizeOf api
         return size + sizeof(size);
     }
 
-    // for type: std::decimal::decimal64
+    // for type DecimalD25
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, std::decimal::decimal64>, size_t> getSerializedSizeOf() {
-        return sizeof(std::decimal::decimal64::__decfloat64);
+    std::enable_if_t<std::is_same_v<T, DecimalD25>, size_t> getSerializedSizeOf() {
+        return sizeof(DecimalD25);
     }
 
-    // for type: std::decimal::decimal128
+    // for type DecimalD50
     template <typename T>
-    std::enable_if_t<std::is_same_v<T, std::decimal::decimal128>, size_t> getSerializedSizeOf() {
-        return sizeof(std::decimal::decimal128::__decfloat128);
+    std::enable_if_t<std::is_same_v<T, DecimalD50>, size_t> getSerializedSizeOf() {
+        return sizeof(DecimalD50);
+    }
+
+    // for type DecimalD100
+    template <typename T>
+    std::enable_if_t<std::is_same_v<T, DecimalD100>, size_t> getSerializedSizeOf() {
+        return sizeof(DecimalD100);
     }
 
     // for type: Duration

@@ -48,10 +48,10 @@ public:
 
 private:
     struct ValuesToCompare {
-        std::decimal::decimal64 w_ytd;
-        std::decimal::decimal64 d_ytd;
-        std::decimal::decimal64 c_ytd;
-        std::decimal::decimal64 c_balance;
+        DecimalD25 w_ytd;
+        DecimalD25 d_ytd;
+        DecimalD25 c_ytd;
+        DecimalD25 c_balance;
         uint16_t c_payments;
     };
 
@@ -91,7 +91,7 @@ private:
     future<int16_t> countOrderLineRows(int64_t oid);
     future<> verifyOrderLineByOrder();
     future<> verifyOrderLineDelivery();
-    future<std::decimal::decimal64> historySum(bool useDistrictID);
+    future<DecimalD25> historySum(bool useDistrictID);
     future<> verifyWarehouseHistorySum();
     future<> verifyDistrictHistorySum();
     future<> runForEachWarehouse(consistencyOp op);

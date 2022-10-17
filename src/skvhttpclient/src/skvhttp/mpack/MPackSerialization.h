@@ -278,7 +278,7 @@ private:
     }
 
     bool _readFromNode(Duration& dur) {
-        K2LOG_V(log::mpack, "reading decimal64");
+        K2LOG_V(log::mpack, "reading duration");
         if (typeid(std::remove_reference_t<decltype(dur)>::rep) != typeid(long int)) {
             return false;
         }
@@ -288,37 +288,54 @@ private:
         return true;
     }
 
-    bool _readFromNode(Decimal64& value) {
-        // decimal is packed as a BINARY msgpack type
-        K2LOG_V(log::mpack, "reading decimal64");
+    bool _readFromNode(DecimalD25& value) {
+        // DecimalD25 is memcpy-ed
+        K2LOG_V(log::mpack, "reading decimald25");
         size_t sz;
         const char* data;
 
         if (!_readData(data, sz)) {
             return false;
         }
-        if (sizeof(Decimal64::__decfloat64) != sz) {
+        if (sizeof(DecimalD25) != sz) {
             return false;
         }
 
-        value.__setval(*((Decimal64::__decfloat64*)data));
+        std::memcpy((void *)&value, data, sizeof(DecimalD25));
         return true;
     }
 
-    bool _readFromNode(Decimal128& value) {
-        // decimal is packed as a BINARY msgpack type
-        K2LOG_V(log::mpack, "reading decimal128");
+    bool _readFromNode(DecimalD50& value) {
+        // DecimalD50 is memcpy-ed
+        K2LOG_V(log::mpack, "reading decimald50");
         size_t sz;
         const char* data;
 
         if (!_readData(data, sz)) {
             return false;
         }
-        if (sizeof(Decimal128::__decfloat128) != sz) {
+        if (sizeof(DecimalD50) != sz) {
             return false;
         }
 
-        value.__setval(*((Decimal128::__decfloat128*)data));
+        std::memcpy((void *)&value, data, sizeof(DecimalD50));
+        return true;
+    }
+
+    bool _readFromNode(DecimalD100& value) {
+        // DecimalD100 is memcpy-ed
+        K2LOG_V(log::mpack, "reading decimald100");
+        size_t sz;
+        const char* data;
+
+        if (!_readData(data, sz)) {
+            return false;
+        }
+        if (sizeof(DecimalD100) != sz) {
+            return false;
+        }
+
+        std::memcpy((void *)&value, data, sizeof(DecimalD100));
         return true;
     }
 
@@ -487,15 +504,20 @@ public:
         K2LOG_V(log::mpack, "writing duration type {}", dur);
         write(dur.count());  // write the tick count
     }
-    void write(const Decimal64& value) {
-        K2LOG_V(log::mpack, "writing decimal64 type {}", value);
-        Decimal64::__decfloat64 data = const_cast<Decimal64&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal64::__decfloat64));
+    void write(const DecimalD25& value) {
+        K2LOG_V(log::mpack, "writing decimald25 type {}", value);
+        static_assert(sizeof(DecimalD25) == 44, "check updated implementation for cpp_dec_float_25");
+        mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD25));
     }
-    void write(const Decimal128& value) {
-        K2LOG_V(log::mpack, "writing decimal128 type {}", value);
-        Decimal128::__decfloat128 data = const_cast<Decimal128&>(value).__getval();
-        mpack_write_bin(&_writer, (const char*)&data, sizeof(Decimal128::__decfloat128));
+    void write(const DecimalD50& value) {
+        K2LOG_V(log::mpack, "writing decimald50 type {}", value);
+        static_assert(sizeof(DecimalD50) == 56, "check updated implementation for cpp_dec_float_50");
+        mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD50));
+    }
+    void write(const DecimalD100& value) {
+        K2LOG_V(log::mpack, "writing decimald100 type {}", value);
+        static_assert(sizeof(DecimalD100) == 80, "check updated implementation for cpp_dec_float_100");
+        mpack_write_bin(&_writer, (const char*)&value, (uint32_t)sizeof(DecimalD100));
     }
     void write(const String& val) {
         K2LOG_V(log::mpack, "writing string type {}", val);
