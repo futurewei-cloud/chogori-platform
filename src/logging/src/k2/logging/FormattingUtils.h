@@ -29,7 +29,7 @@ Copyright(c) 2021 Futurewei Cloud
 #include <fmt/printf.h>
 #include <fmt/ranges.h>
 #include <k2/logging/AutoGenFormattingUtils.h>
-#include <k2/logging/BoostDecimals.h>
+#include <k2/logging/Decimal.h>
 
 #include <iostream>
 #include <optional>
