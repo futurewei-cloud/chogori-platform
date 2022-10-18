@@ -465,6 +465,10 @@ class SKVClient:
         status, _ = self.make_call('/api/CreateCollection', [md.serialize(), rangeEnds if rangeEnds else []])
         return status
 
+    def drop_collection(self, collectionName: str) -> Status:
+        status, _ = self.make_call('/api/DropCollection', [collectionName])
+        return status
+
     def create_schema(self, collectionName: str, schema: Schema) -> Status:
         status, _ = self.make_call('/api/CreateSchema', [collectionName, schema.serialize()])
         if status.is2xxOK():

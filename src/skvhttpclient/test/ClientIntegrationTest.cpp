@@ -526,6 +526,21 @@ void testReadWriteConflict() {
   }
 }
 
+void testDropCollection() {
+    {
+        auto&& [status, schemaPtr] = client.getSchema(collectionName, schemaName, 1).get();
+        K2EXPECT(k2::log::httpclient, status.is2xxOK(), true);
+    }
+    {
+        auto&& [status] = client.dropCollection(collectionName).get();
+        K2EXPECT(k2::log::httpclient, status.is2xxOK(), true);
+    }
+    {
+        auto&& [status, schemaPtr] = client.getSchema(collectionName, schemaName, 1).get();
+        K2EXPECT(k2::log::httpclient, status.code, 404);
+    }
+}
+
 int main() {
   testCreateCollection();
   testCreateHashCollection();
@@ -538,6 +553,7 @@ int main() {
   testPartialUpdate();
   testValidation();
   testReadWriteConflict();
+  testDropCollection();
 
   return 0;
 }
