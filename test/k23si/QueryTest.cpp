@@ -90,7 +90,7 @@ public:  // application lifespan
                     {k2::dto::FieldType::STRING, "range", false, false},
                     {k2::dto::FieldType::INT32T, "data1", false, false},
                     {k2::dto::FieldType::INT32T, "data2", false, false},
-                    {k2::dto::FieldType::UINT32T, "data2", false, false}
+                    {k2::dto::FieldType::UINT32T, "data3", false, false}
             };
 
             schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition", "partition2"});
