@@ -132,6 +132,7 @@ public:
     seastar::future<> start();
     seastar::future<> gracefulStop();
     seastar::future<Status> makeCollection(dto::CollectionMetadata&& metadata,  std::vector<String>&& rangeEnds=std::vector<String>());
+    seastar::future<Status> dropCollection(const String& collectionName);
     seastar::future<K2TxnHandle> beginTxn(const K2TxnOptions& options);
     seastar::future<GetSchemaResult> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion);
     seastar::future<CreateSchemaResult> createSchema(const String& collectionName, dto::Schema schema);

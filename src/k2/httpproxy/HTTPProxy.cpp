@@ -134,6 +134,15 @@ HTTPProxy::_handleCreateCollection(shd::CollectionCreateRequest&& request) {
         });
 }
 
+seastar::future<std::tuple<sh::Status, shd::CollectionDropResponse>>
+HTTPProxy::_handleDropCollection(shd::CollectionDropRequest&& request) {
+    K2LOG_D(log::httpproxy, "Received drop collection request {}", request);
+    return _client.dropCollection(String(request.name))
+        .then([](Status&& status) {
+            return MakeHTTPResponse<shd::CollectionDropResponse>(sh::Status{.code=status.code, .message=status.message}, shd::CollectionDropResponse{});
+        });
+}
+
 seastar::future<std::tuple<sh::Status, shd::CreateSchemaResponse>>
 HTTPProxy::_handleCreateSchema(shd::CreateSchemaRequest&& request) {
     K2LOG_D(log::httpproxy, "Received create schema request {}", request);
@@ -547,6 +556,11 @@ void HTTPProxy::_registerAPI() {
     api_server.registerAPIObserver<sh::Statuses, shd::CollectionCreateRequest, shd::CollectionCreateResponse>
         ("CreateCollection", "create collection", [this] (auto&& request) {
             return _handleCreateCollection(std::move(request));
+        });
+
+        api_server.registerAPIObserver<sh::Statuses, shd::CollectionDropRequest, shd::CollectionDropResponse>
+        ("DropCollection", "drop collection", [this] (auto&& request) {
+            return _handleDropCollection(std::move(request));
         });
 
     api_server.registerAPIObserver<sh::Statuses, shd::CreateSchemaRequest, shd::CreateSchemaResponse>

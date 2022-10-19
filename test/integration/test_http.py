@@ -68,6 +68,24 @@ class TestHTTP(unittest.TestCase):
         if not status.is2xxOK():
             raise Exception(status.message)
 
+
+    @classmethod
+    def tearDownClass(cls):
+        # Get schema again, should succeed
+        status, _ = TestHTTP.cl.get_schema(TestHTTP.cname, b"test_schema", 1)
+        if not status.is2xxOK():
+            raise Exception(status.message)
+
+        status = TestHTTP.cl.drop_collection(TestHTTP.cname)
+        if not status.is2xxOK():
+            raise Exception(status.message)
+
+        # Get schema again, should fail as collection is deleted
+        status, _ = TestHTTP.cl.get_schema(TestHTTP.cname, b"test_schema", 1)
+        if not status.code != 404:
+            raise Exception("Schema not cleaned up")
+
+
     def test_basicTxn(self):
         # Begin Txn
         status, txn = TestHTTP.cl.begin_txn()
@@ -293,6 +311,7 @@ class TestHTTP(unittest.TestCase):
         # Commit Txn, should succeed
         status = txn.end()
         self.assertTrue(status.is2xxOK())
+
 
     def test_create_schema_validation(self):
         # Create schema with no field, should fail

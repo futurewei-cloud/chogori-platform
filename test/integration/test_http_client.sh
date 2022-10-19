@@ -22,7 +22,8 @@ tso_child_pid=$!
 
 sleep 1
 
-./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --cpo ${CPO} --httpproxy_txn_timeout=100ms --httpproxy_expiry_timer_interval=50ms&
+# start http proxy with increased cpo request timeout as delete collection takes more time
+./build/src/k2/cmd/httpproxy/http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --cpo ${CPO} --httpproxy_txn_timeout=100ms --httpproxy_expiry_timer_interval=50ms --cpo_request_timeout=2s&
 http_child_pid=$!
 
 function finish {

@@ -92,6 +92,8 @@ public:
     }
 
 
+    seastar::future<k2::Status> dropCollection(const String& collectionName);
+
     // Get the Partition Getter object, which can be used to get the collection of the given name
     template <typename ClockT=Clock>
     seastar::future<std::tuple<Status, seastar::lw_shared_ptr<dto::PartitionGetter>>>

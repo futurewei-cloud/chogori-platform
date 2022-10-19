@@ -39,6 +39,15 @@ boost::future<Response<>> Client::createCollection(dto::CollectionMetadata metad
     return _HTTPClient.POST<dto::CollectionCreateRequest>("/api/CreateCollection", std::move(request));
 }
 
+boost::future<Response<>> Client::dropCollection(String collectionName) {
+    dto::CollectionDropRequest request{
+        .name = std::move(collectionName)
+    };
+    _schemaCache.erase(request.name);
+    return _HTTPClient.POST<dto::CollectionDropRequest>("/api/DropCollection", std::move(request));
+
+}
+
 boost::future<Response<>> Client::createSchema(const String& collectionName, const dto::Schema& schema) {
     dto::CreateSchemaRequest request{
         .collectionName = collectionName,

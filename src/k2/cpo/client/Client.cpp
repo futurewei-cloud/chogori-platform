@@ -59,6 +59,19 @@ seastar::future<k2::Status> CPOClient::createSchema(const String& collectionName
     });
 }
 
+seastar::future<k2::Status> CPOClient::dropCollection(const String& collectionName) {
+    dto::CollectionDropRequest request {.name = collectionName};
+
+    return k2::RPC().callRPC<k2::dto::CollectionDropRequest, k2::dto::CollectionDropResponse>(k2::dto::Verbs::CPO_COLLECTION_DROP, request, *cpo, cpo_request_timeout())
+        .then([this, collectionName] (auto&& response) {
+            auto& [status, r] = response;
+            if (status.is2xxOK()) {
+                collections.erase(collectionName);
+            }
+            return status;
+        });
+}
+
 seastar::future<std::tuple<k2::Status, std::vector<k2::dto::Schema>>> CPOClient::getSchemas(const String& collectionName) {
     k2::dto::GetSchemasRequest request { collectionName };
     return k2::RPC().callRPC<k2::dto::GetSchemasRequest, k2::dto::GetSchemasResponse>(k2::dto::Verbs::CPO_SCHEMAS_GET, request, *cpo, schema_request_timeout())

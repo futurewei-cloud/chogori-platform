@@ -354,6 +354,16 @@ seastar::future<Status> K23SIClient::makeCollection(dto::CollectionMetadata&& me
     return cpo_client.createAndWaitForCollection(Deadline<>(create_collection_deadline()), std::move(metadata), std::move(rangeEnds));
 }
 
+seastar::future<Status> K23SIClient::dropCollection(const String& collectionName) {
+    return cpo_client.dropCollection(collectionName)
+        .then([this, collectionName] (auto&& status) {
+            if (status.is2xxOK()) {
+                schemas.erase(collectionName);
+            }
+            return status;
+        });
+}
+
 seastar::future<K2TxnHandle> K23SIClient::beginTxn(const K2TxnOptions& options) {
     // Reporter of begin txn api latency
     k2::OperationLatencyReporter reporter(_txnBeginLatency);
