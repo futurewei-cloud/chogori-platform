@@ -173,7 +173,7 @@ public:
     boost::future<Response<>> createSchema(const String& collectionName, const dto::Schema& schema);
     boost::future<Response<std::shared_ptr<dto::Schema>>> getSchema(const String& collectionName, const String& schemaName, int64_t schemaVersion=dto::ANY_SCHEMA_VERSION);
     boost::future<Response<>> createCollection(dto::CollectionMetadata metadata, std::vector<String> rangeEnds);
-    boost::future<Response<>> dropCollection(const String& collectionName);
+    boost::future<Response<>> dropCollection(String collectionName);
     boost::future<Response<dto::CollectionMetadata>> getCollectionMetadata(const String& collectionName);
     boost::future<Response<TxnHandle>> beginTxn(dto::TxnOptions options);
 

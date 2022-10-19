@@ -554,6 +554,7 @@ int main() {
   testValidation();
   testReadWriteConflict();
   testDropCollection();
+  testCreateCollection();
 
   return 0;
 }
