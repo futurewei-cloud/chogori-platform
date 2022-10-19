@@ -89,7 +89,8 @@ public:  // application lifespan
                     {k2::dto::FieldType::STRING, "partition2", false, false},
                     {k2::dto::FieldType::STRING, "range", false, false},
                     {k2::dto::FieldType::INT32T, "data1", false, false},
-                    {k2::dto::FieldType::INT32T, "data2", false, false}
+                    {k2::dto::FieldType::INT32T, "data2", false, false},
+                    {k2::dto::FieldType::UINT32T, "data3", false, false}
             };
 
             schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"partition", "partition2"});
@@ -251,6 +252,7 @@ seastar::future<> runSetup() {
             record.serializeNext<k2::String>("");
             record.serializeNext<int32_t>(data);
             record.serializeNext<int32_t>(data);
+            record.serializeNext<uint32_t>(0);
             write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
                 .then([] (auto&& response) {
                     K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
@@ -266,6 +268,7 @@ seastar::future<> runSetup() {
         record.serializeNext<k2::String>("");
         record.serializeNull();
         record.serializeNext<int32_t>(777);
+        record.serializeNext<uint32_t>(111);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
             .then([] (auto&& response) {
                 K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
@@ -279,6 +282,7 @@ seastar::future<> runSetup() {
         record2.serializeNext<k2::String>("");
         record2.serializeNull();
         record2.serializeNext<int32_t>(777);
+        record2.serializeNext<uint32_t>(111);
         write_futs.push_back(txn.write<k2::dto::SKVRecord>(record2)
             .then([] (auto&& response) {
                 K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);
@@ -569,6 +573,7 @@ seastar::future<> runScenario06() {
         record.serializeNext<k2::String>("");
         record.serializeNull();
         record.serializeNull();
+        record.serializeNull();
         return writeTxn.write<k2::dto::SKVRecord>(record);
     })
     .then([this] (auto&& response) {
@@ -599,6 +604,7 @@ seastar::future<> runScenario06() {
         record.serializeNext<k2::String>("default");
         record.serializeNext<k2::String>("az");
         record.serializeNext<k2::String>("");
+        record.serializeNull();
         record.serializeNull();
         record.serializeNull();
         return writeTxn.write<k2::dto::SKVRecord>(record);
@@ -636,6 +642,7 @@ seastar::future<> runScenario06() {
         record.serializeNext<k2::String>("default");
         record.serializeNext<k2::String>("bz");
         record.serializeNext<k2::String>("");
+        record.serializeNull();
         record.serializeNull();
         record.serializeNull();
         return writeTxn.write<k2::dto::SKVRecord>(record);
@@ -682,6 +689,7 @@ seastar::future<> runScenario07() {
         record.serializeNext<k2::String>("");
         record.serializeNull();
         record.serializeNull();
+        record.serializeNull();
         return writeTxn.write<k2::dto::SKVRecord>(record);
     })
     .then([this] (auto&& response) {
@@ -696,6 +704,7 @@ seastar::future<> runScenario07() {
         record.serializeNext<k2::String>("default");
         record.serializeNext<k2::String>("scenario07");
         record.serializeNext<k2::String>("");
+        record.serializeNull();
         record.serializeNull();
         record.serializeNull();
         return writeTxn.write(record, true /* isDelete */);
@@ -811,6 +820,7 @@ seastar::future<> writeAdditionalData() {
             record.serializeNext<k2::String>("");
             record.serializeNext<int32_t>(i);
             record.serializeNext<int32_t>(data);
+            record.serializeNext<uint32_t>(0);
             write_futs.push_back(txn.write<k2::dto::SKVRecord>(record)
                 .then([] (auto&& response) {
                     K2EXPECT(log::k23si, response.status, k2::dto::K23SIStatus::Created);

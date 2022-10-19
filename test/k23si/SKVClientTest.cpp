@@ -132,6 +132,7 @@ public:  // application lifespan
                         {dto::FieldType::STRING, "2_range", false, false},
                         {dto::FieldType::STRING, "f2_1", false, false},
                         {dto::FieldType::STRING, "f2_2", false, false},
+                        {dto::FieldType::UINT32T, "f2_3", false, false},
                 };
 
                 schema.setPartitionKeyFieldsByName(std::vector<String>{"2_partition"});
@@ -1390,6 +1391,7 @@ seastar::future<> runScenario10() {
                     r2.serializeNext<String>("rangekey10");
                     r2.serializeNext<String>("2_data1");
                     r2.serializeNext<String>("2_data2");
+                    r2.serializeNext<uint32_t>(20);
 
                     K2LOG_D(log::k23si, "serialize r3");
                     dto::SKVRecord r3(collname3, sc3);
@@ -1437,6 +1439,7 @@ seastar::future<> runScenario10() {
                     dto::SKVRecord r2(collname2, sc2);
                     r2.serializeNext<int32_t>(10);
                     r2.serializeNext<String>("rangekey10");
+                    r2.serializeNull();
                     r2.serializeNull();
                     r2.serializeNull();
                     dto::SKVRecord r3(collname3, sc3);

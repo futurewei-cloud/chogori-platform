@@ -72,12 +72,15 @@ struct is_comparable : std::false_type {};
 template <typename T1, typename T2>
 struct is_comparable<T1, T2,
                      decltype(
-                         (std::declval<T1>() == std::declval<T2>()) &&
-                         (std::declval<T1>() < std::declval<T2>()) &&
-                         (std::declval<T1>() <= std::declval<T2>()) &&
-                         (std::declval<T1>() >= std::declval<T2>()) &&
-                         (std::declval<T1>() > std::declval<T2>()),
-                         void())>
+                        (std::declval<T1>() == std::declval<T2>()) &&
+                        (std::declval<T1>() < std::declval<T2>()) &&
+                        (std::declval<T1>() <= std::declval<T2>()) &&
+                        (std::declval<T1>() >= std::declval<T2>()) &&
+                        (std::declval<T1>() > std::declval<T2>()),
+                        std::enable_if_t<
+                            std::is_same_v<typename std::is_signed<T1>::type, typename std::is_signed<T2>::type> &&
+                            std::is_floating_point_v<T1> == std::is_floating_point_v<T2>, 
+                            void>())>
     : std::true_type {};
 
 // template specialization comparing two optionals of non-comparable types

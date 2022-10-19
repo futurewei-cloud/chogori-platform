@@ -222,14 +222,16 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
     schema.fields = std::vector<k2::dto::SchemaField> {
             {k2::dto::FieldType::STRING, "LastName", false, false},
             {k2::dto::FieldType::STRING, "FirstName", false, false},
-            {k2::dto::FieldType::INT32T, "Balance", false, false}
+            {k2::dto::FieldType::UINT32T, "Due", false, false},
+            {k2::dto::FieldType::INT32T, "Balance", false, false},
     };
     schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"LastName"});
-    schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName"});
+    schema.setRangeKeyFieldsByName(std::vector<k2::String>{"FirstName", "Due"});
 
     k2::dto::SKVRecord doc("collection", std::make_shared<k2::dto::Schema>(schema));
     doc.serializeNull();
     doc.serializeNext<k2::String>("b");
+    doc.serializeNext<uint32_t>(10);
     doc.serializeNext<int32_t>(12);
 
     // Testing a typical use-case of getSKVKeyRecord where the storage is serialized
@@ -249,6 +251,9 @@ TEST_CASE("Test4: getSKVKeyRecord test") {
     std::optional<k2::String> first = reconstructed.deserializeNext<k2::String>();
     REQUIRE(first.has_value());
     REQUIRE(first == "b");
+    std::optional<uint32_t> due = reconstructed.deserializeNext<uint32_t>();
+    REQUIRE(due.has_value());
+    REQUIRE(due == 10);
     std::optional<int32_t> balance = reconstructed.deserializeNext<int32_t>();
     REQUIRE(!balance.has_value());
 }

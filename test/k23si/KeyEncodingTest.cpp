@@ -319,3 +319,64 @@ TEST_CASE("Test7: int32 and NULL key ordering with NULL last key order") {
     REQUIRE(smallKey < bigKey);
     REQUIRE(bigKey < nullKey);
 }
+
+TEST_CASE("Test8: unsigned int key ordering") {
+    k2::dto::Schema schema;
+    schema.name = "uint16";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::UINT16T, "ID", false, false},
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
+    std::shared_ptr<k2::dto::Schema> schemau16 = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    schema.name = "uint32";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::UINT32T, "ID", false, false},
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
+    std::shared_ptr<k2::dto::Schema> schemau32 = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    schema.name = "uint64";
+    schema.version = 1;
+    schema.fields = std::vector<k2::dto::SchemaField> {
+            {k2::dto::FieldType::UINT64T, "ID", false, false},
+    };
+    schema.setPartitionKeyFieldsByName(std::vector<k2::String>{"ID"});
+    std::shared_ptr<k2::dto::Schema> schemau64 = std::make_shared<k2::dto::Schema>(std::move(schema));
+
+    std::vector<std::shared_ptr<k2::dto::Schema>> schemas;
+    schemas.push_back(schemau16);
+    schemas.push_back(schemau32);
+    schemas.push_back(schemau64);
+
+    for (std::shared_ptr<k2::dto::Schema>& s : schemas) {
+        k2::dto::SKVRecord zero("collection", s);
+        k2::dto::SKVRecord small("collection", s);
+        k2::dto::SKVRecord large("collection", s);
+
+        if (s->name == "uint16") {
+            zero.serializeNext<uint16_t>(0);
+            large.serializeNext<uint16_t>(1001);
+            small.serializeNext<uint16_t>(21);
+        }
+        else if (s->name == "uint32") {
+            zero.serializeNext<uint32_t>(0);
+            large.serializeNext<uint32_t>(10010);
+            small.serializeNext<uint32_t>(21);
+        }
+        else if (s->name == "uint64") {
+            zero.serializeNext<uint64_t>(0);
+            large.serializeNext<uint64_t>(100100);
+            small.serializeNext<uint64_t>(21);
+        }
+
+        k2::String zero_s = zero.getPartitionKey();
+        k2::String large_s = large.getPartitionKey();
+        k2::String small_s = small.getPartitionKey();
+
+        REQUIRE(zero_s < small_s);
+        REQUIRE(small_s < large_s);
+    }
+}
