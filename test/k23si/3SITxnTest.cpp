@@ -2225,13 +2225,15 @@ seastar::future<> testScenario06() {
 
     return seastar::make_ready_future()
     .then([this] {
-        return seastar::when_all_succeed(getTimeNow(), getTimeNow());
+        auto ts1 = getTimeNow();
+        auto ts2 = getTimeNow();
+        return seastar::when_all_succeed(std::move(ts1), std::move(ts2));
     })
     .then([this](auto&& timestamps) {
         auto& [ts1, ts2] = timestamps;
         return seastar::do_with(
-            dto::K23SI_MTR {.timestamp = ts2, .priority = dto::TxnPriority::Medium},
             dto::K23SI_MTR {.timestamp = ts1, .priority = dto::TxnPriority::Medium},
+            dto::K23SI_MTR {.timestamp = ts2, .priority = dto::TxnPriority::Medium},
             dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkek1", .rangeKey = "rKey1"},
             dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey2", .rangeKey = "rKey2"},
             dto::Key {.schemaName = "schema", .partitionKey = "SC06_pkey3", .rangeKey = "rKey3"},
@@ -2270,8 +2272,8 @@ seastar::future<> testScenario06() {
                 return doRead(k3, otherMtr, collname, ErrorCaseOpt::NoInjection)
                 .then([&](auto&& response) {
                     auto& [status, val] = response;
-                    K2EXPECT(log::k23si, val, v0);
                     K2EXPECT(log::k23si, status, dto::K23SIStatus::OK);
+                    K2EXPECT(log::k23si, val, v0);
                 });
             })
             .then([&] {
@@ -2356,7 +2358,9 @@ seastar::future<> testScenario06() {
     }) // end case 06
     .then([this] {
         K2LOG_I(log::k23si, "------- SC06.case7 ( Finalize_Abort partial record within this transaction ) -------");
-        return seastar::when_all_succeed(getTimeNow(), getTimeNow());
+        auto ts1 = getTimeNow();
+        auto ts2 = getTimeNow();
+        return seastar::when_all_succeed(std::move(ts1), std::move(ts2));
     })
     .then([this](auto&& timestamps) {
         auto& [ts1, ts2] = timestamps;
@@ -2428,8 +2432,8 @@ seastar::future<> testScenario06() {
                         auto [status2, val2] = resp2.get0();
                         auto [status3, val3] = resp3.get0();
                         K2EXPECT(log::k23si, status1, dto::K23SIStatus::KeyNotFound);
-                        K2EXPECT(log::k23si, status2, dto::K23SIStatus::KeyNotFound);
-                        K2EXPECT(log::k23si, status2, dto::K23SIStatus::KeyNotFound);
+                        K2EXPECT(log::k23si, status2, dto::K23SIStatus::OK);
+                        K2EXPECT(log::k23si, status3, dto::K23SIStatus::OK);
                     });
                 });
             });
