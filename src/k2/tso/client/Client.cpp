@@ -71,7 +71,20 @@ seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest &req
         }
         _tsoErrorBound = resp.minTransTime;
         _tsoServerEndpoint = RPC().getTXEndpoint(resp.endpoints[0]);
-        return _discoverServiceNodes();
+        for (auto ep : resp.endpoints) {
+            _curTSOServiceNodes.push_back(RPC().getTXEndpoint(ep));
+        }
+        std::random_device rd;
+        std::mt19937 ranAlg(rd());
+        std::shuffle(_curTSOServiceNodes.begin(), _curTSOServiceNodes.end(), ranAlg);
+        K2LOG_I(log::tsoclient, "*** modified *** :: Successfully got remote data endpoint");
+        _initialized = true;
+        // let all requests know that we're ready
+        for (auto& prom: _pendingClientRequests) {
+            prom.set_value();
+        }
+        _pendingClientRequests.clear();
+        return seastar::make_ready_future<>();
     });
 }
 
