@@ -113,16 +113,12 @@ private:
     uint64_t _gpsNow();
     uint64_t _steadyNow();
 
-    // the last time we observed a new atomic clock value
-    // the following, combined with the spin-lock guard should guarantee coherency across threads on X86/64
-    // For other archs, don't compile for now, but we should use an std::atomic instead
-#ifdef __x86_64__
+    // the following, combined with the spin-lock guard should guarantee coherency across threads
     // the current timestamp we use for vending timestamps
-    volatile _GPSNanos _useTs;
+    _GPSNanos _useTs;
 
     // to prevent r-w races when modifying _useTs
     SpinMutex _mutex;
-#endif
 };
 
 // Global instance, shareable among threads

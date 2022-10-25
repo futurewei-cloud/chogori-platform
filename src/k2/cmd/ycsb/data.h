@@ -23,7 +23,6 @@ Copyright(c) 2021 Futurewei Cloud
 
 #pragma once
 
-#include <decimal/decimal>
 #include <string>
 
 #include <k2/common/Common.h>
