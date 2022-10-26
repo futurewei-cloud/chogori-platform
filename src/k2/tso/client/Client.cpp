@@ -73,11 +73,11 @@ seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest &req
         _tsoServerEndpoint = RPC().getTXEndpoint(resp.endpoints[0]);
         for (auto ep : resp.endpoints) {
             _curTSOServiceNodes.push_back(RPC().getTXEndpoint(ep));
+            K2LOG_I(log::tsoclient, "Adding remote TSO endpoint: {}", _curTSOServiceNodes.back()->url);
         }
         std::random_device rd;
         std::mt19937 ranAlg(rd());
         std::shuffle(_curTSOServiceNodes.begin(), _curTSOServiceNodes.end(), ranAlg);
-        K2LOG_I(log::tsoclient, "*** modified *** :: Successfully got remote data endpoint");
         _initialized = true;
         // let all requests know that we're ready
         for (auto& prom: _pendingClientRequests) {
@@ -125,80 +125,6 @@ seastar::future<> TSOClient::gracefulStop() {
     _pendingClientRequests.clear();
 
     return std::move(_pendingRequestsWaiter);
-}
-
-seastar::future<> TSOClient::_getServiceNodeURLs(Duration timeout){
-    return seastar::do_with(GetServiceNodeURLsRequest{}, [this, timeout] (auto& request) {
-        return RPC().callRPC<dto::GetServiceNodeURLsRequest, dto::GetServiceNodeURLsResponse>(dto::Verbs::GET_TSO_SERVICE_NODE_URLS, request, *_tsoServerEndpoint, timeout)
-        .then([this](auto&& response) {
-            auto& [status, r] = response;
-            if (!status.is2xxOK()) {
-                K2LOG_E(log::tsoclient, "Error during get TSO node URLs, status:{}", status);
-                if (status.is5xxRetryable()) {
-                    // retryable errors
-                    return seastar::make_exception_future<>(std::runtime_error(status.message));
-                }
-                else {
-                    return seastar::make_exception_future<>(StopRetryException{});
-                }
-            }
-
-            if (r.serviceNodeURLs.empty()) {
-                K2LOG_E(log::tsoclient, "Remote end did not provide node URLs");
-                return seastar::make_exception_future<>(std::runtime_error("no remote endpoint"));
-            }
-            else {
-                K2LOG_D(log::tsoclient, "received node URLs:{}", r.serviceNodeURLs);
-            }
-
-            _curTSOServiceNodes.clear();
-            // each node may have multiple endPoint URLs, we only pick the best supported one
-            for (auto& singleNodeURLs : r.serviceNodeURLs) {
-                _curTSOServiceNodes.push_back(Discovery::selectBestEndpoint(singleNodeURLs));
-                K2LOG_D(log::tsoclient, "Selected node endpoint:{}", _curTSOServiceNodes.back()->url);
-            }
-
-            K2ASSERT(log::tsoclient, !_curTSOServiceNodes.empty(), "nodes should property configured and not empty!")
-
-            // to reduce run-time computation, we shuffle the _curTSOServiceNodes here
-            // to simulate random pick of workers(load balance) in run time by increment a moded index
-            std::random_device rd;
-            std::mt19937 ranAlg(rd());
-            std::shuffle(_curTSOServiceNodes.begin(), _curTSOServiceNodes.end(), ranAlg);
-
-            K2LOG_I(log::tsoclient, "Successfully got remote data endpoint");
-
-            _initialized = true;
-            // let all requests know that we're ready
-            for (auto& prom: _pendingClientRequests) {
-                prom.set_value();
-            }
-            _pendingClientRequests.clear();
-            return seastar::make_ready_future<>();
-        }); // rpc call
-    }); // do_with request
-}
-
-seastar::future<> TSOClient::_discoverServiceNodes() {
-    OperationLatencyReporter reporter(_discoveryLatency);  // for reporting metrics
-
-    return seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxTSORetries()).withStartTimeout(_tsoTimeout()).withRate(2), [this](auto& retryStrategy) {
-        return retryStrategy.run([this] (size_t retriesLeft, Duration timeout) {
-            if (_stopped) {
-                K2LOG_I(log::tsoclient, "Stopping retry since we were stopped");
-                return seastar::make_exception_future<>(StopRetryException{});
-            }
-            if (!_tsoServerEndpoint) {
-                K2LOG_E(log::tsoclient, "Invalid TSO server endpoint");
-                return seastar::make_exception_future(StopRetryException{});
-            }
-            K2LOG_I(log::tsoclient, "Sending with retriesLeft={}, and timeout={}ms, with {}", retriesLeft, timeout, *_tsoServerEndpoint);
-            return _getServiceNodeURLs(timeout);
-        }); // strategy run()
-    }) // do_with retry strategy
-    .finally([reporter=std::move(reporter)] () mutable {
-        reporter.report(); // report latency
-    });
 }
 
 seastar::future<Timestamp> TSOClient::getTimestamp() {

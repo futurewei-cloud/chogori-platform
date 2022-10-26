@@ -37,16 +37,4 @@ struct GetTimestampResponse{
     K2_DEF_FMT(GetTimestampResponse, timestamp);
 };
 
-struct GetServiceNodeURLsRequest {
-    K2_PAYLOAD_EMPTY;
-    K2_DEF_FMT(GetServiceNodeURLsRequest);
-};
-
-struct GetServiceNodeURLsResponse {
-    std::vector<std::vector<String>> serviceNodeURLs;
-
-    K2_PAYLOAD_FIELDS(serviceNodeURLs);
-    K2_DEF_FMT(GetServiceNodeURLsResponse, serviceNodeURLs);
-};
-
 }  // k2::dto

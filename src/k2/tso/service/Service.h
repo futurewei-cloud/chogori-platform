@@ -46,9 +46,6 @@ public:
     seastar::future<> gracefulStop();
 
 private: // API
-    seastar::future<std::tuple<k2::Status, dto::GetServiceNodeURLsResponse>>
-    _handleGetServiceNodeURLs(dto::GetServiceNodeURLsRequest&& request);
-
     seastar::future<std::tuple<k2::Status, dto::GetTimestampResponse>>
     _handleGetTimestamp(dto::GetTimestampRequest&& request);
 

@@ -158,12 +158,6 @@ seastar::future<bool> TSOService::_assign(uint64_t tsoID, k2::Duration errBound)
             K2LOG_I(log::tsoserver, "Error bound validation succeeded? {}", isValidErrorBound);
             if (isValidErrorBound) {
                 // register RPC APIs
-                K2LOG_I(log::tsoserver, "registering RPC");
-                RPC().registerRPCObserver<dto::GetServiceNodeURLsRequest, dto::GetServiceNodeURLsResponse>
-                (dto::Verbs::GET_TSO_SERVICE_NODE_URLS, [this](dto::GetServiceNodeURLsRequest&& request) {
-                    return _handleGetServiceNodeURLs(std::move(request));
-                });
-
                 RPC().registerRPCObserver<dto::GetTimestampRequest, dto::GetTimestampResponse>(dto::Verbs::GET_TSO_TIMESTAMP, [this](dto::GetTimestampRequest&& request) {
                     return _handleGetTimestamp(std::move(request));
                 });
@@ -200,17 +194,6 @@ TSOService::_handleAssignment(dto::AssignTSORequest&& request) {
         _isInAssignment = false;
         return RPCResponse(isValidErrorBound ? Statuses::S200_OK("OK") : Statuses::S503_Service_Unavailable("unable to meet requested error bound"), dto::AssignTSOResponse{});
     });
-}
-
-seastar::future<std::tuple<Status, dto::GetServiceNodeURLsResponse>>
-TSOService::_handleGetServiceNodeURLs(dto::GetServiceNodeURLsRequest&&) {
-    K2LOG_D(log::tsoserver, "handleGetServiceNodeURLs");
-    if (_tsoId == 0) {
-        return RPCResponse(Statuses::S410_Gone("this server is not authorized to generate timestamps"), dto::GetServiceNodeURLsResponse{});
-    }
-    dto::GetServiceNodeURLsResponse response{.serviceNodeURLs = _workersURLs};
-    K2LOG_D(log::tsoserver, "returned TSO service nodes endpoints are: {}", response);
-    return RPCResponse(Statuses::S200_OK("OK"), std::move(response));
 }
 
 seastar::future<std::tuple<Status, dto::GetTimestampResponse>>
