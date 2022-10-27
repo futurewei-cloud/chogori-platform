@@ -9,7 +9,7 @@ cd ${topname}/../..
 cpo_child_pid=$!
 
 # start nodepool
-./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --memory=1G --partition_request_timeout=6s &
+./build/src/k2/cmd/nodepool/nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port 63001 --memory=1G --partition_request_timeout=6s --k23si_autoflush_deadline=50ms&
 nodepool_child_pid=$!
 
 # start persistence
