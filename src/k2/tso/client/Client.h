@@ -88,9 +88,6 @@ private: // fields
     std::deque<seastar::promise<>> _pendingClientRequests;
     seastar::future<> _pendingRequestsWaiter = seastar::make_ready_future<>();
 
-    // the TSO server we can contact for timestamps
-    std::unique_ptr<TXEndpoint> _tsoServerEndpoint;
-
     // all URLs of workers of current TSO server
     std::vector<std::unique_ptr<TXEndpoint>> _curTSOServiceNodes;
 

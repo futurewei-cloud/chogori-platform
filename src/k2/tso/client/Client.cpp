@@ -70,7 +70,6 @@ seastar::future<> TSOClient::_doGetTSOEndpoints(dto::GetTSOEndpointsRequest &req
             return seastar::make_exception_future<>(std::runtime_error("Could not bootstrap TSO client"));
         }
         _tsoErrorBound = resp.minTransTime;
-        _tsoServerEndpoint = RPC().getTXEndpoint(resp.endpoints[0]);
         for (auto ep : resp.endpoints) {
             _curTSOServiceNodes.push_back(RPC().getTXEndpoint(ep));
             K2LOG_I(log::tsoclient, "Adding remote TSO endpoint: {}", _curTSOServiceNodes.back()->url);

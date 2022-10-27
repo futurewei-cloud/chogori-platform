@@ -50,9 +50,6 @@ private: // API
     _handleGetTimestamp(dto::GetTimestampRequest&& request);
 
 private: // methods
-    // obtain the worker URLs by contacting each worker core
-    seastar::future<> _collectWorkerURLs();
-
     // obtain the TSOID and the error bound value from the CPO
     seastar::future<std::tuple<Status, dto::AssignTSOResponse>>
     _handleAssignment(dto::AssignTSORequest&& request);
@@ -66,9 +63,6 @@ private: // members
 
     // the last endCount we generated from this service
     uint64_t _lastGeneratedEndCount{0};
-
-    // the URLs for all workers at this service. Each worker can have multiple URLs (e.g. TCP and RDMA)
-    std::vector<std::vector<k2::String>> _workersURLs;
 
     // the TSO id for this service worker. Each worker gets its own globally unique ID, which
     // is assigned by the CPO at registration time.

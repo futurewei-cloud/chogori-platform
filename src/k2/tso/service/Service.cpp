@@ -116,18 +116,6 @@ seastar::future<> TSOService::gracefulStop() {
     return seastar::make_ready_future<>();
 }
 
-seastar::future<> TSOService::_collectWorkerURLs() {
-    K2LOG_I(log::tsoserver, "collecting all worker URLs");
-    std::vector<String> myurls;
-    for (auto& ep : RPC().getServerEndpoints()) {
-        myurls.push_back(ep->url);
-    };
-
-    return AppBase().getDist<TSOService>().invoke_on_all([myurls] (auto& svc) {
-        svc._workersURLs.push_back(myurls);
-    });
-}
-
 seastar::future<bool> TSOService::_assign(uint64_t tsoID, k2::Duration errBound) {
     _CPOErrorBound = errBound;
     return seastar::do_with(bool{false}, Clock::now(), [tsoID, this] (auto& isValidErrorBound, auto& assignStart) {
@@ -152,7 +140,7 @@ seastar::future<bool> TSOService::_assign(uint64_t tsoID, k2::Duration errBound)
                 _tsoId = tsoID;
                 _isInAssignment = false;
             }
-            return _collectWorkerURLs();
+            return seastar::make_ready_future();
         })
         .then([this, &isValidErrorBound] {
             K2LOG_I(log::tsoserver, "Error bound validation succeeded? {}", isValidErrorBound);
