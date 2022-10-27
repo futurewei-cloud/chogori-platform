@@ -22,7 +22,7 @@ cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO}  --data_dir ${CPODIR} --prome
 cpo_child_pid=$!
 
 # start nodepool
-nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port $(($PROMETHEUS_PORT_START+1)) --memory=1G --partition_request_timeout=6s &
+nodepool ${COMMON_ARGS} -c${#EPS[@]} --tcp_endpoints ${EPS[@]} --k23si_persistence_endpoint ${PERSISTENCE} --prometheus_port $(($PROMETHEUS_PORT_START+1)) --memory=1G --partition_request_timeout=6s  --k23si_query_pagination_limit=3000&
 nodepool_child_pid=$!
 
 # start persistence
