@@ -139,6 +139,7 @@ seastar::future<bool> TSOService::_assign(uint64_t tsoID, k2::Duration errBound)
                     isValidErrorBound = true;
                     return true;
                 }
+                K2LOG_W(log::tsoserver, "GPS clock with error {} cannot meet the requested error bound {}", now.error, _CPOErrorBound);
                 isValidErrorBound = false;
                 ++_failedErrorBounds;
                 return Clock::now() - assignStart > _assignTimeout();
