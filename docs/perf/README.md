@@ -86,35 +86,35 @@ Total transaction throughput, one operation per transaction.
 | |
 | |
 | <b>YCSB {95,5,szipfian}</b> |||||
-| Txn/sec |  | 250K | 258K | 275K |
+| Txn/sec |  | 250K | 258K | 269K |
 | Txn latency| | 26 / 36 / 86 / 216 | 25 / 34 / 78 / 160 | 38.9 / 37.0 / 78.8 / 162 |
 | Abort rate/sec |  | 1.8K | 1.61K | 1.71K |
-| server-side read rate/sec |  | 232K | 261K | 275K |
+| server-side read rate/sec |  | 232K | 261K | 259K |
 | server-side read latency |  | 1.8 / 2.6 / 4.9 / 10.5 | 1.8 / 2.4 / 4.7 / 8.7 | 1.80 / 2.43 / 4.56 / 7.79 |
 | server-side query rate/sec | 0 | 0 | 0 | 0 |
 | server-side query latency | N/A | N/A | N/A | N/A |
-| server-side write rate/sec |  | 14K | 16.5K | 17.9K |
+| server-side write rate/sec |  | 14K | 16.5K | 16.3K |
 | server-side write latency |  | 18 / 31 / 271 / 576 | 17 / 22 / 67 / 152 | 16.9 / 21.7 / 60.4 / 152 |
 | PUSH count |  | 2K | 2.45K | 2.40K |
 | PUSH latency |  | 0.5 / 0.9 / 1.2 / 6.9 | 0.5 / 0.9 / 1 / 4.7 | 0.507 / 0.913 / 1.12 / 4.75 |
 | Flush latency |  | 10.5 / 17 / 349 / 587 | 9 / 13 / 35 / 95 | 8.91 / 13.2 / 38.4 / 90.7 |
-| TSO call rate/sec| | 255K | 274K | 303K |
+| TSO call rate/sec| | 255K | 274K | 275K |
 | TSO latency |  | 8 / 10 / 16 / 25 | 7.5 / 9.5 / 15 / 23 | 7.87 / 10.0 / 16.0 / 24.7 |
 | |
 | |
 | |
 | <b>YCSB {50,50,szipfian}</b> |||||
-| Txn/sec |  | 47.3K | 66K | 64.5K |
+| Txn/sec |  | 47.3K | 66K | 59.5K |
 | Txn latency| | 55 / 80 / 112 / 716 | 55 / 77 / 105 / 375 | 55.3 / 77.6 / 106 / 376 |
 | Abort rate/sec |  | 2.7K | 2.5K | 2.90K |
-| server-side read rate/sec |  | 25K | 38.2K | 34.8K |
+| server-side read rate/sec |  | 25K | 38.2K | 30.7K |
 | server-side read latency |  | 2.2 / 3.1 / 8.4 / 13.4 | 2.1 / 2.9 / 5.2 / 10 | 2.16 / 2.91 / 5.14 / 9.87 |
 | server-side query rate/sec | 0 | 0 | 0 | 0 |
 | server-side query latency | N/A | N/A | N/A | N/A |
-| server-side write rate/sec |  | 27K | 41K | 38.8K |
+| server-side write rate/sec |  | 27K | 41K | 33.8K |
 | server-side write latency |  | 17.4 / 32.5 / 402 / 488 | 16.6 / 21.6 / 204 / 275 | 16.7 / 22.1 / 193 / 273 |
 | PUSH count |  | 3K | 3.1K | 3.22K |
 | PUSH latency |  | 0.5 / 0.9 / 1 / 7 | 0.5 / 0.9 / 1 / 4.5 | 0.503 / 0.905 / 0.995 / 4.39 |
 | Flush latency |  | 10 / 32 / 459 / 679 | 9 / 13 / 192 / 265 | 8.81 / 13.0 / 183 / 262 |
-| TSO call rate/sec| | 51K | 80.4K | 74.7K |
+| TSO call rate/sec| | 51K | 80.4K | 64.2K |
 | TSO latency |  | 8 / 10 / 16 / 31 | 7.7 / 9.3 / 16 / 27 | 7.62 / 9.73 / 16.7 / 30.1 |
