@@ -65,14 +65,6 @@ private: // metrics
     void _registerMetrics();
 
 private: // methods
-    // discover the TSO service nodes (the ones which can provide timestamps) for our current TSO server
-    seastar::future<> _discoverServiceNodes();
-
-    // make a remote call to the TSO to discover the worker URLs
-    // This method is a helper, used within a RetryStrategy. It can return an exceptional
-    // future with StopRetryException to signal that further retries are futile.
-    seastar::future<> _getServiceNodeURLs(Duration timeout);
-
     // Helper used to obtain the timestamp from server and report latency
     seastar::future<dto::Timestamp> _getTimestampWithLatency(OperationLatencyReporter&& reporter);
 
@@ -95,9 +87,6 @@ private: // fields
     // requests that we've received while not initialized - we'll satisfy them after initialization
     std::deque<seastar::promise<>> _pendingClientRequests;
     seastar::future<> _pendingRequestsWaiter = seastar::make_ready_future<>();
-
-    // the TSO server we can contact for timestamps
-    std::unique_ptr<TXEndpoint> _tsoServerEndpoint;
 
     // all URLs of workers of current TSO server
     std::vector<std::unique_ptr<TXEndpoint>> _curTSOServiceNodes;
