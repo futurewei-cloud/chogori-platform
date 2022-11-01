@@ -121,7 +121,7 @@ private: // fields
     int _try{0};
     // the exponential growth rate
     double _rate{2};
-    // the value of the current timeout
+    // the value of the current backoff time
     Duration _currentBackoffTime{1us};
     // indicate if the latest round has succeeded (so that we can break the retry loop)
     bool _success{false};

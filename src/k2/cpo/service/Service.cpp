@@ -205,7 +205,7 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
         return seastar::make_exception_future(StopRetryException{});
     }
     return RPC().callRPC<dto::AssignTSORequest, dto::AssignTSOResponse>(
-        dto::Verbs::TSO_ASSIGNMENT, request, *txep, _perCallTSOAssignTimeout()
+        dto::Verbs::TSO_ASSIGNMENT, request, *txep, _TSOAssignTimeout()
     ).then([ep,tsoID,this] (auto &&result) {
         auto& [status, resp] = result;
         if (status.is2xxOK()) {
@@ -231,7 +231,7 @@ seastar::future<> CPOService::_doAssignTSO(const String &ep, size_t tsoID) {
 }
 
 seastar::future<> CPOService::_assignTSO(const String &ep, size_t tsoID) {
-    return seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withBaseBackoffTime(100ms).withRate(2), [&ep, tsoID, this](auto& retryStrategy) {
+    return seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withBaseBackoffTime(_assignBaseBackoff()).withRate(2), [&ep, tsoID, this](auto& retryStrategy) {
         return retryStrategy.run([&ep,tsoID,this] (size_t retriesLeft, Duration backoffTime) {
             K2LOG_I(log::cposvr, "Sending TSO assignment with retriesLeft={}, and backoffTime={}, with {}", retriesLeft, backoffTime, ep);
             return _doAssignTSO(ep, tsoID);
@@ -622,7 +622,7 @@ void CPOService::_assignCollection(dto::Collection& collection) {
 
         K2LOG_I(log::cposvr, "Sending assignment for partition: {}", request.partition);
         futs.push_back(
-            seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withBaseBackoffTime(_assignTimeout()).withRate(2), std::move(request), [name, ep, this](auto& retryStrategy, auto &request) {
+            seastar::do_with(ExponentialBackoffStrategy().withRetries(_maxAssignRetries()).withBaseBackoffTime(_assignBaseBackoff()).withRate(2), std::move(request), [name, ep, this](auto& retryStrategy, auto &request) {
                 return retryStrategy.run([&request, name, ep,this] (size_t retriesLeft, Duration timeout) {
                     K2LOG_I(log::cposvr, "Sending partition assignment with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, request.partition);
                     return _doAssignCollection(request, name, ep);

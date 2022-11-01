@@ -93,7 +93,7 @@ private: // config
     // pick CPU on which to pin clock poller (default(-1) is free-floating)
     ConfigVar<int16_t> _clockPollerCPU{"tso.clock_poller_cpu", -1};
     ConfigDuration _clockErrorBound{"tso.hw_error_bound", 100us};
-    ConfigDuration _assignTimeout{"tso.assign_timeout", 80ms};
+    ConfigDuration _assignTimeout{"tso.assign_timeout", 500ms};
 };
 
 }

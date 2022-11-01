@@ -63,7 +63,8 @@ private:
     void _assignCollection(dto::Collection& collection);
     seastar::future<bool> _offloadCollection(dto::Collection& collection);
     ConfigDuration _assignTimeout{"assignment_timeout", 10ms};
-    ConfigDuration _perCallTSOAssignTimeout{"per_call_tso_assignment_timeout", 100ms};
+    ConfigDuration _TSOAssignTimeout{"cpo.tso_assignment_timeout", 100ms};
+    ConfigDuration _assignBaseBackoff{"cpo.assignment_base_backoff", 100ms};
     ConfigDuration _collectionHeartbeatDeadline{"txn_heartbeat_deadline", 100ms};
     ConfigVar<int> _maxAssignRetries{"max_assign_retries", 5};
 
