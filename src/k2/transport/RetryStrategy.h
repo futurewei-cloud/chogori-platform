@@ -60,7 +60,7 @@ public:
     ExponentialBackoffStrategy& withRate(double rate);
 
     // Set the desired starting value
-    ExponentialBackoffStrategy& withStartTimeout(Duration startTimeout);
+    ExponentialBackoffStrategy& withBaseBackoffTime(Duration baseBackoffTime);
 
 public: // API
     // Execute the given function until it either succeeds or we exhaust the retries. If the retries are
@@ -78,8 +78,8 @@ public: // API
         return seastar::do_until(
             [this] { return _success || _try >= _retries; },
             [this, func=std::move(func), resultPtr] ()mutable{
-                k2::Deadline deadline(_currentTimeout);
-                K2LOG_D(log::txretry, "running try {}, with timeout {}ms", _try, k2::msec(_currentTimeout).count());
+                k2::Deadline deadline(_currentBackoffTime);
+                K2LOG_D(log::txretry, "running try {}, with backoff time {}ms", _try, k2::msec(_currentBackoffTime).count());
                 return func(_retries - _try, deadline.getRemaining()).
                     handle_exception_type([this](RPCDispatcher::DispatcherShutdown&) {
                         K2LOG_D(log::txretry, "Dispatcher has shut down. Stopping retry");
@@ -100,7 +100,7 @@ public: // API
                         K2LOG_D(log::txretry, "round {} ended with success={}", _try, _success);
                         if (!_success) {
                             _try++;
-                            _currentTimeout = Duration((uint64_t)(nsec(_currentTimeout).count() * _rate));
+                            _currentBackoffTime = Duration((uint64_t)(nsec(_currentBackoffTime).count() * _rate));
                             if (!deadline.isOver()) {
                                 return seastar::sleep(deadline.getRemaining());
                             }
@@ -122,7 +122,7 @@ private: // fields
     // the exponential growth rate
     double _rate{2};
     // the value of the current timeout
-    Duration _currentTimeout{1us};
+    Duration _currentBackoffTime{1us};
     // indicate if the latest round has succeeded (so that we can break the retry loop)
     bool _success{false};
     // indicate if this strategy has been used already so that we can reject duplicate attempts to use it

@@ -9,7 +9,7 @@ allTSOs=("tcp+k2rpc://0.0.0.0:13000" "tcp+k2rpc://0.0.0.0:13001" "tcp+k2rpc://0.
 ./build/src/k2/cmd/tso/tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port 63003 --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
-./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --prometheus_port 63000 --assignment_timeout=1s --tso_endpoints ${allTSOs[@]} --tso_error_bound=100us &
+./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --prometheus_port 63000 --assignment_timeout=1s --per_call_tso_assignment_timeout=100ms --tso_endpoints ${allTSOs[@]} --tso_error_bound=100us &
 cpo_child_pid=$!
 
 

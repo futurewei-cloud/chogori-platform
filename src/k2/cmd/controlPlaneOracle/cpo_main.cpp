@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
         ("heartbeat_monitor_shard_id", bpo::value<uint32_t>()->default_value(0), "Which shard the heartbeat monitor should run on")
         ("txn_heartbeat_deadline", bpo::value<k2::ParseableDuration>(), "The interval clients must use to heartbeat active transactions")
         ("assignment_timeout", bpo::value<k2::ParseableDuration>(), "Timeout for K2 partition assignment")
+        ("per_call_tso_assignment_timeout", bpo::value<k2::ParseableDuration>(), "Timeout for per call TSO assignment")
         ("data_dir", bpo::value<k2::String>(), "The directory where we can keep data");
     app.addApplet<k2::cpo::HealthMonitor>();
     app.addApplet<k2::cpo::CPOService>();

@@ -18,7 +18,7 @@ HTTP=${HTTP:=tcp+k2rpc://0.0.0.0:20000}
 PROMETHEUS_PORT_START=${PROMETHEUS_PORT_START:=63000}
 
 # start CPO
-cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO}  --data_dir ${CPODIR} --prometheus_port $PROMETHEUS_PORT_START --assignment_timeout=1s --txn_heartbeat_deadline=1s --nodepool_endpoints ${EPS[@]} --tso_endpoints ${TSO} --tso_error_bound=100us --persistence_endpoints ${PERSISTENCE}&
+cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO}  --data_dir ${CPODIR} --prometheus_port $PROMETHEUS_PORT_START --assignment_timeout=1s --per_call_tso_assignment_timeout=100ms --txn_heartbeat_deadline=1s --nodepool_endpoints ${EPS[@]} --tso_endpoints ${TSO} --tso_error_bound=100us --persistence_endpoints ${PERSISTENCE}&
 cpo_child_pid=$!
 
 # start nodepool

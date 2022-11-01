@@ -9,7 +9,7 @@ cd ${topname}/../..
 tso_child_pid=$!
 
 #assigning unrealistic error bound to tso
-./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --prometheus_port 63000 --assignment_timeout=1s --tso_endpoints ${TSO} --tso_error_bound=1us &
+./build/src/k2/cmd/controlPlaneOracle/cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO} --data_dir ${CPODIR} --txn_heartbeat_deadline=10s --prometheus_port 63000 --assignment_timeout=1s --per_call_tso_assignment_timeout=100ms --tso_endpoints ${TSO} --tso_error_bound=1us &
 cpo_child_pid=$!
 
 
