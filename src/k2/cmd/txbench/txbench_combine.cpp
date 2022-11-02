@@ -272,7 +272,7 @@ private:
         }
         auto myRemote = RPC().getTXEndpoint(_tcpRemotes[myID]);
         auto retryStrategy = seastar::make_lw_shared<ExponentialBackoffStrategy>();
-        retryStrategy->withRetries(10).withStartTimeout(10ms).withRate(3);
+        retryStrategy->withRetries(10).withBaseBackoffTime(10ms).withRate(3);
         return retryStrategy->run([this, myRemote=std::move(myRemote)](size_t, Duration timeout) {
             if (_stopped) {
                 return seastar::make_exception_future<>(std::runtime_error("we were stopped"));

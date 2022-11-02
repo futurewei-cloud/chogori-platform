@@ -124,7 +124,7 @@ public: // Work generators
 
             // retry at 10ms, 50ms(=10ms*5), and 250ms(=50ms*5)
             auto retryStrategy = seastar::make_lw_shared<ExponentialBackoffStrategy>();
-            retryStrategy->withRetries(3).withStartTimeout(10ms).withRate(5);
+            retryStrategy->withRetries(3).withBaseBackoffTime(10ms).withRate(5);
 
             // NB: since seastar future continuations may be scheduled to run at later points,
             // it may be possible that the Service instance goes away in a middle of a retry.

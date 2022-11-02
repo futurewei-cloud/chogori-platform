@@ -93,7 +93,7 @@ seastar::future<> TSOClient::bootstrap(const String& cpoEndpoint) {
     _stopped = false;
     _registerMetrics();
     // retry TSO connection if cannot be established
-    return seastar::do_with(dto::GetTSOEndpointsRequest{}, ExponentialBackoffStrategy().withRetries(_maxTSORetries()).withStartTimeout(_tsoTimeout()).withRate(2), [cpoEndpoint, this](auto& request, auto& retryStrategy) {
+    return seastar::do_with(dto::GetTSOEndpointsRequest{}, ExponentialBackoffStrategy().withRetries(_maxTSORetries()).withBaseBackoffTime(_tsoTimeout()).withRate(2), [cpoEndpoint, this](auto& request, auto& retryStrategy) {
         return retryStrategy.run([&request, cpoEndpoint, this] (size_t retriesLeft, Duration timeout) {
             K2LOG_I(log::tsoclient, "Sending GET_TSO_ENDPOINTS with retriesLeft={}, and timeout={}, with {}", retriesLeft, timeout, cpoEndpoint);
             auto cpoEP = RPC().getTXEndpoint(cpoEndpoint);
@@ -151,7 +151,7 @@ seastar::future<Timestamp> TSOClient::_getTimestampWithLatency(OperationLatencyR
     constexpr int retries=5;
 
     return seastar::do_with(
-        ExponentialBackoffStrategy().withRetries(retries).withStartTimeout(10ms).withRate(2),
+        ExponentialBackoffStrategy().withRetries(retries).withBaseBackoffTime(10ms).withRate(2),
         GetTimestampRequest{},
         Timestamp(),
         [this, retries] (auto& retryStrategy, auto& request, auto& timestamp) mutable {

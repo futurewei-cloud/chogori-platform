@@ -40,9 +40,9 @@ ExponentialBackoffStrategy& ExponentialBackoffStrategy::withRate(double rate) {
 }
 
 // Set the desired starting value
-ExponentialBackoffStrategy& ExponentialBackoffStrategy::withStartTimeout(Duration startTimeout) {
-    K2LOG_D(log::tx, "startTimeout: {}ms", k2::msec(startTimeout).count());
-    _currentTimeout = startTimeout;
+ExponentialBackoffStrategy& ExponentialBackoffStrategy::withBaseBackoffTime(Duration baseBackoffTime) {
+    K2LOG_D(log::tx, "base backoff time: {}", baseBackoffTime);
+    _currentBackoffTime = baseBackoffTime;
     return *this;
 }
 
