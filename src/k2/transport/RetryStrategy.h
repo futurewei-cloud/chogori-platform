@@ -47,9 +47,9 @@ class DuplicateExecutionException : public std::exception {};
 // this can be returned by retryable code to indicate that no more retries should be performed
 class StopRetryException: public std::exception{};
 
-// an Exponential backoff strategy, with parameters retries, rate, and startTimeout.
+// an Exponential backoff strategy, with parameters retries, rate, and baseBackoffTime.
 // When Do() is invoked with some function, the function is repeatedly called with the remaining retries and the
-// timeoutValue it should use. The timeoutvalue is calculated based on exponential increase.
+// backoff time it should use. The backoff time is calculated based on exponential increase.
 // The callback is invoked until it returns a successful future. If it returns an exceptional future, we keep retrying
 class ExponentialBackoffStrategy {
 public:
@@ -100,7 +100,7 @@ public: // API
                         K2LOG_D(log::txretry, "round {} ended with success={}", _try, _success);
                         if (!_success) {
                             _try++;
-                            _currentBackoffTime = Duration((uint64_t)(nsec(_currentBackoffTime).count() * _rate));
+                            _currentBackoffTime *= _rate;
                             if (!deadline.isOver()) {
                                 return seastar::sleep(deadline.getRemaining());
                             }
