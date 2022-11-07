@@ -100,6 +100,10 @@ private:
             });
     }
     Response<Binary> _processResponse(httplib::Result&& result) {
+        if (!result || result.error() != httplib::Error::Success) {
+            K2LOG_E(log::shclient, "HTTPlib response error code={}", result.error());
+            return {Statuses::S500_Internal_Server_Error("HTTPlib response error"), Binary()};
+        }
         Status responseStatus{.code = result->status, .message = result->reason};
         Binary responseBody(std::move(result->body));
         return {std::move(responseStatus), std::move(responseBody)};
