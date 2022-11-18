@@ -100,9 +100,14 @@ private:
             });
     }
     Response<Binary> _processResponse(httplib::Result&& result) {
-        Status responseStatus{.code = result->status, .message = result->reason};
-        Binary responseBody(std::move(result->body));
-        return {std::move(responseStatus), std::move(responseBody)};
+        if (result) {
+            Status responseStatus{.code = result->status, .message = result->reason};
+            Binary responseBody(std::move(result->body));
+            return {std::move(responseStatus), std::move(responseBody)};
+        }
+
+        Status responseStatus = Statuses::S503_Service_Unavailable(httplib::to_string(result.error()));
+        return {std::move(responseStatus), Binary{}};
     }
 
     boost::future<Response<Binary>> _doSend(Method method, String path, Binary&& request) {
