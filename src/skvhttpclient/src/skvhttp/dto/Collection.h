@@ -62,12 +62,12 @@ struct Key {
 
     K2_SERIALIZABLE(Key, schemaName, partitionKey, rangeKey);
 
-	friend std::ostream& operator<<(std::ostream& os, const Key& key) {
+    friend std::ostream& operator<<(std::ostream& os, const Key& key) {
         return os << fmt::format(
             "{{schemaName={}, partitionKey={}, rangeKey={}}}",
-			key.schemaName,
-			HexCodec::encode(key.partitionKey),
-			HexCodec::encode(key.rangeKey));
+            key.schemaName,
+            HexCodec::encode(key.partitionKey),
+            HexCodec::encode(key.rangeKey));
     }
 };
 
