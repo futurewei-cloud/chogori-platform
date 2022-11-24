@@ -60,7 +60,15 @@ struct Key {
     // partitioning hash used in K2
     size_t partitionHash() const noexcept;
 
-    K2_SERIALIZABLE_FMT(Key, schemaName, partitionKey, rangeKey);
+    K2_SERIALIZABLE(Key, schemaName, partitionKey, rangeKey);
+
+	friend std::ostream& operator<<(std::ostream& os, const Key& key) {
+        return os << fmt::format(
+            "{{schemaName={}, partitionKey={}, rangeKey={}}}",
+			key.schemaName,
+			HexCodec::encode(key.partitionKey),
+			HexCodec::encode(key.rangeKey));
+    }
 };
 
 
