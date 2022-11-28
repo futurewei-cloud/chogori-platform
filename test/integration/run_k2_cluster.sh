@@ -1,4 +1,5 @@
 #!/bin/bash
+set -m
 set -e
 
 CPODIR=${CPODIR:=/tmp/___cpo_integ_test}
@@ -18,7 +19,7 @@ HTTP=${HTTP:=tcp+k2rpc://0.0.0.0:20000}
 PROMETHEUS_PORT_START=${PROMETHEUS_PORT_START:=63000}
 
 # start CPO
-cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO}  --data_dir ${CPODIR} --prometheus_port $PROMETHEUS_PORT_START --assignment_timeout=1s --cpo.tso_assignment_timeout=100ms --cpo.assignment_base_backoff=100ms --txn_heartbeat_deadline=1s --nodepool_endpoints ${EPS[@]} --tso_endpoints ${TSO} --tso_error_bound=100us --persistence_endpoints ${PERSISTENCE}&
+cpo_main ${COMMON_ARGS} -c1 --tcp_endpoints ${CPO}  --data_dir ${CPODIR} --prometheus_port $PROMETHEUS_PORT_START --assignment_timeout=1s --cpo.tso_assignment_timeout=100ms --cpo.assignment_base_backoff=100ms --txn_heartbeat_deadline=1s --nodepool_endpoints ${EPS[@]} --tso_endpoints ${TSO} --tso_error_bound=100us --persistence_endpoints ${PERSISTENCE} &
 cpo_child_pid=$!
 
 # start nodepool
@@ -33,13 +34,12 @@ persistence_child_pid=$!
 tso ${COMMON_ARGS} -c1 --tcp_endpoints ${TSO} --prometheus_port $(($PROMETHEUS_PORT_START+3)) --tso.clock_poller_cpu=${TSO_POLLER_CORE} &
 tso_child_pid=$!
 
-sleep 1
-
 # start http proxy
 http_proxy ${COMMON_ARGS} -c1 --tcp_endpoints ${HTTP} --memory=1G --cpo ${CPO} --httpproxy_txn_timeout=100h --httpproxy_expiry_timer_interval=50ms --log_level=Info  --prometheus_port $(($PROMETHEUS_PORT_START+4)) &
 http_child_pid=$!
 
 function finish {
+  echo "Cleaning up..."
   rv=$?
   # cleanup code
   rm -rf ${CPODIR}
@@ -67,11 +67,9 @@ function finish {
   echo ">>>> ${0} finished with code ${rv}"
 }
 sleep 1
-
 echo ">>>> Done setting up cluster"
 
 trap finish EXIT
-trap ign INT
 
 if [ -z "$1" ]
 then

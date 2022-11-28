@@ -1,1 +1,1 @@
-install(FILES run_k2_cluster.sh DESTINATION bin)
+install(PROGRAMS run_k2_cluster.sh DESTINATION bin)

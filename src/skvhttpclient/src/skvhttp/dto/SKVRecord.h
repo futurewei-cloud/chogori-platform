@@ -160,13 +160,16 @@ public:
     SKVRecord getSKVKeyRecord();
 
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
+        std::vector<String> encP, encR;
+        for (auto&k: rec.partitionKeys) encP.push_back(HexCodec::encode(k));
+        for (auto&k: rec.rangeKeys) encR.push_back(HexCodec::encode(k));
         return os << fmt::format(
             "{{collectionName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
             rec.collectionName,
             rec.storage.excludedFields,
             rec.schema ? const_cast<SKVRecord&>(rec).getKey() : dto::Key{},
-            rec.partitionKeys,
-            rec.rangeKeys);
+            encP,
+            encR);
     }
 
     void constructKeyStrings();
