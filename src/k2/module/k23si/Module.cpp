@@ -590,6 +590,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
 
         // happy case: either committed, or txn is reading its own write
         if (!conflict) {
+            // reset the push counter to allow other potential conflicts in the same query page to go through
+            count = 0;
             if (!record->isTombstone) {
                 auto [status, keep] = _doQueryFilter(request, record->value);
                 if (!status.is2xxOK()) {
