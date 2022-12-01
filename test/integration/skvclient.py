@@ -72,12 +72,15 @@ class FieldType(int, Enum):
     INT16T:     int     = 2
     INT32T:     int     = 3
     INT64T:     int     = 4
-    FLOAT:      int     = 5
-    DOUBLE:     int     = 6
-    BOOL:       int     = 7
-    DECIMALD25:  int     = 8
-    DECIMALD50:  int     = 9
-    DECIMALD100: int     = 10
+    UINT16T:    int     = 5
+    UINT32T:    int     = 6
+    UINT64T:    int     = 7
+    FLOAT:      int     = 8
+    DOUBLE:     int     = 9
+    BOOL:       int     = 10
+    DECIMALD25:  int     = 11
+    DECIMALD50:  int     = 12
+    DECIMALD100: int     = 13
 
     def serialize(self):
         return self.value
