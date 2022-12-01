@@ -526,7 +526,7 @@ seastar::future<> HTTPProxy::gracefulStop() {
     std::vector<seastar::future<>> futs;
     futs.push_back(_expiryList.stop());
     for (auto& [ts, txn]: _txns) {
-        futs.push_back(txn.handle.kill());
+        futs.push_back(txn.handle.end(false).discard_result());
     }
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()
     .then([this] {
@@ -544,7 +544,7 @@ seastar::future<> HTTPProxy::start() {
         auto ts = txn.timestamp;
         K2LOG_W(log::httpproxy, "Removing txn {} because of timeout", ts);
         auto node = _txns.extract(ts); // No need to unlink from list, as it's done by caller
-        return node ?  node.mapped().handle.kill() : seastar::make_ready_future<>();
+        return node ?  node.mapped().handle.end(false).discard_result() : seastar::make_ready_future<>();
     });
     return _client.start();
 }
