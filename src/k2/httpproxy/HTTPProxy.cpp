@@ -526,7 +526,7 @@ seastar::future<> HTTPProxy::gracefulStop() {
     std::vector<seastar::future<>> futs;
     futs.push_back(_expiryList.stop());
     for (auto& [ts, txn]: _txns) {
-        futs.push_back(txn.handle.end(false).discard_result());
+        futs.push_back(txn.handle.kill());
     }
     return seastar::when_all_succeed(futs.begin(), futs.end()).discard_result()
     .then([this] {

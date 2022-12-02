@@ -584,6 +584,8 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         auto [record, conflict] = iter.getDataRecordAt(request.mtr.timestamp);
 
         if (!record) {
+            // reset the push counter to allow other potential conflicts in the same query page to go through
+            count = 0;
             // happy case: we either had no versions, or all versions were newer than the requested timestamp
             continue;
         }
