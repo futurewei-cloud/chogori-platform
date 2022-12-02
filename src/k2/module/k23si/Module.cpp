@@ -584,16 +584,12 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         auto [record, conflict] = iter.getDataRecordAt(request.mtr.timestamp);
 
         if (!record) {
-            // reset the push counter to allow other potential conflicts in the same query page to go through
-            count = 0;
             // happy case: we either had no versions, or all versions were newer than the requested timestamp
             continue;
         }
 
         // happy case: either committed, or txn is reading its own write
         if (!conflict) {
-            // reset the push counter to allow other potential conflicts in the same query page to go through
-            count = 0;
             if (!record->isTombstone) {
                 auto [status, keep] = _doQueryFilter(request, record->value);
                 if (!status.is2xxOK()) {
@@ -636,7 +632,13 @@ K23SIPartitionModule::handleQuery(dto::K23SIQueryRequest&& request, dto::K23SIQu
         // avoid a push
 
         K2LOG_D(log::skvsvr, "About to PUSH in query request");
-        request.key = std::move(ikey);  // if we retry, do so with the key we're currently iterating on
+
+        if (ikey != request.key) {
+            // reset the push counter if we have advanced the key that is being looked at
+            count = 0;
+            // if we retry, do so with the key we're currently iterating on
+            request.key = std::move(ikey);
+        }
         request.exclusiveKey=false; // re-process the key
 
         // add metrics
