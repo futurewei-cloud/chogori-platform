@@ -377,9 +377,9 @@ void testPartialUpdate() {
       auto&& [writeStatus] = txn.write(record).get();
       K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
     }
+    auto key = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"));
     {
-        auto key = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"));
-        auto&& [readStatus, readRecord] = txn.read(std::move(key)).get();
+        auto&& [readStatus, readRecord] = txn.read(key).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
         verifyEqual(readRecord, record);
     }
@@ -388,8 +388,7 @@ void testPartialUpdate() {
         std::vector<uint32_t> fields = {3}; // Update data field only
         auto&& [writeStatus] = txn.partialUpdate(record1, fields).get();
         K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
-        auto key = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"));
-        auto&& [readStatus, readRecord] = txn.read(std::move(key)).get();
+        auto&& [readStatus, readRecord] = txn.read(key).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
         auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 33, std::string("Test1_Update"));
         verifyEqual(readRecord, compareRecord);
@@ -398,10 +397,11 @@ void testPartialUpdate() {
         K2LOG_I(k2::log::httpclient, "Full write, should succeed");
         // Full write updating balance and data, should succeed
         auto record1 = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"), 35, std::string("Test1_Update1"));
+        auto key = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"));
+
         auto&& [writeStatus] = txn.write(record1).get();
         K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
-        auto key = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"));
-        auto&& [readStatus, readRecord] = txn.read(std::move(key)).get();
+        auto&& [readStatus, readRecord] = txn.read(key).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
         verifyEqual(readRecord, record1);
         {
@@ -410,13 +410,13 @@ void testPartialUpdate() {
             auto&& [writeStatus] = txn.write(record1_1, false, dto::ExistencePrecondition::NotExists).get();
             K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(),false);
             K2EXPECT(k2::log::httpclient, writeStatus.code, 412);
-            auto key = buildRecord(collectionName, schemaPtr, std::string("A1"), std::string("B1"));
-            auto&& [readStatus, readRecord1] = txn.read(std::move(key)).get();
+            auto&& [readStatus, readRecord1] = txn.read(key).get();
             K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
             verifyEqual(readRecord1, record1);
         }
     }
 
+    auto key1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"));
     {
         K2LOG_I(k2::log::httpclient, "Write record with no value");
         // Write a record with no value for Data field, should fail
@@ -429,8 +429,7 @@ void testPartialUpdate() {
         auto record1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32, std::optional<std::string>());
         auto&& [writeStatus] = txn.write(record1).get();
         K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
-        auto key1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"));
-        auto&& [readStatus, readRecord] = txn.read(std::move(key1)).get();
+        auto&& [readStatus, readRecord] = txn.read(key1).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
         verifyEqual(readRecord, record1);
     }
@@ -440,8 +439,7 @@ void testPartialUpdate() {
         std::vector<uint32_t> fields = {3}; // Update data field only
         auto&& [writeStatus] = txn.partialUpdate(record1, fields).get();
         K2EXPECT(k2::log::httpclient, writeStatus.is2xxOK(), true);
-        auto key1 = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"));
-        auto&& [readStatus, readRecord] = txn.read(std::move(key1)).get();
+        auto&& [readStatus, readRecord] = txn.read(key1).get();
         K2EXPECT(k2::log::httpclient, readStatus.is2xxOK(), true);
         auto compareRecord = buildRecord(collectionName, schemaPtr, std::string("A2"), std::string("B2"), 32, std::string("Test2_Update"));
         verifyEqual(readRecord, compareRecord);

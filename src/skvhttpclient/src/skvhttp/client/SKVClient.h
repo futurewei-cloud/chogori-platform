@@ -150,7 +150,7 @@ class TxnHandle {
 public:
     TxnHandle(Client* client, dto::Timestamp id):_client(client), _id(id) {}
     boost::future<Response<>> endTxn(dto::EndAction endAction);
-    boost::future<Response<dto::SKVRecord>> read(dto::SKVRecord record);
+    boost::future<Response<dto::SKVRecord>> read(const dto::SKVRecord& record);
     boost::future<Response<>> write(dto::SKVRecord& record, bool erase=false,
                                        dto::ExistencePrecondition precondition=dto::ExistencePrecondition::None);
     boost::future<Response<>> partialUpdate(dto::SKVRecord& record, std::vector<uint32_t> fieldsForPartialUpdate);
