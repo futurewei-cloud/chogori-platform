@@ -596,6 +596,8 @@ public:
     }
 
     MPackWriter& operator=(MPackWriter&& o) {
+        mpack_writer_destroy(&_writer);
+        MPACK_FREE(_data);
         _data = o._data;
         _size = o._size;
         o._data = NULL;
@@ -623,8 +625,8 @@ public:
         return true;
     }
 private:
-    char* _data = NULL;
-    size_t _size = 0;
+    char* _data{0};
+    size_t _size{0};
     mpack_writer_t _writer {};
 };
 }
