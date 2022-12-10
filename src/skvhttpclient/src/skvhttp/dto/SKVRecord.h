@@ -152,6 +152,24 @@ public:
     // user in a response
     SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
 
+    SKVRecord(const SKVRecord& o):SKVRecord(o.collectionName, o.schema, const_cast<SKVRecord&>(o).storage.share(), o.keyValuesAvailable) {
+    }
+
+    SKVRecord& operator=(const SKVRecord& o) = delete;
+
+    SKVRecord& operator=(SKVRecord&& o) {
+        schema = std::move(o.schema);
+        collectionName = std::move(o.collectionName);
+        storage = std::move(o.storage);
+        partitionKeys = std::move(o.partitionKeys);
+        rangeKeys = std::move(o.rangeKeys);
+        fieldCursor = std::move(o.fieldCursor);
+        keyValuesAvailable = std::move(o.keyValuesAvailable);
+        keyStringsConstructed = std::move(o.keyStringsConstructed);
+        reader = std::move(o.reader);
+        return *this;
+    }
+
     SKVRecord cloneToOtherSchema(const String& collection, std::shared_ptr<Schema> other_schema);
     // deepCopies an SKVRecord including copying (not sharing) the storage payload
     SKVRecord deepCopy();

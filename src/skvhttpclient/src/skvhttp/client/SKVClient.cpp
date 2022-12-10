@@ -131,12 +131,12 @@ boost::future<Response<>> TxnHandle::partialUpdate(dto::SKVRecord& record, std::
     return _client->_HTTPClient.POST<dto::WriteRequest>("/api/Write", std::move(request));
 }
 
-boost::future<Response<dto::SKVRecord>> TxnHandle::read(const dto::SKVRecord& record) {
+boost::future<Response<dto::SKVRecord>> TxnHandle::read(dto::SKVRecord record) {
     dto::ReadRequest request{
         .timestamp = _id,
         .collectionName = record.collectionName,
         .schemaName = record.schema->name,
-        .key = const_cast<dto::SKVRecord&>(record).storage.share()
+        .key = std::move(record.storage)
     };
 
     return _client->_HTTPClient.POST<dto::ReadRequest, dto::ReadResponse>("/api/Read", std::move(request))

@@ -59,10 +59,10 @@ void verifyEqual(dto::SKVRecord& first, dto::SKVRecord& second) {
 }
 
 // Compare a query result with reference records
-void verifyEqual(std::vector<dto::SKVRecord>& first, std::vector<dto::SKVRecord*>&& second) {
+void verifyEqual(std::vector<dto::SKVRecord>& first, std::vector<dto::SKVRecord>&& second) {
     K2EXPECT(k2::log::httpclient, first.size(), second.size());
     for (size_t i=0; i < first.size(); i++) {
-        verifyEqual(first[i], *second[i]);
+        verifyEqual(first[i], second[i]);
     }
 }
 
@@ -290,7 +290,7 @@ void testQuery1() {
         auto&& [createStatus, query] = txn.createQuery(start, end).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record1, &record2});
+        verifyEqual(records, {record1, record2});
     }
     auto record_mid = buildRecord(collectionName, schemaPtr, std::string("A"), std::string("C"), int32_t(33), std::string("data"));
     {
@@ -298,35 +298,35 @@ void testQuery1() {
         auto&& [createStatus, query] = txn.createQuery(record_mid, end).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record2});
+        verifyEqual(records, {record2});
     }
     {
         // Query ending range key = C, should only return record 1
         auto&& [createStatus, query] = txn.createQuery(start, record_mid).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record1});
+        verifyEqual(records, {record1});
     }
     {
         // Limit = 1
         auto&& [createStatus, query] = txn.createQuery(start, end, {}, {}, 1).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record1});
+        verifyEqual(records, {record1});
     }
     {
         // Reverse = true
         auto&& [createStatus, query] = txn.createQuery(start, end, {}, {}, -1, true).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record2, &record1});
+        verifyEqual(records, {record2, record1});
     }
     {
         // Limit 1 from reverse
         auto&& [createStatus, query] = txn.createQuery(start, end, {}, {}, 1, true).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record2});
+        verifyEqual(records, {record2});
     }
     {
         // Search by prefix = A
@@ -334,7 +334,7 @@ void testQuery1() {
         auto&& [createStatus, query] = txn.createQuery(prefix, end).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record1, &record2});
+        verifyEqual(records, {record1, record2});
     }
     {
         // Query using filter
@@ -342,7 +342,7 @@ void testQuery1() {
         auto&& [createStatus, query] = txn.createQuery(start, end, std::move(filter)).get();
         K2EXPECT(k2::log::httpclient, createStatus.is2xxOK(), true);
         auto records = queryAll(txn, collectionName, schemaPtr, query);
-        verifyEqual(records, {&record2});
+        verifyEqual(records, {record2});
     }
     {
         // Query using projection

@@ -270,3 +270,108 @@ TEST_CASE("Test5: empty reader test") {
     String value;
     REQUIRE(!reader.read(value));
 }
+
+void verifyRecord(dto::SKVRecord& doc) {
+    std::vector<uint8_t> expectedKey{
+        1, // Type byte
+        66, // 'B'
+        97, // 'a'
+        103, // 'g'
+        103, // 'g'
+        105, // 'i'
+        110, // 'n'
+        115, // 's'
+        0, // Terminator
+        1, // Terminator
+    };
+    String partitionKey = doc.getPartitionKey();
+
+    REQUIRE(expectedKey.size() == partitionKey.size());
+    for (size_t i = 0; i < partitionKey.size(); ++i) {
+        REQUIRE(expectedKey[i] == (uint8_t)partitionKey[i]);
+    }
+
+    std::vector<uint8_t> expectedRangeKey{
+        1, // Type byte
+        66, // 'B'
+        105, // 'i'
+        108, // 'l'
+        98, // 'b'
+        111, // 'o'
+        0, // Terminator
+        1, // Terminator
+    };
+    String rangeKey = doc.getRangeKey();
+
+    REQUIRE(expectedRangeKey.size() == rangeKey.size());
+    for (size_t i = 0; i < rangeKey.size(); ++i) {
+        REQUIRE(expectedRangeKey[i] == (uint8_t)rangeKey[i]);
+    }
+
+    // Note that the following is not a normal use case of SKVRecord.
+    // Normally a user will not serialize and deserialize out of the same SKVRecord, they
+    // will serialize for a read or write request, and then deserialize a different SKVRecord
+    // for a read result. Here we are manually rewinding the record so that we can test
+    // deserialization
+    doc.seekField(0);
+
+    std::optional<String> lastName = doc.deserializeNext<String>();
+    REQUIRE(lastName);
+    REQUIRE(*lastName == "Baggins");
+    std::optional<String> firstName = doc.deserializeNext<String>();
+    REQUIRE(firstName);
+    REQUIRE(*firstName == "Bilbo");
+    std::optional<int32_t> balance = doc.deserializeNext<int32_t>();
+    REQUIRE(balance);
+    REQUIRE(*balance == 777);
+    REQUIRE(true);
+
+    doc.seekField(0);
+    doc.visitRemainingFields([] (const auto& field, auto&& value) {
+        using T = typename std::remove_reference_t<decltype(value)>::value_type;
+        if constexpr (std::is_same<T, String>::value) {
+            REQUIRE(value);
+            if (field.name == "LastName") {
+                REQUIRE(*value == "Baggins");
+            } else {
+                REQUIRE(*value == "Bilbo");
+            }
+        } else if constexpr (std::is_same<T, int32_t>::value) {
+            REQUIRE(value);
+            REQUIRE(field.name == "Balance");
+            REQUIRE(*value == 777);
+        } else {
+            throw std::runtime_error("Encountered unexpected type in test visitor");
+        }
+    });
+
+}
+
+TEST_CASE("Test6: Copy SKVRecord tests") {
+    k2::logging::Logger::threadLocalLogLevel = k2::logging::LogLevel::Verbose;
+
+    dto::Schema schema;
+    schema.name = "test_schema";
+    schema.version = 1;
+    schema.fields = std::vector<dto::SchemaField> {
+            {dto::FieldType::STRING, "LastName", false, false},
+            {dto::FieldType::STRING, "FirstName", false, false},
+            {dto::FieldType::INT32T, "Balance", false, false}
+    };
+
+    schema.setPartitionKeyFieldsByName(std::vector<String>{"LastName"});
+    schema.setRangeKeyFieldsByName(std::vector<String>{"FirstName"});
+
+    dto::SKVRecordBuilder builder("collection", std::make_shared<dto::Schema>(schema));
+
+    builder.serializeNext<String>("Baggins");
+    builder.serializeNext<String>("Bilbo");
+    builder.serializeNext<int32_t>(777);
+
+    auto doc = builder.build();
+    auto doc1(doc);
+    auto doc2 = std::move(doc);
+    verifyRecord(doc);
+    verifyRecord(doc1);
+    verifyRecord(doc2);
+}
