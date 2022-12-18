@@ -94,15 +94,15 @@ const SKVRecord::Storage& SKVRecord::getStorage() {
 
 // The constructor for an SKVRecord that a user of the SKV client would use to create a request
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
-            schema(s), collectionName(collection), keyValuesAvailable(true), keyStringsConstructed(true) {
+            schema(s), collectionName(collection), keyStringsConstructed(true) {
     storage.schemaVersion = schema->version;
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
 }
 
 // The constructor for an SKVRecord that is created by the SKV client to be returned to the user in a response
-SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyAvail) :
-        schema(s), collectionName(collection), storage(std::move(storage)), keyValuesAvailable(keyAvail),
+SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage) :
+        schema(s), collectionName(collection), storage(std::move(storage)),
         keyStringsConstructed(false) {
     reader = MPackReader(this->storage.fieldData);
 }
@@ -148,10 +148,7 @@ void SKVRecord::constructKeyStrings() {
     keyStringsConstructed = true;
 }
 
-String SKVRecord::getPartitionKey() {
-    if (!keyValuesAvailable) {
-        throw KeyNotAvailableError("Cannot get a partition key from this SKVRecord");
-    }
+String SKVRecord::_getPartitionKey() {
     if (!keyStringsConstructed) {
         constructKeyStrings();
     }
@@ -178,10 +175,7 @@ String SKVRecord::getPartitionKey() {
     return partitionKey;
 }
 
-String SKVRecord::getRangeKey() {
-    if (!keyValuesAvailable) {
-        throw KeyNotAvailableError("Cannot get a range key from this SKVRecord");
-    }
+String SKVRecord::_getRangeKey() {
     if (!keyStringsConstructed) {
         constructKeyStrings();
     }
@@ -211,8 +205,8 @@ dto::Key SKVRecord::getKey() {
 
     return dto::Key {
         .schemaName = schema->name,
-        .partitionKey = getPartitionKey(),
-        .rangeKey = getRangeKey()
+        .partitionKey = _getPartitionKey(),
+        .rangeKey = _getRangeKey()
     };
 }
 
@@ -245,15 +239,11 @@ SKVRecord SKVRecord::cloneToOtherSchema(const String& collection, std::shared_pt
         }
     }
 
-    return SKVRecord(collection, other_schema, storage.share(), keyValuesAvailable);
+    return SKVRecord(collection, other_schema, storage.share());
 }
 
 // This method takes the SKVRecord extracts the key fields and creates a new SKVRecord with those fields
 SKVRecord SKVRecord::getSKVKeyRecord() {
-    if (!keyValuesAvailable) {
-        throw KeyNotAvailableError("Cannot create an SKVKeyRecord from record without key values");
-    }
-
     auto currentIndex = getFieldCursor();
     seekField(0);
 
@@ -280,7 +270,7 @@ SKVRecord SKVRecord::getSKVKeyRecord() {
 // deepCopies an SKVRecord including copying (not sharing) the storage payload
 SKVRecord SKVRecord::deepCopy() {
     Storage new_storage = storage.copy();
-    return SKVRecord(collectionName, schema, std::move(new_storage), keyValuesAvailable);
+    return SKVRecord(collectionName, schema, std::move(new_storage));
 }
 
 } // ns dto

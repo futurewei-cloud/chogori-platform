@@ -217,7 +217,7 @@ std::vector<dto::SKVRecord> queryAll(TxnHandle& txn, const std::string& collecti
         K2EXPECT(k2::log::httpclient, queryStatus.is2xxOK(), true);
         done = result.done;
         for (dto::SKVRecord::Storage& storage : result.records) {
-            dto::SKVRecord record(collectionName, schemaPtr, std::move(storage), true);
+            dto::SKVRecord record(collectionName, schemaPtr, std::move(storage));
             records.push_back(std::move(record));
         }
     }
@@ -252,7 +252,7 @@ void testQuery() {
     }
 
     K2EXPECT(k2::log::httpclient, records.size(), 1);
-    dto::SKVRecord record(collectionName, schemaPtr, std::move(records.front()), true);
+    dto::SKVRecord record(collectionName, schemaPtr, std::move(records.front()));
 
     std::string a = record.deserializeNext<std::string>().value();
     K2EXPECT(k2::log::httpclient, a, "A");

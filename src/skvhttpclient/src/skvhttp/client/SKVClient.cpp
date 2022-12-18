@@ -153,7 +153,7 @@ boost::future<Response<dto::SKVRecord>> TxnHandle::read(dto::SKVRecord record) {
               }
 
               std::shared_ptr<dto::Schema> schema = schemaResp;
-              dto::SKVRecord record(collName, schema, std::move(storage), true);
+              dto::SKVRecord record(collName, schema, std::move(storage));
               return Response<dto::SKVRecord>(std::move(status), std::move(record));
             });
       })
