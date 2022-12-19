@@ -60,14 +60,6 @@ struct NaNError : public std::exception {
     virtual const char* what() const noexcept override { return what_str.c_str(); }
 };
 
-// Thrown when getKey is called but the record does not have the values to construct it
-// e.g. a returned record without the key fields projected
-struct KeyNotAvailableError : public std::exception {
-    String what_str;
-    KeyNotAvailableError(String s="") : what_str(std::move(s)) {}
-    virtual const char* what() const noexcept override { return what_str.c_str(); }
-};
-
 class SKVRecord {
 public:
     // Deserialization can be in any order, but the preferred method is in-order
@@ -121,8 +113,6 @@ public:
     uint32_t getFieldCursor() const;
 
     // These functions construct the keys on-the-fly based on the stringified individual fields
-    String getPartitionKey();
-    String getRangeKey();
     dto::Key getKey();
 
     // These are fields actually stored by the Chogori storage node, and returned
@@ -150,9 +140,9 @@ public:
 
     // The constructor for an SKVRecord that is created by the SKV client to be returned to the
     // user in a response
-    SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage, bool keyValuesAvailable);
+    SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage);
 
-    SKVRecord(const SKVRecord& o):SKVRecord(o.collectionName, o.schema, const_cast<SKVRecord&>(o).storage.share(), o.keyValuesAvailable) {
+    SKVRecord(const SKVRecord& o):SKVRecord(o.collectionName, o.schema, const_cast<SKVRecord&>(o).storage.share()) {
     }
 
     SKVRecord& operator=(const SKVRecord& o) = delete;
@@ -164,7 +154,6 @@ public:
         partitionKeys = std::move(o.partitionKeys);
         rangeKeys = std::move(o.rangeKeys);
         fieldCursor = std::move(o.fieldCursor);
-        keyValuesAvailable = std::move(o.keyValuesAvailable);
         keyStringsConstructed = std::move(o.keyStringsConstructed);
         reader = std::move(o.reader);
         return *this;
@@ -178,19 +167,20 @@ public:
     SKVRecord getSKVKeyRecord();
 
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
+        // before looking at the key strings, we need to generate them if not done so before
+        auto key = const_cast<SKVRecord&>(rec).getKey();
         std::vector<String> encP, encR;
         for (auto&k: rec.partitionKeys) encP.push_back(HexCodec::encode(k));
         for (auto&k: rec.rangeKeys) encR.push_back(HexCodec::encode(k));
         return os << fmt::format(
-            "{{collectionName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
+            "{{collectionName={}, schemaName={}, excludedFields={}, key={}, partitionKeys={}, rangeKeys={}}}",
             rec.collectionName,
+            rec.schema ? rec.schema->name : String("NULL SCHEMA"),
             rec.storage.excludedFields,
-            rec.schema ? const_cast<SKVRecord&>(rec).getKey() : dto::Key{},
+            key,
             encP,
             encR);
     }
-
-    void constructKeyStrings();
 
 public:
     // These fields are used by the client to build a request but are not serialized on the wire
@@ -200,13 +190,16 @@ public:
     std::vector<String> partitionKeys;
     std::vector<String> rangeKeys;
     uint32_t fieldCursor = 0;
-    bool keyValuesAvailable = false; // Whether the values for key fields are in the storage payload
     bool keyStringsConstructed = false; // Whether the encoded keys are already in the vectors above
     MPackReader reader;
 
     friend class SKVRecordBuilder;
 private:
     SKVRecord(const String& collection, std::shared_ptr<Schema> s);
+    String _getPartitionKey();
+    String _getRangeKey();
+    void _constructKeyStrings();
+
 public:
     template <typename Func>
     auto visitNextField(Func&& visitor) {

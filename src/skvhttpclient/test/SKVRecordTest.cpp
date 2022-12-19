@@ -65,7 +65,7 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
         0, // Terminator
         1, // Terminator
     };
-    String partitionKey = doc.getPartitionKey();
+    String partitionKey = doc.getKey().partitionKey;
 
     REQUIRE(expectedKey.size() == partitionKey.size());
     for (size_t i = 0; i < partitionKey.size(); ++i) {
@@ -82,7 +82,7 @@ TEST_CASE("Test1: Basic SKVRecord tests") {
         0, // Terminator
         1, // Terminator
     };
-    String rangeKey = doc.getRangeKey();
+    String rangeKey = doc.getKey().rangeKey;
 
     REQUIRE(expectedRangeKey.size() == rangeKey.size());
     for (size_t i = 0; i < rangeKey.size(); ++i) {
@@ -221,7 +221,7 @@ void testRecord(const dto::Schema& schema, const dto::SKVRecord::Storage& storag
     dto::SKVRecord::Storage read_storage{};
     REQUIRE(reader.read(read_storage));
     dto::SKVRecord reconstructed("collection", std::make_shared<dto::Schema>(schema),
-                                    std::move(read_storage), true);
+                                    std::move(read_storage));
     std::optional<String> last = reconstructed.deserializeNext<String>();
     REQUIRE(!last.has_value());
     std::optional<String> first = reconstructed.deserializeNext<String>();
@@ -284,7 +284,7 @@ void verifyRecord(dto::SKVRecord& doc) {
         0, // Terminator
         1, // Terminator
     };
-    String partitionKey = doc.getPartitionKey();
+    String partitionKey = doc.getKey().partitionKey;
 
     REQUIRE(expectedKey.size() == partitionKey.size());
     for (size_t i = 0; i < partitionKey.size(); ++i) {
@@ -301,7 +301,7 @@ void verifyRecord(dto::SKVRecord& doc) {
         0, // Terminator
         1, // Terminator
     };
-    String rangeKey = doc.getRangeKey();
+    String rangeKey = doc.getKey().rangeKey;
 
     REQUIRE(expectedRangeKey.size() == rangeKey.size());
     for (size_t i = 0; i < rangeKey.size(); ++i) {

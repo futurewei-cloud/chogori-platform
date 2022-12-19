@@ -230,7 +230,7 @@ HTTPProxy::_handleWrite(shd::WriteRequest&& request) {
 
             bool isPartialUpdate = request.fieldsForPartialUpdate.size() > 0;
             dto::SKVRecord k2record(request.collectionName, k2Schema);
-            shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.value), true);
+            shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.value));
             if (shdrecord.storage.serializedCursor != k2Schema->fields.size()) {
                 return MakeHTTPResponse<shd::WriteResponse>(sh::Statuses::S400_Bad_Request("All fields must be specified in the record"), shd::WriteResponse{});
             }
@@ -264,7 +264,7 @@ HTTPProxy::_handleRead(shd::ReadRequest&& request) {
                 }
                 updateExpiry(it->second);
                 dto::SKVRecord k2record(request.collectionName, k2Schema);
-                shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.key), true);
+                shd::SKVRecord shdrecord(request.collectionName, shdSchema, std::move(request.key));
                 try {
                     _shdRecToK2(shdrecord, k2record);
                 }  catch(shd::DeserializationError& err) {
@@ -402,7 +402,7 @@ HTTPProxy::_handleGetSchema(shd::GetSchemaRequest&& request) {
 
 void HTTPProxy::_shdStorageToK2Record(const sh::String& collectionName, shd::SKVRecord::Storage&& key, dto::SKVRecord& k2record) {
     auto shdSchema = _getSchemaFromCache(collectionName, k2record.schema);
-    shd::SKVRecord shdrecord(collectionName, shdSchema, std::move(key), true);
+    shd::SKVRecord shdrecord(collectionName, shdSchema, std::move(key));
     _shdRecToK2(shdrecord, k2record);
 }
 
