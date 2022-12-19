@@ -94,7 +94,8 @@ const SKVRecord::Storage& SKVRecord::getStorage() {
 
 // The constructor for an SKVRecord that a user of the SKV client would use to create a request
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
-            schema(s), collectionName(collection), keyStringsConstructed(true) {
+            schema(s), collectionName(collection) {
+    K2ASSERT(log::dto, s, "schema must be valid");
     storage.schemaVersion = schema->version;
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
@@ -102,20 +103,20 @@ SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s) :
 
 // The constructor for an SKVRecord that is created by the SKV client to be returned to the user in a response
 SKVRecord::SKVRecord(const String& collection, std::shared_ptr<Schema> s, Storage&& storage) :
-        schema(s), collectionName(collection), storage(std::move(storage)),
-        keyStringsConstructed(false) {
+        schema(s), collectionName(collection), storage(std::move(storage)) {
     reader = MPackReader(this->storage.fieldData);
 }
 
-void SKVRecord::constructKeyStrings() {
+void SKVRecord::_constructKeyStrings() {
     partitionKeys.resize(schema->partitionKeyFields.size());
     rangeKeys.resize(schema->rangeKeyFields.size());
-
     uint32_t beginCursor = getFieldCursor();
     seekField(0);
 
     size_t fieldIdx = 0;
-    for (; fieldIdx < partitionKeys.size(); ++fieldIdx) {
+    auto end = std::min(partitionKeys.size(), (size_t)storage.serializedCursor);
+
+    for (; fieldIdx < end; ++fieldIdx) {
         visitNextField([this, fieldIdx](const auto& field, auto&& value) {
             for (size_t schemaIdx = 0; schemaIdx < schema->partitionKeyFields.size(); ++schemaIdx) {
                 if (schema->partitionKeyFields[schemaIdx] == fieldIdx) {
@@ -129,8 +130,9 @@ void SKVRecord::constructKeyStrings() {
             }
         });
     }
+    end = std::min(partitionKeys.size() + rangeKeys.size(), (size_t)storage.serializedCursor);
 
-    for (; fieldIdx < partitionKeys.size() + rangeKeys.size(); ++fieldIdx) {
+    for (; fieldIdx < end; ++fieldIdx) {
         visitNextField([this, fieldIdx](const auto& field, auto&& value) {
             for (size_t schemaIdx = 0; schemaIdx < schema->rangeKeyFields.size(); ++schemaIdx) {
                 if (schema->rangeKeyFields[schemaIdx] == fieldIdx) {
@@ -150,7 +152,7 @@ void SKVRecord::constructKeyStrings() {
 
 String SKVRecord::_getPartitionKey() {
     if (!keyStringsConstructed) {
-        constructKeyStrings();
+        _constructKeyStrings();
     }
 
     size_t keySize = 0;
@@ -177,7 +179,7 @@ String SKVRecord::_getPartitionKey() {
 
 String SKVRecord::_getRangeKey() {
     if (!keyStringsConstructed) {
-        constructKeyStrings();
+        _constructKeyStrings();
     }
 
     size_t keySize = 0;

@@ -180,8 +180,6 @@ public:
             encR);
     }
 
-    void constructKeyStrings();
-
 public:
     // These fields are used by the client to build a request but are not serialized on the wire
     std::shared_ptr<Schema> schema;
@@ -198,6 +196,8 @@ private:
     SKVRecord(const String& collection, std::shared_ptr<Schema> s);
     String _getPartitionKey();
     String _getRangeKey();
+    void _constructKeyStrings();
+
 public:
     template <typename Func>
     auto visitNextField(Func&& visitor) {
