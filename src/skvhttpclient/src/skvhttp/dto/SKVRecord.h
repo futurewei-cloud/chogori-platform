@@ -167,6 +167,8 @@ public:
     SKVRecord getSKVKeyRecord();
 
     friend std::ostream& operator<<(std::ostream& os, const SKVRecord& rec) {
+        // before looking at the key strings, we need to generate them if not done so before
+        auto key = const_cast<SKVRecord&>(rec).getKey();
         std::vector<String> encP, encR;
         for (auto&k: rec.partitionKeys) encP.push_back(HexCodec::encode(k));
         for (auto&k: rec.rangeKeys) encR.push_back(HexCodec::encode(k));
@@ -175,7 +177,7 @@ public:
             rec.collectionName,
             rec.schema ? rec.schema->name : String("NULL SCHEMA"),
             rec.storage.excludedFields,
-            const_cast<SKVRecord&>(rec).getKey(),
+            key,
             encP,
             encR);
     }
