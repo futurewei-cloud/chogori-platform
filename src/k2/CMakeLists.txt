@@ -1,7 +1,6 @@
 add_subdirectory (appbase)
 add_subdirectory (assignmentManager)
 add_subdirectory (cmd)
-add_subdirectory (collectionMetadataCache)
 add_subdirectory (common)
 add_subdirectory (config)
 add_subdirectory (cpo)
