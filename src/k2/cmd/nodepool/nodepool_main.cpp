@@ -25,7 +25,6 @@ Copyright(c) 2020 Futurewei Cloud
 #include <k2/assignmentManager/AssignmentManager.h>
 #include <k2/collectionMetadataCache/CollectionMetadataCache.h>
 #include <k2/infrastructure/APIServer.h>
-#include <k2/nodePoolMonitor/NodePoolMonitor.h>
 #include <k2/cpo/client/Heartbeat.h>
 #include <k2/tso/client/Client.h>
 
@@ -48,7 +47,6 @@ int main(int argc, char** argv) {
     app.addApplet<k2::APIServer>();
     app.addApplet<k2::tso::TSOClient>();
     app.addApplet<k2::CollectionMetadataCache>();
-    app.addApplet<k2::NodePoolMonitor>();
     app.addApplet<k2::AssignmentManager>();
 
     return app.start(argc, argv);

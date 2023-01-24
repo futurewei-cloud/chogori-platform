@@ -1,5 +1,5 @@
 add_executable (nodepool nodepool_main.cpp)
 
-target_link_libraries (nodepool PRIVATE appbase k23si cpo_client common transport Seastar::seastar assignment_manager node_pool_monitor collection_metadata_cache tso_client infrastructure dto)
+target_link_libraries (nodepool PRIVATE appbase k23si cpo_client common transport Seastar::seastar assignment_manager collection_metadata_cache tso_client infrastructure dto)
 
 install (TARGETS nodepool DESTINATION bin)
