@@ -22,27 +22,50 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
-// stl
-#include <cstdint> // for int types
-#include <iostream>
+#include <k2/common/Common.h>
+#include <k2/transport/PayloadSerialization.h>
 
 namespace k2 {
-// This file contains definitions for RPC types
-// The type for verbs in the RPC system
 
-//
-//  Verb describes particular service within K2 endpoint
-//
-typedef uint8_t Verb;
-
-// Verbs used by K2 internally
-enum InternalVerbs : k2::Verb {
-    LIST_ENDPOINTS = 249,  // used to discover the endpoints of a node
-    CONFGURATOR_GET = 250,  // used to configure get.
-    CONFGURATOR_SET = 251,  // used to configure set.
-    CONFGURATOR_DELETE = 252,  // used to configure clear messages.
-    MAX_VERB = 250,  // something we can use to prevent override of internal verbs.
-    NIL              // used for messages where the verb doesn't matter
+struct DELETE_ConfiguratorRequest {
+    String key;
+    String value;
+    bool applyToAll;
+    K2_PAYLOAD_FIELDS(key, value, applyToAll);
+    K2_DEF_FMT(DELETE_ConfiguratorRequest, key, value, applyToAll);
 };
 
-} // namespace k2
+struct DELETE_ConfiguratorResponse {
+    String key;
+    K2_PAYLOAD_FIELDS(key);
+    K2_DEF_FMT(DELETE_ConfiguratorResponse, key);
+};
+
+struct SET_ConfiguratorRequest {
+    String key;
+    String value;
+    bool applyToAll;
+    K2_PAYLOAD_FIELDS(key, value, applyToAll);
+    K2_DEF_FMT(SET_ConfiguratorRequest, key, value, applyToAll);
+};
+
+struct SET_ConfiguratorResponse {
+    String key;
+    K2_PAYLOAD_FIELDS(key);
+    K2_DEF_FMT(SET_ConfiguratorResponse, key);
+};
+
+struct GET_ConfiguratorRequest {
+    String key;
+    K2_PAYLOAD_FIELDS(key);
+    K2_DEF_FMT(GET_ConfiguratorRequest, key);
+};
+
+struct GET_ConfiguratorResponse {
+    String key;
+    String value;
+    K2_PAYLOAD_FIELDS(key, value);
+    K2_DEF_FMT(GET_ConfiguratorResponse, key, value);
+};
+
+} // ns k2
