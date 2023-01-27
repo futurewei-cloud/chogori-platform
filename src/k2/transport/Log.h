@@ -26,4 +26,5 @@ Copyright(c) 2021 Futurewei Cloud
 
 namespace k2::log {
 inline thread_local k2::logging::Logger tx("k2::transport");
+inline thread_local k2::logging::Logger configurator("k2::configurator");
 }

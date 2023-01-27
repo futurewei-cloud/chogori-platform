@@ -6,7 +6,7 @@
 
 #include "k2/configurator/ConfiguratorDTO.h"
 
-namespace k2 {
+namespace k3 {
 namespace log {
 inline thread_local k2::logging::Logger configuratorclient("k2::configurator_client");
 }
@@ -20,27 +20,27 @@ class ConfiguratorClient {
             _singleTimer.setCallback([this] {
                 return seastar::make_ready_future()
                 .then([this]() {
-                    auto ep = RPC().getServerEndpoint(TCPRPCProtocol::proto);
+                    auto ep = k2::RPC().getServerEndpoint(k2::TCPRPCProtocol::proto);
                     K2LOG_I(log::configuratorclient, "endpoint: {}", ep->url);
                     if (_op() == "GET") {
-                        GET_ConfiguratorRequest request{.key=_key()};
-                        return RPC().callRPC<GET_ConfiguratorRequest, GET_ConfiguratorResponse>(CONFGURATOR_GET, request, *ep, 1s)
+                        k2::GET_ConfiguratorRequest request{.key=_key()};
+                        return k2::RPC().callRPC<k2::GET_ConfiguratorRequest, k2::GET_ConfiguratorResponse>(k2::CONFGURATOR_GET, request, *ep, 1s)
                         .then([](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratorclient, "got response : {} {}", status, response );
                             });
                     } else if (_op() == "PUT") {
                         K2LOG_I(log::configuratorclient, "putting record");
-                        SET_ConfiguratorRequest request{.key=_key(), .value=_value(), .applyToAll=_applyToAll()};
-                        return RPC().callRPC<SET_ConfiguratorRequest, SET_ConfiguratorResponse>(CONFGURATOR_SET, request, *ep, 1s)
+                        k2::SET_ConfiguratorRequest request{.key=_key(), .value=_value(), .applyToAll=_applyToAll()};
+                        return k2::RPC().callRPC<k2::SET_ConfiguratorRequest, k2::SET_ConfiguratorResponse>(k2::CONFGURATOR_SET, request, *ep, 1s)
                         .then([](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratorclient, "put response : {} {}", status, response );
                         });
                     } else if (_op() == "DELETE") {
                         K2LOG_I(log::configuratorclient, "deleting record");
-                        DELETE_ConfiguratorRequest request{.key=_key(), .value=_value(), .applyToAll=_applyToAll()};
-                        return RPC().callRPC<DELETE_ConfiguratorRequest, DELETE_ConfiguratorResponse>(CONFGURATOR_SET, request, *ep, 1s)
+                        k2::DELETE_ConfiguratorRequest request{.key=_key(), .value=_value(), .applyToAll=_applyToAll()};
+                        return k2::RPC().callRPC<k2::DELETE_ConfiguratorRequest, k2::DELETE_ConfiguratorResponse>(k2::CONFGURATOR_SET, request, *ep, 1s)
                         .then([](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratorclient, "put response : {} {}", status, response );
@@ -52,7 +52,7 @@ class ConfiguratorClient {
                     }
                 })
                 .then([] {
-                    AppBase().stop(0);
+                    k2::AppBase().stop(0);
                 });
             });
 
@@ -66,11 +66,11 @@ class ConfiguratorClient {
         }
 
     private :
-        SingleTimer _singleTimer;
-        ConfigVar<String> _key{"key"};
-        ConfigVar<String> _value{"value"};
-        ConfigVar<String> _op{"op"};
-        ConfigVar<bool> _applyToAll{"applyToAll"};
+        k2::SingleTimer _singleTimer;
+        k2::ConfigVar<k2::String> _key{"key"};
+        k2::ConfigVar<k2::String> _value{"value"};
+        k2::ConfigVar<k2::String> _op{"op"};
+        k2::ConfigVar<bool> _applyToAll{"applyToAll"};
 };
 }
 
@@ -89,6 +89,6 @@ int main(int argc, char** argv) {
     app.addOptions()
     ("applyToAll", bpo::value<bool>(), "e.g. '--applyToAll true, or --applyToAll false");
 
-    app.addApplet<k2::ConfiguratorClient>();
+    app.addApplet<k3::ConfiguratorClient>();
     return app.start(argc, argv);
 }

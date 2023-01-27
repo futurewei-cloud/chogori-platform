@@ -26,6 +26,13 @@ Copyright(c) 2020 Futurewei Cloud
 #include <seastar/core/future.hh>
 #include <k2/config/Config.h>
 
+#include "TCPRPCProtocol.h"
+#include "TXEndpoint.h"
+#include "RPCDispatcher.h"  // for RPC
+#include "RPCTypes.h"
+#include "RRDMARPCProtocol.h"
+#include "Log.h"
+
 namespace k2 {
 class Configurator {
 public :
