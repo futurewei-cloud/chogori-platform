@@ -25,7 +25,7 @@ class ConfiguratorTest {
                         K2LOG_I(log::configuratortest, "putting record");
                         SET_ConfiguratorRequest request{.key=_key(), .value=_value(), .applyToAll=_applyToAll()};
                         return RPC().callRPC<SET_ConfiguratorRequest, SET_ConfiguratorResponse>(CONFGURATOR_SET, request, *ep, 1s)
-                        .then([](auto&& result) {
+                        .then([this](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratortest, "put response : {} {}", status, response );
                             K2EXPECT(log::configuratortest, response.key, _key());
@@ -33,7 +33,7 @@ class ConfiguratorTest {
                     }).then([ep, this] { 
                         GET_ConfiguratorRequest request{.key=_key()};
                         return RPC().callRPC<GET_ConfiguratorRequest, GET_ConfiguratorResponse>(CONFGURATOR_GET, request, *ep, 1s)
-                        .then([](auto&& result) {
+                        .then([this](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratortest, "got response : {} {}", status, response);
                             K2EXPECT(log::configuratortest, response.value, _value());
@@ -42,7 +42,7 @@ class ConfiguratorTest {
                         K2LOG_I(log::configuratortest, "deleting record");
                         DELETE_ConfiguratorRequest request{.key=_key(), .value=_value(), .applyToAll=_applyToAll()};
                         return RPC().callRPC<DELETE_ConfiguratorRequest, DELETE_ConfiguratorResponse>(CONFGURATOR_SET, request, *ep, 1s)
-                        .then([](auto&& result) {
+                        .then([this](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratortest, "put response : {} {}", status, response );
                             K2EXPECT(log::configuratortest, response.key, _key());
