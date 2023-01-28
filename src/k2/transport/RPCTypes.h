@@ -41,7 +41,7 @@ enum InternalVerbs : k2::Verb {
     CONFGURATOR_GET = 250,  // used to configure get.
     CONFGURATOR_SET = 251,  // used to configure set.
     CONFGURATOR_DELETE = 252,  // used to configure clear messages.
-    MAX_VERB = 250,  // something we can use to prevent override of internal verbs.
+    MAX_VERB = 253,  // something we can use to prevent override of internal verbs.
     NIL              // used for messages where the verb doesn't matter
 };
 

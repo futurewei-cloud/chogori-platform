@@ -28,13 +28,15 @@ class ConfiguratorTest {
                         .then([](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratortest, "put response : {} {}", status, response );
+                            K2EXPECT(log::configuratortest, response.key, _key());
                         });
                     }).then([ep, this] { 
                         GET_ConfiguratorRequest request{.key=_key()};
                         return RPC().callRPC<GET_ConfiguratorRequest, GET_ConfiguratorResponse>(CONFGURATOR_GET, request, *ep, 1s)
                         .then([](auto&& result) {
                             auto& [status, response] = result;
-                            K2LOG_I(log::configuratortest, "got response : {} {}", status, response );
+                            K2LOG_I(log::configuratortest, "got response : {} {}", status, response);
+                            K2EXPECT(log::configuratortest, response.value, _value());
                             }); 
                     }).then([ep, this] { 
                         K2LOG_I(log::configuratortest, "deleting record");
@@ -43,7 +45,16 @@ class ConfiguratorTest {
                         .then([](auto&& result) {
                             auto& [status, response] = result;
                             K2LOG_I(log::configuratortest, "put response : {} {}", status, response );
+                            K2EXPECT(log::configuratortest, response.key, _key());
                         }); 
+                    }).then([ep, this] { 
+                        GET_ConfiguratorRequest request{.key=_key()};
+                        return RPC().callRPC<GET_ConfiguratorRequest, GET_ConfiguratorResponse>(CONFGURATOR_GET, request, *ep, 1s)
+                        .then([](auto&& result) {
+                            auto& [status, response] = result;
+                            K2LOG_I(log::configuratortest, "got response : {} {}", status, response);
+                            K2EXPECT(log::configuratortest, status, Statuses::S404_Not_Found);
+                            }); 
                     })
                     .then([] {
                         AppBase().stop(0);
