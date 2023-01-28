@@ -47,5 +47,5 @@ trap finish EXIT
 
 sleep 1
 
-./build/test/k23si/configurator_test ${COMMON_ARGS} --key "log_level" --value "Error" --prometheus_port 63100
-./build/test/k23si/configurator_test ${COMMON_ARGS} --key "test_var" --value "test_value" --applyToAll "true" --prometheus_port 63100
+./build/test/configurator/configurator_test ${COMMON_ARGS} --key "log_level" --value "Error" --prometheus_port 63100
+./build/test/configurator/configurator_test ${COMMON_ARGS} --key "test_var" --value "test_value" --applyToAll "true" --prometheus_port 63100
