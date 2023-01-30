@@ -8,7 +8,7 @@ set_target_properties(appbase PROPERTIES
     SOVERSION 1
 )
 
-target_link_libraries (appbase PRIVATE config common transport Seastar::seastar )
+target_link_libraries (appbase PRIVATE config common transport configurator Seastar::seastar )
 
 # export the library in the common k2Targets
 install(TARGETS appbase EXPORT k2Targets DESTINATION lib/k2)

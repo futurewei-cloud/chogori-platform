@@ -22,27 +22,25 @@ Copyright(c) 2020 Futurewei Cloud
 */
 
 #pragma once
-// stl
-#include <cstdint> // for int types
-#include <iostream>
+
+#include <seastar/core/future.hh>
+#include <k2/config/Config.h>
 
 namespace k2 {
-// This file contains definitions for RPC types
-// The type for verbs in the RPC system
+class Configurator {
+public :
+    Configurator();
+    ~Configurator();
 
-//
-//  Verb describes particular service within K2 endpoint
-//
-typedef uint8_t Verb;
+    seastar::future<> gracefulStop();
+    seastar::future<> start();
 
-// Verbs used by K2 internally
-enum InternalVerbs : k2::Verb {
-    LIST_ENDPOINTS = 249,  // used to discover the endpoints of a node
-    CONFGURATOR_GET = 250,  // used to configure get.
-    CONFGURATOR_SET = 251,  // used to configure set.
-    CONFGURATOR_DELETE = 252,  // used to configure clear messages.
-    MAX_VERB = 253,  // something we can use to prevent override of internal verbs.
-    NIL              // used for messages where the verb doesn't matter
-};
+
+private :
+    ConfigVar<String> _key{"key"};
+    ConfigVar<String> _value{"value"};
+    ConfigVar<String> _op{"op"};
+    ConfigVar<String> _applyToAll{"applyToAll"}; 
+};  // class Configurator
 
 } // namespace k2

@@ -37,6 +37,7 @@ Copyright(c) 2020 Futurewei Cloud
 // k2 transport
 #include <k2/transport/AutoRRDMARPCProtocol.h>
 #include <k2/transport/Discovery.h>
+#include <k2/configurator/Configurator.h>
 #include <k2/transport/RPCProtocolFactory.h>
 #include <k2/transport/RRDMARPCProtocol.h>
 #include <k2/transport/TCPRPCProtocol.h>
@@ -92,6 +93,7 @@ public:  // API
         }
         // add the discovery applet o all apps
         addApplet<k2::Discovery>();
+        addApplet<k2::Configurator>();
     }
 
     // helper class for positional option adding
